@@ -90,6 +90,7 @@ await withDisposablePostgres(async pg => {
   const roleDefinition = fn('20260802000000_kal426_user_archive_foundation.sql', 'get_my_document_role');
   sql(roleDefinition);
   applyMigration(migrationPath('20260909100000_document_generation_collaboration.sql'));
+  applyMigration(migrationPath('20260909103000_document_generation_replacement_requests.sql'));
   // Exercise the actual import-identity columns and uniqueness rule, not a
   // fixture-only hash column. Do not apply unrelated legacy rebuild changes.
   const identityMigration = source('20260606120000_rebuild_yjs_source_of_truth.sql');
@@ -147,7 +148,38 @@ await withDisposablePostgres(async pg => {
     return { ...x, actor, s, envelope, u, archives, result, plan, nextPdf };
   };
   const publishSql = (x, plan = x.plan) => `SELECT survey_private.publish_document_generation('${x.actor}','${x.s}','${x.u.operation_id}',ARRAY[${x.archives.map(a => quote(a.operation_id)).join(',')}]::uuid[],${quote(JSON.stringify(plan))}::jsonb)`;
-  const publish = x => JSON.parse(scalar(publishSql(x)));
+  const publish = (x, plan = x.plan) => JSON.parse(scalar(publishSql(x, plan)));
+  const replacementIntent = x => ({
+    actor: x.actor,
+    source: x.s,
+    candidate: x.u.operation_id,
+    archives: x.archives.map(value => value.operation_id).sort(),
+    expectedGeneration: x.plan.source.generationId,
+    expectedWalHead: x.plan.source.walHead,
+    operation: structuredClone(x.plan.operation),
+  });
+  const cancelPreparedUploads = x => {
+    for (const operationId of [x.u.operation_id, ...x.archives.map(value => value.operation_id)])
+      scalar(`SELECT survey_private.cancel_document_generation_upload('${operationId}')`);
+  };
+  const replacementArgsSql = intent => `${quote(intent.actor)},${quote(intent.source)},${quote(intent.candidate)},ARRAY[${intent.archives.map(quote).join(',')}]::uuid[],${quote(intent.expectedGeneration)},${quote(intent.expectedWalHead)}::bigint,${quote(JSON.stringify(intent.operation))}::jsonb`;
+  const prepareReplacementSql = (intent, plan) => `SELECT survey_private.prepare_document_generation_replacement(${replacementArgsSql(intent)},${quote(JSON.stringify(plan))}::jsonb)`;
+  const prepareReplacementExpressionSql = (intent, planExpression) => `SELECT survey_private.prepare_document_generation_replacement(${replacementArgsSql(intent)},${planExpression})`;
+  const readReplacementSql = intent => `SELECT survey_private.read_document_generation_replacement(${replacementArgsSql(intent)})`;
+  const prepareReplacement = (intent, plan) => JSON.parse(scalar(prepareReplacementSql(intent, plan)));
+  const readReplacement = intent => JSON.parse(scalar(readReplacementSql(intent)));
+  const replacementKeys = ['version','state','actor_user_id','document_id','source_id','candidate_operation_id',
+    'archive_operation_ids','expected_generation_id','expected_wal_head','prepared_at','expires_at','plan','publication'].sort();
+  const checkReplacement = (result, intent, state) => {
+    assert.deepEqual(Object.keys(result).sort(), replacementKeys);
+    assert.equal(result.version, 1); assert.equal(result.state, state);
+    assert.equal(result.actor_user_id, intent.actor); assert.equal(result.source_id, intent.source);
+    assert.equal(result.candidate_operation_id, intent.candidate);
+    assert.deepEqual(result.archive_operation_ids, intent.archives);
+    assert.equal(result.expected_generation_id, intent.expectedGeneration);
+    assert.equal(result.expected_wal_head, String(intent.expectedWalHead));
+    return result;
+  };
   const snapshot = x => scalar(`SET TimeZone='UTC';SET bytea_output='hex';SELECT jsonb_build_object('document',(SELECT to_jsonb(d) FROM documents d WHERE id='${x.d}'),
     'annotations',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM document_annotations r WHERE document_id='${x.d}'),
     'state',(SELECT to_jsonb(r) FROM doc_yjs_state r WHERE document_id='${x.d}'),
@@ -869,7 +901,234 @@ await withDisposablePostgres(async pg => {
     assert.equal(result.generation_id, next.u.generation_id); assert.equal(result.pdf.path, next.u.path);
     assert.equal(result.publication.operation_id, next.u.operation_id); assert.equal(result.role, 'owner');
   });
-  assert.equal(groups, 43);
+  assert.equal(groups, 43, 'Preserve every original publication/open/download/collaboration group');
+  await check('replacement plan survives a fresh caller and exact replay without regeneration', async () => {
+    const x = await prepare(seed()), intent = replacementIntent(x), plan = structuredClone(x.plan);
+    const untracked = checkReplacement(readReplacement(intent), intent, 'untracked');
+    assert.equal(untracked.plan, null); assert.equal(untracked.publication, null);
+    const missingIntent = { ...structuredClone(intent), candidate: fresh() };
+    const missing = checkReplacement(readReplacement(missingIntent), missingIntent, 'missing');
+    assert.equal(missing.plan, null); assert.equal(missing.publication, null);
+
+    const prepared = checkReplacement(prepareReplacement(intent, x.plan), intent, 'prepared');
+    assert.deepEqual(prepared.plan, plan); assert.equal(prepared.publication, null);
+    assert.deepEqual(prepareReplacement(intent, x.plan), prepared, 'exact checkpoint replay is immutable');
+
+    // Model an application-process restart: discard every computed JS object,
+    // then use a fresh psql connection and only persisted request identities.
+    const restartedIntent = JSON.parse(JSON.stringify(intent));
+    x.plan = null;
+    const restarted = checkReplacement(readReplacement(restartedIntent), restartedIntent, 'prepared');
+    assert.deepEqual(restarted.plan, plan);
+    const receipt = publish(x, restarted.plan);
+    const published = checkReplacement(readReplacement(restartedIntent), restartedIntent, 'published');
+    assert.equal(published.plan, null); assert.deepEqual(published.publication, receipt);
+  });
+  await check('replacement checkpoint rejects changed intent or plan and never creates a publication', async () => {
+    const x = await prepare(seed()), intent = replacementIntent(x), original = prepareReplacement(intent, x.plan);
+    const changed = [
+      { ...structuredClone(intent), actor: other },
+      { ...structuredClone(intent), source: fresh() },
+      { ...structuredClone(intent), candidate: fresh() },
+      { ...structuredClone(intent), archives: [fresh()] },
+      { ...structuredClone(intent), expectedGeneration: fresh() },
+      { ...structuredClone(intent), expectedWalHead: String(BigInt(intent.expectedWalHead) + 1n) },
+      { ...structuredClone(intent), operation: { type: 'delete', page: 1 } },
+    ];
+    for (const altered of changed) {
+      assert.notEqual(sql(prepareReplacementSql(altered, x.plan), false).status, 0);
+      assert.deepEqual(readReplacement(intent), original);
+    }
+    const invalidPlan = structuredClone(x.plan); invalidPlan.operationId = fresh();
+    assert.notEqual(sql(prepareReplacementSql(intent, invalidPlan), false).status, 0);
+    assert.deepEqual(readReplacement(intent), original);
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE operation_id='${intent.candidate}'`), '0');
+    publish(x, original.plan);
+  });
+  await check('lost publication response is recovered by exact identity on a fresh connection', async () => {
+    const x = await prepare(seed()), intent = replacementIntent(x);
+    const stored = prepareReplacement(intent, x.plan);
+    // The database commits; the caller deliberately discards the returned row.
+    scalar(publishSql(x, stored.plan));
+    scalar(`SELECT survey_private.release_document_generation_source('${x.s}','expired')`);
+    assert.equal(scalar(`SELECT state FROM survey_private.document_generation_sources WHERE source_id='${x.s}'`), 'expired');
+    const restartedIntent = JSON.parse(JSON.stringify(intent));
+    const recovered = checkReplacement(readReplacement(restartedIntent), restartedIntent, 'published');
+    assert.equal(recovered.plan, null); assert.equal(recovered.publication.operation_id, intent.candidate);
+    assert.deepEqual(publish(x, stored.plan), recovered.publication, 'exact publish replay returns the committed receipt');
+  });
+  await check('older published request lookup never adopts a newer document generation', async () => {
+    const first = await prepare(seed()), firstIntent = replacementIntent(first);
+    const firstPlan = prepareReplacement(firstIntent, first.plan).plan;
+    const firstReceipt = publish(first, firstPlan);
+    const next = await prepare({ ...first, pdf: first.nextPdf, generation: first.u.generation_id }, { type: 'duplicate', page: 1 });
+    const nextIntent = replacementIntent(next), nextPlan = prepareReplacement(nextIntent, next.plan).plan;
+    const nextReceipt = publish(next, nextPlan);
+    assert.notEqual(nextReceipt.generation_id, firstReceipt.generation_id);
+    const old = checkReplacement(readReplacement(firstIntent), firstIntent, 'published');
+    assert.deepEqual(old.publication, firstReceipt);
+    assert.notEqual(old.publication.generation_id, nextReceipt.generation_id);
+  });
+  await check('replacement lookup rechecks current authority without erasing recovery state', async () => {
+    const x = await prepare({ ...seed(), actor: editor }), intent = replacementIntent(x);
+    const prepared = prepareReplacement(intent, x.plan);
+    sql(`UPDATE project_collaborators SET status='pending' WHERE project_id='${project}' AND user_id='${editor}'`);
+    try {
+      errorState(asRole(null, readReplacementSql(intent), 'postgres', false), '42501');
+      assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE operation_id='${intent.candidate}'`), '0');
+    } finally {
+      sql(`UPDATE project_collaborators SET status='active' WHERE project_id='${project}' AND user_id='${editor}'`);
+    }
+    assert.deepEqual(readReplacement(intent), prepared);
+    publish(x, prepared.plan);
+  });
+  await check('replacement journal is private immutable and deleted only with its document', async () => {
+    const x = await prepare(seed()), intent = replacementIntent(x);
+    prepareReplacement(intent, x.plan);
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      errorState(asRole(owner, readReplacementSql(intent), role, false), '42501');
+      errorState(asRole(owner, prepareReplacementSql(intent, x.plan), role, false), '42501');
+      errorState(asRole(owner, 'SELECT survey_private.expire_document_generation_replacement_plans(1)', role, false), '42501');
+      for (const table of ['document_generation_replacement_requests', 'document_generation_replacement_plans'])
+        errorState(asRole(owner, `SELECT * FROM survey_private.${table}`, role, false), '42501');
+    }
+    errorState(sql(`UPDATE survey_private.document_generation_replacement_requests SET actor_user_id='${other}' WHERE candidate_operation_id='${intent.candidate}'`, false), '23514');
+    errorState(sql(`DELETE FROM survey_private.document_generation_replacement_requests WHERE candidate_operation_id='${intent.candidate}'`, false), '23514');
+    errorState(sql(`UPDATE survey_private.document_generation_replacement_plans SET expires_at=clock_timestamp() WHERE candidate_operation_id='${intent.candidate}'`, false), '23514');
+    errorState(sql('TRUNCATE survey_private.document_generation_replacement_plans', false), '42501');
+    errorState(sql('TRUNCATE survey_private.document_generation_replacement_requests, survey_private.document_generation_replacement_plans', false), '42501');
+    sql(`DELETE FROM documents WHERE id='${x.d}'`);
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_requests WHERE candidate_operation_id='${intent.candidate}'`), '0');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_plans WHERE candidate_operation_id='${intent.candidate}'`), '0');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE operation_id='${intent.candidate}'`), '0');
+  });
+  await check('checkpoint rejects stale bytes frontier and access without publishing', async () => {
+    const bytes = await prepare(seed()), bytesIntent = replacementIntent(bytes);
+    sql(`DELETE FROM survey_private.document_generation_source_bytes WHERE source_id='${bytes.s}'`);
+    errorState(sql(prepareReplacementSql(bytesIntent, bytes.plan), false), '23514');
+    assert.equal(readReplacement(bytesIntent).state, 'untracked');
+
+    const frontier = await prepare(seed()), frontierIntent = replacementIntent(frontier);
+    asRole(owner, `SELECT public.append_annotation_update('${frontier.d}','replacement-stale-frontier',1,${bytea(Buffer.from([1,2,3]))})`);
+    errorState(sql(prepareReplacementSql(frontierIntent, frontier.plan), false), '23514');
+    assert.equal(readReplacement(frontierIntent).state, 'untracked');
+
+    const access = await prepare({ ...seed(), actor: editor }), accessIntent = replacementIntent(access);
+    sql(`UPDATE project_collaborators SET status='pending' WHERE project_id='${project}' AND user_id='${editor}'`);
+    try { errorState(sql(prepareReplacementSql(accessIntent, access.plan), false), '42501'); }
+    finally { sql(`UPDATE project_collaborators SET status='active' WHERE project_id='${project}' AND user_id='${editor}'`); }
+    assert.equal(readReplacement(accessIntent).state, 'untracked');
+    for (const intent of [bytesIntent, frontierIntent, accessIntent])
+      assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE operation_id='${intent.candidate}'`), '0');
+    for (const x of [bytes, frontier, access]) cancelPreparedUploads(x);
+  });
+  await check('checkpoint rejects same-frontier snapshot replacement in legacy and generated modes', async () => {
+    const legacy = await prepare(seed()), legacyIntent = replacementIntent(legacy);
+    const changed = new Y.Doc(); changed.getMap('annotations').set('same-frontier', 'replacement');
+    const changedBytes = Y.encodeStateAsUpdate(changed); changed.destroy();
+    const legacyBefore = scalar(`SELECT encode(snapshot,'hex') FROM annotation_snapshots WHERE document_id='${legacy.d}'`);
+    assert.equal(asRole(owner, `SELECT public.store_annotation_snapshot('${legacy.d}',0,${bytea(changedBytes)},1,'replacement-snapshot',2,0,'publisher-test',1)`).stdout, 't');
+    assert.equal(scalar(`SELECT at_seq FROM annotation_snapshots WHERE document_id='${legacy.d}'`), '0');
+    assert.notEqual(scalar(`SELECT encode(snapshot,'hex') FROM annotation_snapshots WHERE document_id='${legacy.d}'`), legacyBefore);
+    assert.equal(scalar(`SELECT writer_epoch||':'||base_writer_epoch FROM annotation_snapshots WHERE document_id='${legacy.d}'`), '2:1');
+    errorState(sql(prepareReplacementSql(legacyIntent, legacy.plan), false), '23514');
+    assert.equal(readReplacement(legacyIntent).state, 'untracked');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_requests WHERE candidate_operation_id='${legacyIntent.candidate}'`), '0');
+
+    const base = await prepare(seed()); publish(base);
+    sql(`INSERT INTO survey_private.annotation_generation_snapshots(document_id,generation_id,at_seq,snapshot,encoding_version,writer_id,writer_epoch)
+      VALUES('${base.d}','${base.u.generation_id}',0,${bytea(base.result.baselineUpdate)},1,'replacement-snapshot',1)`);
+    const generated = await prepare({ ...base, pdf: base.nextPdf, generation: base.u.generation_id }, { type: 'duplicate', page: 1 });
+    const generatedIntent = replacementIntent(generated);
+    const generationId = generated.plan.source.generationId;
+    const generatedBefore = scalar(`SELECT encode(snapshot,'hex') FROM survey_private.annotation_generation_snapshots WHERE document_id='${generated.d}' AND generation_id='${generationId}'`);
+    const replaced = JSON.parse(asRole(owner, `SELECT public.store_annotation_snapshot_v2('${generated.d}','${generationId}',0,${bytea(changedBytes)},1,'replacement-snapshot-next',2,0,'replacement-snapshot',1)`).stdout);
+    assert.equal(replaced.stored, true); assert.equal(replaced.at_seq, '0');
+    assert.notEqual(scalar(`SELECT encode(snapshot,'hex') FROM survey_private.annotation_generation_snapshots WHERE document_id='${generated.d}' AND generation_id='${generationId}'`), generatedBefore);
+    assert.equal(scalar(`SELECT at_seq||':'||writer_epoch FROM survey_private.annotation_generation_snapshots WHERE document_id='${generated.d}' AND generation_id='${generationId}'`), '0:2');
+    errorState(sql(prepareReplacementSql(generatedIntent, generated.plan), false), '23514');
+    assert.equal(readReplacement(generatedIntent).state, 'untracked');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_requests WHERE candidate_operation_id='${generatedIntent.candidate}'`), '0');
+    cancelPreparedUploads(legacy); cancelPreparedUploads(generated);
+  });
+  await check('expired plan cleanup keeps request source uploads and objects but removes payload', async () => {
+    const x = await prepare(seed()), intent = replacementIntent(x);
+    sql(`UPDATE survey_private.document_generation_sources SET expires_at=clock_timestamp()+interval '1 second' WHERE source_id='${x.s}'`);
+    const prepared = checkReplacement(prepareReplacement(intent, x.plan), intent, 'prepared');
+    assert.ok(prepared.plan); assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_plans WHERE candidate_operation_id='${intent.candidate}'`), '1');
+    const retained = scalar(`SELECT jsonb_build_object(
+      'source',(SELECT to_jsonb(s) FROM survey_private.document_generation_sources s WHERE source_id='${x.s}'),
+      'bytes',(SELECT to_jsonb(b) FROM survey_private.document_generation_source_bytes b WHERE source_id='${x.s}'),
+      'uploads',(SELECT jsonb_agg(to_jsonb(u) ORDER BY operation_id) FROM survey_private.document_generation_uploads u WHERE source_id='${x.s}'),
+      'objects',(SELECT jsonb_agg(to_jsonb(o) ORDER BY name) FROM storage.objects o WHERE bucket_id='documents' AND
+        (name=${quote(x.path)} OR name IN(SELECT path FROM survey_private.document_generation_uploads WHERE source_id='${x.s}'))))`);
+    scalar("SELECT pg_sleep(1.1)");
+    assert.equal(scalar('SELECT survey_private.expire_document_generation_replacement_plans(1)'), '1');
+    const expired = checkReplacement(readReplacement(intent), intent, 'expired');
+    assert.equal(expired.plan, null); assert.equal(expired.publication, null);
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_requests WHERE candidate_operation_id='${intent.candidate}'`), '1');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_sources WHERE source_id='${x.s}'`), '1');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_uploads WHERE operation_id='${intent.candidate}' OR operation_id=ANY(ARRAY[${intent.archives.map(quote).join(',')}]::uuid[])`), String(1 + intent.archives.length));
+    assert.equal(scalar(`SELECT jsonb_build_object(
+      'source',(SELECT to_jsonb(s) FROM survey_private.document_generation_sources s WHERE source_id='${x.s}'),
+      'bytes',(SELECT to_jsonb(b) FROM survey_private.document_generation_source_bytes b WHERE source_id='${x.s}'),
+      'uploads',(SELECT jsonb_agg(to_jsonb(u) ORDER BY operation_id) FROM survey_private.document_generation_uploads u WHERE source_id='${x.s}'),
+      'objects',(SELECT jsonb_agg(to_jsonb(o) ORDER BY name) FROM storage.objects o WHERE bucket_id='documents' AND
+        (name=${quote(x.path)} OR name IN(SELECT path FROM survey_private.document_generation_uploads WHERE source_id='${x.s}'))))`), retained);
+    cancelPreparedUploads(x);
+  });
+  await check('same-document actor admission serializes and reaches the exact two-plan cap', async () => {
+    const base = seed();
+    const first = await prepare({ ...base, actor: owner }), firstIntent = replacementIntent(first);
+    const second = await prepare({ ...base, actor: editor }), secondIntent = replacementIntent(second);
+    const held = session('replacement_document_admission', { role: 'postgres' });
+    held.send(`${prepareReplacementSql(firstIntent, first.plan)};SELECT 'replacement-first-held';`);
+    await held.wait('replacement-first-held');
+    errorState(sql(prepareReplacementSql(secondIntent, second.plan), false), '40001');
+    assert.equal((await held.finish()).status, 0);
+    assert.equal(prepareReplacement(secondIntent, second.plan).state, 'prepared');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_replacement_plans p JOIN survey_private.document_generation_replacement_requests r USING(candidate_operation_id) WHERE r.document_id='${base.d}'`), '2');
+    sql(`DELETE FROM documents WHERE id='${base.d}'`);
+  });
+  await check('concurrent checkpoint and publication attempts share the operation lock', async () => {
+    const x = await prepare(seed()), intent = replacementIntent(x);
+    const held = session('replacement_checkpoint', { role: 'postgres' });
+    held.send(`${prepareReplacementSql(intent, x.plan)};SELECT 'replacement-checkpoint-held';`);
+    await held.wait('replacement-checkpoint-held');
+    errorState(sql(prepareReplacementSql(intent, x.plan), false), '55P03');
+    assert.notEqual(sql(publishSql(x), false).status, 0);
+    assert.equal((await held.finish()).status, 0);
+    const stored = readReplacement(intent);
+    const bad = structuredClone(stored.plan); bad.operationId = fresh();
+    assert.notEqual(sql(publishSql(x, bad), false).status, 0);
+    const conflictingDigest = structuredClone(stored.plan);
+    conflictingDigest.operation = { ...conflictingDigest.operation, checkpointMarker: 'conflicting-plan-hash' };
+    errorState(sql(publishSql(x, conflictingDigest), false), '23514');
+    assert.deepEqual(readReplacement(intent), stored, 'a conflicting publisher cannot erase the prepared payload');
+    const publishing = session('replacement_publication', { role: 'postgres' });
+    publishing.send(`${publishSql(x, stored.plan)};SELECT 'replacement-publish-held';`);
+    await publishing.wait('replacement-publish-held');
+    errorState(sql(prepareReplacementSql(intent, stored.plan), false), '55P03');
+    assert.equal((await publishing.finish()).status, 0);
+    assert.equal(readReplacement(intent).state, 'published');
+  });
+  await check('stored byte admission metadata enforces the fixed actor budget without detoasting plans', async () => {
+    const first = await prepare(seed()), second = await prepare(seed());
+    const firstIntent = replacementIntent(first), secondIntent = replacementIntent(second);
+    const large = plan => `jsonb_set(${quote(JSON.stringify(plan))}::jsonb,'{baseline_base64}',to_jsonb(repeat('a',35651584)))`;
+    sql(`UPDATE survey_private.document_generation_sources SET expires_at=clock_timestamp()+interval '5 seconds' WHERE source_id='${first.s}'`);
+    assert.equal(scalar(`${prepareReplacementExpressionSql(firstIntent, large(first.plan))}->>'state'`), 'prepared');
+    assert.equal(scalar(`SELECT plan_byte_length=octet_length(plan::text) FROM survey_private.document_generation_replacement_plans WHERE candidate_operation_id='${firstIntent.candidate}'`), 't');
+    scalar(`SELECT pg_sleep(greatest(0,extract(epoch FROM (expires_at-clock_timestamp())))+0.1) FROM survey_private.document_generation_replacement_plans WHERE candidate_operation_id='${firstIntent.candidate}'`);
+    errorState(sql(`${prepareReplacementExpressionSql(secondIntent, large(second.plan))}->>'state'`, false), '54000');
+    assert.equal(readReplacement(secondIntent).state, 'untracked');
+    assert.equal(scalar('SELECT survey_private.expire_document_generation_replacement_plans(1)'), '1');
+    assert.equal(scalar(`${prepareReplacementExpressionSql(secondIntent, large(second.plan))}->>'state'`), 'prepared');
+    const total = BigInt(scalar(`SELECT sum(plan_byte_length) FROM survey_private.document_generation_replacement_plans p JOIN survey_private.document_generation_replacement_requests r USING(candidate_operation_id) WHERE r.actor_user_id='${owner}'`));
+    assert.ok(total > 33n * 1024n * 1024n && total <= 64n * 1024n * 1024n);
+    sql(`DELETE FROM documents WHERE id IN('${first.d}','${second.d}')`);
+  });
+  assert.equal(groups, 55);
   console.log(`Document generation publication PostgreSQL groups passed: ${groups}`);
 }, { name: 'generation-publication', commandTimeoutMs: 60000 });
 } finally {
