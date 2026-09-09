@@ -1736,13 +1736,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 aria-label="Text"
               >
-                {/* UX 2026-09-07: the Text GROUP button shows the same text-box
-                    glyph the owner supplied for the Text tool inside this
-                    group's sub-toolbar. It used to show an unrelated serif "T",
-                    so the group button and the option it opens disagreed —
-                    Draw and Shapes both use their own group glyph consistently.
-                    Same 18px treatment as the Draw and Shapes group buttons. */}
-                <Icon name="textBox" size={18} />
+                <Icon name="textGroup" size={18} />
               </button>
 
               {/* KAL-47: Forms category. Opens the form-field subtoolbar

@@ -16,6 +16,7 @@ import panHandUrl from './assets/icons/pan-hand-closed.svg';
 import counterIconUrl from './assets/icons/counter.svg';
 import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
+import textGroupIconUrl from './assets/icons/case-sensitive.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
 import drawGroupIconUrl from './assets/icons/draw-group-option-5.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
@@ -250,6 +251,8 @@ const ICON_RENDERERS = {
     ),
 
     textBox: (size, color, style, className) => renderMaskIcon(textBoxIconUrl, size, color, style, className),
+
+    textGroup: (size, color, style, className) => renderMaskIcon(textGroupIconUrl, size, color, style, className),
 
     callout: (size, color, style, className) => renderMaskIcon(calloutIconUrl, size, color, style, className),
 

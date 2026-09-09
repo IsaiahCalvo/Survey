@@ -12,11 +12,8 @@ import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, g
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
-// UX 2026-09-07: the phone must show the SAME glyph as the desktop toolbar for
-// the same tool. These two group icons had drifted — the phone showed the Pen
-// tool's own icon for the whole Draw group where desktop shows the calligraphic
-// draw-group pen, and a serif "T" for the Text group where desktop now shows
-// the owner's text-box icon. Every sub-tool below already matched.
+// Group icons stay shared with the desktop toolbar. Sub-tools keep their own
+// glyphs, so the Text group can differ from its Text Box option.
 const TOOL_GROUPS = {
   draw: {
     label: 'Draw',
@@ -42,7 +39,7 @@ const TOOL_GROUPS = {
   },
   review: {
     label: 'Text',
-    icon: 'textBox',
+    icon: 'textGroup',
     fallback: 'text',
     tools: [
       { id: 'text', label: 'Text', icon: 'textBox' },
