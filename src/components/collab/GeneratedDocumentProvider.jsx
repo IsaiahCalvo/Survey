@@ -1,10 +1,61 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { YDocContext } from './YDocContext.js';
 import ReadOnlyGate from './ReadOnlyGate.jsx';
 import { createGenerationCollaborationSession } from '../../lib/collab/generationCollaborationSession.js';
 
 const blocked = Object.freeze({ docRole: 'viewer', authorityStatus: 'checking', accessRevoked: true,
   loginExpired: false, isDocShared: null, presenceStatus: 'offline', syncStatus: null });
+
+/** The viewer hook owns the writer. This bridge only observes its published
+ * handle; it must never open, capture, or close that handle itself. Children
+ * stay mounted while the provider waits for successful checked hydration.
+ * Replacing the client requires a fresh checked bundle/open. Callback changes
+ * alone must not republish a writer that used the previous client.
+ */
+export function HookOwnedGeneratedDocumentProvider({ checkedBundle, currentActorUserId,
+  client, isActive = true, children, ...props }) {
+  const scopeRef = useRef(null);
+  if (!scopeRef.current || scopeRef.current.checkedBundle !== checkedBundle
+    || scopeRef.current.actor !== currentActorUserId || scopeRef.current.client !== client) {
+    scopeRef.current = { checkedBundle, actor: currentActorUserId, client };
+  }
+  const scope = scopeRef.current;
+  const openRef = useRef(null);
+  if (!openRef.current || openRef.current.scope !== scope || openRef.current.active !== isActive) {
+    const previous = openRef.current;
+    openRef.current = { scope, active: isActive,
+      retainedOpen: !isActive && previous?.scope === scope && previous.active ? previous : null };
+  }
+  const open = openRef.current;
+  const mountedRef = useRef(true);
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const [published, setPublished] = useState(null);
+  const onGenerationSession = useCallback(record => {
+    const handle = record?.handle;
+    if (!mountedRef.current || scopeRef.current !== scope || openRef.current !== open
+      || !open.active || currentActorUserId !== checkedBundle?.actorUserId
+      || record?.checkedBundle !== checkedBundle || !handle
+      || handle.actorUserId !== checkedBundle.actorUserId
+      || handle.documentId !== checkedBundle.documentId
+      || handle.pdfGenerationId !== checkedBundle.pdfGenerationId) return false;
+    setPublished(previous => previous?.scope === scope && previous.open === open && previous.handle === handle
+      ? previous : { scope, open, handle });
+    return true;
+  }, [scope, open, checkedBundle, currentActorUserId]);
+  // Hide retains this sealed same-open handle for local recovery checks. A
+  // successful reopen replaces it; an actor/bundle/client change cannot reuse it.
+  const generationSession = published?.scope === scope
+    && published.open === (isActive ? open : open.retainedOpen)
+    ? published.handle : null;
+  return <GeneratedDocumentProvider {...props} checkedBundle={checkedBundle}
+    currentActorUserId={currentActorUserId} client={client} isActive={isActive}
+    generationSession={generationSession}>
+    {children({ checkedBundle, onGenerationSession })}
+  </GeneratedDocumentProvider>;
+}
 
 /** Dormant until app opens pass one checked bundle and matching modern handle.
  * No legacy Y.Doc, undo, data transport, backfill or retry queue is mounted.

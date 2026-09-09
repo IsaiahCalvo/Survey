@@ -14,6 +14,8 @@ import { claimBodyReadOnly } from '../src/utils/readOnlyBodyReasons.js';
 import { createGenerationCollaborationSession } from '../src/lib/collab/generationCollaborationSession.js';
 import { getHistoryOrder, shouldUndoLocalBeforeLegacy } from '../src/utils/historyStacks.js';
 import { applyAnnotationHistoryAction, invertAnnotationHistoryAction } from '../src/utils/annotationLocalHistory.js';
+import * as annotationStore from '../src/services/annotationDocStore.js';
+import { createDetachedYDoc } from '../src/lib/collab/ydocRegistry.js';
 
 // Actual component/context/gate/session/auth bridge/status monitor. Only CSS,
 // cloud transport, presence and retained-recovery I/O are adapted locally.
@@ -51,7 +53,7 @@ function checkedBundle() {
     publication: { operation_id: id(6), generation_id: generation, published_at: '2026-09-09T00:00:00Z', wal_head: '0' } };
 }
 
-async function mount(t, { role = 'owner', strict = false, ...options } = {}) {
+async function mount(t, { role = 'owner', strict = false, hookOwned = false, realHook = false, ...options } = {}) {
   // Native editable control outside React's root avoids React 18's legacy
   // input-event polyfill in Node while exercising the actual window gate.
   const dom = new JSDOM('<!doctype html><div id="root"></div><input id="typing">', { url: 'http://localhost/', pretendToBeVisual: true });
@@ -62,10 +64,11 @@ async function mount(t, { role = 'owner', strict = false, ...options } = {}) {
     Object.defineProperty(globalThis, name, { configurable: true, value });
     restore.push(() => old ? Object.defineProperty(globalThis, name, old) : delete globalThis[name]);
   }
-  const calls = { rpc: [], table: [], channels: [], auth: [], sync: [], presence: [], recovery: [], runtimes: [], intervals: [], snapshots: [] };
+  const calls = { rpc: [], table: [], channels: [], auth: [], sync: [], presence: [], recovery: [], runtimes: [], intervals: [], snapshots: [],
+    childMounts: 0, childUnmounts: 0, childOpenEpochs: [], hookOpens: [] };
   t.mock.method(globalThis, 'setInterval', (callback, ms) => { const timer = { callback, ms, canceled: false }; calls.intervals.push(timer); return timer; });
   t.mock.method(globalThis, 'clearInterval', timer => { if (timer) timer.canceled = true; });
-  let authActor = actor, roleResult = role, latest, props, retainedClose, retainedReceipt;
+  let authActor = actor, roleResult = role, latest, props, retainedClose, retainedReceipt, latestBridge, latestHook;
   const bundle = checkedBundle();
   function makeHandle() {
     const listeners = new Set();
@@ -73,6 +76,8 @@ async function mount(t, { role = 'owner', strict = false, ...options } = {}) {
       // A fake legacy-looking value must never become the context's Y.Doc.
       doc: { getMap() { assert.fail('The provider must not inspect a legacy Y.Doc'); } },
       getSyncStatus: () => ({ healthy: true }), getGenerationStatus: () => ({ blocked: false, pdfGenerationId: generation }),
+      destroy() { assert.fail('The collaboration bridge must not destroy the hook-owned writer'); },
+      flushLocalDurability() { assert.fail('The collaboration bridge must not capture the hook-owned writer'); },
       onSyncStatus(cb) { const record = { cb, disposed: false }; calls.sync.push(record); listeners.add(cb);
         return () => { record.disposed = true; listeners.delete(cb); }; },
       emitSync(value) { for (const cb of listeners) cb(value); },
@@ -119,23 +124,83 @@ async function mount(t, { role = 'owner', strict = false, ...options } = {}) {
       },
     }); calls.runtimes.push(runtime); return runtime;
   } };
-  const { GeneratedDocumentProvider } = await loadJsx('../src/components/collab/GeneratedDocumentProvider.jsx', modules);
+  const { GeneratedDocumentProvider, HookOwnedGeneratedDocumentProvider } = await loadJsx('../src/components/collab/GeneratedDocumentProvider.jsx', modules);
+  let useAnnotationDoc;
+  if (realHook) {
+    const hookUrl = new URL('../src/hooks/useAnnotationDoc.js', import.meta.url);
+    const key = `__bridgeHook_${crypto.randomUUID()}`;
+    const boundary = args => {
+      const doc = createDetachedYDoc(), pending = deferred(); let revision = 0;
+      const handle = { ...makeHandle(), doc, documentId: args.documentId, actorUserId: args.actorUserId,
+        pdfGenerationId: args.pdfGenerationId, writerId: `hook-writer-${calls.hookOpens.length}`,
+        captures: 0, destroys: 0,
+        getByPage: () => annotationStore.docToByPage(doc), getMeta: name => annotationStore.getMetaValue(doc, name),
+        getSurveyMarkers: () => annotationStore.docToSurveyMarkers(doc), getDeletedPdfAnnotations: () => [],
+        getLocalRevision: () => revision, onChange: () => () => {}, onHistoryQuarantine: () => () => {},
+        setEraseEffectConsumer: () => {}, repairStackedInkDuplicates: () => annotationStore.repairStackedInkDuplicates(doc),
+        applyByPage(value) { handle.captures++; return annotationStore.syncByPageToDoc(doc, value); },
+        setMeta(name, value) { handle.captures++; return annotationStore.setMetaValue(doc, name, value); },
+        applySurveyMarkers(value) { handle.captures++; return annotationStore.syncSurveyMarkersToDoc(doc, value); },
+        flushLocalDurability: async () => receipt(), getLocalCloseReceipt: () => receipt(),
+        isLocalReceiptCurrent: value => value?.writerId === handle.writerId && value?.revision === revision,
+        revalidateLocalReceipt: async value => value,
+        destroy: async () => { handle.destroys++; }, drain: async () => {}, flushSnapshot: async () => true,
+      };
+      const receipt = () => ({ locallyDurable: true, documentId: args.documentId,
+        actorUserId: args.actorUserId, pdfGenerationId: args.pdfGenerationId, writerId: handle.writerId, revision });
+      doc.on('update', () => { revision++; });
+      calls.hookOpens.push({ args, handle, ...pending }); return pending.promise;
+    };
+    globalThis[key] = boundary;
+    try {
+      let source = await readFile(hookUrl, 'utf8');
+      source = source.replace(/import\s+\{\s*supabase\s*\}\s+from\s+['"]\.\.\/supabaseClient\.js['"];?/, 'const supabase = {};')
+        .replace(/import\s+\{\s*openAnnotationDoc\s*,\s*getClientId\s*\}\s+from\s+['"]\.\.\/services\/annotationDocSync\.js['"];?/,
+          `const openAnnotationDoc = globalThis[${JSON.stringify(key)}]; const getClientId = () => 'owned-hook-client';`);
+      source = source.replace(/from\s+(['"])([^'"]+)\1/g, (_all, _quote, specifier) => `from ${JSON.stringify(
+        specifier.startsWith('.') ? new URL(specifier, hookUrl).href : pathToFileURL(require.resolve(specifier)).href)}`);
+      ({ useAnnotationDoc } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`));
+    } finally { delete globalThis[key]; }
+  }
   const root = createRoot(document.getElementById('root')); let mounted = true;
-  function Consumer() {
+  function Consumer(bridge) {
     latest = useContext(YDocContext);
+    latestBridge = bridge;
+    React.useEffect(() => { calls.childMounts++; return () => { calls.childUnmounts++; }; }, []);
+    React.useEffect(() => {
+      if (bridge.onGenerationSession) calls.childOpenEpochs.push(bridge.onGenerationSession);
+    }, [bridge.onGenerationSession]);
+    if (realHook) {
+      const [annotationsByPage, setAnnotationsByPage] = React.useState({});
+      const [spaces, setSpaces] = React.useState([]);
+      const [surveyMarkers, setSurveyMarkers] = React.useState({});
+      latestHook = useAnnotationDoc({ documentId: props.checkedBundle.documentId, userId: props.currentActorUserId,
+        enabled: props.isActive, checkedBundle: bridge.checkedBundle, onGenerationSession: bridge.onGenerationSession,
+        annotationsByPage, setAnnotationsByPage, spaces, setSpaces, surveyMarkers, setSurveyMarkers,
+        docRole: latest.docRole, pageSizesRef: { current: {} } });
+    }
     calls.snapshots.push({ value: latest, oldReceiptCurrent: retainedClose?.isLocalCloseReceiptCurrent(retainedReceipt) ?? null });
     return React.createElement('button', { id: 'mutation' }, 'Markup');
   }
   props = { checkedBundle: bundle, generationSession: makeHandle(), currentActorUserId: actor, client: makeClient(), isActive: true };
   const render = async next => {
     props = { ...props, ...next }; authActor = props.currentActorUserId;
-    await act(async () => { const tree = React.createElement(GeneratedDocumentProvider, props, React.createElement(Consumer));
+    await act(async () => { const tree = hookOwned
+      ? React.createElement(HookOwnedGeneratedDocumentProvider, props, bridge => React.createElement(Consumer, bridge))
+      : React.createElement(GeneratedDocumentProvider, props, React.createElement(Consumer));
       root.render(strict ? React.createElement(React.StrictMode, null, tree) : tree); });
   };
   const unmount = async () => { if (mounted) { mounted = false; await act(async () => root.unmount()); } };
-  t.after(async () => { await unmount(); dom.window.close(); restore.reverse().forEach(fn => fn()); });
+  t.after(async () => { await unmount(); for (const item of calls.hookOpens) item.handle.doc.destroy();
+    dom.window.close(); restore.reverse().forEach(fn => fn()); });
   await render(options.props);
   return { calls, bundle, render, unmount, makeClient, makeHandle, get props() { return props; }, get value() { return latest; },
+    get bridge() { return latestBridge; },
+    get hook() { return latestHook; },
+    resolveHookOpen: async index => act(async () => { const pending = calls.hookOpens[index]; pending.resolve(pending.handle); await pending.promise; }),
+    publish: async (record, callback = latestBridge.onGenerationSession) => {
+      let accepted; await act(async () => { accepted = callback(record); }); return accepted;
+    },
     setRole: v => { roleResult = v; }, retain: (close, receipt) => { retainedClose = close; retainedReceipt = receipt; },
     focus: async () => { await act(async () => window.dispatchEvent(new window.Event('focus'))); },
     key(key, extra = {}, target = '#mutation') { const event = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra });
@@ -147,6 +212,140 @@ function assertNoLegacy(value) {
   assert.equal(value.ydoc, null); assert.equal(value.undoManager, null); assert.equal(value.undoCtx, null);
   assert.equal(value.isCRDTEnabled, false); assert.equal(value.localCloseRequired, true);
 }
+
+test('hook-owned bridge keeps pending children mounted while a valid handle becomes ready', async t => {
+  const h = await mount(t, { hookOwned: true });
+  assert.equal(h.calls.childMounts, 1); assert.equal(h.calls.childUnmounts, 0);
+  assert.equal(h.calls.childOpenEpochs.length, 1); assert.equal(h.calls.rpc.length, 0);
+  assert.equal(h.value.docRole, 'viewer'); assert.equal(h.value.localCloseSession, null); assertNoLegacy(h.value);
+  const callback = h.bridge.onGenerationSession, handle = h.makeHandle();
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle }), true);
+  assert.equal(h.value.docRole, 'owner'); assert.equal(h.calls.childMounts, 1); assert.equal(h.calls.childUnmounts, 0);
+  assert.equal(h.bridge.onGenerationSession, callback); assert.equal(h.calls.childOpenEpochs.length, 1);
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle }), true);
+  assert.equal(h.calls.runtimes.length, 1, 'Repeating the same published handle does not replace the runtime');
+  assertNoLegacy(h.value);
+});
+
+test('actual annotation hook owns one open and close per activation through the bridge', async t => {
+  const h = await mount(t, { hookOwned: true, realHook: true });
+  assert.equal(h.calls.hookOpens.length, 1); assert.equal(h.calls.childMounts, 1);
+  assert.equal(h.calls.hookOpens[0].args.checkedBundle, h.bundle);
+  assert.equal(h.calls.hookOpens[0].args.pdfGenerationId, generation);
+  assert.equal(h.value.localCloseSession, null); assert.equal(h.value.docRole, 'viewer');
+  await h.resolveHookOpen(0);
+  assert.equal(h.value.docRole, 'owner'); assert.equal(h.hook.initialHydration.ready, true);
+  assert.equal(h.calls.hookOpens.length, 1); assert.equal(h.calls.childMounts, 1);
+  const oldHandle = h.calls.hookOpens[0].handle, close = h.value.localCloseSession, receipt = await close.prepareLocalClose();
+  h.retain(close, receipt);
+  await h.render({ isActive: false });
+  assert.equal(oldHandle.destroys, 1); assert.equal(h.value.localCloseSession, close);
+  assert.equal(close.isLocalCloseReceiptCurrent(receipt), true, 'Hide retains the exact closed writer recovery scope');
+  const start = h.calls.snapshots.length;
+  await h.render({ isActive: true });
+  assert.equal(h.calls.hookOpens.length, 2); assert.equal(h.calls.childMounts, 1);
+  assert.equal(h.value.docRole, 'viewer'); assert.equal(h.value.localCloseSession, null);
+  assert.ok(h.calls.snapshots.slice(start).every(s => s.oldReceiptCurrent === false && s.value.docRole === 'viewer'));
+  await h.resolveHookOpen(1);
+  assert.equal(h.value.docRole, 'owner'); assert.equal(h.calls.hookOpens.length, 2);
+  assert.equal(oldHandle.destroys, 1); assert.equal(close.isLocalCloseReceiptCurrent(receipt), false);
+  await h.unmount(); assert.equal(h.calls.hookOpens[1].handle.destroys, 1);
+  assert.equal(h.calls.childUnmounts, 1); assertNoLegacy(h.value);
+});
+
+test('actual hook stays blocked after a client swap until a fresh checked bundle opens', async t => {
+  const h = await mount(t, { hookOwned: true, realHook: true });
+  await h.resolveHookOpen(0);
+  const oldHandle = h.calls.hookOpens[0].handle, oldCallback = h.bridge.onGenerationSession;
+  const close = h.value.localCloseSession, receipt = await close.prepareLocalClose();
+  h.retain(close, receipt);
+  await h.render({ client: h.makeClient() });
+  assert.equal(h.calls.hookOpens.length, 1, 'Callback changes cannot cause an unchecked writer reopen');
+  assert.equal(h.value.docRole, 'viewer'); assert.equal(h.value.localCloseSession, null);
+  assert.equal(close.isLocalCloseReceiptCurrent(receipt), false);
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle: oldHandle }, oldCallback), false);
+  const freshBundle = structuredClone(h.bundle);
+  await h.render({ checkedBundle: freshBundle });
+  assert.equal(h.calls.hookOpens.length, 2); assert.equal(oldHandle.destroys, 1);
+  assert.equal(h.calls.hookOpens[1].args.checkedBundle, freshBundle);
+  assert.equal(h.value.docRole, 'viewer');
+  await h.resolveHookOpen(1);
+  assert.equal(h.value.docRole, 'owner'); assert.equal(h.calls.childMounts, 1);
+});
+
+test('StrictMode hook bridge ignores a late cancelled open and keeps one live published writer', async t => {
+  const h = await mount(t, { hookOwned: true, realHook: true, strict: true });
+  assert.equal(h.calls.hookOpens.length, 2, 'StrictMode replays the hook effect');
+  const cancelled = h.calls.hookOpens[0].handle, active = h.calls.hookOpens[1].handle;
+  assert.equal(h.value.docRole, 'viewer'); assert.equal(h.value.localCloseSession, null);
+  await h.resolveHookOpen(1);
+  assert.equal(h.value.docRole, 'owner');
+  const close = h.value.localCloseSession, runtimeCount = h.calls.runtimes.length;
+  await h.resolveHookOpen(0);
+  assert.equal(cancelled.destroys, 1); assert.equal(active.destroys, 0);
+  assert.equal(h.value.localCloseSession, close); assert.equal(h.calls.runtimes.length, runtimeCount);
+  assert.equal(h.calls.presence.filter(item => !item.disposed).length, 1);
+  assert.equal(h.calls.auth.filter(item => !item.disposed).length, 1);
+  await h.unmount();
+  assert.equal(cancelled.destroys, 1); assert.equal(active.destroys, 1);
+  for (const group of ['auth', 'sync', 'presence', 'channels']) assert.ok(h.calls[group].every(item => item.disposed), group);
+  assert.ok(h.calls.intervals.every(timer => timer.canceled));
+});
+
+for (const field of ['currentActorUserId', 'checkedBundle', 'client']) test(`hook-owned ${field} A-B-A cannot accept either stale callback`, async t => {
+  const h = await mount(t, { hookOwned: true }), callbackA = h.bridge.onGenerationSession;
+  const original = h.props[field], handle = h.makeHandle();
+  await h.publish({ checkedBundle: h.bundle, handle });
+  const close = h.value.localCloseSession, receipt = await close.prepareLocalClose(); h.retain(close, receipt);
+  const next = field === 'currentActorUserId' ? id(99) : field === 'checkedBundle' ? structuredClone(h.bundle) : h.makeClient();
+  await h.render({ [field]: next }); const callbackB = h.bridge.onGenerationSession;
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle }, callbackA), false);
+  assert.equal(close.isLocalCloseReceiptCurrent(receipt), false);
+  await h.render({ [field]: original });
+  assert.notEqual(h.bridge.onGenerationSession, callbackA); assert.notEqual(h.bridge.onGenerationSession, callbackB);
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle }, callbackA), false);
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle }, callbackB), false);
+  assert.equal(h.value.docRole, 'viewer'); assert.equal(h.value.localCloseSession, null);
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle: h.makeHandle() }), true);
+  assert.equal(h.value.docRole, 'owner'); assertNoLegacy(h.value);
+});
+
+test('hook-owned bridge rejects mismatched handles and unissued open records', async t => {
+  const h = await mount(t, { hookOwned: true }), handle = h.makeHandle();
+  for (const record of [null, {}, { checkedBundle: h.bundle, handle: null },
+    { checkedBundle: structuredClone(h.bundle), handle },
+    ...['actorUserId', 'documentId', 'pdfGenerationId'].map(field => ({ checkedBundle: h.bundle, handle: { ...handle, [field]: id(99) } }))]) {
+    assert.equal(await h.publish(record), false);
+    assert.equal(h.value.localCloseSession, null); assert.equal(h.value.docRole, 'viewer');
+  }
+  assert.equal(h.calls.rpc.length, 0); assert.equal(h.calls.runtimes.length, 0);
+  await h.publish({ checkedBundle: h.bundle, handle });
+  assert.equal(h.value.docRole, 'owner');
+});
+
+test('hiding a pending reactivation never restores an older active writer recovery scope', async t => {
+  const h = await mount(t, { hookOwned: true }), handleA = h.makeHandle(), callbackA = h.bridge.onGenerationSession;
+  await h.publish({ checkedBundle: h.bundle, handle: handleA });
+  const close = h.value.localCloseSession, receipt = await close.prepareLocalClose(); h.retain(close, receipt);
+  await h.render({ isActive: false }); assert.equal(h.value.localCloseSession, close);
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle: handleA }, callbackA), false);
+  await h.render({ isActive: true }); const callbackB = h.bridge.onGenerationSession;
+  assert.equal(h.value.localCloseSession, null); assert.equal(close.isLocalCloseReceiptCurrent(receipt), false);
+  await h.render({ isActive: false });
+  assert.equal(h.value.localCloseSession, null, 'Pending B has no writer to retain; A must not return');
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle: h.makeHandle() }, callbackB), false);
+  assert.equal(close.isLocalCloseReceiptCurrent(receipt), false);
+  await h.render({ isActive: true });
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle: h.makeHandle() }), true);
+  assert.notEqual(h.value.localCloseSession, close); assert.equal(h.calls.childMounts, 1);
+});
+
+test('unmounted hook-owned callback cannot start authority or reclaim a writer', async t => {
+  const h = await mount(t, { hookOwned: true }), callback = h.bridge.onGenerationSession;
+  await h.unmount(); const reads = h.calls.rpc.length;
+  assert.equal(await h.publish({ checkedBundle: h.bundle, handle: h.makeHandle() }, callback), false);
+  assert.equal(h.calls.rpc.length, reads); assert.equal(h.calls.runtimes.length, 0);
+});
 
 test('unknown and confirmed viewer authority mount the real body/keyboard mutation gate', async t => {
   const gate = deferred(), h = await mount(t, { role: () => gate.promise });

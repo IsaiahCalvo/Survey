@@ -14,14 +14,15 @@ const hookUrl = new URL('../src/hooks/useAnnotationDoc.js', import.meta.url);
 const bundle = (generation = 'generation-a') => Object.freeze({ documentId: 'document-a', actorUserId: 'actor-a', pdfGenerationId: generation });
 const mark = id => ({ 1: { objects: [{ type: 'rect', left: 1, top: 2, width: 3, height: 4, data: { id } }] } });
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); promise.catch(() => {}); return { promise, resolve, reject }; };
-async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, deferOpen = false, docRole = 'owner' } = {}) {
+async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, deferOpen = false, docRole = 'owner', strictMode = false } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://annotation.test' });
   const previous = new Map();
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true })) {
     previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const state = { props: { documentId: 'document-a', userId: 'actor-a', enabled: true, checkedBundle, docRole }, handles: [], opens: [],
-    stored, deferOpen, layout: null, view: null, renderViews: [], eraseEffects: [], quarantine: [] };
+    stored, deferOpen, layout: null, view: null, renderViews: [], eraseEffects: [], quarantine: [], publications: [] };
+  state.props.onGenerationSession = value => state.publications.push(value);
   const makeHandle = args => {
     const doc = new Y.Doc(); const seed = state.stored;
     if (seed.byPage) syncByPageToDoc(doc, seed.byPage);
@@ -83,11 +84,14 @@ async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, d
     return null;
   }
   const root = createRoot(document.getElementById('root'));
-  const render = async patch => { state.props = { ...state.props, ...patch }; await act(async () => root.render(React.createElement(Probe, state.props))); };
+  const render = async patch => { state.props = { ...state.props, ...patch }; await act(async () => root.render(
+    strictMode ? React.createElement(React.StrictMode, null, React.createElement(Probe, state.props)) : React.createElement(Probe, state.props))); };
+  let unmounted = false;
+  const unmount = async () => { if (!unmounted) { unmounted = true; await act(async () => root.unmount()); } };
   await render();
-  t.after(async () => { await act(async () => root.unmount()); for (const h of state.handles) h.doc.destroy(); dom.window.close(); delete globalThis[key];
+  t.after(async () => { await unmount(); for (const h of state.handles) h.doc.destroy(); dom.window.close(); delete globalThis[key];
     for (const [name, value] of previous) { if (value) Object.defineProperty(globalThis, name, value); else delete globalThis[name]; } });
-  return { state, render, latest: () => latest, edit: async next => act(async () => edit(next)) };
+  return { state, render, unmount, latest: () => latest, edit: async next => act(async () => edit(next)) };
 }
 
 test('checked bundle and generation reach open; an empty checked document replaces every previous view kind', async t => {
@@ -224,4 +228,72 @@ test('checked same-generation remote state preserves active eraser presentation 
   assert.equal(h.state.view.byPage[1].eraserPresentationRevision, 'current-erase');
   await h.render({ checkedBundle: bundle('generation-b') });
   assert.deepEqual(h.state.view.byPage, {});
+});
+
+test('checked hydration publishes the exact bundle and handle once; callback changes do not reopen', async t => {
+  const h = await mount(t);
+  assert.deepEqual(h.state.publications, [{ checkedBundle: h.state.props.checkedBundle, handle: h.state.handles[0] }]);
+  const replacements = [];
+  await h.render({ onGenerationSession: value => replacements.push(value) });
+  assert.equal(h.state.opens.length, 1); assert.deepEqual(replacements, []);
+});
+
+test('hide retains published sealed handle and a fresh local close proof; next open replaces it', async t => {
+  const h = await mount(t); const handle = h.state.handles[0];
+  await h.edit({ byPage: mark('last-edit') }); await h.render({ enabled: false });
+  assert.equal(handle.destroys, 1); assert.equal(handle.getByPage()[1].objects[0].data.id, 'last-edit');
+  assert.equal(h.state.publications.length, 1); assert.equal(h.state.publications[0].handle, handle);
+  const receipt = await h.latest().ensureLocalDurability(); assert.equal(h.latest().isLocalDurabilityCurrent(receipt), true);
+  await h.render({ enabled: true });
+  assert.equal(h.state.publications.length, 2); assert.equal(h.state.publications[1].handle, h.state.handles[1]);
+  assert.equal(h.latest().isLocalDurabilityCurrent(receipt), false);
+});
+
+test('legacy opens never publish generation sessions', async t => {
+  const h = await mount(t, { checkedBundle: null }); assert.deepEqual(h.state.publications, []);
+});
+
+test('failed and unmounted pending checked opens never publish', async t => {
+  const h = await mount(t, { deferOpen: true }); const failed = h.state.opens[0];
+  await act(async () => { failed.reject(new Error('open failed')); await failed.promise.catch(() => {}); });
+  assert.deepEqual(h.state.publications, []);
+  await h.render({ checkedBundle: bundle('generation-b') }); const pending = h.state.opens[1];
+  await h.unmount(); await act(async () => { pending.resolve(pending.handle); await pending.promise; });
+  assert.deepEqual(h.state.publications, []); assert.equal(pending.handle.destroys, 1);
+});
+
+for (const change of ['actor', 'bundle']) test(`${change} A-B-A pending opens publish only the latest open, even with the original bundle object`, async t => {
+  const checked = bundle(); const h = await mount(t, { checkedBundle: checked, deferOpen: true });
+  const first = h.state.opens[0];
+  await h.render(change === 'actor' ? { userId: 'actor-b' } : { checkedBundle: bundle('generation-b') });
+  const middle = h.state.opens[1];
+  await h.render({ userId: 'actor-a', checkedBundle: checked }); const last = h.state.opens[2];
+  await act(async () => { first.resolve(first.handle); middle.resolve(middle.handle); await Promise.all([first.promise, middle.promise]); });
+  assert.deepEqual(h.state.publications, []); assert.equal(first.handle.destroys, 1); assert.equal(middle.handle.destroys, 1);
+  const latestCallback = [];
+  await h.render({ onGenerationSession: value => latestCallback.push(value) });
+  await act(async () => { last.resolve(last.handle); await last.promise; });
+  assert.deepEqual(latestCallback, [{ checkedBundle: checked, handle: last.handle }]); assert.equal(h.state.opens.length, 3);
+});
+
+test('StrictMode replay publishes only the usable surviving checked writer', async t => {
+  const h = await mount(t, { strictMode: true });
+  assert.equal(h.state.opens.length, 2); assert.equal(h.state.handles[0].destroys, 1);
+  assert.deepEqual(h.state.publications, [{ checkedBundle: h.state.props.checkedBundle, handle: h.state.handles[1] }]);
+  await h.edit({ byPage: mark('strict-edit') });
+  const receipt = await h.latest().ensureLocalDurability(); assert.equal(h.latest().isLocalDurabilityCurrent(receipt), true);
+  await h.unmount(); assert.equal(h.state.handles[1].destroys, 1); assert.equal(h.state.publications.length, 1);
+});
+
+for (const failure of ['throw', 'reject']) test(`generation observer ${failure} cannot take ownership or prevent local save`, async t => {
+  const h = await mount(t, { deferOpen: true });
+  await h.render({ onGenerationSession: () => {
+    if (failure === 'throw') throw new Error('observer failed');
+    return Promise.reject(new Error('observer failed'));
+  } });
+  const pending = h.state.opens[0];
+  await act(async () => { pending.resolve(pending.handle); await pending.promise; });
+  assert.equal(h.latest().initialHydration.ready, true); assert.equal(pending.handle.destroys, 0);
+  const receipt = await h.latest().ensureLocalDurability(); assert.equal(h.latest().isLocalDurabilityCurrent(receipt), true);
+  await h.unmount(); assert.equal(pending.handle.destroys, 1);
 });

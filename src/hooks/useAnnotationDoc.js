@@ -190,6 +190,9 @@ export function useAnnotationDoc({
   documentId,
   userId,
   checkedBundle = null,
+  // Observe the checked writer without taking ownership of open or close.
+  // A hidden tab retains this sealed handle for its separate recovery proof.
+  onGenerationSession = null,
   enabled,
   annotationsByPage,
   setAnnotationsByPage,
@@ -216,8 +219,10 @@ export function useAnnotationDoc({
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
   const eraseEffectConsumerProxyRef = useRef(null);
   const onHistoryQuarantineRef = useRef(onHistoryQuarantine);
+  const onGenerationSessionRef = useRef(onGenerationSession);
   eraseEffectConsumerRef.current = eraseEffectConsumer;
   onHistoryQuarantineRef.current = onHistoryQuarantine;
+  onGenerationSessionRef.current = onGenerationSession;
   if (!eraseEffectConsumerProxyRef.current) {
     eraseEffectConsumerProxyRef.current = (...args) => {
       const consumer = eraseEffectConsumerRef.current;
@@ -623,6 +628,18 @@ export function useAnnotationDoc({
       setInitialHydration(checkedBundle !== null
         ? { ready: true, source: 'checked-generation', count, documentId, pdfGenerationId, embeddedImportAllowed: false }
         : { ready: true, source: 'annotation-doc', count, documentId });
+      if (checkedBundle !== null && !cancelled && localReceiptScopeRef.current === localScope
+        && localScope.enabled && localScope.handle === handle
+        && typeof onGenerationSessionRef.current === 'function') {
+        // Publish only a successfully hydrated current open. Callback changes
+        // must not reopen the writer. Never clear this notification on hide:
+        // cleanup below owns final capture/seal and retains the local receipt.
+        try {
+          Promise.resolve(onGenerationSessionRef.current({ checkedBundle, handle })).catch(() => {
+            console.error('[useAnnotationDoc] generation session observer failed');
+          });
+        } catch { console.error('[useAnnotationDoc] generation session observer failed'); }
+      }
     })();
 
     return () => {

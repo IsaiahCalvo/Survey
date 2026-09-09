@@ -4091,6 +4091,41 @@ bundles are live in-process read results, not a new serialized offline-cache
 format. Full checked-open route integration, private presence policy checks,
 retained legacy queue recovery and two-user browser proof remain required.
 
+### Hook-owned checked collaboration session (2026-09-09)
+
+The checked annotation hook can now publish its exact successfully hydrated
+handle to a stable provider bridge. The hook still owns open, final view capture,
+local save proof, and writer close. The provider observes that handle; it does
+not mount the legacy Y.Doc, backfill, undo manager, or retry queue.
+
+- Waiting for the handle and publishing it do not remount the viewer child.
+- A hidden tab retains only its immediately preceding writer for recovery
+  checks. Reactivation blocks editing until a new checked writer publishes.
+- Hiding during a pending reopen cannot revive an older writer or close proof.
+- Actor, bundle, client, and activation changes reject stale callbacks during
+  render. Callback changes alone do not reopen or republish a writer.
+- Replacing the SDK client requires a fresh checked bundle/open. Keeping the
+  old bundle deliberately leaves the provider blocked.
+- Observer errors cannot take ownership of the hook or prevent its local save.
+
+Verification: full `npm test` exited 0 across 645 files, with 6,343 tests,
+6,250 passed and 93 skipped. The final focused run passed 87/87, including eight
+provider cases added after that file had already run in the full suite. It mounts
+the real hook, provider, context, authority session, and read-only gate against
+local storage/transport test ports. It covers StrictMode's delayed cancelled
+open, client replacement, hide/reopen, stale replies, and cleanup. Vite build and
+`graphify update .` passed. The in-app browser loaded the existing no-auth PDF
+route, drew a rectangle, undid/redid it, and removed the test mark; runtime error
+logs were empty. This browser check covers the existing route, not checked cloud
+activation or two-user hosted sync.
+
+The bridge is not yet selected by AppShell. Checked-route integration must
+intercept Dashboard downloads, deep links and upload results; keep the issued
+bundle identity; load only its verified PDF Blob; and include generation in tab
+reuse. The existing raw PDF overwrite path must remain unavailable to adopted
+generations until generation-aware publication is connected. No migration,
+deployment, live data write, Microsoft test or account change was made here.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
