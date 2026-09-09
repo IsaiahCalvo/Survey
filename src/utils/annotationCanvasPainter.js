@@ -637,8 +637,22 @@ function drawPoints(context, object, close) {
       points.map((point) => ({ x: toNumber(point?.x), y: toNumber(point?.y) })),
       cloudIntensity,
       strokeWidth,
+      object?.data?.pdfCloudUnitScale ?? 1,
+      'polygon',
     );
     if (Array.isArray(cloud) && cloud.length > 0) {
+      if (isVisiblePaint(object.fill)) {
+        context.beginPath();
+        points.forEach((point, index) => {
+          const x = toNumber(point?.x);
+          const y = toNumber(point?.y);
+          if (index === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        });
+        context.closePath();
+        paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0 });
+        context.beginPath();
+      }
       traceCommandsInto(context, cloud);
       traced = true;
     }
@@ -663,7 +677,7 @@ function drawPoints(context, object, close) {
   paintCurrentPath(context, {
     // Polygon: stroke defaults to invisible like SVG (renderPolygon:780);
     // polyline defaults to '#000' (renderPolyline:858). Both honor fill.
-    fill: isVisiblePaint(object.fill) ? object.fill : null,
+    fill: traced ? null : (isVisiblePaint(object.fill) ? object.fill : null),
     stroke: isVisiblePaint(object.stroke) ? object.stroke : (close ? null : '#000'),
     strokeWidth,
   });
@@ -1100,12 +1114,23 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
       ],
       cloudIntensity,
       toNumber(object.strokeWidth, 1),
+      object?.data?.pdfCloudUnitScale ?? 1,
+      'rectangle',
     );
-    if (Array.isArray(cloud) && cloud.length > 0) traceCommandsInto(context, cloud);
+    if (Array.isArray(cloud) && cloud.length > 0) {
+      if (isVisiblePaint(object.fill)) {
+        context.beginPath();
+        context.rect(0, 0, effectiveWidth, effectiveHeight);
+        paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0 });
+        context.beginPath();
+      }
+      traceCommandsInto(context, cloud);
+    }
+    context.lineCap = 'round';
     context.lineJoin = 'round';
     if (typeof context.setLineDash === 'function') context.setLineDash([]);
     paintCurrentPath(context, {
-      fill: object.fill,
+      fill: null,
       stroke: isVisiblePaint(object.stroke) ? object.stroke : null,
       strokeWidth: toNumber(object.strokeWidth, 0),
     });

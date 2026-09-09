@@ -1825,6 +1825,15 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
+    const storedCloudIntensity = fabricObj?.data?.pdfCloudIntensity;
+    const cloudIntensity = Number(storedCloudIntensity);
+    if (storedCloudIntensity != null && Number.isFinite(cloudIntensity)) {
+      annotationDict.BE = pdfDoc.context.obj({
+        S: PDFName.of('C'),
+        I: PDFNumber.of(cloudIntensity),
+      });
+    }
+
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2340,10 +2349,16 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     }
 
     // Add cloud border effect if specified
-    if (fabricObj.cloudBorder || fabricObj.borderEffect === 'cloudy') {
+    const rawStoredCloudIntensity = fabricObj?.data?.pdfCloudIntensity;
+    const storedCloudIntensity = Number(rawStoredCloudIntensity);
+    if ((rawStoredCloudIntensity != null && Number.isFinite(storedCloudIntensity))
+      || fabricObj.cloudBorder
+      || fabricObj.borderEffect === 'cloudy') {
       annotationDict.BE = pdfDoc.context.obj({
         S: PDFName.of('C'), // Cloudy
-        I: PDFNumber.of(fabricObj.cloudIntensity || 2)
+        I: PDFNumber.of(rawStoredCloudIntensity != null && Number.isFinite(storedCloudIntensity)
+          ? storedCloudIntensity
+          : (fabricObj.cloudIntensity || 2)),
       });
       annotationDict.IT = PDFName.of('PolygonCloud');
     }
@@ -3868,12 +3883,14 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
-  const cloud = closePath && Number.isFinite(Number(obj?.data?.pdfCloudIntensity))
+  const rawCloudIntensity = obj?.data?.pdfCloudIntensity;
+  const cloud = closePath && rawCloudIntensity != null && Number.isFinite(Number(rawCloudIntensity))
     ? buildCloudPathCommands(
         points,
         Number(obj.data.pdfCloudIntensity),
         Number(obj?.strokeWidth) || 1,
         obj?.data?.pdfCloudUnitScale ?? 1,
+        'polygon',
       )
     : null;
   const d = Array.isArray(cloud) && cloud.length > 0
@@ -3886,13 +3903,25 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
   const fill = closePath ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
   const strokeWidth = stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
+  if (cloud && fill) {
+    const fillPath = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+    page.drawSvgPath(fillPath, {
+      x: 0,
+      y: pageHeight,
+      color: fill.color,
+      opacity: fill.opacity ?? 1,
+      borderWidth: 0,
+      blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
+    });
+  }
   page.drawSvgPath(d, {
     x: 0,
     y: pageHeight,
     borderColor: stroke?.color,
     borderWidth: strokeWidth,
-    color: fill?.color,
-    opacity: fill?.opacity ?? 1,
+    borderLineCap: cloud ? LineCapStyle.Round : undefined,
+    color: cloud ? undefined : fill?.color,
+    opacity: cloud ? undefined : (fill?.opacity ?? 1),
     borderOpacity: stroke?.opacity,
     blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
   });
@@ -4128,8 +4157,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       borderOpacity: hasBorder ? (stroke?.opacity ?? 1) * objectOpacity : undefined,
       blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     };
-    const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity);
-    if (Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
+    const rawCloudIntensity = shifted?.data?.pdfCloudIntensity;
+    const cloudIntensity = Number(rawCloudIntensity);
+    if (rawCloudIntensity != null && Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
       const center = { x: left + width / 2, y: top + height / 2 };
       const insets = Array.isArray(shifted?.data?.pdfCloudInsets)
         ? shifted.data.pdfCloudInsets
@@ -4145,9 +4175,28 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
         cloudIntensity,
         strokeWidth,
         shifted?.data?.pdfCloudUnitScale ?? 1,
+        'rectangle',
       );
       const d = cloud.map((segment) => segment.join(' ')).join(' ');
-      page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
+      if (fill) {
+        const fillPath = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+        page.drawSvgPath(fillPath, {
+          x: 0,
+          y: pageHeight,
+          color: fill.color,
+          opacity: (fill.opacity ?? 1) * objectOpacity,
+          borderWidth: 0,
+          blendMode: common.blendMode,
+        });
+      }
+      page.drawSvgPath(d, {
+        x: 0,
+        y: pageHeight,
+        ...common,
+        color: undefined,
+        opacity: undefined,
+        borderLineCap: LineCapStyle.Round,
+      });
     } else if (angle) {
       const center = { x: left + width / 2, y: top + height / 2 };
       const points = [
