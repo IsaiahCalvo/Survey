@@ -337,3 +337,214 @@ test('printing a cloud polyline flattens the scalloped run', async () => {
   assert.ok(curveCount(cloud) > curveCount(plain) + 10,
     `a cloud polyline prints many more curves than a plain one (${curveCount(cloud)} vs ${curveCount(plain)})`);
 });
+
+// ---------------------------------------------------------------------------
+// Third-party fidelity (2026-09-09): every cloud carries an /AP /N form that
+// paints the engine's exact scallops, so Acrobat / Preview / Chrome / poppler
+// show what the app shows instead of a plain box or their own cloud. The
+// flattener paints the identical outline, and the /BE + /RD metadata still
+// lets the importer (with or without our own metadata blob) rebuild the
+// base shape, bump size, tilt and vertices exactly.
+// ---------------------------------------------------------------------------
+
+const readAppearanceDetails = async (bytes) => {
+  const { PDFArray, PDFRawStream, decodePDFRawStream, PDFDict } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes);
+  const page = doc.getPage(0);
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  const numbers = (value) => (value instanceof PDFArray
+    ? value.asArray().map((entry) => doc.context.lookup(entry) ?? entry).map((entry) => entry.asNumber())
+    : null);
+  return annots.asArray().map((ref) => {
+    const dict = doc.context.lookup(ref);
+    const ap = dict.get(PDFName.of('AP'));
+    const apDict = ap ? doc.context.lookup(ap) : null;
+    const normalRef = apDict instanceof PDFDict ? apDict.get(PDFName.of('N')) : null;
+    const stream = normalRef ? doc.context.lookup(normalRef) : null;
+    const content = stream instanceof PDFRawStream
+      ? new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode())
+      : null;
+    return {
+      subtype: String(dict.get(PDFName.of('Subtype'))?.asString?.() || '').replace(/^\//, ''),
+      rect: numbers(doc.context.lookup(dict.get(PDFName.of('Rect')))),
+      rd: numbers(doc.context.lookup(dict.get(PDFName.of('RD')))),
+      bbox: stream ? numbers(doc.context.lookup(stream.dict.get(PDFName.of('BBox')))) : null,
+      matrix: stream ? numbers(doc.context.lookup(stream.dict.get(PDFName.of('Matrix')))) : null,
+      content,
+    };
+  });
+};
+
+const operatorCount = (content, operator) => (content.match(new RegExp(`(?:^|\\s)${operator}(?=\\s|$)`, 'g')) || []).length;
+
+const FIDELITY_SHAPES = {
+  rect: {
+    id: 'ap-rect', type: 'rect', left: 30, top: 40, width: 160, height: 110,
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'rgba(196, 39, 71, 0.25)', data: { pdfCloudIntensity: 2 },
+  },
+  'rotated-rect': {
+    id: 'ap-rect-rot', type: 'rect', left: 200, top: 30, width: 120, height: 80, angle: 20,
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 },
+  },
+  circle: {
+    id: 'ap-circle', type: 'circle', left: 210, top: 120, radius: 40, scaleX: 1.5, scaleY: 1,
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 3 },
+  },
+  ellipse: {
+    id: 'ap-ellipse', type: 'ellipse', left: 30, top: 170, rx: 70, ry: 45, angle: 0,
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 },
+  },
+  'rotated-ellipse': {
+    id: 'ap-ellipse-rot', type: 'ellipse', left: 200, top: 190, rx: 70, ry: 40, angle: 32,
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'rgba(196, 39, 71, 0.25)', data: { pdfCloudIntensity: 4 },
+  },
+  polygon: {
+    id: 'ap-polygon', type: 'polygon', left: 40, top: 40, pathOffset: { x: 0, y: 0 },
+    points: [{ x: 0, y: 0 }, { x: 120, y: 10 }, { x: 140, y: 90 }, { x: 20, y: 100 }],
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 3 },
+  },
+  polyline: {
+    id: 'ap-polyline', type: 'polyline', left: 200, top: 175, pathOffset: { x: 0, y: 0 },
+    points: [{ x: 0, y: 0 }, { x: 70, y: 60 }, { x: 150, y: 5 }],
+    stroke: '#c42747', strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 },
+  },
+};
+
+test('every cloud shape ships an /AP form that paints the scallops itself', async () => {
+  for (const [name, shape] of Object.entries(FIDELITY_SHAPES)) {
+    const bytes = await exportObjects([shape]);
+    const [annot] = await readAppearanceDetails(bytes);
+    assert.ok(annot.content, `${name}: /AP /N appearance stream present`);
+    assert.ok(operatorCount(annot.content, 'c') >= 20, `${name}: the form paints the crowns (${operatorCount(annot.content, 'c')} curves)`);
+    assert.ok(/(^|\n)1 J 1 j(\n|$)/.test(annot.content), `${name}: round caps and joins, like the screen`);
+    assert.ok(/(^|\n)2\.5 w(\n|$)/.test(annot.content), `${name}: the stroke width is the annotation's`);
+    assert.ok(/ RG(\n|$)/.test(annot.content) && /(^|\n)S(\n|$)/.test(annot.content), `${name}: the outline is stroked`);
+    const filled = /rgba\(/.test(shape.fill);
+    assert.equal(/(^|\n)f(\n|$)/.test(annot.content), filled, `${name}: the scalloped region is filled only when the shape has a fill`);
+    assert.ok(Array.isArray(annot.bbox) && annot.bbox[2] > 0 && annot.bbox[3] > 0, `${name}: /BBox`);
+
+    // /Rect must be exactly the page box of /Matrix x /BBox: any other value
+    // makes the viewer silently scale the form (PDF 32000 12.5.5).
+    const angle = Number(shape.angle) || 0;
+    assert.equal(Boolean(annot.matrix), angle !== 0, `${name}: /Matrix only when tilted`);
+    const [a, b] = annot.matrix || [1, 0];
+    const width = annot.bbox[2] - annot.bbox[0];
+    const height = annot.bbox[3] - annot.bbox[1];
+    const fittedWidth = Math.abs(width * a) + Math.abs(height * b);
+    const fittedHeight = Math.abs(width * b) + Math.abs(height * a);
+    assert.ok(Math.abs((annot.rect[2] - annot.rect[0]) - fittedWidth) < 1e-3, `${name}: /Rect width is the transformed /BBox width`);
+    assert.ok(Math.abs((annot.rect[3] - annot.rect[1]) - fittedHeight) < 1e-3, `${name}: /Rect height is the transformed /BBox height`);
+    if (annot.matrix) {
+      assert.ok(Math.abs(-Math.atan2(b, a) * 180 / Math.PI - angle) < 1e-6, `${name}: /Matrix carries the fabric tilt`);
+    }
+    const expectsRd = annot.subtype === 'Square' || annot.subtype === 'Circle';
+    assert.equal(Array.isArray(annot.rd), expectsRd, `${name}: /RD on Square and Circle only`);
+    if (expectsRd) {
+      assert.ok(annot.rd.every((value) => value > 0), `${name}: /RD insets are the scallop inflation`);
+    }
+  }
+});
+
+test('the flattener paints the identical cloud outline the /AP does', async () => {
+  for (const [name, shape] of Object.entries(FIDELITY_SHAPES)) {
+    const [annot] = await readAppearanceDetails(await exportObjects([shape]));
+    const printed = await flattenedContent([shape]);
+    assert.equal(operatorCount(printed, 'c'), operatorCount(annot.content, 'c'), `${name}: same crown curves when printed`);
+    assert.equal(operatorCount(printed, 'm'), operatorCount(annot.content, 'm'), `${name}: same crown runs when printed`);
+  }
+});
+
+const near = (actual, expected, tolerance, label) => {
+  assert.ok(Math.abs(Number(actual) - Number(expected)) <= tolerance, `${label}: ${actual} vs ${expected}`);
+};
+
+test('export -> re-import preserves style, bump, tilt and vertices for every cloud shape', async () => {
+  const { cloudVertexStateForPoints } = await import('../src/utils/pdfAnnotationAppearance.js');
+  const shapes = Object.values(FIDELITY_SHAPES).map((shape) => (shape.type === 'polyline'
+    ? {
+        ...shape,
+        data: {
+          ...shape.data,
+          pdfCloudVertexState: cloudVertexStateForPoints('polyline', shape.points, 1, 1),
+        },
+      }
+    : shape));
+  const objects = await reimport(await exportObjects(shapes));
+  assert.equal(objects.length, shapes.length);
+  const byId = Object.fromEntries(objects.map((obj) => [obj.id || obj.data?.id, obj]));
+  for (const shape of shapes) {
+    const obj = byId[shape.id];
+    assert.ok(obj, `${shape.id} comes back`);
+    // An un-tilted drawn ellipse has always re-imported as the importer's
+    // circle+scale form (identity /Matrix); its effective radii must match.
+    const untiltedEllipse = shape.type === 'ellipse' && !(shape.angle) && String(obj.type).toLowerCase() === 'circle';
+    if (untiltedEllipse) {
+      near(obj.radius * obj.scaleX, shape.rx, 1e-6, `${shape.id}: rx via radius*scaleX`);
+      near(obj.radius * obj.scaleY, shape.ry, 1e-6, `${shape.id}: ry via radius*scaleY`);
+    } else {
+      assert.equal(String(obj.type).toLowerCase(), shape.type, `${shape.id}: same fabric type`);
+    }
+    assert.equal(obj.data?.pdfCloudIntensity, shape.data.pdfCloudIntensity, `${shape.id}: bump size`);
+    assert.equal(obj.stroke, shape.stroke, `${shape.id}: stroke`);
+    assert.equal(obj.fill, shape.fill, `${shape.id}: fill`);
+    assert.equal(obj.strokeWidth, shape.strokeWidth, `${shape.id}: stroke width`);
+    near(obj.angle ?? 0, shape.angle ?? 0, 1e-9, `${shape.id}: tilt`);
+    for (const key of ['left', 'top', 'width', 'height', 'rx', 'ry', 'radius', 'scaleX', 'scaleY']) {
+      if (untiltedEllipse && (key === 'scaleX' || key === 'scaleY')) continue;
+      if (shape[key] !== undefined) near(obj[key], shape[key], 1e-9, `${shape.id}: ${key}`);
+    }
+    if (shape.points) {
+      assert.deepEqual(obj.points.map((p) => [p.x, p.y]), shape.points.map((p) => [p.x, p.y]), `${shape.id}: vertices`);
+    }
+    // The base rectangle/ellipse is restored from our metadata; the /RD inset
+    // the importer derives from the inflated /Rect must not shrink it again.
+    assert.equal(obj.data?.pdfCloudInsets, undefined, `${shape.id}: no stray inset`);
+    if (shape.data.pdfCloudVertexState) {
+      assert.deepEqual(obj.data?.pdfCloudVertexState, shape.data.pdfCloudVertexState, `${shape.id}: vertex-drag memory`);
+    }
+  }
+});
+
+test('without our metadata, /RD still rebuilds the base rectangle and ellipse', async () => {
+  const { PDFArray } = await import('pdf-lib');
+  const shapes = [FIDELITY_SHAPES.rect, FIDELITY_SHAPES.circle, FIDELITY_SHAPES.ellipse, FIDELITY_SHAPES['rotated-ellipse']];
+  const doc = await PDFDocument.load(await exportObjects(shapes));
+  const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'));
+  assert.ok(annots instanceof PDFArray);
+  annots.asArray().forEach((ref) => {
+    doc.context.lookup(ref).delete(PDFName.of('SurveyAppAnnotation'));
+  });
+  const objects = await reimport(await doc.save());
+  assert.equal(objects.length, shapes.length);
+  const byType = {};
+  for (const obj of objects) byType[`${obj.type}${obj.angle ? '-rot' : ''}`] = obj;
+
+  const rect = byType.rect;
+  assert.ok(rect, 'rect comes back');
+  assert.equal(rect.data?.pdfCloudIntensity, 2);
+  // The Square importer keeps the (inflated) /Rect as the box and carries the
+  // /RD insets on the object, so the base rectangle is box + insets.
+  const rectInsets = rect.data?.pdfCloudInsets || [0, 0, 0, 0];
+  near(rect.left + rectInsets[0], FIDELITY_SHAPES.rect.left, 0.05, 'rect base left (via /Rect + /RD)');
+  near(rect.top + rectInsets[1], FIDELITY_SHAPES.rect.top, 0.05, 'rect base top');
+  near(rect.width - rectInsets[0] - rectInsets[2], FIDELITY_SHAPES.rect.width, 0.05, 'rect base width');
+  near(rect.height - rectInsets[1] - rectInsets[3], FIDELITY_SHAPES.rect.height, 0.05, 'rect base height');
+
+  // An axis-aligned cloud oval comes back as the importer's circle+scale form
+  // at the base ellipse size, not the scalloped box.
+  const circles = objects.filter((obj) => obj.type === 'circle');
+  assert.equal(circles.length, 2, 'both axis-aligned ovals come back as circles');
+  const sizes = circles.map((obj) => [obj.radius * 2 * obj.scaleX, obj.radius * 2 * obj.scaleY].map((v) => Math.round(v * 100) / 100));
+  assert.ok(sizes.some(([w, h]) => Math.abs(w - 120) < 0.05 && Math.abs(h - 80) < 0.05), `circle 120x80 restored: ${JSON.stringify(sizes)}`);
+  assert.ok(sizes.some(([w, h]) => Math.abs(w - 140) < 0.05 && Math.abs(h - 90) < 0.05), `ellipse 140x90 restored: ${JSON.stringify(sizes)}`);
+
+  const tilted = byType['ellipse-rot'];
+  assert.ok(tilted, 'tilted ellipse comes back tilted');
+  const source = FIDELITY_SHAPES['rotated-ellipse'];
+  near(tilted.angle, source.angle, 1e-6, 'tilt');
+  near(tilted.rx, source.rx, 0.05, 'rx (via /BBox - /RD)');
+  near(tilted.ry, source.ry, 0.05, 'ry');
+  near(tilted.left + tilted.rx, source.left + source.rx, 0.05, 'centre x');
+  near(tilted.top + tilted.ry, source.top + source.ry, 0.05, 'centre y');
+  assert.equal(tilted.data?.pdfCloudIntensity, source.data.pdfCloudIntensity);
+});
