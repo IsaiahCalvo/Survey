@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import * as Y from 'yjs';
 import { PDFDocument } from 'pdf-lib';
 import { withDisposablePostgres } from './helpers/disposablePostgres.mjs';
@@ -11,6 +12,7 @@ import { syncByPageToDoc, syncSurveyMarkersToDoc } from '../src/services/annotat
 import { mapSurveyMarkerRowToLocalAnnotation } from '../src/services/documentSurveyMarkerMapper.js';
 import { transformDocumentGenerationSource } from '../src/services/documentGenerationTransform.js';
 import { mutatePdfPagesWithIdentity } from '../src/utils/pdfPageMutation.js';
+import { createDocumentGenerationReader } from '../src/services/documentGenerationReader.js';
 assert.equal(process.argv.length, 2);
 const target = '20260909098000_document_generation_publication.sql';
 const migrationPath = name => fileURLToPath(new URL(`../supabase/migrations/${name}`, import.meta.url));
@@ -41,6 +43,7 @@ await withDisposablePostgres(async pg => {
   applyMigration(migrationPath('20260603130000_db_sync_annotations_changed_at.sql'));
   sql(`INSERT INTO templates(id,user_id) VALUES('${id(10)}','${owner}')`);
   applyMigration(migrationPath(target));
+  applyMigration(migrationPath('20260909099000_document_generation_open.sql'));
   let serial = 100, groups = 0;
   const fresh = () => id(serial++), bytea = v => `decode('${Buffer.from(v).toString('hex')}','hex')`;
   const call = (name, args) => `SELECT public.${name}(${args.map(quote).join(',')})`;
@@ -280,6 +283,194 @@ await withDisposablePostgres(async pg => {
     assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE document_id='${x.d}'`), '0');
     assert.equal(scalar('SELECT count(*) FROM survey_private.generation_publication_context'), '0');
     assert.equal(scalar('SELECT count(*) FROM survey_private.generation_publication_tickets'), '0');
+  });
+  assert.equal(groups, 15, 'Preserve all original publication groups');
+  const readFixture = await prepare(seed()); publish(readFixture);
+  sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES
+    ('${readFixture.d}','${viewer}','viewer','active'),('${readFixture.d}','${editor}','editor','active')`);
+  const openSql = (x, { generation = null, includeSnapshot = true } = {}) =>
+    `SELECT public.read_document_generation_open('${x.d}',${quote(generation)},${includeSnapshot === null ? 'NULL' : includeSnapshot})`;
+  const open = (x, actor = owner, options) => JSON.parse(asRole(actor, openSql(x, options)).stdout);
+  const readAs = actor => `SET LOCAL ROLE authenticated;SELECT set_config('request.jwt.claim.sub','${actor}',true);`;
+  await check('checked open grants only authenticated and returns exact current public fields', async () => {
+    for (const role of ['anon', 'service_role']) errorState(asRole(owner, openSql(readFixture), role, false), '42501');
+    assert.equal(scalar("SELECT count(*) FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE p.oid='public.read_document_generation_open(uuid,uuid,boolean)'::regprocedure AND a.grantee=0"), '0');
+    for (const actor of [owner, editor, viewer]) {
+      const result = open(readFixture, actor), exact = JSON.parse(asRole(actor, `SELECT public.read_annotation_snapshot_v2('${readFixture.d}','${readFixture.u.generation_id}')`).stdout);
+      assert.deepEqual(Object.keys(result).sort(), ['version','actor_user_id','document_id','generation_id','document','publication','pdf','annotations'].sort());
+      assert.equal(result.actor_user_id, actor); assert.equal(result.generation_id, readFixture.u.generation_id);
+      assert.equal(result.document.file_path, readFixture.u.path); assert.equal(result.document.file_size, String(readFixture.nextPdf.length));
+      assert.deepEqual(result.annotations, { ...exact, snapshot_sha256: sha(Buffer.from(exact.snapshot.snapshot.slice(2), 'hex')) });
+      assert.deepEqual(Object.keys(result.publication).sort(), ['operation_id','generation_id','published_at','wal_head'].sort());
+      assert.deepEqual(Object.keys(result.pdf).sort(), ['bucket_id','path','id','version','byte_length','content_sha256'].sort());
+      assert.equal(result.pdf.content_sha256, sha(readFixture.nextPdf)); assert.equal(result.pdf.byte_length, String(readFixture.nextPdf.length));
+      assert.ok(!JSON.stringify(result).includes('Private foreign note')); assert.ok(!('source_id' in result.publication));
+      const doc = new Y.Doc(); Y.applyUpdate(doc, Buffer.from(exact.snapshot.snapshot.slice(2), 'hex'));
+      assert.ok(!JSON.stringify(doc.toJSON()).includes('Private foreign note')); doc.destroy();
+    }
+    applyMigration(migrationPath('20260909099000_document_generation_open.sql'));
+    assert.deepEqual(open(readFixture, viewer), open(readFixture, viewer, { generation: readFixture.u.generation_id }));
+  });
+  await check('checked open preserves inherited and direct access routes', async () => {
+    const x = await prepare(seed()); publish(x);
+    assert.equal(scalar(`SELECT role FROM project_collaborators WHERE project_id='${project}' AND user_id='${viewer}'`), 'viewer');
+    try {
+      assert.equal(open(x, viewer).actor_user_id, viewer);
+      sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${viewer}','viewer','active')`);
+      assert.equal(open(x, viewer).generation_id, x.u.generation_id);
+      sql(`DELETE FROM document_collaborators WHERE document_id='${x.d}' AND user_id='${viewer}'`);
+      sql(`DELETE FROM project_collaborators WHERE project_id='${project}' AND user_id='${viewer}'`);
+      errorState(asRole(viewer, openSql(x), 'authenticated', false), '42501');
+    } finally { sql(`DELETE FROM project_collaborators WHERE project_id='${project}' AND user_id='${viewer}'`); }
+  });
+  await check('checked open refuses outsiders missing legacy stale and invalid snapshot modes', async () => {
+    errorState(asRole(other, openSql(readFixture), 'authenticated', false), '42501');
+    errorState(asRole(owner, openSql({ d: fresh() }), 'authenticated', false), '42501');
+    const legacy = seed(); errorState(asRole(owner, openSql(legacy), 'authenticated', false), 'SG001');
+    errorState(asRole(owner, openSql(readFixture, { generation: fresh() }), 'authenticated', false), 'SG002');
+    errorState(asRole(owner, openSql(readFixture, { includeSnapshot: null }), 'authenticated', false), '22023');
+    errorState(sql(`BEGIN ISOLATION LEVEL REPEATABLE READ;${readAs(owner)}${openSql(readFixture)};COMMIT`, false), '25001');
+  });
+  await check('both open modes fence actor and owner account closure', async () => {
+    for (const account of [owner, viewer]) for (const includeSnapshot of [true, false]) {
+      errorState(sql(`BEGIN;UPDATE survey_private.account_write_guards SET closing=true WHERE user_id='${account}';
+        ${readAs(viewer)}${openSql(readFixture, { includeSnapshot })};COMMIT`, false), '23514');
+      assert.equal(open(readFixture, viewer, { includeSnapshot }).actor_user_id, viewer);
+    }
+  });
+  await check('first viewer guard creation serializes with real account closure in both orders', async () => {
+    const first = fresh(), second = fresh();
+    for (const actor of [first, second]) {
+      sql(`INSERT INTO auth.users(id) VALUES('${actor}');INSERT INTO document_collaborators(document_id,user_id,role,status)
+        VALUES('${readFixture.d}','${actor}','viewer','active')`);
+      assert.equal(scalar(`SELECT count(*) FROM survey_private.account_write_guards WHERE user_id='${actor}'`), '0');
+    }
+    const closing = session('open_new_viewer_close', { role: 'service_role' });
+    closing.send(`SELECT public.delete_account_owned_rows('${first}');SELECT 'closing-held';`); await closing.wait('closing-held');
+    errorState(asRole(first, openSql(readFixture), 'authenticated', false), '55P03');
+    assert.equal((await closing.finish()).status, 0);
+    errorState(asRole(first, openSql(readFixture, { includeSnapshot: false }), 'authenticated', false), '23514');
+    const reading = session('open_new_viewer_read', { role: 'authenticated', actorId: second });
+    reading.send(`${openSql(readFixture, { includeSnapshot: false })};SELECT 'first-read-held';`); await reading.wait('first-read-held');
+    errorState(asRole(null, `SELECT public.delete_account_owned_rows('${second}')`, 'service_role', false), '55P03');
+    assert.equal((await reading.finish()).status, 0);
+    assert.equal(scalar(`SELECT closing FROM survey_private.account_write_guards WHERE user_id='${second}'`), 'f');
+    asRole(null, `SELECT public.delete_account_owned_rows('${second}')`, 'service_role');
+    errorState(asRole(second, openSql(readFixture), 'authenticated', false), '23514');
+    assert.equal(open(readFixture, owner).document_id, readFixture.d, 'Closing viewers cannot delete the owner document');
+  });
+  await check('user-archived adopted documents remain owner-only', async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${viewer}','viewer','active'),('${x.d}','${editor}','editor','active');
+      UPDATE documents SET user_archived_at=now() WHERE id='${x.d}'`);
+    for (const includeSnapshot of [true, false]) {
+      assert.equal(open(x, owner, { includeSnapshot }).document_id, x.d);
+      for (const actor of [viewer, editor]) errorState(asRole(actor, openSql(x, { includeSnapshot }), 'authenticated', false), '42501');
+    }
+  });
+  await check('open requires publication receipt and exact current PDF metadata', async () => {
+    const x = await prepare(seed());
+    sql(`SELECT survey_private.retain_document_generation_bundle('${x.actor}','${x.s}','${x.u.operation_id}',ARRAY[${x.archives.map(a => quote(a.operation_id)).join(',')}]::uuid[]);
+      INSERT INTO survey_private.annotation_generations(document_id,generation_id,base_seq,baseline_snapshot,baseline_encoding_version)
+       VALUES('${x.d}','${x.u.generation_id}',0,${bytea(x.result.baselineUpdate)},1);
+      INSERT INTO survey_private.annotation_generation_heads VALUES('${x.d}','${x.u.generation_id}',0)`);
+    for (const includeSnapshot of [true, false]) {
+      errorState(asRole(owner, openSql(x, { includeSnapshot }), 'authenticated', false), '23514');
+      errorState(sql(`BEGIN;UPDATE documents SET file_size=file_size+1 WHERE id='${readFixture.d}';${readAs(viewer)}${openSql(readFixture, { includeSnapshot })};COMMIT`, false), '23514');
+    }
+    // The actual role-independent storage guard already blocks changed object
+    // versions before the reader. No disabled guard or fake successful write.
+    errorState(sql(`UPDATE storage.objects SET version='${fresh()}' WHERE bucket_id='documents' AND name=${quote(readFixture.u.path)}`, false), '23514');
+    assert.equal(open(readFixture, viewer).pdf.version, version);
+  });
+  await check('repeated opens do not update path guards or amplify account writes', async () => {
+    open(readFixture, viewer); // One-time initialization of a never-writing viewer guard.
+    const state = () => scalar(`SELECT jsonb_build_object('paths',(SELECT jsonb_agg(to_jsonb(g) ORDER BY encode(path_hash,'hex')) FROM survey_private.document_storage_path_guards g),
+      'accounts',(SELECT jsonb_agg(to_jsonb(g) ORDER BY user_id) FROM survey_private.account_write_guards g))`);
+    const before = state(); sql('SELECT pg_stat_reset()');
+    sql(`SET track_functions='all';BEGIN;${readAs(viewer)}${Array.from({ length: 12 }, (_, n) => openSql(readFixture, { includeSnapshot: n % 2 === 0 })).join(';')};COMMIT`);
+    assert.equal(state(), before);
+    const writes = Number(scalar("SELECT coalesce(sum(n_tup_ins+n_tup_upd+n_tup_del),0) FROM pg_stat_user_tables WHERE schemaname='survey_private' AND relname IN('document_storage_path_guards','account_write_guards')"));
+    assert.equal(writes, 0, 'Warm checked opens perform no account/path row writes');
+    assert.equal(Number(scalar("SELECT coalesce(sum(s.calls),0) FROM pg_stat_user_functions s JOIN pg_proc p ON p.oid=s.funcid WHERE p.proname='read_annotation_snapshot_v2'")), 6);
+  });
+  await check('confirmation avoids checkpoint byte work including an oversized new snapshot', async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO survey_private.annotation_generation_snapshots(document_id,generation_id,at_seq,snapshot,encoding_version,writer_id,writer_epoch)
+      VALUES('${x.d}','${x.u.generation_id}',0,convert_to(repeat('x',67108865),'UTF8'),1,'owned-capacity',1)`);
+    errorState(asRole(owner, openSql(x), 'authenticated', false), '54000');
+    sql('SELECT pg_stat_reset()');
+    const result = JSON.parse(sql(`SET track_functions='all';BEGIN;${readAs(owner)}${openSql(x, { includeSnapshot: false })};COMMIT`).stdout.split('\n').at(-1));
+    assert.equal(result.annotations.snapshot, null); assert.equal(result.annotations.snapshot_sha256, null);
+    assert.equal(result.pdf.path, x.u.path); assert.ok(JSON.stringify(result).length < 10000);
+    assert.equal(Number(scalar("SELECT coalesce(sum(s.calls),0) FROM pg_stat_user_functions s JOIN pg_proc p ON p.oid=s.funcid WHERE p.proname='read_annotation_snapshot_v2'")), 0);
+    sql(`UPDATE survey_private.annotation_generation_snapshots SET snapshot=decode('0000','hex'),at_seq=1 WHERE document_id='${x.d}'`);
+    errorState(asRole(owner, openSql(x), 'authenticated', false), '23514', 'Snapshot cannot run ahead of accepted WAL');
+    const below = seed();
+    asRole(owner, `SELECT public.append_annotation_update('${below.d}','open-floor',1,decode('0000','hex'))`);
+    const prepared = await prepare(below); publish(prepared);
+    assert.ok(BigInt(prepared.result.source.walHead) > 0n);
+    sql(`INSERT INTO survey_private.annotation_generation_snapshots(document_id,generation_id,at_seq,snapshot,encoding_version,writer_id,writer_epoch)
+      VALUES('${prepared.d}','${prepared.u.generation_id}',0,decode('0000','hex'),1,'owned-before-base',1)`);
+    errorState(asRole(owner, openSql(prepared), 'authenticated', false), '23514', 'Snapshot cannot precede the publication baseline');
+  });
+  await check('shared opens coexist and fence both publication and membership revocation', async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${viewer}','viewer','active')`);
+    const held = session('open_reader', { role: 'authenticated', actorId: viewer });
+    held.send(`${openSql(x, { includeSnapshot: false })};SELECT 'reader-held';`); await held.wait('reader-held');
+    assert.equal(open(x, viewer).generation_id, x.u.generation_id, 'Two readers share the document lock');
+    errorState(sql(`UPDATE document_collaborators SET role='editor' WHERE document_id='${x.d}' AND user_id='${viewer}'`, false), '55P03');
+    const changed = sql(`SELECT pg_try_advisory_xact_lock(hashtextextended('${x.d}',0))`); assert.equal(changed.stdout, 'f');
+    assert.equal((await held.finish(false)).status, 0);
+    const revoke = session('open_revoke', { role: 'postgres' });
+    revoke.send(`DELETE FROM document_collaborators WHERE document_id='${x.d}' AND user_id='${viewer}';SELECT 'revoke-held';`); await revoke.wait('revoke-held');
+    errorState(asRole(viewer, openSql(x), 'authenticated', false), '55P03');
+    assert.equal((await revoke.finish()).status, 0);
+    errorState(asRole(viewer, openSql(x), 'authenticated', false), '42501');
+    const storage = session('open_path', { role: 'postgres' });
+    storage.send(`SELECT path_hash FROM survey_private.document_storage_path_guards WHERE path_hash=survey_private.document_storage_path_hash(${quote(x.u.path)}) FOR UPDATE;SELECT 'path-held';`); await storage.wait('path-held');
+    errorState(asRole(owner, openSql(x), 'authenticated', false), '55P03');
+    assert.equal((await storage.finish(false)).status, 0);
+  });
+  await check('actual checked reader combines SQL snapshot and tail with exact verified PDF bytes', async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${viewer}','viewer','active')`);
+    const tail = new Y.Doc(); tail.getMap('annoMeta').set('ownedReaderTail', 'accepted after publication');
+    const tailBytes = Y.encodeStateAsUpdate(tail); tail.destroy();
+    const accepted = JSON.parse(asRole(owner, `SELECT public.append_annotation_update_v2('${x.d}','${x.u.generation_id}','owned-open-tail',1,${bytea(tailBytes)})`).stdout);
+    const requests = [], reader = createDocumentGenerationReader({
+      getActorUserId: () => viewer,
+      request: async (name, params, scope) => {
+        assert.equal(scope.actorUserId, viewer); requests.push({ name, params });
+        assert.ok(['read_document_generation_open','read_annotation_updates_v2'].includes(name));
+        const args = Object.entries(params).map(([k, v]) => `${k}=>${typeof v === 'boolean' ? v : quote(v)}`).join(',');
+        return { data: JSON.parse(asRole(viewer, `SELECT public.${name}(${args})`).stdout), error: null };
+      },
+      download: async (descriptor, scope) => {
+        assert.equal(descriptor.path, x.u.path); assert.equal(scope.actorUserId, viewer); return new Blob([x.nextPdf]);
+      },
+    });
+    const result = await reader.open({ documentId: x.d, actorUserId: viewer });
+    assert.equal(result.pdfGenerationId, x.u.generation_id); assert.equal(result.throughSeq, String(accepted.seq));
+    assert.deepEqual(Buffer.from(await result.pdfBlob.arrayBuffer()), Buffer.from(x.nextPdf));
+    const expected = new Y.Doc(), actual = new Y.Doc(); Y.applyUpdate(expected, x.result.baselineUpdate); Y.applyUpdate(expected, tailBytes); Y.applyUpdate(actual, result.annotationUpdate);
+    for (const name of ['annotations','surveyMarkers','annoMeta','deletedPdfAnnotations']) { expected.getMap(name); actual.getMap(name); }
+    assert.deepEqual(actual.toJSON(), expected.toJSON()); expected.destroy(); actual.destroy();
+    assert.equal(requests[0].params.p_include_snapshot, true); assert.equal(requests.at(-1).params.p_include_snapshot, false);
+    assert.equal(requests.at(-1).params.p_generation_id, x.u.generation_id);
+    // Actual encoding_version=2 means gzip-compressed Yjs v1, not Yjs v2.
+    const compressed = gzipSync(result.annotationUpdate);
+    const checkpoint = JSON.parse(asRole(owner, `SELECT public.store_annotation_snapshot_v2('${x.d}','${x.u.generation_id}',${accepted.seq},
+      ${bytea(compressed)},2,'owned-open-gzip',1,${x.result.source.walHead},NULL,0)`).stdout);
+    assert.equal(checkpoint.stored, true);
+    const gzipOpen = open(x, viewer); assert.equal(gzipOpen.annotations.snapshot.encoding_version, 2);
+    assert.equal(gzipOpen.annotations.snapshot_sha256, sha(compressed));
+    const gzipResult = await reader.open({ documentId: x.d, actorUserId: viewer, pdfGenerationId: x.u.generation_id });
+    const restored = new Y.Doc(), baseline = new Y.Doc(); Y.applyUpdate(restored, gzipResult.annotationUpdate); Y.applyUpdate(baseline, result.annotationUpdate);
+    for (const name of ['annotations','surveyMarkers','annoMeta','deletedPdfAnnotations']) { restored.getMap(name); baseline.getMap(name); }
+    assert.deepEqual(restored.toJSON(), baseline.toJSON()); restored.destroy(); baseline.destroy();
+    assert.deepEqual(Buffer.from(await gzipResult.pdfBlob.arrayBuffer()), Buffer.from(x.nextPdf));
   });
   console.log(`Document generation publication PostgreSQL groups passed: ${groups}`);
 }, { name: 'generation-publication', commandTimeoutMs: 60000 });

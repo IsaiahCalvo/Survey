@@ -3680,6 +3680,88 @@ policy, safe asset reuse, provider-byte reconciliation and historical account
 data erasure still need separate work. No migration was applied to Supabase and
 no cloud quota reduction or live Microsoft result is claimed.
 
+## Checked generation open: local contract, not viewer activation
+
+`20260909099000_document_generation_open.sql` adds an authenticated-only read
+for a currently published document generation. A null expected generation means
+discover the current adopted one, not fall back to legacy state. An explicit
+generation must still be current. Owner, direct collaborator and inherited
+project access retain the existing viewer rules; the read also fences both the
+actor's and owner's account closure. It does not grant service-role execution,
+widen Storage policies, return a signed URL, or expose the private captured
+survey/connector/archive history. The full document row is within the existing
+viewer-visible document scope.
+
+One short transaction checks the publication receipt, retained bundle, immutable
+candidate, current document pointer, storage reference, active path guard, and
+physical object ID/version/size. It returns the exact PDF descriptor with its
+SHA-256 and the generation-bound annotation checkpoint with its stored-byte
+SHA-256 and fixed WAL frontier. It uses shared locks rather than upgrading to
+the retention helper's exclusive document lock or touching the path guard on
+every read. An existing account guard is read/locked only; the first open by a
+never-writing viewer may create its one missing account guard. Snapshot mode
+checks raw byte length before constructing hexadecimal output and hashes the
+stored bytes directly, avoiding a large decode of its own JSON response.
+
+`documentGenerationReader.js` joins that contract to an injected actor-bound SQL
+request and exact-descriptor download. It checks the raw or gzip checkpoint,
+reads only the needed WAL pages through the captured frontier, and verifies the
+PDF Blob's exact size and hash. The two byte/state reads run together. A final
+metadata-only confirmation repeats current access and file binding checks but
+does not fetch, encode or hash a second checkpoint. Same-generation annotation
+edits after the captured frontier are left for normal catch-up; the result does
+not claim those newer edits were read.
+
+The reader never installs partial state or reuses a legacy document-only cache.
+Each await rechecks the captured actor, cancellation and a monotonic deadline.
+A timer alone was insufficient if synchronous adapter work delayed its callback;
+a failing test now covers that case. Adopted WAL sequences are contiguous per
+document, unlike legacy global sequences. Another failing test exposed that an
+empty/short response could otherwise claim unread coverage. The reader now
+requires every sequence and the exact final frontier, then checks for unresolved
+Yjs dependencies. It returns caller-owned Yjs bytes without registering a live
+document or deleting any old draft/outbox. Its `pdfCacheKey` names PDF byte
+identity only; annotation freshness must retain `throughSeq` and catch up.
+
+Reader defaults bound PDF bytes at 256 MiB, combined applied state bytes at
+64 MiB, tail pages at 1,000 and the read at 60 seconds. Gzip expansion is bounded
+while streaming. Oversize, expired, mismatched or incomplete results fail rather
+than truncate or select an old fallback. These are explicit refusal limits, not
+a claim of constant RAM, instant cancellation of synchronous parsing, or support
+for every possible PDF size.
+
+Verification: 19 focused reader tests passed. The expanded disposable PostgreSQL
+run passed all 26 groups (the prior 15 publication groups plus 11 checked-open
+groups), including raw and gzip SQL checkpoint -> client reader -> exact owned
+PDF Blob -> WAL tail -> final confirmation. Both races between first-viewer
+guard creation and actual account closure passed, as did archive owner-only
+access, shared reader coexistence, blocked publication/revocation, missing
+receipts, changed physical metadata and snapshot range/size checks. Twelve warm
+opens (six full, six confirmation) caused zero account/path-row inserts, updates
+or deletes and exactly six snapshot-reader calls. Confirmation of a 64 MiB + 1
+stored checkpoint made zero snapshot-reader calls; a full read refused it.
+The exact temporary clusters were stopped and removed. Storage metadata and the
+downloaded Blob were local fixtures, not hosted-provider access proof.
+
+The full regression run covered 634 files and 6,163 tests: 6,071 passed, 92
+skipped, zero failed and zero canceled (prior baseline: 6,144 tests). The final
+focused reader run, actual PostgreSQL run, Vite build and AST graph refresh all
+passed. Vite retains the known large-chunk warning. Independent source review
+found no further blocker; separate probes confirmed that either PDF or WAL
+failure cancels the open without a late sibling response returning data or
+reconfirming access. No user-visible route changed in this slice.
+
+The open-path audit found the remaining integration sites: Dashboard's normal
+open and upload-open strip generation proof when creating a File; AppShell's
+deep links bypass that path and healthy tabs are reused by actor/document only.
+PDFViewer and `useAnnotationDoc` still omit the generation argument, while the
+legacy YDocProvider and sidecar view-state loader have separate document-wide
+state. All need a shared checked-open result and an explicit old-state recovery
+policy. The checked download route must fetch the bound object and preserve
+authority through handoff. Retry/derived render bytes must not inherit the
+original PDF's proof. No such viewer, provider, download-route or offline-cache
+activation is included here; no live cloud or Microsoft testing is claimed.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
