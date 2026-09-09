@@ -5100,6 +5100,82 @@ full runs were diagnostic and stopped on stale test-only source extraction
 scopes while the high-risk files were moving; those fixture ports now pass and
 are not production failures.
 
+## Current status: explicit expired page-request recovery
+
+The private replacement request now reports a resettable terminal state only
+when its authenticated journal read returns the exact `expired` record for the
+same actor, document, source, candidate, archive list, accepted generation, WAL
+and page operation. The public reply is HTTP 409 with a small, fixed-shape
+terminal receipt. Generic database errors, `missing`, `untracked`, malformed
+replies and uncertain transport results do not produce this receipt and remain
+blocked. `prepared` and `published` also cannot be reset, but keep their normal
+exact resume and reconciliation paths. This avoids clearing a request that may
+have published or may still finish.
+
+The browser caller caps the whole public reply at 16 KiB and uses one
+configurable deadline, 30 seconds by default, across the host transport and
+response body. Abort, timeout, bad status, oversized or truncated bodies cancel
+the readable response when possible and keep the durable request unresolved.
+A late host response is not parsed or accepted. This is a local client bound;
+the future host adapter must also honor abort.
+
+An exact terminal receipt changes the actor-and-document IndexedDB row to
+`expired`. The row keeps its request body, immutable retry IDs, local private
+page view and terminal proof. The client exposes one explicit reset CAS bound to
+the actor, document, row revision and candidate ID. It deletes only that expired
+intent row. It does not run or replay a page action, reopen or replace the PDF,
+clear annotations, drafts, history, outbox data or generation-scoped private
+view state. A stale callback cannot clear a new row with a reused revision, and
+a changed actor, tab, file or checked bundle cannot show or act on the old
+notice.
+
+AppShell shows a two-step notice: the first choice keeps the request blocked;
+the second says that clearing it allows a later action but runs no page change.
+A failed clear keeps the same notice and candidate. A confirmed clear says,
+“Expired request cleared. No page change was run.” The next page action must
+still take the normal checked fresh-capture and current-generation path and will
+mint new IDs. This slice does not add an automatic operation replay.
+
+Late publication cannot follow the exact terminal proof under the existing SQL
+contract: journal read and publication share the candidate advisory lock,
+publication wins the read if it committed, the prepared plan is gone at the
+terminal state, and its expiry does not exceed the bound source and upload
+leases. The publisher also rechecks those leases. This is local contract and
+disposable-PostgreSQL proof from the prior journal slice, not a database crash,
+power-loss or hosted-service test. No SQL changed here.
+
+The frozen post-close focused extraction set passed 344/344
+(`/tmp/expired-recovery-post-close-final-focused-20260909.log`); its page and
+close subset passed 41/41. The request-only set passed 21/21
+(`/tmp/expired-recovery-request-final-20260909.log`). It covers exact proof,
+forged and generic conflicts, body size and time bounds, late cancel,
+publication and CAS races, old-row compatibility, actor/tab/file/bundle scope,
+delayed old-notice failures, and exact recovery cleanup after a confirmed tab
+close. The frozen full suite ran 6,754 tests: 6,659 passed, 95 skipped, and none
+failed or were cancelled
+(`/tmp/expired-recovery-final-full-npm-test-20260909.log`). The production Vite
+build passed with 936 modules in 874 ms
+(`/tmp/expired-recovery-final-vite-build-20260909.log`).
+
+The in-app browser exercised the shared notice and real client/store with native
+IndexedDB at 1280 by 720 through the dev-only
+`pageReplacementExpiredE2E=1` fixture. Keeping the request retained the same
+candidate; a forced clear failure retained it and showed an alert; exact clear
+removed the notice and stated that no action ran; an explicit next fixture used
+a new candidate; and the old reset token could not clear that new request. The
+fixture uses a unique test-only database and a local response adapter. It is not
+live auth, cloud, a production endpoint or checked-document end-to-end proof.
+The last fixture row was cleared through the UI and the test tab and dev server
+were closed.
+
+The normal local PDF fixture also loaded, duplicated page 1 to two pages and
+showed no new app error. That run is a local-route regression only. The known
+zoom jump, disabled Undo state, offline Syncing label and offline credential
+warning were unchanged. All checked write/open flags remain off; there is still
+no chosen host, provider, database role or deployed request route. Legacy cloud
+adoption, sidecars, reset UI for any state other than exact expired, live
+multi-user proof and the prior Microsoft generation-scope gate remain open.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

@@ -33,6 +33,7 @@ import {
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
 import DocumentTabProvider from './components/collab/DocumentTabProvider.jsx';
+import PageReplacementRecoveryNotice from './components/PageReplacementRecoveryNotice.jsx';
 import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
@@ -784,6 +785,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   ), []);
   const pendingTabClosesRef = useRef(new Set());
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
+  const [pageReplacementRecoveryByTab, setPageReplacementRecoveryByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
 
@@ -819,6 +821,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     documentOpenScopeRef.current = { actorUserId: user?.id || null };
   }
   const documentOpenScope = documentOpenScopeRef.current;
+  useEffect(() => { setPageReplacementRecoveryByTab({}); }, [documentOpenScope]);
   const documentOpenMountRef = useRef(null);
   useLayoutEffect(() => {
     const mount = {};
@@ -1438,13 +1441,17 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
       && documentOpenScopeRef.current === scope && entry?.scope === scope && entry.mount === mount
       && closeViewRef.current?.tabs?.some(tab => tab.id === targetTabId && !tab.isHome
         && tab.actorUserId === scope.actorUserId && tab.file?.id === documentId);
+    const sourceIsCurrent = () => current() && closeViewRef.current?.tabs?.some(tab =>
+      tab.id === targetTabId && tab.file === expectedSourceFile
+        && tab.checkedBundle === expectedCheckedBundle);
     if (!entry || !scope.actorUserId || !requested || requested.file !== expectedSourceFile
       || requested.checkedBundle !== expectedCheckedBundle || !documentId || !current()) {
       throw new Error('Checked page changes are not available. Your page change was kept.');
     }
     const storage = checkedPageStructureStorage || globalThis.localStorage;
     const replace = input.recoveryOnly ? entry.client.resume : entry.client.replace;
-    const replacement = await replace({
+    let replacement;
+    try { replacement = await replace({
       documentId,
       operation: input.operation,
       localPageState: input.localPageState,
@@ -1497,12 +1504,56 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
         return current() && closeViewRef.current.tabs.some(tab => tab.id === targetTabId
           && tab.file === prepared.file && tab.checkedBundle === checkedBundle);
       },
+    }); } catch (error) {
+      if (error?.code === 'DOCUMENT_PAGE_REPLACEMENT_EXPIRED' && sourceIsCurrent()
+        && Number.isSafeInteger(error.recovery?.revision)
+        && typeof error.recovery?.candidateOperationId === 'string') {
+        const recovery = Object.freeze({ actorUserId: scope.actorUserId, documentId,
+          tabId: targetTabId, file: expectedSourceFile, checkedBundle: expectedCheckedBundle,
+          revision: error.recovery.revision,
+          candidateOperationId: error.recovery.candidateOperationId });
+        setPageReplacementRecoveryByTab(previous => ({ ...previous, [targetTabId]: recovery }));
+      }
+      throw error;
+    }
+    setPageReplacementRecoveryByTab(previous => {
+      const saved = previous[targetTabId];
+      if (!saved || saved.file !== expectedSourceFile || saved.checkedBundle !== expectedCheckedBundle
+        || saved.candidateOperationId !== replacement.publication?.candidate_operation_id) return previous;
+      const next = { ...previous }; delete next[targetTabId]; return next;
     });
     if (!input.recoveryOnly && replacement.recoveredPrior) {
       throw new Error('The previous page change was recovered. This click did not start a new change.');
     }
     return current();
   }, [checkedPageStructureStorage, documentOpenScope]);
+
+  const handleClearExpiredPageReplacement = useCallback(async recovery => {
+    const scope = documentOpenScope, mount = documentOpenMountRef.current;
+    const entry = pageReplacementClientRef.current;
+    const current = () => mount !== null && documentOpenMountRef.current === mount
+      && documentOpenScopeRef.current === scope && entry?.scope === scope && entry.mount === mount
+      && pageReplacementRecoveryByTab[recovery.tabId] === recovery
+      && closeViewRef.current?.tabs?.some(tab => tab.id === recovery.tabId
+        && tab.actorUserId === recovery.actorUserId && tab.file === recovery.file
+        && tab.checkedBundle === recovery.checkedBundle);
+    if (!entry || recovery.actorUserId !== scope.actorUserId || !current()) {
+      throw new Error('The expired request was kept. Reopen this document and try again.');
+    }
+    await entry.client.resetExpired({ documentId: recovery.documentId,
+      expectedRevision: recovery.revision,
+      candidateOperationId: recovery.candidateOperationId });
+    // The store CAS already committed. A stale tab must not change current UI,
+    // but it must not be told that the exact expired row was kept.
+    setPageReplacementRecoveryByTab(previous => {
+      if (previous[recovery.tabId] !== recovery) return previous;
+      const next = { ...previous }; delete next[recovery.tabId]; return next;
+    });
+    if (current()) {
+      showToast('Expired request cleared. No page change was run. You can retry when ready.', 'info');
+    }
+    return true;
+  }, [documentOpenScope, pageReplacementRecoveryByTab]);
 
   const handleTabClose = async (tabId) => {
     // Prevent closing the home tab
@@ -1533,6 +1584,12 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     flushSync(() => {
     setTabs(previous => previous.filter(tab => tab.id !== tabId
       || tab.file !== requested.file || tab.actorUserId !== requested.actorUserId));
+    setPageReplacementRecoveryByTab(previous => {
+      const saved = previous[tabId];
+      if (!saved || saved.file !== requested.file
+        || saved.actorUserId !== requested.actorUserId) return previous;
+      const next = { ...previous }; delete next[tabId]; return next;
+    });
 
     // If closing the active tab, switch to another tab or go back to home
     if (tabId === latest.activeTabId) {
@@ -3336,6 +3393,10 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
 
               const isVisible = tab.id === activeTabId && currentView === 'viewer';
               const tabViewState = tab.viewState;
+              const savedRecovery = pageReplacementRecoveryByTab[tab.id];
+              const visibleRecovery = savedRecovery?.actorUserId === tab.actorUserId
+                && savedRecovery.file === tab.file && savedRecovery.checkedBundle === tab.checkedBundle
+                ? savedRecovery : null;
 
               return (
                 <div
@@ -3352,6 +3413,10 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                     currentActorUserId={user?.id || null} isActive={isVisible}
                     closeDocument={() => handleTabClose(tab.id)}>
                     {({ checkedBundle, onGenerationSession }) => <>
+                    <PageReplacementRecoveryNotice
+                      recovery={visibleRecovery}
+                      onClear={handleClearExpiredPageReplacement}
+                    />
                     {/* The lock banner and viewer share the selected per-tab
                         collaboration scope. */}
                     <DocumentLockBanner

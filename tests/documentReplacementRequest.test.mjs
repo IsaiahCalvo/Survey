@@ -269,8 +269,8 @@ test('prepared replay publishes the exact stored plan without reading source, re
   assertSafe(result.value);
 });
 
-test('untracked, expired, and changed same-candidate intents fail closed without source work or private output', async () => {
-  for (const [state, expected] of [['untracked', 'replacement_conflict'], ['expired', 'replacement_conflict']]) {
+test('untracked and changed same-candidate intents fail closed without source work or private output', async () => {
+  for (const [state, expected] of [['untracked', 'replacement_conflict']]) {
     const h = harness({ rpc: async () => rpcResult(journal(state)) });
     const result = await h.run(); assert.equal(result.status, 409); assert.equal(result.value.error.code, expected);
     assert.deepEqual(rpcNames(h), ['read_document_generation_replacement']); assertSafe(result.value);
@@ -278,6 +278,73 @@ test('untracked, expired, and changed same-candidate intents fail closed without
   const h = harness({ rpc: async () => rpcResult(journal('published', { actor_user_id: id(44) })) });
   const result = await h.run(); assert.equal(result.status, 409); assert.equal(result.value.error.code, 'replacement_conflict');
   assertSafe(result.value);
+});
+
+test('only an exact authenticated expired journal returns bounded terminal recovery proof', async () => {
+  const h = harness({ rpc: async (name, params) => {
+    assert.equal(name, 'read_document_generation_replacement');
+    assert.deepEqual(params, expectedReadParams);
+    return rpcResult(journal('expired'));
+  } });
+  const result = await h.run();
+  assert.equal(result.status, 409);
+  assert.deepEqual(Object.keys(result.value).sort(), ['error', 'terminal']);
+  assert.equal(result.value.error.code, 'replacement_expired');
+  assert.deepEqual(result.value.terminal, {
+    version: 1,
+    state: 'expired',
+    actor_user_id: actor,
+    document_id: documentId,
+    source_id: sourceId,
+    candidate_operation_id: candidateId,
+    archive_operation_ids: [archiveId],
+    expected_generation_id: null,
+    expected_wal_head: walHead,
+    operation,
+    prepared_at: '2030-01-01T00:00:00.000Z',
+    expires_at: future,
+  });
+  assert.deepEqual(rpcNames(h), ['read_document_generation_replacement']);
+  assertSafe(result.value);
+});
+
+test('generic expired errors and non-expired conflict states never mint terminal recovery proof', async () => {
+  const cases = [
+    async () => rpcResult(journal('untracked')),
+    async () => ({ data: null, error: { code: 'expired', message: 'expired request' } }),
+  ];
+  for (const rpc of cases) {
+    const h = harness({ rpc });
+    const result = await h.run();
+    assert.equal(result.status, 409);
+    assert.equal(result.value.error.code, 'replacement_conflict');
+    assert.equal(Object.hasOwn(result.value, 'terminal'), false);
+    assertSafe(result.value);
+  }
+  const ambiguous = harness({ rpc: async () => { throw new Error('expired request'); } });
+  const result = await ambiguous.run();
+  assert.equal(result.status, 502);
+  assert.equal(Object.hasOwn(result.value, 'terminal'), false);
+  assertSafe(result.value);
+});
+
+test('mismatched expired journal identity never becomes terminal reset authority', async () => {
+  for (const [change, status, code] of [
+    [{ actor_user_id: id(40) }, 409, 'replacement_conflict'],
+    [{ document_id: id(41) }, 502, 'invalid_receipt'],
+    [{ source_id: id(42) }, 409, 'replacement_conflict'],
+    [{ candidate_operation_id: id(43) }, 409, 'replacement_conflict'],
+    [{ archive_operation_ids: [id(44)] }, 409, 'replacement_conflict'],
+    [{ expected_generation_id: id(45) }, 409, 'replacement_conflict'],
+    [{ expected_wal_head: '9007199254740994' }, 409, 'replacement_conflict'],
+  ]) {
+    const h = harness({ rpc: async () => rpcResult(journal('expired', change)) });
+    const result = await h.run();
+    assert.equal(result.status, status, JSON.stringify(change));
+    assert.equal(result.value.error.code, code, JSON.stringify(change));
+    assert.equal(Object.hasOwn(result.value, 'terminal'), false);
+    assertSafe(result.value);
+  }
 });
 
 for (const alreadyVerified of [false, true]) test(`missing journal uses real handlers and worker with one source transfer (${alreadyVerified ? 'verified recovery' : 'new byte proof'})`, async () => {

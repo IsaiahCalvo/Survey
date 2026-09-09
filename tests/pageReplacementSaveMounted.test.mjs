@@ -8,6 +8,7 @@ import React, { act, useCallback, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { JSDOM } from 'jsdom';
 import { PDFDocument } from 'pdf-lib';
+import { transformWithOxc } from 'vite';
 import { mutatePdfPagesWithIdentity } from '../src/utils/pdfPageMutation.js';
 import { parse } from '@babel/parser';
 import {
@@ -35,6 +36,14 @@ const localPageState = () => ({ items: {}, annotations: {}, pageNames: { 1: 'Pri
 const reserveInput = changes => ({ operation: operation(), generationId, walHead: '17',
   localPageState: localPageState(), ...changes });
 const require = createRequire(import.meta.url);
+const recoveryNoticeUrl = new URL('../src/components/PageReplacementRecoveryNotice.jsx', import.meta.url);
+const recoveryNoticeSource = (await transformWithOxc(await readFile(recoveryNoticeUrl, 'utf8'),
+  recoveryNoticeUrl.pathname, { lang: 'jsx' })).code
+  .replace('"react"', JSON.stringify(pathToFileURL(require.resolve('react')).href))
+  .replaceAll('"react/jsx-runtime"', JSON.stringify(pathToFileURL(require.resolve('react/jsx-runtime')).href));
+const PageReplacementRecoveryNotice = (await import(`data:text/javascript;base64,${Buffer.from(
+  recoveryNoticeSource,
+).toString('base64')}`)).default;
 const appShellSource = await readFile(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const appShellTree = parse(appShellSource, { sourceType: 'module', plugins: ['jsx'] });
 const viewerSource = await readFile(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -68,6 +77,13 @@ function actualHandler(source, tree, name, scope) {
     ...Object.values(scope),
   );
 }
+function actualInitializer(source, tree, name, scope) {
+  const node = findNode(tree, candidate => candidate.type === 'VariableDeclarator'
+    && candidate.id?.name === name);
+  assert.ok(node, `Missing production value: ${name}`);
+  return Function(...Object.keys(scope), `return (${source.slice(node.init.start, node.init.end)});`)(
+    ...Object.values(scope));
+}
 const deferred = () => {
   let resolve;
   let reject;
@@ -87,6 +103,24 @@ function publication(body, changes = {}) {
     generation_id: nextGenerationId,
     wal_head: body.wal_head,
     published_at: '2026-09-09T12:00:00.000Z',
+    ...changes,
+  };
+}
+
+function expiredTerminal(body, changes = {}) {
+  return {
+    version: 1,
+    state: 'expired',
+    actor_user_id: actorA,
+    document_id: body.document_id,
+    source_id: body.source_id,
+    candidate_operation_id: body.candidate_operation_id,
+    archive_operation_ids: [...body.archive_operation_ids],
+    expected_generation_id: body.generation_id,
+    expected_wal_head: body.wal_head,
+    operation: structuredClone(body.operation),
+    prepared_at: '2026-09-09T10:00:00.000Z',
+    expires_at: '2026-09-09T12:00:00.000Z',
     ...changes,
   };
 }
@@ -172,6 +206,46 @@ test('published receipt commits before cleanup and exact revision CAS protects r
   a.close(); b.close();
 });
 
+test('real IndexedDB stores exact expiry proof and reset uses revision plus candidate CAS', async t => {
+  const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  let { row } = await store.reserve(actorA, documentId, reserveInput());
+  row = await store.markDispatched(actorA, documentId, row.revision);
+  const terminal = expiredTerminal(row.body);
+  const expired = await store.markExpired(actorA, documentId, row.revision, terminal);
+  assert.equal(expired.phase, 'expired');
+  assert.deepEqual(expired.terminal, terminal);
+  assert.equal(expired.publication, null);
+
+  await assert.rejects(store.resetExpired(actorA, documentId, expired.revision, id(90)), {
+    code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED',
+  });
+  await assert.rejects(store.resetExpired(actorB, documentId, expired.revision,
+    expired.body.candidate_operation_id));
+  assert.deepEqual(await store.get(actorA, documentId), expired);
+  await store.resetExpired(actorA, documentId, expired.revision,
+    expired.body.candidate_operation_id);
+  assert.equal(await store.get(actorA, documentId), null);
+});
+
+test('stale expiry reset cannot delete a same-revision new candidate after ABA', async t => {
+  const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  let { row: first } = await store.reserve(actorA, documentId, reserveInput());
+  first = await store.markDispatched(actorA, documentId, first.revision);
+  const old = await store.markExpired(actorA, documentId, first.revision, expiredTerminal(first.body));
+  await store.resetExpired(actorA, documentId, old.revision, old.body.candidate_operation_id);
+
+  let { row: next } = await store.reserve(actorA, documentId, reserveInput());
+  next = await store.markDispatched(actorA, documentId, next.revision);
+  next = await store.markExpired(actorA, documentId, next.revision, expiredTerminal(next.body));
+  assert.equal(next.revision, old.revision);
+  assert.notEqual(next.body.candidate_operation_id, old.body.candidate_operation_id);
+  await assert.rejects(store.resetExpired(actorA, documentId, old.revision,
+    old.body.candidate_operation_id), { code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED' });
+  assert.deepEqual(await store.get(actorA, documentId), next);
+});
+
 test('concurrent same-intent reserve serializes to one fixed identity', async () => {
   const indexedDB = new IDBFactory();
   const a = createDocumentPageReplacementIntentStore({ indexedDB });
@@ -241,7 +315,7 @@ test('real PDF mutator bakes checked 90 degree local view plus clockwise or coun
 });
 
 function makeClient({ store, actor = actorA, current = () => true, transport,
-  reacquire, events = [], token = 'local-test-token' } = {}) {
+  reacquire, events = [], token = 'local-test-token', responseTimeoutMs } = {}) {
   return createDocumentPageReplacementClient({
     store,
     getActorUserId: () => actor,
@@ -259,6 +333,7 @@ function makeClient({ store, actor = actorA, current = () => true, transport,
       events.push('reacquire');
       return reacquire(input);
     },
+    ...(responseTimeoutMs === undefined ? {} : { responseTimeoutMs }),
   });
 }
 
@@ -270,6 +345,13 @@ const acceptedCapture = (changes = {}) => ({
   coveredSeq: 17,
   writerId: 'writer-fixture',
   annotationState: { pages: { 1: [{ id: 'accepted-mark' }] } },
+  ...changes,
+});
+
+const clientInput = (changes = {}) => ({
+  documentId, currentGenerationId: generationId, operation: operation(), localPageState: localPageState(),
+  captureAccepted: async () => acceptedCapture(), revalidateCapture: async () => true,
+  retireGeneration: async () => {}, persistSourceLocalState: async () => {}, install: async () => true,
   ...changes,
 });
 
@@ -407,6 +489,351 @@ test('changed page op resolves the saved exact request first without sending the
   store.close();
 });
 
+test('exact expired response is durably blocked before reopen and explicit reset mints no work', async t => {
+  const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  let requests = 0;
+  let reopens = 0;
+  let captures = 0;
+  let installs = 0;
+  let sentBody;
+  let expiredMode = true;
+  const client = makeClient({ store,
+    transport: async ({ body }) => {
+      requests++;
+      sentBody = body;
+      return expiredMode ? new Response(JSON.stringify({
+        error: { code: 'replacement_expired', message: 'The saved page request expired.' },
+        terminal: expiredTerminal(body),
+      }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+        : new Response(JSON.stringify({ replacement: publication(body) }));
+    },
+    reacquire: async () => { reopens++; return { mode: 'checked', actorUserId: actorA, documentId,
+      checkedBundle: { pdfGenerationId: nextGenerationId } }; },
+  });
+  const input = {
+    documentId, currentGenerationId: generationId, operation: operation(), localPageState: localPageState(),
+    captureAccepted: async () => { captures++; return acceptedCapture(); }, revalidateCapture: async () => true,
+    retireGeneration: async () => {}, persistSourceLocalState: async () => {},
+    install: async () => { installs++; return true; },
+  };
+  let recovery;
+  await assert.rejects(client.replace(input), error => {
+    assert.equal(error.code, 'DOCUMENT_PAGE_REPLACEMENT_EXPIRED');
+    recovery = error.recovery;
+    return true;
+  });
+  const saved = await store.get(actorA, documentId);
+  assert.equal(saved.phase, 'expired');
+  assert.deepEqual(saved.terminal, expiredTerminal(sentBody));
+  assert.deepEqual(recovery, { revision: saved.revision,
+    candidateOperationId: sentBody.candidate_operation_id });
+  assert.equal(requests, 1);
+  assert.equal(reopens, 0);
+
+  await assert.rejects(client.replace(input), { code: 'DOCUMENT_PAGE_REPLACEMENT_EXPIRED' });
+  assert.equal(requests, 1, 'stored expiry blocks without another request');
+  await client.resetExpired({ documentId, expectedRevision: recovery.revision,
+    candidateOperationId: recovery.candidateOperationId });
+  assert.equal(await store.get(actorA, documentId), null);
+  assert.equal(requests, 1, 'reset does not retry or mint work');
+  assert.equal(reopens, 0);
+  expiredMode = false;
+  const expiredIds = [saved.body.source_id, saved.body.candidate_operation_id,
+    ...saved.body.archive_operation_ids];
+  await client.replace(input);
+  assert.equal(captures, 2, 'the next click uses one fresh accepted capture');
+  assert.equal(requests, 2);
+  assert.equal(reopens, 1);
+  assert.equal(installs, 1);
+  assert.equal(expiredIds.includes(sentBody.source_id), false);
+  assert.equal(expiredIds.includes(sentBody.candidate_operation_id), false);
+  assert.equal(expiredIds.includes(sentBody.archive_operation_ids[0]), false);
+});
+
+test('forged, mismatched, truncated, and oversized expiry replies never become reset authority', async t => {
+  const variants = [
+    body => expiredTerminal(body, { actor_user_id: actorB }),
+    body => expiredTerminal(body, { document_id: id(40) }),
+    body => expiredTerminal(body, { source_id: id(41) }),
+    body => expiredTerminal(body, { candidate_operation_id: id(42) }),
+    body => expiredTerminal(body, { archive_operation_ids: [id(43)] }),
+    body => expiredTerminal(body, { expected_generation_id: id(44) }),
+    body => expiredTerminal(body, { expected_wal_head: '18' }),
+    body => expiredTerminal(body, { operation: { type: 'delete', page: 1 } }),
+    body => ({ ...expiredTerminal(body), extra: true }),
+  ];
+  for (const makeTerminal of variants) {
+    const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+    t.after(() => store.close());
+    const client = makeClient({ store,
+      transport: async ({ body }) => new Response(JSON.stringify({
+        error: { code: 'replacement_expired', message: 'expired' }, terminal: makeTerminal(body),
+      }), { status: 409 }),
+      reacquire: async () => assert.fail('invalid proof must not reopen'),
+    });
+    await assert.rejects(client.replace({
+      documentId, currentGenerationId: generationId, operation: operation(), localPageState: localPageState(),
+      captureAccepted: async () => acceptedCapture(), revalidateCapture: async () => true,
+      retireGeneration: async () => {}, persistSourceLocalState: async () => {}, install: async () => true,
+    }), { code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE' });
+    assert.equal((await store.get(actorA, documentId)).phase, 'dispatched');
+  }
+
+  for (const raw of ['{"error":', JSON.stringify({ error: { code: 'replacement_expired' },
+    terminal: { padding: 'x'.repeat(16 * 1024) } })]) {
+    const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+    t.after(() => store.close());
+    const client = makeClient({ store,
+      transport: async () => new Response(raw, { status: 409 }),
+      reacquire: async () => assert.fail('bad response must not reopen'),
+    });
+    await assert.rejects(client.replace({
+      documentId, currentGenerationId: generationId, operation: operation(), localPageState: localPageState(),
+      captureAccepted: async () => acceptedCapture(), revalidateCapture: async () => true,
+      retireGeneration: async () => {}, persistSourceLocalState: async () => {}, install: async () => true,
+    }), { code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE' });
+    assert.equal((await store.get(actorA, documentId)).phase, 'dispatched');
+  }
+});
+
+test('expiry proof on the wrong HTTP status never marks or clears the dispatched intent', async t => {
+  for (const status of [401, 500]) {
+    const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+    t.after(() => store.close());
+    const client = makeClient({ store,
+      transport: async ({ body }) => new Response(JSON.stringify({
+        error: { code: 'replacement_expired', message: 'expired' }, terminal: expiredTerminal(body),
+      }), { status }),
+      reacquire: async () => assert.fail('wrong-status proof must not reopen'),
+    });
+    await assert.rejects(client.replace(clientInput()), {
+      code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE',
+    });
+    assert.equal((await store.get(actorA, documentId)).phase, 'dispatched');
+  }
+});
+
+test('aborted, stalled, and oversized response bodies cannot persist expiry authority', async t => {
+  const abort = new AbortController(); abort.abort();
+  const cases = [
+    { name: 'pre-aborted', signal: abort.signal,
+      code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED',
+      response: body => new Response(JSON.stringify({
+        error: { code: 'replacement_expired', message: 'expired' }, terminal: expiredTerminal(body),
+      }), { status: 409 }) },
+    { name: 'stalled', responseTimeoutMs: 5,
+      code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE',
+      response: () => new Response(new ReadableStream({ pull() {} }), { status: 409 }) },
+  ];
+  for (const item of cases) {
+    const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+    t.after(() => store.close());
+    const client = makeClient({ store, responseTimeoutMs: item.responseTimeoutMs,
+      transport: async ({ body }) => item.response(body),
+      reacquire: async () => assert.fail(`${item.name} response must not reopen`),
+    });
+    await assert.rejects(client.replace(clientInput(item.signal ? { signal: item.signal } : {})),
+      { code: item.code });
+    assert.equal((await store.get(actorA, documentId)).phase, 'dispatched');
+  }
+
+  const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  let canceled = 0;
+  const client = makeClient({ store,
+    transport: async () => new Response(new ReadableStream({ pull() {}, cancel() {
+      canceled++; return Promise.reject(new Error('cancel detail'));
+    } }), { status: 409, headers: { 'Content-Length': String(16 * 1024 + 1) } }),
+    reacquire: async () => assert.fail('oversized response must not reopen'),
+  });
+  await assert.rejects(client.replace(clientInput()), {
+    code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE',
+  });
+  assert.equal(canceled, 1);
+  assert.equal((await store.get(actorA, documentId)).phase, 'dispatched');
+});
+
+test('abort after a valid expiry body starts but before it ends retains dispatched state', async t => {
+  const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  const abort = new AbortController();
+  const hold = deferred();
+  let canceled = 0;
+  const client = makeClient({ store,
+    transport: async ({ body }) => {
+      const bytes = new TextEncoder().encode(JSON.stringify({
+        error: { code: 'replacement_expired', message: 'expired' }, terminal: expiredTerminal(body),
+      }));
+      let sent = false;
+      return new Response(new ReadableStream({
+        start(controller) { controller.enqueue(bytes.slice(0, bytes.length - 1)); },
+        async pull(controller) {
+          if (sent) return;
+          sent = true;
+          await hold.promise;
+          controller.enqueue(bytes.slice(bytes.length - 1)); controller.close();
+        },
+        cancel() { canceled++; hold.resolve(); },
+      }), { status: 409 });
+    },
+    reacquire: async () => assert.fail('aborted response must not reopen'),
+  });
+  const pending = client.replace(clientInput({ signal: abort.signal }));
+  while ((await store.get(actorA, documentId))?.phase !== 'dispatched') {
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  abort.abort();
+  await assert.rejects(pending, { code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE' });
+  assert.equal(canceled, 1);
+  assert.equal((await store.get(actorA, documentId)).phase, 'dispatched');
+});
+
+test('transport deadline releases the local key but late responses cannot mutate the saved intent', async t => {
+  const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  const late = deferred();
+  const calls = [];
+  let firstSignal;
+  let canceled = 0;
+  const client = makeClient({ store, responseTimeoutMs: 8,
+    transport: async ({ body, signal }) => {
+      calls.push(structuredClone(body));
+      if (calls.length === 1) { firstSignal = signal; return late.promise; }
+      return new Response(JSON.stringify({ error: { code: 'replacement_conflict' } }), { status: 409 });
+    },
+    reacquire: async () => assert.fail('timed-out transport must not reopen'),
+  });
+  await assert.rejects(client.replace(clientInput()), {
+    code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED',
+  });
+  assert.equal(firstSignal.aborted, true);
+  const retained = await store.get(actorA, documentId);
+  assert.equal(retained.phase, 'dispatched');
+
+  await assert.rejects(client.replace(clientInput()), {
+    code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED',
+  });
+  assert.equal(calls.length, 2, 'deadline releases only the local in-process key');
+  assert.deepEqual(calls[1], calls[0], 'retry keeps the durable exact IDs and body');
+  late.resolve(new Response(new ReadableStream({ pull() {}, cancel() {
+    canceled++; return Promise.reject(new Error('late cancel detail'));
+  } }), { status: 409 }));
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(canceled, 1);
+  assert.deepEqual(await store.get(actorA, documentId), retained);
+});
+
+test('publication that wins before expiry persistence remains published and cannot be reset', async t => {
+  const concrete = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => concrete.close());
+  const store = {
+    get: (...args) => concrete.get(...args), reserve: (...args) => concrete.reserve(...args),
+    discardPending: (...args) => concrete.discardPending(...args),
+    markDispatched: (...args) => concrete.markDispatched(...args),
+    markPublished: (...args) => concrete.markPublished(...args),
+    resetExpired: (...args) => concrete.resetExpired(...args), finish: (...args) => concrete.finish(...args),
+    markExpired: async (actorUserId, receivedDocumentId, revision, terminal) => {
+      const current = await concrete.get(actorUserId, receivedDocumentId);
+      await concrete.markPublished(actorUserId, receivedDocumentId, revision, publication(current.body));
+      return concrete.markExpired(actorUserId, receivedDocumentId, revision, terminal);
+    },
+  };
+  const client = makeClient({ store,
+    transport: async ({ body }) => new Response(JSON.stringify({
+      error: { code: 'replacement_expired', message: 'expired' }, terminal: expiredTerminal(body),
+    }), { status: 409 }),
+    reacquire: async () => assert.fail('racing expiry response must not reopen'),
+  });
+  await assert.rejects(client.replace({
+    documentId, currentGenerationId: generationId, operation: operation(), localPageState: localPageState(),
+    captureAccepted: async () => acceptedCapture(), revalidateCapture: async () => true,
+    retireGeneration: async () => {}, persistSourceLocalState: async () => {}, install: async () => true,
+  }), { code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED' });
+  const winner = await concrete.get(actorA, documentId);
+  assert.equal(winner.phase, 'published');
+  assert.equal(winner.terminal, null);
+  await assert.rejects(client.resetExpired({ documentId, expectedRevision: winner.revision,
+    candidateOperationId: winner.body.candidate_operation_id }), {
+    code: 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED',
+  });
+  assert.deepEqual(await concrete.get(actorA, documentId), winner);
+});
+
+test('mounted recovery notice keeps blocked on cancel and clears only after explicit review', async t => {
+  const dom = new JSDOM('<div id="root"></div>');
+  const prior = { window: globalThis.window, document: globalThis.document,
+    act: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const root = createRoot(document.getElementById('root'));
+  t.after(async () => {
+    await act(async () => root.unmount());
+    dom.window.close();
+    if (prior.window === undefined) delete globalThis.window; else globalThis.window = prior.window;
+    if (prior.document === undefined) delete globalThis.document; else globalThis.document = prior.document;
+    if (prior.act === undefined) delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+    else globalThis.IS_REACT_ACT_ENVIRONMENT = prior.act;
+  });
+  const recovery = { actorUserId: actorA, documentId, tabId: 'tab-a', file: {}, checkedBundle: {},
+    revision: 3, candidateOperationId: id(70) };
+  const clears = [];
+  function Host() {
+    const [value, setValue] = useState(recovery);
+    return React.createElement(PageReplacementRecoveryNotice, { recovery: value,
+      onClear: async exact => { clears.push(exact); setValue(null); } });
+  }
+  await act(async () => root.render(React.createElement(Host)));
+  const button = label => [...document.querySelectorAll('button')].find(node => node.textContent === label);
+  assert.ok(button('Review reset'));
+  await act(async () => button('Review reset').click());
+  assert.ok(button('Keep blocked'));
+  assert.ok(button('Clear expired request'));
+  await act(async () => button('Keep blocked').click());
+  assert.deepEqual(clears, []);
+  assert.ok(button('Review reset'), 'cancel leaves the exact request blocked');
+  await act(async () => button('Review reset').click());
+  await act(async () => button('Clear expired request').click());
+  assert.deepEqual(clears, [recovery]);
+  assert.equal(document.querySelector('[data-page-replacement-recovery]'), null);
+});
+
+test('late clear failure for recovery A cannot mark replacement recovery B busy or failed', async t => {
+  const dom = new JSDOM('<div id="root"></div>');
+  const prior = { window: globalThis.window, document: globalThis.document,
+    act: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const root = createRoot(document.getElementById('root'));
+  t.after(async () => {
+    await act(async () => root.unmount()); dom.window.close();
+    if (prior.window === undefined) delete globalThis.window; else globalThis.window = prior.window;
+    if (prior.document === undefined) delete globalThis.document; else globalThis.document = prior.document;
+    if (prior.act === undefined) delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+    else globalThis.IS_REACT_ACT_ENVIRONMENT = prior.act;
+  });
+  const a = { actorUserId: actorA, documentId, candidateOperationId: id(70), revision: 3 };
+  const b = { ...a, candidateOperationId: id(71) };
+  const gate = deferred();
+  let setRecovery;
+  function Host() {
+    const [recovery, update] = useState(a); setRecovery = update;
+    return React.createElement(PageReplacementRecoveryNotice, { recovery,
+      onClear: async () => gate.promise });
+  }
+  await act(async () => root.render(React.createElement(Host)));
+  const button = label => [...document.querySelectorAll('button')].find(node => node.textContent === label);
+  await act(async () => button('Review reset').click());
+  await act(async () => button('Clear expired request').click());
+  await act(async () => setRecovery(b));
+  gate.reject(new Error('old clear failed'));
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  assert.ok(button('Review reset'), 'new recovery remains at its initial review step');
+  assert.equal(document.querySelector('[role="alert"]'), null, 'old failure cannot label new recovery');
+});
+
 test('actor or tab retirement after remote reply cannot mark or install the old scope', async () => {
   for (const retirement of ['actor', 'tab']) {
     const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
@@ -484,6 +911,8 @@ test('peer dispatch during stale cleanup retains the fixed intent and fails unre
     reserve: (...args) => concrete.reserve(...args),
     markDispatched: (...args) => concrete.markDispatched(...args),
     markPublished: (...args) => concrete.markPublished(...args),
+    markExpired: (...args) => concrete.markExpired(...args),
+    resetExpired: (...args) => concrete.resetExpired(...args),
     finish: (...args) => concrete.finish(...args),
     discardPending: async (actorUserId, receivedDocumentId, expectedRevision) => {
       await concrete.markDispatched(actorUserId, receivedDocumentId, expectedRevision);
@@ -514,6 +943,8 @@ test('finish failure leaves a published intent and retry clears it without rende
     markDispatched: (...args) => concrete.markDispatched(...args),
     discardPending: (...args) => concrete.discardPending(...args),
     markPublished: (...args) => concrete.markPublished(...args),
+    markExpired: (...args) => concrete.markExpired(...args),
+    resetExpired: (...args) => concrete.resetExpired(...args),
     finish: (...args) => failFinish
       ? (failFinish = false, Promise.reject(new Error('IDB finish did not commit')))
       : concrete.finish(...args),
@@ -838,6 +1269,9 @@ function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGen
       closeViewRef.current = { ...closeViewRef.current, tabs: state.tabs };
     },
     setSelectedPDF: update => { state.selected = typeof update === 'function' ? update(state.selected) : update; },
+    setPageReplacementRecoveryByTab: update => {
+      state.recovery = typeof update === 'function' ? update(state.recovery || {}) : update;
+    },
   };
   const handle = actualHandler(appShellSource, appShellTree, 'handleReplaceCheckedPages', deps);
   const input = {
@@ -887,6 +1321,140 @@ test('actual AppShell target metadata quota failure keeps published intent and o
   assert.equal(retained.phase, 'published');
   assert.equal(readCheckedPageStructure({ storage: h.storage, actorUserId: actorA,
     documentId, generationId }).pageNames[1], 'Latest kept private edit');
+});
+
+test('actual AppShell reset handler clears only the exact live actor, tab, file, and bundle scope', async () => {
+  const file = { id: documentId };
+  const bundle = { pdfGenerationId: generationId };
+  const scope = { actorUserId: actorA };
+  const mount = {};
+  const recovery = { actorUserId: actorA, documentId, tabId: 'tab-a', file, checkedBundle: bundle,
+    revision: 3, candidateOperationId: id(70) };
+  let recoveryByTab = { 'tab-a': recovery };
+  const resets = [];
+  const toasts = [];
+  const base = {
+    documentOpenScope: scope,
+    documentOpenMountRef: { current: mount },
+    documentOpenScopeRef: { current: scope },
+    pageReplacementClientRef: { current: { scope, mount, client: {
+      resetExpired: async value => { resets.push(value); },
+    } } },
+    pageReplacementRecoveryByTab: recoveryByTab,
+    closeViewRef: { current: { tabs: [{ id: 'tab-a', actorUserId: actorA, file, checkedBundle: bundle }] } },
+    setPageReplacementRecoveryByTab: update => { recoveryByTab = update(recoveryByTab); },
+    showToast: (...args) => toasts.push(args),
+  };
+  const clear = actualHandler(appShellSource, appShellTree, 'handleClearExpiredPageReplacement', base);
+  assert.equal(await clear(recovery), true);
+  assert.deepEqual(resets, [{ documentId, expectedRevision: 3, candidateOperationId: id(70) }]);
+  assert.deepEqual(recoveryByTab, {});
+  assert.match(toasts[0][0], /No page change was run/);
+
+  for (const mutate of [
+    deps => { deps.documentOpenScope = { actorUserId: actorB }; },
+    deps => { deps.documentOpenMountRef = { current: {} }; },
+    deps => { deps.documentOpenScopeRef = { current: {} }; },
+    deps => { deps.closeViewRef = { current: { tabs: [] } }; },
+    deps => { deps.pageReplacementRecoveryByTab = {}; },
+  ]) {
+    const deps = { ...base, pageReplacementRecoveryByTab: { 'tab-a': recovery } };
+    mutate(deps);
+    const stale = actualHandler(appShellSource, appShellTree, 'handleClearExpiredPageReplacement', deps);
+    await assert.rejects(stale(recovery), /expired request was kept/i);
+  }
+  assert.equal(resets.length, 1, 'stale callbacks never reach the client reset CAS');
+});
+
+test('actual AppShell render hides recovery from a stale actor, file, or checked bundle', () => {
+  const file = {}, checkedBundle = {};
+  const tab = { actorUserId: actorA, file, checkedBundle };
+  const recovery = { actorUserId: actorA, file, checkedBundle };
+  const visible = savedRecovery => actualInitializer(appShellSource, appShellTree,
+    'visibleRecovery', { savedRecovery, tab });
+  assert.equal(visible(recovery), recovery);
+  assert.equal(visible({ ...recovery, actorUserId: actorB }), null);
+  assert.equal(visible({ ...recovery, file: {} }), null);
+  assert.equal(visible({ ...recovery, checkedBundle: {} }), null);
+});
+
+test('committed reset for a switched tab keeps its newer recovery and shows no stale toast', async () => {
+  const oldFile = {}, oldBundle = {}, nextFile = {}, nextBundle = {};
+  const scope = { actorUserId: actorA }, mount = {}, gate = deferred();
+  const oldRecovery = { actorUserId: actorA, documentId, tabId: 'tab-a', file: oldFile,
+    checkedBundle: oldBundle, revision: 3, candidateOperationId: id(70) };
+  const nextRecovery = { ...oldRecovery, file: nextFile, checkedBundle: nextBundle,
+    candidateOperationId: id(71) };
+  let recoveryByTab = { 'tab-a': oldRecovery };
+  const closeViewRef = { current: { tabs: [{ id: 'tab-a', actorUserId: actorA,
+    file: oldFile, checkedBundle: oldBundle }] } };
+  const toasts = [];
+  const deps = {
+    documentOpenScope: scope, documentOpenMountRef: { current: mount },
+    documentOpenScopeRef: { current: scope }, pageReplacementRecoveryByTab: recoveryByTab,
+    pageReplacementClientRef: { current: { scope, mount, client: {
+      resetExpired: async () => gate.promise,
+    } } }, closeViewRef,
+    setPageReplacementRecoveryByTab: update => { recoveryByTab = update(recoveryByTab); },
+    showToast: (...args) => toasts.push(args),
+  };
+  const clear = actualHandler(appShellSource, appShellTree, 'handleClearExpiredPageReplacement', deps);
+  const pending = clear(oldRecovery);
+  recoveryByTab = { 'tab-a': nextRecovery };
+  closeViewRef.current = { tabs: [{ id: 'tab-a', actorUserId: actorA,
+    file: nextFile, checkedBundle: nextBundle }] };
+  gate.resolve();
+  assert.equal(await pending, true);
+  assert.equal(recoveryByTab['tab-a'], nextRecovery);
+  assert.deepEqual(toasts, []);
+});
+
+test('actual confirmed tab close prunes only its exact expired recovery', async () => {
+  const HOME_TAB_ID = 'home';
+  const home = { id: HOME_TAB_ID, isHome: true };
+  const oldFile = {}, nextFile = {};
+  const oldTab = { id: 'tab-a', actorUserId: actorA, file: oldFile };
+  const oldRecovery = { actorUserId: actorA, file: oldFile };
+  const nextRecovery = { actorUserId: actorA, file: nextFile };
+  async function run({ saved = true, switchWhileSaving = false } = {}) {
+    let tabs = [home, oldTab];
+    let recoveries = { 'tab-a': oldRecovery };
+    const closeViewRef = { current: { tabs, activeTabId: HOME_TAB_ID } };
+    const gate = deferred();
+    const toasts = [];
+    const scope = {
+      HOME_TAB_ID, pendingFileReplacementsRef: { current: new Set() },
+      pendingTabClosesRef: { current: new Set() }, closeViewRef,
+      prepareTabClose: async () => { if (switchWhileSaving) await gate.promise; return saved
+        ? { saved: true } : { saved: false, reason: 'kept open' }; },
+      showToast: (...args) => toasts.push(args), flushSync: callback => callback(),
+      setTabs: update => { tabs = update(tabs); },
+      setPageReplacementRecoveryByTab: update => { recoveries = update(recoveries); },
+      setActiveTabId: () => assert.fail('inactive close must not change active tab'),
+      setSelectedPDF: () => assert.fail('inactive close must not change selected PDF'),
+      setCurrentView: () => assert.fail('inactive close must not change view'),
+    };
+    const close = actualHandler(appShellSource, appShellTree, 'handleTabClose', scope);
+    const pending = close('tab-a');
+    if (switchWhileSaving) {
+      tabs = [home, { ...oldTab, file: nextFile }];
+      recoveries = { 'tab-a': nextRecovery };
+      closeViewRef.current = { tabs, activeTabId: HOME_TAB_ID };
+      gate.resolve();
+    }
+    await pending;
+    return { tabs, recoveries, toasts };
+  }
+  const confirmed = await run();
+  assert.deepEqual(confirmed.tabs, [home]);
+  assert.deepEqual(confirmed.recoveries, {});
+  const canceled = await run({ saved: false });
+  assert.deepEqual(canceled.tabs, [home, oldTab]);
+  assert.equal(canceled.recoveries['tab-a'], oldRecovery);
+  assert.match(canceled.toasts[0][0], /kept open/);
+  const switched = await run({ switchWhileSaving: true });
+  assert.equal(switched.recoveries['tab-a'], nextRecovery);
+  assert.equal(switched.tabs[1].file, nextFile);
 });
 
 test('mounted actual viewer save effect cannot write old or hybrid state before generation hydration', async t => {

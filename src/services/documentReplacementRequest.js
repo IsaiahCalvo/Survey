@@ -30,6 +30,7 @@ const messages = Object.freeze({
   unavailable: 'Checked document replacement is not enabled.',
   replacement_busy: 'The checked document replacement worker is busy.',
   replacement_conflict: 'This replacement intent cannot be resumed. Keep the same IDs and inspect its saved state.',
+  replacement_expired: 'This replacement request expired before it was published.',
   unsupported_source: 'This document has source files that this replacement path does not support.',
   invalid_receipt: 'The server did not confirm the exact document replacement state.',
   replacement_unconfirmed: 'The replacement result is not confirmed. Retry with the same IDs before making another change.',
@@ -71,13 +72,14 @@ function publicIntent(intent) {
   });
 }
 
-function errorResponse(code, intent) {
+function errorResponse(code, intent, terminal = null) {
   const statuses = {
     invalid_request: 400,
     unauthorized: 401,
     unavailable: 503,
     replacement_busy: 503,
     replacement_conflict: 409,
+    replacement_expired: 409,
     unsupported_source: 409,
     invalid_receipt: 502,
     replacement_unconfirmed: 503,
@@ -86,6 +88,7 @@ function errorResponse(code, intent) {
   return response(statuses[code], {
     error: { code, message: messages[code] },
     ...(intent && code === 'replacement_unconfirmed' ? { intent: publicIntent(intent) } : {}),
+    ...(terminal ? { terminal } : {}),
   });
 }
 
@@ -222,6 +225,24 @@ function journal(value, intent) {
   if (value.state === 'published') check(value.plan === null && plain(value.publication));
   if (['untracked', 'expired'].includes(value.state)) check(value.plan === null && value.publication === null);
   return value;
+}
+
+function expiredTerminal(value, intent) {
+  check(value.state === 'expired' && value.document_id === intent.documentId);
+  return Object.freeze({
+    version: 1,
+    state: 'expired',
+    actor_user_id: intent.actorUserId,
+    document_id: intent.documentId,
+    source_id: intent.sourceId,
+    candidate_operation_id: intent.candidateOperationId,
+    archive_operation_ids: Object.freeze([...intent.archiveOperationIds]),
+    expected_generation_id: intent.generationId,
+    expected_wal_head: intent.walHead,
+    operation: intent.operation,
+    prepared_at: value.prepared_at,
+    expires_at: value.expires_at,
+  });
 }
 
 function sourceDescriptor(value, intent) {
@@ -440,7 +461,10 @@ export function createDocumentReplacementRequestHandler(options = {}) {
       const first = journal(await rpc('read_document_generation_replacement', rpcParams(intent)), intent);
       if (first.state === 'published') return response(200, { replacement: publication(first.publication, intent) });
       if (first.state === 'prepared') return response(200, { replacement: await publish(planBinding(first.plan, intent)) });
-      if (first.state === 'untracked' || first.state === 'expired') {
+      if (first.state === 'expired') {
+        return errorResponse('replacement_expired', intent, expiredTerminal(first, intent));
+      }
+      if (first.state === 'untracked') {
         throw new ConfirmedFailure('replacement_conflict');
       }
 

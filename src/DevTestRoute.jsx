@@ -7,6 +7,7 @@ import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import App from './AppShell';
+import PageReplacementExpiredHarness from './dev/PageReplacementExpiredHarness.jsx';
 
 const noop = () => {};
 const asyncNoop = async () => {};
@@ -105,6 +106,8 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     .get('surveyTemplateWorkflowE2E') === '1';
   const documentDeepLinkE2E = new URLSearchParams(window.location.search)
     .get('documentDeepLinkE2E') === '1';
+  const pageReplacementExpiredE2E = new URLSearchParams(window.location.search)
+    .get('pageReplacementExpiredE2E') === '1';
 
   if (surveyTransitionE2E) {
     window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
@@ -120,6 +123,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
     async function loadPdf() {
       try {
+        if (pageReplacementExpiredE2E) { setStatus('ready'); return; }
         const url = `/debug-fixtures/${encodeURIComponent(pdfName)}`;
         const resp = await fetch(url);
         if (!resp.ok) {
@@ -153,7 +157,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
     loadPdf();
     return () => { cancelled = true; };
-  }, [pdfName, displayName, documentDeepLinkE2E]);
+  }, [pdfName, displayName, documentDeepLinkE2E, pageReplacementExpiredE2E]);
 
   if (status === 'loading') {
     return (
@@ -195,6 +199,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   }
 
   // status === 'ready'
+  if (pageReplacementExpiredE2E) return <PageReplacementExpiredHarness />;
   return (
     <ErrorBoundary>
       <AuthContext.Provider value={mockAuthValue}>
