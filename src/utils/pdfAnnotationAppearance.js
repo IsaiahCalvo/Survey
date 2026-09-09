@@ -12,6 +12,36 @@ export function cloudRadiusForIntensity(intensity = 2, strokeWidth = 1, unitScal
   return size / 2;
 }
 
+// UX 2026-09-09: roundness is stored on the approved engine's legacy 2-40
+// scale, which cloudRuns maps to a real depth via `size * (0.24 + 0.4*d/40)`.
+// 12 is the value the approved studio build shipped, and the app exposes no
+// roundness control, so every cloud - drawn, imported or flattened - must pass
+// exactly this constant. Passing a size-relative depth instead is only correct
+// at the default 28-unit scallop and makes clouds progressively rounder as the
+// scallop grows, so imported clouds stopped matching drawn ones.
+const APPROVED_CLOUD_DEPTH = 12;
+
+// The approved engine renders `run.d`, not `run.lobes`: `d` carries the
+// overlap-trimmed crowns and their separator tails, while `lobes` is the raw
+// pre-trim arc set. Re-reading `d` is what keeps the app pixel-identical to the
+// studio, including its 5-decimal rounding. The engine only ever emits
+// absolute M and C, so this parser is total for its output.
+const parseCloudPathData = (data) => {
+  const tokens = String(data).split(/\s+/).filter(Boolean);
+  const commands = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const verb = tokens[index];
+    const arity = verb === 'M' ? 2 : verb === 'C' ? 6 : -1;
+    if (arity < 0 || index + arity >= tokens.length) return null;
+    const values = tokens.slice(index + 1, index + 1 + arity).map(Number);
+    if (values.some((value) => !Number.isFinite(value))) return null;
+    commands.push([verb, ...values]);
+    index += arity + 1;
+  }
+  return commands;
+};
+
 // This is the sole app entry point for revision-cloud outlines. The approved
 // engine emits separate open crowns so its short rounded tails stay intact.
 export function buildCloudPathCommands(
@@ -22,29 +52,25 @@ export function buildCloudPathCommands(
   kind = 'polygon',
 ) {
   if (!Array.isArray(points) || points.length < 3) return null;
+  // A non-finite vertex must reject rather than collapse to the origin: a
+  // silently zeroed corner draws a cloud that spans the whole page.
+  if (points.some((point) => (
+    !Number.isFinite(Number(point?.x)) || !Number.isFinite(Number(point?.y))
+  ))) return null;
   const clean = points.map((point) => ({ x: finite(point?.x), y: finite(point?.y) }));
-  if (clean.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return null;
   const size = cloudRadiusForIntensity(intensity, strokeWidth, unitScale) * 2;
   const shape = makeShape(kind === 'rectangle' ? 'rectangle' : 'polygon', clean, 'survey-cloud', {
     size,
-    depth: size * (12 / 28),
+    depth: APPROVED_CLOUD_DEPTH,
     stroke: Math.max(0.1, finite(strokeWidth, 1)),
   });
-  const commands = cloudRuns(shape, new Map(), 0, false).flatMap((run) => run.lobes.flatMap((lobe) => {
-    const curves = [];
-    for (let index = 0; index + 2 < lobe.controls.length; index += 3) {
-      curves.push([
-        'C',
-        lobe.controls[index].x,
-        lobe.controls[index].y,
-        lobe.controls[index + 1].x,
-        lobe.controls[index + 1].y,
-        lobe.controls[index + 2].x,
-        lobe.controls[index + 2].y,
-      ]);
-    }
-    return [['M', lobe.start.x, lobe.start.y], ...curves];
-  }));
+  const commands = [];
+  for (const run of cloudRuns(shape, new Map(), 0, false)) {
+    if (!run?.d) continue;
+    const parsed = parseCloudPathData(run.d);
+    if (!parsed) return null;
+    commands.push(...parsed);
+  }
   return commands.length > 0 ? commands : null;
 }
 

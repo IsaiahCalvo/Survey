@@ -4159,7 +4159,12 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     };
     const rawCloudIntensity = shifted?.data?.pdfCloudIntensity;
     const cloudIntensity = Number(rawCloudIntensity);
-    if (rawCloudIntensity != null && Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
+    // buildCloudPathCommands returns null for unusable geometry (a non-finite
+    // corner). Resolve it up front so that case falls through to the plain
+    // rectangle branches below instead of flattening nothing.
+    const cloudSpec = (() => {
+      if (rawCloudIntensity == null || !Number.isFinite(cloudIntensity)) return null;
+      if (!(width > 0) || !(height > 0)) return null;
       const center = { x: left + width / 2, y: top + height / 2 };
       const insets = Array.isArray(shifted?.data?.pdfCloudInsets)
         ? shifted.data.pdfCloudInsets
@@ -4177,6 +4182,10 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
         shifted?.data?.pdfCloudUnitScale ?? 1,
         'rectangle',
       );
+      return Array.isArray(cloud) && cloud.length > 0 ? { points, cloud } : null;
+    })();
+    if (cloudSpec) {
+      const { points, cloud } = cloudSpec;
       const d = cloud.map((segment) => segment.join(' ')).join(' ');
       if (fill) {
         const fillPath = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
