@@ -15,6 +15,7 @@ import {
   tagDrawnCenteredStrokeGeometry,
 } from './shapeCommitGeometry.js';
 import { createProductionPaperInk } from './productionPaperInk.js';
+import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 
 // fabric 7 base-object serialization envelope (Object.mjs toObject defaults,
 // NUM_FRACTION_DIGITS rounding upstream of these constants). Deliberately
@@ -89,8 +90,15 @@ export function composeAnnotationColor(hex, opacityPct) {
   return hex;
 }
 
+// UX 2026-09-09: the Cloud border style is available on every closed/open
+// SHAPE tool - rectangle, ellipse/circle, polygon and polyline - because a
+// revision cloud marks out a REGION. It is never available on arrow, counter or
+// a single straight line, so those tools can never stamp the cloud field even
+// if the picker were left on 'cloud' when switching tools.
+// toolSupportsCloudBorderStyle is the same predicate the toolbar menu uses, so
+// what the user can pick and what a new shape stores can never drift apart.
 const applyBorderStyle = (json, { tool, lineBorderStyle, cloudIntensity }) => {
-  if (lineBorderStyle === 'cloud' && tool === 'rect') {
+  if (lineBorderStyle === 'cloud' && toolSupportsCloudBorderStyle(tool)) {
     json.strokeDashArray = null;
     json.data = {
       ...(json.data || {}),

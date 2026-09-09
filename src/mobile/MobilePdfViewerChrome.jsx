@@ -57,7 +57,9 @@ const TOOL_TO_GROUP = Object.entries(TOOL_GROUPS).reduce((result, [groupId, grou
 
 const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow', 'text', 'callout', 'counter']);
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'text', 'callout', 'counter']);
-const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'line', 'arrow', 'text', 'callout']);
+// UX 2026-09-09: polygon and polyline join the shape tools that get a border
+// style picker on mobile, so their Cloud option has somewhere to live.
+const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout']);
 const MOBILE_ARROWHEAD_STYLE_LABELS = {
   ...ARROWHEAD_STYLE_LABELS,
   solidTriangle: 'Solid Triangle',
@@ -1064,12 +1066,16 @@ export function MobileToolProperties({ api }) {
             { value: 'solid', label: 'Solid' },
             { value: 'dashed', label: 'Dashed' },
             { value: 'dotted', label: 'Dotted' },
-            ...(tool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
+            /* UX 2026-09-09: Cloud is offered on every shape a revision cloud
+               can enclose or trace (rectangle, ellipse/circle, polygon,
+               polyline) and never on arrow, counter or a single straight line.
+               supportsCloudStyle mirrors the desktop gate exactly. */
+            ...(api.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
           ]}
           onChange={(value) => api.setLineBorderStyle(value)}
         />
       )}
-      {tool === 'rect' && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
+      {api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
         <label className="mobile-pdf-properties__bump">
           <span>Bump</span>
           <input
@@ -1362,7 +1368,8 @@ export function MobileToolProperties({ api }) {
                             { value: 'solid', label: 'Solid' },
                             { value: 'dashed', label: 'Dashed' },
                             { value: 'dotted', label: 'Dotted' },
-                            ...(tool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
+                            /* Same Cloud rule as the strip picker above. */
+                            ...(api.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
                           ]}
                           onChange={(value) => api.setLineBorderStyle?.(value)}
                         />

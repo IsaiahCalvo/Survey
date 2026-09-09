@@ -2640,10 +2640,16 @@ export default function App({ devPreviewReturnTab = null }) {
                       </label>
                     );
                   })()}
-                {/* 2026-05-25: Style picker — solid/dashed/dotted for line + arrow;
-                    solid/dashed/dotted/cloud for rectangle; solid/dashed/dotted
-                    for ellipse (no cloud option). Always opens downward. */}
-                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
+                {/* 2026-05-25: Style picker — solid/dashed/dotted for line + arrow.
+                    UX 2026-09-09: "Cloud" is also offered on every shape a
+                    revision cloud can enclose or trace — rectangle,
+                    ellipse/circle, polygon, polyline — and never on arrow,
+                    counter or a single straight line, because a cloud marks out
+                    a REGION. The gate is supportsCloudStyle (resolved from the
+                    real selected/armed shape in PDFViewer) rather than
+                    contextTool, which folds a selected polygon onto 'rect' and a
+                    selected polyline onto 'line'. Always opens downward. */}
+                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
                   <AnnotationDropdown
                     open={showStyleMenu}
                     onOpenChange={setShowStyleMenu}
@@ -2653,16 +2659,17 @@ export default function App({ devPreviewReturnTab = null }) {
                       { value: 'solid', label: 'Solid' },
                       { value: 'dashed', label: 'Dashed' },
                       { value: 'dotted', label: 'Dotted' },
-                      ...(bottomToolbarApi.contextTool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
+                      ...(bottomToolbarApi.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
                     ]}
                     onSelect={bottomToolbarApi.setLineBorderStyle}
                     dataMarker="data-style-menu"
                   />
                 )}
-                {/* 2026-05-25: Bump number input — only shows for rectangle when
-                    the border style is Cloud. Drives how big the cloud's wave
-                    bumps render. Mirrors the width input visual. */}
-                {bottomToolbarApi.contextTool === 'rect' && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
+                {/* 2026-05-25: Bump number input — shows only when the border
+                    style is Cloud, on the same shapes that offer Cloud at all
+                    (see supportsCloudStyle above). Drives how big the cloud's
+                    wave bumps render. Mirrors the width input visual. */}
+                {bottomToolbarApi.supportsCloudStyle && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}>
                     Bump
                     <input

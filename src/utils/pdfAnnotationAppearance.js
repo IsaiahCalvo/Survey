@@ -42,6 +42,70 @@ const parseCloudPathData = (data) => {
   return commands;
 };
 
+// UX 2026-09-09: the Cloud border style is offered on every closed/open SHAPE
+// annotation - rectangle, ellipse/circle, polygon and (open) polyline - and
+// never on arrow, counter or a single straight line, because a revision cloud
+// is a region marker: it has to enclose or trace something. These are the only
+// four geometry kinds the approved engine builds runs for, and this map is the
+// ONE place a caller's shape name becomes an engine kind so every render path
+// (SVG, canvas, pdf-lib flatten, importer) asks for the identical outline.
+const CLOUD_ENGINE_KIND = Object.freeze({
+  rect: 'rectangle',
+  rectangle: 'rectangle',
+  square: 'rectangle',
+  ellipse: 'ellipse',
+  circle: 'ellipse',
+  oval: 'ellipse',
+  polygon: 'polygon',
+  polyline: 'polyline',
+});
+
+// Open shapes (polyline) are legal with two vertices; every closed shape needs
+// at least three or there is no interior to trace.
+const cloudMinimumVertexCount = (engineKind) => (engineKind === 'polyline' ? 2 : 3);
+
+/**
+ * The single decision point for "does this annotation draw as a cloud, and
+ * with what engine geometry?". Returns null for every shape the Cloud style is
+ * not offered on (arrow, counter, single line, triangle, text, ink...) so no
+ * render path can grow its own opinion about which shapes may be cloudy.
+ *
+ * @returns {{ kind: string, intensity: number, unitScale: number }|null}
+ */
+export function resolveAnnotationCloudSpec(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const rawIntensity = obj?.data?.pdfCloudIntensity;
+  if (rawIntensity == null) return null;
+  const intensity = Number(rawIntensity);
+  if (!Number.isFinite(intensity)) return null;
+  // Counters are circles internally; they are a pin, never a region marker.
+  if (obj?.data?.type === 'counter') return null;
+  const kind = cloudEngineKindForShape(obj?.type);
+  if (!kind) return null;
+  return {
+    kind,
+    intensity,
+    unitScale: Number.isFinite(Number(obj?.data?.pdfCloudUnitScale))
+      ? Number(obj.data.pdfCloudUnitScale)
+      : 1,
+  };
+}
+
+/** Shape/tool name -> approved-engine geometry kind, or null when unsupported. */
+export function cloudEngineKindForShape(shape) {
+  const key = String(shape || '').toLowerCase();
+  return CLOUD_ENGINE_KIND[key] || null;
+}
+
+/**
+ * UX 2026-09-09: the toolbar offers Cloud for exactly these contexts, whether
+ * the tool is armed before drawing or such an annotation is selected. Kept
+ * next to the geometry map so the menu can never drift from what renders.
+ */
+export function toolSupportsCloudBorderStyle(tool) {
+  return cloudEngineKindForShape(tool) != null;
+}
+
 // This is the sole app entry point for revision-cloud outlines. The approved
 // engine emits separate open crowns so its short rounded tails stay intact.
 export function buildCloudPathCommands(
@@ -51,7 +115,8 @@ export function buildCloudPathCommands(
   unitScale = 1,
   kind = 'polygon',
 ) {
-  if (!Array.isArray(points) || points.length < 3) return null;
+  const engineKind = cloudEngineKindForShape(kind) || 'polygon';
+  if (!Array.isArray(points) || points.length < cloudMinimumVertexCount(engineKind)) return null;
   // A non-finite vertex must reject rather than collapse to the origin: a
   // silently zeroed corner draws a cloud that spans the whole page.
   if (points.some((point) => (
@@ -59,7 +124,7 @@ export function buildCloudPathCommands(
   ))) return null;
   const clean = points.map((point) => ({ x: finite(point?.x), y: finite(point?.y) }));
   const size = cloudRadiusForIntensity(intensity, strokeWidth, unitScale) * 2;
-  const shape = makeShape(kind === 'rectangle' ? 'rectangle' : 'polygon', clean, 'survey-cloud', {
+  const shape = makeShape(engineKind, clean, 'survey-cloud', {
     size,
     depth: APPROVED_CLOUD_DEPTH,
     stroke: Math.max(0.1, finite(strokeWidth, 1)),
@@ -72,6 +137,24 @@ export function buildCloudPathCommands(
     commands.push(...parsed);
   }
   return commands.length > 0 ? commands : null;
+}
+
+/**
+ * The engine reads an ellipse cloud straight off the bounding box of the
+ * points it is handed (revisionCloudGeometry.ellipseRuns), so every caller
+ * hands it the same four box corners rather than sampling an outline itself.
+ */
+export function ellipseCloudPoints(left, top, width, height) {
+  const x = finite(left);
+  const y = finite(top);
+  const w = finite(width);
+  const h = finite(height);
+  return [
+    { x, y },
+    { x: x + w, y },
+    { x: x + w, y: y + h },
+    { x, y: y + h },
+  ];
 }
 
 const cubicAt = (start, c1, c2, end, t) => {

@@ -30,6 +30,7 @@ import {
 } from './lineRenderHelpers.js';
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
+import { ellipseCloudPoints, resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
@@ -628,20 +629,24 @@ function drawPoints(context, object, close) {
   context.scale(scaleX, scaleY);
   context.translate(-pathOffsetX, -pathOffsetY);
 
-  const cloudIntensity = object?.data?.pdfCloudIntensity;
+  // UX 2026-09-09: closed polygons AND open polylines both take the Cloud
+  // style; the engine kind comes from resolveAnnotationCloudSpec so the canvas
+  // twin can never disagree with the SVG layer about which shapes are cloudy.
+  // An open polyline has no interior, so it never paints a fill body.
+  const cloudSpec = resolveAnnotationCloudSpec(object);
   const strokeWidth = toNumber(object.strokeWidth, 1);
   context.beginPath();
   let traced = false;
-  if (close && Number.isFinite(cloudIntensity)) {
+  if (cloudSpec) {
     const cloud = buildCloudPathCommands(
       points.map((point) => ({ x: toNumber(point?.x), y: toNumber(point?.y) })),
-      cloudIntensity,
+      cloudSpec.intensity,
       strokeWidth,
-      object?.data?.pdfCloudUnitScale ?? 1,
-      'polygon',
+      cloudSpec.unitScale,
+      cloudSpec.kind,
     );
     if (Array.isArray(cloud) && cloud.length > 0) {
-      if (isVisiblePaint(object.fill)) {
+      if (close && isVisiblePaint(object.fill)) {
         context.beginPath();
         points.forEach((point, index) => {
           const x = toNumber(point?.x);
@@ -1102,25 +1107,48 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
 
   const isEllipse = type === 'circle' || type === 'ellipse';
-  const cloudIntensity = !isEllipse && type !== 'triangle' ? object?.data?.pdfCloudIntensity : null;
+  // UX 2026-09-09: rect AND ellipse/circle clouds paint here (triangle has no
+  // Cloud style, and resolveAnnotationCloudSpec is what says so - the painter
+  // no longer keeps its own suppression list). The body is filled with the
+  // shape's own outline, then the engine crowns are stroked with no fill.
+  const cloudSpec = type === 'triangle' ? null : resolveAnnotationCloudSpec(object);
+  // renderEllipse sizes the cloud off the LIVE rx/ry (radius for a circle), not
+  // off width/height, so the canvas twin must read the same fields or the two
+  // layers disagree by a stroke width on imported ellipses.
+  const ellipseCloudRx = isEllipse
+    ? Math.abs(toNumber(object.radius != null ? object.radius : object.rx)) * Math.abs(scaleX)
+    : 0;
+  const ellipseCloudRy = isEllipse
+    ? Math.abs(toNumber(object.radius != null ? object.radius : object.ry)) * Math.abs(scaleY)
+    : 0;
+  const cloudWidth = isEllipse ? ellipseCloudRx * 2 : effectiveWidth;
+  const cloudHeight = isEllipse ? ellipseCloudRy * 2 : effectiveHeight;
   context.beginPath();
-  if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+  if (cloudSpec && cloudWidth > 0 && cloudHeight > 0) {
+    const cloudPoints = ellipseCloudPoints(0, 0, cloudWidth, cloudHeight);
     const cloud = buildCloudPathCommands(
-      [
-        { x: 0, y: 0 },
-        { x: effectiveWidth, y: 0 },
-        { x: effectiveWidth, y: effectiveHeight },
-        { x: 0, y: effectiveHeight },
-      ],
-      cloudIntensity,
+      cloudPoints,
+      cloudSpec.intensity,
       toNumber(object.strokeWidth, 1),
-      object?.data?.pdfCloudUnitScale ?? 1,
-      'rectangle',
+      cloudSpec.unitScale,
+      cloudSpec.kind,
     );
     if (Array.isArray(cloud) && cloud.length > 0) {
       if (isVisiblePaint(object.fill)) {
         context.beginPath();
-        context.rect(0, 0, effectiveWidth, effectiveHeight);
+        if (isEllipse) {
+          context.ellipse(
+            ellipseCloudRx,
+            ellipseCloudRy,
+            ellipseCloudRx,
+            ellipseCloudRy,
+            0,
+            0,
+            Math.PI * 2,
+          );
+        } else {
+          context.rect(0, 0, effectiveWidth, effectiveHeight);
+        }
         paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0 });
         context.beginPath();
       }
