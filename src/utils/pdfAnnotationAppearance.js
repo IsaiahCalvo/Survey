@@ -1,122 +1,51 @@
+import { cloudRuns, makeShape } from './revisionCloudGeometry.js';
+
 const finite = (value, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 };
 
-const pointAt = (point, unit, distance) => ({
-  x: point.x + unit.x * distance,
-  y: point.y + unit.y * distance,
-});
-
-const CLOUD_RADIUS_BY_INTENSITY = [4, 7, 10];
-
 export function cloudRadiusForIntensity(intensity = 2, strokeWidth = 1, unitScale = 1) {
-  const level = Math.max(0, Math.min(2, finite(intensity, 2)));
-  const low = Math.floor(level);
-  const high = Math.ceil(level);
-  const base = CLOUD_RADIUS_BY_INTENSITY[low]
-    + (CLOUD_RADIUS_BY_INTENSITY[high] - CLOUD_RADIUS_BY_INTENSITY[low]) * (level - low);
-  return Math.max(base * Math.max(0.01, finite(unitScale, 1)), 2 * Math.max(1, finite(strokeWidth, 1)));
+  const scale = Math.max(0.01, finite(unitScale, 1));
+  const level = Math.max(0.25, finite(intensity, 2));
+  const size = Math.min(80 * scale, Math.max(14 * level * scale, 4 * Math.max(1, finite(strokeWidth, 1))));
+  return size / 2;
 }
 
-// Build round revision-cloud lobes on the source edges. Each edge keeps its
-// own endpoints; only the curve bows out. A separate curve rounds each corner.
-export function buildCloudPathCommands(points, intensity = 2, strokeWidth = 1, unitScale = 1) {
+// This is the sole app entry point for revision-cloud outlines. The approved
+// engine emits separate open crowns so its short rounded tails stay intact.
+export function buildCloudPathCommands(
+  points,
+  intensity = 2,
+  strokeWidth = 1,
+  unitScale = 1,
+  kind = 'polygon',
+) {
   if (!Array.isArray(points) || points.length < 3) return null;
   const clean = points.map((point) => ({ x: finite(point?.x), y: finite(point?.y) }));
-  const radius = cloudRadiusForIntensity(intensity, strokeWidth, unitScale);
-
-  let signedArea = 0;
-  for (let index = 0; index < clean.length; index += 1) {
-    const current = clean[index];
-    const next = clean[(index + 1) % clean.length];
-    signedArea += current.x * next.y - next.x * current.y;
-  }
-  const clockwise = signedArea > 0; // screen coordinates use a downward Y axis
-  const outwardFor = (unit) => clockwise
-    ? { x: unit.y, y: -unit.x }
-    : { x: -unit.y, y: unit.x };
-
-  const edges = clean.map((start, index) => {
-    const end = clean[(index + 1) % clean.length];
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const length = Math.hypot(dx, dy);
-    if (length < 0.1) return null;
-    const unit = { x: dx / length, y: dy / length };
-    return { start, end, length, unit, outward: outwardFor(unit) };
+  if (clean.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return null;
+  const size = cloudRadiusForIntensity(intensity, strokeWidth, unitScale) * 2;
+  const shape = makeShape(kind === 'rectangle' ? 'rectangle' : 'polygon', clean, 'survey-cloud', {
+    size,
+    depth: size * (12 / 28),
+    stroke: Math.max(0.1, finite(strokeWidth, 1)),
   });
-  if (edges.some((edge) => !edge)) return null;
-
-  const commands = [];
-  const firstInset = Math.min(radius, edges[0].length / 3);
-  const first = pointAt(edges[0].start, edges[0].unit, firstInset);
-  commands.push(['M', first.x, first.y]);
-
-  for (let index = 0; index < edges.length; index += 1) {
-    const edge = edges[index];
-    const nextEdge = edges[(index + 1) % edges.length];
-    const startInset = Math.min(radius, edge.length / 3);
-    const endInset = Math.min(radius, edge.length / 3);
-    const edgeStart = pointAt(edge.start, edge.unit, startInset);
-    const edgeEnd = pointAt(edge.end, edge.unit, -endInset);
-    const usable = Math.max(0, edge.length - startInset - endInset);
-    const lobeCount = Math.max(1, Math.ceil(usable / (1.6 * radius)));
-    const span = usable / lobeCount;
-    const height = radius;
-    const control = height * 4 / 3;
-
-    for (let lobe = 0; lobe < lobeCount; lobe += 1) {
-      const start = pointAt(edgeStart, edge.unit, span * lobe);
-      const end = pointAt(edgeStart, edge.unit, span * (lobe + 1));
-      commands.push([
+  const commands = cloudRuns(shape, new Map(), 0, false).flatMap((run) => run.lobes.flatMap((lobe) => {
+    const curves = [];
+    for (let index = 0; index + 2 < lobe.controls.length; index += 3) {
+      curves.push([
         'C',
-        start.x + edge.outward.x * control,
-        start.y + edge.outward.y * control,
-        end.x + edge.outward.x * control,
-        end.y + edge.outward.y * control,
-        end.x,
-        end.y,
+        lobe.controls[index].x,
+        lobe.controls[index].y,
+        lobe.controls[index + 1].x,
+        lobe.controls[index + 1].y,
+        lobe.controls[index + 2].x,
+        lobe.controls[index + 2].y,
       ]);
     }
-
-    const nextInset = Math.min(radius, nextEdge.length / 3);
-    const cornerEnd = pointAt(nextEdge.start, nextEdge.unit, nextInset);
-    const bisectorLength = Math.hypot(
-      edge.outward.x + nextEdge.outward.x,
-      edge.outward.y + nextEdge.outward.y,
-    );
-    const bisector = bisectorLength > 0.01
-      ? {
-          x: (edge.outward.x + nextEdge.outward.x) / bisectorLength,
-          y: (edge.outward.y + nextEdge.outward.y) / bisectorLength,
-        }
-      : edge.outward;
-    const cornerDistance = radius / Math.max(0.25, Math.abs(
-      bisector.x * edge.outward.x + bisector.y * edge.outward.y,
-    ));
-    const apex = {
-      x: edge.end.x + bisector.x * cornerDistance,
-      y: edge.end.y + bisector.y * cornerDistance,
-    };
-    // One cubic makes one corner lobe. Equal control points force its midpoint
-    // through the outside offset apex while its ends stay on the two edges.
-    const cornerControl = {
-      x: (apex.x - 0.125 * (edgeEnd.x + cornerEnd.x)) / 0.75,
-      y: (apex.y - 0.125 * (edgeEnd.y + cornerEnd.y)) / 0.75,
-    };
-    commands.push([
-      'C',
-      cornerControl.x,
-      cornerControl.y,
-      cornerControl.x,
-      cornerControl.y,
-      cornerEnd.x,
-      cornerEnd.y,
-    ]);
-  }
-  commands.push(['Z']);
-  return commands;
+    return [['M', lobe.start.x, lobe.start.y], ...curves];
+  }));
+  return commands.length > 0 ? commands : null;
 }
 
 const cubicAt = (start, c1, c2, end, t) => {

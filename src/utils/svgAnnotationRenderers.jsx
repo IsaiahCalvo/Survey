@@ -58,6 +58,54 @@ import { getCounterLabelLayout } from './counterGeometry.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
+const CloudOutline = ({
+  shapeId,
+  shapeKind,
+  geometryKind,
+  points,
+  intensity,
+  strokeWidth,
+  unitScale,
+  transform,
+  fill,
+  stroke,
+  opacity,
+  onClick,
+}) => {
+  const commands = buildCloudPathCommands(
+    points,
+    intensity,
+    strokeWidth,
+    unitScale,
+    geometryKind,
+  );
+  if (!Array.isArray(commands) || commands.length === 0) return null;
+  const d = commands.map((segment) => segment.join(' ')).join(' ');
+  return (
+    <g
+      transform={transform}
+      opacity={opacity}
+      data-shape-id={shapeId}
+      data-shape-kind={shapeKind}
+      onClick={onClick}
+    >
+      <polygon
+        points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+        fill={fill || 'transparent'}
+        stroke="none"
+      />
+      <path
+        d={d}
+        fill="none"
+        stroke={stroke || 'transparent'}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </g>
+  );
+};
+
 // UX (Plan 15-04 Issue 4, 2026-04-17): text gutter inside the textbox / callout
 // border. Chosen value 6 — breathier than the pre-fix 0 (text hugged border,
 // descenders cut through bottom edge) without becoming a visually large margin.
@@ -405,41 +453,32 @@ export const renderRect = (obj, index) => {
     const scaleX = Math.abs(obj.scaleX || 1);
     const scaleY = Math.abs(obj.scaleY || 1);
     const insets = Array.isArray(obj.data?.pdfCloudInsets) ? obj.data.pdfCloudInsets : [0, 0, 0, 0];
-    const liveCloud = buildCloudPathCommands(
-      [
-        { x: (insets[0] || 0) * scaleX, y: (insets[1] || 0) * scaleY },
-        { x: effectiveWidth - (insets[2] || 0) * scaleX, y: (insets[1] || 0) * scaleY },
-        { x: effectiveWidth - (insets[2] || 0) * scaleX, y: effectiveHeight - (insets[3] || 0) * scaleY },
-        { x: (insets[0] || 0) * scaleX, y: effectiveHeight - (insets[3] || 0) * scaleY },
-      ],
-      cloudIntensity,
-      // UX 2026-04-21: pass stroke width so the renderer can keep the
-      // bump radius ≥ 2×stroke — prevents thick strokes from swallowing
-      // adjacent humps (Acrobat-style clamp, no Drawboard bloat).
-      obj.strokeWidth ?? 1,
-      obj.data?.pdfCloudUnitScale ?? 1,
+    const cloudPoints = [
+      { x: (insets[0] || 0) * scaleX, y: (insets[1] || 0) * scaleY },
+      { x: effectiveWidth - (insets[2] || 0) * scaleX, y: (insets[1] || 0) * scaleY },
+      { x: effectiveWidth - (insets[2] || 0) * scaleX, y: effectiveHeight - (insets[3] || 0) * scaleY },
+      { x: (insets[0] || 0) * scaleX, y: effectiveHeight - (insets[3] || 0) * scaleY },
+    ];
+    const cloudTransform = `translate(${obj.left}, ${obj.top})${
+      obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
+    }`;
+    return (
+      <CloudOutline
+        key={key}
+        shapeId={shapeId}
+        shapeKind="cloud-rect"
+        geometryKind="rectangle"
+        points={cloudPoints}
+        intensity={cloudIntensity}
+        strokeWidth={obj.strokeWidth || 0}
+        unitScale={obj.data?.pdfCloudUnitScale ?? 1}
+        transform={cloudTransform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        opacity={obj.opacity ?? 1}
+        onClick={__shapeClick}
+      />
     );
-    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
-      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
-      const cloudTransform = `translate(${obj.left}, ${obj.top})${
-        obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
-      }`;
-      return (
-        <path
-          key={key}
-          d={d}
-          transform={cloudTransform}
-          fill={obj.fill || 'transparent'}
-          stroke={obj.stroke || 'transparent'}
-          strokeWidth={obj.strokeWidth || 0}
-          strokeLinejoin="round"
-          opacity={obj.opacity ?? 1}
-          data-shape-id={shapeId}
-          data-shape-kind="cloud-rect"
-          onClick={__shapeClick}
-        />
-      );
-    }
   }
 
   const inset = !isHighlight && shouldInsetStroke(obj);
@@ -936,30 +975,23 @@ export const renderPolygon = (obj, index) => {
   const cloudIntensity = obj.data?.pdfCloudIntensity;
   if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
     const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
-    const liveCloud = buildCloudPathCommands(
-      livePoints,
-      cloudIntensity,
-      obj.strokeWidth ?? 1,
-      obj.data?.pdfCloudUnitScale ?? 1,
+    return (
+      <CloudOutline
+        key={key}
+        shapeId={shapeId}
+        shapeKind="cloud-polygon"
+        geometryKind="polygon"
+        points={livePoints}
+        intensity={cloudIntensity}
+        strokeWidth={obj.strokeWidth || 1}
+        unitScale={obj.data?.pdfCloudUnitScale ?? 1}
+        transform={transform}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        opacity={obj.opacity ?? 1}
+        onClick={__shapeClick}
+      />
     );
-    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
-      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
-      return (
-        <path
-          key={key}
-          d={d}
-          transform={transform}
-          fill={obj.fill || 'transparent'}
-          stroke={obj.stroke || 'transparent'}
-          strokeWidth={obj.strokeWidth || 1}
-          strokeLinejoin="round"
-          opacity={obj.opacity ?? 1}
-          data-shape-id={shapeId}
-          data-shape-kind="cloud-polygon"
-          onClick={__shapeClick}
-        />
-      );
-    }
   }
 
   // 2026-04-17: inset-clip disabled for polygon — the clipPath + polygon +

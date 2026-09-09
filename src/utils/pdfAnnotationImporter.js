@@ -4484,6 +4484,7 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
         cloudIntensity,
         strokeWidth * scale,
         scale,
+        'polygon',
       )
     : null;
 
@@ -4672,6 +4673,7 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
         cloudIntensity,
         strokeWidth * scale,
         scale,
+        'rectangle',
       )
     : null;
 

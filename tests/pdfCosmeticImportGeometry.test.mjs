@@ -77,32 +77,43 @@ test('clouds without an explicit intensity keep the default cloud marker', () =>
   assert.equal(polygon.data?.pdfCloudIntensity, 2);
 });
 
-test('cloud geometry uses intensity-sized outward arcs and keeps the source rect extent', () => {
+test('approved cloud geometry keeps visible corners fixed and uses open rounded crowns', () => {
   const points = [
     { x: 10, y: 10 },
     { x: 170, y: 10 },
     { x: 170, y: 80 },
     { x: 10, y: 80 },
   ];
-  const small = buildCloudPathCommands(points, 1, 2);
-  const standard = buildCloudPathCommands(points, 2, 2);
+  const small = buildCloudPathCommands(points, 1, 2, 1, 'rectangle');
+  const standard = buildCloudPathCommands(points, 2, 2, 1, 'rectangle');
   const smallBounds = getCloudPathBounds(small);
   const standardBounds = getCloudPathBounds(standard);
 
-  assert.equal(small.filter(([kind]) => kind === 'C').length, 42);
-  assert.equal(standard.filter(([kind]) => kind === 'C').length, 30);
-  assert.ok(Math.abs(standardBounds.minX - 0) < 0.25);
-  assert.ok(Math.abs(standardBounds.minY - 0) < 0.25);
-  assert.ok(Math.abs(standardBounds.maxX - 180) < 0.25);
-  assert.ok(Math.abs(standardBounds.maxY - 90) < 0.25);
+  assert.ok(small.filter(([kind]) => kind === 'M').length > standard.filter(([kind]) => kind === 'M').length);
+  assert.ok(standard.every(([kind]) => kind === 'M' || kind === 'C'), 'crowns remain open paths');
+  const commandHasPoint = (commands, point) => commands.some((command) => {
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      if (Math.abs(command[index] - point.x) < 1e-6 && Math.abs(command[index + 1] - point.y) < 1e-6) return true;
+    }
+    return false;
+  });
+  assert.ok(points.every((point) => commandHasPoint(standard, point)), 'every visible vertex stays on its handle');
+  assert.ok(standardBounds.minX < 10 && standardBounds.minY < 10);
+  assert.ok(standardBounds.maxX > 170 && standardBounds.maxY > 80);
   assert.ok(smallBounds.minX > standardBounds.minX, 'I=1 has smaller outward bumps');
   assert.ok(smallBounds.maxY < standardBounds.maxY, 'I=1 has smaller outward bumps');
 
-  const scaled = getCloudPathBounds(buildCloudPathCommands(points, 2, 2, 2));
-  assert.ok(scaled.minX < standardBounds.minX - 9, 'saved import scale grows print and screen bumps');
+  const scaled = getCloudPathBounds(buildCloudPathCommands(points, 2, 2, 2, 'rectangle'));
+  assert.ok(scaled.minX < standardBounds.minX - 1, 'saved import scale grows print and screen bumps');
+
+  const resized = buildCloudPathCommands(points.map((point, index) => (
+    index === 1 || index === 2 ? { ...point, x: point.x + 1 } : point
+  )), 2, 2, 1, 'rectangle');
+  assert.notDeepEqual(resized, standard, 'a one-point resize updates the crowns in the same frame');
+  assert.deepEqual(buildCloudPathCommands(points, 2, 2, 1, 'rectangle'), standard, 'reversing a resize restores the exact path');
 });
 
-test('Acrobat page 2 cloud polygon reaches the source outer rectangle', () => {
+test('imported polygon clouds use the approved polygon corner geometry', () => {
   // Localized from acrobat-authored-annotations.pdf page 2, annotation 59R.
   // PDF vertices use y-up, so local screen y is rect[3] - vertexY.
   const points = [
@@ -113,18 +124,11 @@ test('Acrobat page 2 cloud polygon reaches the source outer rectangle', () => {
     { x: 51.157, y: 11.177 },
     { x: 11.157, y: 46.177 },
   ];
-  const bounds = getCloudPathBounds(buildCloudPathCommands(points, 2, 2));
-  const sourceOuterRect = {
-    minX: 0,
-    minY: 0,
-    maxX: 170.248,
-    maxY: 117.233,
-  };
-
-  for (const key of Object.keys(sourceOuterRect)) {
-    assert.ok(
-      Math.abs(bounds[key] - sourceOuterRect[key]) <= 2,
-      `${key} differs from Acrobat by more than two points: ${bounds[key]}`,
-    );
-  }
+  const commands = buildCloudPathCommands(points, 2, 2, 1, 'polygon');
+  const bounds = getCloudPathBounds(commands);
+  assert.ok(bounds.minX < Math.min(...points.map((point) => point.x)));
+  assert.ok(bounds.minY < Math.min(...points.map((point) => point.y)));
+  assert.ok(bounds.maxX > Math.max(...points.map((point) => point.x)));
+  assert.ok(bounds.maxY > Math.max(...points.map((point) => point.y)));
+  assert.ok(commands.filter(([kind]) => kind === 'M').length >= points.length, 'each polygon corner keeps an independent crown');
 });
