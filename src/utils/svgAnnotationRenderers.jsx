@@ -35,7 +35,9 @@ import {
 import {
   buildCloudPathCommands,
   buildStickyNoteGlyphSpec,
+  ellipseCloudPoints,
   isStickyNoteGlyphObject,
+  resolveAnnotationCloudSpec,
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
 // Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
@@ -58,6 +60,32 @@ import { getCounterLabelLayout } from './counterGeometry.js';
 import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
+
+// UX 2026-09-09: a cloud always paints as "solid body, scalloped edge" - the
+// shape's own fill under the crowns, then the engine outline stroked with
+// fill:none so the crowns keep their rounded separator tails. The body follows
+// the shape's real geometry (an ellipse cloud fills an ellipse, not its box);
+// an OPEN polyline cloud has no interior, so it gets no body at all.
+const CloudBody = ({ geometryKind, points, fill }) => {
+  if (geometryKind === 'polyline') return null;
+  const paint = fill || 'transparent';
+  if (geometryKind === 'ellipse') {
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const rx = (Math.max(...xs) - minX) / 2;
+    const ry = (Math.max(...ys) - minY) / 2;
+    return <ellipse cx={minX + rx} cy={minY + ry} rx={rx} ry={ry} fill={paint} stroke="none" />;
+  }
+  return (
+    <polygon
+      points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+      fill={paint}
+      stroke="none"
+    />
+  );
+};
 
 const CloudOutline = ({
   shapeId,
@@ -90,11 +118,7 @@ const CloudOutline = ({
       data-shape-kind={shapeKind}
       onClick={onClick}
     >
-      <polygon
-        points={points.map((point) => `${point.x},${point.y}`).join(' ')}
-        fill={fill || 'transparent'}
-        stroke="none"
-      />
+      <CloudBody geometryKind={geometryKind} points={points} fill={fill} />
       <path
         d={d}
         fill="none"
@@ -449,8 +473,8 @@ export const renderRect = (obj, index) => {
   // it shrinks — matching how Bluebeam, Acrobat, and similar pro tools
   // behave. The data.pdfCloudIntensity signal (set at import) is what
   // flags a box as a cloud; the original baked path is ignored.
-  const cloudIntensity = obj.data?.pdfCloudIntensity;
-  if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+  const cloudSpec = resolveAnnotationCloudSpec(obj);
+  if (cloudSpec && effectiveWidth > 0 && effectiveHeight > 0) {
     const scaleX = Math.abs(obj.scaleX || 1);
     const scaleY = Math.abs(obj.scaleY || 1);
     const insets = Array.isArray(obj.data?.pdfCloudInsets) ? obj.data.pdfCloudInsets : [0, 0, 0, 0];
@@ -468,11 +492,11 @@ export const renderRect = (obj, index) => {
         key={key}
         shapeId={shapeId}
         shapeKind="cloud-rect"
-        geometryKind="rectangle"
+        geometryKind={cloudSpec.kind}
         points={cloudPoints}
-        intensity={cloudIntensity}
+        intensity={cloudSpec.intensity}
         strokeWidth={obj.strokeWidth || 0}
-        unitScale={obj.data?.pdfCloudUnitScale ?? 1}
+        unitScale={cloudSpec.unitScale}
         transform={cloudTransform}
         fill={obj.fill}
         stroke={obj.stroke}
@@ -989,19 +1013,19 @@ export const renderPolygon = (obj, index) => {
   // points on every render, same pattern as cloud-rects. The polygon's own
   // transform chain (with scale) is applied to the <path>, so the bump
   // count scales with the shape.
-  const cloudIntensity = obj.data?.pdfCloudIntensity;
-  if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
+  const cloudSpec = resolveAnnotationCloudSpec(obj);
+  if (cloudSpec && Array.isArray(obj.points) && obj.points.length >= 3) {
     const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
     return (
       <CloudOutline
         key={key}
         shapeId={shapeId}
         shapeKind="cloud-polygon"
-        geometryKind="polygon"
+        geometryKind={cloudSpec.kind}
         points={livePoints}
-        intensity={cloudIntensity}
+        intensity={cloudSpec.intensity}
         strokeWidth={obj.strokeWidth || 1}
-        unitScale={obj.data?.pdfCloudUnitScale ?? 1}
+        unitScale={cloudSpec.unitScale}
         transform={transform}
         fill={obj.fill}
         stroke={obj.stroke}
@@ -1098,6 +1122,34 @@ export const renderPolyline = (obj, index) => {
   const shapeId = obj.id || obj.pdfAnnotationId || key;
   __logShapeRender(obj, 'polyline');
 
+  // UX 2026-09-09: an OPEN polyline can carry the Cloud style too - it traces a
+  // run of scallops along the path and stops with a rounded tail at each end,
+  // exactly as the approved studio draws an open cloud. Same live-rebuild rule
+  // as cloud rects and cloud polygons: the crowns are recomputed from the
+  // current points every render, so dragging a vertex re-fits them in frame.
+  // No fill body - an open path has no interior to fill.
+  const plCloudSpec = resolveAnnotationCloudSpec(obj);
+  if (plCloudSpec && obj.points.length >= 2) {
+    const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
+    return (
+      <CloudOutline
+        key={key}
+        shapeId={shapeId}
+        shapeKind="cloud-polyline"
+        geometryKind={plCloudSpec.kind}
+        points={livePoints}
+        intensity={plCloudSpec.intensity}
+        strokeWidth={obj.strokeWidth || 1}
+        unitScale={plCloudSpec.unitScale}
+        transform={transform}
+        fill={null}
+        stroke={obj.stroke || '#000'}
+        opacity={obj.opacity ?? 1}
+        onClick={__shapeClick}
+      />
+    );
+  }
+
   // UX 2026-04-21: Border Style picker dashed support for open polylines.
   const plDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.join(' ')
@@ -1193,6 +1245,33 @@ export const renderEllipse = (obj, index) => {
   const isHighlight = obj.globalCompositeOperation === 'multiply';
   const shapeId = obj.id || obj.pdfAnnotationId || key;
   __logShapeRender(obj, 'ellipse');
+
+  // UX 2026-09-09: ellipse and circle annotations take the Cloud border style
+  // like rectangles do. The approved engine fits the scallops to the ellipse
+  // itself (not its bounding box) from the four box corners, and rebuilds them
+  // from the LIVE rx/ry every render, so resizing adds/removes humps in frame
+  // instead of stretching a baked path. Body fill = the ellipse, edge = the
+  // engine outline stroked with fill:none, matching the rect cloud contract.
+  const ellipseCloudSpec = resolveAnnotationCloudSpec(obj);
+  if (ellipseCloudSpec && rx > 0 && ry > 0) {
+    return (
+      <CloudOutline
+        key={key}
+        shapeId={shapeId}
+        shapeKind="cloud-ellipse"
+        geometryKind={ellipseCloudSpec.kind}
+        points={ellipseCloudPoints(0, 0, rx * 2, ry * 2)}
+        intensity={ellipseCloudSpec.intensity}
+        strokeWidth={obj.strokeWidth || 0}
+        unitScale={ellipseCloudSpec.unitScale}
+        transform={`translate(${cx - rx}, ${cy - ry})${obj.angle ? ` rotate(${obj.angle}, ${rx}, ${ry})` : ''}`}
+        fill={obj.fill}
+        stroke={obj.stroke}
+        opacity={obj.opacity ?? 1}
+        onClick={__shapeClick}
+      />
+    );
+  }
 
   const rotateTransform = obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined;
   const inset = !isHighlight && shouldInsetStroke(obj);

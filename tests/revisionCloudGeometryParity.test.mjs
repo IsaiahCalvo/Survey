@@ -20,6 +20,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -35,9 +36,14 @@ try {
 }
 
 const app = await import('../src/utils/revisionCloudGeometry.js');
-const { buildCloudPathCommands, cloudRadiusForIntensity } = await import(
-  '../src/utils/pdfAnnotationAppearance.js'
-);
+const {
+  buildCloudPathCommands,
+  cloudRadiusForIntensity,
+  ellipseCloudPoints,
+  resolveAnnotationCloudSpec,
+  toolSupportsCloudBorderStyle,
+} = await import('../src/utils/pdfAnnotationAppearance.js');
+const { drawAnnotationObject } = await import('../src/utils/annotationCanvasPainter.js');
 
 const skip = reference
   ? false
@@ -301,4 +307,290 @@ test('buildCloudPathCommands emits only absolute M and C segments', { skip }, ()
       assert.ok(Number.isFinite(value));
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Layer 2b - every SHAPE the Cloud style is offered on renders the reference
+// outline, not just the rectangle and polygon the style shipped with.
+//
+// UX 2026-09-09: Cloud is a REGION marker, so it is offered on rectangle,
+// ellipse/circle, polygon and (open) polyline, and never on arrow, counter or a
+// single straight line. These tests are what stop a new shape from growing its
+// own lookalike cloud instead of asking the approved engine for one.
+// ---------------------------------------------------------------------------
+
+// Open runs: the studio's own polyline sizes, including a degenerate two-point
+// path (the smallest open cloud the app can commit).
+const POLYLINES = {
+  twoPoint: [{ x: 40, y: 40 }, { x: 320, y: 210 }],
+  zigzag: [
+    { x: 40, y: 260 }, { x: 120, y: 90 }, { x: 210, y: 250 },
+    { x: 300, y: 80 }, { x: 380, y: 240 },
+  ],
+  shallow: [{ x: 20, y: 100 }, { x: 180, y: 108 }, { x: 340, y: 96 }],
+};
+
+test('render parity: ellipse clouds match the studio outline at every size', { skip }, () => {
+  for (const [w, h] of [[300, 200], [40, 30], [600, 18], [120, 400], [1000, 700], [25, 25]]) {
+    for (const intensity of [1, 2, 3, 5]) {
+      for (const strokeWidth of [0.5, 1, 3, 8]) {
+        for (const unitScale of [1, 1.5, 2.75]) {
+          const points = ellipseCloudPoints(0, 0, w, h);
+          const size = cloudRadiusForIntensity(intensity, strokeWidth, unitScale) * 2;
+          assert.equal(
+            appRenderedPath(points, intensity, strokeWidth, unitScale, 'ellipse'),
+            referenceRenderedPath('ellipse', points, size),
+            `ellipse ${w}x${h} intensity=${intensity} stroke=${strokeWidth} unitScale=${unitScale}`,
+          );
+        }
+      }
+    }
+  }
+});
+
+test('render parity: a circle asks for the same engine geometry as an ellipse', { skip }, () => {
+  // A fabric circle and a fabric ellipse are the same drawing to the engine;
+  // if they ever diverge, one of the two shapes is drawing a lookalike.
+  for (const [w, h] of [[240, 240], [500, 120], [33, 47]]) {
+    const points = ellipseCloudPoints(0, 0, w, h);
+    const size = cloudRadiusForIntensity(2, 1, 1) * 2;
+    assert.equal(
+      appRenderedPath(points, 2, 1, 1, 'circle'),
+      referenceRenderedPath('ellipse', points, size),
+      `circle ${w}x${h}`,
+    );
+  }
+});
+
+test('render parity: open polyline clouds match the studio outline', { skip }, () => {
+  for (const [name, points] of Object.entries(POLYLINES)) {
+    for (const intensity of [1, 2, 4]) {
+      for (const strokeWidth of [1, 4]) {
+        for (const unitScale of [1, 2]) {
+          const size = cloudRadiusForIntensity(intensity, strokeWidth, unitScale) * 2;
+          assert.equal(
+            appRenderedPath(points, intensity, strokeWidth, unitScale, 'polyline'),
+            referenceRenderedPath('polyline', points, size),
+            `${name} intensity=${intensity} stroke=${strokeWidth} unitScale=${unitScale}`,
+          );
+        }
+      }
+    }
+  }
+});
+
+test('render parity: an open polyline cloud is NOT the closed polygon cloud', { skip }, () => {
+  // The open run has to stop at both ends with the engine's rounded tails
+  // instead of wrapping the last vertex back to the first.
+  const points = POLYLINES.zigzag;
+  assert.notEqual(
+    appRenderedPath(points, 2, 1, 1, 'polyline'),
+    appRenderedPath(points, 2, 1, 1, 'polygon'),
+  );
+  assert.ok(
+    buildCloudPathCommands(POLYLINES.twoPoint, 2, 1, 1, 'polyline').length > 0,
+    'a two-vertex open cloud is legal',
+  );
+  assert.equal(
+    buildCloudPathCommands(POLYLINES.twoPoint, 2, 1, 1, 'polygon'),
+    null,
+    'a two-vertex CLOSED cloud is not',
+  );
+});
+
+test('render parity: resizing an ellipse cloud recomputes the studio outline', { skip }, () => {
+  // Corner-anchored resize, the same drag the app performs on a cloud rect:
+  // the hump count has to follow the v17 schedule at every intermediate size.
+  for (let step = 0; step <= 40; step += 1) {
+    const w = 30 + step * 24.5;
+    const h = 20 + step * 11.25;
+    const points = ellipseCloudPoints(0, 0, w, h);
+    const size = cloudRadiusForIntensity(2, 1, 1) * 2;
+    assert.equal(
+      appRenderedPath(points, 2, 1, 1, 'ellipse'),
+      referenceRenderedPath('ellipse', points, size),
+      `ellipse resize step ${step} (${w}x${h})`,
+    );
+  }
+});
+
+test('render parity: dragging a polyline vertex recomputes the studio outline', { skip }, () => {
+  for (let step = 0; step < 40; step += 1) {
+    const points = POLYLINES.zigzag.map((point, index) => (
+      index === 2 ? { x: 210 + step * 3.1, y: 250 - step * 2.9 } : point
+    ));
+    const size = cloudRadiusForIntensity(2, 1, 1) * 2;
+    assert.equal(
+      appRenderedPath(points, 2, 1, 1, 'polyline'),
+      referenceRenderedPath('polyline', points, size),
+      `polyline vertex drag step ${step}`,
+    );
+  }
+});
+
+test('the Cloud style is offered on exactly the four region shapes', { skip }, () => {
+  for (const tool of ['rect', 'rectangle', 'square', 'ellipse', 'circle', 'polygon', 'polyline']) {
+    assert.equal(toolSupportsCloudBorderStyle(tool), true, `${tool} must offer Cloud`);
+  }
+  for (const tool of ['arrow', 'line', 'counter', 'triangle', 'text', 'textbox', 'callout', 'path', 'pen', 'highlighter', '', null, undefined]) {
+    assert.equal(toolSupportsCloudBorderStyle(tool), false, `${String(tool)} must NOT offer Cloud`);
+  }
+  // Same predicate, resolved off a live annotation.
+  assert.deepEqual(
+    resolveAnnotationCloudSpec({ type: 'Ellipse', data: { pdfCloudIntensity: 3, pdfCloudUnitScale: 2 } }),
+    { kind: 'ellipse', intensity: 3, unitScale: 2 },
+  );
+  assert.deepEqual(
+    resolveAnnotationCloudSpec({ type: 'polyline', data: { pdfCloudIntensity: 2 } }),
+    { kind: 'polyline', intensity: 2, unitScale: 1 },
+  );
+  // A counter is a circle internally; it is a pin, never a region marker.
+  assert.equal(resolveAnnotationCloudSpec({ type: 'circle', data: { type: 'counter', pdfCloudIntensity: 2 } }), null);
+  assert.equal(resolveAnnotationCloudSpec({ type: 'line', data: { pdfCloudIntensity: 2 } }), null);
+  assert.equal(resolveAnnotationCloudSpec({ type: 'rect', data: {} }), null);
+  assert.equal(resolveAnnotationCloudSpec({ type: 'rect' }), null);
+});
+
+// ---------------------------------------------------------------------------
+// Layer 3 - the canvas presentation painter (the twin the app draws while
+// erasing / printing to a bitmap) traces the SAME reference outline, for every
+// cloud-capable shape. This drives the real painter with a recording context,
+// so it is a render-path test, not a re-derivation.
+// ---------------------------------------------------------------------------
+
+const recordingContext = () => {
+  const calls = [];
+  const context = {
+    calls,
+    save: () => {}, restore: () => {},
+    translate: (...a) => calls.push(['translate', ...a]),
+    rotate: () => {}, scale: () => {}, transform: () => {},
+    beginPath: () => {}, closePath: () => calls.push(['closePath']),
+    rect: (...a) => calls.push(['rect', ...a]),
+    ellipse: (...a) => calls.push(['ellipse', ...a]),
+    arc: (...a) => calls.push(['arc', ...a]),
+    arcTo: () => {},
+    clip: () => {},
+    measureText: () => ({ width: 0 }),
+    fillText: () => {},
+    strokeText: () => {},
+    moveTo: (...a) => calls.push(['M', ...a]),
+    lineTo: (...a) => calls.push(['L', ...a]),
+    quadraticCurveTo: (...a) => calls.push(['Q', ...a]),
+    bezierCurveTo: (...a) => calls.push(['C', ...a]),
+    setLineDash: () => {},
+    stroke: () => calls.push(['stroke']),
+    fill: (...a) => calls.push(['fill', ...a]),
+  };
+  return context;
+};
+
+const paintedCloudPath = (object) => {
+  const context = recordingContext();
+  drawAnnotationObject(context, object, 1);
+  return context.calls
+    .filter(([verb]) => verb === 'M' || verb === 'C')
+    .map((segment) => segment.join(' '))
+    .join(' ');
+};
+
+test('canvas parity: the presentation painter traces the studio outline for every cloud shape', { skip }, () => {
+  const size = cloudRadiusForIntensity(2, 1, 1) * 2;
+  const box = { left: 0, top: 0, width: 300, height: 200, scaleX: 1, scaleY: 1, strokeWidth: 1, stroke: '#c42747', fill: 'transparent' };
+
+  assert.equal(
+    paintedCloudPath({ ...box, type: 'rect', data: { pdfCloudIntensity: 2 } }),
+    referenceRenderedPath('rectangle', rect(0, 0, 300, 200), size),
+    'cloud rect',
+  );
+  assert.equal(
+    paintedCloudPath({ ...box, type: 'ellipse', rx: 150, ry: 100, data: { pdfCloudIntensity: 2 } }),
+    referenceRenderedPath('ellipse', ellipseCloudPoints(0, 0, 300, 200), size),
+    'cloud ellipse',
+  );
+  assert.equal(
+    paintedCloudPath({ ...box, type: 'circle', radius: 150, width: 300, height: 300, data: { pdfCloudIntensity: 2 } }),
+    referenceRenderedPath('ellipse', ellipseCloudPoints(0, 0, 300, 300), size),
+    'cloud circle',
+  );
+  assert.equal(
+    paintedCloudPath({
+      type: 'polygon', left: 0, top: 0, scaleX: 1, scaleY: 1, strokeWidth: 1,
+      stroke: '#c42747', fill: 'transparent', points: POLYGONS.star,
+      data: { pdfCloudIntensity: 2 },
+    }),
+    referenceRenderedPath('polygon', POLYGONS.star, size),
+    'cloud polygon',
+  );
+  assert.equal(
+    paintedCloudPath({
+      type: 'polyline', left: 0, top: 0, scaleX: 1, scaleY: 1, strokeWidth: 1,
+      stroke: '#c42747', fill: 'transparent', points: POLYLINES.zigzag,
+      data: { pdfCloudIntensity: 2 },
+    }),
+    referenceRenderedPath('polyline', POLYLINES.zigzag, size),
+    'cloud polyline',
+  );
+});
+
+test('canvas parity: a cloud shape fills its own body, never the cloud outline', { skip }, () => {
+  // The contract rect clouds have always followed: body filled with the
+  // shape's own geometry, crowns stroked with fill:none.
+  const ellipse = recordingContext();
+  drawAnnotationObject(ellipse, {
+    type: 'ellipse', left: 0, top: 0, width: 300, height: 200, rx: 150, ry: 100,
+    scaleX: 1, scaleY: 1, strokeWidth: 1, stroke: '#c42747', fill: '#ffcc00',
+    data: { pdfCloudIntensity: 2 },
+  }, 1);
+  assert.ok(ellipse.calls.some(([verb]) => verb === 'ellipse'), 'the body is an ellipse, not its box');
+  assert.equal(ellipse.calls.filter(([verb]) => verb === 'fill').length, 1, 'exactly one fill: the body');
+
+  const polyline = recordingContext();
+  drawAnnotationObject(polyline, {
+    type: 'polyline', left: 0, top: 0, scaleX: 1, scaleY: 1, strokeWidth: 1,
+    stroke: '#c42747', fill: '#ffcc00', points: POLYLINES.zigzag,
+    data: { pdfCloudIntensity: 2 },
+  }, 1);
+  assert.equal(polyline.calls.filter(([verb]) => verb === 'fill').length, 0,
+    'an OPEN cloud has no interior, so it never fills');
+
+  // A counter never becomes a cloud even if the field is somehow present.
+  const counter = recordingContext();
+  drawAnnotationObject(counter, {
+    type: 'circle', left: 0, top: 0, radius: 14, width: 28, height: 28,
+    scaleX: 1, scaleY: 1, strokeWidth: 1, stroke: '#fff', fill: '#c42747',
+    data: { type: 'counter', pdfCloudIntensity: 2, displayNumber: 1 },
+  }, 1);
+  assert.equal(counter.calls.some(([verb]) => verb === 'C'), false,
+    'counters have no scalloped edge');
+});
+
+// ---------------------------------------------------------------------------
+// Layer 4 - the SVG layer and the pdf-lib flattener ask the SAME resolver which
+// shapes are clouds and which engine geometry to build, so no render surface
+// can keep its own list. (.jsx cannot be imported under `node --test`, so the
+// SVG layer is checked at the source level, the established precedent here.)
+// ---------------------------------------------------------------------------
+
+test('every render path funnels the cloud decision through one resolver', () => {
+  const svg = readFileSync(new URL('../src/utils/svgAnnotationRenderers.jsx', import.meta.url), 'utf8');
+  const painter = readFileSync(new URL('../src/utils/annotationCanvasPainter.js', import.meta.url), 'utf8');
+  const flatten = readFileSync(new URL('../src/utils/pdfAnnotationsPdfLib.js', import.meta.url), 'utf8');
+  const creation = readFileSync(new URL('../src/utils/annotationCreationCommit.js', import.meta.url), 'utf8');
+
+  for (const [label, source] of [['svg', svg], ['painter', painter], ['flatten', flatten]]) {
+    assert.match(source, /resolveAnnotationCloudSpec/, `${label} must use the shared resolver`);
+    assert.doesNotMatch(
+      source,
+      /Number\.isFinite\(\s*cloudIntensity\s*\)/,
+      `${label} must not re-derive its own cloud predicate`,
+    );
+  }
+  // The four cloud-capable SVG renderers each hand the resolver's kind to the
+  // funnel rather than a hard-coded geometry name.
+  assert.equal((svg.match(/geometryKind=\{[a-zA-Z]*[Cc]loudSpec\.kind\}/g) || []).length, 4);
+  assert.match(svg, /shapeKind="cloud-ellipse"/);
+  assert.match(svg, /shapeKind="cloud-polyline"/);
+  // And the toolbar/creation gate is the shared predicate, not a tool list.
+  assert.match(creation, /toolSupportsCloudBorderStyle\(tool\)/);
 });

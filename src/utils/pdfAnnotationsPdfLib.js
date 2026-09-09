@@ -97,7 +97,9 @@ import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
 import {
   buildCloudPathCommands,
   buildStickyNoteGlyphSpec,
+  ellipseCloudPoints,
   isStickyNoteGlyphObject,
+  resolveAnnotationCloudSpec,
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
@@ -1792,6 +1794,23 @@ export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options
 };
 
 /**
+ * UX 2026-09-09: /BE (Border Effect) is how the cloudy border round-trips. Every
+ * shape writer that can carry the Cloud style writes the SAME dict the /Square
+ * writer always did - /BE << /S /C /I <bump> >> - so exporting and re-importing
+ * an ellipse, polygon or polyline cloud restores both the style and its bump
+ * size instead of degrading to a plain outline.
+ */
+const applyCloudBorderEffectToDict = (pdfDoc, annotationDict, fabricObj) => {
+  const cloud = resolveAnnotationCloudSpec(fabricObj);
+  if (!cloud) return false;
+  annotationDict.BE = pdfDoc.context.obj({
+    S: PDFName.of('C'),
+    I: PDFNumber.of(cloud.intensity),
+  });
+  return true;
+};
+
+/**
  * Create Square annotation (rectangle)
  */
 const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
@@ -1825,14 +1844,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
-    const storedCloudIntensity = fabricObj?.data?.pdfCloudIntensity;
-    const cloudIntensity = Number(storedCloudIntensity);
-    if (storedCloudIntensity != null && Number.isFinite(cloudIntensity)) {
-      annotationDict.BE = pdfDoc.context.obj({
-        S: PDFName.of('C'),
-        I: PDFNumber.of(cloudIntensity),
-      });
-    }
+    applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
@@ -1972,6 +1984,8 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
+    applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
+
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
   } catch (e) {
     console.error('Error creating circle annotation:', e);
@@ -2077,6 +2091,7 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
+    applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2349,16 +2364,12 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     }
 
     // Add cloud border effect if specified
-    const rawStoredCloudIntensity = fabricObj?.data?.pdfCloudIntensity;
-    const storedCloudIntensity = Number(rawStoredCloudIntensity);
-    if ((rawStoredCloudIntensity != null && Number.isFinite(storedCloudIntensity))
-      || fabricObj.cloudBorder
-      || fabricObj.borderEffect === 'cloudy') {
+    if (applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
+      annotationDict.IT = PDFName.of('PolygonCloud');
+    } else if (fabricObj.cloudBorder || fabricObj.borderEffect === 'cloudy') {
       annotationDict.BE = pdfDoc.context.obj({
         S: PDFName.of('C'), // Cloudy
-        I: PDFNumber.of(rawStoredCloudIntensity != null && Number.isFinite(storedCloudIntensity)
-          ? storedCloudIntensity
-          : (fabricObj.cloudIntensity || 2)),
+        I: PDFNumber.of(fabricObj.cloudIntensity || 2),
       });
       annotationDict.IT = PDFName.of('PolygonCloud');
     }
@@ -2405,10 +2416,14 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Contents: PDFString.of(''),
       P: page.ref,
     };
-    // Endings + interior colour round-trip for polylines too (imported
-    // polylines with /LE used to re-export bare).
-    applyLineEndingsToDict(annotationDict, fabricObj);
-    applyLineEndingInteriorColor(annotationDict, fabricObj, color);
+    // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
+    // tails rather than arrowheads, so it writes no /LE (matching the screen).
+    if (!applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
+      // Endings + interior colour round-trip for polylines too (imported
+      // polylines with /LE used to re-export bare).
+      applyLineEndingsToDict(annotationDict, fabricObj);
+      applyLineEndingInteriorColor(annotationDict, fabricObj, color);
+    }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
@@ -3883,14 +3898,19 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
-  const rawCloudIntensity = obj?.data?.pdfCloudIntensity;
-  const cloud = closePath && rawCloudIntensity != null && Number.isFinite(Number(rawCloudIntensity))
+  // UX 2026-09-09: printing/flattening a cloud polygon OR a cloud polyline uses
+  // the same engine outline the screen draws, so what prints is what was seen.
+  // An open polyline keeps its rounded end tails and never gets a fill body.
+  const polyCloudSpec = resolveAnnotationCloudSpec(obj);
+  const cloud = polyCloudSpec
     ? buildCloudPathCommands(
-        points,
-        Number(obj.data.pdfCloudIntensity),
+        // Endings are inset for a plain polyline body; a cloud has no
+        // arrowheads to make room for, so it traces the authored vertices.
+        polyCloudSpec.kind === 'polyline' ? rawPoints : points,
+        polyCloudSpec.intensity,
         Number(obj?.strokeWidth) || 1,
-        obj?.data?.pdfCloudUnitScale ?? 1,
-        'polygon',
+        polyCloudSpec.unitScale,
+        polyCloudSpec.kind,
       )
     : null;
   const d = Array.isArray(cloud) && cloud.length > 0
@@ -4157,13 +4177,12 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       borderOpacity: hasBorder ? (stroke?.opacity ?? 1) * objectOpacity : undefined,
       blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     };
-    const rawCloudIntensity = shifted?.data?.pdfCloudIntensity;
-    const cloudIntensity = Number(rawCloudIntensity);
+    const rectCloud = resolveAnnotationCloudSpec(shifted);
     // buildCloudPathCommands returns null for unusable geometry (a non-finite
     // corner). Resolve it up front so that case falls through to the plain
     // rectangle branches below instead of flattening nothing.
     const cloudSpec = (() => {
-      if (rawCloudIntensity == null || !Number.isFinite(cloudIntensity)) return null;
+      if (!rectCloud) return null;
       if (!(width > 0) || !(height > 0)) return null;
       const center = { x: left + width / 2, y: top + height / 2 };
       const insets = Array.isArray(shifted?.data?.pdfCloudInsets)
@@ -4177,10 +4196,10 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       ].map((point) => rotateAppPoint(point, center, angle));
       const cloud = buildCloudPathCommands(
         points,
-        cloudIntensity,
+        rectCloud.intensity,
         strokeWidth,
-        shifted?.data?.pdfCloudUnitScale ?? 1,
-        'rectangle',
+        rectCloud.unitScale,
+        rectCloud.kind,
       );
       return Array.isArray(cloud) && cloud.length > 0 ? { points, cloud } : null;
     })();
@@ -4229,6 +4248,61 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const cx = left + xRadius; const cy = top + yRadius;
     const angle = Number(shifted?.angle) || 0;
     const common = { borderColor: stroke?.color, borderWidth: strokeWidth, color: fill?.color, opacity: fill?.opacity ?? 1, borderOpacity: stroke?.opacity, blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined };
+    // UX 2026-09-09: an ellipse/circle carrying the Cloud style prints its
+    // scalloped edge, exactly like a cloud rect - same engine, same outline the
+    // screen shows. The oval body is filled first, then the crowns are stroked
+    // with no fill so their rounded separator tails survive.
+    const ellipseCloud = resolveAnnotationCloudSpec(shifted);
+    if (ellipseCloud && xRadius > 0 && yRadius > 0) {
+      const center = { x: cx, y: cy };
+      const cloudPoints = ellipseCloudPoints(cx - xRadius, cy - yRadius, xRadius * 2, yRadius * 2);
+      const cloud = buildCloudPathCommands(
+        cloudPoints,
+        ellipseCloud.intensity,
+        strokeWidth,
+        ellipseCloud.unitScale,
+        ellipseCloud.kind,
+      );
+      if (Array.isArray(cloud) && cloud.length > 0) {
+        if (fill) {
+          // Rotation rides on the fill body only; the engine builds the crowns
+          // in the un-rotated frame, so both are rotated the same way below.
+          const bodyPoints = Array.from({ length: 96 }, (_, index) => {
+            const theta = index * Math.PI * 2 / 96;
+            return rotateAppPoint(
+              { x: cx + Math.cos(theta) * xRadius, y: cy + Math.sin(theta) * yRadius },
+              center,
+              angle,
+            );
+          });
+          page.drawSvgPath(
+            `${bodyPoints.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`,
+            { x: 0, y: pageHeight, color: fill.color, opacity: fill.opacity ?? 1, borderWidth: 0, blendMode: common.blendMode },
+          );
+        }
+        // Engine output is only absolute M (1 point) and C (3 points), so
+        // rotating every consecutive x/y pair rotates the whole outline.
+        const rotated = angle
+          ? cloud.map(([verb, ...values]) => {
+            const out = [verb];
+            for (let index = 0; index + 1 < values.length; index += 2) {
+              const point = rotateAppPoint({ x: values[index], y: values[index + 1] }, center, angle);
+              out.push(point.x, point.y);
+            }
+            return out;
+          })
+          : cloud;
+        page.drawSvgPath(rotated.map((segment) => segment.join(' ')).join(' '), {
+          x: 0,
+          y: pageHeight,
+          ...common,
+          color: undefined,
+          opacity: undefined,
+          borderLineCap: LineCapStyle.Round,
+        });
+        return 1;
+      }
+    }
     if (angle) {
       const points = Array.from({ length: 48 }, (_, index) => {
         const theta = index * Math.PI * 2 / 48;
@@ -4248,7 +4322,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (type === 'polygon') return drawFlattenedPolygon(page, shifted, pageHeight, true) ? 1 : 0;
   if (type === 'polyline') {
     if (!drawFlattenedPolygon(page, shifted, pageHeight, false)) return 0;
-    drawFlattenedPolylineEndings(page, shifted, pageHeight);
+    // A cloud polyline ends in the engine's rounded tails, not an arrowhead -
+    // renderPolyline returns before its ending specs for the same reason.
+    if (!resolveAnnotationCloudSpec(shifted)) drawFlattenedPolylineEndings(page, shifted, pageHeight);
     return 1;
   }
   if (type === 'textbox' || type === 'text' || type === 'i-text') {

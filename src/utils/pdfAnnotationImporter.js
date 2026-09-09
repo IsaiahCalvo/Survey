@@ -4629,12 +4629,34 @@ function convertPolyLineToFabricPolyline(annotation, viewport, scale = 1) {
   const dashArray = extractAnnotationDashArray(annotation);
   const intent = normalizePdfNameToken(annotation.intent || '');
 
+  // UX 2026-09-09: an Acrobat /PolyLine authored with the cloudy border effect
+  // (/BE /S = /C) imports as an OPEN revision cloud - the same scalloped run
+  // the app draws for its own cloud polylines, ending in rounded tails instead
+  // of arrowheads. Same field names as every other cloud shape so one code
+  // path renders, prints and re-exports it.
+  const cloudEffect = annotation.borderEffect?.style === 'C'
+    ? (annotation.borderEffect || { style: 'C', intensity: 2 })
+    : null;
+  const cloudIntensity = cloudEffect ? (cloudEffect.intensity ?? 2) : null;
+  const cloudPathD = cloudEffect
+    ? buildCloudPathCommands(
+        relative.points,
+        cloudIntensity,
+        strokeWidth * scale,
+        scale,
+        'polyline',
+      )
+    : null;
+
   const data = {
     ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
     // /IC decides whether a ClosedArrow ending is filled or hollow.
     ...(Array.isArray(annotation.interiorColor) && annotation.interiorColor.length >= 3
       ? { pdfInteriorColor: pdfColorToHex(annotation.interiorColor, annotation) } : {}),
-    ...(intent ? { pdfIntent: intent } : {})
+    ...(intent ? { pdfIntent: intent } : {}),
+    ...(cloudPathD
+      ? { pdfCloudPathD: cloudPathD, pdfCloudIntensity: cloudIntensity, pdfCloudUnitScale: scale }
+      : {}),
   };
 
   return {
@@ -5017,7 +5039,17 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
   // rx/ry + angle so the SVG renderer draws it as Drawboard displayed it.
   const appearance = annotation?._appearance;
   const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
-  const appearanceBounds = !rotationTransform
+  // UX 2026-09-09: an Acrobat /Circle authored with the cloudy border effect
+  // (/BE /S = /C, intensity from /BE /I) imports as an ellipse revision cloud,
+  // matching how /Square already imports. Its /AP appearance box is inflated by
+  // the scallops, so - exactly like the Square path - the cloud case keeps the
+  // authored /Rect instead of shrinking to the appearance bounds, or the oval
+  // would import smaller than the author drew it every round trip.
+  const cloudEffect = annotation.borderEffect?.style === 'C'
+    ? (annotation.borderEffect || { style: 'C', intensity: 2 })
+    : null;
+  const cloudIntensity = cloudEffect ? (cloudEffect.intensity ?? 2) : null;
+  const appearanceBounds = !cloudEffect && !rotationTransform
     && (appearance?.hasFill === true || appearance?.hasStroke === true)
     ? getAppearancePathBounds(annotation, viewport, scale)
     : null;
@@ -5076,6 +5108,9 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
       strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
       ...(dashArray && hasVisibleStroke ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
       strokeUniform: true,
+      ...(cloudEffect
+        ? { data: { pdfCloudIntensity: cloudIntensity, pdfCloudUnitScale: scale } }
+        : {}),
       selectable: true,
       evented: true,
       hasControls: true,
@@ -5103,6 +5138,9 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
     ...(dashArray && hasVisibleStroke ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     strokeUniform: true,
+    ...(cloudEffect
+      ? { data: { pdfCloudIntensity: cloudIntensity, pdfCloudUnitScale: scale } }
+      : {}),
     // If it's an ellipse, store the original dimensions
     scaleX: viewportRect.width / (radius * 2),
     scaleY: viewportRect.height / (radius * 2),

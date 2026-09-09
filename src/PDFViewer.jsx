@@ -113,6 +113,7 @@ import {
   resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
@@ -4120,7 +4121,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setStrokeWidthInputValue(nextWidthInputValue);
     }
     const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
-    if ((type === 'rect' || type === 'polygon') && annot.data?.pdfCloudIntensity != null) {
+    // UX 2026-09-09: selecting ANY cloud shape (rect, ellipse/circle, polygon,
+    // polyline) puts the Style picker on Cloud and loads its bump size, so the
+    // toolbar always reflects what is selected. Counters are circles internally
+    // but are never clouds, hence the isCounter guard.
+    if (!isCounter && toolSupportsCloudBorderStyle(type) && annot.data?.pdfCloudIntensity != null) {
       setLineBorderStyle('cloud');
       setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
     } else if (dash && dash.length >= 2) {
@@ -23676,6 +23681,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onTextStyleDefaultsChange: setTextStyleDefaults,
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
+      // UX 2026-09-09: the Style picker offers "Cloud" (and, once picked, the
+      // Bump size) for the shapes a revision cloud can actually enclose or
+      // trace - rectangle, ellipse/circle, polygon, polyline - whether the tool
+      // is armed before drawing or such an annotation is selected. It is never
+      // offered for arrow, counter, or a single straight line. This is resolved
+      // from the SELECTED object's real type (not contextTool, which folds a
+      // selected polygon onto 'rect' and a selected polyline onto 'line'), so
+      // the menu matches what will actually render.
+      supportsCloudStyle: selectionMappedTool && activeTool === 'select'
+        ? (selectedAnnot?.data?.type !== 'counter' && toolSupportsCloudBorderStyle(selectedType))
+        : toolSupportsCloudBorderStyle(activeTool),
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
       textMarkupOverlapMode: selectedAnnot?.data?.type === 'text-markup'
