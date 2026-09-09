@@ -29,8 +29,11 @@ import {
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
-import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
-import { ellipseCloudPoints, resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
+import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
+// UX 2026-09-09: clouds paint from the shared resolver (engine vertices with
+// scale baked in, translate + rotate frame, crown outline, scalloped fill) so
+// the bitmap twin is the SVG layer's output, not a re-derivation of it.
+import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
@@ -599,12 +602,50 @@ function drawLine(context, object) {
   context.restore();
 }
 
+// Twin of CloudOutline (svgAnnotationRenderers.jsx): the scalloped fill region
+// (one nonzero path, only when the fill paint is visible) under the engine
+// crowns stroked with round caps/joins, placed by translate + rotate only.
+// `strokeFallback` mirrors each SVG renderer's default stroke paint.
+function drawCloud(context, object, geometry, strokeFallback = null) {
+  context.save();
+  applyBlendAndOpacity(context, object);
+  context.translate(geometry.origin.x, geometry.origin.y);
+  applyRotation(context, geometry.angle, geometry.pivot.x, geometry.pivot.y);
+  if (geometry.fill && isVisiblePaint(object.fill)) {
+    context.beginPath();
+    traceCommandsInto(context, geometry.fill);
+    paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0, fillRule: 'nonzero' });
+  }
+  context.beginPath();
+  traceCommandsInto(context, geometry.outline);
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  paintCurrentPath(context, {
+    fill: null,
+    stroke: isVisiblePaint(object.stroke) ? object.stroke : strokeFallback,
+    strokeWidth: geometry.strokeWidth,
+  });
+  context.restore();
+}
+
 // Twin of renderPolygon / renderPolyline: the exact SVG transform chain
 // (translate → rotate about the pathOffset-corrected center → scale →
 // translate(−pathOffset)) so points land where the SVG puts them.
 function drawPoints(context, object, close) {
   const points = Array.isArray(object?.points) ? object.points : [];
   if (points.length === 0) return;
+  // UX 2026-09-09: closed polygons AND open polylines both take the Cloud
+  // style; resolveAnnotationCloudSpec decides, and the shared geometry
+  // resolver hands back the studio's crowns with any scale already baked into
+  // the vertices. An open polyline has no interior, so it never paints a fill.
+  const cloudGeometry = resolveAnnotationCloudSpec(object)
+    ? resolveCloudAnnotationGeometry(object)
+    : null;
+  if (cloudGeometry) {
+    drawCloud(context, object, cloudGeometry, close ? null : '#000');
+    return;
+  }
   const scaleX = toNumber(object.scaleX, 1) || 1;
   const scaleY = toNumber(object.scaleY, 1) || 1;
   const pathOffsetX = toNumber(object.pathOffset?.x);
@@ -629,48 +670,15 @@ function drawPoints(context, object, close) {
   context.scale(scaleX, scaleY);
   context.translate(-pathOffsetX, -pathOffsetY);
 
-  // UX 2026-09-09: closed polygons AND open polylines both take the Cloud
-  // style; the engine kind comes from resolveAnnotationCloudSpec so the canvas
-  // twin can never disagree with the SVG layer about which shapes are cloudy.
-  // An open polyline has no interior, so it never paints a fill body.
-  const cloudSpec = resolveAnnotationCloudSpec(object);
   const strokeWidth = toNumber(object.strokeWidth, 1);
   context.beginPath();
-  let traced = false;
-  if (cloudSpec) {
-    const cloud = buildCloudPathCommands(
-      points.map((point) => ({ x: toNumber(point?.x), y: toNumber(point?.y) })),
-      cloudSpec.intensity,
-      strokeWidth,
-      cloudSpec.unitScale,
-      cloudSpec.kind,
-    );
-    if (Array.isArray(cloud) && cloud.length > 0) {
-      if (close && isVisiblePaint(object.fill)) {
-        context.beginPath();
-        points.forEach((point, index) => {
-          const x = toNumber(point?.x);
-          const y = toNumber(point?.y);
-          if (index === 0) context.moveTo(x, y);
-          else context.lineTo(x, y);
-        });
-        context.closePath();
-        paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0 });
-        context.beginPath();
-      }
-      traceCommandsInto(context, cloud);
-      traced = true;
-    }
-  }
-  if (!traced) {
-    points.forEach((point, index) => {
-      const x = toNumber(point?.x);
-      const y = toNumber(point?.y);
-      if (index === 0) context.moveTo(x, y);
-      else context.lineTo(x, y);
-    });
-    if (close) context.closePath();
-  }
+  points.forEach((point, index) => {
+    const x = toNumber(point?.x);
+    const y = toNumber(point?.y);
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  });
+  if (close) context.closePath();
 
   if (typeof context.setLineDash === 'function') {
     context.setLineDash(Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0
@@ -682,7 +690,7 @@ function drawPoints(context, object, close) {
   paintCurrentPath(context, {
     // Polygon: stroke defaults to invisible like SVG (renderPolygon:780);
     // polyline defaults to '#000' (renderPolyline:858). Both honor fill.
-    fill: traced ? null : (isVisiblePaint(object.fill) ? object.fill : null),
+    fill: isVisiblePaint(object.fill) ? object.fill : null,
     stroke: isVisiblePaint(object.stroke) ? object.stroke : (close ? null : '#000'),
     strokeWidth,
   });
@@ -1101,70 +1109,26 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   const isHighlight = object.globalCompositeOperation === 'multiply';
   const strokeWidth = Math.max(0, toNumber(object.strokeWidth, 0));
 
+  // UX 2026-09-09: rect AND ellipse/circle clouds paint here (triangle has no
+  // Cloud style, and resolveAnnotationCloudSpec is what says so - the painter
+  // no longer keeps its own suppression list). The shared resolver sizes an
+  // ellipse cloud off the LIVE rx/ry (radius for a circle) exactly as
+  // renderEllipse does, so the two layers can never disagree.
+  const cloudGeometry = type !== 'triangle' && resolveAnnotationCloudSpec(object)
+    ? resolveCloudAnnotationGeometry(object)
+    : null;
+  if (cloudGeometry) {
+    drawCloud(context, object, cloudGeometry);
+    return;
+  }
+
   context.save();
   applyBlendAndOpacity(context, object);
   context.translate(toNumber(object.left), toNumber(object.top));
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
 
   const isEllipse = type === 'circle' || type === 'ellipse';
-  // UX 2026-09-09: rect AND ellipse/circle clouds paint here (triangle has no
-  // Cloud style, and resolveAnnotationCloudSpec is what says so - the painter
-  // no longer keeps its own suppression list). The body is filled with the
-  // shape's own outline, then the engine crowns are stroked with no fill.
-  const cloudSpec = type === 'triangle' ? null : resolveAnnotationCloudSpec(object);
-  // renderEllipse sizes the cloud off the LIVE rx/ry (radius for a circle), not
-  // off width/height, so the canvas twin must read the same fields or the two
-  // layers disagree by a stroke width on imported ellipses.
-  const ellipseCloudRx = isEllipse
-    ? Math.abs(toNumber(object.radius != null ? object.radius : object.rx)) * Math.abs(scaleX)
-    : 0;
-  const ellipseCloudRy = isEllipse
-    ? Math.abs(toNumber(object.radius != null ? object.radius : object.ry)) * Math.abs(scaleY)
-    : 0;
-  const cloudWidth = isEllipse ? ellipseCloudRx * 2 : effectiveWidth;
-  const cloudHeight = isEllipse ? ellipseCloudRy * 2 : effectiveHeight;
   context.beginPath();
-  if (cloudSpec && cloudWidth > 0 && cloudHeight > 0) {
-    const cloudPoints = ellipseCloudPoints(0, 0, cloudWidth, cloudHeight);
-    const cloud = buildCloudPathCommands(
-      cloudPoints,
-      cloudSpec.intensity,
-      toNumber(object.strokeWidth, 1),
-      cloudSpec.unitScale,
-      cloudSpec.kind,
-    );
-    if (Array.isArray(cloud) && cloud.length > 0) {
-      if (isVisiblePaint(object.fill)) {
-        context.beginPath();
-        if (isEllipse) {
-          context.ellipse(
-            ellipseCloudRx,
-            ellipseCloudRy,
-            ellipseCloudRx,
-            ellipseCloudRy,
-            0,
-            0,
-            Math.PI * 2,
-          );
-        } else {
-          context.rect(0, 0, effectiveWidth, effectiveHeight);
-        }
-        paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0 });
-        context.beginPath();
-      }
-      traceCommandsInto(context, cloud);
-    }
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    if (typeof context.setLineDash === 'function') context.setLineDash([]);
-    paintCurrentPath(context, {
-      fill: null,
-      stroke: isVisiblePaint(object.stroke) ? object.stroke : null,
-      strokeWidth: toNumber(object.strokeWidth, 0),
-    });
-    context.restore();
-    return;
-  }
 
   // Inset-stroke contract (renderRect:324-393 / renderEllipse:933-952): drawn
   // shapes tagged drawn-centered-stroke keep a centered stroke; everything

@@ -35,6 +35,10 @@ import {
   renderPolyline,
   renderTextMarkup,
 } from '../utils/svgAnnotationRenderers';
+// UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
+// paints the cloud, so the grab surface is the scalloped outline itself.
+import { CLOUD_HIT_STROKE_WIDTH, resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
+import { cloudCommandsToPathData, resolveCloudAnnotationGeometry } from '../utils/cloudAnnotationGeometry.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
@@ -4625,6 +4629,71 @@ const SVGAnnotationLayer = memo(({
             }
           }
 
+          // UX 2026-09-09: a CLOUD (rect, ellipse/circle, polygon or polyline
+          // carrying the Cloud border style) hovers and hit-tests on its
+          // scalloped crowns, not on the base shape they were built from - the
+          // studio's own hit surface is a transparent 18-unit stroke along the
+          // crowns, and Drawboard's hover outline hugs the scallops, so a
+          // click or hover on a hump apex lands on the cloud instead of the
+          // page. A filled cloud is also grabbable across its whole scalloped
+          // interior (the same region the fill paints); an unfilled one stays
+          // edge-only like every other hollow shape.
+          const cloudHitGeometry = resolveAnnotationCloudSpec(renderObj)
+            ? resolveCloudAnnotationGeometry(renderObj)
+            : null;
+          if (cloudHitGeometry) {
+            const cloudD = cloudCommandsToPathData(cloudHitGeometry.outline);
+            const cloudFillD = cloudHitGeometry.fill && hasVisiblePaint(renderObj.fill)
+              ? cloudCommandsToPathData(cloudHitGeometry.fill)
+              : null;
+            const sw = cloudHitGeometry.strokeWidth || 1;
+            const cloudInteractive = annotationHitTargetsInteractive && isObjectInteractive;
+            return (
+              <g transform={cloudHitGeometry.transform}>
+                {annotationIsHovered && (
+                  <path
+                    d={cloudD}
+                    fill="none"
+                    stroke="#4a90e2"
+                    strokeOpacity={0.4}
+                    strokeWidth={Math.max(6, sw + 4)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {cloudFillD && (
+                  <path
+                    d={cloudFillD}
+                    fill="rgba(0,0,0,0.001)"
+                    fillRule="nonzero"
+                    stroke="none"
+                    pointerEvents={cloudInteractive ? 'fill' : 'none'}
+                    data-shape-hit-target="cloud-fill"
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                )}
+                <path
+                  d={cloudD}
+                  fill="none"
+                  stroke="rgba(0,0,0,0.001)"
+                  strokeWidth={Math.max(CLOUD_HIT_STROKE_WIDTH, sw + 10)}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pointerEvents={cloudInteractive ? 'stroke' : 'none'}
+                  data-shape-hit-target="cloud"
+                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                />
+              </g>
+            );
+          }
+
           // UX: shape-tracing hover halos and hit targets. These branches
           // duplicate the shape's own geometry instead of using bbox rects,
           // so blank interiors of unfilled shapes and concave polygon voids
@@ -5388,13 +5457,20 @@ const SVGAnnotationLayer = memo(({
           freehand shows the stroked centerline (the swept paper-ink outline
           appears at commit, same as the fabric brush behaved). */}
       {shapeCreation && (shapeCreation.tool === 'rect' || shapeCreation.tool === 'ellipse') && (() => {
+        // UX 2026-09-09: with the Cloud style armed the drag-out preview IS a
+        // cloud (the studio shows the crowns re-fitting live while drawing),
+        // and its vertices are the exact drag points - no half-stroke inset,
+        // because the crowns bulge past the box anyway and the studio places
+        // corner crowns on the raw pointer positions. Same rule as the commit
+        // builder, so the preview frame and the committed frame coincide.
+        const previewIsCloud = lineBorderStyle === 'cloud';
         const geometry = computeDrawnBoundaryShapePreviewGeometry({
           tool: shapeCreation.tool,
           startX: shapeCreation.start.x,
           startY: shapeCreation.start.y,
           pointerX: shapeCreation.current.x,
           pointerY: shapeCreation.current.y,
-          strokeWidth: Number(strokeWidth) || 3,
+          strokeWidth: previewIsCloud ? 0 : (Number(strokeWidth) || 3),
         });
         const previewObj = {
           type: shapeCreation.tool === 'ellipse' ? 'ellipse' : 'rect',
@@ -5410,7 +5486,10 @@ const SVGAnnotationLayer = memo(({
           strokeWidth: Number(strokeWidth) || 3,
           strokeUniform: true,
           opacity: 1,
-          data: { strokeRenderContract: 'drawn-centered-stroke' },
+          data: {
+            strokeRenderContract: 'drawn-centered-stroke',
+            ...(previewIsCloud ? { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) } : {}),
+          },
         };
         return (
           <g className="shape-creation-preview" style={{ pointerEvents: 'none' }}>

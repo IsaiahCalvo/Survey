@@ -26,6 +26,16 @@ import { deepClone } from '../utils/deepClone.js';
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
+// UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
+// studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
+// resulting per-vertex memory rides on the annotation (data.pdfCloudVertexState)
+// so neighbouring crowns hold still during AND after the drag.
+import {
+  cloudVertexStateForPoints,
+  moveCloudVertex,
+  resolveAnnotationCloudSpec,
+} from '../utils/pdfAnnotationAppearance.js';
+import { cloudPolyEnginePoints } from '../utils/cloudAnnotationGeometry.js';
 // UX: 2026-04-20 — Group / Ungroup. Auto-expand-on-click reads each clicked
 // annotation's / callout's groupId and, if present, expands selection to
 // every member of that group on the page. Same helper module powers App's
@@ -2090,6 +2100,17 @@ export function useSVGInteraction({
       targetObj.points = newPoints;
       targetObj.left = newLeft;
       targetObj.top = newTop;
+      // Cloud parity: the engine sees this vertex at (local - pathOffset) *
+      // scale (cloudPolyEnginePoints), so hand moveVertex the same number and
+      // carry the studio's per-vertex arrays on the object for every renderer.
+      if (ds.cloudVertexEdit) {
+        const edit = ds.cloudVertexEdit;
+        const moved = moveCloudVertex(edit.kind, edit.enginePoints, edit.state, ds.vertexIndex, {
+          x: (localX - pathOffsetX) * (scaleX || 1),
+          y: (localY - pathOffsetY) * (scaleY || 1),
+        });
+        targetObj.data = { ...(targetObj.data || {}), pdfCloudVertexState: moved.state };
+      }
       ds.currentAnnotations = updatedAnnotations;
       setVisualTransform({
         id: ds.annotationIndex,
@@ -4456,6 +4477,23 @@ export function useSVGInteraction({
     if (typeof handleId === 'string' && handleId.startsWith('vertex-')) {
       const vertexIndex = parseInt(handleId.slice('vertex-'.length), 10);
       if (Number.isFinite(vertexIndex) && Array.isArray(obj.points) && obj.points[vertexIndex]) {
+        // Cloud parity: snapshot the studio shape at drag start (its stored
+        // per-vertex memory when it has one, else a fresh makeShape fit) in the
+        // engine frame, so every move can replay moveVertex() from it.
+        const cloudSpec = resolveAnnotationCloudSpec(obj);
+        const cloudVertexEdit = cloudSpec && (cloudSpec.kind === 'polygon' || cloudSpec.kind === 'polyline')
+          ? (() => {
+              const enginePoints = cloudPolyEnginePoints(obj);
+              const scaleXAbs = Math.abs(Number(obj.scaleX ?? 1) || 1);
+              const scaleYAbs = Math.abs(Number(obj.scaleY ?? 1) || 1);
+              return {
+                kind: cloudSpec.kind,
+                enginePoints,
+                state: cloudSpec.vertexState
+                  || cloudVertexStateForPoints(cloudSpec.kind, enginePoints, scaleXAbs, scaleYAbs),
+              };
+            })()
+          : null;
         dragStateRef.current = {
           active: true,
           mode: 'vertex',
@@ -4464,6 +4502,7 @@ export function useSVGInteraction({
           annotationIndex: selectedIndex,
           ctmInverse,
           vertexIndex,
+          cloudVertexEdit,
           // Snapshot the full transform chain so the move handler can invert
           // it on each tick. We copy obj.points so we don't mutate the real
           // annotation until pointerup.

@@ -1035,6 +1035,13 @@ const DEFAULT_TOOL_PREFERENCES = {
   eraser: { strokeWidth: 10 },
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  // UX 2026-09-09: the Cloud border style carries its OWN line defaults — the
+  // approved revision-cloud studio's 2.5-unit crimson line — and remembers the
+  // user's later line edits under this key while Cloud is armed, independent
+  // of the plain rect/ellipse/polygon/polyline defaults above. Fill still
+  // comes from the shape tool (the studio has no fill; the app's shape tools
+  // default to none).
+  cloud: { strokeColor: '#c42747', strokeWidth: 2.5, strokeOpacity: 100 },
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },

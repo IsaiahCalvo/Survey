@@ -95,13 +95,17 @@ import {
 } from './pdfNativeExport/adapters/textMarkup.js';
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
 import {
-  buildCloudPathCommands,
   buildStickyNoteGlyphSpec,
-  ellipseCloudPoints,
   isStickyNoteGlyphObject,
   resolveAnnotationCloudSpec,
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
+// UX 2026-09-09: printed clouds come from the same resolver the screen uses.
+import {
+  cloudCommandsToPathData,
+  resolveCloudAnnotationGeometry,
+  transformCloudCommandsToWorld,
+} from './cloudAnnotationGeometry.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 
@@ -3884,7 +3888,52 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
   }));
 };
 
+// UX 2026-09-09: printing/flattening ANY cloud shape (rect, ellipse/circle,
+// polygon, open polyline) paints exactly what the screen shows: the shared
+// resolver's crowns (scale baked into the vertices, built un-rotated and then
+// rotated as a whole - the same order the SVG layer uses, so a rotated cloud
+// keeps its on-screen crown count) with round caps/joins and no fill, under
+// which a FILLED closed cloud paints the whole scalloped region as one
+// nonzero path. The object's own opacity multiplies both paints, as on screen.
+// Returns false when the object is not a cloud so the caller draws it plainly.
+const drawFlattenedCloud = (page, obj, pageHeight) => {
+  const geometry = resolveAnnotationCloudSpec(obj) ? resolveCloudAnnotationGeometry(obj) : null;
+  if (!geometry) return false;
+  const stroke = resolvedPdfPaint(obj?.stroke, geometry.kind === 'polyline' ? '#000000' : 'transparent');
+  const fill = geometry.fill ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
+  const objectOpacity = Number.isFinite(Number(obj?.opacity))
+    ? Math.max(0, Math.min(1, Number(obj.opacity)))
+    : 1;
+  const blendMode = obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined;
+  // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
+  // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates.
+  if (fill) {
+    page.drawSvgPath(cloudCommandsToPathData(transformCloudCommandsToWorld(geometry.fill, geometry)), {
+      x: 0,
+      y: pageHeight,
+      color: fill.color,
+      opacity: (fill.opacity ?? 1) * objectOpacity,
+      borderWidth: 0,
+      blendMode,
+    });
+  }
+  const strokeWidth = stroke ? Math.max(0, geometry.strokeWidth) : 0;
+  if (stroke && strokeWidth > 0) {
+    page.drawSvgPath(cloudCommandsToPathData(transformCloudCommandsToWorld(geometry.outline, geometry)), {
+      x: 0,
+      y: pageHeight,
+      borderColor: stroke.color,
+      borderWidth: strokeWidth,
+      borderOpacity: (stroke.opacity ?? 1) * objectOpacity,
+      borderLineCap: LineCapStyle.Round,
+      blendMode,
+    });
+  }
+  return true;
+};
+
 const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
+  if (drawFlattenedCloud(page, obj, pageHeight)) return true;
   const rawPoints = fabricPolygonWorldPoints(obj);
   if (rawPoints.length < (closePath ? 3 : 2)) return false;
   // Open polylines: pull the first / last point back so the body stops at the
@@ -3898,50 +3947,22 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
-  // UX 2026-09-09: printing/flattening a cloud polygon OR a cloud polyline uses
-  // the same engine outline the screen draws, so what prints is what was seen.
-  // An open polyline keeps its rounded end tails and never gets a fill body.
-  const polyCloudSpec = resolveAnnotationCloudSpec(obj);
-  const cloud = polyCloudSpec
-    ? buildCloudPathCommands(
-        // Endings are inset for a plain polyline body; a cloud has no
-        // arrowheads to make room for, so it traces the authored vertices.
-        polyCloudSpec.kind === 'polyline' ? rawPoints : points,
-        polyCloudSpec.intensity,
-        Number(obj?.strokeWidth) || 1,
-        polyCloudSpec.unitScale,
-        polyCloudSpec.kind,
-      )
-    : null;
-  const d = Array.isArray(cloud) && cloud.length > 0
-    ? cloud.map((segment) => segment.join(' ')).join(' ')
-    : points.map((point, index) => {
+  // (Cloud polygons / polylines returned above through drawFlattenedCloud.)
+  const d = points.map((point, index) => {
     const x = Number(point?.x) || 0;
     const y = Number(point?.y) || 0;
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-    }).join(' ') + (closePath ? ' Z' : '');
+  }).join(' ') + (closePath ? ' Z' : '');
   const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
   const fill = closePath ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
   const strokeWidth = stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
-  if (cloud && fill) {
-    const fillPath = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
-    page.drawSvgPath(fillPath, {
-      x: 0,
-      y: pageHeight,
-      color: fill.color,
-      opacity: fill.opacity ?? 1,
-      borderWidth: 0,
-      blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
-    });
-  }
   page.drawSvgPath(d, {
     x: 0,
     y: pageHeight,
     borderColor: stroke?.color,
     borderWidth: strokeWidth,
-    borderLineCap: cloud ? LineCapStyle.Round : undefined,
-    color: cloud ? undefined : fill?.color,
-    opacity: cloud ? undefined : (fill?.opacity ?? 1),
+    color: fill?.color,
+    opacity: fill?.opacity ?? 1,
     borderOpacity: stroke?.opacity,
     blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
   });
@@ -4177,54 +4198,11 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       borderOpacity: hasBorder ? (stroke?.opacity ?? 1) * objectOpacity : undefined,
       blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     };
-    const rectCloud = resolveAnnotationCloudSpec(shifted);
-    // buildCloudPathCommands returns null for unusable geometry (a non-finite
-    // corner). Resolve it up front so that case falls through to the plain
-    // rectangle branches below instead of flattening nothing.
-    const cloudSpec = (() => {
-      if (!rectCloud) return null;
-      if (!(width > 0) || !(height > 0)) return null;
-      const center = { x: left + width / 2, y: top + height / 2 };
-      const insets = Array.isArray(shifted?.data?.pdfCloudInsets)
-        ? shifted.data.pdfCloudInsets
-        : [0, 0, 0, 0];
-      const points = [
-        { x: left + (insets[0] || 0) * scaleX, y: top + (insets[1] || 0) * scaleY },
-        { x: left + width - (insets[2] || 0) * scaleX, y: top + (insets[1] || 0) * scaleY },
-        { x: left + width - (insets[2] || 0) * scaleX, y: top + height - (insets[3] || 0) * scaleY },
-        { x: left + (insets[0] || 0) * scaleX, y: top + height - (insets[3] || 0) * scaleY },
-      ].map((point) => rotateAppPoint(point, center, angle));
-      const cloud = buildCloudPathCommands(
-        points,
-        rectCloud.intensity,
-        strokeWidth,
-        rectCloud.unitScale,
-        rectCloud.kind,
-      );
-      return Array.isArray(cloud) && cloud.length > 0 ? { points, cloud } : null;
-    })();
-    if (cloudSpec) {
-      const { points, cloud } = cloudSpec;
-      const d = cloud.map((segment) => segment.join(' ')).join(' ');
-      if (fill) {
-        const fillPath = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
-        page.drawSvgPath(fillPath, {
-          x: 0,
-          y: pageHeight,
-          color: fill.color,
-          opacity: (fill.opacity ?? 1) * objectOpacity,
-          borderWidth: 0,
-          blendMode: common.blendMode,
-        });
-      }
-      page.drawSvgPath(d, {
-        x: 0,
-        y: pageHeight,
-        ...common,
-        color: undefined,
-        opacity: undefined,
-        borderLineCap: LineCapStyle.Round,
-      });
+    // A cloud rect prints through the shared cloud path (drawFlattenedCloud
+    // returns false for unusable geometry, e.g. a non-finite corner, so that
+    // case falls through to the plain rectangle branches below).
+    if (drawFlattenedCloud(page, shifted, pageHeight)) {
+      return 1;
     } else if (angle) {
       const center = { x: left + width / 2, y: top + height / 2 };
       const points = [
@@ -4249,60 +4227,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const angle = Number(shifted?.angle) || 0;
     const common = { borderColor: stroke?.color, borderWidth: strokeWidth, color: fill?.color, opacity: fill?.opacity ?? 1, borderOpacity: stroke?.opacity, blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined };
     // UX 2026-09-09: an ellipse/circle carrying the Cloud style prints its
-    // scalloped edge, exactly like a cloud rect - same engine, same outline the
-    // screen shows. The oval body is filled first, then the crowns are stroked
-    // with no fill so their rounded separator tails survive.
-    const ellipseCloud = resolveAnnotationCloudSpec(shifted);
-    if (ellipseCloud && xRadius > 0 && yRadius > 0) {
-      const center = { x: cx, y: cy };
-      const cloudPoints = ellipseCloudPoints(cx - xRadius, cy - yRadius, xRadius * 2, yRadius * 2);
-      const cloud = buildCloudPathCommands(
-        cloudPoints,
-        ellipseCloud.intensity,
-        strokeWidth,
-        ellipseCloud.unitScale,
-        ellipseCloud.kind,
-      );
-      if (Array.isArray(cloud) && cloud.length > 0) {
-        if (fill) {
-          // Rotation rides on the fill body only; the engine builds the crowns
-          // in the un-rotated frame, so both are rotated the same way below.
-          const bodyPoints = Array.from({ length: 96 }, (_, index) => {
-            const theta = index * Math.PI * 2 / 96;
-            return rotateAppPoint(
-              { x: cx + Math.cos(theta) * xRadius, y: cy + Math.sin(theta) * yRadius },
-              center,
-              angle,
-            );
-          });
-          page.drawSvgPath(
-            `${bodyPoints.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`,
-            { x: 0, y: pageHeight, color: fill.color, opacity: fill.opacity ?? 1, borderWidth: 0, blendMode: common.blendMode },
-          );
-        }
-        // Engine output is only absolute M (1 point) and C (3 points), so
-        // rotating every consecutive x/y pair rotates the whole outline.
-        const rotated = angle
-          ? cloud.map(([verb, ...values]) => {
-            const out = [verb];
-            for (let index = 0; index + 1 < values.length; index += 2) {
-              const point = rotateAppPoint({ x: values[index], y: values[index + 1] }, center, angle);
-              out.push(point.x, point.y);
-            }
-            return out;
-          })
-          : cloud;
-        page.drawSvgPath(rotated.map((segment) => segment.join(' ')).join(' '), {
-          x: 0,
-          y: pageHeight,
-          ...common,
-          color: undefined,
-          opacity: undefined,
-          borderLineCap: LineCapStyle.Round,
-        });
-        return 1;
-      }
-    }
+    // scalloped edge, exactly like a cloud rect - same shared resolver, same
+    // outline and scalloped fill the screen shows.
+    if (drawFlattenedCloud(page, shifted, pageHeight)) return 1;
     if (angle) {
       const points = Array.from({ length: 48 }, (_, index) => {
         const theta = index * Math.PI * 2 / 48;

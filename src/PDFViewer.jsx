@@ -3508,6 +3508,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try { return localStorage.getItem('arrowBothEnds') === '1'; } catch { return false; }
   });
   const [lineBorderStyle, setLineBorderStyle] = useState('solid');
+  // UX 2026-09-09: while the Cloud border style is armed on a cloud-capable
+  // tool, the LINE paint (colour / opacity / width) lives under the 'cloud'
+  // tool preference (studio defaults: 2.5-unit #c42747, see useDatabase.js)
+  // instead of the tool's own, so a new cloud looks exactly like the approved
+  // studio's by default while a plain rectangle keeps its red 2-unit outline.
+  // A ref (assigned on render) keeps the key helper stable for the paint
+  // handlers below.
+  const lineBorderStyleRef = useRef(lineBorderStyle);
+  lineBorderStyleRef.current = lineBorderStyle;
+  const paintPreferenceKey = (tool) => (
+    lineBorderStyleRef.current === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool
+  );
 
   // Callout overlay state — R2.2 Slice 2 (THE FLIP): `callouts` is no longer an
   // independent useState. It is DERIVED from annotationsByPage (the single
@@ -4115,7 +4127,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
     if (Number.isFinite(sizeValue) && sizeValue > 0) {
-      const nextWidthInputValue = String(Math.round(sizeValue));
+      // A cloud's studio-default 2.5 line must read as "2.5", not round to 3.
+      const nextWidthInputValue = String(Number.isInteger(sizeValue)
+        ? sizeValue
+        : Math.round(sizeValue * 10) / 10);
       setStrokeWidth(sizeValue);
       strokeWidthInputValueRef.current = nextWidthInputValue;
       setStrokeWidthInputValue(nextWidthInputValue);
@@ -7705,13 +7720,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
-    if (toolPrefs.strokeWidth !== undefined) {
+    // UX 2026-09-09: with Cloud armed, the line paint comes from the Cloud
+    // style's own remembered preference (studio defaults) - see paintPreferenceKey.
+    const cloudPrefs = paintPreferenceKey(activeTool) === 'cloud' ? getToolPreference('cloud') : null;
+    if (cloudPrefs?.strokeColor !== undefined) setStrokeColor(cloudPrefs.strokeColor);
+    if (cloudPrefs?.strokeOpacity !== undefined) setStrokeOpacity(cloudPrefs.strokeOpacity);
+    const widthPref = cloudPrefs?.strokeWidth !== undefined ? cloudPrefs.strokeWidth : toolPrefs.strokeWidth;
+    if (widthPref !== undefined) {
       const nextStrokeWidth = activeTool === 'counter'
         ? Math.min(
-            Math.max(Math.round(Number(toolPrefs.strokeWidth) || 14), COUNTER_SIZE_MIN),
+            Math.max(Math.round(Number(widthPref) || 14), COUNTER_SIZE_MIN),
             COUNTER_SIZE_MAX,
           )
-        : toolPrefs.strokeWidth;
+        : widthPref;
       setStrokeWidth(nextStrokeWidth);
       if (!isStrokeWidthFocusedRef.current) {
         const nextValue = String(nextStrokeWidth);
@@ -7719,7 +7740,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
-  }, [activeTool, focusedTextMarkupPaint, pdfId, textMarkupPaintByType, toolPreferences]);
+  }, [activeTool, focusedTextMarkupPaint, lineBorderStyle, pdfId, textMarkupPaintByType, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -7869,7 +7890,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeColor: color });
+    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
@@ -7916,7 +7937,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeOpacity: opacity });
+    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
@@ -7987,7 +8008,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeWidth: width });
+    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeWidth: width });
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
       return;

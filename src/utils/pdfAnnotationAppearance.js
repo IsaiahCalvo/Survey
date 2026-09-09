@@ -1,14 +1,36 @@
-import { cloudRuns, makeShape } from './revisionCloudGeometry.js';
+import { cloudRuns, makeShape, moveVertex } from './revisionCloudGeometry.js';
 
 const finite = (value, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 };
 
-export function cloudRadiusForIntensity(intensity = 2, strokeWidth = 1, unitScale = 1) {
+// UX 2026-09-09: the approved studio (revision-cloud-tool @ d1abe78) draws a
+// new cloud with a 2.5-unit crimson line. A cloud is a border STYLE on the
+// rect/ellipse/polygon/polyline tools, whose own defaults (red, 2) exist for
+// plain outlines, so the Cloud style carries the studio's paint as ITS default
+// and remembers the user's later changes separately (tool preference 'cloud').
+// Scallop size is independent of the line width, exactly as in the studio.
+export const CLOUD_STYLE_DEFAULTS = Object.freeze({
+  strokeColor: '#c42747',
+  strokeWidth: 2.5,
+  strokeOpacity: 100,
+});
+
+// The studio's hit surface: a transparent 18-unit stroke along the crowns, so
+// a click or hover on a hump apex lands on the cloud (page units, so it scales
+// with zoom exactly like the crowns do).
+export const CLOUD_HIT_STROKE_WIDTH = 18;
+
+// Bump -> scallop size, in page units: 14 * Bump (Bump 2 = the studio's 28
+// default), capped at the studio's 80 maximum. `strokeWidth` is accepted for
+// call-site compatibility but deliberately IGNORED: in the studio the scallop
+// size never depends on the line width, and a thick-line floor here made the
+// same Bump render different crowns from the studio at wide strokes.
+export function cloudRadiusForIntensity(intensity = 2, _strokeWidth = 1, unitScale = 1) {
   const scale = Math.max(0.01, finite(unitScale, 1));
   const level = Math.max(0.25, finite(intensity, 2));
-  const size = Math.min(80 * scale, Math.max(14 * level * scale, 4 * Math.max(1, finite(strokeWidth, 1))));
+  const size = Math.min(80 * scale, 14 * level * scale);
   return size / 2;
 }
 
@@ -82,12 +104,111 @@ export function resolveAnnotationCloudSpec(obj) {
   if (obj?.data?.type === 'counter') return null;
   const kind = cloudEngineKindForShape(obj?.type);
   if (!kind) return null;
-  return {
+  const spec = {
     kind,
     intensity,
     unitScale: Number.isFinite(Number(obj?.data?.pdfCloudUnitScale))
       ? Number(obj.data.pdfCloudUnitScale)
       : 1,
+  };
+  // The studio's "move one vertex, the rest stay in place" memory. Only a
+  // state built for exactly this vertex list at exactly this scale applies;
+  // anything else (a resize, an import, a different point count) falls back
+  // to the fresh makeShape fit, which is what the studio does after a resize.
+  if (kind === 'polygon' || kind === 'polyline') {
+    const state = validCloudVertexState(
+      obj?.data?.pdfCloudVertexState,
+      Array.isArray(obj?.points) ? obj.points.length : 0,
+      Math.abs(finite(obj?.scaleX, 1)),
+      Math.abs(finite(obj?.scaleY, 1)),
+    );
+    if (state) spec.vertexState = state;
+  }
+  return spec;
+}
+
+// ---------------------------------------------------------------------------
+// Vertex-edit memory (studio parity for single-vertex drags)
+//
+// In the studio, dragging one vertex calls moveVertex(): it rewrites ONLY the
+// dragged vertex's heading / turn / bend / clearance and keeps every other
+// vertex's corner exactly as it was, and that shape (with its now-stale
+// neighbours) is what stays on screen after release. Rebuilding with makeShape
+// instead re-fits both neighbouring corner crowns in frame and snaps them on
+// release. The app therefore carries the studio's per-vertex arrays on the
+// annotation (data.pdfCloudVertexState) and feeds them back to the engine.
+// ---------------------------------------------------------------------------
+
+const isNumberArray = (value, length) => Array.isArray(value)
+  && value.length === length
+  && value.every((entry) => Number.isFinite(Number(entry)));
+
+/**
+ * Returns the stored vertex state when it belongs to a vertex list of
+ * `pointCount` points built at |scaleX|/|scaleY|, else null.
+ */
+export function validCloudVertexState(state, pointCount, scaleX = 1, scaleY = 1) {
+  if (!state || typeof state !== 'object' || !(pointCount > 0)) return null;
+  if (!isNumberArray(state.angles, pointCount)
+    || !isNumberArray(state.turns, pointCount)
+    || !isNumberArray(state.bends, pointCount)
+    || !isNumberArray(state.clearance, pointCount)) return null;
+  const side = Number(state.side);
+  if (side !== 1 && side !== -1) return null;
+  if (Math.abs(finite(state.scaleX, 1) - scaleX) > 1e-9) return null;
+  if (Math.abs(finite(state.scaleY, 1) - scaleY) > 1e-9) return null;
+  return {
+    angles: state.angles.map(Number),
+    turns: state.turns.map(Number),
+    bends: state.bends.map(Number),
+    clearance: state.clearance.map(Number),
+    side,
+    scaleX: finite(state.scaleX, 1),
+    scaleY: finite(state.scaleY, 1),
+  };
+}
+
+const vertexStateOfShape = (shape, scaleX, scaleY) => ({
+  angles: shape.angles.slice(),
+  turns: shape.turns.slice(),
+  bends: (shape.bends || []).slice(),
+  clearance: (shape.clearance || []).slice(),
+  side: shape.side,
+  scaleX,
+  scaleY,
+});
+
+const applyVertexState = (shape, state) => (state
+  ? {
+      ...shape,
+      angles: state.angles.slice(),
+      turns: state.turns.slice(),
+      bends: state.bends.slice(),
+      clearance: state.clearance.slice(),
+      side: state.side,
+    }
+  : shape);
+
+/** The fresh makeShape() state for `points` — what a vertex drag starts from. */
+export function cloudVertexStateForPoints(kind, points, scaleX = 1, scaleY = 1) {
+  const engineKind = cloudEngineKindForShape(kind) || 'polygon';
+  const clean = points.map((point) => ({ x: finite(point?.x), y: finite(point?.y) }));
+  return vertexStateOfShape(makeShape(engineKind, clean, 'survey-cloud'), scaleX, scaleY);
+}
+
+/**
+ * moveVertex() twin: `points`/`state` are the shape at drag start, `point` the
+ * dragged vertex's current position. Returns the moved points and the state
+ * to store — only entry `index` changes, exactly like the studio.
+ */
+export function moveCloudVertex(kind, points, state, index, point) {
+  const engineKind = cloudEngineKindForShape(kind) || 'polygon';
+  const clean = points.map((entry) => ({ x: finite(entry?.x), y: finite(entry?.y) }));
+  const base = applyVertexState(makeShape(engineKind, clean, 'survey-cloud'), state);
+  const moved = moveVertex(base, index, { x: finite(point?.x), y: finite(point?.y) });
+  return {
+    points: moved.points,
+    state: vertexStateOfShape(moved, finite(state?.scaleX, 1), finite(state?.scaleY, 1)),
   };
 }
 
@@ -106,15 +227,8 @@ export function toolSupportsCloudBorderStyle(tool) {
   return cloudEngineKindForShape(tool) != null;
 }
 
-// This is the sole app entry point for revision-cloud outlines. The approved
-// engine emits separate open crowns so its short rounded tails stay intact.
-export function buildCloudPathCommands(
-  points,
-  intensity = 2,
-  strokeWidth = 1,
-  unitScale = 1,
-  kind = 'polygon',
-) {
+// One engine pass: the studio shape for these vertices and its rendered runs.
+const buildCloudShapeRuns = (points, intensity, strokeWidth, unitScale, kind, options) => {
   const engineKind = cloudEngineKindForShape(kind) || 'polygon';
   if (!Array.isArray(points) || points.length < cloudMinimumVertexCount(engineKind)) return null;
   // A non-finite vertex must reject rather than collapse to the origin: a
@@ -124,19 +238,330 @@ export function buildCloudPathCommands(
   ))) return null;
   const clean = points.map((point) => ({ x: finite(point?.x), y: finite(point?.y) }));
   const size = cloudRadiusForIntensity(intensity, strokeWidth, unitScale) * 2;
-  const shape = makeShape(engineKind, clean, 'survey-cloud', {
-    size,
-    depth: APPROVED_CLOUD_DEPTH,
-    stroke: Math.max(0.1, finite(strokeWidth, 1)),
-  });
-  const commands = [];
-  for (const run of cloudRuns(shape, new Map(), 0, false)) {
+  const shape = applyVertexState(
+    makeShape(engineKind, clean, 'survey-cloud', {
+      size,
+      depth: APPROVED_CLOUD_DEPTH,
+      stroke: Math.max(0.1, finite(strokeWidth, 1)),
+    }),
+    validCloudVertexState(options?.vertexState, clean.length,
+      finite(options?.vertexState?.scaleX, 1), finite(options?.vertexState?.scaleY, 1)),
+  );
+  const runs = cloudRuns(shape, new Map(), 0, false);
+  const outline = [];
+  const subpaths = [];
+  for (const run of runs) {
     if (!run?.d) continue;
     const parsed = parseCloudPathData(run.d);
     if (!parsed) return null;
-    commands.push(...parsed);
+    outline.push(...parsed);
+    subpaths.push(...splitCloudSubpaths(parsed));
   }
-  return commands.length > 0 ? commands : null;
+  if (outline.length === 0) return null;
+  return { engineKind, shape, runs, outline, subpaths };
+};
+
+// Split flat M/C commands into subpaths of points: [p0, c1, c2, p1, c3, c4, p2…]
+const splitCloudSubpaths = (commands) => {
+  const subpaths = [];
+  let current = null;
+  for (const command of commands) {
+    if (command[0] === 'M') {
+      current = [{ x: command[1], y: command[2] }];
+      subpaths.push(current);
+    } else if (command[0] === 'C' && current) {
+      current.push(
+        { x: command[1], y: command[2] },
+        { x: command[3], y: command[4] },
+        { x: command[5], y: command[6] },
+      );
+    }
+  }
+  return subpaths.filter((subpath) => subpath.length >= 4);
+};
+
+const signedArea = (points) => {
+  let sum = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const a = points[index];
+    const b = points[(index + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum / 2;
+};
+
+// Sample a cubic chain so its enclosed (chord-closed) signed area is honest.
+const sampleCubicChain = (chain) => {
+  const samples = [chain[0]];
+  for (let index = 1; index + 2 < chain.length; index += 3) {
+    const start = samples[samples.length - 1];
+    const [c1, c2, end] = [chain[index], chain[index + 1], chain[index + 2]];
+    for (let step = 1; step <= 4; step += 1) {
+      const t = step / 4;
+      samples.push({
+        x: cubicAt(start.x, c1.x, c2.x, end.x, t),
+        y: cubicAt(start.y, c1.y, c2.y, end.y, t),
+      });
+    }
+  }
+  return samples;
+};
+
+const chainToCommands = (chain, close) => {
+  const commands = [['M', chain[0].x, chain[0].y]];
+  for (let index = 1; index + 2 < chain.length; index += 3) {
+    commands.push(['C',
+      chain[index].x, chain[index].y,
+      chain[index + 1].x, chain[index + 1].y,
+      chain[index + 2].x, chain[index + 2].y,
+    ]);
+  }
+  if (close) commands.push(['Z']);
+  return commands;
+};
+
+/**
+ * UX 2026-09-09: professional revision clouds (Drawboard, Bluebeam) fill the
+ * whole region bounded by the scalloped OUTLINE, humps included — never just
+ * the inner rectangle/ellipse/polygon with hollow crowns. The fill is one
+ * nonzero-winding path: the shape body plus every painted crown closed on its
+ * chord, all wound the same way so overlaps add up instead of punching holes.
+ * Painting it as ONE path is what keeps a translucent fill uniform where body
+ * and crowns overlap. Open polylines have no interior and return null.
+ */
+const cubicPointAt = (cubic, t) => ({
+  x: cubicAt(cubic[0].x, cubic[1].x, cubic[2].x, cubic[3].x, t),
+  y: cubicAt(cubic[0].y, cubic[1].y, cubic[2].y, cubic[3].y, t),
+});
+
+const mixPoint = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+// de Casteljau: the part of `cubic` from 0 to t.
+const cubicPrefix = (cubic, t) => {
+  const a = mixPoint(cubic[0], cubic[1], t);
+  const b = mixPoint(cubic[1], cubic[2], t);
+  const c = mixPoint(cubic[2], cubic[3], t);
+  const d = mixPoint(a, b, t);
+  const e = mixPoint(b, c, t);
+  return [cubic[0], a, d, mixPoint(d, e, t)];
+};
+
+const chainCubics = (chain) => {
+  const cubics = [];
+  for (let index = 1; index + 2 < chain.length; index += 3) {
+    cubics.push([chain[index - 1], chain[index], chain[index + 1], chain[index + 2]]);
+  }
+  return cubics;
+};
+
+// Closest point on a cubic chain to `target`: coarse samples, then a ternary
+// refinement on the winning cubic. The engine starts every painted crown ON
+// the previous crown (at their crossing, or at its very end), so the distance
+// is ~0 in the normal case and the parameter is where that crown gets cut.
+const closestOnChain = (cubics, target) => {
+  let best = { index: 0, t: 0, distance: Infinity };
+  cubics.forEach((cubic, index) => {
+    for (let step = 0; step <= 24; step += 1) {
+      const t = step / 24;
+      const point = cubicPointAt(cubic, t);
+      const distance = Math.hypot(point.x - target.x, point.y - target.y);
+      if (distance < best.distance) best = { index, t, distance };
+    }
+  });
+  if (!Number.isFinite(best.distance)) return best;
+  const cubic = cubics[best.index];
+  let lo = Math.max(0, best.t - 1 / 24);
+  let hi = Math.min(1, best.t + 1 / 24);
+  const at = (t) => {
+    const point = cubicPointAt(cubic, t);
+    return Math.hypot(point.x - target.x, point.y - target.y);
+  };
+  for (let iteration = 0; iteration < 40; iteration += 1) {
+    const m1 = lo + (hi - lo) / 3;
+    const m2 = hi - (hi - lo) / 3;
+    if (at(m1) < at(m2)) hi = m2; else lo = m1;
+  }
+  const t = (lo + hi) / 2;
+  return { index: best.index, t, distance: at(t) };
+};
+
+const nearlySame = (a, b) => Math.abs(a.x - b.x) < 1e-7 && Math.abs(a.y - b.y) < 1e-7;
+
+/**
+ * UX 2026-09-09: professional revision clouds (Drawboard, Bluebeam) fill the
+ * whole region bounded by the scalloped OUTLINE, humps included — never just
+ * the inner rectangle/ellipse/polygon with hollow crowns. The fill is ONE
+ * nonzero-winding path so a translucent colour stays uniform where its pieces
+ * overlap:
+ *   1. the closed outer contour — every painted crown, in outline order, cut
+ *      exactly where the next painted crown starts on it (the engine's own
+ *      crossing points), so the fill edge IS the stroked scallop;
+ *   2. every raw crown arc closed on its chord, and
+ *   3. the source polygon (rectangles/polygons)
+ * as safety pieces wound the same way, so a tight-spacing kink in the contour
+ * can never leave a pin-hole. Open polylines have no interior and return null.
+ */
+const buildCloudFillFromRuns = (built) => {
+  if (!built || built.engineKind === 'polyline') return null;
+  const { engineKind, shape, runs, subpaths } = built;
+  if (subpaths.length === 0) return null;
+  const tolerance = Math.max(1e-3, 0.01 * shape.size);
+
+  // 1. Outer contour.
+  const contour = [];
+  const pushChain = (chain) => {
+    if (chain.length === 0) return;
+    if (contour.length === 0) {
+      contour.push(['M', chain[0].x, chain[0].y]);
+    } else if (!nearlySame(contour.__end, chain[0])) {
+      contour.push(['L', chain[0].x, chain[0].y]);
+    }
+    for (const cubic of chainCubics(chain)) {
+      contour.push(['C', cubic[1].x, cubic[1].y, cubic[2].x, cubic[2].y, cubic[3].x, cubic[3].y]);
+    }
+    contour.__end = chain[chain.length - 1];
+  };
+  for (let index = 0; index < subpaths.length; index += 1) {
+    const piece = subpaths[index];
+    const next = subpaths[(index + 1) % subpaths.length][0];
+    const cubics = chainCubics(piece);
+    const hit = closestOnChain(cubics, next);
+    if (hit.distance > tolerance) {
+      // Not chained (a bridged gap): keep the whole painted piece and let the
+      // contour jump straight to the next crown.
+      pushChain(piece);
+      continue;
+    }
+    if (hit.index === 0 && hit.t < 1e-6) continue; // next crown starts where this one does
+    const kept = [piece[0]];
+    for (let cubicIndex = 0; cubicIndex < hit.index; cubicIndex += 1) {
+      kept.push(cubics[cubicIndex][1], cubics[cubicIndex][2], cubics[cubicIndex][3]);
+    }
+    const cut = cubicPrefix(cubics[hit.index], hit.t);
+    kept.push(cut[1], cut[2], cut[3]);
+    pushChain(kept);
+  }
+  if (contour.length < 2) return null;
+  delete contour.__end;
+  contour.push(['Z']);
+  const contourPoints = [];
+  let cursor = null;
+  for (const command of contour) {
+    if (command[0] === 'M' || command[0] === 'L') {
+      cursor = { x: command[1], y: command[2] };
+      contourPoints.push(cursor);
+    } else if (command[0] === 'C') {
+      const cubic = [cursor, { x: command[1], y: command[2] }, { x: command[3], y: command[4] }, { x: command[5], y: command[6] }];
+      for (let step = 1; step <= 4; step += 1) contourPoints.push(cubicPointAt(cubic, step / 4));
+      cursor = cubic[3];
+    }
+  }
+  const sign = signedArea(contourPoints) < 0 ? -1 : 1;
+  const commands = [...contour];
+
+  // 2. + 3. Safety pieces, wound like the contour.
+  const pieces = [];
+  for (const run of runs) {
+    for (const lobe of run?.lobes || []) {
+      if (!lobe?.start || !Array.isArray(lobe.controls) || lobe.controls.length < 6) continue;
+      pieces.push([lobe.start, ...lobe.controls.slice(0, 6)]);
+    }
+  }
+  for (const piece of pieces) {
+    const area = signedArea(sampleCubicChain(piece));
+    if (Math.abs(area) < 0.25) continue;
+    const oriented = (area < 0 ? -1 : 1) === sign ? piece : piece.slice().reverse();
+    commands.push(...chainToCommands(oriented, true));
+  }
+  if (engineKind !== 'ellipse' && shape.points.length >= 3) {
+    const body = signedArea(shape.points) < 0 === (sign < 0)
+      ? shape.points
+      : shape.points.slice().reverse();
+    commands.push(['M', body[0].x, body[0].y]);
+    for (let index = 1; index < body.length; index += 1) commands.push(['L', body[index].x, body[index].y]);
+    commands.push(['Z']);
+  }
+  return commands;
+};
+
+/**
+ * Both painted cloud paths from one engine pass:
+ *   outline — the studio's crowns (absolute M/C only), stroked with fill:none
+ *   fill    — the closed scalloped region (M/L/C/Z, nonzero), or null when the
+ *             shape is open
+ * `options.vertexState` carries the studio's per-vertex arrays for shapes that
+ * were edited one vertex at a time (see moveCloudVertex).
+ */
+export function buildCloudRenderPaths(
+  points,
+  intensity = 2,
+  strokeWidth = 1,
+  unitScale = 1,
+  kind = 'polygon',
+  options = null,
+) {
+  const built = buildCloudShapeRuns(points, intensity, strokeWidth, unitScale, kind, options);
+  if (!built) return null;
+  // The fill contour costs a second pass over every crown, so callers that
+  // have no visible fill paint ask for the outline alone (options.fill=false).
+  return {
+    outline: built.outline,
+    fill: options?.fill === false ? null : buildCloudFillFromRuns(built),
+  };
+}
+
+/**
+ * Whether a Fabric fill paint would put ink on the page. Shared by every cloud
+ * render path so "is this cloud filled?" has one answer (an rgba() with zero
+ * alpha or an 8-digit hex ending in 00 is as empty as 'transparent').
+ */
+export function hasVisibleCloudFill(value) {
+  if (value == null) return false;
+  const text = String(value).trim().toLowerCase();
+  if (text === '' || text === 'none' || text === 'transparent') return false;
+  const rgba = text.match(/^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(?:,\s*([\d.]+)\s*)?\)$/);
+  if (rgba) return rgba[1] == null || Number(rgba[1]) > 0;
+  const hex = text.match(/^#([0-9a-f]{4}|[0-9a-f]{8})$/);
+  if (hex) {
+    const alpha = hex[1].length === 4 ? hex[1].slice(3, 4) : hex[1].slice(6, 8);
+    return parseInt(alpha, 16) > 0;
+  }
+  return true;
+}
+
+// This is the sole app entry point for revision-cloud outlines. The approved
+// engine emits separate open crowns so its short rounded tails stay intact.
+export function buildCloudPathCommands(
+  points,
+  intensity = 2,
+  strokeWidth = 1,
+  unitScale = 1,
+  kind = 'polygon',
+  options = null,
+) {
+  const built = buildCloudShapeRuns(points, intensity, strokeWidth, unitScale, kind, options);
+  return built ? built.outline : null;
+}
+
+/** The closed scalloped fill region alone (null for open shapes). */
+export function buildCloudFillPathCommands(
+  points,
+  intensity = 2,
+  strokeWidth = 1,
+  unitScale = 1,
+  kind = 'polygon',
+  options = null,
+) {
+  return buildCloudFillFromRuns(
+    buildCloudShapeRuns(points, intensity, strokeWidth, unitScale, kind, options),
+  );
+}
+
+/** Flat command arrays (M/L/C/Z) -> SVG path data, the way every renderer joins them. */
+export function cloudCommandsToPathData(commands) {
+  return Array.isArray(commands)
+    ? commands.map((segment) => segment.join(' ')).join(' ')
+    : '';
 }
 
 /**

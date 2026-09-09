@@ -533,17 +533,33 @@ test('canvas parity: the presentation painter traces the studio outline for ever
   );
 });
 
-test('canvas parity: a cloud shape fills its own body, never the cloud outline', { skip }, () => {
-  // The contract rect clouds have always followed: body filled with the
-  // shape's own geometry, crowns stroked with fill:none.
+// DELIBERATE ASSERTION CHANGE (2026-09-09, cloud-studio-match): this test used
+// to assert that a filled cloud paints its SOURCE body (an <ellipse> under the
+// crowns, humps hollow). Professional revision clouds (Drawboard, Bluebeam)
+// fill the whole region bounded by the scalloped outline, humps included, and
+// that is now the app contract for every closed cloud shape in every render
+// path. The old "body is an ellipse" expectation is therefore replaced, not
+// weakened: the painter must fill exactly ONE path, that path must be the
+// scalloped region (its extent reaches the crown apexes, past the body), it
+// must be traced as curves (never a rect/ellipse primitive), and open shapes
+// still never fill.
+test('canvas parity: a filled cloud paints the whole scalloped region as one path', { skip }, () => {
   const ellipse = recordingContext();
   drawAnnotationObject(ellipse, {
     type: 'ellipse', left: 0, top: 0, width: 300, height: 200, rx: 150, ry: 100,
     scaleX: 1, scaleY: 1, strokeWidth: 1, stroke: '#c42747', fill: '#ffcc00',
     data: { pdfCloudIntensity: 2 },
   }, 1);
-  assert.ok(ellipse.calls.some(([verb]) => verb === 'ellipse'), 'the body is an ellipse, not its box');
-  assert.equal(ellipse.calls.filter(([verb]) => verb === 'fill').length, 1, 'exactly one fill: the body');
+  assert.equal(ellipse.calls.filter(([verb]) => verb === 'fill').length, 1, 'exactly one fill: the scalloped region');
+  assert.equal(ellipse.calls.some(([verb]) => verb === 'ellipse' || verb === 'rect'), false,
+    'the fill is the scalloped region, not the body primitive');
+  const fillIndex = ellipse.calls.findIndex(([verb]) => verb === 'fill');
+  const filled = ellipse.calls.slice(0, fillIndex).filter(([verb]) => verb === 'M' || verb === 'C' || verb === 'L');
+  const xs = filled.flatMap((segment) => segment.slice(1).filter((_, i) => i % 2 === 0));
+  const ys = filled.flatMap((segment) => segment.slice(1).filter((_, i) => i % 2 === 1));
+  assert.ok(Math.min(...xs) < -5 && Math.max(...xs) > 305, 'the fill reaches the crown apexes on the left/right');
+  assert.ok(Math.min(...ys) < -5 && Math.max(...ys) > 205, 'the fill reaches the crown apexes on the top/bottom');
+  assert.ok(ellipse.calls.some(([verb]) => verb === 'closePath'), 'the fill path is closed');
 
   const polyline = recordingContext();
   drawAnnotationObject(polyline, {
@@ -553,6 +569,15 @@ test('canvas parity: a cloud shape fills its own body, never the cloud outline',
   }, 1);
   assert.equal(polyline.calls.filter(([verb]) => verb === 'fill').length, 0,
     'an OPEN cloud has no interior, so it never fills');
+
+  // No visible fill paint -> no fill pass at all (and no wasted contour work).
+  const hollow = recordingContext();
+  drawAnnotationObject(hollow, {
+    type: 'rect', left: 0, top: 0, width: 300, height: 200, scaleX: 1, scaleY: 1,
+    strokeWidth: 2.5, stroke: '#c42747', fill: 'rgba(255, 255, 255, 0)',
+    data: { pdfCloudIntensity: 2 },
+  }, 1);
+  assert.equal(hollow.calls.filter(([verb]) => verb === 'fill').length, 0, 'a zero-alpha fill paints nothing');
 
   // A counter never becomes a cloud even if the field is somehow present.
   const counter = recordingContext();
@@ -593,4 +618,237 @@ test('every render path funnels the cloud decision through one resolver', () => 
   assert.match(svg, /shapeKind="cloud-polyline"/);
   // And the toolbar/creation gate is the shared predicate, not a tool list.
   assert.match(creation, /toolSupportsCloudBorderStyle\(tool\)/);
+});
+
+// ---------------------------------------------------------------------------
+// Layer 5 (2026-09-09, cloud-studio-match) - the call sites feed the engine
+// exactly what the studio's page.tsx feeds lib/cloud.ts: vertices with any
+// Fabric scale baked in (a resized polygon re-fits constant-size crowns),
+// rotation applied to the finished crowns, moveVertex memory for single-vertex
+// drags, and one scalloped fill region for every closed cloud.
+// ---------------------------------------------------------------------------
+
+const {
+  cloudPolyEnginePoints,
+  resolveCloudAnnotationGeometry,
+  transformCloudCommandsToWorld,
+} = await import('../src/utils/cloudAnnotationGeometry.js');
+const {
+  CLOUD_STYLE_DEFAULTS,
+  buildCloudFillPathCommands,
+  cloudVertexStateForPoints,
+  moveCloudVertex,
+} = await import('../src/utils/pdfAnnotationAppearance.js');
+
+const studioPath = (kind, points, options = {}) => reference
+  .cloudRuns(reference.makeShape(kind, points, 'x', { size: 28, depth: 12, ...options }), new Map(), 0, false)
+  .map((run) => run.d)
+  .filter(Boolean)
+  .join(' ');
+
+const geometryPath = (geometry) => commandsToPathData(geometry.outline);
+
+test('call-site parity: a scaled polygon re-fits constant-size crowns from the scaled vertices', { skip }, () => {
+  // A bbox resize (or an imported scale) is stored as scaleX/scaleY on the
+  // Fabric polygon. The studio resizes by rewriting the vertices, so the
+  // engine must see the scaled points - never a scale() transform over the
+  // crowns, which stretches every scallop (the polygon/polyline regression).
+  const points = POLYGONS.star;
+  for (const [scaleX, scaleY] of [[1, 1], [2, 1], [1, 1.4], [2, 1.4], [0.5, 0.75]]) {
+    const obj = {
+      type: 'polygon', left: 40, top: 60, points, scaleX, scaleY,
+      pathOffset: { x: 200, y: 180 }, strokeWidth: 2.5, stroke: '#c42747',
+      data: { pdfCloudIntensity: 2 },
+    };
+    const geometry = resolveCloudAnnotationGeometry(obj);
+    const scaled = points.map((p) => ({ x: (p.x - 200) * scaleX, y: (p.y - 180) * scaleY }));
+    assert.deepEqual(cloudPolyEnginePoints(obj), scaled, `engine points at ${scaleX}x${scaleY}`);
+    assert.equal(geometryPath(geometry), studioPath('polygon', scaled), `polygon crowns at ${scaleX}x${scaleY}`);
+    assert.equal(geometry.transform, 'translate(40, 60)', 'placement is translate only - no scale on the crowns');
+  }
+  const open = {
+    type: 'polyline', left: 0, top: 0, points: POLYLINES.zigzag, scaleX: 1.5, scaleY: 2,
+    strokeWidth: 2.5, data: { pdfCloudIntensity: 2 },
+  };
+  assert.equal(
+    geometryPath(resolveCloudAnnotationGeometry(open)),
+    studioPath('polyline', POLYLINES.zigzag.map((p) => ({ x: p.x * 1.5, y: p.y * 2 }))),
+    'a scaled polyline re-fits too',
+  );
+});
+
+test('call-site parity: a rotated cloud is built un-rotated and rotated as a whole, on screen AND in print', { skip }, () => {
+  // Screen: renderRect builds the axis-aligned box and rotates the <g>.
+  // Print used to rotate the four corners first and hand those to the
+  // engine, whose rectangle fit then saw a different box (a 60x40 rect at
+  // 30 degrees printed 8 crowns of width 28 while the screen showed 12 of
+  // width 18). Both now share transformCloudCommandsToWorld.
+  const obj = {
+    type: 'rect', left: 100, top: 150, width: 60, height: 40, scaleX: 1, scaleY: 1,
+    angle: 30, strokeWidth: 2.5, stroke: '#c42747', data: { pdfCloudIntensity: 2 },
+  };
+  const geometry = resolveCloudAnnotationGeometry(obj);
+  assert.equal(geometryPath(geometry), studioPath('rectangle', rect(0, 0, 60, 40)), 'the un-rotated box is what the engine fits');
+  assert.equal(geometry.transform, 'translate(100, 150) rotate(30, 30, 20)');
+  const world = transformCloudCommandsToWorld(geometry.outline, geometry);
+  assert.equal(world.length, geometry.outline.length, 'every command survives the rotation');
+  // The rotated corner crown apex lands on the rotated corner.
+  const radians = Math.PI / 6;
+  const rotate = (x, y) => ({
+    x: 100 + 30 + (x - 30) * Math.cos(radians) - (y - 20) * Math.sin(radians),
+    y: 150 + 20 + (x - 30) * Math.sin(radians) + (y - 20) * Math.cos(radians),
+  });
+  const localApex = geometry.outline.find(([verb]) => verb === 'C');
+  const worldApex = world.find(([verb]) => verb === 'C');
+  const expected = rotate(localApex[5], localApex[6]);
+  assert.ok(Math.abs(worldApex[5] - expected.x) < 1e-9 && Math.abs(worldApex[6] - expected.y) < 1e-9);
+});
+
+test('call-site parity: a single-vertex drag replays the studio moveVertex, in frame and at rest', { skip }, () => {
+  // moveVertex() re-fits ONLY the dragged vertex; the neighbours keep their
+  // corner exactly. The app carries that memory on data.pdfCloudVertexState
+  // and every renderer reads it back through the shared resolver, so the
+  // cloud after release is the studio's, not a fresh makeShape() refit.
+  const points = POLYGONS.star;
+  let studio = reference.makeShape('polygon', points, 'z', { size: 28, depth: 12 });
+  const state = cloudVertexStateForPoints('polygon', points);
+  let moved = null;
+  for (let step = 0; step < 30; step += 1) {
+    const p = { x: 320 + step * 3.7, y: 150 - step * 2.3 };
+    const expected = reference.cloudRuns(reference.moveVertex(studio, 2, p), new Map(), 0, false).map((r) => r.d).join(' ');
+    moved = moveCloudVertex('polygon', points, state, 2, p);
+    const obj = {
+      type: 'polygon', left: 0, top: 0, points: moved.points, scaleX: 1, scaleY: 1,
+      strokeWidth: 2.5, data: { pdfCloudIntensity: 2, pdfCloudVertexState: moved.state },
+    };
+    assert.equal(geometryPath(resolveCloudAnnotationGeometry(obj)), expected, `vertex drag step ${step}`);
+    // And it differs from a plain refit whenever the neighbours would move.
+    if (step === 29) {
+      assert.notEqual(expected, studioPath('polygon', moved.points), 'the studio keeps the neighbours where they were');
+    }
+  }
+  // A second drag starts from the REMEMBERED shape, exactly like the studio.
+  studio = reference.moveVertex(studio, 2, { x: 320 + 29 * 3.7, y: 150 - 29 * 2.3 });
+  const again = moveCloudVertex('polygon', moved.points, moved.state, 4, { x: 300, y: 330 });
+  const expectedAgain = reference.cloudRuns(reference.moveVertex(studio, 4, { x: 300, y: 330 }), new Map(), 0, false).map((r) => r.d).join(' ');
+  assert.equal(
+    geometryPath(resolveCloudAnnotationGeometry({
+      type: 'polygon', left: 0, top: 0, points: again.points, scaleX: 1, scaleY: 1,
+      strokeWidth: 2.5, data: { pdfCloudIntensity: 2, pdfCloudVertexState: again.state },
+    })),
+    expectedAgain,
+  );
+  // A resize (scale change) invalidates the memory: the studio calls makeShape.
+  const resized = {
+    type: 'polygon', left: 0, top: 0, points: again.points, scaleX: 1.5, scaleY: 1,
+    strokeWidth: 2.5, data: { pdfCloudIntensity: 2, pdfCloudVertexState: again.state },
+  };
+  assert.equal(resolveAnnotationCloudSpec(resized).vertexState, undefined, 'stale memory is ignored');
+  assert.equal(
+    geometryPath(resolveCloudAnnotationGeometry(resized)),
+    studioPath('polygon', again.points.map((p) => ({ x: p.x * 1.5, y: p.y }))),
+  );
+});
+
+test('fill parity: every closed cloud fills the scalloped region, open clouds never fill', { skip }, () => {
+  const size = cloudRadiusForIntensity(2, 2.5, 1) * 2;
+  const cases = [
+    ['rectangle', rect(0, 0, 300, 200)],
+    ['rectangle', rect(0, 0, 40, 30)],
+    ['ellipse', ellipseCloudPoints(0, 0, 300, 200)],
+    ['ellipse', ellipseCloudPoints(0, 0, 600, 18)],
+    ...Object.entries(POLYGONS).map(([, points]) => ['polygon', points]),
+  ];
+  for (const [kind, points] of cases) {
+    const outline = buildCloudPathCommands(points, 2, 2.5, 1, kind);
+    const fill = buildCloudFillPathCommands(points, 2, 2.5, 1, kind);
+    assert.ok(Array.isArray(fill) && fill.length > 0, `${kind} n=${points.length} has a fill region`);
+    assert.equal(fill[0][0], 'M');
+    assert.ok(fill.every(([verb]) => verb === 'M' || verb === 'L' || verb === 'C' || verb === 'Z'));
+    assert.ok(fill.some(([verb]) => verb === 'Z'), 'the region is closed');
+    // The region's extent is the crowns' extent (sampled geometry, not
+    // control points), not the body's.
+    const bounds = (commands) => {
+      const samples = [];
+      let cursor = null;
+      for (const command of commands) {
+        if (command[0] === 'M' || command[0] === 'L') {
+          cursor = { x: command[1], y: command[2] };
+          samples.push(cursor);
+        } else if (command[0] === 'C') {
+          const cubic = (a, b, c, d, t) => (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t ** 2 * c + t ** 3 * d;
+          for (let step = 1; step <= 20; step += 1) {
+            const t = step / 20;
+            samples.push({
+              x: cubic(cursor.x, command[1], command[3], command[5], t),
+              y: cubic(cursor.y, command[2], command[4], command[6], t),
+            });
+          }
+          cursor = { x: command[5], y: command[6] };
+        }
+      }
+      const xs = samples.map((p) => p.x);
+      const ys = samples.map((p) => p.y);
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    };
+    const [ox0, oy0, ox1, oy1] = bounds(outline);
+    const [fx0, fy0, fx1, fy1] = bounds(fill);
+    for (const [a, b] of [[ox0, fx0], [oy0, fy0], [ox1, fx1], [oy1, fy1]]) {
+      assert.ok(Math.abs(a - b) < 0.01, `${kind} n=${points.length} fill extent tracks the crown extent (${a} vs ${b})`);
+    }
+    // The outline itself is unchanged by asking for the fill.
+    assert.equal(commandsToPathData(outline), studioPath(kind, points, { size }));
+  }
+  for (const points of Object.values(POLYLINES)) {
+    assert.equal(buildCloudFillPathCommands(points, 2, 2.5, 1, 'polyline'), null);
+  }
+  // The resolver only builds the fill when there is visible fill paint.
+  const hollow = resolveCloudAnnotationGeometry({
+    type: 'rect', left: 0, top: 0, width: 300, height: 200, strokeWidth: 2.5,
+    fill: 'transparent', data: { pdfCloudIntensity: 2 },
+  });
+  assert.equal(hollow.fill, null);
+  const filled = resolveCloudAnnotationGeometry({
+    type: 'rect', left: 0, top: 0, width: 300, height: 200, strokeWidth: 2.5,
+    fill: 'rgba(0, 0, 255, 0.3)', data: { pdfCloudIntensity: 2 },
+  });
+  assert.ok(Array.isArray(filled.fill) && filled.fill.length > 0);
+});
+
+test('studio defaults: the Cloud style paints a 2.5-unit #c42747 line and scallop size ignores the line width', { skip }, () => {
+  assert.deepEqual(CLOUD_STYLE_DEFAULTS, { strokeColor: '#c42747', strokeWidth: 2.5, strokeOpacity: 100 });
+  const defaults = reference.makeShape('rectangle', rect(0, 0, 10, 10), 'd');
+  assert.equal(defaults.stroke, CLOUD_STYLE_DEFAULTS.strokeWidth);
+  assert.equal(defaults.color, CLOUD_STYLE_DEFAULTS.strokeColor);
+  assert.equal(cloudRadiusForIntensity(2, 0.5, 1) * 2, defaults.size, 'Bump 2 is the studio default 28');
+  for (const strokeWidth of [0.5, 2.5, 6, 8, 20]) {
+    assert.equal(cloudRadiusForIntensity(1, strokeWidth, 1), 7, `Bump 1 stays 14 units at stroke ${strokeWidth}`);
+    assert.equal(cloudRadiusForIntensity(2, strokeWidth, 1), 14, `Bump 2 stays 28 units at stroke ${strokeWidth}`);
+  }
+  assert.equal(cloudRadiusForIntensity(6, 1, 1) * 2, 80, 'the studio maximum caps the ladder');
+});
+
+test('every render path and the hit target resolve clouds through the shared geometry resolver', () => {
+  const svg = readFileSync(new URL('../src/utils/svgAnnotationRenderers.jsx', import.meta.url), 'utf8');
+  const painter = readFileSync(new URL('../src/utils/annotationCanvasPainter.js', import.meta.url), 'utf8');
+  const flatten = readFileSync(new URL('../src/utils/pdfAnnotationsPdfLib.js', import.meta.url), 'utf8');
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  const interaction = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  const creation = readFileSync(new URL('../src/utils/annotationCreationCommit.js', import.meta.url), 'utf8');
+  for (const [label, source] of [['svg', svg], ['painter', painter], ['flatten', flatten], ['layer', layer]]) {
+    assert.match(source, /resolveCloudAnnotationGeometry\(/, `${label} must use the shared cloud geometry resolver`);
+    assert.doesNotMatch(source, /buildCloudPathCommands\(/, `${label} must not build its own crowns`);
+  }
+  // Ink: fill region under the crowns, crowns stroked with round caps/joins.
+  assert.match(svg, /fillRule="nonzero"/);
+  assert.match(svg, /strokeLinecap="round"\s+strokeLinejoin="round"/);
+  // Hit target: the studio's transparent stroke along the crowns.
+  assert.match(layer, /CLOUD_HIT_STROKE_WIDTH/);
+  assert.match(layer, /data-shape-hit-target="cloud"/);
+  assert.match(layer, /data-shape-hit-target="cloud-fill"/);
+  // Vertex drags replay moveVertex and store the memory on the annotation.
+  assert.match(interaction, /moveCloudVertex\(/);
+  assert.match(interaction, /pdfCloudVertexState/);
+  // Creation: a cloud keeps the exact drag box (no half-stroke inset).
+  assert.match(creation, /strokeWidth: isCloud \? 0 : strokeWidth/);
 });

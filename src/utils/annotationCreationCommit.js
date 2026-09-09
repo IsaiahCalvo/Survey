@@ -148,13 +148,19 @@ export function buildBoundaryShapeCommitJSON({
   stampRegionId,
   activeRegionId,
 }) {
+  // UX 2026-09-09: a CLOUD keeps the exact drag box as its vertices (no
+  // half-stroke inset) - the approved studio puts the corner crowns on the raw
+  // pointer positions, and the crowns bulge past the box regardless, so the
+  // inset that keeps a plain outline's outer edge on the drag frame would only
+  // move every crown a half stroke inward from where the studio draws it.
+  const isCloud = lineBorderStyle === 'cloud' && toolSupportsCloudBorderStyle(tool);
   const geometry = computeDrawnBoundaryShapePreviewGeometry({
     tool,
     startX: start.x,
     startY: start.y,
     pointerX: end.x,
     pointerY: end.y,
-    strokeWidth,
+    strokeWidth: isCloud ? 0 : strokeWidth,
   });
   if (!(geometry.outerBounds.width > 2 && geometry.outerBounds.height > 2)) return null;
 
