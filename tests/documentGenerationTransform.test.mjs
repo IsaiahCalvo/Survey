@@ -282,6 +282,74 @@ test('moving a form carrier changes its page-derived alias without minting a new
   assert.equal(row.id,uuid(60));assert.equal(row.annotation_id,'form-field:1:15R');assert.equal(row.exportedAt,'old');
 });
 
+function linkedFormFixture(operation,{rows=true}={}){
+  const input={...fixture(),operation},s=input.sourcePayload.semantic.sources;
+  const forms=[1,2].map(p=>{const id=`form-field:${p}:15R`;return{type:'form-field',id,fieldId:'15R',pageNumber:p,
+    data:{type:'form-field',id,fieldId:'15R',pageNumber:p,value:`value-${p}`},meta:{authorId:actor}};});
+  const d=new Y.Doc();syncByPageToDoc(d,{1:{objects:[forms[0]]},2:{objects:[forms[1],structuredClone(shape)]}});setModern(input,d);
+  if(rows)s.document_annotations=forms.map((o,i)=>({id:uuid(70+i),document_id:documentId,user_id:actor,annotation_id:o.id,
+    annotation_type:'form-field',page_number:i+1,annotation_data:{fabricObject:o}}));
+  s.survey_sessions=[{id:uuid(30),document_id:documentId,user_id:uuid(31),is_active:false,template_id:uuid(32)}];
+  s.survey_items=forms.map((o,i)=>({id:uuid(80+i),session_id:uuid(30),annotation_id:o.id,highlight_id:o.id,page_number:i+1,
+    notes:`private-${i}`,version:9,excel_row_index:i+10,changed_by:'original'}));
+  s.survey_items.push({id:uuid(82),session_id:uuid(30),annotation_id:'mark',page_number:2,notes:'non-form',excel_row_index:12});
+  return input;
+}
+
+for(const type of ['move','reorder'])for(const rows of [true,false])test(`${type} propagates surviving form identity to private survey links (SQL rows=${rows})`,async()=>{
+  const input=linkedFormFixture({type,from:2,to:1},{rows}),before=structuredClone(input),result=await transformDocumentGenerationSource(input);
+  for(const [i,p] of [[0,2],[1,1]]){
+    const original=before.sourcePayload.semantic.sources.survey_items[i],item=result.projection.surveyItems[i];
+    assert.deepEqual(item,{...original,page_number:p,annotation_id:`form-field:${p}:15R`,highlight_id:`form-field:${p}:15R`});
+    if(rows)assert.equal(result.projection.documentAnnotations[i].annotation_id,item.annotation_id);
+    const form=result.projection.modern.annotationsByPage[p].objects.find(o=>o.type==='form-field');assert.equal(form.data.id,item.annotation_id);
+  }
+  assert.equal(result.projection.surveyItems[2].annotation_id,'mark');assert.equal(result.projection.surveyItems[2].page_number,1);
+  assert.deepEqual(input,before);assert.deepEqual(result.archive.sourcePayload,before.sourcePayload);
+});
+
+test('copy keeps shifted survivor links separate from fresh copied form links',async()=>{
+  const input=linkedFormFixture({type:'copy',source:2,afterPage:1});
+  input.copiedWidgets=[{sourcePage:2,targetPage:2,sourceFieldId:'15R',targetFieldId:'45R',targetFieldName:'copied'}];
+  const original=input.sourcePayload.semantic.sources.survey_items[1],result=await transformDocumentGenerationSource(input);
+  const survivor=result.projection.surveyItems.find(r=>r.id===original.id),copy=result.projection.surveyItems.find(r=>r.notes===original.notes&&r.id!==original.id);
+  assert.equal(survivor.annotation_id,'form-field:3:15R');assert.equal(survivor.highlight_id,'form-field:3:15R');assert.equal(survivor.excel_row_index,original.excel_row_index);
+  assert.equal(copy.annotation_id,'form-field:2:45R');assert.equal(copy.highlight_id,'form-field:2:45R');assert.equal(copy.excel_row_index,null);
+  assert.equal(result.identityMap.annotations[original.annotation_id],copy.annotation_id);
+});
+
+test('sidecar-only legacy form links are resolved after all source representations are read',async()=>{
+  const input=linkedFormFixture({type:'move',from:2,to:1},{rows:false}),s=input.sourcePayload.semantic.sources,d=new Y.Doc();
+  Y.applyUpdate(d,Buffer.from(s.annotation_snapshot.snapshot_base64,'base64'));const byPage=docToByPage(d);d.destroy();
+  s.annotation_snapshot=null;input.sourcePayload.semantic.wal_head='0';attachSidecar(input,{version:1,annotationsByPage:byPage});
+  const item=s.survey_items[1];delete item.annotation_id;
+  const result=await transformDocumentGenerationSource(input),saved=result.projection.surveyItems.find(r=>r.id===item.id);
+  assert.equal(saved.highlight_id,'form-field:1:15R');assert.equal(Object.hasOwn(saved,'annotation_id'),false);
+  assert.equal(result.projection.sidecars[0].content.annotationsByPage[1].objects[0].data.id,saved.highlight_id);
+});
+
+test('unplaced linked business row keeps its null page while its known surviving form identity moves',async()=>{
+  const input=linkedFormFixture({type:'move',from:2,to:1}),row=input.sourcePayload.semantic.sources.survey_items[1];row.page_number=null;
+  const original=structuredClone(row),saved=(await transformDocumentGenerationSource(input)).projection.surveyItems.find(r=>r.id===row.id);
+  assert.deepEqual(saved,{...original,annotation_id:'form-field:1:15R',highlight_id:'form-field:1:15R'});
+});
+
+test('survey page or shared representation disagreement rejects instead of attaching to the wrong survivor',async()=>{
+  const wrongPage=linkedFormFixture({type:'move',from:2,to:1});wrongPage.sourcePayload.semantic.sources.survey_items[1].page_number=1;
+  const before=structuredClone(wrongPage);await assert.rejects(transformDocumentGenerationSource(wrongPage),e=>e.reason==='survey-identity-page');assert.deepEqual(wrongPage,before);
+  const disagree=linkedFormFixture({type:'move',from:2,to:1},{rows:false}),d=new Y.Doc();
+  Y.applyUpdate(d,Buffer.from(disagree.sourcePayload.semantic.sources.annotation_snapshot.snapshot_base64,'base64'));
+  d.getMap('surveyMarkers').set('form-field:2:15R',{annotationId:'form-field:2:15R',pageNumber:2});setModern(disagree,d);
+  await assert.rejects(transformDocumentGenerationSource(disagree),e=>e.reason==='survivor-identity-conflict');
+});
+
+for(const [operation,p] of [[{type:'insert',afterPage:1},3],[{type:'delete',page:1},1]])test(`${operation.type} propagates a shifted surviving form ID without treating it as a copy`,async()=>{
+  const input=linkedFormFixture(operation),row=input.sourcePayload.semantic.sources.survey_items[1];
+  const saved=(await transformDocumentGenerationSource(input)).projection.surveyItems.find(r=>r.id===row.id);
+  assert.equal(saved.annotation_id,`form-field:${p}:15R`);assert.equal(saved.excel_row_index,row.excel_row_index);
+  assert.equal(saved.notes,row.notes);assert.equal(saved.version,row.version);
+});
+
 for(const mode of ['legacy-empty','generated-empty-baseline','generated-empty-snapshot'])test(`${mode} remains authoritative and never resurrects stale SQL`,async()=>{
   const input={...fixture({generation:mode==='legacy-empty'?null:uuid(50)}),operation:{type:'move',from:2,to:1}},s=input.sourcePayload.semantic.sources;
   const empty=new Y.Doc(),bytes=b64(Y.encodeStateAsUpdate(empty));empty.destroy();

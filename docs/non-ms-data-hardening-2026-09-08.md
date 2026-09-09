@@ -3617,6 +3617,69 @@ with the existing large-chunk warning, and the required AST graph refresh
 completed. No user-visible route changed; no browser/cloud release proof is
 claimed by these private transform tests.
 
+## Private atomic generation publication: local only
+
+`20260909098000_document_generation_publication.sql` adds one private,
+postgres-owned publication function. It has no client or service-role grant,
+HTTP route, or active browser caller. A trusted transformer must supply the
+complete checked source and its transformed PDF/Yjs result. SQL checks exact
+bindings and writes; it cannot prove the meaning of opaque PDF or Yjs bytes.
+
+The function retains the verified candidate and archive bundle, then checks the
+full source again even if retention succeeded on an earlier attempt. In one
+transaction it writes the exact annotation, legacy-checkpoint and survey-item
+sets, installs the new baseline, switches the PDF pointer and generation head,
+and records an immutable receipt. Every changed row needs a one-use permission
+bound to its transaction, document, table, row ID, action and complete old/new
+values. No application role can issue these permissions. Final checks cover the
+actual row sets, unchanged survey sessions, document fields, PDF binding and
+whether the successor still fits the full-source capture limit. Any failed check
+rolls back the publication, including newly retained bindings.
+
+Same-operation retries return the prior receipt without writing again. A retry
+after later publications returns its historical receipt, never rewinds the head,
+and still requires current access. Authority checks hold the existing account,
+project and document locks; they do not repeat the full access query for each
+changed row. Row sets use bounded aggregation and set-based writes.
+
+Page moves can swap page-based form IDs under immediate unique constraints.
+Exact temporary keys let those rows keep their SQL primary keys and linked sync
+history. The pure transformer now maps each surviving form's actual new ID to
+its survey item, separately from copied-form IDs. It preserves notes, author,
+row identity, null-page state and existing Excel row positions. Conflicting page
+or identity evidence fails rather than guessing a new link. This is local link
+preservation, not Microsoft service testing.
+
+The disposable PostgreSQL harness passed all 15 groups: first adoption and later
+copy/delete, stable and historical retries, stale collaborator edits, revoked
+roles, account closing, isolation-level denial, held locks, failures after row
+writes, final-trigger corruption, exact ID swaps with preserved sync history,
+receipt immutability, document cleanup and successor-capacity rollback. The
+actual authority helper ran seven times for both 102 and 502 annotation rows;
+publication took 79 ms and 245 ms respectively in that local run. These timings
+are not hosted latency or a production benchmark. The exact temporary database
+cluster was stopped and removed.
+
+Verification against the prior 6,133-test baseline: the full offline run covered
+633 test files and 6,144 tests, with 6,052 passed, 92 skipped, zero failed and zero
+canceled. The new PostgreSQL wrapper also passed with its integration flag on,
+rerunning all 15 groups in a separate disposable local cluster. Vite build passed
+with the existing large-chunk warning; the required AST graph update completed.
+An independent final SQL review found no new blocking defect. No user-visible
+route changed in this slice, so these checks do not claim browser release proof.
+
+Activation remains gated on immutable transformed-sidecar binding (sources with
+sidecars currently fail explicitly), trusted PDF/Yjs transform validation, a
+checked open bundle, generation-aware reader/cache resets and durable retirement
+of old outboxes. Two-user offline/browser and actual provider-byte checks remain
+required. The private publisher bounds combined baseline and legacy checkpoint
+bytes at 16 MiB, narrower than the pure transform's 64 MiB limit; callers must
+handle that refusal without losing the old document. Existing committed-object
+quota guards already count stages, archives and retained objects; retention
+policy, safe asset reuse, provider-byte reconciliation and historical account
+data erasure still need separate work. No migration was applied to Supabase and
+no cloud quota reduction or live Microsoft result is claimed.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

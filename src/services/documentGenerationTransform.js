@@ -292,6 +292,18 @@ export async function transformDocumentGenerationSource(input) {
     const canonicalIndexes = {annotationsByPage:modernIdentities,surveyMarkers:materialized.surveyMarkers};
     for (const id of legacyState.deleted) check(!own(modernIdentities, id), 'legacy-delete-conflict');
     const identities = { annotations: {}, regions: {}, widgets: cloneJson(input.copiedWidgets ?? []) };
+    // Survivors and copies have different identities. Derive survivor links
+    // from the actual typed transform, never from a form-looking string.
+    const survivorIdentities = new Map(), survivorTargets = new Map();
+    const recordSurvivor = (sourceId,sourcePage,targetId,targetPage) => {
+      const next={sourcePage,targetId,targetPage},prior=survivorIdentities.get(sourceId);
+      check(!prior||same(prior,next),'survivor-identity-conflict');
+      if(targetId!==null){
+        check(!survivorTargets.has(targetId)||survivorTargets.get(targetId)===sourceId,'survivor-identity-conflict');
+        survivorTargets.set(targetId,sourceId);
+      }
+      survivorIdentities.set(sourceId,next);
+    };
     const regionTargets = new Set();
     const mint = ({ kind, sourceId }) => {
       check(['annotation', 'region', 'row', 'survey-item'].includes(kind) && typeof sourceId === 'string' && sourceId.length > 0, 'copy-identity');
@@ -345,6 +357,15 @@ export async function transformDocumentGenerationSource(input) {
             }
           }
         }
+      }
+      for(const [p,bucket] of Object.entries(model.annotationsByPage||{})){
+        const q=plan.map(Number(p)),survivors=q===null?null:result.annotationsByPage[q]?.objects;
+        check(q===null||survivors?.length===bucket.objects.length,'survivor-identity-conflict');
+        bucket.objects.forEach((o,index)=>recordSurvivor(annotationId(o),Number(p),q===null?null:annotationId(survivors[index]),q));
+      }
+      for(const key of ['surveyMarkers','annotations'])for(const [id,value] of Object.entries(model[key]||{})){
+        const p=value.pageNumber??value.pageId??value.page,q=plan.map(p);
+        recordSurvivor(id,p,q===null?null:id,q);
       }
       result.regionOverlayDisabled = Object.fromEntries(result.regionOverlayDisabled);
       validateModel(result,plan.nextCount); return result; };
@@ -473,16 +494,23 @@ export async function transformDocumentGenerationSource(input) {
     for (const row of s.survey_sessions) { validateRow(row); check(UUID.test(row.id) && UUID.test(row.user_id) && !sessions.has(row.id), 'survey-session');
       for(const [key,value] of Object.entries(row))extraField(key,value);sessions.set(row.id, row); }
     const surveyItems = [], seenItems = new Set();
+    const projectSurveyItems = () => {
     for (const row of s.survey_items) {
       check(object(row) && sessions.has(row.session_id) && UUID.test(row.id) && !seenItems.has(row.id), 'survey-item'); seenItems.add(row.id);
       const sourceId=row.annotation_id??row.highlight_id;
       check(typeof sourceId==='string'&&sourceId.length>0,'survey-item');
       if(own(row,'annotation_id')&&own(row,'highlight_id'))check(row.annotation_id===row.highlight_id,'survey-item');
       for (const [key, value] of Object.entries(row)) if (key !== 'page_number') extraField(key,value);
+      const survivor=survivorIdentities.get(sourceId);
+      if(survivor && row.page_number!==null)check(survivor.sourcePage===row.page_number,'survey-identity-page');
+      const withSurvivingIdentity=next=>{
+        if(survivor?.targetId!=null)for(const key of ['annotation_id','highlight_id'])if(own(row,key))next[key]=survivor.targetId;
+        return next;
+      };
       // Unplaced rows are valid business data; they never become page markers.
-      if (row.page_number === null) { surveyItems.push(row); continue; }
+      if (row.page_number === null) { surveyItems.push(withSurvivingIdentity({...row})); continue; }
       const p = page(row.page_number, count), mapped = plan.map(p);
-      if (mapped != null) surveyItems.push({ ...row, page_number: mapped });
+      if (mapped != null) surveyItems.push(withSurvivingIdentity({ ...row, page_number: mapped }));
       if(p===plan.source){
         const next={...cloneJson(row),id:mint({kind:'survey-item',sourceId:row.id}),page_number:plan.target,excel_row_index:null};
         const targetId=own(identities.annotations,sourceId)?identities.annotations[sourceId]:mint({kind:'annotation',sourceId});
@@ -490,6 +518,7 @@ export async function transformDocumentGenerationSource(input) {
         surveyItems.push(next);
       }
     }
+    };
     check(Array.isArray(semantic.sidecar_objects) && Array.isArray(sidecars)
       && sidecars.length === semantic.sidecar_objects.length, 'sidecar-set');
     const sidecarPaths = new Set(), transformedSidecars = [];
@@ -526,6 +555,8 @@ export async function transformDocumentGenerationSource(input) {
     if(!authoritative)materialized.annotationsByPage=byPage(Object.values(modernIdentities).map(v=>[v.p,v.o]));
     const transformedModern = transform({ annotationsByPage: materialized.annotationsByPage,
       surveyMarkers: materialized.surveyMarkers, deletedPdfAnnotations: materialized.deletedPdfAnnotations });
+    // Include modern-only and sidecar-only carriers before resolving links.
+    projectSurveyItems();
     const modern = { version: 1, annotationsByPage: transformedModern.annotationsByPage,
       surveyMarkers: transformedModern.surveyMarkers, deletedPdfAnnotations: transformedModern.deletedPdfAnnotations, annoMeta: nextMeta };
     const fresh = newDoc(); fresh.clientID = createHash('sha256').update(input.operationId).digest().readUInt32BE(0) || 1;
