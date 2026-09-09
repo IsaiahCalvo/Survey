@@ -46,6 +46,34 @@ export const POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS = 20;
 /** UX: drawn radius (SCREEN pixels) of the checkmark ring itself. */
 export const POLY_FINISH_CONTROL_SCREEN_RADIUS = 9.5;
 
+/**
+ * UX 2026-09-09 (iOS Simulator pass): on a touch screen the finish
+ * checkmarks and the first-vertex magnet must be comfortable under a finger.
+ * Apple's HIG minimum is a 44pt target, so the invisible hit disc behind each
+ * checkmark grows to a 48pt diameter and the "tap here to close" magnet
+ * around the first vertex grows to match. The drawn ring stays the same size
+ * - only the hit surface changes, and only when the pointer is coarse.
+ */
+export const POLY_FINISH_CONTROL_TOUCH_HIT_RADIUS = 24;
+export const POLY_FIRST_POINT_TOUCH_SNAP_RADIUS = 24;
+
+/**
+ * Screen-pixel hit radii for a draft's chrome, chosen by pointer kind. Pure
+ * so the touch/mouse split is testable without a DOM: `coarsePointer` is
+ * `matchMedia('(pointer: coarse)').matches` on the caller's side.
+ */
+export function polyDraftHitRadii({ coarsePointer = false } = {}) {
+  return coarsePointer
+    ? {
+      finishHitRadius: POLY_FINISH_CONTROL_TOUCH_HIT_RADIUS,
+      firstPointSnapRadius: POLY_FIRST_POINT_TOUCH_SNAP_RADIUS,
+    }
+    : {
+      finishHitRadius: POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS,
+      firstPointSnapRadius: POLY_FIRST_POINT_SNAP_SCREEN_RADIUS,
+    };
+}
+
 const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
 const asPoint = (point) => ({ x: num(point?.x), y: num(point?.y) });

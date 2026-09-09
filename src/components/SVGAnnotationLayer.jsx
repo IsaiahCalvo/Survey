@@ -65,15 +65,14 @@ import {
 } from '../utils/annotationCreationCommit.js';
 import {
   POLY_DRAFT_TOOLS,
-  POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS,
   POLY_FINISH_CONTROL_SCREEN_RADIUS,
-  POLY_FIRST_POINT_SNAP_SCREEN_RADIUS,
   addPolyDraftPoint,
   canClosePolyDraft,
   canFinishPolyDraft,
   createPolyDraft,
   isPointNearPolyDraftFirstPoint,
   polyDraftFinishControlPoints,
+  polyDraftHitRadii,
   resolvePolyDraftFinish,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
@@ -282,6 +281,14 @@ const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
 const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
+// UX 2026-09-09: touch hit disc (screen px radius, 44pt diameter) behind a
+// committed polygon/polyline vertex grabber. Mouse users keep the bare dot.
+const VERTEX_HANDLE_TOUCH_HIT_RADIUS = 22;
+const hasCoarsePointer = () => (
+  typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(pointer: coarse)').matches
+);
 
 const SVGAnnotationLayer = memo(({
   pageNumber,
@@ -1594,7 +1601,28 @@ const SVGAnnotationLayer = memo(({
   // the committed polygon's vertex handles already use, so the draft dots and
   // the post-commit handles are the same size at every zoom level.
   const polyHitScale = Math.sqrt(clampInverseScale(inverseScale));
-  const polyFirstPointSnapRadius = POLY_FIRST_POINT_SNAP_SCREEN_RADIUS * polyHitScale;
+  // UX 2026-09-09 (iOS Simulator pass): a finger needs a 44pt+ target, so
+  // on a coarse pointer the finish checkmarks' hit discs and the first-vertex
+  // magnet grow (polyDraftHitRadii); the drawn chrome does not change. The
+  // same coarse flag gives the committed polygon's vertex grabbers an
+  // invisible finger-sized hit disc so "drag one corner" works by touch.
+  const [isCoarsePointer, setIsCoarsePointer] = useState(hasCoarsePointer);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const coarseQuery = window.matchMedia('(pointer: coarse)');
+    const update = () => setIsCoarsePointer(coarseQuery.matches);
+    update();
+    coarseQuery.addEventListener?.('change', update);
+    return () => coarseQuery.removeEventListener?.('change', update);
+  }, []);
+  const polyDraftRadii = polyDraftHitRadii({ coarsePointer: isCoarsePointer });
+  // Touch hit surfaces use the UNdampened inverse scale so they are truly
+  // screen-constant: the sqrt dampening above is right for drawn chrome, but
+  // at the phone's fit-to-width zoom it shrank a nominal 24px disc to ~17pt
+  // and a finger 21pt off the checkmark placed a vertex instead (iPhone 17
+  // Pro simulator). clampInverseScale still caps growth on extreme zoom-out.
+  const polyHitSurfaceScale = isCoarsePointer ? clampInverseScale(inverseScale) : polyHitScale;
+  const polyFirstPointSnapRadius = polyDraftRadii.firstPointSnapRadius * polyHitSurfaceScale;
   const polyDraftActive = !!polyDraft;
 
   // Rubber-band tracking. Attached to the window (not the SVG root) so the
@@ -5531,7 +5559,7 @@ const SVGAnnotationLayer = memo(({
         const canClose = canClosePolyDraft(polyDraft);
         const canFinish = canFinishPolyDraft(polyDraft);
         const ringR = POLY_FINISH_CONTROL_SCREEN_RADIUS * polyHitScale;
-        const hitR = POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS * polyHitScale;
+        const hitR = polyDraftRadii.finishHitRadius * polyHitSurfaceScale;
         const tickR = 4.6 * polyHitScale;
         const vertexR = 3 * polyHitScale;
         const checkPath = (c) => (
@@ -6161,30 +6189,49 @@ const SVGAnnotationLayer = memo(({
           // vertex handles + shadows stop growing on extreme zoom-out (no-op at rest).
           const vHandleIs = Math.sqrt(clampInverseScale(inverseScale));
           const vHandleR = HANDLE_RADIUS * vHandleIs;
+          // UX 2026-09-09: on touch, an invisible finger-sized disc (44pt
+          // diameter, screen-constant) sits behind each vertex dot so a
+          // finger can grab the corner without landing on the 11px dot.
+          const vTouchHitR = isCoarsePointer ? VERTEX_HANDLE_TOUCH_HIT_RADIUS * clampInverseScale(inverseScale) : 0;
           const vHandleStyle = {
             filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,
             cursor: 'grab',
             pointerEvents: 'auto',
           };
+          const onVertexPointerDown = (i) => (e) => {
+            e.stopPropagation();
+            handleHandlePointerDown(e, `vertex-${i}`);
+          };
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
               {worldPoints.map((wp, i) => (
-                <circle
-                  key={`vertex-${i}`}
-                  data-resize-handle={`vertex-${i}`}
-                  cx={wp.x}
-                  cy={wp.y}
-                  r={vHandleR}
-                  fill="#ffffff"
-                  stroke="#4a90e2"
-                  strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke"
-                  style={vHandleStyle}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    handleHandlePointerDown(e, `vertex-${i}`);
-                  }}
-                />
+                <g key={`vertex-${i}`}>
+                  {vTouchHitR > 0 && (
+                    <circle
+                      data-resize-handle={`vertex-${i}`}
+                      data-vertex-touch-hit="true"
+                      cx={wp.x}
+                      cy={wp.y}
+                      r={vTouchHitR}
+                      fill="transparent"
+                      stroke="none"
+                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      onPointerDown={onVertexPointerDown(i)}
+                    />
+                  )}
+                  <circle
+                    data-resize-handle={`vertex-${i}`}
+                    cx={wp.x}
+                    cy={wp.y}
+                    r={vHandleR}
+                    fill="#ffffff"
+                    stroke="#4a90e2"
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
+                    style={vHandleStyle}
+                    onPointerDown={onVertexPointerDown(i)}
+                  />
+                </g>
               ))}
             </g>
           );

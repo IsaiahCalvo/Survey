@@ -4,6 +4,11 @@ import assert from 'node:assert/strict';
 import {
   POLY_CLOSE_MIN_POINTS,
   POLY_DRAFT_TOOLS,
+  POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS,
+  POLY_FINISH_CONTROL_SCREEN_RADIUS,
+  POLY_FINISH_CONTROL_TOUCH_HIT_RADIUS,
+  POLY_FIRST_POINT_SNAP_SCREEN_RADIUS,
+  POLY_FIRST_POINT_TOUCH_SNAP_RADIUS,
   POLY_MIN_POINTS,
   addPolyDraftPoint,
   canClosePolyDraft,
@@ -15,6 +20,7 @@ import {
   movePolyVertexPoints,
   normalizePolyPointsToLocal,
   polyDraftFinishControlPoints,
+  polyDraftHitRadii,
   resolvePolyDraftFinish,
   snapPolySegmentAngle,
   updatePolyDraftPreview,
@@ -304,4 +310,36 @@ test('module and region scope stamp onto a committed polygon', () => {
   });
   assert.equal(json.moduleId, 'module-9');
   assert.equal(json.regionId, 'region-3');
+});
+
+// ---------------------------------------------------------------------------
+// Touch hit targets (UX 2026-09-09, iOS Simulator pass)
+// ---------------------------------------------------------------------------
+
+test('touch: coarse pointer gets 44pt+ finish checkmarks and a matching first-point magnet', () => {
+  const touch = polyDraftHitRadii({ coarsePointer: true });
+  assert.equal(touch.finishHitRadius, POLY_FINISH_CONTROL_TOUCH_HIT_RADIUS);
+  assert.equal(touch.firstPointSnapRadius, POLY_FIRST_POINT_TOUCH_SNAP_RADIUS);
+  // Apple HIG: a finger target is at least 44pt across.
+  assert.ok(touch.finishHitRadius * 2 >= 44, 'finish checkmark hit disc must be >= 44pt');
+  assert.ok(touch.firstPointSnapRadius * 2 >= 44, 'first-point close magnet must be >= 44pt');
+  // The drawn ring is unchanged - only the invisible hit surface grows.
+  assert.ok(touch.finishHitRadius > POLY_FINISH_CONTROL_SCREEN_RADIUS);
+});
+
+test('touch: mouse keeps the original (smaller) hit radii', () => {
+  const mouse = polyDraftHitRadii({ coarsePointer: false });
+  assert.equal(mouse.finishHitRadius, POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS);
+  assert.equal(mouse.firstPointSnapRadius, POLY_FIRST_POINT_SNAP_SCREEN_RADIUS);
+  assert.deepEqual(polyDraftHitRadii(), mouse, 'default is the mouse contract');
+  assert.ok(mouse.finishHitRadius < polyDraftHitRadii({ coarsePointer: true }).finishHitRadius);
+});
+
+test('touch: the larger magnet closes a polygon from a finger-sized miss', () => {
+  const draft = draftFrom('polygon', [{ x: 100, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 200 }]);
+  const touchRadius = polyDraftHitRadii({ coarsePointer: true }).firstPointSnapRadius;
+  const mouseRadius = polyDraftHitRadii({ coarsePointer: false }).firstPointSnapRadius;
+  const nearMiss = { x: 100 + 18, y: 100 + 12 }; // ~21.6px off the first vertex
+  assert.equal(isPointNearPolyDraftFirstPoint(nearMiss, draft, mouseRadius), false);
+  assert.equal(isPointNearPolyDraftFirstPoint(nearMiss, draft, touchRadius), true);
 });

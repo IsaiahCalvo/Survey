@@ -1368,18 +1368,42 @@ export function MobileToolProperties({ api }) {
                         <strong>Stroke style</strong>
                         {/* App-styled dropdown (OWNER DECISION 3) — same reusable
                             menu as the strip, so the sheet matches. */}
-                        <MobileStyledSelect
-                          ariaLabel="Stroke style"
-                          value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
-                          options={[
-                            { value: 'solid', label: 'Solid' },
-                            { value: 'dashed', label: 'Dashed' },
-                            { value: 'dotted', label: 'Dotted' },
-                            /* Same Cloud rule as the strip picker above. */
-                            ...(api.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
-                          ]}
-                          onChange={(value) => api.setLineBorderStyle?.(value)}
-                        />
+                        {/* UX 2026-09-09: the sheet is the mobile "style
+                            sheet", so once Cloud is picked here the Bump size
+                            sits right beside it on the same row - same 1..20
+                            clamp as the strip and desktop, so a cloud looks the
+                            same wherever it was set. Same row (not a second
+                            row) because the sheet has a fixed height and a
+                            taller pane clipped at the bottom on the iPhone 17
+                            Pro simulator. */}
+                        <div className="mobile-pdf-text-card__style-row">
+                          <MobileStyledSelect
+                            ariaLabel="Stroke style"
+                            value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
+                            options={[
+                              { value: 'solid', label: 'Solid' },
+                              { value: 'dashed', label: 'Dashed' },
+                              { value: 'dotted', label: 'Dotted' },
+                              /* Same Cloud rule as the strip picker above. */
+                              ...(api.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
+                            ]}
+                            onChange={(value) => api.setLineBorderStyle?.(value)}
+                          />
+                          {api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
+                            <label className="mobile-pdf-properties__bump mobile-pdf-text-card__bump">
+                              <span>Bump</span>
+                              <input
+                                aria-label="Cloud bump size"
+                                inputMode="numeric"
+                                value={api.cloudIntensity ?? 2}
+                                onChange={(event) => {
+                                  const value = Number.parseInt(event.target.value, 10);
+                                  if (Number.isFinite(value)) api.setCloudIntensity(Math.max(1, Math.min(20, value)));
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
                       </div>
                       <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
                     </>

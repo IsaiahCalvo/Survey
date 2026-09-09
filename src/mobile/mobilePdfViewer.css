@@ -989,6 +989,32 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 700;
 }
 
+/* UX 2026-09-09: Bump inside the edit sheet shares the Stroke style row
+   (dropdown + "Bump" input side by side) so the card keeps its height. */
+.mobile-pdf-text-card__style-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mobile-pdf-text-card__style-row > .mobile-styled-select { flex: 1 1 auto; min-width: 0; }
+.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger { padding-inline: 8px; }
+.mobile-pdf-text-card__bump {
+  flex: 0 0 auto;
+  gap: 4px;
+  color: #f2f2f2;
+  font-size: 12px;
+}
+.mobile-pdf-text-card__bump input {
+  width: 36px;
+  height: 32px;
+  font-size: 13px;
+  color: #f2f2f2;
+  background: #242a33;
+  border: 1px solid #3a4250;
+  border-radius: 6px;
+}
+
 .mobile-pdf-properties__width {
   height: 27px;
   padding-left: 6px;
@@ -1560,6 +1586,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select { width: 100%; }
 
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger,
+.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger {
   width: 100%;
   height: 32px;
@@ -1572,6 +1599,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger.is-open,
+.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger.is-open,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger.is-open {
   background: var(--gold-bg, #2a2218);
   border-color: var(--gold-soft, #b6904a);
@@ -1693,6 +1721,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   right: 0;
   bottom: 0;
   z-index: 5850;
+  /* UX 2026-09-09 (iOS Simulator pass): the dock is taller than its painted
+     surface (the top 16pt is a transparent gutter), and that gutter swallowed
+     taps meant for the page - a polygon vertex placed just above the bar was
+     silently lost. Only the buttons take pointer events now; the gutter and
+     the painted surface let touches through to the page. */
+  pointer-events: none;
+}
+
+.mobile-pdf-dock__side,
+.mobile-pdf-dock__center {
+  pointer-events: auto;
 }
 
 .mobile-pdf-dock__surface {
