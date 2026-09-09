@@ -4954,6 +4954,66 @@ refresh also exits 0 with 28,101 nodes and 45,833 edges. The production Vite
 build exits 0 after building 932 modules in 940 ms
 (`/tmp/save-orchestration-vite-build-20260909.log`).
 
+## Current status: private replacement request composition
+
+`src/services/documentReplacementRequest.js` now composes one private,
+unmounted Request handler around the existing source capture, source-byte
+proof, source-bound upload, replacement executor, durable journal and sole SQL
+publisher. Its factory defaults off. The request body accepts only document,
+generation and WAL scope, one supported page operation, and explicit existing
+source, candidate and archive IDs. The bearer token alone supplies the actor.
+It does not accept or return an actor claim, plan, source envelope, PDF bytes,
+hash, Storage path, signed token or provider error.
+
+After auth, the handler reads the exact journal before any source or worker
+work. `published` returns a checked immutable receipt. `prepared` publishes the
+stored private plan without another source read, worker or upload. `untracked`
+and `expired` fail closed; only `missing` starts the full flow. The handler
+awaits the prepared-plan commit as its own remote call before it starts the SQL
+publisher. A lost prepare or publish reply returns only an unconfirmed result
+with the same caller-supplied IDs. It never retries a mutation or makes new
+source, candidate or archive IDs.
+
+The existing source-byte verifier still hashes and records the proof. A bounded
+pull-through copy owns the one supported PDF while that verifier drains it, so
+the first path reads the provider object once. An already-verified source also
+requires one exact no-cache provider read and the existing stream hash check. No
+`ReadableStream.tee()` or second verifier was added. Sidecars fail before the
+provider read, worker, archive upload or candidate upload. The original source
+PDF is archived only after the worker accepts the private source state. The
+candidate then uses the existing source-bound upload and complete-stream check.
+
+One handler permits one active request by default, with no queue. It holds that
+slot from request-body capture through publication and does not release it while
+an ignored body, provider, executor or remote call still owns data. The whole
+request has a fixed five-minute default deadline; each existing child handler
+keeps its own shorter cap. Source PDFs remain capped at 256 MiB, private JSON at
+64 MiB and the public request at 16 KiB. These JS and stream caps are not an RSS,
+network or provider sandbox.
+
+Focused source tests pass 18/18, including both one-provider-read paths, exact
+journal replay, lost commit and publish replies, actor isolation, same-process
+admission, late abort settlement, strict output scrubbing,
+sidecar rejection and the real replacement worker/PDF path. This is local
+proof with the actual three handlers and worker, but injected private database
+and provider adapters (`/tmp/document-replacement-request-focused-final-20260909.log`).
+The final offline suite ran 6,710 tests: 6,615 passed, 95 skipped, and none
+failed, cancelled or remained pending
+(`/tmp/document-replacement-request-full-npm-test-20260909.log`). The production
+Vite build exits 0 after building 932 modules in 880 ms
+(`/tmp/document-replacement-request-vite-build-20260909.log`).
+It proves call order, not a committed SQL transaction or hosted provider. The
+required no-cache fetch is part of that future provider adapter contract; the
+local injected stream does not prove hosted cache behavior. The prior 55/55
+disposable-PostgreSQL journal/publication result remains separate. The app's
+current raw legacy overwrite path is unchanged, the checked-open flag remains
+off, and this handler has no HTTP mount or chosen host/DB role. Client
+page-operation routing, sidecars,
+provider contract proof, live auth/cloud tests, flags and deployment remain
+open. The existing publisher preserves the import hash and changes the current
+generation path only when a future host calls this checked flow; this slice does
+not change local-file routes.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
