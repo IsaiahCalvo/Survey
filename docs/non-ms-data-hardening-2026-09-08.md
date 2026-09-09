@@ -3263,6 +3263,73 @@ Logs: `/tmp/survey-generation-transport-tests-final.log`,
 `/tmp/survey-generation-transport-build-final.log`, and
 `/tmp/survey-generation-transport-graph-final.log`.
 
+## Pre-transform source receipts and copied-row identity
+
+This slice still does not activate PDF generations or replace the current shared
+PDF overwrite path. Migration 092 and `document-generation-source` prepare a
+durable source before a future page transform. The endpoint is off unless
+`SURVEY_GENERATION_SOURCE_CAPTURE=v1-metadata-only`; that flag is not permission
+to publish. Every receipt says `source_byte_state: unverified`. Storage object
+ID, version, path and size are metadata, not a hash of the PDF's actual bytes.
+
+The source ID binds the actor, document and expected generation. Retrying that
+ID returns the same stored source, never a fresh capture. Read access is checked
+again. Legacy state, the active generation, survey state and connector history
+are retained privately; the response exposes only document-visible state and
+the actor's own survey sessions/items. Complete private-history hashes are kept
+separate from the semantic source hash so unrelated connector bookkeeping does
+not block a page transform. A generated document without an exact active PDF
+binding fails closed rather than silently reading its legacy file path.
+
+Pending captures use deduplicated bodies, a two-hour lifetime, per-document and
+per-actor limits, and a byte budget. Cancellation and expiry remove unreferenced
+capture bodies while keeping small identity receipts. The route verifies the
+caller with the anon client before using the service-only RPC, rejects actor
+injection, filters private fields, keeps bigint counters as strings, and bounds
+requests even when a dependency ignores cancellation. An unknown reply directs
+the client to resume the same source ID; it never claims success or cancels it.
+The archive sweep runs source expiry only under the same exact capture flag.
+It checks the bounded ID receipt, logs counts only and stops waiting after 15
+seconds; failed source expiry does not block unrelated checked storage cleanup.
+Busy document locks get a private 30-second retry delay and move behind other
+due captures, preventing repeated bounded sweeps from starving later bodies.
+Both private tables and all eleven functions explicitly belong to `postgres`;
+the service role receives only the four public RPC grants, not raw body access.
+Apply migration 092 before enabling either caller. Its connector-write fences
+take effect when the migration is applied, independent of the HTTP feature flag.
+
+Page copy/duplicate now removes Excel export receipts and row identity only from
+the copied annotation/marker carriers. It preserves the original's row link and
+both copies' business fields. Offline tests run the real Excel import matcher
+after JSON serialization: only the original remains a stored row identity, and
+the copy does not become a candidate deletion. This needs no Microsoft account.
+The isolated no-auth app route exercised Duplicate (four to five pages), Copy /
+Paste (five to six), and another Duplicate (six to seven) with no logged errors.
+The last duplicate's page counter was checked; its final thumbnail render was
+not separately verified. This is not an authenticated cloud save/reopen test or
+live Microsoft sync proof. The test tab and its Vite process were closed.
+
+Verification: the full `npm test` run exits 0 across 619 files and 6,008 tests:
+5,925 pass, 83 skip, zero failures or cancellations. The committed prior baseline
+was 615 files / 5,972 tests / 5,891 pass / 81 skip. The new opt-in PostgreSQL and
+Deno/SDK suites run separately, rather than counting their default skips as
+proof. The final focused run passes 48/48 without skips, including 21 actual
+PostgreSQL check groups and 23 actual localhost Deno/SDK HTTP checks. The broader
+page-mutation/source-handler set passes 60/60. The final review's starvation
+test failed before the retry-delay fix and passes after it. Build and Deno
+checks pass; the existing large-bundle warning remains.
+Logs: `/tmp/survey-source-capture-tests-final.log`,
+`/tmp/survey-source-capture-focused.log`,
+`/tmp/survey-source-capture-integration-final.log`, and
+`/tmp/survey-source-capture-build-final.log`.
+
+Remaining publication work: bind staging to this source ID, verify and retain
+the prior physical PDF as well as the candidate, compare the full captured state
+at publication, preserve legacy/foreign survey and connector history, and mount
+the confirmed PDF/state bundle in the frontend with generation-scoped providers,
+caches and recovery. A path reference alone cannot preserve bytes overwritten
+at that path. Microsoft 365 live testing remains deferred.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
@@ -3315,3 +3382,8 @@ For generation transport, keep immutable baselines, WAL, receipts, retirement
 markers and read/write fences on rollback. Do not point a legacy client at an
 adopted PDF or merge a retired scope into its successor. Disabling new callers
 does not authorize deleting recovery evidence or reopening legacy writes.
+For source capture, keep receipt identities and expired/canceled tombstones on
+rollback. Turn off new captures but continue bounded expiry until pending bodies
+are released (the service-only expiry RPC can run while the HTTP flag is off).
+Never reuse an old source ID for different input. The source's SQL
+hash cannot replace physical file-byte verification or final publication checks.

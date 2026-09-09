@@ -80,6 +80,15 @@ const generationExpiryCounts = (value: unknown): { canceled: number; skipped: nu
   return { canceled: receipt.canceled_operation_ids.length, skipped: receipt.skipped_operation_ids.length };
 };
 
+const generationSourceExpiryCounts = (value: unknown): { expired: number; skipped: number } => {
+  const receipt = value as Record<string, unknown> | null;
+  const counts = generationExpiryCounts({
+    canceled_operation_ids: receipt?.expired_source_ids,
+    skipped_operation_ids: receipt?.skipped_source_ids,
+  });
+  return { expired: counts.canceled, skipped: counts.skipped };
+};
+
 // Mirrors normalizeBatchLimit / MAX_BATCH_LIMIT in
 // src/services/archiveSweepSelection.js. Kept in sync by hand because Deno
 // cannot import from src/; the SQL clamps again as the real backstop.
@@ -203,6 +212,31 @@ Deno.serve(async (req) => {
       log('generation_upload_expiry_failed');
     } finally {
       clearTimeout(expiryTimer);
+    }
+    // Source expiry only strips pending SQL capture bodies; it grants no Storage
+    // deletion authority. Keep this behind the same rollout flag as source capture
+    // so a deployment without migration 092 does not generate routine RPC errors.
+    if (Deno.env.get('SURVEY_GENERATION_SOURCE_CAPTURE') === 'v1-metadata-only') {
+      let sourceExpiryTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const expiry = await Promise.race([
+          supabase.rpc('expire_document_generation_sources', { p_limit: UNLINK_CHUNK }),
+          new Promise<never>((_, reject) => {
+            sourceExpiryTimer = setTimeout(() => reject(new Error('Generation source expiry timed out')), 15000);
+          }),
+        ]);
+        if (expiry.error) throw new Error('Generation source expiry RPC failed');
+        const counts = generationSourceExpiryCounts(expiry.data);
+        log('generation_source_expiry', counts);
+        if (counts.skipped > 0) {
+          unlinkErrors.push('Some expired generation sources are busy; cleanup will retry.');
+        }
+      } catch {
+        unlinkErrors.push('Expired generation source cleanup could not be confirmed; cleanup will retry.');
+        log('generation_source_expiry_failed');
+      } finally {
+        clearTimeout(sourceExpiryTimer);
+      }
     }
     try {
       const cleanup = await drainDocumentStorageCleanup(supabase, UNLINK_CHUNK);

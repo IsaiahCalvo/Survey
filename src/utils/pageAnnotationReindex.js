@@ -1,4 +1,5 @@
 import { mintPastedCloneIdentity } from './pasteCloneIdentity.js';
+import { EXPORT_ACK_FIELDS } from '../services/excelExportAck.js';
 
 const clone = (value) => {
   if (value == null) return value;
@@ -273,6 +274,20 @@ function copiedFormMap(copiedWidgets, sourcePage, targetPage) {
   return bySource;
 }
 
+// A page copy has never been exported or matched to an Excel row. An empty
+// excelSync object is still a stored identity to the import matcher, so remove
+// the whole record (including fingerprints, row position and old op receipts).
+// Only traverse the annotation carriers we clone, not arbitrary business data.
+function clearCopiedExcelReceipts(copy, seen = new Set()) {
+  if (!copy || typeof copy !== 'object' || Array.isArray(copy) || seen.has(copy)) return copy;
+  seen.add(copy);
+  for (const key of EXPORT_ACK_FIELDS) delete copy[key];
+  delete copy.excelRowIndex;
+  clearCopiedExcelReceipts(copy.data, seen);
+  clearCopiedExcelReceipts(copy.legacyCallout, seen);
+  return copy;
+}
+
 function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidgets) {
   const annotationIds = new Map();
   const regionIds = new Map();
@@ -314,7 +329,7 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
           pageNumber: targetPage,
         };
       }
-      return copied;
+      return clearCopiedExcelReceipts(copied);
     });
     next.annotationsByPage[targetPage] = clonedPage;
   }
@@ -323,24 +338,24 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
     if (asPage(marker?.pageNumber) !== sourcePage) continue;
     const newId = annotationIds.get(id) || annotationIds.get(marker?.annotationId) || createId();
     annotationIds.set(id, newId);
-    next.surveyMarkers[newId] = replaceRegionId({
+    next.surveyMarkers[newId] = clearCopiedExcelReceipts(replaceRegionId({
       ...clone(marker),
       id: newId,
       annotationId: newId,
       pageNumber: targetPage,
-    }, regionIds);
+    }, regionIds));
   }
 
   for (const [id, annotation] of Object.entries(source.annotations || {})) {
     if (asPage(annotation?.pageNumber ?? annotation?.pageId ?? annotation?.page) !== sourcePage) continue;
     const newId = annotationIds.get(id) || annotationIds.get(annotation?.annotationId) || createId();
     annotationIds.set(id, newId);
-    next.annotations[newId] = replaceRegionId({
+    next.annotations[newId] = clearCopiedExcelReceipts(replaceRegionId({
       ...clone(annotation),
       id: newId,
       annotationId: newId,
       pageNumber: targetPage,
-    }, regionIds);
+    }, regionIds));
   }
 
   if (source.pageNames?.[sourcePage] != null) next.pageNames[targetPage] = source.pageNames[sourcePage];

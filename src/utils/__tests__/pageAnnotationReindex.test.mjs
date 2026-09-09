@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { transformPageState } from '../pageAnnotationReindex.js';
+import { buildMarkerIdentityRecord } from '../../services/excelIdentityRecord.js';
+import { wasReceivedByExcel } from '../../services/excelExportAck.js';
+import { buildScopeImportPlans, scopeKeyFor } from '../../services/buildScopeImportPlans.js';
 
 const make = () => ({
   annotationsByPage: {
@@ -37,6 +40,84 @@ const ids = (...values) => {
   let index = 0;
   return () => values[index++] || `generated-${index}`;
 };
+
+test('page copy and duplicate detach Excel row identity in every copied marker representation', async () => {
+  const excelSync = {
+    ...await buildMarkerIdentityRecord({ values: { item: 'Door', notes: 'Keep this note' },
+      exportId: 'export-a', assignedToken: 'owned-fixture-token', pendingRowIdWriteback: true,
+      lastSeenRowNumber: 8, lastIngestSeq: 12 }),
+    copyOfMarkerId: 'earlier-original', copyOrdinal: 2,
+    lastAppliedOpUuid: 'op-a', lastAppliedExcelRevision: 9, scopeId: 'module:category',
+    pendingDeleteSince: 100, pendingDeleteSeq: 13,
+  };
+  const receipt = { excelSync, exportedAt: '2026-09-08T00:00:00Z', exportAckEtag: 'etag-a', excelRowIndex: 7 };
+  const business = { name: 'Door', moduleId: 'module', categoryId: 'category',
+    notes: 'Keep this note', checklistResponses: { check: { selection: 'Y' } },
+    custom: { exportedAt: 'ordinary business data must survive' } };
+  const input = make();
+  Object.assign(input.surveyMarkers.a2, business, receipt);
+  Object.assign(input.annotations.a2, business, receipt);
+  Object.assign(input.annotationsByPage[2].objects[0], receipt);
+  Object.assign(input.annotationsByPage[2].objects[0].data, business, receipt);
+  input.annotationsByPage[2].objects[0].data.legacyCallout = { id: 'a2', ...business, ...receipt };
+  const before = structuredClone(input);
+  for (const op of [{ type: 'duplicate', page: 2 }, { type: 'copy', source: 2, afterPage: 3 }]) {
+    const out = transformPageState(input, op, { createId: ids('region-copy', 'annotation-copy') });
+    const target = op.type === 'duplicate' ? 3 : 4;
+    const copied = [out.surveyMarkers['annotation-copy'], out.annotations['annotation-copy'],
+      out.annotationsByPage[target].objects[0], out.annotationsByPage[target].objects[0].data,
+      out.annotationsByPage[target].objects[0].data.legacyCallout];
+    for (const marker of copied) {
+      for (const key of Object.keys(receipt)) assert.equal(Object.hasOwn(marker, key), false, `copy must not inherit ${key}`);
+      assert.equal(wasReceivedByExcel(marker), false);
+    }
+    for (const marker of [copied[0], copied[1], copied[3], copied[4]]) {
+      for (const [key, value] of Object.entries(business)) assert.deepEqual(marker[key], value);
+    }
+    assert.deepEqual(out.surveyMarkers.a2.excelSync, excelSync);
+    assert.equal(wasReceivedByExcel(out.surveyMarkers.a2), true);
+    assert.deepEqual(input, before, 'neither copy mutates original state');
+  }
+  for (const op of [{ type: 'move', from: 2, to: 1 }, { type: 'rotate', page: 2 }, { type: 'insert', afterPage: 1 }]) {
+    const out = transformPageState(input, op);
+    for (const key of Object.keys(receipt)) assert.deepEqual(out.surveyMarkers.a2[key], receipt[key], `${op.type} keeps ${key}`);
+  }
+});
+
+test('actual Excel import still matches only the original row after a page copy and cold serialization', async () => {
+  const values = { changedBy: '', changedDate: '', item: 'Door', entity: '', notes: 'Kept', answers: {} };
+  const marker = { id: 'original', annotationId: 'original', pageNumber: 1,
+    moduleId: 'module', categoryId: 'category', name: 'Door',
+    excelSync: await buildMarkerIdentityRecord({ values, exportId: 'export-a' }),
+    exportedAt: '2026-09-08T00:00:00Z' };
+  const transformed = transformPageState({ surveyMarkers: { original: marker } },
+    { type: 'duplicate', page: 1 }, { createId: () => 'copy' });
+  const surveyMarkers = JSON.parse(JSON.stringify(transformed.surveyMarkers));
+  const headerRow = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
+  const logs = [];
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ headerRow, jsonData: [headerRow, ['', '', '', 'Door', '', 'Kept']],
+      matchedCategory: { id: 'category' }, matchedModuleId: 'module' }],
+    surveyMarkers, templateToUse: { modules: [{ id: 'module', categories: [{ id: 'category', checklist: [] }] }] },
+    documentId: 'owned-fixture-document', resolveSecret: () => null, logger: record => logs.push(record),
+  });
+  const plan = plans.get(scopeKeyFor('module', 'category'));
+  assert.equal(logs[0].storedCount, 1, 'the copied marker is not a stored Excel row');
+  assert.equal(plan.byRowIndex.get(1).markerId, 'original');
+  assert.equal(plan.byRowIndex.get(1).action, 'apply');
+  assert.deepEqual(plan.candidateDeletes, []);
+  assert.equal(wasReceivedByExcel(surveyMarkers.copy), false);
+});
+
+test('copied receipt cleanup handles shared carriers without changing the source', () => {
+  const carrier = { excelSync: { assignedToken: 'original-row' }, exportedAt: 'original' };
+  const marker = { id: 'original', pageNumber: 1, data: carrier, legacyCallout: carrier };
+  const out = transformPageState({ surveyMarkers: { original: marker } },
+    { type: 'duplicate', page: 1 }, { createId: () => 'copy' });
+  assert.equal(Object.hasOwn(out.surveyMarkers.copy.data, 'excelSync'), false);
+  assert.equal(Object.hasOwn(out.surveyMarkers.copy.legacyCallout, 'excelSync'), false);
+  assert.equal(carrier.excelSync.assignedToken, 'original-row');
+});
 
 test('delete removes deleted-page state and shifts every higher page association', () => {
   const input = make();
