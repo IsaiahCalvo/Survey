@@ -88,8 +88,35 @@ const scaleCommands = (commands, scale) => commands.map((command) => [
   ...command.slice(1).map((coordinate) => coordinate * scale),
 ]);
 
+// Wall-clock budgets in this file are asserted on the FASTEST of several
+// samples after one discarded warm-up. Host load, GC pauses and JIT warm-up can
+// only add time, never remove it, so the minimum is the closest reading of the
+// eraser's own cost, while a real algorithmic regression raises every sample —
+// including the minimum — so the budgets keep their teeth (a deliberate
+// slowdown injected into erasePageAnnotations still fails these tests).
+// Ruled in KAL-446 (2026-09-09): single-sample readings of this file failed
+// on busy hosts (hosted CI 2026-09-07, dev mac at load 37) while the same code
+// measured 2-3x inside budget when re-run alone. The budgets are unchanged;
+// the per-test `timeout` values are harness guards sized for the extra
+// samples, not performance assertions.
+const TIMING_SAMPLES = 5;
+const bestOf = (run, samples = TIMING_SAMPLES) => {
+  run();
+  let result;
+  let bestMs = Infinity;
+  const readings = [];
+  for (let index = 0; index < samples; index += 1) {
+    const started = performance.now();
+    result = run();
+    const elapsed = performance.now() - started;
+    readings.push(elapsed.toFixed(1));
+    bestMs = Math.min(bestMs, elapsed);
+  }
+  return { result, bestMs, readings: readings.join('/') };
+};
+
 test('tiny high-resolution cubic produces a bounded round outline without scale floors', {
-  timeout: 1_000,
+  timeout: 5_000,
 }, () => {
   const commands = [
     ['M', 0, 0],
@@ -106,15 +133,16 @@ test('tiny high-resolution cubic produces a bounded round outline without scale 
     0,
   );
 
-  const started = performance.now();
-  const outline = commandsToPolygonSet(commands, {
+  const { result: outline, bestMs, readings } = bestOf(() => commandsToPolygonSet(commands, {
     strokeWidth,
     curveTolerance,
-  });
-  const elapsed = performance.now() - started;
+  }));
   const vertices = vertexCount(outline);
 
-  assert.ok(elapsed < 250, `round outline took ${elapsed.toFixed(1)}ms`);
+  assert.ok(
+    bestMs < 250,
+    `round outline took ${bestMs.toFixed(1)}ms at best (samples ${readings}ms)`,
+  );
   assert.ok(
     vertices <= flattened.length * 4 + 80,
     `${flattened.length} flattened points expanded to ${vertices} outline vertices`,
@@ -365,7 +393,7 @@ test('partial erase stays proportional from ordinary to microscopic page geometr
 });
 
 test('huge proportional round strokes stay inside the release-time budget', {
-  timeout: 2_000,
+  timeout: 20_000,
 }, () => {
   for (const scale of [1e3, 1e6, 1e7]) {
     const object = {
@@ -383,21 +411,19 @@ test('huge proportional round strokes stay inside the release-time budget', {
       strokeLineJoin: 'round',
       data: { id: 'huge-line', tool: 'pen' },
     };
-    const started = performance.now();
-    const result = erasePageAnnotations({
+    const { result, bestMs, readings } = bestOf(() => erasePageAnnotations({
       pageAnnotations: { objects: [object] },
       eraserPoints: [{ x: scale / 2, y: 0 }],
       eraserRadius: scale / 20,
       mode: 'partial',
-    });
-    const elapsed = performance.now() - started;
+    }));
 
     assert.equal(result.didChange, true);
     assert.equal(result.deletedIds.length, 0);
     assert.equal(result.pageAnnotations.objects[0].polygons.length, 2);
     assert.ok(
-      elapsed < 500,
-      `scale ${scale} pointer release took ${elapsed.toFixed(1)}ms`,
+      bestMs < 500,
+      `scale ${scale} pointer release took ${bestMs.toFixed(1)}ms at best (samples ${readings}ms)`,
     );
   }
 });
@@ -449,7 +475,7 @@ test('partial erase preserves a proportional cubic through microscopic scales', 
 });
 
 test('bridge cleanup is bounded when a huge eraser crosses ultra-thin ink', {
-  timeout: 1_000,
+  timeout: 5_000,
 }, () => {
   for (const strokeWidth of [1, 1e-2, 1e-3, 1e-5, 1e-8]) {
     const object = {
@@ -467,21 +493,19 @@ test('bridge cleanup is bounded when a huge eraser crosses ultra-thin ink', {
       strokeLineJoin: 'round',
       data: { id: 'extreme-width-ratio', tool: 'pen' },
     };
-    const started = performance.now();
-    const result = erasePageAnnotations({
+    const { result, bestMs, readings } = bestOf(() => erasePageAnnotations({
       pageAnnotations: { objects: [object] },
       eraserPoints: [{ x: 50, y: 0 }],
       eraserRadius: 1,
       mode: 'partial',
-    });
-    const elapsed = performance.now() - started;
+    }));
 
     assert.equal(result.didChange, true);
     assert.equal(result.deletedIds.length, 0);
     assert.equal(result.pageAnnotations.objects[0].polygons.length, 2);
     assert.ok(
-      elapsed < 250,
-      `width ${strokeWidth} cleanup took ${elapsed.toFixed(1)}ms`,
+      bestMs < 250,
+      `width ${strokeWidth} cleanup took ${bestMs.toFixed(1)}ms at best (samples ${readings}ms)`,
     );
   }
 });

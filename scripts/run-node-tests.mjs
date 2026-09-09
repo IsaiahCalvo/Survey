@@ -42,6 +42,7 @@ const isolatedTestFiles = [
   'tests/annotationDocConcurrency.test.mjs',
   'tests/partialEraseCurveLocality.test.mjs',
   'tests/partialEraserComplexity.test.mjs',
+  'tests/roundStrokeOutlinePerformance.test.mjs',
   'tests/svgPathTransformFidelity.test.mjs',
 ].filter((file) => testFiles.includes(file));
 const isolatedSet = new Set(isolatedTestFiles);
