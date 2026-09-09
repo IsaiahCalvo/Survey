@@ -13,7 +13,7 @@ import { PDFDocument } from 'pdf-lib';
 import { withDisposablePostgres } from './helpers/disposablePostgres.mjs';
 import { syncByPageToDoc, syncSurveyMarkersToDoc } from '../src/services/annotationDocStore.js';
 import { mapSurveyMarkerRowToLocalAnnotation } from '../src/services/documentSurveyMarkerMapper.js';
-import { prepareDocumentGenerationReplacement } from '../src/services/documentGenerationReplacement.js';
+import { createDocumentReplacementExecutor } from '../src/services/documentReplacementExecutor.js';
 import { createDocumentGenerationReader } from '../src/services/documentGenerationReader.js';
 import { createDocumentGenerationDownload } from '../src/services/documentGenerationDownload.js';
 import { handleDocumentGenerationDownload } from '../supabase/functions/document-generation-download/handler.js';
@@ -62,6 +62,8 @@ async function withDownloadHttp(handler, dependencies, work) {
     assert.equal(server.listening, false); assert.equal(requests.size, 0);
   }
 }
+const replacementExecutor = createDocumentReplacementExecutor();
+try {
 await withDisposablePostgres(async pg => {
   const { sql, scalar, asRole, errorState, session, applyMigration, quote } = pg;
   const prior = readFileSync(new URL('./test-document-generation-source-receipts-postgres.mjs', import.meta.url), 'utf8');
@@ -126,7 +128,7 @@ await withDisposablePostgres(async pg => {
     service('record_document_generation_source_bytes', [actor, s, claim, JSON.stringify(proof.objects.map(o => ({ ...o, content_sha256: sha(x.pdf) })))]);
     const envelope = service('read_document_generation_transform_source', [actor, s]);
     const operationId = fresh();
-    const prepared = await prepareDocumentGenerationReplacement({
+    const prepared = await replacementExecutor.prepare({
       actorUserId: actor, documentId: x.d, sourceId: s, operationId, operation, envelope,
       objects: proof.objects.map(o => ({ id: o.id, version: o.version, bytes: x.pdf })),
     });
@@ -870,4 +872,7 @@ await withDisposablePostgres(async pg => {
   assert.equal(groups, 43);
   console.log(`Document generation publication PostgreSQL groups passed: ${groups}`);
 }, { name: 'generation-publication', commandTimeoutMs: 60000 });
+} finally {
+  await replacementExecutor.close();
+}
 console.log('Disposable local PostgreSQL stopped; exact temporary cluster removed');

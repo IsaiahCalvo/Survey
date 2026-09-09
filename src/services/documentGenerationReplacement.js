@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { mutateLoadedPdfPagesWithIdentity } from '../utils/pdfPageMutation.js';
 import { transformDocumentGenerationSource } from './documentGenerationTransform.js';
+import { copyReplacementJson as copyJson } from './documentReplacementInput.js';
 
 const PDF_LIMIT = 256 * 1024 * 1024, SOURCE_LIMIT = 16 * 1024 * 1024;
 const PLAN_LIMIT = 64 * 1024 * 1024, PAGE_LIMIT = 10000;
@@ -17,28 +18,6 @@ const check = value => { if (!value) fail(); };
 const seq = value => typeof value === 'string' && /^(0|[1-9][0-9]{0,18})$/.test(value) && BigInt(value) <= 9223372036854775807n;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const b64 = bytes => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
-function copyJson(value, depth = 0, ancestors = new Set(), budget = { left: SOURCE_LIMIT }) {
-  check(depth <= 64);
-  budget.left -= typeof value === 'string' ? Buffer.byteLength(value) + 2 : 8;
-  check(budget.left >= 0);
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number') { check(Number.isFinite(value)); return value; }
-  check(value && typeof value === 'object' && !ancestors.has(value));
-  const array = Array.isArray(value), ownKeys = Reflect.ownKeys(value);
-  check(array || [Object.prototype, null].includes(Object.getPrototypeOf(value)));
-  check(!array || ownKeys.length === value.length + 1);
-  ancestors.add(value); const result = array ? [] : {};
-  for (const key of ownKeys) {
-    if (array && key === 'length') continue;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    check(typeof key === 'string' && descriptor.enumerable && Object.hasOwn(descriptor, 'value'));
-    if (array) check(/^(0|[1-9][0-9]*)$/.test(key) && Number(key) < value.length);
-    budget.left -= Buffer.byteLength(key) + 3; check(budget.left >= 0);
-    Object.defineProperty(result, key, { value: copyJson(descriptor.value, depth + 1, ancestors, budget),
-      enumerable: true, writable: true, configurable: true });
-  }
-  ancestors.delete(value); return result;
-}
 function freeze(value) {
   if (value && typeof value === 'object') { for (const item of Object.values(value)) freeze(item); Object.freeze(value); }
   return value;

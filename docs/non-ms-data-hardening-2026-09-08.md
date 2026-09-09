@@ -4739,6 +4739,73 @@ browser fixture duplicated one page into two with zero error logs; the prior
 78% to 187% zoom change remains observed, not viewport acceptance. The owned
 browser tab was closed. No live cloud save was attempted.
 
+## Bound private replacement preparation workers — September 9 follow-up
+
+`createDocumentReplacementExecutor` adds one server-private interface around
+the exact replacement preparer: `prepare(input, { signal })` and idempotent
+`close()`. It snapshots bounded JSON and the source PDF before returning its
+promise. It reserves the job count, queue slot and aggregate input-byte charge
+before copying the PDF. The caller's buffer stays attached; only a fresh owned
+buffer is transferred. Each active job gets a fresh fixed Node module worker
+with an empty environment, empty `execArgv`, JavaScript resource limits and
+private drained output streams. There is no caller worker factory, code path or
+retry hook.
+
+Defaults are one active job, two queued jobs, 384 MiB of aggregate retained
+input and a 60-second deadline. The deadline covers queue wait, worker startup
+and compute. The input still has the preparer's tighter 16 MiB JSON, 256 MiB
+PDF, depth-64 and 10,000-page checks. Executor timeouts cannot exceed Node's
+2,147,483,647-millisecond timer limit. These are input, queue and JavaScript
+heap controls, not process RSS, ArrayBuffer or network sandbox limits. The
+synchronous input copy and parent result checks also do bounded work on the
+parent thread.
+
+The parent checks the job, actor, source, document, operation, generation,
+annotation frontier, source object and candidate size/format before it returns
+the transferred result. It then freezes the plan. Abort, timeout and close win
+both before and after result validation, so a late worker reply cannot succeed.
+An ended job keeps its running slot and input charge until the worker actually
+exits. `close()` rejects queued and active work, starts no replacement jobs and
+waits for all worker exits. Fixed executor errors cover bad input, busy, input
+limit, abort, timeout, close and worker failure; a worker's valid preparer
+rejection keeps `DOCUMENT_GENERATION_REPLACEMENT_INVALID`.
+
+Review added four direct checks: an overdue reply after the parent event loop
+was blocked, hostile scalar input that must not run a getter, busy rejection
+before hostile JSON traversal and rejection above the Node timer maximum. The
+final review also found that input Proxy traps could close, abort or submit a
+nested job while the outer call captured data. The executor now rechecks close,
+abort and queue state after capture, then close and abort once more after its
+owned copy and before worker start. Three tests cover those exact interleavings.
+The final executor file passed all 17 focused worker tests. The earlier combined
+focused run passed all 16 pure preparation tests plus the then-current 11
+executor tests (27 total); the final focused files therefore prove 16 pure plus
+17 worker cases separately. Final frozen-source logs are
+`/tmp/sol-executor-pure-regression-final-20260909.log` and
+`/tmp/sol-executor-worker-tests-final-20260909.log`.
+
+The final disposable PostgreSQL generation publication harness passed 43/43
+groups and removed its exact temporary cluster
+(`/tmp/sol-executor-pg43-frozen-20260909.log`). `npm test` passed with 6,676
+tests: 6,581 passed, 95 skipped and zero failed or canceled
+(`/tmp/sol-executor-full-npm-test-final-20260909.log`). The Vite build passed
+with the existing large-chunk warning
+(`/tmp/sol-executor-vite-build-final-20260909.log`). These are local SQL,
+Node and build checks. They do not prove a live provider, cloud deploy or UI
+flow.
+
+The local fake/IndexedDB regression group passed 194/194 (exit 0,
+`/tmp/survey-local-offline-regression-sol-20260909.log`). This is local proof,
+not live cloud proof. The in-app browser was unavailable (`Browser is not
+available: iab`). An old process on port 5218 was already dead; the QA pass
+started and stopped its owned Vite process and confirmed the port closed. It
+did not produce fresh UI proof.
+
+This module remains dormant and private. No browser route, publication call,
+activation flag, authority grant, cloud service, Microsoft flow or credential
+path imports it. It produces a checked candidate and private plan; it does not
+stage, publish or prove durable state.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
