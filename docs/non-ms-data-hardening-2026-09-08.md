@@ -3909,6 +3909,83 @@ Presence needs a generation-scoped, expiring channel with independent authority
 checks. Remote-delete restore needs accepted modern-change events and a
 single-object, current-generation restore, not an old whole-page snapshot.
 
+## Generated collaboration provider: dormant authority, recovery and presence
+
+Added `GeneratedDocumentProvider` and `generationCollaborationSession`, but did
+not mount them in legacy app routes. The new provider exposes no legacy Y.Doc,
+undo manager, backfill, retry queue or data transport. Unknown authority starts
+read-only. Before granting the current role, its shared session checks the exact
+generation, PDF identity and publication through the lightweight checked-open
+RPC. All SDK reads use the captured actor's request-local JWT and bounded
+deadlines. It reuses the existing visible-only collaboration status monitor;
+it does not add a second role-poll loop. Failed role reads restrict editing.
+Denial, changed generation, wrong-actor auth or modern-handle retirement closes
+owned presence/monitor work without destroying the modern handle or disconnecting
+the shared Supabase client. Reauthentication needs a new checked open.
+
+The modern annotation handle now exposes its captured actor through a read-only
+getter, allowing the provider to reject a mismatched handle. The React wrapper
+keeps one render-time identity across keyed children. This invalidates old close
+receipts on the first replacement render, not merely after passive cleanup.
+Tests reproduced and fixed both that stale-receipt case and a late auth lookup
+starting new monitor requests after its deadline.
+
+`generationLegacyRecovery` captures both existing registry entries: the raw
+document key and the exact actor-scoped legacy key. It neither creates source
+documents nor attaches their lifecycle. A separate immutable, content-addressed
+IndexedDB archive stores the real document ID, source registry key, target
+generation and explicit provenance. Raw bytes remain unattributed; they are
+not silently assigned to the current actor. The archive retains complete v1
+updates plus pending v2 structures, missing clocks and pending deletion state.
+Fresh existing-only verification must match before a close receipt succeeds.
+Source mutation/replacement/appearance, account/open changes, aborted or failed
+transactions, missing storage and altered archive records invalidate proof.
+Read-only close never creates or writes an archive. This covers captured live
+registry entries, not every old persistent database or queued operation, and
+never proves cloud acceptance. The existing modern local-save proof remains
+the viewer's separate responsibility.
+
+`generationPresence` uses a private document/generation-scoped presence topic
+and actor-specific presence keys, with fresh authorization before each join's
+tracking. It bounds display
+fields, scan work and roster size; expires old peers; coalesces tracking; and
+untracks/removes only the owned channel when hidden or disposed. Peer metadata
+is display-only and cannot grant rights. It never falls back to a public topic.
+One live runtime owns each SDK client/topic; duplicate ownership fails explicitly
+and a remount waits for prior removal. Multi-consumer reuse still needs a shared
+runtime, not duplicate channel owners. `useRemoteEditors` now accepts this
+explicit awareness-only scope without requiring a dummy legacy Y.Doc; the old
+Y.Doc path is unchanged.
+
+Focused verification: 104 checks passed across the new authority session,
+recovery archive, presence, mounted provider/hook and existing generated-sync
+tests. Mounted checks use actual React/context/ReadOnlyGate DOM and keyboard
+effects; network/presence ports remain local doubles. The actual viewer undo
+callback is also exercised with real history inversion/application helpers.
+The installed Supabase SDK validates private channel configuration without a
+network subscription. These checks are not live-private-policy, full-viewer or
+two-user browser-release proof.
+
+Full regression verification passed across 642 files: 6,292 tests, 6,199 passed,
+93 skipped, zero failures or cancellations. Baseline `b1cf0953` had 6,217 tests,
+6,124 passed and the same 93 skips. The Vite build passed with its existing
+large-chunk warning. The required final-code AST refresh completed with 27,737
+nodes and 45,179 edges. The new provider remains unmounted in app routes, so
+the build alone is not proof of its full viewer integration.
+
+The current role lookup and generation confirmation are separate RPCs. They
+do not establish one atomic role/generation observation: a publication or role
+change can occur between them. Before activation, replace them with one locked
+server read returning the exact generation binding and effective role together.
+Server-side generation and write-permission checks remain mandatory regardless.
+
+Activation remains gated on that combined authority RPC, private Realtime
+authorization policies and hosted tests, every open route using one checked
+bundle and matching modern handle,
+modern hook hydration/generation scope, retained queue inventory/recovery, and
+accepted modern remote-delete events with a guarded single-object restore.
+No existing cloud database, Storage object, account or Microsoft service changed.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

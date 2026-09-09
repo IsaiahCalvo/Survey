@@ -4060,6 +4060,7 @@ async function closeRetiredGeneration(state) {
 function makeHandle(state) {
   return {
     documentId: state.documentId,
+    get actorUserId() { return state.actorUserId; },
     get pdfGenerationId() { return state.pdfGenerationId; },
     getGenerationStatus: () => ({ pdfGenerationId: state.pdfGenerationId, blocked: state.generationBlocked,
       error: state.generationError, retirement: state.generationRetirement }),

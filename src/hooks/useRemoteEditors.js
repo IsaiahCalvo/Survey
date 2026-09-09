@@ -37,14 +37,14 @@ import { useYDoc } from './useYDoc.js';
  *     - all editors are the local user (filtered out by clientID).
  */
 export function useRemoteEditors() {
-  const { ydoc, getAwareness } = useYDoc();
+  const { ydoc, getAwareness, generationAwarenessScope } = useYDoc();
   // Initial state is a fresh empty Map per mount. Map identity changes on every
   // update so React's setState shallow compare always re-renders; that is OK
   // because the consumer (CollaboratorOutlineOverlay) memoizes the rect math.
   const [editors, setEditors] = useState(() => new Map());
 
   useEffect(() => {
-    if (!ydoc) {
+    if (!ydoc && !generationAwarenessScope) {
       setEditors(new Map());
       return;
     }
@@ -91,7 +91,7 @@ export function useRemoteEditors() {
       // optional chaining guards against any test fake that doesn't implement it.
       awareness.off?.('change', update);
     };
-  }, [ydoc, getAwareness]);
+  }, [ydoc, getAwareness, generationAwarenessScope]);
 
   return editors;
 }

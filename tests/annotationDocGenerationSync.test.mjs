@@ -87,6 +87,7 @@ async function fixture(t,{realtime=false,local=false}={}){
 
 test('two PDF generations isolate registry, accepted checkpoints, outbox keys and local receipts',async t=>{
   const f=await fixture(t),a=await f.open(A);a.setMeta('name','A');await a.drain();
+  assert.equal(a.actorUserId,actor,'provider binding must use the real handle actor, not the current global login');
   const receiptA=await a.flushLocalDurability();assert.equal(receiptA.pdfGenerationId,A);
   const legacyStore=await f.store(),legacyDoc=new Y.Doc();legacyDoc.getMap(META_MAP).set('legacy-only','do not adopt');
   const legacy={documentId:f.documentId,actorUserId:actor,writerId:'legacy',clientSeq:1,ordinal:1,incarnation:0,status:'pending',
