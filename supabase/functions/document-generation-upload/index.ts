@@ -28,6 +28,7 @@ async function rpc(connection: ReturnType<typeof client>, name: string, params: 
 
 Deno.serve((request: Request) => handleDocumentGenerationUpload(request, {
   enabled: enabled && !!url && !!anonKey && !!serviceKey,
+  sourceBoundEnabled: Deno.env.get('SURVEY_GENERATION_SOURCE_CAPTURE') === 'v1-metadata-only',
   getUser: async (token: string, signal: AbortSignal) => {
     const { data, error } = await caller(token, signal).auth.getUser(token);
     return error ? null : data.user;
@@ -35,6 +36,9 @@ Deno.serve((request: Request) => handleDocumentGenerationUpload(request, {
   begin: (token: string, input: Record<string, unknown>, signal: AbortSignal) => rpc(caller(token, signal),
     'begin_document_generation_upload', { p_document_id: input.document_id, p_operation_id: input.operation_id,
       p_content_sha256: input.content_sha256, p_byte_length: input.byte_length }),
+  beginV2: (token: string, input: Record<string, unknown>, signal: AbortSignal) => rpc(caller(token, signal),
+    'begin_document_generation_upload_v2', { p_source_id: input.source_id, p_operation_id: input.operation_id,
+      p_purpose: input.purpose, p_content_sha256: input.content_sha256, p_byte_length: input.byte_length }),
   get: (token: string, operationId: string, signal: AbortSignal) => rpc(caller(token, signal),
     'get_document_generation_upload', { p_operation_id: operationId }),
   cancel: (token: string, operationId: string, signal: AbortSignal) => rpc(caller(token, signal),

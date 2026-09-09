@@ -3330,6 +3330,56 @@ the confirmed PDF/state bundle in the frontend with generation-scoped providers,
 caches and recovery. A path reference alone cannot preserve bytes overwritten
 at that path. Microsoft 365 live testing remains deferred.
 
+## Complete source-byte proof and source-bound staging (093–094)
+
+Local implementation only; both paths remain off. Migration 093 adds a private,
+complete-stream proof for the captured PDF and all captured sidecars. The HTTP
+verifier authenticates the caller, claims the exact source, hashes each full
+stream with bounded memory, then records the full manifest in one transaction.
+It never holds database locks during a download. It rejects short, long, changed
+or missing objects and a hash that contradicts an earlier verified generation.
+A checked retry returns the stored proof without downloading again. Claim IDs
+cannot be reused after release; 128 distinct claims per source bound retry state.
+Cancel and expiry remove byte proofs and claim history with the source body.
+Source and claim deadlines also bound the stream wait: expired claims start no
+download, and expiry during one file stops the next file and the record call.
+
+The pinned Storage SDK places raw paths in download URLs. The verifier encodes
+each name and checks that URL parsing preserves the exact path, including `?`,
+`#`, `%`, Unicode and leading slashes. It rejects dot segments that a URL would
+normalize. Actual localhost SDK tests check this behavior; hosted Storage's
+path decoding and physical-version guarantees still need separate proof.
+
+Migration 094 binds each staged upload to the same durable source ID, its hash,
+its expected generation, and either `prior-pdf` or `candidate-pdf`. It does not
+capture a newer annotation state after transformation. A prior-PDF upload must
+match the source's full byte proof. Source expiry bounds the upload's lifetime.
+Old upload routes cannot strip this binding. Changed or expired sources yield
+recovery-only descriptors with no byte proof or signed upload URL. New requests
+remain gated by the existing storage-contract and source-capture flags. Metadata
+recovery and cancellation stay available when the source-capture flag is off.
+If SQL rejects a source changed between phases, the handler reads that exact
+operation once to recover its status; it does not retry the write or accept a
+different binding. Releasing an already-expired claim cannot renew it and stays
+safe after source loss.
+
+Verification: the full app run completed 625 files / 6,041 tests: 5,954 pass,
+87 skip, zero failures or cancellations. After the final recovery/deadline fixes
+and four added regression tests, the final focused run passed 63/63 with no
+skips. Its opt-in suites include 34 actual PostgreSQL check groups (15 source
+proof, 19 bound upload) and 94 local Deno/SDK HTTP checks (38 source proof, 56
+bound upload). Build and Deno type checks pass. The existing large-bundle
+warning remains. Logs: `/tmp/survey-source-proof-full.log`,
+`/tmp/survey-source-proof-focused-final.log`, and
+`/tmp/survey-source-proof-build-final.log`.
+
+These are staging checks, not publication or retained history. Verified stages
+still expire. There is no active PDF/head switch, viewer/provider adoption,
+sidecar archive, final full-state compare-and-swap, or live collaboration proof
+in this slice. No production quota reduction is claimed. Microsoft testing stays
+deferred. Do not enable these paths until the remaining publication, retention,
+provider and end-to-end checks pass.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
