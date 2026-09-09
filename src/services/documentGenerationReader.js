@@ -176,6 +176,7 @@ export function createDocumentGenerationReader(deps) {
         pdfCacheKey: JSON.stringify(['document-generation-v1', actorUserId, documentId, generationId,
           first.pdf.id, first.pdf.version, first.pdf.content_sha256, first.pdf.byte_length]) });
     } catch (caught) {
+      if (caught?.code === 'ANNOTATION_GENERATION_STATE') throw failure('DOCUMENT_OPEN_STATE');
       throw failure(codes.has(caught?.code) ? caught.code : undefined);
     } finally {
       controller.abort(); clearTimeout(timer); signal?.removeEventListener('abort', abort); doc?.destroy();

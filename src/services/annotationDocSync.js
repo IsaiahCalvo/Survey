@@ -87,6 +87,8 @@ const GAP_REPAIR_RETRY_MS = 1_000;
 const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
+const GENERATED_STATE_BYTES = 64 * 1024 * 1024;
+const GENERATED_TAIL_PAGES = 1000;
 const PERMISSION_ROLLBACK_ORIGIN = 'permission-rollback';
 const DURABLE_MAP_NAMES = [
   ANNOTATIONS_MAP,
@@ -1160,16 +1162,63 @@ async function generationCall(state, method, args) {
   }
 }
 
-async function readGeneratedTail(state, afterSeq, throughSeq, apply) {
+function generatedStateError(code = 'ANNOTATION_GENERATION_STATE') {
+  return Object.assign(new Error('The complete annotation state could not be verified. Saved edits were kept.'), { code });
+}
+
+function requireCompleteGeneratedState(doc) {
+  if (doc.store.pendingStructs || doc.store.pendingDs) throw generatedStateError();
+}
+
+function applyGeneratedUpdate(doc, update) {
+  // A malformed ContentJSON decoder error can quote saved document text.
+  // Never attach that exception as a cause or show it in sync diagnostics.
+  try { Y.applyUpdate(doc, update, HYDRATE_ORIGIN); }
+  catch { throw generatedStateError(); }
+}
+
+function generatedStateBytes(value, remaining = GENERATED_STATE_BYTES) {
+  if (typeof value !== 'string' || (value.length - 2) / 2 > remaining) {
+    throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+  }
+  return pgHexToBytes(value);
+}
+
+async function gunzipGenerated(state, bytes) {
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+  const chunks = []; let length = 0;
+  try {
+    for (;;) {
+      const { value, done } = await withCloudRequest(state, reader.read(), 'generation snapshot decode');
+      assertStateWritable(state);
+      if (done) break;
+      length += value.byteLength;
+      if (length > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+      if (value.byteLength) chunks.push(value);
+    }
+    const result = new Uint8Array(length); let offset = 0;
+    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+    return result;
+  } finally {
+    void reader.cancel().catch(() => {});
+    try { reader.releaseLock(); } catch { /* a timed-out read may still be pending */ }
+  }
+}
+
+async function readGeneratedTail(state, afterSeq, throughSeq, apply, usedBytes = 0) {
   let cursor = afterSeq;
   let frontier = throughSeq;
+  let pages = 0;
   for (;;) {
+    if (++pages > GENERATED_TAIL_PAGES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
     const page = await generationCall(state, 'updates', { afterSeq: cursor, throughSeq: frontier, limit: 1000 });
     assertStateWritable(state);
     frontier = page.throughSeq;
     for (const row of page.rows) {
       assertStateWritable(state);
-      await apply(row);
+      const update = generatedStateBytes(row.data, GENERATED_STATE_BYTES - usedBytes);
+      usedBytes += update.byteLength;
+      await apply(row, update);
       cursor = sequence(row.seq);
     }
     if (!page.hasMore) return sequence(frontier);
@@ -1184,20 +1233,40 @@ async function readGeneratedCheckpoint(state) {
     assertStateWritable(state);
     const snap = baseline.snapshot;
     const baseAtSeq = snap ? sequence(snap.at_seq) : null;
+    let baselineBytes = 0;
     if (snap?.snapshot) {
-      let bytes = pgHexToBytes(snap.snapshot);
-      if (snap.encoding_version === SNAPSHOT_ENC_GZIP) bytes = await gunzip(bytes);
+      let bytes = generatedStateBytes(snap.snapshot);
+      if (snap.encoding_version === SNAPSHOT_ENC_GZIP) bytes = await gunzipGenerated(state, bytes);
+      baselineBytes = bytes.byteLength;
       assertStateWritable(state);
-      Y.applyUpdate(candidate, bytes, HYDRATE_ORIGIN);
+      applyGeneratedUpdate(candidate, bytes);
     }
     const receipts = [];
-    const coveredSeq = await readGeneratedTail(state, baseAtSeq ?? 0, baseline.walHead, async row => {
-      const update = pgHexToBytes(row.data);
-      Y.applyUpdate(candidate, update, HYDRATE_ORIGIN);
+    const coveredSeq = await readGeneratedTail(state, baseAtSeq ?? 0, baseline.walHead, async (row, update) => {
+      applyGeneratedUpdate(candidate, update);
       if (appendRecordForCloudRow(state, row, update).record) receipts.push(row);
-    });
-    return { update: encodeSnapshot(candidate), coveredSeq, baseAtSeq,
+    }, baselineBytes);
+    requireCompleteGeneratedState(candidate);
+    const update = encodeSnapshot(candidate);
+    if (update.byteLength > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+    return { update, coveredSeq, baseAtSeq,
       baseWriterId: snap?.writer_id ?? null, baseWriterEpoch: sequence(snap?.writer_epoch ?? 0), receipts };
+  } finally { candidate.destroy(); }
+}
+
+async function readGeneratedDelta(state) {
+  const candidate = createDetachedYDoc(`generation-tail:${state.registryKey}:${randomClientId()}`);
+  try {
+    const accepted = encodeSnapshot(state.acceptedDoc);
+    if (accepted.byteLength > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+    applyGeneratedUpdate(candidate, accepted);
+    const rows = [];
+    const coveredSeq = await readGeneratedTail(state, state.coveredSeq, null, (row, update) => {
+      applyGeneratedUpdate(candidate, update);
+      rows.push(row);
+    }, accepted.byteLength);
+    requireCompleteGeneratedState(candidate);
+    return { rows, coveredSeq };
   } finally { candidate.destroy(); }
 }
 
@@ -1736,11 +1805,14 @@ function catchUpGenerated(state, refresh = false) {
         // Unlike legacy identity sequences, private generation WAL allocation
         // is serialized by the document lock: a covered prefix cannot gain a
         // late lower row. Own appends only advance this prefix by one.
-        const frontier = await readGeneratedTail(state, state.coveredSeq, null,
-          row => applyAuthoritativeCloudRow(state, row));
+        // Stage the whole fixed frontier before changing the live/accepted
+        // documents or settling journal receipts. A later bad page or missing
+        // Yjs dependency must not publish an earlier partial result.
+        const checked = await readGeneratedDelta(state);
         assertStateWritable(state);
-        state.lastSeq = maxAnnotationSequence(state.lastSeq, frontier);
-        state.coveredSeq = maxAnnotationSequence(state.coveredSeq, frontier);
+        for (const row of checked.rows) await applyAuthoritativeCloudRow(state, row);
+        state.lastSeq = maxAnnotationSequence(state.lastSeq, checked.coveredSeq);
+        state.coveredSeq = maxAnnotationSequence(state.coveredSeq, checked.coveredSeq);
       }
       assertStateWritable(state);
       notifyChange(state);

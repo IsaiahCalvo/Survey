@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { IDBFactory } from 'fake-indexeddb';
+import * as Y from 'yjs';
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
+import { META_MAP } from '../src/services/annotationDocStore.js';
 import { createAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
 import { purgeYDocsByPrefix } from '../src/lib/collab/ydocRegistry.js';
 
@@ -16,8 +18,8 @@ const sha = hex => createHash('sha256').update(Buffer.from(hex.slice(2), 'hex'))
 // Actual installed PostgREST builders and auth fetch wrapper; every HTTP call
 // terminates here. No credentials, accounts, database, or provider are used.
 function server(documentId, shared = { rows: [], snapshot: null, current: generationA }) {
-  let actor = actorA, race = false;
-  const { rows } = shared, requests = [];
+  let actor = actorA, race = false, appendGate = null;
+  const { rows } = shared, requests = [], channels = [];
   const client = createClient('https://generation-sdk.example.test', 'synthetic-anon', {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { fetch: async (url, options) => {
@@ -45,9 +47,15 @@ function server(documentId, shared = { rows: [], snapshot: null, current: genera
       };
       else if (name === 'read_annotation_updates_v2') {
         const through = p.p_through_seq ?? String(rows.length);
-        result = { rows: rows.filter(r => BigInt(r.seq) > BigInt(p.p_after_seq) && BigInt(r.seq) <= BigInt(through)),
-          through_seq: through, has_more: false };
+        if (shared.tailFault && p.p_after_seq === '1') {
+          if (shared.tailFault === 'failed-page') return response({ code: 'ETIMEDOUT', message: 'fixture later page failed' }, 503);
+          return response({ ...envelope, rows: [], through_seq: through, has_more: false });
+        }
+        const eligible = rows.filter(r => BigInt(r.seq) > BigInt(p.p_after_seq) && BigInt(r.seq) <= BigInt(through));
+        const page = eligible.slice(0, shared.pageSize ?? eligible.length);
+        result = { rows: page, through_seq: through, has_more: eligible.length > page.length };
       } else if (name === 'append_annotation_update_v2') {
+        if (appendGate) { const gate = appendGate; appendGate = null; gate.entered.resolve(); await gate.release.promise; }
         const row = { seq: String(rows.length + 1), client_id: p.p_client_id, client_seq: p.p_client_seq,
           actor_user_id: authorization?.slice('Bearer synthetic-'.length), data: p.p_data };
         rows.push(row);
@@ -66,11 +74,26 @@ function server(documentId, shared = { rows: [], snapshot: null, current: genera
     if (race) { race = false; queueMicrotask(() => { actor = actorB; }); }
     return { data: { session }, error: null };
   };
-  return { client, requests, rows, setActor: value => { actor = value; },
+  // Only realtime delivery is synthetic; RPCs still traverse the real SDK's
+  // PostgREST builders/auth fetch wrapper above. Never open a WebSocket.
+  client.channel = () => {
+    const channel = { handlers: [], on(_type, filter, cb) { this.handlers.push({ filter, cb }); return this; },
+      subscribe(cb) { this.status = cb; return this; } };
+    channels.push(channel); return channel;
+  };
+  client.removeChannel = async () => {};
+  return { client, requests, rows, channels, setActor: value => { actor = value; },
+    holdAppend() { const gate = { entered: deferred(), release: deferred() }; appendGate = gate; return gate; },
     replace: () => { shared.current = generationB; }, raceNextSession: () => { race = true; } };
 }
 
-async function fixture(t) {
+const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+const tick = () => new Promise(resolve => setImmediate(resolve));
+async function until(predicate) {
+  for (let i = 0; i < 500; i++) { if (predicate()) return; await tick(); }
+  assert.fail('bounded SDK fixture condition was not reached');
+}
+async function fixture(t, { realtime = false } = {}) {
   const documentId = crypto.randomUUID(), shared = { rows: [], snapshot: null, current: generationA };
   const remote = server(documentId, shared), peer = server(documentId, shared), handles = [], stores = [];
   peer.setActor(actorB);
@@ -81,10 +104,10 @@ async function fixture(t) {
     for (const store of stores) await store.close();
     purgeYDocsByPrefix(`annoflat:${documentId}:`);
   });
-  return { documentId, remote, peer, async open({ actorUserId = actorA, backend = remote } = {}) {
+  return { documentId, remote, peer, shared, async open({ actorUserId = actorA, backend = remote } = {}) {
     const store = await createAnnotationOutbox({ indexedDb }); stores.push(store);
     const handle = await openAnnotationDoc({ documentId, actorUserId, pdfGenerationId: generationA,
-      supabase: backend.client, outboxStore: store, enableLocal: false, enableRealtime: false,
+      supabase: backend.client, outboxStore: store, enableLocal: false, enableRealtime: realtime,
       snapshotRetryDelayMs: 0, repairRetryDelayMs: 60_000 });
     handles.push(handle); return { handle, store };
   } };
@@ -150,3 +173,69 @@ test('two installed SDK clients keep separate actors and converge on both edits 
   assert.ok(f.remote.requests.every(r => r.authorization === `Bearer synthetic-${actorA}`));
   assert.ok(f.peer.requests.every(r => r.authorization === `Bearer synthetic-${actorB}`));
 });
+
+for (const fault of ['missing-page', 'failed-page']) {
+  test(`installed SDK ${fault} keeps the whole tail detached and unsent bytes intact for both actors`, { timeout: 10000 }, async t => {
+    const f = await fixture(t, { realtime: true });
+    const a = await f.open(), b = await f.open({ actorUserId: actorB, backend: f.peer });
+    const peers = [{ ...a, actor: actorA, remote: f.remote, key: 'local-a' },
+      { ...b, actor: actorB, remote: f.peer, key: 'local-b' }];
+    await Promise.all(peers.map(p => p.remote.channels[0].status('SUBSCRIBED')));
+    const gates = peers.map(p => p.remote.holdAppend());
+    try {
+      for (const p of peers) p.handle.setMeta(p.key, 'not sent yet');
+      await Promise.all(gates.map(g => g.entered.promise));
+      assert.equal(f.shared.rows.length, 0, 'neither blocked append was accepted remotely');
+      for (const p of peers) {
+        await p.handle.flushLocalDurability();
+        p.pending = await p.store.list(f.documentId, p.actor, { pdfGenerationId: generationA });
+        assert.equal(p.pending.length, 1);
+      }
+      const remoteDoc = new Y.Doc();
+      for (const [key, value] of [['peer-first', 'one'], ['peer-second', 'two']]) {
+        const before = Y.encodeStateVector(remoteDoc); remoteDoc.getMap(META_MAP).set(key, value);
+        f.shared.rows.push({ seq: String(f.shared.rows.length + 1), client_id: 'remote-causal-writer',
+          client_seq: String(f.shared.rows.length + 1), actor_user_id: actorB,
+          data: '\\x' + Buffer.from(Y.encodeStateAsUpdate(remoteDoc, before)).toString('hex') });
+      }
+      remoteDoc.destroy(); f.shared.pageSize = 1; f.shared.tailFault = fault;
+      const signal = p => p.remote.channels[0].handlers[0].cb({ new: { document_id: f.documentId,
+        generation_id: generationA, last_seq: '2', snapshot_writer_epoch: '0', wake_revision: '1' } });
+      const starts = peers.map(p => p.remote.requests.length);
+      peers.forEach(signal);
+      await until(() => peers.every(p => p.handle.getSyncStatus().error === 'The server did not confirm this annotation generation request'));
+      for (const [i, p] of peers.entries()) {
+        assert.equal(p.handle.getMeta('peer-first'), undefined, 'valid earlier page never becomes visible');
+        assert.equal(p.handle.getMeta('peer-second'), undefined);
+        assert.equal(p.handle.getMeta(p.key), 'not sent yet');
+        assert.equal(p.handle.doc.store.pendingStructs, null);
+        const pending = await p.store.list(f.documentId, p.actor, { pdfGenerationId: generationA });
+        assert.equal(pending.length, 1); assert.equal(pending[0].key, p.pending[0].key);
+        assert.deepEqual(pending[0].update, p.pending[0].update, 'exact unsent update remains durable');
+        const clean = await p.store.loadCleanState(f.documentId, p.actor, { pdfGenerationId: generationA });
+        const accepted = new Y.Doc();
+        try {
+          if (clean?.checkpointUpdate) Y.applyUpdate(accepted, clean.checkpointUpdate);
+          for (const row of clean?.records || []) Y.applyUpdate(accepted, row.update);
+          assert.equal(accepted.getMap(META_MAP).get('peer-first'), undefined, 'earlier page is not cached as accepted');
+        } finally { accepted.destroy(); }
+        assert.deepEqual(p.remote.requests.slice(starts[i]).filter(r => r.name === 'read_annotation_updates_v2').map(r => r.p.p_after_seq), ['0', '1']);
+      }
+      f.shared.tailFault = null; const retries = peers.map(p => p.remote.requests.length); peers.forEach(signal);
+      await until(() => peers.every(p => p.handle.getMeta('peer-second') === 'two'));
+      for (const [i, p] of peers.entries()) {
+        assert.equal(p.handle.getMeta('peer-first'), 'one'); assert.equal(p.handle.getMeta(p.key), 'not sent yet');
+        assert.equal(p.remote.requests.slice(retries[i]).find(r => r.name === 'read_annotation_updates_v2').p.p_after_seq, '0',
+          'repaired retry must start at the previous complete prefix');
+        assert.equal((await p.store.list(f.documentId, p.actor, { pdfGenerationId: generationA })).length, 1,
+          'remote catch-up cannot acknowledge the unsent local append');
+      }
+    } finally { gates.forEach(g => g.release.resolve()); }
+    await Promise.all(peers.map(p => p.handle.drain()));
+    for (const p of peers) {
+      assert.equal(p.handle.getMeta(p.key), 'not sent yet');
+      assert.ok(p.remote.requests.every(r => r.authorization === `Bearer synthetic-${p.actor}`));
+    }
+    assert.equal(f.shared.rows.length, 4, 'two exact local appends join the repaired two-row tail');
+  });
+}

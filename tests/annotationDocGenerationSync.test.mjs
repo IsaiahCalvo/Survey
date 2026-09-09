@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { IDBFactory } from 'fake-indexeddb';
 import * as Y from 'yjs';
+import * as encoding from 'lib0/encoding';
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 import { META_MAP } from '../src/services/annotationDocStore.js';
 import { createAnnotationOutbox, annotationOutboxRecordKey } from '../src/services/annotationDocOutbox.js';
@@ -21,6 +23,21 @@ function signal(f,{head=f.remote.scope(A).head,wake=1,epoch=0,generation=A}={}){
 }
 function addRemote(f,key,value){const doc=new Y.Doc();doc.getMap(META_MAP).set(key,value);
   const s=f.remote.scope(A);s.rows.push({seq:String(++s.head),data:hex(Y.encodeStateAsUpdate(doc)),client_id:'peer',client_seq:String(s.head),actor_user_id:actor});doc.destroy();}
+function causalFixture() {
+  const doc=new Y.Doc(),updates=[];doc.on('update',u=>updates.push(u));
+  doc.getMap(META_MAP).set('predecessor','needed');
+  doc.getMap(META_MAP).set('dependent','complete');
+  const complete=Y.encodeStateAsUpdate(doc);
+  doc.getMap(META_MAP).delete('dependent');doc.destroy();
+  return {missing:updates[1],deleteOnly:updates[2],complete};
+}
+function privateMalformedUpdate() {
+  const e=encoding.createEncoder();
+  for(const value of [1,1,123,0])encoding.writeVarUint(e,value);
+  encoding.writeUint8(e,2);encoding.writeVarUint(e,1);encoding.writeVarString(e,'meta');
+  encoding.writeVarUint(e,1);encoding.writeVarString(e,'PRIVATE-SURVEY-SECRET');
+  encoding.writeVarUint(e,0);return encoding.toUint8Array(e);
+}
 function backend(documentId) {
   const scopes=new Map(),calls=[],channels=[];
   let current=A,gate=null;
@@ -308,4 +325,97 @@ test('an own receipt during hinted catch-up cannot restore CLOSED health before 
   assert.equal(statuses.at(-1)?.healthy,false);assert.ok(!statuses.some(s=>s.healthy));
   await ch.status('SUBSCRIBED');assert.equal(statuses.at(-1)?.healthy,true);
   assert.equal(a.getMeta('own-late'),'saved');
+});
+
+test('generated cold snapshots reject unresolved struct and delete dependencies',async t=>{
+  for(const kind of ['missing','deleteOnly']) {
+    const f=await fixture(t),s=f.remote.scope(A),bytes=causalFixture()[kind];
+    s.snapshot={snapshot:hex(bytes),at_seq:'0',encoding_version:1,writer_id:'peer',writer_epoch:'0'};
+    await assert.rejects(f.open(A),{code:'ANNOTATION_GENERATION_STATE'});
+    assert.ok(!f.remote.calls.some(c=>c.name==='store_annotation_snapshot_v2'));
+  }
+});
+
+test('a complete WAL frontier cannot hide a causally incomplete generated tail',async t=>{
+  const f=await fixture(t),s=f.remote.scope(A);addRemote(f,'first','not exposed');
+  s.rows.push({seq:String(++s.head),data:hex(causalFixture().missing),client_id:'peer',client_seq:'2',actor_user_id:actor});
+  await assert.rejects(f.open(A),{code:'ANNOTATION_GENERATION_STATE'});
+  assert.ok(!f.remote.calls.some(c=>c.name==='store_annotation_snapshot_v2'));
+});
+
+test('generated catch-up stages a whole checked tail before exposing or persisting any row',async t=>{
+  const f=await fixture(t,{realtime:true}),a=await f.open(A),ch=f.remote.channels[0];await ch.status('SUBSCRIBED');
+  a.setMeta('own','kept');await a.drain();
+  addRemote(f,'first','peer');const s=f.remote.scope(A),causal=causalFixture();
+  s.rows.push({seq:String(++s.head),data:hex(causal.missing),client_id:'peer',client_seq:'3',actor_user_id:actor});
+  const before=f.remote.calls.length;signal(f);
+  await until(()=>a.getSyncStatus().healthy===false);
+  assert.equal(a.getMeta('first'),undefined,'a valid early row must stay detached until the whole tail verifies');
+  assert.equal(a.getMeta('own'),'kept');assert.equal(a.doc.store.pendingStructs,null);
+  const store=await f.store(),clean=await store.loadCleanState(f.documentId,actor,{pdfGenerationId:A});
+  const cached=new Y.Doc();
+  if(clean?.checkpointUpdate)Y.applyUpdate(cached,clean.checkpointUpdate);
+  for(const row of clean?.records||[])Y.applyUpdate(cached,row.update);
+  assert.equal(cached.getMap(META_MAP).get('first'),undefined);cached.destroy();
+  s.rows.at(-1).data=hex(causal.complete);signal(f);
+  await until(()=>a.getMeta('dependent')==='complete'&&a.getSyncStatus().healthy===true);
+  assert.equal(a.getMeta('first'),'peer');assert.equal(a.getMeta('own'),'kept');
+  const reads=f.remote.calls.slice(before).filter(c=>c.name==='read_annotation_updates_v2');
+  assert.equal(reads[0].p.p_after_seq,'1');assert.equal(reads[2].p.p_after_seq,'1','retry must start at the prior covered prefix');
+});
+
+test('a later failed page leaves even valid earlier peer rows uninstalled and retries the same prefix',async t=>{
+  const f=await fixture(t,{realtime:true}),a=await f.open(A),ch=f.remote.channels[0];await ch.status('SUBSCRIBED');
+  addRemote(f,'first','one');addRemote(f,'second','two');
+  const rpc=f.remote.client.rpc;let failed=true;
+  f.remote.client.rpc=(name,p)=>failed&&name==='read_annotation_updates_v2'&&p.p_after_seq==='1'
+    ?Promise.resolve({error:{code:'ETIMEDOUT'}}):rpc(name,p);
+  signal(f);await until(()=>!a.getSyncStatus().healthy);
+  assert.equal(a.getMeta('first'),undefined);assert.equal(a.getMeta('second'),undefined);
+  failed=false;const start=f.remote.calls.length;signal(f);
+  await until(()=>a.getSyncStatus().healthy&&a.getMeta('second')==='two');
+  assert.equal(a.getMeta('first'),'one');
+  assert.equal(f.remote.calls.slice(start).find(c=>c.name==='read_annotation_updates_v2').p.p_after_seq,'0');
+});
+
+test('dependencies resolved by a later row in the same fixed tail remain valid',async t=>{
+  const f=await fixture(t,{realtime:true}),a=await f.open(A),ch=f.remote.channels[0];await ch.status('SUBSCRIBED');
+  const s=f.remote.scope(A),causal=causalFixture();
+  for(const bytes of [causal.missing,causal.complete])s.rows.push({seq:String(++s.head),data:hex(bytes),client_id:'peer',client_seq:String(s.head),actor_user_id:actor});
+  signal(f);await until(()=>a.getMeta('dependent')==='complete');
+  assert.equal(a.getMeta('predecessor'),'needed');assert.equal(a.getSyncStatus().healthy,true);
+});
+
+test('generated snapshot decoding accepts real gzip but bounds its expanded bytes',async t=>{
+  const f=await fixture(t),s=f.remote.scope(A),causal=causalFixture();
+  s.snapshot={snapshot:hex(gzipSync(causal.complete)),at_seq:'0',encoding_version:2,writer_id:'peer',writer_epoch:'0'};
+  const a=await f.open(A);assert.equal(a.getMeta('dependent'),'complete');
+  const oversized=await fixture(t),os=oversized.remote.scope(A);
+  os.snapshot={...s.snapshot,snapshot:hex(gzipSync(Buffer.alloc(64*1024*1024+1)))};
+  await assert.rejects(oversized.open(A),{code:'ANNOTATION_GENERATION_LIMIT'});
+});
+
+test('generated tails stop at a fixed page bound without exposing a partial document',async t=>{
+  const f=await fixture(t),s=f.remote.scope(A);
+  for(let i=1;i<=1001;i++)s.rows.push({seq:String(i),data:'\\x0000',client_id:'peer',client_seq:String(i),actor_user_id:actor});
+  s.head=1001n;
+  await assert.rejects(f.open(A),{code:'ANNOTATION_GENERATION_LIMIT'});
+  assert.equal(f.remote.calls.filter(c=>c.name==='read_annotation_updates_v2').length,1000);
+  assert.ok(!f.remote.calls.some(c=>c.name==='store_annotation_snapshot_v2'));
+});
+
+test('corrupt generated Yjs content never enters cold-open or catch-up diagnostics',async t=>{
+  const cold=await fixture(t),bytes=privateMalformedUpdate();
+  cold.remote.scope(A).snapshot={snapshot:hex(bytes),at_seq:'0',encoding_version:1,writer_id:'peer',writer_epoch:'0'};
+  await assert.rejects(cold.open(A),error=>error.code==='ANNOTATION_GENERATION_STATE'
+    &&!error.message.includes('PRIVATE')&&!error.cause);
+  const f=await fixture(t,{realtime:true}),a=await f.open(A),ch=f.remote.channels[0];await ch.status('SUBSCRIBED');
+  addRemote(f,'first','kept detached');const s=f.remote.scope(A);
+  s.rows.push({seq:String(++s.head),data:hex(bytes),client_id:'peer',client_seq:'2',actor_user_id:actor});
+  const warn=console.warn,messages=[];console.warn=(...args)=>messages.push(args.join(' '));
+  try { signal(f);await until(()=>!a.getSyncStatus().healthy); }
+  finally { console.warn=warn; }
+  assert.equal(a.getMeta('first'),undefined);
+  assert.ok(!JSON.stringify(a.getSyncStatus()).includes('PRIVATE'));
+  assert.ok(!messages.join(' ').includes('PRIVATE'));
 });

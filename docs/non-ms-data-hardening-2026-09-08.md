@@ -3847,6 +3847,68 @@ Supabase database or Storage object was changed. App open/viewer/provider wiring
 old-generation draft recovery and two-user offline/browser proof remain required
 before activation. Microsoft services remain deferred.
 
+## Generation sync: complete-tail checks before viewer adoption
+
+The ongoing sync path still trusted a final page's claimed frontier even when
+it omitted rows. The private generation WAL allocates `head + 1` while holding
+the document lock and keeps its rows; this is not the legacy global-sequence
+format. The transport now requires exact adjacent sequences and complete final
+coverage for non-null generations. Null/legacy generations still allow gaps.
+The checked file reader preserves its existing incomplete-state error code.
+
+Cold generation reads now reject unresolved Yjs struct or deletion dependencies.
+Ongoing catch-up builds the entire fixed tail in a detached copy of accepted
+state before applying any row to the live document or settling journal receipts.
+A later failed page or unresolved dependency therefore cannot expose an earlier
+partial result. Retry starts from the prior covered prefix. Checked rows still
+merge into the current live document, preserving edits made during the read.
+Dependencies may resolve in a later row of the same complete tail.
+
+Generated reads cap decoded snapshot plus tail bytes at 64 MiB and tail pages at
+1,000. Gzip snapshots are checked while expanding, not after an unbounded
+`Response.arrayBuffer()`. Exceeding a bound fails the read without deleting local
+work. These bounds do not imply an equal total browser-memory cap: Yjs state,
+hex transport strings and the live document also consume memory.
+
+Review also reproduced a malformed Yjs ContentJSON error quoting saved text.
+Generated decoding now returns a fixed error without the original cause; tests
+cover both cold-open rejection and catch-up status/logs. Initial failing tests
+also reproduced accepted missing dependencies and partial catch-up publication.
+The focused verification passed 124 checks, including real installed SDK
+clients for two actors. Each client keeps its exact unsent journal key and bytes
+when a later page is missing or returns HTTP 503; no early row enters the live
+or accepted state, and a repaired retry resumes the old prefix. The opted-in
+local PostgreSQL run passed all four wrapper checks, including the actual
+transport harness and existing 31-group publication/open/download harness.
+No live credentials or provider were used.
+
+Full regression verification passed across 637 files: 6,217 tests, 6,124 passed,
+93 skipped, zero failures or cancellations. Baseline `728d5f8c` had 6,199 tests,
+6,106 passed and the same 93 skips. The Vite build passed with its existing
+large-chunk warning. The AST graph refresh completed on the final code/test
+files (27,673 nodes, 45,044 edges). No UI or two-user browser-release claim is
+made from these local module, SDK and database checks.
+
+The provider audit blocks partial viewer activation: `YDocProvider` supplies
+role/revocation gates, unsent legacy recovery-close proof, undo and presence in
+addition to its legacy data transport. Its disabled/null context is not a safe
+replacement. Adopted tabs need a generation-scoped provider branch that keeps
+authority and recovery checks, disables old data/undo merging, uses modern/local
+history, and supplies generation-scoped presence/restore behavior. Publication
+reconciles accepted visible legacy shapes into the modern baseline, but does
+not prove that unsent local legacy state was included. No viewer activation or
+live database change is part of this step.
+
+Next provider work can reuse `authSessionBridge` and
+`documentCollaborationStatus` without an old Y.Doc. Existing registry capture
+and close-proof checks can verify retained bytes, but unsaved actor-scoped
+legacy bytes need a separate immutable recovery archive before safe close.
+Do not attach the old local lifecycle or close coordinator merely to obtain
+access monitoring: their normal paths write or append to the old document.
+Presence needs a generation-scoped, expiring channel with independent authority
+checks. Remote-delete restore needs accepted modern-change events and a
+single-object, current-generation restore, not an old whole-page snapshot.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

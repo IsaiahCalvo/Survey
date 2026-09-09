@@ -100,18 +100,25 @@ export function createAnnotationGenerationTransport(options) {
         && compareAnnotationSequences(frontier, after) >= 0 && Array.isArray(result.rows)
         && result.rows.length <= limit && typeof result.has_more === 'boolean');
       let previous = after;
+      let contiguous = true;
       const rows = result.rows.map(row => {
         requireValue(plain(row) && text(row.client_id)
           && (uuid(row.actor_user_id) || (pdfGenerationId === null && row.actor_user_id === null)));
         const seq = sequence(row.seq);
         requireValue(compareAnnotationSequences(seq, previous) > 0 && compareAnnotationSequences(seq, frontier) <= 0);
+        if (pdfGenerationId !== null && BigInt(seq) !== BigInt(previous) + 1n) contiguous = false;
         previous = seq;
         return { seq, data: bytea(row.data), client_id: row.client_id,
           client_seq: sequence(row.client_seq), actor_user_id: row.actor_user_id };
       });
       requireValue(!result.has_more || (rows.length > 0 && compareAnnotationSequences(previous, frontier) < 0));
-      // Legacy WAL may have gaps; no fabricated +1 requirement. The checked
-      // server page, not the highest observed realtime row, defines coverage.
+      // Adopted WAL assigns head + 1 under the document lock and retains every
+      // row. Only a complete prefix may advance coverage. Legacy global WAL
+      // sequences can have gaps, including an empty page below the frontier.
+      if (pdfGenerationId !== null) {
+        requireValue(contiguous && (result.has_more || compareAnnotationSequences(previous, frontier) === 0),
+          'ANNOTATION_GENERATION_STATE');
+      }
       return { rows, throughSeq: frontier, hasMore: result.has_more };
     },
     async writerSequence(writerId) {

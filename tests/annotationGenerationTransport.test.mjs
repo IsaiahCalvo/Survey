@@ -52,7 +52,7 @@ test('null legacy generation is a real identity, not interchangeable with omitte
 test('every method uses only its exact v2 RPC and canonical string parameters', async () => {
   const cases = [
     ['snapshot', [], envelope({ wal_head: '0', snapshot: null }), 'read_annotation_snapshot_v2', {}],
-    ['updates', [{ afterSeq: 5n, throughSeq: 7, limit: 3 }], envelope({ through_seq: '7', rows: [], has_more: false }),
+    ['updates', [{ afterSeq: 5n, throughSeq: 7, limit: 3 }], envelope({ through_seq: '7', rows: [row(), row({ seq: '7' })], has_more: false }),
       'read_annotation_updates_v2', { p_after_seq: '5', p_through_seq: '7', p_limit: 3 }],
     ['writerSequence', [writerId], envelope({ client_id: writerId, client_seq: '0' }), 'read_annotation_writer_sequence_v2', { p_client_id: writerId }],
     ['append', [appendInput()], appendReceipt(), 'append_annotation_update_v2', { p_client_id: writerId, p_client_seq: '3', p_data: bytes }],
@@ -85,8 +85,8 @@ test('legacy null-actor WAL rows remain readable only under the null generation'
   await protocol(harness({ ...value, generation_id: pdfGenerationId }).transport.updates({ afterSeq: 5, throughSeq: 9 }));
 });
 
-test('paged tails allow real sequence gaps but must advance when more is promised', async () => {
-  const h = harness(envelope({ through_seq: '11', rows: [row({ seq: '7' }), row({ seq: '9' })], has_more: true }));
+test('legacy paged tails allow real sequence gaps but must advance when more is promised', async () => {
+  const h = harness(envelope({ through_seq: '11', rows: [row({ seq: '7' }), row({ seq: '9' })], has_more: true }, null), { pdfGenerationId: null });
   assert.equal((await h.transport.updates({ afterSeq: 5, throughSeq: null, limit: 2 })).hasMore, true);
   assert.equal(h.calls[0].params.p_through_seq, null);
   for (const value of [
@@ -94,6 +94,49 @@ test('paged tails allow real sequence gaps but must advance when more is promise
     envelope({ through_seq: '4', rows: [], has_more: false }),
     envelope({ through_seq: '9', rows: [row(), row({ seq: '7' })], has_more: false }),
   ]) await protocol(harness(value).transport.updates({ afterSeq: 5, throughSeq: null, limit: 1 }));
+});
+
+for (const [label, fields] of [
+  ['missing first row', { rows: [row({ seq: '7' }), row({ seq: '8' })] }],
+  ['missing middle row', { rows: [row(), row({ seq: '8' })] }],
+  ['missing final row', { rows: [row(), row({ seq: '7' })] }],
+  ['empty final page below frontier', { rows: [] }],
+  ['gap in nonfinal page', { rows: [row({ seq: '7' })], has_more: true }],
+]) test(`adopted tail rejects ${label} before returning any rows`, async () => {
+  const h = harness(envelope({ through_seq: '8', rows: [], has_more: false, ...fields }));
+  await assert.rejects(h.transport.updates({ afterSeq: 5 }), { code: 'ANNOTATION_GENERATION_STATE' });
+  assert.equal(h.calls.length, 1, 'No fallback request follows a malformed page');
+});
+
+test('adopted short pages continue exactly and empty pages only confirm the cursor', async () => {
+  const pages = [
+    envelope({ through_seq: '8', rows: [row()], has_more: true }),
+    envelope({ through_seq: '8', rows: [row({ seq: '7' }), row({ seq: '8' })], has_more: false }),
+    envelope({ through_seq: '8', rows: [], has_more: false }),
+  ];
+  const h = harness(n => ({ data: pages[n - 1] }));
+  const first = await h.transport.updates({ afterSeq: 5, limit: 1000 });
+  assert.equal(first.hasMore, true); assert.equal(first.rows.at(-1).seq, 6);
+  const second = await h.transport.updates({ afterSeq: 6, throughSeq: first.throughSeq });
+  assert.deepEqual(second.rows.map(r => r.seq), [7, 8]);
+  assert.deepEqual(await h.transport.updates({ afterSeq: 8, throughSeq: 8 }), { rows: [], throughSeq: 8, hasMore: false });
+});
+
+test('adopted continuity is exact above 2^53 and at the SQL bigint limit', async () => {
+  await assert.rejects(harness(envelope({ through_seq: '9007199254740994', rows: [row({ seq: '9007199254740994' })], has_more: false }))
+    .transport.updates({ afterSeq: '9007199254740992' }), { code: 'ANNOTATION_GENERATION_STATE' });
+  const max = '9223372036854775807';
+  const h = harness(envelope({ through_seq: max, rows: [row({ seq: max })], has_more: false }));
+  assert.equal((await h.transport.updates({ afterSeq: '9223372036854775806' })).rows[0].seq, max);
+  assert.deepEqual(await harness(envelope({ through_seq: max, rows: [], has_more: false })).transport.updates({ afterSeq: max }),
+    { rows: [], throughSeq: max, hasMore: false });
+});
+
+test('legacy final pages may be short or empty despite a higher frontier', async () => {
+  for (const rows of [[], [row({ seq: '7' })]]) {
+    const h = harness(envelope({ through_seq: '9', rows, has_more: false }, null), { pdfGenerationId: null });
+    assert.equal((await h.transport.updates({ afterSeq: 5 })).throughSeq, 9);
+  }
 });
 
 test('gzip snapshot receipt hashes the supplied compressed bytes and preserves nullable CAS baseline', async () => {
