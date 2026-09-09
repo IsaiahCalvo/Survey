@@ -2648,13 +2648,17 @@ export default function App({ devPreviewReturnTab = null }) {
                     a REGION. The gate is supportsCloudStyle (resolved from the
                     real selected/armed shape in PDFViewer) rather than
                     contextTool, which folds a selected polygon onto 'rect' and a
-                    selected polyline onto 'line'. Always opens downward. */}
+                    selected polyline onto 'line'. Always opens downward.
+                    A stale 'cloud' carried over from a shape tool reads as
+                    Solid on a tool that cannot cloud (arrow/line/text/callout);
+                    creation already treats it as solid, so the label matches
+                    what will be drawn. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
                   <AnnotationDropdown
                     open={showStyleMenu}
                     onOpenChange={setShowStyleMenu}
                     label="Style"
-                    value={bottomToolbarApi.lineBorderStyle}
+                    value={bottomToolbarApi.lineBorderStyle === 'cloud' && !bottomToolbarApi.supportsCloudStyle ? 'solid' : bottomToolbarApi.lineBorderStyle}
                     options={[
                       { value: 'solid', label: 'Solid' },
                       { value: 'dashed', label: 'Dashed' },

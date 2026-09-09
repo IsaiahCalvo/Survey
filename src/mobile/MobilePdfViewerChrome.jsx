@@ -1061,7 +1061,7 @@ export function MobileToolProperties({ api }) {
         <MobileStyledSelect
           ariaLabel="Border style"
           minWidth={82}
-          value={api.lineBorderStyle || 'solid'}
+          value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
           options={[
             { value: 'solid', label: 'Solid' },
             { value: 'dashed', label: 'Dashed' },
@@ -1363,7 +1363,7 @@ export function MobileToolProperties({ api }) {
                             menu as the strip, so the sheet matches. */}
                         <MobileStyledSelect
                           ariaLabel="Stroke style"
-                          value={api.lineBorderStyle || 'solid'}
+                          value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
                           options={[
                             { value: 'solid', label: 'Solid' },
                             { value: 'dashed', label: 'Dashed' },
