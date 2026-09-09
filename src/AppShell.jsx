@@ -844,7 +844,7 @@ export default function App({ devPreviewReturnTab = null }) {
   };
 
   const handleDocumentSelect = (file, filePath = null, checkedBundle = null) => {
-    if (documentOpenScopeRef.current !== documentOpenScope) return;
+    if (documentOpenScopeRef.current !== documentOpenScope) return false;
     if (checkedBundle !== null) {
       // Never pair a checked annotation baseline with caller-supplied bytes.
       const prepared = prepareCheckedDocumentOpen(checkedBundle, documentOpenScope.actorUserId);
@@ -853,14 +853,14 @@ export default function App({ devPreviewReturnTab = null }) {
     }
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
-      return;
+      return false;
     }
 
     const pdfKey = getDocumentOpenKey(file, filePath, checkedBundle);
 
     // Check if this PDF is already being opened (prevents duplicate opens when app is slow)
     if (openingPdfsRef.current.has(pdfKey)) {
-      return;
+      return false;
     }
 
     // Check if this file is already open in a tab (excluding home tab)
@@ -900,7 +900,7 @@ export default function App({ devPreviewReturnTab = null }) {
       }
       setActiveTabId(existingTab.id);
       setCurrentView('viewer');
-      return;
+      return true;
     }
 
     // Mark this PDF as being opened
@@ -930,6 +930,8 @@ export default function App({ devPreviewReturnTab = null }) {
       openingPdfsRef.current.delete(pdfKey);
       setIsLoading(false);
     }, 100);
+    // Acceptance means a tab was selected, not that its PDF finished loading.
+    return true;
   };
 
   // DEV-ONLY: Auto-open test PDF when loaded via dev test route
@@ -952,21 +954,28 @@ export default function App({ devPreviewReturnTab = null }) {
     );
     if (!documentToOpen) return;
 
-    deepLinkDocumentIdRef.current = null;
     const fileToOpen = (
       import.meta.env.DEV
       && documentToOpen.__localFile instanceof File
     )
       ? documentToOpen.__localFile
       : documentToOpen;
-    handleDocumentSelect(
-      fileToOpen,
-      documentToOpen.filePath || documentToOpen.file_path || null,
-    );
+    try {
+      if (handleDocumentSelect(
+        fileToOpen,
+        documentToOpen.filePath || documentToOpen.file_path || null,
+      ) !== true) return;
+    } catch {
+      // A rejected identity is not a consumed link. Preserve it for retry
+      // without leaking provider diagnostics or crashing the app's effect.
+      showToast('This document could not be opened. Its link and your saved work were kept. Retry after reconnecting.', 'error');
+      return;
+    }
 
+    deepLinkDocumentIdRef.current = null;
     const url = new URL(window.location.href);
     url.searchParams.delete('docId');
-    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
   }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const returnToDevHubPreview = () => {

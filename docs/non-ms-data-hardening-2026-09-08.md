@@ -4225,6 +4225,71 @@ legacy/checked discriminator and the existing publication/provider gates remain
 required. Do not fall back to a raw download after a checked-open error or infer
 generation adoption from a filename. Microsoft work remains deferred.
 
+## Checked acquisition and retryable document links — September 9 follow-up
+
+The prior browser blocker is cleared. A fresh in-app browser run against the
+committed page-queue fix opened the Pages panel and duplicated page 1, then
+page 2, growing the real fixture from one page to three without error logs.
+The owned test tab closed cleanly. This completes the pending repeated-edit
+recheck; it does not claim the native delete-confirmation check passed.
+
+Document selection now returns explicit acceptance. The deep-link effect clears
+the pending ID and URL parameter only after a tab accepts the document. Busy or
+stale-scope opens keep the link; thrown identity checks show a safe message
+without crashing the effect. Other query parameters, hashes and browser history
+state remain intact. Acceptance means the tab was selected, not that its later
+PDF load succeeded. Seven tests execute the actual effect and selection code.
+Browser checks confirmed a matching fixture opens and removes only `docId`,
+while an unmatched link stays on the dashboard with its URL intact. Both runs
+had no browser error logs. These dev fixtures do not certify real authentication
+or upload recovery.
+
+The new checked acquisition module composes the existing checked reader and
+streamed download behind one explicit, default-off open. Its remote dependencies
+are the owned generation RPC/HTTP routes through the installed Supabase SDK;
+local adapters exercise the same reader, PDF bytes and Yjs state. Each open owns
+an immutable actor-bound JWT, deadline, auth subscription and cancellation
+scope. Caller abort and timeout cancel only that open; account changes and
+explicit disposal retire the module's pending work. Every success/failure path
+detaches subscriptions and external abort listeners. Late callbacks cannot
+retire a later open, and a failed checked read never falls back to legacy.
+
+Fourteen acquisition cases pass, including the installed Supabase SDK against
+an owned HTTP server. Its RPCs retained the captured Authorization header even
+when the ambient token changed; abort closed a held RPC socket. Another real-SDK
+case changed a valid shared-storage session from actor A to B without a broadcast
+event. The final session read caught B while the auth observer still held A.
+Retain the repeated session reads: removing them is not a safe optimization in
+that supported runtime. The installed SDK also performs its own session lookup
+before each RPC despite an explicit Authorization header. Those reads cannot
+be described as one session lookup per open.
+
+No Dashboard, deep-link or upload caller enables this module yet. A trusted
+legacy/checked mode discriminator and the existing hosted publication/storage
+gates remain prerequisites. No Microsoft testing or live cloud changes occurred.
+
+Next activation work must also cover the catalog, not just opening: migration
+091 fences `public.documents` SELECT, and an adopted row can make the old list
+query raise `SG001`. Do not loosen that content fence. Add a bounded metadata-only
+catalog and an authenticated, minimal open-mode RPC. Discovery must use the
+existing shared document advisory lock, document SHARE lock, generation-scope
+role checks and account guards. A checked head with bad publication data must
+still report checked and then fail verification, never return legacy. A legacy
+download needs a second explicit legacy/actor check before tab acceptance; that
+check is not a lasting lease, so backend null-generation fences and UI recovery
+remain required against later adoption or revocation. Real disposable-Postgres
+tests must cover mixed-mode listing, role precedence, membership/adoption races,
+closing accounts, missing rows, lock contention and repeated migration before
+any hosted activation. This contract audit is not an implemented mode RPC.
+
+Verification: the full offline suite passed across 653 files with 6,478 tests,
+6,385 passed, 93 skipped and zero failures or cancellations. The additional
+missed-broadcast regression was added after that file ran; no implementation
+changed afterward. All 106 final focused tests passed, including that new case,
+the actual SDK HTTP/abort checks, reader/download checks and existing invite/open
+contracts. The Vite build passed with the known large-chunk warning. Browser
+checks above used the actual running AppShell, not just extracted handlers.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
