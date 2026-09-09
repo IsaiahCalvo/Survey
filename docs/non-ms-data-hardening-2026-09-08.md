@@ -3099,6 +3099,96 @@ this SQL-only pass. Logs: `/tmp/survey-publication-foundations-tests.log`,
 `/tmp/survey-publication-foundations-build.log`, and
 `/tmp/survey-publication-foundations-graph.log`.
 
+## Checked generation upload staging — local, disabled
+
+Migration `20260909080000` and the new `document-generation-upload` endpoint
+add the upload prerequisite for a future atomic PDF/state publication. They do
+not change `documents.file_path`, activate a generation, or replace the current
+client save path. No live migration or deployment occurred.
+
+An authenticated editor reserves one operation with an exact expected SHA-256
+and byte length. SQL captures the current source digest and pins a new
+owner-scoped path. Exact retries return the same reservation; changed inputs
+cannot reuse its identity. Private records survive document/account deletion.
+Admission rechecks the editor, lock, account state and permanent owner, uses the
+existing owner storage limit, and caps unpublished work at four operations per
+document and sixteen per actor. The existing aggregate quota guard still applies.
+Partial actor/document/expiry indexes exclude canceled history from pending-work
+lookups; the document index also matches cancellation ordering.
+
+Only the checked signed-upload route can admit a protected path. The Storage
+guard rejects replacement, metadata changes and moves into that path, including
+service-role writes. A migration preflight aborts on an unrelated preexisting
+`_generations` namespace object rather than silently adopting it. This SQL rule
+depends on the deployed provider writing a fresh physical version before final
+metadata admission. The reviewed pinned provider source supports that ordering;
+the deployed revision and backend remain unverified. Standard signed uploads
+only: no S3 or resumable write capability is issued by this endpoint.
+
+The endpoint remains off unless `SURVEY_GENERATION_STORAGE_CONTRACT` equals
+`versioned-standard-v1`. Setting that value requires provider compatibility
+proof; passing these local tests alone does not meet that gate. Full streaming
+server download verifies both byte count and SHA-256 before SQL records a
+receipt against the exact object ID/version. There is no whole-file buffer and
+no claim of PDF structural validity. A durable, two-minute verifier claim avoids
+concurrent duplicate downloads; used claim IDs cannot be reused after takeover.
+Verified retries do not download again. A full exact-length stream with the
+wrong hash records a claim/object-fenced rejection; its retries return that
+receipt without another download. The rejected candidate stays pinned for
+recovery until explicit cancellation or expiry, with its reason and observed
+hash retained for audit. A short, oversized, failed or interrupted stream is
+not treated as a durable corruption verdict. Lost success or rejection replies retain the claim
+for reconciliation, not a blind repeat write. Every fresh verification still
+costs one full Storage read; no live bandwidth saving is claimed.
+
+Reserved, rejected and verified-but-unpublished candidates expire after two hours.
+Their terminal identity and verification history remain for audit. The existing
+archive sweep cancels at most 100 expired candidates, commits reference release
+and retirement, then uses the checked cleanup queue. It preserves auth, dry-run
+and lock-skip behavior. Invalid or late replies report pending work, never direct
+delete authority; a 15-second wait bound lets unrelated cleanup continue. Busy
+candidates retry later. Future activation must introduce an explicit published
+state and retained references before this path can serve real saves.
+
+Local proof: 36 real disposable-Postgres checks cover exact retries, private
+grants, quota rollback, namespace collision rollback, concurrent claims, both
+deadline wait races, revoked/transferred/closing access, deletion and bounded
+expiry and durable negative verification. The focused combined run passes 52/52 tests with no skips, including
+the actual Deno entry point through the repo-approved Supabase SDK 2.110.8 and synthetic
+localhost HTTP (14 grouped checks), 26 handler checks, 15 expiry-sweep checks,
+and the existing actual cleanup/billing endpoint fixture (22/74 grouped checks).
+Synthetic HTTP proves adapter behavior, not hosted provider behavior. Deno
+typechecking passes offline. A separate local 512 MiB stream benchmark used
+1 MiB chunks, about 51 MiB sampled process RSS, and 200 ms wall time. It is not
+a hosted capacity result: target runtime CPU, memory and request limits still
+need measurement before deployment. Larger supported files may need the same
+stream verifier in a worker with a suitable runtime, not a reduced file limit.
+
+Final regression run: `npm test` exits 0 across 609 files, with 5,879 tests:
+5,800 pass, 79 skip, zero failures/cancellations. The prior committed baseline
+was 605 files, 5,831 tests, 5,754 pass and 77 skip. Both new opt-in checks pass
+in the separate focused run. The first full attempt correctly failed the SDK
+release-pin gate; the endpoint now uses the approved direct npm pin, and the
+unchanged gate and full rerun pass. The final partial-index adjustment also
+passes the complete 36-case local Postgres matrix and all five wrapper checks.
+Build, offline Deno checks, graph update and diff check pass. The existing large
+bundle warning remains. No browser flow or frontend file changed in this slice.
+Logs: `/tmp/survey-generation-stage-tests-final.log`,
+`/tmp/survey-generation-stage-focused-final.log`,
+`/tmp/survey-generation-stage-postgres-final.log`,
+`/tmp/survey-generation-stage-build-final.log`,
+`/tmp/survey-generation-stage-deno-final.log`, and
+`/tmp/survey-generation-stage-graph-final.log`.
+
+Remaining non-Microsoft work includes atomic PDF/state activation, old-client
+read/write fences, generation-aware cache/outbox/realtime recovery and two-client
+offline tests. The legacy JSON sidecar also still duplicates shared state,
+uses a project-prefixed path that does not match the tracked owner-prefix write
+policies, and swallows upload errors. Its loader restores only a subset of the
+saved data and delays initial page setup. Replacing it needs a checked, scoped
+settings receipt and legacy import plan; local-save acknowledgement must stay
+separate from cloud success. No sidecar change was made in this slice.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
@@ -3114,6 +3204,10 @@ this SQL-only pass. Logs: `/tmp/survey-publication-foundations-tests.log`,
 - [Pinned Storage deletion ordering](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/object.ts#L191-L257)
 - [Pinned upload permission and elevated completion ordering](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/uploader.ts#L72-L295)
 - [Pinned version cleanup worker](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/events/objects/object-admin-delete.ts#L29-L55)
+- [Pinned signed upload token handling](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/http/routes/object/uploadSignedObject.ts#L76-L93)
+- [Pinned physical version keys](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/backend/s3/adapter.ts#L187-L248)
+- [Supabase function runtime limits](https://supabase.com/docs/guides/functions/limits)
+- [Per-function dependencies and Node support](https://supabase.com/docs/guides/functions/dependencies)
 
 ## Rollback
 
@@ -3135,3 +3229,9 @@ Keep scan cursors and closure receipts when rolling code back. Do not replace
 pending replies with success or return to a full recursive inventory. The older
 guarded remover can still service durable jobs, but auth deletion still needs an
 independent empty check of metadata and pending cleanup work.
+For upload staging, apply the migration before the new endpoint or expiry-sweep
+caller. Keep the endpoint disabled until its provider gate passes. On rollback,
+disable new reservations but preserve operation/claim identities, Storage guards,
+retained references and expiry cleanup. Never reopen a canceled path or remove
+its byte guard to make a retry succeed. A verified staging receipt alone is not
+permission to publish, including during the two-hour expiry window.

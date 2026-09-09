@@ -64,6 +64,22 @@ const secretsMatch = (a: string, b: string): boolean => {
 // Drain a bounded durable backlog, even when this run purges no new rows.
 const UNLINK_CHUNK = 100;
 
+// A receipt reports committed lease cancellations, not physical byte removal.
+// Reject partial or contradictory receipts; never infer paths from these IDs.
+const generationExpiryCounts = (value: unknown): { canceled: number; skipped: number } => {
+  const receipt = value as Record<string, unknown> | null;
+  if (!receipt || !Array.isArray(receipt.canceled_operation_ids) || !Array.isArray(receipt.skipped_operation_ids)) {
+    throw new Error('Invalid generation expiry receipt');
+  }
+  const ids = [...receipt.canceled_operation_ids, ...receipt.skipped_operation_ids];
+  if (ids.length > UNLINK_CHUNK || ids.some(id => typeof id !== 'string'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))
+    || new Set(ids).size !== ids.length) {
+    throw new Error('Invalid generation expiry receipt');
+  }
+  return { canceled: receipt.canceled_operation_ids.length, skipped: receipt.skipped_operation_ids.length };
+};
+
 // Mirrors normalizeBatchLimit / MAX_BATCH_LIMIT in
 // src/services/archiveSweepSelection.js. Kept in sync by hand because Deno
 // cannot import from src/; the SQL clamps again as the real backstop.
@@ -165,6 +181,29 @@ Deno.serve(async (req) => {
   const failedPaths: string[] = [];
 
   if (!dryRun) {
+    // Commit expired unpublished leases to the existing retirement queue before
+    // draining it. A failed reply leaves recovery to a later sweep, not a direct
+    // Storage delete; unrelated queued work may still make progress below.
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const expiry = await Promise.race([
+        supabase.rpc('expire_document_generation_uploads', { p_limit: UNLINK_CHUNK }),
+        new Promise<never>((_, reject) => {
+          expiryTimer = setTimeout(() => reject(new Error('Generation expiry timed out')), 15000);
+        }),
+      ]);
+      if (expiry.error) throw new Error('Generation expiry RPC failed');
+      const counts = generationExpiryCounts(expiry.data);
+      log('generation_upload_expiry', counts);
+      if (counts.skipped > 0) {
+        unlinkErrors.push('Some expired generation uploads are busy; cleanup will retry.');
+      }
+    } catch {
+      unlinkErrors.push('Expired generation upload cleanup could not be confirmed; cleanup will retry.');
+      log('generation_upload_expiry_failed');
+    } finally {
+      clearTimeout(expiryTimer);
+    }
     try {
       const cleanup = await drainDocumentStorageCleanup(supabase, UNLINK_CHUNK);
       unlinked = cleanup.removedPaths.length;

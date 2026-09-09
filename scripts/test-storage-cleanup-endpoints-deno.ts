@@ -111,6 +111,7 @@ globalThis.fetch=async(input:Request|URL|string,init?:RequestInit)=>{
    }
  }
  if(rpc==='sweep_expired_archives')return ok({run_id:'33333333-3333-4333-8333-333333333333',projects_purged:0,documents_purged:0,templates_purged:0,orphaned_paths:[],batch_limit:50,failed:0,skipped:0});
+ if(rpc==='expire_document_generation_uploads'){assert.equal(body.p_limit,100);return ok({canceled_operation_ids:[],skipped_operation_ids:[]});}
  if(rpc==='delete_account_owned_rows')return fault==='rows'?fail():ok({ok:true});
  if(rpc==='claim_account_storage_cleanup'){
    claimCalls++;assert.equal(body.target_user_id,actor);assert.equal(body.p_limit,100);
@@ -146,8 +147,8 @@ const request=(body:unknown,token='fixture-service-key')=>new Request('https://l
 const check=async(name:string,work:()=>Promise<void>)=>{await work();checks++;console.log('PASS '+name);};
 const called=(part:string)=>calls.some(call=>call.includes(part));
 await check('unauthorized scheduled caller cannot touch cleanup',async()=>{reset();assert.equal((await sweep(request({},'user-token'))).status,401);assert.deepEqual(calls,[]);});
-await check('dry run never claims or removes queued files',async()=>{reset();assert.equal((await sweep(request({dry_run:true}))).status,200);assert.equal(called('list_document_storage_cleanup'),false);assert.equal(called('/storage/'),false);assert.equal(queue.size,1);});
-await check('zero new purges still recover the durable cleanup backlog',async()=>{reset();const result=await (await sweep(request({}))).json();assert.equal(result.unlinked,1);assert.equal(queue.size,0);assert.equal(objects.size,0);assert.ok(calls.findIndex(c=>c.includes('retire_document'))<calls.findIndex(c=>c.startsWith('DELETE /storage/')));});
+await check('dry run never claims or removes queued files',async()=>{reset();assert.equal((await sweep(request({dry_run:true}))).status,200);assert.equal(called('expire_document_generation_uploads'),false);assert.equal(called('list_document_storage_cleanup'),false);assert.equal(called('/storage/'),false);assert.equal(queue.size,1);});
+await check('zero new purges still recover the durable cleanup backlog',async()=>{reset();const result=await (await sweep(request({}))).json();assert.equal(result.unlinked,1);assert.equal(queue.size,0);assert.equal(objects.size,0);const expiry=calls.findIndex(c=>c.includes('expire_document_generation_uploads'));assert.ok(expiry>=0&&expiry<calls.findIndex(c=>c.includes('list_document_storage_cleanup')));assert.ok(calls.findIndex(c=>c.includes('retire_document'))<calls.findIndex(c=>c.startsWith('DELETE /storage/')));});
 await check('a reference appearing after queue selection keeps the PDF',async()=>{reset('',true);const result=await (await sweep(request({}))).json();assert.equal(result.unlinked,0);assert.equal(objects.size,1);assert.equal(called('/storage/'),false);});
 for(const problem of ['retire','remove','list'])await check(`${problem} failure keeps scheduled cleanup pending`,async()=>{reset(problem);const result=await(await sweep(request({}))).json();assert.equal(result.unlinked,0);assert.ok(result.unlink_errors.length);assert.equal(queue.size,1);assert.equal(objects.size,1);if(problem!=='remove')assert.equal(called('/storage/'),false);});
 await check('lost acknowledgement retries the same retired path, including absent metadata',async()=>{reset('ack');await sweep(request({}));assert.equal(objects.size,0);assert.equal(queue.size,1);fault='';const result=await(await sweep(request({}))).json();assert.equal(result.unlinked,1);assert.equal(queue.size,0);});
