@@ -34,6 +34,13 @@ const check = (v, reason = 'shape') => { if (!v) fail(reason); };
 const canonical = v => Array.isArray(v) ? `[${v.map(canonical).join(',')}]` : object(v)
   ? `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}` : JSON.stringify(v);
 const same = (a, b) => canonical(a) === canonical(b);
+function markerSemantic(value) {
+  // SQL owns this read receipt timestamp. Copy adds an optional redundant id;
+  // neither changes semantic state. Every other field stays exact, including
+  // SQL row identity, version, owner/modifier and nested business data.
+  if(own(value,'id'))check(typeof value.annotationId==='string' && value.id===value.annotationId,'annotation-alias');
+  const result={...value};delete result.lastSyncedAt;delete result.id;return result;
+}
 function cloneJson(v, depth = 0, ancestors = new Set(), budget = { bytes: MAX_BYTES }) {
   check(depth <= 64, 'depth');
   budget.bytes -= typeof v === 'string' ? Buffer.byteLength(v) : 8;
@@ -154,6 +161,7 @@ function validateModel(model, count) {
   }
   for (const key of ['annotations', 'surveyMarkers']) for (const [id, v] of Object.entries(model[key] || {})) {
     check(safeIdentity(id), 'annotation-id'); carrier(v, page(v.pageNumber ?? v.pageId ?? v.page, count), count);
+    if(key==='surveyMarkers' && own(v,'id'))check(typeof v.annotationId==='string' && v.id===v.annotationId,'annotation-alias');
     for (const alias of ['id', 'annotationId']) if (v[alias] != null) check(v[alias] === id, 'annotation-alias');
   }
   for (const key of ['pageNames', 'pageTransformations']) for (const p of Object.keys(model[key] || {})) {
@@ -274,6 +282,7 @@ export async function transformDocumentGenerationSource(input) {
     let last = -1n;
     for (const row of s.doc_yjs_updates) { validateRow(row); const n = seq(row.seq); check(n > last, 'legacy-wal-order'); last = n;
       if (n > legacyAt) apply(legacy, decode(row.update_base64, row.encoding_version ?? 1)); }
+    const legacyThroughSeq = (last > legacyAt ? last : legacyAt).toString();
     boundedDoc(legacy);
     const legacyState = legacyVisible(legacy);
     const modernIdentities = flatModern(materialized.annotationsByPage);
@@ -349,9 +358,10 @@ export async function transformDocumentGenerationSource(input) {
         if (!own(model, key)) continue;
         const a = canonicalIndexes[key];
         const b = key === 'annotationsByPage' ? flat(model[key]) : model[key];
+        const equal=key==='surveyMarkers' ? (left,right)=>same(markerSemantic(left),markerSemantic(right)) : same;
         for (const id of Object.keys(b)) check(!legacyState.deleted.has(id), 'legacy-delete-conflict');
-        if (authoritative) { for (const [id, value] of Object.entries(b)) check(own(a, id) && same(a[id], value), 'representation-conflict'); }
-        else { for (const [id, value] of Object.entries(b)) { check(!own(a, id) || same(a[id], value), 'representation-conflict'); put(a,id,value); } }
+        if (authoritative) { for (const [id, value] of Object.entries(b)) check(own(a, id) && equal(a[id], value), 'representation-conflict'); }
+        else { for (const [id, value] of Object.entries(b)) { check(!own(a, id) || equal(a[id], value), 'representation-conflict'); put(a,id,value); } }
       }
     };
     const metaTransform = meta => {
@@ -440,8 +450,12 @@ export async function transformDocumentGenerationSource(input) {
         for(const [key,value] of Object.entries(v)) {
           if(pageAliases.has(key))check(value===p,'page-alias');else if(key!==field)extraField(key,value);
         }
+        // Callout attribution belongs in the bridge's normalized payload, not
+        // a new outer Fabric meta field that disappears on the next read.
+        if (!authoritative && field === 'callout' && !v.callout.meta?.authorId && v.meta.authorId)
+          v.callout.meta = {...v.callout.meta, authorId:v.meta.authorId};
         const o = field === 'fabric' ? v.fabric : asCallout(v.callout);
-        if (!authoritative && !o.meta?.authorId && v.meta.authorId) o.meta = {...o.meta,authorId:v.meta.authorId};
+        if (!authoritative && field === 'fabric' && !o.meta?.authorId && v.meta.authorId) o.meta = {...o.meta,authorId:v.meta.authorId};
         check(annotationId(o) === id, 'legacy-identity'); carrier(o, p, count);
         const model = { annotationsByPage: byPage([[p, o]]) }; reconcile(model);
         const transformed = transform(model);
@@ -529,9 +543,29 @@ export async function transformDocumentGenerationSource(input) {
     }
     for (const key of ['page_count', 'pagecount']) if (own(document, key)) document[key] = plan.nextCount;
     if (document.current_page != null) document.current_page = pageNumberAfterOperation(page(document.current_page, count), op, plan.nextCount);
+    // A new generation needs standalone legacy state, not JSON in a bytea
+    // column or an update merged into the old document. Preserve the bridge's
+    // per-property maps so later collaborator edits still merge by field.
+    const freshLegacy = newDoc();
+    freshLegacy.clientID = createHash('sha256').update(`legacy\u0000${input.operationId}`).digest().readUInt32BE(0) || 1;
+    for (const name of ['annotations', 'callouts']) {
+      const root = freshLegacy.getMap(name), contentField = name === 'annotations' ? 'fabric' : 'callout';
+      for (const [id, value] of Object.entries(legacyProjection[name])) {
+        const record = new Y.Map(); root.set(id, record);
+        for (const [key, entry] of Object.entries(value)) {
+          record.set(key, (key === contentField || key === 'meta')
+            ? new Y.Map(Object.entries(cloneJson(entry))) : cloneJson(entry));
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(legacyProjection.meta)) freshLegacy.getMap('meta').set(key, cloneJson(value));
+    const legacyCheckpoint = { documentId, encodingVersion: 1, throughSeq: legacyThroughSeq,
+      state: Y.encodeStateAsUpdate(freshLegacy), stateVector: Y.encodeStateVector(freshLegacy) };
+    const baselineUpdate = Y.encodeStateAsUpdate(fresh);
+    check(baselineUpdate.byteLength + legacyCheckpoint.state.byteLength + legacyCheckpoint.stateVector.byteLength <= MAX_BYTES, 'capacity');
     return { version: 1, operationId: input.operationId, operation: op,
       source: { documentId, generationId, walHead: semantic.wal_head, sourceObject: cloneJson(semantic.source_object) },
-      baselineUpdate: Y.encodeStateAsUpdate(fresh), identityMap: identities,
+      baselineUpdate, legacyCheckpoint, identityMap: identities,
       projection: { document, modern, documentAnnotations: rows, legacyYjs: legacyProjection,
         surveySessions: [...sessions.values()], surveyItems, sidecars: transformedSidecars },
       archive: { sourcePayload: cloneJson(payload), sidecars: cloneJson(sidecars) } };

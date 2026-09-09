@@ -3556,6 +3556,67 @@ expiry during the final insert. Its exact temporary cluster was removed. Vite
 build passed with the existing large-chunk warning. The required AST graph
 refresh completed; graph/cache files are not part of the code checkpoint.
 
+## Save and reload consistency: marker receipts and legacy checkpoints
+
+This batch closes two transform prerequisites listed above. It does not enable
+cloud publication or change any live database, file, account or Microsoft flow.
+
+- Marker reconciliation now ignores only the top-level `lastSyncedAt` read
+  receipt. An optional copied `id` must exactly equal `annotationId`. SQL row
+  IDs, versions, authors, modifiers, geometry, business fields and nested
+  timestamps remain exact. Source capture and final semantic CAS are unchanged;
+  their actual SQL timestamps are still part of the frozen source and archive.
+- The private transform returns `legacyCheckpoint` with a standalone raw Yjs
+  update, its matching state vector, document ID and exact string `throughSeq`.
+  Its floor covers the prior checkpoint and every captured legacy update, even
+  beyond JavaScript's safe integer range. It never merges old binary history
+  into the new generation. Old history remains in the private archive.
+- Fresh annotation/callout records use the nested Y.Maps expected by the legacy
+  bridge, including per-field content and attribution. Two decoded replicas can
+  still merge edits to different fields. Empty/deleted state is a full checkpoint
+  too, so a later read cannot restore old marks through leftover WAL rows.
+- A second-edit test found legacy callout fallback adding author metadata to an
+  outer field that its next read does not preserve. The fallback now seeds the
+  bridge's normalized callout author field when absent and preserves any embedded
+  author. Original envelope attribution stays intact; comparison does not ignore
+  authors or other callout content.
+- Both output checkpoints and the legacy vector share a 64 MiB encoded size
+  ceiling. This is an output check, not a claim of a strict process-memory cap.
+  The complete transform remains a private, Node-tested prerequisite.
+
+Local verification includes focused save/reload and two-replica tests, plus
+actual disposable PostgreSQL row-write → capture → second-transform tests. The
+SQL harness installs the tracked annotation timestamp trigger rather than
+simulating timestamps. It writes moved/copied marker rows and attached private
+survey items, preserves their authors/business data, and tests changed row IDs,
+versions, authors and business data as failures. It also writes and recaptures
+the legacy checkpoint's real BYTEA state, vector and covered sequence.
+
+These are pre-adoption SQL roundtrips, not the missing atomic publication
+transaction. The live publication write permit, complete state/PDF/head switch,
+immutable sidecar binding, viewer generation reset, and two-user offline cloud
+flow remain activation gates. No legacy write guard was relaxed for these tests.
+
+Next publication work must retain the `090` adopted-document write fence for all
+roles. A private, transaction-bound permission should identify the exact
+operation, document/generations, table, row, action and expected old/new values;
+only the checked publisher may issue it, and each entry must be consumed before
+return. Existing account, membership, parent locks, revision counters, timestamp
+triggers and immutable WAL checks still apply. In particular, the `097` retained
+bundle retry deliberately does not recapture current source state: publication
+must make its own fresh full-source comparison even when retention is a retry.
+Page-count-only writes also need explicit actor/owner account checks. No such
+permission or publication function is implemented in this batch.
+
+Final verification: 68 focused tests passed. The full Node suite passed 6,042
+tests across 632 files, with 91 gated skips and zero failures/cancellations.
+The separate disposable PostgreSQL run passed 18 transform cases, 10 private
+read/authority groups and three writeback roundtrips, including 12 rejected
+semantic conflicts. Its exact temporary cluster was removed. Vite build passed
+with the existing large-chunk warning, and the required AST graph refresh
+completed. No user-visible route changed; no browser/cloud release proof is
+claimed by these private transform tests.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

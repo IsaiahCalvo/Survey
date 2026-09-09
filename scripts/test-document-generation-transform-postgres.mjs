@@ -7,8 +7,10 @@ import {gzipSync} from 'node:zlib';
 import * as Y from 'yjs';
 import {PDFDocument} from 'pdf-lib';
 import {withDisposablePostgres} from './helpers/disposablePostgres.mjs';
-import {syncByPageToDoc,docToByPage} from '../src/services/annotationDocStore.js';
+import {syncByPageToDoc,docToByPage,syncSurveyMarkersToDoc} from '../src/services/annotationDocStore.js';
 import {transformDocumentGenerationSource} from '../src/services/documentGenerationTransform.js';
+import {mapSurveyMarkerRowToLocalAnnotation} from '../src/services/documentSurveyMarkerMapper.js';
+import {mutatePdfPagesWithIdentity} from '../src/utils/pdfPageMutation.js';
 assert.equal(process.argv.length,2,'No connection arguments accepted');
 const migrationPath=n=>fileURLToPath(new URL(`../supabase/migrations/${n}`,import.meta.url));
 const source=n=>readFileSync(migrationPath(n),'utf8');
@@ -46,6 +48,17 @@ await withDisposablePostgres(async pg=>{
   '20260909094000_document_generation_source_bound_uploads.sql','20260909095000_document_generation_source_archives.sql',
   '20260909096000_document_generation_transform_source.sql',
   '20260425121704_extend_document_annotations_for_all_types.sql'])applyMigration(migrationPath(file));
+ // The shared SQL bootstrap intentionally imports only the original annotation
+ // table, unlike the complete survey migration. Restore its real timestamp
+ // function/trigger here; do not substitute a test-written timestamp function.
+ const timestampSource=source('20241230000002_create_document_annotations.sql');
+ const timestampStart=timestampSource.indexOf('CREATE OR REPLACE FUNCTION update_document_tables_updated_at()');
+ const timestampEnd=timestampSource.indexOf('CREATE TRIGGER trigger_update_document_collaborators_updated_at',timestampStart);
+ assert.ok(timestampStart>=0&&timestampEnd>timestampStart);sql(timestampSource.slice(timestampStart,timestampEnd));
+ const entityRename=source('20260518000000_rename_ball_in_court_to_entity.sql').split('\n').filter(line=>line.startsWith('ALTER TABLE document_annotations RENAME COLUMN')).join('\n');
+ assert.equal(entityRename.split('\n').length,2);sql(entityRename);
+ applyMigration(migrationPath('20260518000001_survey_marker_widen_type_check.sql'));
+ assert.equal(scalar("SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('trigger_update_document_annotations_updated_at','trigger_update_survey_sessions_updated_at','trigger_update_survey_items_updated_at')"),'3');
  const bytea=x=>`decode('${Buffer.from(x).toString('hex')}','hex')`;
  const call=(name,args)=>`SELECT public.${name}(${args.map(quote).join(',')})`;
  const service=(name,args)=>JSON.parse(asRole(null,call(name,args),'service_role').stdout);
@@ -216,7 +229,99 @@ await withDisposablePostgres(async pg=>{
  await check('repeatable read never uses a stale authority snapshot',async()=>{
   const x=await capture();errorState(asRole(null,`BEGIN ISOLATION LEVEL REPEATABLE READ;${readSql(x.s)}`,'service_role',false),'25001');
  });
+ // Release only this disposable cluster's captured fixture receipts before the
+ // next group, preserving actual per-actor source admission limits.
+ sql("SELECT survey_private.release_document_generation_source(source_id,'canceled') FROM survey_private.document_generation_sources WHERE state='captured'");
+ let roundtripChecks=0;const roundtripErrors=[];
+ const rowSet=(table,where)=>JSON.parse(scalar(`SET TimeZone='UTC';SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]') FROM public.${table} r WHERE ${where}`));
+ const writeRows=(table,rows)=>{
+  if(!rows.length)return;
+  const columns=Object.keys(rows[0]);assert.ok(columns.every(k=>/^[a-z_]+$/.test(k)));
+  sql(`INSERT INTO public.${table}(${columns.join(',')}) SELECT ${columns.join(',')} FROM jsonb_populate_recordset(NULL::public.${table},${quote(JSON.stringify(rows))})
+   ON CONFLICT(id) DO UPDATE SET ${columns.filter(k=>k!=='id').map(k=>`${k}=EXCLUDED.${k}`).join(',')}`);
+ };
+ for(const [operation,withIdAlias] of [[{type:'move',from:2,to:1},false],[{type:'copy',source:2,afterPage:3},false],[{type:'duplicate',page:2},true]]){
+  const d=fresh(),path=`${owner}/roundtrip-${d}.pdf`,sessionIds=[fresh(),fresh()];let currentPdf=pdf;
+  const captureRows=()=>{
+   const s=fresh();service('begin_document_generation_source',[owner,d,s,null]);
+   const c=fresh(),proof=service('claim_document_generation_source_bytes',[owner,s,c]);assert.equal(proof.objects.length,1);
+   service('record_document_generation_source_bytes',[owner,s,c,JSON.stringify(proof.objects.map(o=>({...o,content_sha256:createHash('sha256').update(currentPdf).digest('hex')})))]);
+   const envelope=read(s);service('cancel_document_generation_source',[owner,s]);return envelope.payload;
+  };
+  try{
+   sql(`INSERT INTO documents(id,user_id,project_id,name,file_path,file_size,page_count) VALUES('${d}','${owner}','${project}','Marker roundtrip',${quote(path)},${pdf.length},3);
+    INSERT INTO storage.objects(bucket_id,name,version,metadata) VALUES('documents',${quote(path)},'${version}',jsonb_build_object('size',${pdf.length}));
+    INSERT INTO document_annotations(document_id,user_id,annotation_id,annotation_type,page_number,bounds,module_id,category_id,name,notes,version,last_modified_by,annotation_data)
+     VALUES('${d}','${owner}','survey','survey-marker',2,'{"x":10,"y":20,"width":30,"height":40}','module','category','Original marker','Business note',3,'${owner}','{"scope":"survey","pageNumber":2}');
+    INSERT INTO survey_sessions(id,template_id,user_id,document_id,is_active) VALUES
+     ('${sessionIds[0]}','${id(10)}','${owner}','${d}',false),('${sessionIds[1]}','${id(10)}','${other}','${d}',false);
+    INSERT INTO survey_items(session_id,annotation_id,module_id,category_id,page_number,notes,excel_row_index) VALUES
+     ('${sessionIds[0]}','survey','module','category',2,'Own business note',7),('${sessionIds[1]}','survey','module','category',2,'Foreign business note',8)`);
+   // A genuine legacy checkpoint and tail carry private metadata through the
+   // serializer without introducing a competing rect/callout representation.
+   const oldDoc=new Y.Doc();oldDoc.getMap('meta').set('privateContext','kept');
+   const oldBytes=Y.encodeStateAsUpdate(oldDoc),oldVector=Y.encodeStateVector(oldDoc);
+   oldDoc.getMap('meta').set('tailContext','accepted');const tail=Y.encodeStateAsUpdate(oldDoc,oldVector);oldDoc.destroy();
+   sql(`INSERT INTO doc_yjs_state(document_id,state,state_vector,through_seq) VALUES('${d}',${bytea(oldBytes)},${bytea(oldVector)},7);
+    INSERT INTO doc_yjs_updates(document_id,client_id,seq,update) VALUES('${d}','legacy-roundtrip',8,${bytea(tail)})`);
+   const original=rowSet('document_annotations',`document_id='${d}'`)[0];
+   const marker=mapSurveyMarkerRowToLocalAnnotation(original);for(const key of Object.keys(marker))if(marker[key]===undefined)delete marker[key];
+   if(withIdAlias)marker.id=marker.annotationId;
+   const markerDoc=new Y.Doc();syncSurveyMarkersToDoc(markerDoc,{survey:marker});const initial=Y.encodeStateAsUpdate(markerDoc);markerDoc.destroy();
+   assert.equal(asRole(owner,`SELECT public.store_annotation_snapshot('${d}',0,${bytea(initial)},1,'roundtrip',1,NULL,NULL,0)`).stdout,'t');
+   const captured=captureRows(),input={sourcePayload:captured,operation,operationId:fresh(),pageCount:3,pageSizes,sidecars:[]};
+   const first=await transformDocumentGenerationSource(input);
+   const mutation=await mutatePdfPagesWithIdentity(currentPdf,operation);currentPdf=mutation.bytes;
+   const changedPdf=await PDFDocument.load(currentPdf),changedCount=changedPdf.getPageCount(),changedSizes=changedPdf.getPages().map(p=>p.getSize());
+   // Actual row updates/inserts invoke the tracked BEFORE UPDATE timestamps;
+   // no trigger is disabled and no generation head/publication is fabricated.
+   writeRows('document_annotations',first.projection.documentAnnotations);writeRows('survey_items',first.projection.surveyItems);
+   assert.equal(first.legacyCheckpoint.documentId,d);assert.equal(first.legacyCheckpoint.throughSeq,'8');assert.equal(first.legacyCheckpoint.encodingVersion,1);
+   sql(`UPDATE doc_yjs_state SET state=${bytea(first.legacyCheckpoint.state)},state_vector=${bytea(first.legacyCheckpoint.stateVector)},through_seq=${first.legacyCheckpoint.throughSeq},encoding_version=${first.legacyCheckpoint.encodingVersion} WHERE document_id='${d}'`);
+   sql(`UPDATE documents SET page_count=${changedCount},file_size=${currentPdf.length} WHERE id='${d}';
+    UPDATE storage.objects SET version='${fresh()}',metadata=jsonb_build_object('size',${currentPdf.length}) WHERE bucket_id='documents' AND name=${quote(path)}`);
+   assert.equal(asRole(owner,`SELECT public.store_annotation_snapshot('${d}',0,${bytea(first.baselineUpdate)},1,'roundtrip',2,0,'roundtrip',1)`).stdout,'t');
+   const written=rowSet('document_annotations',`document_id='${d}'`),writtenItems=rowSet('survey_items',`session_id IN('${sessionIds.join("','")}')`);
+   assert.notEqual(written.find(r=>r.id===original.id).updated_at,original.updated_at,'real annotation UPDATE changes lastSyncedAt source');
+   for(const item of captured.semantic.sources.survey_items)assert.notEqual(writtenItems.find(r=>r.id===item.id).updated_at,item.updated_at,'real survey-item UPDATE timestamp changed');
+   const secondPayload=captureRows();
+   assert.deepEqual(secondPayload.semantic.sources.document_annotations,written);
+   assert.equal(secondPayload.semantic.sources.doc_yjs_state.through_seq,'8');
+   assert.deepEqual(Buffer.from(secondPayload.semantic.sources.doc_yjs_state.state_base64,'base64'),Buffer.from(first.legacyCheckpoint.state));
+   assert.deepEqual(Buffer.from(secondPayload.semantic.sources.doc_yjs_state.state_vector_base64,'base64'),Buffer.from(first.legacyCheckpoint.stateVector));
+   assert.equal(secondPayload.semantic.sources.doc_yjs_updates[0].seq,'8','old WAL remains in the archive, not replayed past its checkpoint floor');
+   assert.equal(secondPayload.semantic.sources.survey_items.length,operation.type==='move'?2:4);
+   const secondInput={sourcePayload:secondPayload,operation:{type:'move',from:1,to:2},operationId:fresh(),pageCount:changedCount,pageSizes:changedSizes,sidecars:[]};
+   const second=await transformDocumentGenerationSource(secondInput);
+   assert.deepEqual(second.archive.sourcePayload,secondPayload);
+   assert.equal(second.legacyCheckpoint.throughSeq,'8');
+   assert.deepEqual(second.projection.legacyYjs.meta,{privateContext:'kept',tailContext:'accepted'});
+   for(const row of second.projection.documentAnnotations){
+    const live=second.projection.modern.surveyMarkers[row.annotation_id];
+    assert.equal(live.supabaseId,row.id);assert.equal(live.userId,row.user_id);assert.equal(live.version,row.version);
+    assert.equal(live.name,row.name);assert.equal(live.notes,row.notes);assert.equal(live.annotationId,row.annotation_id);
+    if(live.id!=null)assert.equal(live.id,row.annotation_id);
+   }
+   if(operation.type!=='move'){
+    const copied=written.find(r=>r.id!==original.id);assert.ok(copied);assert.notEqual(copied.annotation_id,'survey');
+    assert.equal(first.projection.modern.surveyMarkers[copied.annotation_id].supabaseId,copied.id);
+    for(const item of writtenItems.filter(r=>r.annotation_id===copied.annotation_id))assert.equal(item.excel_row_index,null);
+   }
+   // Benign SQL receipt timestamps/optional matching aliases are not license
+   // to accept divergent row identity, version, authorship, or business state.
+   for(const [label,assignment] of [['row id',`id='${fresh()}'`],['version','version=version+1'],['author',`user_id='${other}'`],['business',"notes='Different business note'"]]){
+    sql(`UPDATE document_annotations SET ${assignment} WHERE document_id='${d}' AND annotation_id='survey'`);
+    const badPayload=captureRows();
+    await assert.rejects(transformDocumentGenerationSource({...secondInput,sourcePayload:badPayload}),e=>e.code==='DOCUMENT_GENERATION_TRANSFORM_INVALID',label);
+    if(label==='row id')sql(`UPDATE document_annotations SET id='${original.id}' WHERE document_id='${d}' AND annotation_id='survey'`);
+    writeRows('document_annotations',written);
+   }
+   roundtripChecks++;console.log(`PASS SQL marker roundtrip ${operation.type} timestamp and identity fences`);
+  }catch(error){const failure=`${operation.type}: ${error.code||error.name} ${error.reason||error.message}`;roundtripErrors.push(failure);console.log(`FAIL SQL marker roundtrip ${failure}`);}
+ }
+ assert.deepEqual(roundtripErrors,[],'Real timestamp-trigger writeback must remain transformable while semantic conflicts reject');
  console.log(`Document generation transform PostgreSQL checks passed: ${count}`);
  console.log(`Document generation transform service-read PostgreSQL checks passed: ${readChecks}`);
+ console.log(`Document generation transform SQL-writeback PostgreSQL checks passed: ${roundtripChecks}`);
 },{name:'generation-transform'});
 console.log('Disposable local PostgreSQL stopped; exact temporary cluster removed');

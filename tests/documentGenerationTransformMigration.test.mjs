@@ -10,5 +10,6 @@ test('actual SQL source capture transforms all representations without rewriting
  assert.equal(r.status,0,`${r.stdout}\n${r.stderr}\n${r.error?.message||''}`);
  assert.match(r.stdout,/Document generation transform PostgreSQL checks passed: 18/);
  assert.match(r.stdout,/Document generation transform service-read PostgreSQL checks passed: 10/);
+ assert.match(r.stdout,/Document generation transform SQL-writeback PostgreSQL checks passed: 3/);
  assert.match(r.stdout,/Disposable local PostgreSQL stopped; exact temporary cluster removed/);
 });

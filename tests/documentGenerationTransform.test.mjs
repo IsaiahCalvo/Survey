@@ -214,6 +214,65 @@ test('dedicated copied survey marker preserves business data but remaps nested r
   assert.deepEqual(r.projection.documentAnnotations[0],row);assert.deepEqual(input,before);assert.deepEqual(r.archive.sourcePayload,before.sourcePayload);
 });
 
+function markerComparisonFixture(){
+  const input={...fixture(),operation:{type:'move',from:2,to:1}};
+  const row={id:uuid(60),document_id:documentId,user_id:actor,last_modified_by:actor,annotation_id:'survey',
+    annotation_type:'survey-marker',page_number:2,version:3,bounds:{x:1,y:2},name:'Kept',notes:'Original',
+    updated_at:'2026-09-08T00:00:00Z',annotation_data:{regionId:'region',scope:'survey-region'}};
+  input.sourcePayload.semantic.sources.document_annotations=[row];
+  const marker=mapSurveyMarkerRowToLocalAnnotation(row);for(const k of Object.keys(marker))if(marker[k]===undefined)delete marker[k];
+  return {input,row,marker:structuredClone(marker)};
+}
+function installMarker(input,marker){const d=new Y.Doc();d.getMap('surveyMarkers').set('survey',marker);setModern(input,d);}
+
+for(const alias of [false,true])test(`marker comparison accepts only server receipt time drift${alias?' with a matching id alias':''}`,async()=>{
+  const {input,row,marker}=markerComparisonFixture();if(alias)marker.id=marker.annotationId;installMarker(input,marker);
+  row.updated_at='2026-09-09T01:02:03Z';const before=structuredClone(input),result=await transformDocumentGenerationSource(input);
+  assert.equal(result.projection.modern.surveyMarkers.survey.pageNumber,1);
+  assert.equal(result.projection.modern.surveyMarkers.survey.lastSyncedAt,'2026-09-08T00:00:00Z');
+  assert.equal(result.projection.documentAnnotations[0].updated_at,row.updated_at);
+  assert.deepEqual(input,before);assert.deepEqual(result.archive.sourcePayload,before.sourcePayload);
+});
+
+test('copied marker baseline can be compared with re-read SQL rows on the next transform',async()=>{
+  const {input,marker}=markerComparisonFixture();installMarker(input,marker);input.operation={type:'duplicate',page:2};
+  const first=await transformDocumentGenerationSource(input),next=fixture();
+  next.pageCount=4;next.pageSizes.push({width:612,height:792});next.operation={type:'move',from:3,to:1};
+  next.sourcePayload.semantic.document=first.projection.document;
+  next.sourcePayload.semantic.sources.annotation_snapshot.snapshot_base64=b64(first.baselineUpdate);
+  next.sourcePayload.semantic.sources.document_annotations=first.projection.documentAnnotations.map(r=>({...r,updated_at:'2026-09-09T02:03:04Z'}));
+  const second=await transformDocumentGenerationSource(next),copiedId=first.projection.documentAnnotations[1].annotation_id;
+  assert.equal(second.projection.modern.surveyMarkers[copiedId].pageNumber,1);
+  assert.equal(second.projection.modern.surveyMarkers[copiedId].supabaseId,first.projection.documentAnnotations[1].id);
+});
+
+for(const key of ['supabaseId','version','userId','lastModifiedBy','bounds','name','annotationData'])test(`marker comparison still rejects changed ${key}`,async()=>{
+  const {input,marker}=markerComparisonFixture();marker.id=marker.annotationId;marker.lastSyncedAt='different-time';
+  marker[key]=key==='version'?9:key==='bounds'?{x:999,y:2}:key==='annotationData'?{regionId:'other',scope:'survey-region'}:'different';
+  installMarker(input,marker);await assert.rejects(transformDocumentGenerationSource(input),e=>e.reason==='representation-conflict');
+});
+
+for(const alias of [null,'different'])test(`marker comparison rejects invalid optional id ${alias}`,async()=>{
+  const {input,marker}=markerComparisonFixture();marker.id=alias;installMarker(input,marker);
+  await assert.rejects(transformDocumentGenerationSource(input),e=>e.code==='DOCUMENT_GENERATION_TRANSFORM_INVALID');
+});
+
+test('marker id alias requires an explicit matching annotationId, and nested timestamps remain semantic',async()=>{
+  for(const missing of [true,false]){
+    const {input,marker}=markerComparisonFixture();
+    if(missing){marker.id='survey';delete marker.annotationId;}
+    else marker.annotationData.lastSyncedAt='nested business value';
+    installMarker(input,marker);await assert.rejects(transformDocumentGenerationSource(input),e=>e.code==='DOCUMENT_GENERATION_TRANSFORM_INVALID');
+  }
+});
+
+test('legacy fallback accepts equivalent SQL and sidecar markers without relaxing their identity checks',async()=>{
+  const {input,marker}=markerComparisonFixture();input.sourcePayload.semantic.sources.annotation_snapshot=null;input.sourcePayload.semantic.wal_head='0';
+  marker.id=marker.annotationId;marker.lastSyncedAt='later receipt';attachSidecar(input,{version:1,annotations:{survey:marker}});
+  assert.equal((await transformDocumentGenerationSource(input)).projection.modern.surveyMarkers.survey.pageNumber,1);
+  marker.version=99;await assert.rejects(transformDocumentGenerationSource(input),e=>e.reason==='representation-conflict');
+});
+
 test('moving a form carrier changes its page-derived alias without minting a new SQL row or clearing its receipt',async()=>{
   const input={...fixture(),operation:{type:'move',from:2,to:1}},s=input.sourcePayload.semantic.sources;
   const id='form-field:2:15R',form={type:'form-field',id,fieldId:'15R',pageNumber:2,data:{id,type:'form-field',fieldId:'15R',pageNumber:2,value:'kept'}};
