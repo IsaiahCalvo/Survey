@@ -29,6 +29,7 @@ import {
   flattenBookmarkTreeForSort,
   getAutoExpandTargetFolder,
   getBookmarkProjection,
+  mergeDragHandleProps,
   removeChildrenOf,
 } from './bookmarkReorderUtils.js';
 import { useTooltip } from '../components/Tooltip';
@@ -223,8 +224,7 @@ const BookmarkTreeRow = ({
         }}
       >
         <div
-          {...handleProps}
-          {...tip('Drag to reorder', 'below')}
+          {...mergeDragHandleProps(tip('Drag to reorder', 'below'), handleProps)}
           style={{
             width: 18,
             height: 22,

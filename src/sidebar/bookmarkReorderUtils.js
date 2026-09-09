@@ -151,3 +151,23 @@ export const applyBookmarkTreeProjection = (tree, activeId, overId, projection) 
 
   return buildSortableBookmarkTree(arrayMoveBookmarkItems(clonedItems, activeIndex, overIndex));
 };
+
+/**
+ * Merge the shared tooltip binding with @dnd-kit's activator listeners for a
+ * drag handle. Both sides want `onPointerDown` (the tooltip hides on press,
+ * the PointerSensor starts the drag), and a plain spread lets whichever comes
+ * last silently replace the other — KAL-65 spread the tooltip after the
+ * listeners and every bookmark drag stopped starting. Chain them instead.
+ */
+export const mergeDragHandleProps = (tipProps = {}, listeners = {}) => {
+  const merged = { ...tipProps, ...listeners };
+  const tipPointerDown = tipProps.onPointerDown;
+  const dragPointerDown = listeners.onPointerDown;
+  if (tipPointerDown && dragPointerDown) {
+    merged.onPointerDown = (event) => {
+      tipPointerDown(event);
+      dragPointerDown(event);
+    };
+  }
+  return merged;
+};

@@ -7,6 +7,7 @@ import {
   flattenBookmarkTreeForSort,
   getAutoExpandTargetFolder,
   getBookmarkProjection,
+  mergeDragHandleProps,
   removeChildrenOf,
 } from '../src/sidebar/bookmarkReorderUtils.js';
 
@@ -119,4 +120,37 @@ test('collapsed folders are auto-expand targets when dragged over with rightward
   );
 
   assert.equal(target.id, 'details');
+});
+
+// KAL-65 regression: the shared tooltip binding returns its own onPointerDown
+// (hide-on-press). Spreading it after the @dnd-kit listeners silently replaced
+// the PointerSensor's onPointerDown, so the handle never started a drag.
+test('mergeDragHandleProps keeps both the tooltip press handler and the dnd-kit sensor', () => {
+  const calls = [];
+  const tipProps = {
+    onMouseEnter: () => calls.push('tip:enter'),
+    onPointerDown: () => calls.push('tip:pointerdown'),
+  };
+  const listeners = {
+    onPointerDown: () => calls.push('dnd:pointerdown'),
+    onKeyDown: () => calls.push('dnd:keydown'),
+  };
+
+  const merged = mergeDragHandleProps(tipProps, listeners);
+  merged.onPointerDown({});
+  merged.onKeyDown({});
+  merged.onMouseEnter({});
+
+  assert.deepEqual(calls, ['tip:pointerdown', 'dnd:pointerdown', 'dnd:keydown', 'tip:enter']);
+});
+
+test('mergeDragHandleProps tolerates a missing handler on either side', () => {
+  const calls = [];
+  const merged = mergeDragHandleProps({}, { onPointerDown: () => calls.push('dnd') });
+  merged.onPointerDown({});
+  assert.deepEqual(calls, ['dnd']);
+
+  const noListeners = mergeDragHandleProps({ onPointerDown: () => calls.push('tip') }, {});
+  noListeners.onPointerDown({});
+  assert.deepEqual(calls, ['dnd', 'tip']);
 });
