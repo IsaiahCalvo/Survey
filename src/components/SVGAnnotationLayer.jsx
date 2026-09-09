@@ -56,8 +56,23 @@ import {
   buildBoundaryShapeCommitJSON,
   buildFreehandCommitJSON,
   buildLineCommitJSON,
+  buildPolyShapeCommitJSON,
   composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
+import {
+  POLY_DRAFT_TOOLS,
+  POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS,
+  POLY_FINISH_CONTROL_SCREEN_RADIUS,
+  POLY_FIRST_POINT_SNAP_SCREEN_RADIUS,
+  addPolyDraftPoint,
+  canClosePolyDraft,
+  canFinishPolyDraft,
+  createPolyDraft,
+  isPointNearPolyDraftFirstPoint,
+  polyDraftFinishControlPoints,
+  resolvePolyDraftFinish,
+  updatePolyDraftPreview,
+} from '../utils/polyDraft.js';
 import {
   getAnnotationRenderIdentity,
   stampAnnotationCreationIdentity,
@@ -259,6 +274,10 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // so what you see while dragging IS what commits — no cross-renderer seam).
 const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
 const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
+// Click-to-place tools: each click drops a vertex instead of dragging out a
+// box, so they get their own draft state and their own finish rules
+// (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
+const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
 
 const SVGAnnotationLayer = memo(({
   pageNumber,
@@ -716,11 +735,19 @@ const SVGAnnotationLayer = memo(({
   const isFreehandCreationTool = FREEHAND_CREATION_TOOLS.includes(activeTool)
     && editingAnnotationIndex == null
     && !isCalloutTextEditMode;
+  // UX: Polygon / Polyline are click-to-place, so they need the same crosshair
+  // + pointerEvents:auto surface as the drag-out tools, but they must NOT join
+  // SHAPE_CREATION_TOOLS — that list drives the drag-out gesture (start/current
+  // box), which would fight the per-click vertex flow.
+  const isPolyCreationTool = POLY_CREATION_TOOLS.includes(activeTool)
+    && editingAnnotationIndex == null
+    && !isCalloutTextEditMode;
   const isCreationTool = ((activeTool === 'callout')
     && editingAnnotationIndex == null
     && !isCalloutTextEditMode)
     || isShapeCreationTool
-    || isFreehandCreationTool;
+    || isFreehandCreationTool
+    || isPolyCreationTool;
   const isInteractive = isSelectTool || isCreationTool;
 
   // ---------------------------------------------------------------------------
@@ -759,6 +786,16 @@ const SVGAnnotationLayer = memo(({
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
   const freehandPointsRef = useRef([]);
+
+  // ---------------------------------------------------------------------------
+  // Polygon / polyline click-to-place draft (page coords).
+  // null when idle, else { tool, points:[{x,y}], preview:{x,y}, snapToFirst,
+  // gestureId }. One entry per click; `preview` is the rubber-band end that
+  // follows the cursor. See src/utils/polyDraft.js for every finish rule.
+  // ---------------------------------------------------------------------------
+  const [polyDraft, setPolyDraft] = useState(null);
+  const polyDraftRef = useRef(null);
+  useEffect(() => { polyDraftRef.current = polyDraft; }, [polyDraft]);
 
   // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
   // dedupe (FabricDrawingCanvas.appendPointerSamples parity).
@@ -1340,6 +1377,13 @@ const SVGAnnotationLayer = memo(({
       freehandPointsRef.current = [];
       setShapeCreation(null);
     }
+    // UX: leaving the Polygon/Polyline tool abandons an unfinished draft. A
+    // half-placed run has no meaning under another tool, and leaving the
+    // rubber-band edge on screen would look like a stuck annotation.
+    if (!POLY_CREATION_TOOLS.includes(activeTool)) {
+      polyDraftRef.current = null;
+      setPolyDraft(null);
+    }
   }, [activeTool]);
 
   // ---------------------------------------------------------------------------
@@ -1461,6 +1505,145 @@ const SVGAnnotationLayer = memo(({
     onSurveyMarkerCreated, pageNumber, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
+
+  // ---------------------------------------------------------------------------
+  // Polygon / polyline click-to-place commit + cancel.
+  // ---------------------------------------------------------------------------
+  // `action` is 'close' when the user asked to snap the run shut (first-vertex
+  // checkmark, or a click back on the first point) — that is how a polyline
+  // becomes a polygon. 'finish' ends the shape where it stands: closed for the
+  // Polygon tool, open for the Polyline tool.
+  const commitPolyDraft = useCallback((action = 'finish') => {
+    const draft = polyDraftRef.current;
+    if (!draft) return false;
+    const resolved = resolvePolyDraftFinish(draft, action);
+    // UX: too few points is NOT a silent discard — keep the draft alive so the
+    // user simply keeps clicking instead of losing the corners already placed.
+    if (!resolved.ok) return false;
+
+    polyDraftRef.current = null;
+    setPolyDraft(null);
+
+    const tool = resolved.finalType;
+    const gestureAction = `${tool}-draw`;
+    markAnnotationPointerRelease(draft.gestureId, { action: gestureAction });
+
+    const stampRegionId = shouldStampActiveRegionId({
+      regionId: activeRegionId,
+      spaceId: selectedSpaceId,
+      pageNumber,
+      spaces,
+      isRegionOverlayEnabled,
+    });
+    const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    const rawJson = buildPolyShapeCommitJSON({
+      tool,
+      id,
+      points: resolved.points,
+      strokeColor,
+      strokeOpacity,
+      fillColor,
+      fillOpacity,
+      strokeWidth: Number(strokeWidth) || 3,
+      lineBorderStyle,
+      cloudIntensity,
+      selectedModuleId,
+      stampRegionId,
+      activeRegionId,
+    });
+    if (!rawJson) return false;
+
+    const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
+    updateAnnotationGesture(draft.gestureId, { annotationId: id });
+    const current = annotationsRef.current;
+    onSaveAnnotations(
+      { ...(current || {}), objects: [...(current?.objects || []), json] },
+      { source: 'path:created', tool },
+    );
+    recordAnnotationCommit({
+      surface: 'SVGAnnotationLayer',
+      source: 'path:created',
+      action: gestureAction,
+      pageNumber,
+    });
+    return true;
+  }, [
+    activeRegionId, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
+    lineBorderStyle, onSaveAnnotations, pageNumber, selectedModuleId, selectedSpaceId,
+    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
+  ]);
+
+  const cancelPolyDraft = useCallback(() => {
+    if (!polyDraftRef.current) return false;
+    polyDraftRef.current = null;
+    setPolyDraft(null);
+    return true;
+  }, []);
+
+  // Page-unit scale for the draft's chrome (vertex dots, checkmark rings, the
+  // first-vertex magnet). Screen constants are converted to page units so the
+  // chrome stays a constant size on screen while the drawn geometry scales
+  // with the page. The dampened `sqrt` is deliberate: it is the exact sizing
+  // the committed polygon's vertex handles already use, so the draft dots and
+  // the post-commit handles are the same size at every zoom level.
+  const polyHitScale = Math.sqrt(clampInverseScale(inverseScale));
+  const polyFirstPointSnapRadius = POLY_FIRST_POINT_SNAP_SCREEN_RADIUS * polyHitScale;
+  const polyDraftActive = !!polyDraft;
+
+  // Rubber-band tracking. Attached to the window (not the SVG root) so the
+  // preview keeps following the cursor across page gaps and chrome, the same
+  // way the drag-out creation listeners do.
+  useEffect(() => {
+    if (!polyDraftActive) return undefined;
+    const onMove = (e) => {
+      if (!svgRef.current) return;
+      const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      if (!point) return;
+      setPolyDraft((prev) => {
+        if (!prev) return prev;
+        const next = updatePolyDraftPreview(prev, point, {
+          shiftKey: e.shiftKey,
+          snapRadius: polyFirstPointSnapRadius,
+        });
+        polyDraftRef.current = next;
+        return next;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [polyDraftActive, polyFirstPointSnapRadius]);
+
+  // Enter finishes, Escape cancels. Capture phase + stopPropagation so an
+  // in-progress draft consumes Escape before the viewer's "clear selection"
+  // handler sees it — cancelling the shape you are drawing is the more
+  // specific intent.
+  useEffect(() => {
+    if (!polyDraftActive) return undefined;
+    const onKeyDown = (e) => {
+      const target = e.target;
+      const isFormField = target && (
+        target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.isContentEditable
+      );
+      if (isFormField) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        commitPolyDraft('finish');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelPolyDraft();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [polyDraftActive, commitPolyDraft, cancelPolyDraft]);
+
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);
 
@@ -4896,6 +5079,42 @@ const SVGAnnotationLayer = memo(({
             e.preventDefault();
             return;
           }
+          // Polygon / polyline: every left click drops one vertex. Finishing
+          // is always explicit — a checkmark control, Enter, or a click back
+          // on the first point — so an accidental click never ends the shape.
+          if (isPolyCreationTool && e.button === 0) {
+            const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+            if (point) {
+              const draft = polyDraftRef.current;
+              // A click inside the first vertex's magnet closes the shape,
+              // Drawboard-style — it wins over "place another point here".
+              if (draft && isPointNearPolyDraftFirstPoint(point, draft, polyFirstPointSnapRadius)) {
+                commitPolyDraft('close');
+                e.preventDefault();
+                return;
+              }
+              if (!draft) {
+                const gestureId = beginAnnotationGesture({
+                  surface: 'SVGAnnotationLayer',
+                  tool: activeTool,
+                  type: activeTool,
+                  action: `${activeTool}-draw`,
+                  pointerDown: true,
+                  pageNumber,
+                });
+                const created = createPolyDraft(activeTool, point);
+                const next = created ? { ...created, gestureId } : null;
+                polyDraftRef.current = next;
+                setPolyDraft(next);
+              } else {
+                const next = addPolyDraftPoint(draft, point, { shiftKey: e.shiftKey });
+                polyDraftRef.current = next;
+                setPolyDraft(next);
+              }
+              e.preventDefault();
+            }
+            return;
+          }
           // Unified renderer phase 2 — shape/freehand creation starts here,
           // on the same surface that renders the committed result. The
           // window-level effect above tracks the drag and commits.
@@ -5216,6 +5435,110 @@ const SVGAnnotationLayer = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Polygon / polyline click-to-place preview.
+          UX: the committed edges render at full strength in the live stroke
+          colour and width (what you see IS what commits), while the edge that
+          chases the cursor is dashed and half-opaque so the user can always
+          tell which segment is not placed yet. The two finish checkmarks —
+          first vertex (close) and latest vertex (finish here) — are the only
+          interactive parts; everything else is pointer-transparent so a click
+          in the middle of the run still drops a vertex. */}
+      {polyDraft && polyDraft.points.length > 0 && (() => {
+        const previewStroke = composeAnnotationColor(strokeColor, strokeOpacity);
+        const previewWidth = Number(strokeWidth) || 3;
+        const placed = polyDraft.points.map((p) => `${p.x},${p.y}`).join(' ');
+        const last = polyDraft.points[polyDraft.points.length - 1];
+        const controls = polyDraftFinishControlPoints(polyDraft);
+        const canClose = canClosePolyDraft(polyDraft);
+        const canFinish = canFinishPolyDraft(polyDraft);
+        const ringR = POLY_FINISH_CONTROL_SCREEN_RADIUS * polyHitScale;
+        const hitR = POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS * polyHitScale;
+        const tickR = 4.6 * polyHitScale;
+        const vertexR = 3 * polyHitScale;
+        const checkPath = (c) => (
+          `M ${c.x - tickR} ${c.y + tickR * 0.05} `
+          + `L ${c.x - tickR * 0.26} ${c.y + tickR * 0.72} `
+          + `L ${c.x + tickR * 1.05} ${c.y - tickR * 0.85}`
+        );
+        const finishControl = (point, action, enabled) => (
+          <g
+            key={action}
+            data-poly-draft-action={action}
+            style={{ pointerEvents: enabled ? 'auto' : 'none', cursor: enabled ? 'pointer' : 'default' }}
+            onPointerDown={(e) => {
+              // Stop the SVG root's pointerdown from also treating this as
+              // "place another vertex here".
+              e.stopPropagation();
+              e.preventDefault();
+              if (enabled) commitPolyDraft(action);
+            }}
+          >
+            <circle cx={point.x} cy={point.y} r={hitR} fill="transparent" stroke="none" />
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r={ringR}
+              fill={enabled ? '#2f6fed' : '#aeb8c9'}
+              stroke="#ffffff"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+            <path
+              d={checkPath(point)}
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth={2.2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        );
+        return (
+          <g className="poly-creation-preview">
+            {polyDraft.points.length > 1 && (
+              <polyline
+                points={placed}
+                fill="none"
+                stroke={previewStroke}
+                strokeWidth={previewWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+            {polyDraft.preview && (
+              <line
+                x1={last.x}
+                y1={last.y}
+                x2={polyDraft.preview.x}
+                y2={polyDraft.preview.y}
+                stroke={previewStroke}
+                strokeWidth={previewWidth}
+                strokeLinecap="round"
+                strokeDasharray="5,5"
+                opacity={0.6}
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+            {polyDraft.points.map((p, i) => (
+              <circle
+                key={`poly-draft-vertex-${i}`}
+                cx={p.x}
+                cy={p.y}
+                r={vertexR}
+                fill="#ffffff"
+                stroke="#4a90e2"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+                style={{ pointerEvents: 'none' }}
+              />
+            ))}
+            {controls && canClose && finishControl(controls.first, 'close', true)}
+            {controls && canFinish && finishControl(controls.last, 'finish', true)}
+          </g>
+        );
+      })()}
       {shapeCreation && shapeCreation.tool === 'survey-marker' && (
         <rect
           className="shape-creation-preview"

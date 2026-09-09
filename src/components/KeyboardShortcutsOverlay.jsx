@@ -71,7 +71,20 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['Q'], description: 'Callout' },
       { keys: ['L'], description: 'Line' },
       { keys: ['A'], description: 'Arrow' },
+      // UX: Polygon wanted 'P' (taken by Pen) and Polyline wanted 'L' (taken
+      // by Line), so they take 'G' (polyGon) and 'K' (the free key beside L).
+      { keys: ['G'], description: 'Polygon' },
+      { keys: ['K'], description: 'Polyline' },
       { keys: ['C'], description: 'Counter' },
+    ]},
+    // UX: these keys only act while a polygon or polyline is being placed —
+    // documented separately so they read as part of that flow, not as global
+    // shortcuts.
+    { category: 'Polygon & Polyline', items: [
+      { keys: ['Click'], description: 'Place the next point' },
+      { keys: ['Shift'], description: 'Constrain the next segment to 45°' },
+      { keys: ['Enter'], description: 'Finish the shape' },
+      { keys: ['Esc'], description: 'Discard the unfinished shape' },
     ]},
     // UX: these keys act during a lasso, so list them by result instead of
     // hiding them under the main tool shortcut.

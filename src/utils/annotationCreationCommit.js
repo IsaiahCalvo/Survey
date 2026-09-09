@@ -15,6 +15,7 @@ import {
   tagDrawnCenteredStrokeGeometry,
 } from './shapeCommitGeometry.js';
 import { createProductionPaperInk } from './productionPaperInk.js';
+import { normalizePolyPointsToLocal } from './polyDraft.js';
 
 // fabric 7 base-object serialization envelope (Object.mjs toObject defaults,
 // NUM_FRACTION_DIGITS rounding upstream of these constants). Deliberately
@@ -188,6 +189,84 @@ export function buildBoundaryShapeCommitJSON({
     };
   }
   json = tagDrawnCenteredStrokeGeometry(json);
+  applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
+  applyBorderStyle(json, { tool, lineBorderStyle, cloudIntensity });
+  return json;
+}
+
+/**
+ * Polygon / polyline click-to-place commit JSON.
+ *
+ * `points` arrive in PAGE space (one per click). They are stored the way the
+ * PDF importer stores an imported /Polygon or /PolyLine: `left`/`top` is the
+ * point cloud's top-left and `points` are offsets from it, with pathOffset
+ * left at 0. renderPolygon / renderPolyline, the vertex-drag math, the bbox
+ * resize path and the pdf-lib exporter all read that convention, so a drawn
+ * polygon and an imported one are indistinguishable downstream.
+ *
+ * The `type` is deliberately LOWERCASE (unlike the 'Rect'/'Ellipse' the
+ * boundary-shape builder emits). Every polygon/polyline consumer in the app
+ * was written against the importer's lowercase objects; emitting lowercase
+ * keeps drawn and imported shapes on one code path. See the fabric-7 type
+ * casing gotcha in CLAUDE.md — nothing compares these against 'Polygon'.
+ *
+ * Returns null when there are too few points to make the requested shape
+ * (3 for a polygon, 2 for a polyline).
+ */
+export function buildPolyShapeCommitJSON({
+  tool, // 'polygon' | 'polyline'
+  id,
+  points,
+  strokeColor,
+  strokeOpacity,
+  fillColor,
+  fillOpacity,
+  strokeWidth,
+  lineBorderStyle,
+  cloudIntensity,
+  selectedModuleId,
+  stampRegionId,
+  activeRegionId,
+}) {
+  if (tool !== 'polygon' && tool !== 'polyline') return null;
+  const minimum = tool === 'polygon' ? 3 : 2;
+  if (!Array.isArray(points) || points.length < minimum) return null;
+
+  const { left, top, points: localPoints } = normalizePolyPointsToLocal(points);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of localPoints) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  const json = {
+    ...FABRIC_BASE_ENVELOPE,
+    type: tool,
+    left: round2(left),
+    top: round2(top),
+    width: round2(maxX - minX),
+    height: round2(maxY - minY),
+    points: localPoints.map((p) => ({ x: round2(p.x), y: round2(p.y) })),
+    pathOffset: { x: 0, y: 0 },
+    // UX: an open polyline is never filled — a fill on an unclosed run paints
+    // a phantom chord between the last and first point. A polygon takes the
+    // toolbar's fill exactly like Rectangle does.
+    fill: tool === 'polygon' ? composeAnnotationColor(fillColor, fillOpacity) : 'transparent',
+    stroke: composeAnnotationColor(strokeColor, strokeOpacity),
+    strokeWidth,
+    strokeUniform: true,
+    // Round caps/joins so a sharp corner or a dotted run reads as one
+    // continuous drawn line, matching the imported-polyline defaults.
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    id,
+    data: { id },
+  };
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   applyBorderStyle(json, { tool, lineBorderStyle, cloudIntensity });
   return json;

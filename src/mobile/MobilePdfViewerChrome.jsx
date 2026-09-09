@@ -32,6 +32,11 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'rect', label: 'Rectangle', icon: 'rect' },
       { id: 'ellipse', label: 'Ellipse', icon: 'ellipse' },
+      // UX: same Shapes ordering as desktop. NOTE — Polygon/Polyline are
+      // click-to-place (tap each corner, then tap a checkmark to finish);
+      // the flow is pointer-driven and has not been tuned for touch yet.
+      { id: 'polygon', label: 'Polygon', icon: 'polygon' },
+      { id: 'polyline', label: 'Polyline', icon: 'polyline' },
       { id: 'line', label: 'Line', icon: 'line' },
       { id: 'arrow', label: 'Arrow', icon: 'arrow' },
       { id: 'counter', label: 'Counter', icon: 'counter' },
@@ -55,9 +60,9 @@ const TOOL_TO_GROUP = Object.entries(TOOL_GROUPS).reduce((result, [groupId, grou
   return result;
 }, {});
 
-const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow', 'text', 'callout', 'counter']);
-const FILL_TOOLS = new Set(['rect', 'ellipse', 'text', 'callout', 'counter']);
-const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'line', 'arrow', 'text', 'callout']);
+const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout', 'counter']);
+const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'text', 'callout', 'counter']);
+const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout']);
 const MOBILE_ARROWHEAD_STYLE_LABELS = {
   ...ARROWHEAD_STYLE_LABELS,
   solidTriangle: 'Solid Triangle',
@@ -95,6 +100,8 @@ const TOOL_LABELS = {
   highlighter: 'Highlighter',
   rect: 'Rectangle',
   ellipse: 'Ellipse',
+  polygon: 'Polygon',
+  polyline: 'Polyline',
   line: 'Line',
   arrow: 'Arrow',
   counter: 'Counter',
