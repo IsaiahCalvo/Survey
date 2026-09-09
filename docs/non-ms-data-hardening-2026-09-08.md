@@ -5176,6 +5176,77 @@ no chosen host, provider, database role or deployed request route. Legacy cloud
 adoption, sidecars, reset UI for any state other than exact expired, live
 multi-user proof and the prior Microsoft generation-scope gate remain open.
 
+### Exact duplicate document-owner index cleanup (local only)
+
+The live read-only catalog audit found two valid, ready, non-unique btree
+indexes with the same `public.documents(user_id)` key:
+`documents_user_id_idx` and `idx_documents_user_id`, 16 KiB each. The former is
+the intentional Phase 28 owner-check index. No tracked migration creates or
+owns the latter. This is a small catalog cleanup, not an egress, query-latency
+or production gain claim. The live project was healthy; the broader advisory
+count was 24 unindexed foreign keys, 38 unused indexes, 30 multiple-permissive
+policy findings and this one duplicate index. Query statistics had been reset
+on 2026-06-03, so cumulative counters do not prove current caller cost. No live
+index changed.
+
+Migration `20260909104000_remove_duplicate_document_owner_index.sql` keeps the
+intentional index and removes only the exact `idx_documents_user_id` duplicate.
+It first sets a transaction-local three-second lock limit, takes an
+access-exclusive `NOWAIT` lock on `public.documents`, then resolves both names
+under that lock and compares the table, schema, access method, key and
+included columns, opclasses, collations, ordering options, expressions,
+predicate, relation options, tablespace and persistence. Both indexes must be
+live, ready and valid plain non-unique indexes, with no primary, exclusion,
+constraint, replica-identity or clustered role. Missing indexes, invalid state
+or any catalog drift preserve the candidate index. The drop has no dependent
+object removal, and replay is a no-op. A disposable PostgreSQL harness proves
+the exact drop without changing owner-filter results, replay, missing and
+invalid survivor cases, key/predicate/order and constraint drift, and lock
+contention preservation followed by a clean retry. It also proves the retained
+index is used under a forced index plan and that real local RLS owner isolation
+has the same results before and after the cleanup. The focused Node set passed
+2/2 and its disposable PostgreSQL cases passed 13/13. It does not contact or
+mutate the live database.
+
+The final frozen release checks ran 6,756 tests: 6,661 passed, 95 skipped,
+and none failed or were cancelled
+(`/tmp/document-owner-index-post-rename-full-tests-20260909.log`). The Vite
+build passed with 936 modules in 809 ms
+(`/tmp/document-owner-index-post-rename-build-20260909.log`). These results
+include the rename-race fix below; the earlier green run preceded that fix.
+No application source, feature flag, hosted route or live schema changed.
+
+The heap lock does not block `ALTER INDEX ... RENAME`. The migration therefore
+checks its captured OIDs after the named drop: the original duplicate OID must
+be gone and `documents_user_id_idx` must still resolve to the captured survivor.
+If a concurrent rename makes the drop name point at another index, the check
+raises and PostgreSQL rolls the drop back. The harness forces that rename swap
+between proof and drop, places a useful `project_id` index under the candidate
+name, and verifies that all three original index OIDs remain. A DO-only run also
+holds the candidate index relation lock and proves the timeout set inside the
+block preserves both indexes before a clean retry.
+
+Sidecar compatibility remains fail closed in this checkpoint. The current v1
+Storage writer uses the mutable canonical path
+`{projectId}/{documentId}_data.json` and a legacy viewer `pdfId` based on
+`_surveyPdfId` or file name and byte length, not necessarily the document UUID.
+The pure transform can remap its known fields, but the save path still lacks a
+candidate-sidecar upload receipt tied to the candidate PDF generation, a
+retained active-sidecar manifest, durable request/journal binding and atomic
+publication checks. Checked open also has no active sidecar manifest. Adding
+support therefore needs one end-to-end transport and publication slice; merely
+removing current guards could lose or expose state. Sidecar annotation carriers
+must reconcile only into the existing shared annotation domains, while legacy
+sidecar-only and per-device fields must not be promoted into shared metadata.
+The current checked viewer can still reach the old cloud-sync save/load calls:
+save mutates the legacy fixed sidecar path, while load skips old annotation
+carriers but can apply entities and view values. A checked-sidecar rollout must
+turn off that mutable path or replace it with the retained generation manifest;
+this checkpoint does neither.
+Non-empty `documents.annotations` stays blocked because no current writer or
+reader defines a safe format. Legacy adoption, host choice and feature enablement
+remain separate gates.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
@@ -5183,6 +5254,8 @@ multi-user proof and the prior Microsoft generation-scope gate remain open.
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
 - [Postgres index guidance](https://supabase.com/docs/guides/database/postgres/indexes)
 - [PostgreSQL row and transaction lock rules](https://www.postgresql.org/docs/current/explicit-locking.html)
+- [PostgreSQL DROP INDEX locking and dependency rules](https://www.postgresql.org/docs/current/sql-dropindex.html)
+- [Supabase duplicate-index advisory](https://supabase.com/docs/guides/database/database-linter?lint=0009_duplicate_index)
 - [Electron app lifecycle](https://www.electronjs.org/docs/latest/api/app)
 - [Stripe webhook retries, event ordering and duplicate handling](https://docs.stripe.com/webhooks)
 - [Stripe immutable event data and delivery-count fields](https://docs.stripe.com/api/events/object)
