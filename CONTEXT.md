@@ -34,8 +34,14 @@ plain highlighter tool, and the two should not share a word.
 ### Entity
 A responsible party or status (e.g. "GC", "Subcontractor", "100% Complete",
 "Removed"). An Entity is assigned to a **Survey Marker** and defines that
-marker's color. Entities are defined per Template and chosen in Survey mode.
+marker's name and color at the time of assignment; Templates supply the starting
+choices for a **Document entity list**.
 Previously called "Ball in Court" — the canonical term is now **Entity**.
+
+### Document entity list
+The document's own set of Entity choices, shared with its collaborators rather
+than owned by each reader. Later Template edits do not change this list or the
+meaning of existing Survey Markers.
 
 ### Survey mode
 The in-app mode where a Template is applied to a PDF. The user is taken through

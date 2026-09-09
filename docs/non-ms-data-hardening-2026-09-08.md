@@ -5247,6 +5247,23 @@ Non-empty `documents.annotations` stays blocked because no current writer or
 reader defines a safe format. Legacy adoption, host choice and feature enablement
 remain separate gates.
 
+## Entity ownership decision — accepted, implementation pending
+
+The user delegated the shared-versus-private choice on 2026-09-09. We chose a
+Template-seeded, document-owned shared entity list. Personal selection and view
+state stay private; local files stay local. Existing markers keep the name and
+color captured when assigned. Template edits will not silently rewrite existing
+documents or Excel workbooks. The rationale and migration rules are recorded in
+`docs/adr/0001-document-owned-entity-lists.md`.
+
+This resolves the product-choice gate, not the legacy-data or release gates.
+Matching an existing document's Template ID to today's Template does not prove
+the old list matches. Legacy adoption must preserve older/custom choices and raw
+sidecar data. The next connected implementation still needs a proven source,
+document-scoped consumers, local durability, access checks and regression tests.
+No runtime source, cloud data, feature flag or Microsoft service changed as part
+of this decision.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
