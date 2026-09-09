@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import * as Y from 'yjs';
 import { PDFDocument } from 'pdf-lib';
 import { createDetachedYDoc } from '../src/lib/collab/ydocRegistry.js';
-import { createDocumentGenerationReader } from '../src/services/documentGenerationReader.js';
+import { createDocumentGenerationReader, readCheckedGenerationBootstrap } from '../src/services/documentGenerationReader.js';
 
 const id = n => `99000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = id(1), document = id(2), generation = id(3), owner = id(4);
@@ -228,4 +228,79 @@ test('mutating a transport response while the PDF loads cannot change captured s
     return new Blob([pdf]);
   };
   const r = await h.open(); assert.deepEqual(decode(r.annotationUpdate), h.expected);
+});
+
+const bootstrapScope = { documentId: document, actorUserId: actor, pdfGenerationId: generation };
+
+test('checked bootstrap retains the initial snapshot base separately from tailed coverage', async () => {
+  const start = '9007199254740993', head = '9007199254740995';
+  const h = harness({ start, head });
+  h.first.annotations.snapshot.writer_id = 'checkpoint-writer';
+  h.first.annotations.snapshot.writer_epoch = '9007199254740997';
+  const result = await h.open();
+  assert.deepEqual(result.snapshotBase, { atSeq: start, writerId: 'checkpoint-writer', writerEpoch: '9007199254740997' });
+  assert.equal(result.throughSeq, head);
+  assert.equal(Object.isFrozen(result), true);
+  assert.equal(Object.isFrozen(result.snapshotBase), true);
+  assert.throws(() => { result.snapshotBase.atSeq = head; }, TypeError);
+  const bootstrap = readCheckedGenerationBootstrap(result, bootstrapScope);
+  assert.deepEqual(Object.keys(bootstrap).sort(), ['update', 'coveredSeq', 'baseAtSeq', 'baseWriterId', 'baseWriterEpoch'].sort());
+  assert.equal(bootstrap.coveredSeq, head); assert.equal(bootstrap.baseAtSeq, start);
+  assert.equal(bootstrap.baseWriterId, 'checkpoint-writer'); assert.equal(bootstrap.baseWriterEpoch, '9007199254740997');
+  assert.equal(Object.isFrozen(bootstrap), true);
+  assert.throws(() => { bootstrap.coveredSeq = '0'; }, TypeError);
+  assert.deepEqual(decode(bootstrap.update), h.expected);
+});
+
+test('annotation getter and repeated bootstraps return independent owned bytes', async () => {
+  const h = harness(), result = await h.open();
+  const firstCopy = result.annotationUpdate, secondCopy = result.annotationUpdate;
+  assert.notEqual(firstCopy, secondCopy);
+  firstCopy.fill(255);
+  assert.deepEqual(decode(secondCopy), h.expected);
+  assert.deepEqual(decode(result.annotationUpdate), h.expected);
+  const firstBootstrap = readCheckedGenerationBootstrap(result, bootstrapScope);
+  const secondBootstrap = readCheckedGenerationBootstrap(result, bootstrapScope);
+  assert.notEqual(firstBootstrap.update, secondBootstrap.update);
+  assert.notEqual(firstBootstrap.update.buffer, secondCopy.buffer);
+  firstBootstrap.update.fill(0);
+  assert.deepEqual(decode(secondBootstrap.update), h.expected);
+  assert.deepEqual(decode(readCheckedGenerationBootstrap(result, bootstrapScope).update), h.expected);
+  assert.deepEqual(decode(result.annotationUpdate), h.expected);
+  assert.deepEqual(result.snapshotBase, { atSeq: '0', writerId: null, writerEpoch: '0' });
+});
+
+test('fabricated, copied, inherited and proxied bundles cannot mint checked bootstrap proof', async () => {
+  const h = harness(), result = await h.open();
+  const forgeries = [undefined, null, false, 'issued', [], {}, { ...result }, Object.freeze({ ...result }),
+    Object.create(result), structuredClone(result), new Proxy(result, {})];
+  for (const forged of forgeries) {
+    assert.throws(() => readCheckedGenerationBootstrap(forged, bootstrapScope), error =>
+      error.code === 'DOCUMENT_OPEN_INPUT' && !/path|token|postgres/.test(error.message));
+  }
+  assert.deepEqual(decode(readCheckedGenerationBootstrap(result, bootstrapScope).update), h.expected);
+});
+
+test('wrong or malformed scopes fail synchronously without consuming a valid issued bundle', async () => {
+  const h = harness(), result = await h.open();
+  const wrongScopes = [undefined, null, [], {},
+    { ...bootstrapScope, documentId: id(91) }, { ...bootstrapScope, actorUserId: id(91) },
+    { ...bootstrapScope, pdfGenerationId: id(91) }, { ...bootstrapScope, pdfGenerationId: null },
+    { ...bootstrapScope, extra: true },
+    { ...bootstrapScope, get documentId() { throw new Error('secret path token postgres'); } }];
+  for (const scope of wrongScopes) {
+    assert.throws(() => readCheckedGenerationBootstrap(result, scope), error =>
+      error.code === 'DOCUMENT_OPEN_INPUT' && !/secret|path|token|postgres/.test(error.message));
+  }
+  const valid = readCheckedGenerationBootstrap(result, bootstrapScope);
+  assert.equal(valid.coveredSeq, '2'); assert.deepEqual(decode(valid.update), h.expected);
+});
+
+test('checkpoint-at-frontier bootstrap preserves zero/null snapshot writer metadata', async () => {
+  const h = harness({ head: '0' });
+  h.mutateConfirm = value => { value.annotations.wal_head = '5'; };
+  const result = await h.open(), bootstrap = readCheckedGenerationBootstrap(result, bootstrapScope);
+  assert.equal(bootstrap.coveredSeq, '0'); assert.equal(bootstrap.baseAtSeq, '0');
+  assert.equal(bootstrap.baseWriterId, null); assert.equal(bootstrap.baseWriterEpoch, '0');
+  assert.deepEqual(decode(bootstrap.update), decode(h.baseline));
 });

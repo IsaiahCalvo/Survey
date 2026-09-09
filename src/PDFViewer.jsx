@@ -25861,6 +25861,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!documentId || !pdfDoc) return undefined;
     if (!hydration || hydration.ready !== true) return undefined;
     if (hydration.documentId && hydration.documentId !== documentId) return undefined;
+    // A checked generation already owns its complete annotation baseline.
+    // Never repopulate an empty successor from embedded PDF marks or stamp the
+    // legacy document-wide import marker for it.
+    if (hydration.embeddedImportAllowed === false) return undefined;
     if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
     embeddedImportFallbackDoneRef.current = documentId;
 

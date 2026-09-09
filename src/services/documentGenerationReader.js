@@ -15,6 +15,27 @@ const codes = new Set(['42501', '40001', '55P03', '23514', '22023', '25001', '54
 const failure = (code = 'DOCUMENT_OPEN_PROTOCOL') => Object.assign(
   new Error('The complete document version could not be verified. Your saved work was kept.'), { code });
 const check = (v, code) => { if (!v) throw failure(code); };
+// Identity, not a caller-visible marker, proves that this module completed the
+// checked read. Neither copied fields nor changed public bytes can mint proof.
+const checkedBundles = new WeakMap();
+
+/** Synchronous bootstrap seam: validate the issued bundle and exact scope
+ * before the caller creates registry entries or reads/writes local stores.
+ * Every call owns fresh bytes; the accepted state never leaves this module. */
+export function readCheckedGenerationBootstrap(issuedBundle, scope) {
+  try {
+    const captured = checkedBundles.get(issuedBundle);
+    check(captured && keys(scope, ['documentId', 'actorUserId', 'pdfGenerationId'])
+      && scope.documentId === captured.documentId && scope.actorUserId === captured.actorUserId
+      && scope.pdfGenerationId === captured.pdfGenerationId, 'DOCUMENT_OPEN_INPUT');
+    return Object.freeze({
+      update: new Uint8Array(captured.update), coveredSeq: captured.throughSeq,
+      baseAtSeq: captured.snapshotBase.atSeq, baseWriterId: captured.snapshotBase.writerId,
+      baseWriterEpoch: captured.snapshotBase.writerEpoch,
+    });
+  } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
+}
+
 function decimal(v, positive = false) {
   check(typeof v === 'string' && /^(0|[1-9][0-9]{0,18})$/.test(v));
   const n = BigInt(v); check(n <= MAX_INTEGER && (!positive || n > 0n)); return n;
@@ -168,13 +189,23 @@ export function createDocumentGenerationReader(deps) {
         && Object.keys(first.publication).every(k => confirmed.publication[k] === first.publication[k])
         && BigInt(confirmed.annotations.wal_head) >= BigInt(annotations.wal_head));
       alive();
-      return Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
+      const snapshotBase = Object.freeze({ atSeq: checkpoint.at_seq,
+        writerId: checkpoint.writer_id, writerEpoch: checkpoint.writer_epoch });
+      // readState encoded fresh bytes and never exposed them to an adapter.
+      // Retain that private allocation; only public consumers need a copy.
+      const ownedUpdate = annotationUpdate;
+      const result = Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
         document: confirmed.document, pdf: first.pdf, publication: first.publication, pdfBlob,
-        annotationUpdate, encodingVersion: 1, throughSeq: annotations.wal_head,
+        get annotationUpdate() { return new Uint8Array(ownedUpdate); },
+        snapshotBase, encodingVersion: 1, throughSeq: annotations.wal_head,
         // PDF byte identity only. Annotation state must also retain throughSeq
         // and be caught up; this key is not proof of checkpoint freshness.
         pdfCacheKey: JSON.stringify(['document-generation-v1', actorUserId, documentId, generationId,
           first.pdf.id, first.pdf.version, first.pdf.content_sha256, first.pdf.byte_length]) });
+      alive();
+      checkedBundles.set(result, Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
+        update: ownedUpdate, snapshotBase, throughSeq: annotations.wal_head }));
+      return result;
     } catch (caught) {
       if (caught?.code === 'ANNOTATION_GENERATION_STATE') throw failure('DOCUMENT_OPEN_STATE');
       throw failure(codes.has(caught?.code) ? caught.code : undefined);

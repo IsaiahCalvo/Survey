@@ -31,6 +31,7 @@ import {
 } from './annotationDocOutbox.js';
 import { bindAnnotationGenerationOutbox } from './annotationGenerationOutbox.js';
 import { createAnnotationGenerationTransport } from './annotationGenerationTransport.js';
+import { readCheckedGenerationBootstrap } from './documentGenerationReader.js';
 import { normalizeAnnotationSequence as sequence, compareAnnotationSequences as compareSequence,
   nextAnnotationSequence, maxAnnotationSequence, annotationSequenceToSafeInteger } from './annotationSequence.js';
 import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
@@ -284,6 +285,7 @@ export function getClientId() {
 export async function openAnnotationDoc({
   documentId,
   pdfGenerationId = null,
+  checkedBundle = null,
   supabase,
   clientId = getClientId(),
   writerId = null,
@@ -311,6 +313,12 @@ export async function openAnnotationDoc({
   if (pdfGenerationId != null && typeof supabase?.rpc !== 'function') {
     throw new Error('openAnnotationDoc: PDF generations require the checked RPC transport');
   }
+  // Only the reader's completed result can supply accepted bytes. Capture its
+  // private copy before any registry acquisition, local store work or await;
+  // a caller-created object or a mutated public byte array grants no authority.
+  const checkedBootstrap = checkedBundle == null ? null : readCheckedGenerationBootstrap(
+    checkedBundle, { documentId, actorUserId, pdfGenerationId },
+  );
 
   // Default: a dedicated registry-managed Y.Doc for this document's flat store.
   const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}`}`;
@@ -344,6 +352,7 @@ export async function openAnnotationDoc({
     generationCatchupRequested: false,
     generationRefreshRequested: false,
     generationLastSignal: null,
+    generationBootstrapJoinPending: checkedBootstrap !== null,
     registryKey,
     ownsRegistryDoc,
     supabase,
@@ -576,7 +585,7 @@ export async function openAnnotationDoc({
     }
 
     // --- load snapshot + tail from the cloud ---
-    if (supabase) await loadFromBackend(state);
+    if (supabase) await loadFromBackend(state, checkedBootstrap);
     // The accepted shadow is populated only by backend snapshot/WAL bytes.
     // Never seed it from activeDoc: activeDoc may already contain optimistic
     // IndexedDB state that the backend has never authorized.
@@ -1254,6 +1263,27 @@ async function readGeneratedCheckpoint(state) {
   } finally { candidate.destroy(); }
 }
 
+async function readCheckedGeneratedCheckpoint(state, bootstrap) {
+  const candidate = createDetachedYDoc(`generation-bootstrap:${state.registryKey}:${randomClientId()}`);
+  try {
+    applyGeneratedUpdate(candidate, bootstrap.update);
+    requireCompleteGeneratedState(candidate);
+    // A checked open can wait on local storage before this handle starts.
+    // Confirm the current generation and read the intervening fixed tail before
+    // installing any bytes. Never label a saved bundle permanently current.
+    const receipts = [];
+    const coveredSeq = await readGeneratedTail(state, bootstrap.coveredSeq, null, async (row, update) => {
+      applyGeneratedUpdate(candidate, update);
+      if (appendRecordForCloudRow(state, row, update).record) receipts.push(row);
+    }, bootstrap.update.byteLength);
+    requireCompleteGeneratedState(candidate);
+    const update = encodeSnapshot(candidate);
+    if (update.byteLength > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+    return { update, coveredSeq, receipts, baseAtSeq: sequence(bootstrap.baseAtSeq),
+      baseWriterId: bootstrap.baseWriterId, baseWriterEpoch: sequence(bootstrap.baseWriterEpoch) };
+  } finally { candidate.destroy(); }
+}
+
 async function readGeneratedDelta(state) {
   const candidate = createDetachedYDoc(`generation-tail:${state.registryKey}:${randomClientId()}`);
   try {
@@ -1684,10 +1714,12 @@ async function loadPendingOutboxRecords(state) {
   }
 }
 
-async function loadFromBackend(state) {
+async function loadFromBackend(state, checkedBootstrap = null) {
   const { supabase, documentId, doc } = state;
   if (state.generationTransport) {
-    const checkpoint = await readGeneratedCheckpoint(state);
+    const checkpoint = checkedBootstrap
+      ? await readCheckedGeneratedCheckpoint(state, checkedBootstrap)
+      : await readGeneratedCheckpoint(state);
     assertStateWritable(state);
     applyAuthoritativeCloudUpdate(state, checkpoint.update);
     state.lastSeq = maxAnnotationSequence(state.lastSeq, checkpoint.coveredSeq);
@@ -3751,7 +3783,12 @@ function subscribeRealtime(state) {
         const catchupGeneration = ++state.realtimeCatchupGeneration;
         state.realtimePhase = 'catching-up';
         notifySyncStatus(state);
-        return catchUpTail(state, { refresh: true }).then(async (caughtUp) => {
+        // The checked bootstrap already carries a complete accepted prefix and
+        // its checkpoint CAS base. First join only closes the subscribe gap.
+        // Later joins keep the existing checkpoint-refresh recovery path.
+        const refresh = !state.generationBootstrapJoinPending;
+        state.generationBootstrapJoinPending = false;
+        return catchUpTail(state, { refresh }).then(async (caughtUp) => {
           if (state.destroyed || state.generationBlocked || catchupGeneration !== state.realtimeCatchupGeneration) return;
           if (!caughtUp) {
             state.realtimePhase = 'connecting';

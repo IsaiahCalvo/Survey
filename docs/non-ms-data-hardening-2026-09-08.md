@@ -4038,6 +4038,59 @@ and checked-open identity, replace empty projected state rather than seeding it
 from the prior view, and avoid the first Realtime join re-fetching the same full
 checkpoint. Retained local work must still be reconciled, not discarded.
 
+## Checked-bundle annotation bootstrap — September 9 follow-up
+
+The checked reader now retains the original checkpoint's sequence, writer ID
+and writer epoch in a frozen `snapshotBase`, separate from its tailed
+`throughSeq`. A private issuance record binds those values and the validated
+annotation bytes to the exact returned bundle and actor/document/generation.
+Public byte access returns a copy; copied objects and changed public byte
+arrays cannot supply accepted state. The reader retains its already-owned
+encoded bytes rather than making another copy of up to 64 MiB.
+
+`openAnnotationDoc` accepts the issued `checkedBundle` through the existing
+startup path. It checks the private scope before any registry acquisition or
+local store work. After loading the same actor/generation's local journal, it
+stages the verified annotation bytes and a fresh fixed tail in a detached
+document, then installs only the complete result. It does not download the
+same checkpoint again. The original checkpoint metadata still guards the next
+checkpoint write. Existing pending-operation replay, receipt checks, rejection
+quarantine and local reconciliation remain in place; matching Yjs content alone
+does not acknowledge an operation. The first Realtime join closes only its
+missing-tail gap; later joins retain checkpoint-refresh recovery.
+
+The annotation hook now keys its local receipt scope and callbacks by account,
+document, generation and exact checked-bundle identity. It rejects stale work on
+the first successor render, not only after effect cleanup. Checked hydration
+replaces every initial view kind, including empty annotations/spaces/markers,
+without previous-view seeding or legacy callout migration. Same-generation ink
+repair and transient eraser presentation are retained. The hook marks checked
+hydration `embeddedImportAllowed:false`; a four-line viewer guard honors that
+before querying or stamping the legacy embedded-import marker. Empty successor
+state therefore cannot trigger that old import path.
+
+Verification: 148 focused tests passed across reader, bootstrap, generated
+sync/SDK/outbox, mounted hook/local-save and the actual extracted viewer import
+effect. The real PostgreSQL/publication/HTTP wrapper passed all 39 internal
+groups and removed its owned cluster. Vite build passed with the existing
+large-chunk warning; AST refresh passed with 27,772 nodes and 45,265 edges.
+An in-app-browser smoke check at the existing local no-account fixture route
+loaded `clickable-link-test.pdf`, drew a rectangle, exercised undo/redo and
+reported no runtime errors. The test rectangle was undone and the owned tab
+closed. This smoke check is not proof of checked-generation route integration
+or hosted collaboration; the generated hook behavior uses mounted local tests.
+The full regression run passed across 645 files: 6,332 tests, 6,239 passed,
+93 skipped, zero failures or cancellations. The prior `33c8e67f` baseline had
+6,202 passes and the same 93 skips. The high-risk viewer change is limited to
+the embedded-import guard above; `git diff --check` passed.
+
+The codebase-design skill guided reuse of the existing reader and sync startup
+interfaces rather than a second persistence path. This work does not activate
+the new app routes, deploy migrations or validate hosted collaboration. Checked
+bundles are live in-process read results, not a new serialized offline-cache
+format. Full checked-open route integration, private presence policy checks,
+retained legacy queue recovery and two-user browser proof remain required.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

@@ -181,7 +181,7 @@ function localReceiptError(code, message) {
 // also catches nested mutations; reference equality cannot prove saved content.
 function localViewSignature(scope) {
   return JSON.stringify([
-    scope.documentId, scope.actorUserId,
+    scope.documentId, scope.actorUserId, scope.pdfGenerationId,
     scope.view.annotationsByPage, scope.view.spaces, scope.view.surveyMarkers,
   ]);
 }
@@ -189,6 +189,7 @@ function localViewSignature(scope) {
 export function useAnnotationDoc({
   documentId,
   userId,
+  checkedBundle = null,
   enabled,
   annotationsByPage,
   setAnnotationsByPage,
@@ -249,15 +250,17 @@ export function useAnnotationDoc({
   docRoleRef.current = docRole;
 
   const localReceiptScopeRef = useRef(null);
-  const localScopeKey = JSON.stringify([documentId || null, userId || null]);
-  if (localReceiptScopeRef.current?.key !== localScopeKey) {
+  const pdfGenerationId = checkedBundle?.pdfGenerationId ?? null;
+  const localScopeKey = JSON.stringify([documentId || null, userId || null, pdfGenerationId]);
+  if (localReceiptScopeRef.current?.key !== localScopeKey || localReceiptScopeRef.current?.checkedBundle !== checkedBundle) {
     localReceiptScopeRef.current = {
-      key: localScopeKey, documentId, actorUserId: userId,
+      key: localScopeKey, documentId, actorUserId: userId, pdfGenerationId, checkedBundle,
       handle: null, ready: false, closeReceipt: null, mounted: false,
       receipts: new WeakMap(),
     };
   }
   const localScope = localReceiptScopeRef.current;
+  const renderedStateScopeRef = useRef(null);
   localScope.enabled = enabled;
   localScope.renderedReady = localScope.ready;
   localScope.view = { annotationsByPage, spaces, surveyMarkers };
@@ -265,6 +268,13 @@ export function useAnnotationDoc({
   useEffect(() => {
     localScope.mounted = true;
     return () => { localScope.mounted = false; };
+  }, [localScope]);
+  // Bind callbacks to their render's exact bundle, not just the shared handle
+  // ref. A successor render must retire old methods before passive cleanup.
+  const getScopedHandle = useCallback(() => {
+    if (localReceiptScopeRef.current !== localScope || !localScope.mounted || !localScope.enabled
+      || localScope.handle !== handleRef.current) return null;
+    return localScope.handle;
   }, [localScope]);
 
   const captureLocalReceiptState = (handle, scope) => {
@@ -346,6 +356,7 @@ export function useAnnotationDoc({
     }
     if (result?.locallyDurable !== true || result.documentId !== scope.documentId
       || result.actorUserId !== scope.actorUserId
+      || (result.pdfGenerationId ?? null) !== scope.pdfGenerationId
       || receiptHandle?.isLocalReceiptCurrent?.(result) !== true) {
       throw localReceiptError('ANNOTATION_LOCAL_UNVERIFIED', 'Local document storage could not be verified.');
     }
@@ -370,6 +381,7 @@ export function useAnnotationDoc({
   // it with whatever the viewer already has (covers marks drawn/imported before
   // the id resolved).
   useEffect(() => {
+    renderedStateScopeRef.current = localScope;
     if (!enabled || !documentId || !userId) {
       setSyncStatus({ stage: 'idle', healthy: true, error: null });
       setSyncQueueSize(0);
@@ -396,16 +408,20 @@ export function useAnnotationDoc({
       try {
         handle = await openAnnotationDoc({
           documentId,
+          ...(checkedBundle === null ? {} : { checkedBundle, pdfGenerationId }),
           supabase,
           clientId: getClientId(),
           actorUserId: userId,
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
-            ? eraseEffectConsumerProxyRef.current
+            ? (...args) => {
+              if (cancelled || localReceiptScopeRef.current !== localScope || !localScope.enabled) throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The erase effect belongs to a retired document.');
+              return eraseEffectConsumerProxyRef.current(...args);
+            }
             : null,
         });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
-        if (!cancelled) {
+        if (!cancelled && localReceiptScopeRef.current === localScope) {
           setSyncStatus({ stage: 'error', healthy: false, error: err?.message || 'sync failed' });
           setSyncQueueSize(0);
         }
@@ -472,13 +488,16 @@ export function useAnnotationDoc({
             );
           }
         }
-        setAnnotationsByPage((previousByPage) => (
+        if (checkedBundle !== null && !localScope.ready) setAnnotationsByPage(nextByPage || {});
+        else setAnnotationsByPage((previousByPage) => (
           preserveTransientPagePresentationState(previousByPage, nextByPage)
         ));
         const s = handle.getMeta(SPACES_KEY);
-        if (Array.isArray(s)) setSpaces(s);
+        if (checkedBundle !== null) setSpaces(Array.isArray(s) ? s : []);
+        else if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
-        if (sm && typeof sm === 'object') setSurveyMarkers(sm);
+        if (checkedBundle !== null) setSurveyMarkers(sm && typeof sm === 'object' ? sm : {});
+        else if (sm && typeof sm === 'object') setSurveyMarkers(sm);
         setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
       });
 
@@ -507,7 +526,7 @@ export function useAnnotationDoc({
       // and wedge the sync status in error). Viewer / unresolved roles take the
       // zero-op read-only fallback below; if the role resolves writable later
       // this session, the late-resolution effect runs the migration then.
-      if (isWritableDocRole(docRoleRef.current)) {
+      if (checkedBundle === null && isWritableDocRole(docRoleRef.current)) {
         if (runDurableCalloutMigration(handle, pageSizesRef?.current, documentId)) {
           migrationDoneRef.current = documentId;
         }
@@ -526,11 +545,17 @@ export function useAnnotationDoc({
       // into the local byPage below — with ZERO Y.Doc ops. Their ids are
       // remembered so the capture effect strips them back out before every
       // applyByPage. After a writable-role migration above this is empty.
-      const metaFallback = getUnmigratedMetaCallouts(handle.doc);
+      const metaFallback = checkedBundle === null ? getUnmigratedMetaCallouts(handle.doc) : { ids: [], callouts: [] };
       metaFallbackIdsRef.current = new Set(metaFallback.ids);
       const hasMetaCallouts = metaFallback.callouts.length > 0;
 
-      if (count > 0 || hasMetaCallouts || hasSpaces || hasSurvey) {
+      if (checkedBundle !== null) {
+        // The checked generation is the whole initial view, including empty
+        // kinds. Never migrate or seed it from a previous React generation.
+        setAnnotationsByPage(storeByPage || {});
+        setSpaces(Array.isArray(storeSpaces) ? storeSpaces : []);
+        setSurveyMarkers(storeSurvey && typeof storeSurvey === 'object' ? storeSurvey : {});
+      } else if (count > 0 || hasMetaCallouts || hasSpaces || hasSurvey) {
         // Durable store wins — paint from it. Callout groups arrive inside
         // storeByPage (and count toward `count`) like every other object.
         if (count > 0 || hasMetaCallouts) {
@@ -593,10 +618,11 @@ export function useAnnotationDoc({
       readyRef.current = true;
       localScope.ready = true;
       localScope.fallbackIds = metaFallbackIdsRef.current;
-      // Drives the existing "import embedded marks when empty" effect: a
-      // never-imported PDF hydrates empty (count 0) → that effect runs the
-      // importer → its marks flow back through capture below → durable.
-      setInitialHydration({ ready: true, source: 'annotation-doc', count, documentId });
+      // Checked generations already contain their complete baseline. Their
+      // empty state must not authorize another import of embedded PDF marks.
+      setInitialHydration(checkedBundle !== null
+        ? { ready: true, source: 'checked-generation', count, documentId, pdfGenerationId, embeddedImportAllowed: false }
+        : { ready: true, source: 'annotation-doc', count, documentId });
     })();
 
     return () => {
@@ -633,20 +659,23 @@ export function useAnnotationDoc({
         localScope.closeReceipt.catch(() => {});
       } else if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
+  }, [enabled, documentId, userId, checkedBundle, pdfGenerationId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an
   // immediate recovery attempt for work that was waiting on that context.
   useEffect(() => {
     const consumer = typeof eraseEffectConsumer === 'function'
-      ? eraseEffectConsumerProxyRef.current
+      ? (...args) => {
+        if (!getScopedHandle()) throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The erase effect belongs to a retired document.');
+        return eraseEffectConsumerProxyRef.current(...args);
+      }
       : null;
-    const cloudHandle = handleRef.current;
+    const cloudHandle = getScopedHandle();
     if (cloudHandle?.setEraseEffectConsumer) {
       void cloudHandle.setEraseEffectConsumer(consumer);
     }
-  }, [eraseEffectConsumer, initialHydration.ready]);
+  }, [eraseEffectConsumer, initialHydration.ready, getScopedHandle]);
 
   // Capture annotation changes into the durable store (no-op when unchanged).
   // Slice 6: this single capture now carries callouts too — projected callout
@@ -657,7 +686,7 @@ export function useAnnotationDoc({
   // path (server RLS is the only write enforcement), so the local projection
   // must never become the first diff a viewer-tier client pushes.
   useEffect(() => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h || !readyRef.current) return;
     const capturedByPage = stripMetaFallbackCallouts(
       annotationsByPage,
@@ -681,7 +710,7 @@ export function useAnnotationDoc({
         preserveTransientPagePresentationState(previousByPage, result.normalizedByPage)
       ));
     }
-  }, [annotationsByPage]);
+  }, [annotationsByPage, getScopedHandle]);
 
   // Late role resolution: get_my_document_role is fetched async by YDocProvider
   // and often resolves AFTER the doc opened (docRole starts null = not yet
@@ -694,47 +723,53 @@ export function useAnnotationDoc({
   useEffect(() => {
     if (!isWritableDocRole(docRole)) return;
     if (!initialHydration.ready || initialHydration.documentId !== documentId) return;
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h || !readyRef.current) return;
     if (inkRepairDoneRef.current !== documentId) {
       if (runDurableStackedInkRepair(h, documentId)) {
         inkRepairDoneRef.current = documentId;
       }
     }
-    if (migrationDoneRef.current === documentId) return;
+    if (checkedBundle !== null || migrationDoneRef.current === documentId) return;
     if (runDurableCalloutMigration(h, pageSizesRef?.current, documentId)) {
       migrationDoneRef.current = documentId;
       metaFallbackIdsRef.current = new Set();
     }
     // pageSizesRef is a ref (stable identity) — intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docRole, initialHydration, documentId]);
+  }, [docRole, initialHydration, documentId, checkedBundle, getScopedHandle]);
 
   // Capture space changes (document-level; coarse whole-array, no-op when
   // unchanged). Spaces + their region polygons now live durably in the Y.Doc
   // instead of the localStorage/Storage-sidecar pair.
   useEffect(() => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h || !readyRef.current) return;
+    // An absent kind in a checked baseline is already empty. Do not turn
+    // hydration into a local metadata edit, including for read-only roles.
+    if (checkedBundle !== null && h.getMeta(SPACES_KEY) === undefined
+      && !(Array.isArray(spaces) && spaces.length > 0)) return;
     h.setMeta(SPACES_KEY, spaces);
-  }, [spaces]);
+  }, [spaces, checkedBundle, getScopedHandle]);
 
   // Capture survey-marker (highlight) changes into their keyed map (minimal
   // per-marker diff; no-op when unchanged). The Y.Doc is now the source of truth
   // for highlights — hydrate, realtime, and durability all flow through here.
   useEffect(() => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h || !readyRef.current) return;
     h.applySurveyMarkers(surveyMarkers);
-  }, [surveyMarkers]);
+  }, [surveyMarkers, getScopedHandle]);
 
   // Cmd/Ctrl+S → drain pending appends + write a fresh snapshot.
   const forceFlush = useCallback(async () => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h) return;
     setSyncStatus((prev) => ({ ...prev, stage: 'syncing' }));
     await h.drain();
+    if (getScopedHandle() !== h) return;
     const saved = await h.flushSnapshot();
+    if (getScopedHandle() !== h) return;
     const next = h.getSyncStatus?.() || {};
     setSyncStatus({
       stage: saved && next.healthy !== false ? 'idle' : 'error',
@@ -742,14 +777,14 @@ export function useAnnotationDoc({
       error: saved ? null : (next.error || 'sync failed'),
     });
     setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
-  }, []);
+  }, [getScopedHandle]);
 
   const commitEraserMutation = useCallback(({
     pageNumber,
     pageAnnotations,
     eraserMutation,
   } = {}) => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h || !readyRef.current || !eraserMutation?.id) return null;
     const materializedPage = h.applyEraserMutation(
       pageNumber,
@@ -761,7 +796,7 @@ export function useAnnotationDoc({
       ...materializedPage,
       eraserPresentationRevision: eraserMutation.id,
     };
-  }, []);
+  }, [getScopedHandle]);
 
   // KAL-309: expose the durable Y.Doc META map to the Excel-sync cutover so the
   // single `excelSyncFrontier:${templateId}` cursor + the durable review set live
@@ -769,17 +804,17 @@ export function useAnnotationDoc({
   // origin (the handle's setMeta hardcodes 'local'); 'excel-import' keeps these
   // writes additive + durable without tripping the survey-marker deletion gate.
   const metaGet = useCallback((key) => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     return h ? h.getMeta(key) : undefined;
-  }, []);
+  }, [getScopedHandle]);
   const metaSet = useCallback((key, value, origin = 'excel-import') => {
-    const h = handleRef.current;
+    const h = getScopedHandle();
     if (!h || !h.doc) return false;
     return setMetaValueOnDoc(h.doc, key, value, origin);
-  }, []);
+  }, [getScopedHandle]);
 
   const commitEraseIntent = useCallback(async (intent, options = {}) => {
-    const cloudHandle = handleRef.current;
+    const cloudHandle = getScopedHandle();
     if (!cloudHandle || !readyRef.current) {
       return {
         status: 'cancelled',
@@ -791,7 +826,7 @@ export function useAnnotationDoc({
     const ownerHandle = cloudHandle;
 
     const result = await ownerHandle.commitEraseIntent(intent, options);
-    if (handleRef.current !== ownerHandle || !readyRef.current) {
+    if (getScopedHandle() !== ownerHandle || !readyRef.current) {
       return {
         status: 'cancelled',
         reason: 'stale-handle',
@@ -845,10 +880,11 @@ export function useAnnotationDoc({
   }, [
     setAnnotationsByPage,
     setSurveyMarkers,
+    getScopedHandle,
   ]);
 
   const applyEraseHistoryTransition = useCallback((transition, direction) => {
-    const ownerHandle = handleRef.current;
+    const ownerHandle = getScopedHandle();
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
@@ -866,10 +902,10 @@ export function useAnnotationDoc({
     );
     setAnnotationsByPage(nextByPage);
     return { ...result, byPage: nextByPage };
-  }, [setAnnotationsByPage]);
+  }, [setAnnotationsByPage, getScopedHandle]);
 
   const restoreEraseDeletion = useCallback((restoreActions, options = {}) => {
-    const ownerHandle = handleRef.current;
+    const ownerHandle = getScopedHandle();
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
@@ -887,15 +923,15 @@ export function useAnnotationDoc({
     );
     setAnnotationsByPage(nextByPage);
     return { ...result, byPage: nextByPage };
-  }, [setAnnotationsByPage]);
+  }, [setAnnotationsByPage, getScopedHandle]);
 
   const getHistoryQuarantineGeneration = useCallback(() => (
-    handleRef.current?.getHistoryQuarantineGeneration?.() ?? null
-  ), []);
+    getScopedHandle()?.getHistoryQuarantineGeneration?.() ?? null
+  ), [getScopedHandle]);
 
   return {
-    initialHydration,
-    deletedPdfAnnotations,
+    initialHydration: renderedStateScopeRef.current === localScope ? initialHydration : { ready: false, source: 'pending', count: 0, documentId },
+    deletedPdfAnnotations: renderedStateScopeRef.current === localScope ? deletedPdfAnnotations : [],
     commitEraseIntent,
     applyEraseHistoryTransition,
     restoreEraseDeletion,
@@ -906,7 +942,7 @@ export function useAnnotationDoc({
     commitEraserMutation,
     metaGet,
     metaSet,
-    status: syncStatus,
-    queueSize: syncQueueSize,
+    status: renderedStateScopeRef.current === localScope ? syncStatus : { stage: enabled ? 'hydrating' : 'idle', healthy: true, error: null },
+    queueSize: renderedStateScopeRef.current === localScope ? syncQueueSize : 0,
   };
 }
