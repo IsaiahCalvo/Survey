@@ -39,15 +39,15 @@ test('home skeletons appear only during an empty first load, never a later refet
   });
   assert.deepEqual(switchedScopeWithStaleRows, { documents: true, projects: true, templates: true });
 
-  assert.match(DATABASE_HOOKS, /loadedProjectScopeKey !== projectScopeKey/);
-  assert.match(DATABASE_HOOKS, /loadedDocumentScopeKey !== documentScopeKey/);
-  assert.match(TEMPLATE_HOOK, /const initialLoading = autoLoad && loadedTemplateReadScope !== templateReadScope;/);
+  assert.match(DATABASE_HOOKS, /loadedProjectReadScope !== projectReadScope/);
+  assert.match(DATABASE_HOOKS, /loadedDocumentReadScope !== documentReadScope/);
+  assert.match(TEMPLATE_HOOK, /loadedTemplateReadScope !== templateReadScope;/);
   // A new actor or a disable/enable cycle owns a distinct initial-load scope;
   // a later refetch within that scope must not restore the initial skeleton.
   assert.match(TEMPLATE_HOOK, /templateReadScopeRef\.current\?\.key !== templateScopeKey\s*\|\| templateReadScopeRef\.current\?\.autoLoad !== autoLoad/);
-  assert.match(DATABASE_HOOKS, /loadDocuments\(\{ coalesce: true, initialScopeKey: documentScopeKey \}\)/);
+  assert.match(DATABASE_HOOKS, /loadDocuments\(\{ coalesce: documentReadScope\.initialMount, initialScopeKey: documentScopeKey \}\)/);
   assert.match(TEMPLATE_HOOK, /loadTemplates\(\{ coalesce: templateReadScope\.initialMount, initialScopeKey: templateScopeKey \}\)/);
-  assert.match(TEMPLATE_HOOK, /initialMount: templateReadScopeRef\.current === null/);
+  assert.match(TEMPLATE_HOOK, /initialMount: !templateHasReadRef\.current/);
   assert.match(DATABASE_HOOKS, /refetch: \(\) => loadDocuments\(\{ coalesce: false \}\)/);
   assert.match(DATABASE_HOOKS, /refetch: \(\) => loadTemplates\(\{ coalesce: false \}\)/);
   assert.match(DASHBOARD, /const hubInitialLoading = resolveHubInitialLoading/);
@@ -106,10 +106,10 @@ test('a late request from an old user or project cannot replace the current scop
   }), true);
   assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];[\s\S]*?setDocuments\(merged\)/);
   assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];[\s\S]*?setTemplates\(rows\)/);
-  assert.match(DATABASE_HOOKS, /setLoadedProjectScopeKey\(requestScopeKey\)/);
-  assert.match(DATABASE_HOOKS, /setLoadedDocumentScopeKey\(requestScopeKey\)/);
+  assert.match(DATABASE_HOOKS, /setLoadedProjectReadScope\(projectReadScope\)/);
+  assert.match(DATABASE_HOOKS, /setLoadedDocumentReadScope\(documentReadScope\)/);
   assert.match(TEMPLATE_HOOK, /const isCurrentScope = \(\) => templateMountedRef\.current && templateReadScopeRef\.current === templateReadScope;/);
-  assert.match(TEMPLATE_HOOK, /const isCurrentRequest = \(\) => isCurrentScope\(\) && isScopedRequestCurrent\(\{/);
+  assert.match(TEMPLATE_HOOK, /const isCurrentRequest = \(\) => isCurrentScope\(\) && !controller\.signal\.aborted && isScopedRequestCurrent\(\{/);
   assert.match(TEMPLATE_HOOK, /finally \{\s*if \(isCurrentRequest\(\)\) \{\s*setLoading\(false\);\s*setLoadedTemplateReadScope\(templateReadScope\);/);
 });
 

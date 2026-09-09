@@ -27,6 +27,67 @@
  */
 
 const inFlight = new Map();
+// Keep opt-in leases separate: existing consumers rely on exact shared Promise
+// identity and must not inherit another consumer's cancellation policy.
+const cancellable = new Map();
+const canceled = () => Object.assign(new Error('The library read was canceled.'), {
+  name: 'AbortError', code: 'LIBRARY_READ_ABORTED',
+});
+
+function cancellableRead(key, fetcher, options) {
+  if (!options || typeof options !== 'object' || Array.isArray(options) || typeof fetcher !== 'function') {
+    return Promise.reject(new TypeError('Invalid coalesced read options'));
+  }
+  const { signal } = options;
+  if (signal != null && (typeof signal.aborted !== 'boolean' || typeof signal.addEventListener !== 'function'
+    || typeof signal.removeEventListener !== 'function')) return Promise.reject(new TypeError('Invalid read abort signal'));
+  if (signal?.aborted) return Promise.reject(canceled());
+
+  let entry = cancellable.get(key);
+  const start = !entry;
+  if (!entry) {
+    entry = { controller: new AbortController(), waiters: new Set(), settled: false };
+    cancellable.set(key, entry);
+  }
+  const evict = () => { if (cancellable.get(key) === entry) cancellable.delete(key); };
+  const waiter = new Promise((resolve, reject) => {
+    let done = false;
+    const finish = (ok, value) => {
+      if (done) return;
+      done = true;
+      signal?.removeEventListener('abort', onAbort);
+      entry.waiters.delete(deliver);
+      if (!entry.settled && entry.waiters.size === 0) {
+        // Evict before abort: a synchronous transport abort handler may start
+        // a fresh request for this key. Old settlement must not evict it.
+        entry.settled = true; evict(); entry.controller.abort();
+      }
+      if (ok) resolve(value); else reject(value);
+    };
+    const onAbort = () => finish(false, canceled());
+    const deliver = (ok, value) => signal?.aborted ? onAbort() : finish(ok, value);
+    entry.waiters.add(deliver);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+
+  if (start && !entry.settled) {
+    const settle = (ok, value) => {
+      if (entry.settled) return;
+      entry.settled = true; evict();
+      for (const deliver of [...entry.waiters]) deliver(ok, value);
+    };
+    // Register the entry AND first subscriber before invoking the fetcher.
+    // Reentrant callers can therefore join instead of starting a second read.
+    let operation;
+    try { operation = fetcher(entry.controller.signal); }
+    catch (error) { settle(false, error); return waiter; }
+    // Both outcomes are handled even after all waiters leave. A late rejected
+    // transport must not create an unhandled rejection or poison a new entry.
+    Promise.resolve(operation).then(value => settle(true, value), error => settle(false, error));
+  }
+  return waiter;
+}
 
 /**
  * Return the in-flight promise for `key` if one exists, otherwise run `fetcher`,
@@ -35,10 +96,15 @@ const inFlight = new Map();
  *
  * @template T
  * @param {string} key - namespaced de-dup key (table + identity + filters)
- * @param {() => Promise<T>} fetcher - issues the actual request; only called on a miss
- * @returns {Promise<T>} the shared (or freshly-started) promise
+ * @param {(signal?: AbortSignal) => Promise<T>} fetcher - called only on a miss
+ * @param {{signal?: AbortSignal}} [options] - opt in to subscriber cancellation;
+ * fetcher receives the shared signal, canceled only when the last waiter leaves
+ * @returns {Promise<T>} exact shared promise for two-argument calls; independent
+ * waiter for opt-in calls. Invalidation detaches either entry without canceling
+ * existing consumers. No result cache, retry, or idle listeners.
  */
-export function coalesceRead(key, fetcher) {
+export function coalesceRead(key, fetcher, options) {
+  if (options !== undefined) return cancellableRead(key, fetcher, options);
   const existing = inFlight.get(key);
   if (existing) return existing;
 
@@ -67,9 +133,11 @@ export function coalesceRead(key, fetcher) {
 /** Drop any in-flight promise for `key` (e.g. on a mutation that invalidates it). */
 export function invalidateCoalescedRead(key) {
   inFlight.delete(key);
+  cancellable.delete(key);
 }
 
 /** Drop all in-flight promises (e.g. on sign-out / account switch). */
 export function clearCoalescedReads() {
   inFlight.clear();
+  cancellable.clear();
 }

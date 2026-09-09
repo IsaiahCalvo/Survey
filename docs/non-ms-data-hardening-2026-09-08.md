@@ -4496,6 +4496,85 @@ Verification for this slice:
   (`/tmp/survey-current-open-build.log`). Graph refresh completed separately;
   generated graph/cache files are not staged. No push, hosted SQL or deployment.
 
+## Cancel orphaned live library reads — September 9 follow-up
+
+This slice changes the active hooks, not the disabled checked-open path.
+Projects, documents and templates now pass cancellation through all seven paging
+call sites, including owned rows, membership probes and dependent ID chunks.
+New refreshes cancel this hook's previous wait; unmount, account changes, project
+changes and mode retirement cancel its active wait. The last completed list stays
+visible on a failed refresh within the same scope. Changed scopes hide old rows
+and errors on the first render, before effects run. Signed-out scopes do not
+claim an initial load. Old refetch and event callbacks cannot start queries or
+change request IDs under a newer scope, including actor A-B-A.
+
+The codebase-design skill placed shared cancellation ownership inside
+`requestCoalescer`, not inside whichever screen started first. Its opt-in third
+argument gives each caller a separate waiter and gives the query its own shared
+signal. One consumer leaving does not cancel a remaining consumer's read. The
+last cancellation evicts the entry and aborts transport. Late success/rejection
+cannot clear a new entry. Both old two-argument promise-identity semantics and
+invalidation semantics remain intact. Invalidation detaches an entry without
+canceling its live consumers. Neither path is a value cache.
+
+First eligible boot reads still share, including screens mounted before auth
+finishes or before queries are enabled. Each instance records whether it has
+actually started a read: returning to a previously used account/mode must read
+fresh, not rejoin another consumer's older sweep. Explicit refetches remain fresh;
+templates with `autoLoad:false` still permit explicit reads and writes, while
+documents with `enabled:false` remain mutation-only and do not query.
+
+Evidence and limits:
+
+- 36 new mounted tests execute all three real hook bodies with the real paging
+  and coalescing modules. Held transport promises deliberately ignore cancellation
+  while recording the actual signals. Tests cover surviving peer consumers,
+  orphaned reads, refresh, unmount, A-B-A, first-render masks, same-scope failures,
+  first login/enable, explicit template reads and membership/chunk retirement.
+- Ten new coalescer tests preserve all six legacy tests and cover pre-abort,
+  independent waits, last cancellation, synchronous reentrancy, invalidation,
+  cleanup and late settlement. A separate installed-SDK/owned-HTTP test confirms
+  a surviving consumer gets its rows and the final cancellation closes the socket.
+- Full runs stopped on static tests tied to removed string-scope internals and
+  the old uncaptured actor expression. Updated assertions target the stronger
+  opaque-scope fields, captured actor and abort guard; the mounted tests verify
+  behavior rather than only those field names. The final focused group passed
+  102 tests. Independent review reran all 36 new mounted tests successfully.
+- A browser tab open during a hook-layout edit hit a development hot-reload hook
+  ordering error. Full reload cleared it. A clean tab on final code opened the
+  local fixture and duplicated one page into two with no error logs. The prior
+  78% to 187% zoom change remains observed, not certified viewport behavior.
+  Mock library search still narrowed six fixture rows to the MEP row. These are
+  local UI checks, not hosted auth, RLS, cloud collaboration or offline-sync proof.
+- Cancellation stops client waits and forwards abort to HTTP; it cannot recover
+  bytes already sent or prove the hosted database canceled an already-run query.
+  No hosted egress or latency saving is claimed without measurement. The existing
+  full-library bounds and last-complete-result semantics remain unchanged.
+- AuthContext already keeps identical refreshed users stable. Hook read scopes
+  now also key on actor ID, not incidental user-object identity. Access grants
+  still need authoritative server checks; these scopes are not access leases.
+- Mutation callbacks were not changed in this slice. Their stale-scope state
+  updates and token binding need a separate audited write path. The previous
+  replacement size/hash issue, checked-mode activation, provider/hosted testing
+  and Microsoft gates remain open. Nothing was pushed or deployed here.
+
+Next write audit found a concrete existing risk, confirmed with an actual-hook
+local mount: a held actor-A template create can append into actor-B list state,
+and a retained A `replaceTemplates([])` callback still dispatches after switching
+to B or unmounting. That RPC uses the current request actor and has no expected
+actor argument; the SDK supplies ambient credentials unless explicitly pinned.
+This is wrong-intended-actor execution, not an RLS bypass. Guard dispatch and every
+awaited stage, bind credentials, reject stale state/results, and protect completed
+mutations from earlier whole-list reads. Do not assume abort rolls back a write
+or add blind retries. No live account or template was touched by this probe.
+
+Final verification: `npm test` passed with 6,582 tests, 6,487 passed, 95 skipped,
+zero failures/cancellations (`/tmp/survey-library-cancel-full-verified.log`,
+exit 0). Baseline was 6,535 tests, 6,440 passed, 95 skipped, zero failures; this
+adds 47 tests. The 102-test focused group and all 210 tests referencing the hooks
+also passed. Vite build passed with the existing large-chunk warning; graph
+refresh completed. Generated graph/cache files are not part of the commit.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

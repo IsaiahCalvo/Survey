@@ -44,12 +44,31 @@ export const useProjects = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const projectScopeKey = user?.id || 'anonymous';
-  const [loadedProjectScopeKey, setLoadedProjectScopeKey] = useState(null);
-  const initialLoading = loadedProjectScopeKey !== projectScopeKey;
+  const [loadedProjectReadScope, setLoadedProjectReadScope] = useState(null);
   const projectScopeKeyRef = useRef(projectScopeKey);
   const projectRequestRef = useRef(0);
+  const projectMountedRef = useRef(true);
+  const projectReadScopeRef = useRef(null);
+  const projectReadRef = useRef(null);
+  if (projectReadScopeRef.current?.key !== projectScopeKey) {
+    projectReadScopeRef.current = { key: projectScopeKey, actorId: user?.id };
+  }
+  const projectReadScope = projectReadScopeRef.current;
+  const [projectStateScope, setProjectStateScope] = useState(projectReadScope);
+  const projectStateScopeRef = useRef(projectStateScope);
+  projectStateScopeRef.current = projectStateScope;
+  const initialLoading = !!(user && isSupabaseAvailable()) && loadedProjectReadScope !== projectReadScope;
   projectScopeKeyRef.current = projectScopeKey;
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    projectMountedRef.current = true;
+    return () => {
+      projectMountedRef.current = false;
+      projectRequestRef.current += 1;
+      projectReadRef.current?.controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
@@ -57,12 +76,15 @@ export const useProjects = () => {
       setProjects([]);
       setError(null);
       setLoading(false);
-      setLoadedProjectScopeKey(projectScopeKey);
-      return;
+      setLoadedProjectReadScope(projectReadScope);
+      setProjectStateScope(projectReadScope);
+    } else {
+      void fetchProjects({ initialScopeKey: projectScopeKey }).catch(() => undefined);
     }
-
-    void fetchProjects({ initialScopeKey: projectScopeKey }).catch(() => undefined);
-  }, [user]);
+    return () => {
+      if (projectReadRef.current?.scope === projectReadScope) projectReadRef.current.controller.abort();
+    };
+  }, [projectReadScope]);
 
   // KAL-280 — restoring a project from Archive puts it back in this list. The
   // Archive screen is a sibling of the hub, not a parent, so it announces the
@@ -70,20 +92,31 @@ export const useProjects = () => {
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) return undefined;
     return subscribeLibraryChange(() => {
-      fetchProjects({ initialScopeKey: projectScopeKeyRef.current }).catch(() => {});
+      fetchProjects({ initialScopeKey: projectScopeKey }).catch(() => {});
     });
-  }, [user]);
+  }, [projectReadScope]);
 
   const fetchProjects = async ({ initialScopeKey = null } = {}) => {
+    const isCurrentScope = () => projectMountedRef.current && projectReadScopeRef.current === projectReadScope;
+    if (!isCurrentScope() || !projectReadScope.actorId || !isSupabaseAvailable()) return [];
     const requestScopeKey = initialScopeKey || projectScopeKey;
+    if (requestScopeKey !== projectScopeKey) return [];
     const requestId = ++projectRequestRef.current;
-    const isCurrentRequest = () => isScopedRequestCurrent({
+    projectReadRef.current?.controller.abort();
+    const controller = new AbortController();
+    projectReadRef.current = { scope: projectReadScope, controller };
+    const { signal } = controller;
+    const isCurrentRequest = () => isCurrentScope() && !signal.aborted && isScopedRequestCurrent({
       requestId,
       latestRequestId: projectRequestRef.current,
       requestScopeKey,
       currentScopeKey: projectScopeKeyRef.current,
     });
     try {
+      if (projectStateScopeRef.current !== projectReadScope) {
+        setProjectStateScope(projectReadScope);
+        setProjects([]);
+      }
       setLoading(true);
       setError(null);
       // KAL-285 — explicit column list instead of select('*'). The live
@@ -96,15 +129,15 @@ export const useProjects = () => {
         readLibraryRows(() => supabase
           .from('projects')
           .select(projectColumns)
-          .eq('user_id', user.id)
+          .eq('user_id', projectReadScope.actorId)
           // KAL-280 — user-archived projects live in Archive, not the library.
           // Separate column from `archived` (the Free-tier downgrade flag).
-          .is('user_archived_at', null)),
+          .is('user_archived_at', null), { signal }),
         readLibraryRows(() => supabase
           .from('project_collaborators')
           .select('project_id')
-          .eq('user_id', user.id)
-          .eq('status', 'active'), { cursorColumn: 'project_id' }),
+          .eq('user_id', projectReadScope.actorId)
+          .eq('status', 'active'), { cursorColumn: 'project_id', signal }),
       ]);
 
       if (ownedResult.error) throw ownedResult.error;
@@ -125,7 +158,7 @@ export const useProjects = () => {
             .from('projects')
             .select(projectColumns)
             .in('id', ids)
-            .is('user_archived_at', null));
+            .is('user_archived_at', null), { signal });
           if (sharedResult.error) throw sharedResult.error;
           collaboratorProjects = sharedResult.data || [];
         }
@@ -144,8 +177,10 @@ export const useProjects = () => {
     } finally {
       if (isCurrentRequest()) {
         setLoading(false);
-        setLoadedProjectScopeKey(requestScopeKey);
+        setLoadedProjectReadScope(projectReadScope);
       }
+      if (projectReadRef.current?.controller === controller) projectReadRef.current = null;
+      controller.abort();
     }
   };
 
@@ -198,11 +233,12 @@ export const useProjects = () => {
     }
   };
 
+  const hasCurrentProjectState = projectStateScope === projectReadScope;
   return {
-    projects,
-    loading,
+    projects: hasCurrentProjectState ? projects : [],
+    loading: hasCurrentProjectState ? loading : !!(user && isSupabaseAvailable()),
     initialLoading,
-    error,
+    error: hasCurrentProjectState ? error : null,
     createProject,
     updateProject,
     deleteProject,
@@ -221,13 +257,33 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(enabled);
   const documentScopeKey = `${user?.id || 'anonymous'}:${projectId ?? 'all'}:${enabled ? 'enabled' : 'disabled'}`;
-  const [loadedDocumentScopeKey, setLoadedDocumentScopeKey] = useState(null);
-  const initialLoading = enabled && loadedDocumentScopeKey !== documentScopeKey;
+  const [loadedDocumentReadScope, setLoadedDocumentReadScope] = useState(null);
   const documentScopeKeyRef = useRef(documentScopeKey);
   const documentRequestRef = useRef(0);
+  const documentMountedRef = useRef(true);
+  const documentReadScopeRef = useRef(null);
+  const documentReadRef = useRef(null);
+  const documentHasReadRef = useRef(false);
+  if (documentReadScopeRef.current?.key !== documentScopeKey) {
+    documentReadScopeRef.current = { key: documentScopeKey, actorId: user?.id, projectId,
+      initialMount: !documentHasReadRef.current };
+  }
+  const documentReadScope = documentReadScopeRef.current;
+  const [documentStateScope, setDocumentStateScope] = useState(documentReadScope);
+  const documentStateScopeRef = useRef(documentStateScope);
+  documentStateScopeRef.current = documentStateScope;
+  const initialLoading = !!(enabled && user && isSupabaseAvailable()) && loadedDocumentReadScope !== documentReadScope;
   documentScopeKeyRef.current = documentScopeKey;
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    documentMountedRef.current = true;
+    return () => {
+      documentMountedRef.current = false;
+      documentRequestRef.current += 1;
+      documentReadRef.current?.controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled || !user || !isSupabaseAvailable()) {
@@ -235,19 +291,18 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
       setDocuments([]);
       setError(null);
       setLoading(false);
-      setLoadedDocumentScopeKey(documentScopeKey);
-      return;
+      setLoadedDocumentReadScope(documentReadScope);
+      setDocumentStateScope(documentReadScope);
+    } else {
+      // Initial consumers share one sweep; reactivation starts fresh rather
+      // than joining a retired scope's snapshot. Mutation-only viewers do not
+      // read. The loader stores failures; this boot caller consumes rejection.
+      void loadDocuments({ coalesce: documentReadScope.initialMount, initialScopeKey: documentScopeKey }).catch(() => undefined);
     }
-
-    // Boot/dep-change load goes through the coalescer so the simultaneous burst
-    // from the live library consumers collapses to ONE round-trip. See KAL-251.
-    // PDFViewer uses mutation-only mode and never starts this read.
-    // The loader records the failure in hook state, then rejects so explicit
-    // refetch callers can react to it. This boot-only caller has no awaiter,
-    // so consume that rejection after state is updated instead of leaking an
-    // unhandled promise rejection into Expo/WebView.
-    void loadDocuments({ coalesce: true, initialScopeKey: documentScopeKey }).catch(() => undefined);
-  }, [user, projectId, enabled]);
+    return () => {
+      if (documentReadRef.current?.scope === documentReadScope) documentReadRef.current.controller.abort();
+    };
+  }, [documentReadScope]);
 
   // KAL-280 — same as projects: a document restored from Archive reappears
   // here without waiting for a remount. Not coalesced, because the archive
@@ -255,26 +310,26 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   useEffect(() => {
     if (!enabled || !user || !isSupabaseAvailable()) return undefined;
     return subscribeLibraryChange(() => {
-      void loadDocuments({ initialScopeKey: documentScopeKeyRef.current }).catch(() => undefined);
+      void loadDocuments({ initialScopeKey: documentScopeKey }).catch(() => undefined);
     });
-  }, [user, projectId, enabled]);
+  }, [documentReadScope]);
 
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
-  const runDocumentsQuery = async () => {
+  const runDocumentsQuery = async (signal) => {
     const ownedQuery = () => {
       let query = supabase
         .from('documents')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', documentReadScope.actorId)
         .eq('archived', false)
         // KAL-280 — user-archived documents live in Archive, not the library.
         // This is a SEPARATE column from `archived` above: that one is the
         // Free-tier downgrade flag, this one is the 30-day recoverable Archive.
         .is('user_archived_at', null);
 
-      if (projectId) query = query.eq('project_id', projectId);
+      if (documentReadScope.projectId) query = query.eq('project_id', documentReadScope.projectId);
       return query;
     };
 
@@ -283,12 +338,12 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     // (never rejects) with {data,error}, so the throw-on-owned-error semantics
     // below are preserved (the dependent missingIds query stays sequential).
     const [ownedRes, collaboratorRows] = await Promise.all([
-      readLibraryRows(ownedQuery),
+      readLibraryRows(ownedQuery, { signal }),
       readLibraryRows(() => supabase
         .from('document_collaborators')
         .select('document_id')
-        .eq('user_id', user.id)
-        .eq('status', 'active'), { cursorColumn: 'document_id' }),
+        .eq('user_id', documentReadScope.actorId)
+        .eq('status', 'active'), { cursorColumn: 'document_id', signal }),
     ]);
     const { data, error } = ownedRes;
     if (error) throw error;
@@ -313,9 +368,9 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
             // resolves only for the permanent owner while archived); filtering
             // here keeps the shared document out of the list in the first place.
             .is('user_archived_at', null);
-          if (projectId) collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
+          if (documentReadScope.projectId) collaboratorQuery = collaboratorQuery.eq('project_id', documentReadScope.projectId);
           return collaboratorQuery;
-        });
+        }, { signal });
         if (collaboratorResult.error) throw collaboratorResult.error;
         collaboratorDocuments = collaboratorResult.data || [];
       }
@@ -340,22 +395,32 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   // with `coalesce:false` so a deliberate post-mutation refetch ALWAYS hits the
   // network and is never served a coalesced promise that predates the mutation.
   const loadDocuments = async ({ coalesce = false, initialScopeKey = null } = {}) => {
-    if (!enabled || !user || !isSupabaseAvailable()) return [];
+    const isCurrentScope = () => documentMountedRef.current && documentReadScopeRef.current === documentReadScope;
+    if (!isCurrentScope() || !enabled || !documentReadScope.actorId || !isSupabaseAvailable()) return [];
     const requestScopeKey = initialScopeKey || documentScopeKey;
+    if (requestScopeKey !== documentScopeKey) return [];
+    documentHasReadRef.current = true;
     const requestId = ++documentRequestRef.current;
-    const isCurrentRequest = () => isScopedRequestCurrent({
+    documentReadRef.current?.controller.abort();
+    const controller = new AbortController();
+    documentReadRef.current = { scope: documentReadScope, controller };
+    const isCurrentRequest = () => isCurrentScope() && !controller.signal.aborted && isScopedRequestCurrent({
       requestId,
       latestRequestId: documentRequestRef.current,
       requestScopeKey,
       currentScopeKey: documentScopeKeyRef.current,
     });
     try {
+      if (documentStateScopeRef.current !== documentReadScope) {
+        setDocumentStateScope(documentReadScope);
+        setDocuments([]);
+      }
       setLoading(true);
       setError(null);
-      const key = `documents:${user.id}:${projectId ?? 'null'}`;
+      const key = `documents:${documentReadScope.actorId}:${documentReadScope.projectId ?? 'null'}`;
       const merged = coalesce
-        ? await coalesceRead(key, runDocumentsQuery)
-        : await runDocumentsQuery();
+        ? await coalesceRead(key, runDocumentsQuery, { signal: controller.signal })
+        : await runDocumentsQuery(controller.signal);
       if (!isCurrentRequest()) return [];
       setDocuments(merged);
       return merged;
@@ -366,8 +431,10 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     } finally {
       if (isCurrentRequest()) {
         setLoading(false);
-        setLoadedDocumentScopeKey(requestScopeKey);
+        setLoadedDocumentReadScope(documentReadScope);
       }
+      if (documentReadRef.current?.controller === controller) documentReadRef.current = null;
+      controller.abort();
     }
   };
 
@@ -500,11 +567,12 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     }
   };
 
+  const hasCurrentDocumentState = documentStateScope === documentReadScope;
   return {
-    documents,
-    loading,
+    documents: hasCurrentDocumentState ? documents : [],
+    loading: hasCurrentDocumentState ? loading : !!(enabled && user && isSupabaseAvailable()),
     initialLoading,
-    error,
+    error: hasCurrentDocumentState ? error : null,
     createDocument,
     updateDocument,
     deleteDocument,
@@ -529,17 +597,19 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
   const templateRequestRef = useRef(0);
   const templateMountedRef = useRef(true);
   const templateReadScopeRef = useRef(null);
+  const templateReadRef = useRef(null);
+  const templateHasReadRef = useRef(false);
   if (templateReadScopeRef.current?.key !== templateScopeKey
     || templateReadScopeRef.current?.autoLoad !== autoLoad) {
     templateReadScopeRef.current = {
-      key: templateScopeKey, autoLoad, initialMount: templateReadScopeRef.current === null,
+      key: templateScopeKey, actorId: user?.id, autoLoad, initialMount: !templateHasReadRef.current,
     };
   }
   const templateReadScope = templateReadScopeRef.current;
   const [templateStateScope, setTemplateStateScope] = useState(templateReadScope);
   const templateStateScopeRef = useRef(templateStateScope);
   templateStateScopeRef.current = templateStateScope;
-  const initialLoading = autoLoad && loadedTemplateReadScope !== templateReadScope;
+  const initialLoading = !!(autoLoad && user && isSupabaseAvailable()) && loadedTemplateReadScope !== templateReadScope;
   templateScopeKeyRef.current = templateScopeKey;
   const [error, setError] = useState(null);
 
@@ -548,6 +618,7 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
     return () => {
       templateMountedRef.current = false;
       templateRequestRef.current += 1;
+      templateReadRef.current?.controller.abort();
     };
   }, []);
 
@@ -559,42 +630,47 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
       setError(null);
       setLoading(false);
       setLoadedTemplateReadScope(templateReadScope);
-      return;
+    } else {
+      // Default consumers share their initial read. Reactivation starts fresh.
+      // Keep the rejecting refetch contract; only boot consumes the rejection.
+      void loadTemplates({ coalesce: templateReadScope.initialMount, initialScopeKey: templateScopeKey }).catch(() => undefined);
     }
-
-    // Default consumers still share their initial boot read. Reactivation and
-    // account changes must not rejoin a retired scope's in-flight snapshot.
-    // Preserve loadTemplates' rejecting refetch contract while consuming the
-    // boot-only rejection after it has populated the hook's error state.
-    void loadTemplates({ coalesce: templateReadScope.initialMount, initialScopeKey: templateScopeKey }).catch(() => undefined);
-  }, [templateScopeKey, autoLoad]);
+    return () => {
+      if (templateReadRef.current?.scope === templateReadScope) templateReadRef.current.controller.abort();
+    };
+  }, [templateReadScope]);
 
   // KAL-280 — a template restored from (or permanently deleted in) Archive has
   // to leave/rejoin this list without a reload, same as documents and projects.
   useEffect(() => {
     if (!autoLoad || !user || !isSupabaseAvailable()) return undefined;
     return subscribeLibraryChange(() => {
-      void loadTemplates({ initialScopeKey: templateScopeKeyRef.current }).catch(() => undefined);
+      void loadTemplates({ initialScopeKey: templateScopeKey }).catch(() => undefined);
     });
-  }, [templateScopeKey, autoLoad]);
+  }, [templateReadScope]);
 
-  const runTemplatesQuery = async () => {
+  const runTemplatesQuery = async (signal) => {
     const { data, error } = await readLibraryRows(() => supabase
       .from('templates')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', templateReadScope.actorId)
       // KAL-280 — user-archived templates live in Archive, not the library.
-      .is('user_archived_at', null));
+      .is('user_archived_at', null), { signal });
     if (error) throw error;
     return sortLibraryRows(data || [], 'created_at');
   };
 
   const loadTemplates = async ({ coalesce = false, initialScopeKey = null } = {}) => {
     const isCurrentScope = () => templateMountedRef.current && templateReadScopeRef.current === templateReadScope;
-    if (!isCurrentScope() || !user || !isSupabaseAvailable()) return [];
+    if (!isCurrentScope() || !templateReadScope.actorId || !isSupabaseAvailable()) return [];
     const requestScopeKey = initialScopeKey || templateScopeKey;
+    if (requestScopeKey !== templateScopeKey) return [];
+    templateHasReadRef.current = true;
     const requestId = ++templateRequestRef.current;
-    const isCurrentRequest = () => isCurrentScope() && isScopedRequestCurrent({
+    templateReadRef.current?.controller.abort();
+    const controller = new AbortController();
+    templateReadRef.current = { scope: templateReadScope, controller };
+    const isCurrentRequest = () => isCurrentScope() && !controller.signal.aborted && isScopedRequestCurrent({
       requestId,
       latestRequestId: templateRequestRef.current,
       requestScopeKey,
@@ -607,10 +683,10 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
       }
       setLoading(true);
       setError(null);
-      const key = `templates:${user.id}`;
+      const key = `templates:${templateReadScope.actorId}`;
       const rows = coalesce
-        ? await coalesceRead(key, runTemplatesQuery)
-        : await runTemplatesQuery();
+        ? await coalesceRead(key, runTemplatesQuery, { signal: controller.signal })
+        : await runTemplatesQuery(controller.signal);
       if (!isCurrentRequest()) return [];
       setTemplates(rows);
       return rows;
@@ -623,6 +699,8 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
         setLoading(false);
         setLoadedTemplateReadScope(templateReadScope);
       }
+      if (templateReadRef.current?.controller === controller) templateReadRef.current = null;
+      controller.abort();
     }
   };
 
