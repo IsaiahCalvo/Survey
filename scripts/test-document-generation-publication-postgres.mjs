@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
+import { createServer } from 'node:http';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import * as Y from 'yjs';
 import { PDFDocument } from 'pdf-lib';
 import { withDisposablePostgres } from './helpers/disposablePostgres.mjs';
@@ -13,6 +16,8 @@ import { mapSurveyMarkerRowToLocalAnnotation } from '../src/services/documentSur
 import { transformDocumentGenerationSource } from '../src/services/documentGenerationTransform.js';
 import { mutatePdfPagesWithIdentity } from '../src/utils/pdfPageMutation.js';
 import { createDocumentGenerationReader } from '../src/services/documentGenerationReader.js';
+import { createDocumentGenerationDownload } from '../src/services/documentGenerationDownload.js';
+import { handleDocumentGenerationDownload } from '../supabase/functions/document-generation-download/handler.js';
 assert.equal(process.argv.length, 2);
 const target = '20260909098000_document_generation_publication.sql';
 const migrationPath = name => fileURLToPath(new URL(`../supabase/migrations/${name}`, import.meta.url));
@@ -23,6 +28,41 @@ const owner = id(1), editor = id(2), viewer = id(3), other = id(4), project = id
 const sha = v => createHash('sha256').update(v).digest('hex'), b64 = v => Buffer.from(v).toString('base64');
 const pdfDoc = await PDFDocument.create(); for (let i = 0; i < 3; i++) pdfDoc.addPage([612, 792]);
 const originalPdf = await pdfDoc.save();
+// Exact owned loopback server only. Provider/SQL adapters are supplied by the
+// local fixture; no hosted URL, account or credentials can enter this bridge.
+async function withDownloadHttp(handler, dependencies, work) {
+  const sockets = new Set(), requests = new Set(), errors = [];
+  const server = createServer((incoming, outgoing) => {
+    const abort = new AbortController();
+    incoming.on('aborted', () => abort.abort());
+    outgoing.on('close', () => { if (!outgoing.writableEnded) abort.abort(); });
+    const task = (async () => {
+      const request = new Request(`http://127.0.0.1:${server.address().port}${incoming.url}`, {
+        method: incoming.method, headers: incoming.headers, signal: abort.signal,
+        ...(incoming.method === 'GET' || incoming.method === 'HEAD' ? {} : { body: Readable.toWeb(incoming), duplex: 'half' }),
+      });
+      const response = await handler(request, dependencies);
+      outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+      if (response.body) await pipeline(Readable.fromWeb(response.body), outgoing, { signal: abort.signal });
+      else outgoing.end();
+    })();
+    requests.add(task);
+    task.then(() => requests.delete(task), error => {
+      requests.delete(task); errors.push(error?.code || error?.name || 'stream-error');
+      if (!outgoing.headersSent) { outgoing.writeHead(500); outgoing.end('Owned fixture stream failed'); }
+      else outgoing.destroy();
+    });
+  });
+  server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  try { return await work({ url: `http://127.0.0.1:${server.address().port}`, sockets, requests, errors }); }
+  finally {
+    const closed = new Promise(resolve => server.close(resolve));
+    for (const socket of sockets) socket.destroy();
+    await Promise.allSettled([...requests]); await closed;
+    assert.equal(server.listening, false); assert.equal(requests.size, 0);
+  }
+}
 await withDisposablePostgres(async pg => {
   const { sql, scalar, asRole, errorState, session, applyMigration, quote } = pg;
   const prior = readFileSync(new URL('./test-document-generation-source-receipts-postgres.mjs', import.meta.url), 'utf8');
@@ -471,6 +511,152 @@ await withDisposablePostgres(async pg => {
     for (const name of ['annotations','surveyMarkers','annoMeta','deletedPdfAnnotations']) { restored.getMap(name); baseline.getMap(name); }
     assert.deepEqual(restored.toJSON(), baseline.toJSON()); restored.destroy(); baseline.destroy();
     assert.deepEqual(Buffer.from(await gzipResult.pdfBlob.arrayBuffer()), Buffer.from(x.nextPdf));
+  });
+  assert.equal(groups, 26, 'Preserve all original publication and open groups');
+  const until = async (predicate, label, timeout = 4000) => {
+    const deadline = performance.now() + timeout;
+    while (!predicate()) { assert.ok(performance.now() < deadline, label); await new Promise(resolve => setTimeout(resolve, 10)); }
+  };
+  const httpFixture = async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${viewer}','viewer','active')`);
+    return x;
+  };
+  const fixtureToken = 'owned-loopback-viewer-token', otherToken = 'owned-loopback-other-token';
+  const httpRead = (actor, d, g) => {
+    const result = asRole(actor, `SELECT public.read_document_generation_open('${d}',${quote(g)},false)`, 'authenticated', false);
+    if (result.status !== 0) throw Object.assign(new Error('Owned SQL read failed'), { code: result.stderr.match(/ERROR:\s+([A-Z0-9]{5}):/)?.[1] });
+    return JSON.parse(result.stdout);
+  };
+  async function runHttp(x, options, work) {
+    const metrics = { http: 0, sql: 0, opened: 0, clientBytes: 0, providerBytes: 0, providerCancels: 0, providerAborted: false, statuses: [], rpc: [] };
+    let actor = viewer;
+    const bytes = Uint8Array.from(options.bytes || x.nextPdf);
+    const dependencies = {
+      enabled: true, timeoutMs: 8000,
+      getUser: async token => token === fixtureToken ? { id: viewer } : token === otherToken ? { id: other } : null,
+      readOpen: async (token, documentId, generationId, signal) => {
+        assert.equal(signal.aborted, false); metrics.sql++;
+        return httpRead(token === fixtureToken ? viewer : other, documentId, generationId);
+      },
+      openStream: (pdf, signal) => {
+        assert.equal(pdf.path, x.u.path); assert.equal(pdf.content_sha256, sha(x.nextPdf)); metrics.opened++;
+        let stage = 0, wake;
+        signal.addEventListener('abort', () => { metrics.providerAborted = true; wake?.(); }, { once: true });
+        return new ReadableStream({
+          async pull(controller) {
+            if (stage === 0) { stage++; const chunk = bytes.slice(0, 32); metrics.providerBytes += chunk.length; controller.enqueue(chunk); return; }
+            if (stage === 1) {
+              stage++;
+              if (options.afterPartial || options.slow) await until(() => metrics.clientBytes >= 32, 'HTTP client must receive a partial body');
+              await options.afterPartial?.();
+              if (options.slow) await new Promise(resolve => { wake = resolve; if (signal.aborted) resolve(); });
+              if (signal.aborted) return;
+              const chunk = bytes.slice(32); metrics.providerBytes += chunk.length; controller.enqueue(chunk); return;
+            }
+            controller.close();
+          },
+          cancel() { metrics.providerCancels++; wake?.(); },
+        }, { highWaterMark: 0 });
+      },
+    };
+    await withDownloadHttp(handleDocumentGenerationDownload, dependencies, async ({ url, sockets, requests, errors }) => {
+      const transport = createDocumentGenerationDownload({ supabaseUrl: url, publicKey: 'owned-public-fixture-key', allowLoopback: true,
+        timeoutMs: 6000, getActorUserId: () => actor, getAccessToken: requestedActor => { assert.equal(requestedActor, viewer); return options.token || fixtureToken; },
+        fetch: async (address, init) => {
+          assert.equal(address, `${url}/functions/v1/document-generation-download`); assert.equal(init.redirect, 'error');
+          assert.equal(init.headers.apikey, 'owned-public-fixture-key'); assert.equal(init.headers.Authorization, `Bearer ${options.token || fixtureToken}`);
+          const body = JSON.parse(init.body); assert.deepEqual(Object.keys(body).sort(), ['document_id','generation_id','pdf']);
+          assert.equal(body.document_id, x.d); assert.equal(body.generation_id, x.u.generation_id); metrics.http++;
+          const response = await fetch(address, init); metrics.statuses.push(response.status);
+          // Observe bytes only as the real download client pulls them. This
+          // transform preserves streaming/backpressure and forwards cancellation.
+          const observed = response.body.pipeThrough(new TransformStream({ transform(chunk, controller) { metrics.clientBytes += chunk.length; controller.enqueue(chunk); } }));
+          return new Response(observed, { status: response.status, headers: response.headers });
+        },
+      });
+      const reader = createDocumentGenerationReader({ getActorUserId: () => actor, timeoutMs: 7000, download: transport,
+        request: async (name, params, scope) => {
+          assert.equal(scope.actorUserId, viewer); metrics.rpc.push({ name, params });
+          assert.ok(['read_document_generation_open','read_annotation_updates_v2'].includes(name));
+          const args = Object.entries(params).map(([k, v]) => `${k}=>${typeof v === 'boolean' ? v : quote(v)}`).join(',');
+          const result = asRole(viewer, `SELECT public.${name}(${args})`, 'authenticated', false);
+          return result.status === 0 ? { data: JSON.parse(result.stdout), error: null }
+            : { data: null, error: { code: result.stderr.match(/ERROR:\s+([A-Z0-9]{5}):/)?.[1] } };
+        },
+      });
+      await work({ reader, transport, metrics, changeActor: value => { actor = value; }, sockets, requests, errors });
+    });
+    return metrics;
+  }
+  await check('loopback HTTP handler download client and SQL reader return complete exact PDF and Yjs', async () => {
+    const x = await httpFixture();
+    const tail = new Y.Doc(); tail.getMap('annoMeta').set('ownedHttpTail', 'kept across full HTTP download'); const update = Y.encodeStateAsUpdate(tail); tail.destroy();
+    const accepted = JSON.parse(asRole(owner, `SELECT public.append_annotation_update_v2('${x.d}','${x.u.generation_id}','owned-http-tail',1,${bytea(update)})`).stdout);
+    await runHttp(x, {}, async ({ reader, metrics }) => {
+      const result = await reader.open({ documentId: x.d, actorUserId: viewer });
+      assert.deepEqual(Buffer.from(await result.pdfBlob.arrayBuffer()), Buffer.from(x.nextPdf)); assert.equal(result.throughSeq, String(accepted.seq));
+      const actual = new Y.Doc(), expected = new Y.Doc(); Y.applyUpdate(actual, result.annotationUpdate); Y.applyUpdate(expected, x.result.baselineUpdate); Y.applyUpdate(expected, update);
+      for (const name of ['annotations','surveyMarkers','annoMeta','deletedPdfAnnotations']) { actual.getMap(name); expected.getMap(name); }
+      assert.deepEqual(actual.toJSON(), expected.toJSON()); actual.destroy(); expected.destroy();
+      assert.deepEqual(metrics.statuses, [200]); assert.equal(metrics.clientBytes, x.nextPdf.length); assert.equal(metrics.sql, 2);
+      assert.equal(metrics.rpc[0].params.p_include_snapshot, true); assert.equal(metrics.rpc.at(-1).params.p_include_snapshot, false);
+    });
+  });
+  await check('HTTP200 cannot accept wrong hash truncated or excessive provider bytes', async () => {
+    const x = await httpFixture(), before = snapshot(x);
+    const wrong = Uint8Array.from(x.nextPdf); wrong[40] ^= 1;
+    for (const bytes of [wrong, x.nextPdf.slice(0, -7), Uint8Array.from([...x.nextPdf, 1])]) {
+      const oldSaved = new Blob([originalPdf]); let installed = oldSaved;
+      // Force the bad suffix to arrive only after HTTP200/partial bytes reached
+      // the client; do not let socket scheduling turn this into a headers-only
+      // connection failure and weaken the complete-body acceptance oracle.
+      await runHttp(x, { bytes, afterPartial: () => {} }, async ({ reader, metrics }) => {
+        await assert.rejects(reader.open({ documentId: x.d, actorUserId: viewer }).then(value => { installed = value.pdfBlob; }), /could not be verified/);
+        assert.equal(installed, oldSaved); assert.deepEqual(Buffer.from(await installed.arrayBuffer()), Buffer.from(originalPdf));
+        assert.deepEqual(metrics.statuses, [200]); assert.ok(metrics.clientBytes < x.nextPdf.length); assert.equal(metrics.sql, 1);
+      });
+      assert.equal(snapshot(x), before, 'Failed downloads do not alter saved SQL state or retention');
+    }
+  });
+  await check('partial HTTP download followed by real revocation or publication never installs stale bytes', async () => {
+    for (const mode of ['revoke', 'generation']) {
+      const x = await httpFixture();
+      const next = mode === 'generation' ? await prepare({ ...x, pdf: x.nextPdf, generation: x.u.generation_id }, { type: 'duplicate', page: 1 }) : null;
+      const oldSaved = new Blob([originalPdf]); let installed = oldSaved;
+      await runHttp(x, { afterPartial: () => {
+        if (mode === 'revoke') sql(`DELETE FROM document_collaborators WHERE document_id='${x.d}' AND user_id='${viewer}'`);
+        else publish(next);
+      } }, async ({ reader, metrics }) => {
+        await assert.rejects(reader.open({ documentId: x.d, actorUserId: viewer }).then(value => { installed = value.pdfBlob; }));
+        assert.equal(installed, oldSaved); assert.deepEqual(Buffer.from(await installed.arrayBuffer()), Buffer.from(originalPdf));
+        assert.deepEqual(metrics.statuses, [200]); assert.ok(metrics.clientBytes >= 32 && metrics.clientBytes < x.nextPdf.length); assert.equal(metrics.sql, 2);
+      });
+      if (next) assert.equal(scalar(`SELECT generation_id FROM survey_private.annotation_generation_heads WHERE document_id='${x.d}'`), next.u.generation_id);
+    }
+  });
+  await check('download rejects mismatched current actor and unauthorized bearer identity', async () => {
+    const x = await httpFixture(), pdf = open(x, viewer).pdf;
+    await runHttp(x, {}, async ({ transport, changeActor, metrics }) => {
+      changeActor(other);
+      await assert.rejects(transport(pdf, { actorUserId: viewer, documentId: x.d, pdfGenerationId: x.u.generation_id }), error => error.code === 'DOCUMENT_DOWNLOAD_ACTOR_CHANGED');
+      assert.equal(metrics.http, 0); assert.equal(metrics.opened, 0);
+    });
+    await runHttp(x, { token: otherToken }, async ({ reader, metrics }) => {
+      await assert.rejects(reader.open({ documentId: x.d, actorUserId: viewer }), error => error.code === '42501');
+      assert.deepEqual(metrics.statuses, [403]); assert.equal(metrics.opened, 0);
+    });
+  });
+  await check('canceling a slow real HTTP download closes the owned upstream stream and keeps saved bytes', async () => {
+    const x = await httpFixture(), before = snapshot(x), abort = new AbortController(), oldSaved = new Blob([originalPdf]); let installed = oldSaved;
+    await runHttp(x, { slow: true }, async ({ reader, metrics }) => {
+      const pending = reader.open({ documentId: x.d, actorUserId: viewer, signal: abort.signal }).then(value => { installed = value.pdfBlob; return { value }; }, error => ({ error }));
+      await until(() => metrics.clientBytes >= 32, 'Slow HTTP body must have reached the client'); abort.abort();
+      const outcome = await pending; assert.ok(outcome.error); assert.equal(installed, oldSaved);
+      await until(() => metrics.providerAborted && metrics.providerCancels > 0, 'Owned provider must observe HTTP cancellation');
+      assert.deepEqual(metrics.statuses, [200]); assert.equal(metrics.clientBytes, 32);
+    });
+    assert.equal(snapshot(x), before);
   });
   console.log(`Document generation publication PostgreSQL groups passed: ${groups}`);
 }, { name: 'generation-publication', commandTimeoutMs: 60000 });

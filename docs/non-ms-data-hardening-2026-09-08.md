@@ -3762,6 +3762,91 @@ authority through handoff. Retry/derived render bytes must not inherit the
 original PDF's proof. No such viewer, provider, download-route or offline-cache
 activation is included here; no live cloud or Microsoft testing is claimed.
 
+## Checked generation download: local streaming route, disabled
+
+`document-generation-download` adds a read-only endpoint for the checked reader.
+It verifies the Bearer token, then calls the authenticated-only checked-open RPC
+with that user's JWT and snapshot mode off. The requested document, generation
+and all six PDF descriptor fields must match the server's current authorized
+descriptor. Only the server-returned descriptor reaches Storage. The service key
+is used for the exact Storage read, not to impersonate the user in a read RPC.
+The route creates no signed URL, upload, publication, cleanup job or RLS grant.
+
+The endpoint reads the provider stream with backpressure and an incremental
+SHA-256. It hashes and emits the same owned chunk, so provider buffer reuse
+cannot alter bytes after hashing. It holds the last byte until exact length,
+complete-stream hash and a final authenticated read confirm the same current
+PDF/publication. A wrong hash, excess or missing bytes, revoked access, changed
+generation, timeout or cancellation errors the body rather than closing it as
+success. HTTP status 200 alone is explicitly not proof: callers must finish the
+body and verify it. The response has no Content-Length, uses private/no-store/
+no-transform and nosniff, and keeps the intentional wildcard CORS policy.
+
+There is no second full-file server buffer. Memory still depends on one owned
+provider chunk; this is not a constant-RAM guarantee for arbitrarily large
+chunks. The server caps accepted PDF size at 256 MiB and the request lifetime at
+110 seconds. It bounds request JSON at 16 KiB. Deadlines also check a monotonic
+clock so synchronous work cannot outrun the timer callback. Cancel/timeout
+cleanup stops the provider reader and hash without waiting forever for a broken
+cancel method. A stream returned after cancellation is also closed.
+
+`documentGenerationDownload.js` supplies the client download adapter to the
+checked reader. Configuration owns the trusted Supabase origin; a document
+cannot choose a URL. It sends the exact tuple with the captured actor's token,
+rejects redirects, omits cookies, bypasses caches and never falls back to the old
+Storage route. It waits for complete EOF and exact byte length before returning
+an immutable Blob; the checked reader still owns final content hashing and
+generation confirmation. No automatic retry can silently switch to new bytes.
+
+Review found that a small response made of many empty/tiny chunks could retain
+an unbounded number of Blob objects despite a byte limit. The client now copies
+into fixed 64 KiB blocks and uses one fixed 8 KiB error buffer. A 10-byte body with
+20,000 empty chunks creates only two Blobs; 65,537 one-byte chunks create three.
+The error path creates none. Final Blob creation also gets a post-work deadline
+and actor check. The browser still retains the full final PDF; this change bounds
+chunk overhead rather than claiming a disk-backed browser cache.
+
+Verification: 53 focused checks passed (15 client download, 19 streaming handler,
+19 checked reader). The expanded real PostgreSQL/loopback HTTP fixture passed
+all 31 groups, retaining the 26 prior publication/open groups. It uses the actual
+handler, client adapter and reader with actual checked-open/tail SQL, an owned
+PDF stream and fake test-only authentication. Cases cover complete PDF/Yjs reads,
+bad hash/short/excess bodies after HTTP200, actual role revocation and a new
+publication after partial client bytes, wrong actors/tokens and slow-stream
+abort cleanup. No caller installs an incomplete result.
+
+The separate actual Deno entrypoint plus pinned Supabase SDK passed 20 local HTTP
+groups. It checks each disabled flag combination, viewer-token auth/RPC versus
+service-only Storage headers, exact encoded paths, unique cache nonce/no-cache,
+CORS, final revocation, changed object identity, partial-body failure, redirect
+rejection and private diagnostic suppression. The observed SDK download route
+is `/storage/v1/object/documents/<encoded>`. Deno uses cached dependencies and
+only the owned loopback provider, with fixed synthetic keys rather than inherited
+cloud credentials. All temporary HTTP servers, Deno children and PostgreSQL
+clusters were closed. Deno type-checking of the actual entrypoint also passed.
+These are local runtime checks, not hosted Storage or browser-release proof.
+
+The full offline suite passed across 637 files: 6,199 tests, 6,106 passed,
+93 skipped, zero failures or cancellations. The preceding checkpoint had
+6,163 tests, 6,071 passed and 92 skipped; the added gated Deno/SDK test was also
+run separately and passed. The Vite build passed with the known large-chunk
+warning. The required AST graph refresh completed after the code and tests
+were frozen (27,661 nodes and 45,008 edges).
+
+The local Deno check does not run through the Supabase function gateway.
+`supabase/config.toml` has no explicit entry for this new function. Before
+deployment, verify the gateway JWT setting, browser OPTIONS preflight and
+Bearer-authenticated request through that gateway; handler-only CORS checks
+do not establish that deployment contract.
+
+The route stays off unless both `SURVEY_GENERATION_DOWNLOAD=checked-stream-v1`
+and the existing `SURVEY_GENERATION_STORAGE_CONTRACT=versioned-standard-v1`
+operator check are set, with all required server keys configured. Physical
+provider/version behavior remains a deployment gate. No flag, live environment,
+Supabase database or Storage object was changed. App open/viewer/provider wiring,
+old-generation draft recovery and two-user offline/browser proof remain required
+before activation. Microsoft services remain deferred.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
