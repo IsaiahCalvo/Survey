@@ -177,10 +177,24 @@ test('source guards: CloudOutline renders the shared model, the painter knocks o
   assert.match(svg, /paint\.runDs\.map\(\(d, index\) => \(\s*<path key=\{index\} d=\{d\} data-run=\{index\} \/>/);
   const painter = read('../src/utils/annotationCanvasPainter.js');
   assert.match(painter, /globalCompositeOperation = 'destination-out'/);
-  assert.match(painter, /const knockedOut = hasStroke && paintKnockedOutCloudFill\(context, object, geometry\)/);
+  // 2026-09-09 — CONTRACT CHANGED, guard rewritten (run-junction opacity
+  // parity): the scratch layer no longer carries only the knocked-out fill,
+  // it carries the WHOLE cloud (fill + every run) at full alpha and is
+  // composited once with the object's opacity, so a run junction composites
+  // inside the group buffer exactly like the SVG <g opacity>. The old guard
+  // named paintKnockedOutCloudFill(context, object, geometry); the knockout
+  // contract it protected (scratch layer, never destination-out on the shared
+  // canvas, one stroke per run) is unchanged and asserted below.
+  assert.match(painter, /const painted = wantsLayer\s*&& paintCloudThroughLayer\(context, object, geometry, \{ hasFill, hasStroke, stroke: strokePaint \}\)/);
   assert.match(painter, /for \(const run of runs\) \{\s*context\.beginPath\(\);\s*traceCommandsInto\(context, run\);\s*context\.stroke\(\);/);
   // The knockout must never destination-out the shared canvas itself.
-  const knockoutFn = painter.slice(painter.indexOf('const paintKnockedOutCloudFill'), painter.indexOf('function drawCloud('));
+  const knockoutFn = painter.slice(painter.indexOf('const paintCloudThroughLayer'), painter.indexOf('function drawCloud('));
+  // Everything the group buffer holds is painted at full alpha; the object's
+  // opacity is applied exactly once, on the drawImage that composites it.
+  assert.match(knockoutFn, /scratch\.globalAlpha = 1;/);
+  assert.match(knockoutFn, /if \(paint\.hasStroke\) strokeCloudRuns\(scratch, geometry, paint\.stroke, geometry\.strokeWidth\);/);
+  assert.match(knockoutFn, /context\.drawImage\(layer\.canvas, 0, 0\);/);
+  assert.doesNotMatch(knockoutFn, /scratch\.globalAlpha = [^1]/);
   assert.doesNotMatch(knockoutFn, /context\.globalCompositeOperation = 'destination-out'/);
   const flatten = read('../src/utils/pdfAnnotationsPdfLib.js');
   assert.match(flatten, /cloudFillKnockoutRings\(geometry\)/);

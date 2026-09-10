@@ -615,9 +615,12 @@ function drawLine(context, object) {
 //    annotations painted underneath.
 //  * the crowns are stroked ONE RUN AT A TIME (the studio's per-run <path>s),
 //    so overlapping run junctions composite per run like the SVG layer.
+//  * the fill AND the runs are painted on that layer at FULL alpha and the
+//    layer is composited once with the object's opacity — the SVG `<g opacity>`
+//    group buffer, so a junction never double-counts the object's opacity.
 // A context without a backing canvas (recording contexts, unsupported
-// environments) falls back to the plain fill, which keeps the geometry path
-// identical; only the knockout is lost.
+// environments) falls back to painting inline, which keeps the geometry path
+// identical; only the knockout and the group compositing are lost.
 const scratchLayerByContext = typeof WeakMap === 'function' ? new WeakMap() : null;
 
 const createScratchCanvas = (width, height, base) => {
@@ -674,9 +677,28 @@ const strokeCloudRuns = (context, geometry, stroke, strokeWidth) => {
   }
 };
 
-// Paint the fill with the stroke band knocked out. Returns false when no
-// scratch layer is available so the caller paints the plain fill instead.
-const paintKnockedOutCloudFill = (context, object, geometry) => {
+// Paint the WHOLE cloud (knocked-out fill + every run) on the scratch layer at
+// full alpha, then composite the layer ONCE with the object's opacity / blend
+// mode — the canvas twin of the SVG `<g opacity>` the screen renders.
+//
+// UX 2026-09-09 (run-junction opacity parity): the runs must composite with
+// each other BEFORE the object's opacity is applied, exactly as they do inside
+// an SVG group buffer. Multiplying the opacity into every run stroke instead
+// (globalAlpha per `stroke()`) makes a junction covered by two runs land at
+// 1-(1-strokeAlpha*objectOpacity)^2 rather than (1-(1-strokeAlpha)^2)*objectOpacity
+// — for rgba(...,.5) at opacity .5 that is .4375 vs .375, ~13/255 of visible
+// double-darkening at every junction that the screen, the studio and Drawboard
+// do not have.
+//
+// The same layer carries the fill knockout (canvas has no mask primitive): the
+// fill is painted, the stroke band is erased from it (destination-out at the
+// ink width) and the crowns are stroked over it — never a destination-out on
+// the shared canvas, which would punch holes in annotations painted underneath.
+//
+// Returns false when no scratch layer is available (recording contexts,
+// canvases without getTransform) so the caller paints inline instead; only the
+// knockout and the group compositing are lost, never the geometry.
+const paintCloudThroughLayer = (context, object, geometry, paint) => {
   const layer = acquireScratchLayer(context);
   if (!layer) return false;
   const scratch = layer.context;
@@ -686,15 +708,21 @@ const paintKnockedOutCloudFill = (context, object, geometry) => {
   scratch.globalCompositeOperation = 'source-over';
   scratch.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
   scratch.setTransform(context.getTransform());
-  scratch.beginPath();
-  traceCommandsInto(scratch, geometry.fill);
-  scratch.fillStyle = object.fill;
-  scratch.fill('nonzero');
-  scratch.globalCompositeOperation = 'destination-out';
-  strokeCloudRuns(scratch, geometry, '#000', geometry.strokeWidth);
+  if (paint.hasFill) {
+    scratch.beginPath();
+    traceCommandsInto(scratch, geometry.fill);
+    scratch.fillStyle = object.fill;
+    scratch.fill('nonzero');
+    if (paint.hasStroke) {
+      scratch.globalCompositeOperation = 'destination-out';
+      strokeCloudRuns(scratch, geometry, '#000', geometry.strokeWidth);
+      scratch.globalCompositeOperation = 'source-over';
+    }
+  }
+  if (paint.hasStroke) strokeCloudRuns(scratch, geometry, paint.stroke, geometry.strokeWidth);
   scratch.restore();
-  // Composite the knocked-out fill with the object's opacity / blend mode,
-  // which applyBlendAndOpacity already put on `context`.
+  // One composite with the object's opacity / blend mode, which
+  // applyBlendAndOpacity already put on `context`.
   context.save();
   context.setTransform(1, 0, 0, 1, 0, 0);
   context.drawImage(layer.canvas, 0, 0);
@@ -710,15 +738,19 @@ function drawCloud(context, object, geometry, strokeFallback = null) {
   applyBlendAndOpacity(context, object);
   context.translate(geometry.origin.x, geometry.origin.y);
   applyRotation(context, geometry.angle, geometry.pivot.x, geometry.pivot.y);
-  if (hasFill) {
-    const knockedOut = hasStroke && paintKnockedOutCloudFill(context, object, geometry);
-    if (!knockedOut) {
+  // The group buffer is what makes the knockout possible AND what keeps run
+  // junctions off the object's opacity; either need is enough to want it.
+  const wantsLayer = (hasFill && hasStroke) || (hasStroke && context.globalAlpha < 1);
+  const painted = wantsLayer
+    && paintCloudThroughLayer(context, object, geometry, { hasFill, hasStroke, stroke: strokePaint });
+  if (!painted) {
+    if (hasFill) {
       context.beginPath();
       traceCommandsInto(context, geometry.fill);
       paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0, fillRule: 'nonzero' });
     }
+    if (hasStroke) strokeCloudRuns(context, geometry, strokePaint, geometry.strokeWidth);
   }
-  if (hasStroke) strokeCloudRuns(context, geometry, strokePaint, geometry.strokeWidth);
   context.restore();
 }
 
