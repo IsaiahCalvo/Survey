@@ -531,14 +531,73 @@ Admission pause checks run before each external erase effect, not just once for
 an outbox entry. A held first effect may finish and retain its acknowledgment;
 the next effect stays pending without reaching its destination after a pause or
 generation retirement. The regression uses two real queued effect descriptions
-and an explicit first-effect barrier. This does not prove a running multi-effect
-drain across account teardown or close: those lifecycle conditions are not part
-of this new per-effect check. Read-only tracing found that `useAnnotationDoc`
-checks cancellation and the exact current scope before each consumer call, and
-sets cancellation before teardown. Its replacement consumer also checks the
-scoped handle. A mounted two-effect account-switch test is still needed to prove
-that composed behavior. Direct custom sync consumers and purge/unmount ordering
-remain separate lifecycle follow-ups.
+and an explicit first-effect barrier. The next lifecycle pass found that direct
+consumers could still start the second effect after close began. The per-effect
+check now also rejects deleted, closing and destroyed handles. It leaves internal
+queued annotation writes and the completed first effect's acknowledgment intact.
+
+Direct lifecycle tests prove normal two-effect execution, close after a held
+effect succeeds or fails, deletion while an effect runs, and deletion after close
+has already started. Close preserves the exact acknowledgment and pending state
+in an IndexedDB-backed outbox. The test removes the retained registry document
+before reopening, so recovery must come from persisted bytes; only unacknowledged
+effects run. A successful first effect is not repeated on that cold recovery.
+Deletion does not recreate the journal or erased maps when a late effect returns.
+These are local tests with synthetic cloud responses, not live deletion proof.
+
+The early local-close receipt remains separate from full teardown. It describes
+the exact captured revision and can reject when that revision changes. Do not
+wait for external effects or cloud completion before starting that receipt, or
+relax its revision check. The lifecycle tests prove final recoverability by
+opening persisted bytes after full teardown, not by assuming that every early
+receipt succeeds.
+
+The mounted lifecycle tests use the real React hook, sync module, Yjs and
+IndexedDB-backed outbox. Disable, unmount and selection of an unavailable next
+document preserve the old effect's acknowledgment without starting its next
+effect. A live same-scope callback replacement still handles the next effect.
+The account test obtains a checked B bundle from the real reader with synthetic
+auth/access responses, waits for B hydration, then returns to a ready A handle.
+B does not execute A's work or write A's state during hydration. A's new handle
+may recover pending work using the same effect keys; after the old held effect
+finishes and its full close resolves, that old drain makes no further calls.
+The final checked cloud fixture still contains the completed acknowledgment.
+This is not a global exactly-once promise: a new same-actor handle can retry an
+effect before an older in-flight attempt settles, so destinations must continue
+to enforce their idempotency keys. No hook implementation change was needed.
+
+These tests also exposed delayed snapshot work after teardown. A completed
+effect could schedule a new debounce timer after close had cleared its timers.
+Both scheduling and the callback now reject closing or destroyed handles, while
+normal close keeps its explicit final checkpoint. Closing an already-deleted
+handle also skips that checkpoint. The direct test checks both zero backend
+snapshot calls and zero snapshot retry warnings after purge; counting calls
+alone would miss attempts rejected before network dispatch. A captured canceled
+timer is also invoked to prove it cannot start a post-close snapshot.
+
+The final 1280-by-720 in-app browser pass used the complete viewer and the local
+model-2 fixture with conditional checkpoint reads. Offline full-stroke erase
+left one marker and one queued edit with the fixture server unchanged; Undo
+restored two markers and left two queued edits. Reconnect and Flush cleared the
+queue. Checked Reopen retained two markers, left x=72, local revision 0 and WAL
+head 4. Both colored markers and the panel count were visually checked. No
+framework overlay or console error appeared; warnings came from missing live
+Supabase configuration and deliberately offline append/snapshot attempts.
+Fixture cleanup reported `cleaned`, then the tab closed. This checks the normal
+viewer path, not a rendered held-effect race, a live account switch, Microsoft
+sync, mobile behavior, deployment, latency or billing savings.
+
+Final verification for this erase-lifecycle checkpoint on 2026-09-10:
+`npm test` passed across 714 files with 7,129 tests (7,033 passed, 96 skipped,
+zero failed or cancelled), compared with the prior checkpoint's 7,119 tests
+(7,023 passed, the same 96 skipped). The focused lifecycle, close, aggregate,
+durability and checked-generation set passed 97/97. The disposable PostgreSQL
+aggregate write-fence harness passed all nine checks, including the actual
+sync-to-handler path and lost-reply recovery. The final Vite build passed with
+its existing large-chunk warning. The AST-only code graph refresh completed
+with 29,170 nodes and 48,235 edges; generated graph files remain unstaged.
+This checkpoint changes no hook source, SQL,
+live data, role grants, app rollout flags or Microsoft integration.
 
 The composed disposable-PostgreSQL proof now starts with the actual sync handle.
 It explicitly observes head 0, commits a peer update at sequence 1, then commits

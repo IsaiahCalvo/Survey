@@ -138,6 +138,12 @@ function deletedDocumentError(documentId) {
   return error;
 }
 
+function closedHandleError(documentId) {
+  const error = new Error(`annotation handle for ${documentId} is closed`);
+  error.code = 'ANNOTATION_HANDLE_CLOSED';
+  return error;
+}
+
 function assertStateWritable(state) {
   if (state.deleted) throw deletedDocumentError(state.documentId);
   if (state.generationBlocked) throw state.generationError;
@@ -194,22 +200,14 @@ function enterGenerationCapacityState(state, cause = null) {
 // their bytes must never enter a reused registry doc or replace its prefix.
 function assertConditionalReadLive(state) {
   assertStateWritable(state);
-  if (state.closePromise || state.destroyed) {
-    const error = new Error(`annotation handle for ${state.documentId} is closed`);
-    error.code = 'ANNOTATION_HANDLE_CLOSED';
-    throw error;
-  }
+  if (state.closePromise || state.destroyed) throw closedHandleError(state.documentId);
 }
 
 // Public callers must not mutate through a retired handle. Internal queued
 // appends use assertStateWritable so pre-close work can still finish safely.
 function assertHandleWritable(state) {
   assertStateWritable(state);
-  if (state.closePromise || state.destroyed) {
-    const error = new Error(`annotation handle for ${state.documentId} is closed`);
-    error.code = 'ANNOTATION_HANDLE_CLOSED';
-    throw error;
-  }
+  if (state.closePromise || state.destroyed) throw closedHandleError(state.documentId);
   if (state.capacityError) throw state.capacityError;
   if (state.generationTransport) annotationSequenceToSafeInteger(nextAnnotationSequence(state.clientSeq));
 }
@@ -3792,14 +3790,15 @@ async function finalizeSnapshotResult(state, result) {
 
 // Debounce a full-state checkpoint after edits settle. Cheap to call on every op.
 function scheduleSnapshot(state) {
-  if (state.destroyed || state.generationBlocked || state.capacityError
+  if (state.closePromise || state.eraseOutboxClosing || state.destroyed
+    || state.generationBlocked || state.capacityError
     || state.aggregateGenerationTransport) return;
   if (state.snapshotTimer) clearTimeout(state.snapshotTimer);
   state.snapshotTimer = setTimeout(() => {
     state.snapshotTimer = null;
     // Never checkpoint optimistic bytes before their WAL authorization result.
     // A pending 42501 must roll them back instead of racing a snapshot upload.
-    if (state.capacityError) return;
+    if (state.closePromise || state.eraseOutboxClosing || state.destroyed || state.capacityError) return;
     if (state.pendingAppends > 0) {
       scheduleSnapshot(state);
       return;
@@ -4475,8 +4474,14 @@ function queueEraseOutboxDrain(state, options = {}) {
       doc: state.doc,
       executeEffect: (effect, context) => {
         // Validation happens once per outbox entry. Recheck immediately before
-        // each external effect so a pause or retirement that lands while an
-        // earlier effect is in flight cannot start the next destination.
+        // each external effect so close, deletion, a pause, or retirement that
+        // lands while an earlier effect is in flight cannot start the next
+        // destination. The shared drain records a completed effect's receipt
+        // before it reaches this guard for the following effect.
+        if (state.deleted) throw deletedDocumentError(state.documentId);
+        if (state.closePromise || state.eraseOutboxClosing || state.destroyed) {
+          throw closedHandleError(state.documentId);
+        }
         if (state.generationBlocked) throw state.generationError;
         if (eraseOutboxPausedForAdmission(state)) throw state.capacityError;
         return state.eraseEffectConsumer(effect, context);
@@ -5200,7 +5205,8 @@ function makeHandle(state) {
       // must not upload another full snapshot just because the viewer closed.
       await state.snapshotChain.catch(() => {});
       if (state.generationBlocked) return closeRetiredGeneration(state);
-      if (!state.capacityError && !state.aggregateGenerationTransport && state.supabase && (
+      if (!state.deleted && !state.destroyed && !state.capacityError
+        && !state.aggregateGenerationTransport && state.supabase && (
         state.durabilityGap || state.acceptedEditEpoch > state.snapshottedEpoch
       )) {
         try {
