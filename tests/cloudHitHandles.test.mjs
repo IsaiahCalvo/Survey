@@ -13,6 +13,14 @@
 // nearest cusp" assertions were replaced on purpose - measured against
 // Drawboard, cusp-snapped handles sat 18 units inside the frame corners and
 // doubled up whenever fewer than eight crowns existed.
+//
+// Contract change 2026-09-10 (round 4, defect 8): the eight ANCHORS this file
+// pins are still the frame's corners and edge midpoints, unchanged. What
+// changed is what the overlay DRAWS on them when the frame is too thin for the
+// 28-unit edge pills: corner-sized dots, stepped outward along the frame
+// normal so they cannot overlap their neighbours, instead of no grabber at
+// all. The anchor is the resize reference; the outset is presentation only.
+// Those rules live in tests/cloudChromeDrawboardParity.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -30,6 +38,7 @@ import {
   sampleCloudCommands,
 } from '../src/utils/cloudAnnotationGeometry.js';
 import { doesRectIntersectObject, isPointOnCloud, isPointOnObject } from '../src/utils/geometryHitTest.js';
+import { buildCloudGlowPaint } from '../src/utils/cloudSvgPaint.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => readFileSync(path.join(here, '..', rel), 'utf8');
@@ -206,6 +215,16 @@ test('hover glow: 2.85x the stroke width at 0.666 opacity (Drawboard PDF proport
   assert.ok(Math.abs(cloudHoverGlowWidth(2) - 5.7) < 1e-9, 'Drawboard: stroke 2 -> glow 5.699');
   assert.ok(Math.abs(cloudHoverGlowWidth(2.5) - 7.125) < 1e-9);
   assert.equal(cloudHoverGlowWidth(undefined), 0);
+  // The painted glow reads the same ratio, and carries the ink-band knockout
+  // that keeps a translucent stroke its own colour (round 4, defect 10).
+  for (const [name, obj] of Object.entries(shapes)) {
+    const glow = buildCloudGlowPaint(resolveCloudAnnotationGeometry(obj));
+    assert.ok(glow, `${name}: glow paint resolves`);
+    assert.ok(Math.abs(glow.glowWidth - cloudHoverGlowWidth(obj.strokeWidth)) < 1e-9, `${name}: glow width`);
+    assert.equal(glow.inkWidth, obj.strokeWidth, `${name}: knockout is the ink band`);
+    assert.ok(glow.mask, `${name}: knockout mask emitted`);
+    assert.ok(glow.mask.width > 0 && glow.mask.height > 0, `${name}: mask region is real`);
+  }
 });
 
 test('polygon / polyline cloud vertices are the visual corner lobes the engine reports (studio moveVertex contract)', () => {
@@ -298,9 +317,19 @@ test('SVG layer: cloud hover halo + hit target are the crowns; glow stays on whi
   // local `sw` inside the hit group. Paint order itself is pinned in
   // tests/cloudChromeDrawboardParity.test.mjs.
   assert.match(layer, /const cloudGlowVisible = !!cloudRenderGeometry && \(annotationIsHovered \|\| annotationIsSelected\);/);
-  assert.match(layer, /\{cloudGlowVisible && \(/);
+  // CONTRACT CHANGE 2026-09-10 (round 4, defect 10): the glow's geometry moved
+  // out of inline JSX and into the shared paint model (cloudSvgPaint's
+  // buildCloudGlowPaint) so the RING — the ink band knocked out of the glow —
+  // is described in one place and node-testable. The two assertions this
+  // replaces pinned the same 2.85x width and the same hover-OR-selected gate,
+  // they just read them off local expressions that no longer exist. The ring
+  // itself is asserted in tests/cloudChromeDrawboardParity.test.mjs.
+  assert.match(layer, /\{cloudGlowPaint && \(/);
   assert.match(layer, /strokeOpacity=\{CLOUD_HOVER_GLOW_OPACITY\}/);
-  assert.match(layer, /strokeWidth=\{cloudHoverGlowWidth\(cloudRenderGeometry\.strokeWidth \|\| 1\)\}/);
+  assert.match(layer, /strokeWidth=\{cloudGlowPaint\.glowWidth\}/,
+    'the visible glow is still the 2.85x band cloudHoverGlowWidth computes');
+  assert.match(layer, /strokeWidth=\{cloudGlowPaint\.inkWidth\}/,
+    'and the knockout is the ink band, so a translucent stroke keeps its colour');
   assert.match(layer, /cloudSelectionChrome\(selectionChromeObj\)/);
   assert.match(layer, /handleAnchors=\{cloudChrome \? cloudChrome\.anchors : null\}/);
   assert.match(layer, /frameRect=\{cloudChrome \? cloudChrome\.frame : null\}/);

@@ -38,16 +38,19 @@ import {
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
 import { CLOUD_HIT_STROKE_WIDTH, resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
+// UX 2026-09-10 (round 4, defect 4): the glow is a RING around the ink — the
+// ink band is knocked out of it — so a translucent stroke keeps its own colour.
+import { buildCloudGlowPaint, cloudGlowMaskIdFor } from '../utils/cloudSvgPaint.js';
 import {
   CLOUD_HOVER_GLOW_OPACITY,
   cloudCommandsToPathData,
-  cloudHoverGlowWidth,
   cloudSelectionChrome,
   resolveCloudAnnotationGeometry,
 } from '../utils/cloudAnnotationGeometry.js';
 // UX 2026-09-09: Enter/Escape finish/cancel a click-to-place draft wherever
-// focus sits; only a real typing surface keeps those keys for itself.
-import { isTextEntryTarget } from '../utils/draftKeyboardTarget.js';
+// focus sits; only a real typing surface keeps those keys for itself — and
+// (2026-09-10) not even that when it is a numeric chrome field that opted out.
+import { draftOwnsKeyboard, releaseFocusForDraftTool } from '../utils/draftKeyboardTarget.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
@@ -1671,17 +1674,28 @@ const SVGAnnotationLayer = memo(({
   // the draft (preventDefault also stops the button's own activation click).
   // Only a real typing surface keeps the key. The toolbar additionally blurs
   // itself when it arms one of these tools (releaseFocusForDraftTool).
+  //
+  // UX 2026-09-10 (round 4, defect 3): the sub-toolbar's NUMERIC fields ("Cloud
+  // bump size", "Width") ARE text-entry surfaces by the test above, so focusing
+  // one mid-draft made Enter and Escape do nothing at all — the draft could not
+  // be finished or cancelled without clicking away first. Those fields now opt
+  // out (data-draft-yields-keys), and because this handler stops propagation
+  // the field's own Enter-to-blur never runs, so we blur it here: every one of
+  // them commits its value on blur, which is what "Enter commits the field AND
+  // finishes the draft" means. Escape blurs first as well, then cancels.
   useEffect(() => {
     if (!polyDraftActive) return undefined;
     const onKeyDown = (e) => {
-      if (isTextEntryTarget(e.target)) return;
+      if (!draftOwnsKeyboard(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
+        releaseFocusForDraftTool(e.target);
         commitPolyDraft('finish');
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        releaseFocusForDraftTool(e.target);
         cancelPolyDraft();
       }
     };
@@ -4318,6 +4332,19 @@ const SVGAnnotationLayer = memo(({
       ? resolveCloudAnnotationGeometry(renderObj)
       : null;
     const cloudGlowVisible = !!cloudRenderGeometry && (annotationIsHovered || annotationIsSelected);
+    // UX 2026-09-10 (round 4, defect 4): painting the glow UNDER the ink is
+    // only safe while the ink is opaque. At the app's translucent cloud stroke
+    // (rgba alpha 0.5) the 0.666-opacity blue showed straight THROUGH the
+    // crowns and a red cloud read purple the moment it was selected —
+    // reproduced live in Drawboard PDF too, which uses a plain unmasked
+    // underlay. The glow now carries the same knockout the fill does: the ink
+    // band (the outline stroked at the ink width) is masked OUT of it, so the
+    // blue is a ring on either side of the stroke and never sits beneath it.
+    const cloudGlowPaint = cloudGlowVisible
+      ? buildCloudGlowPaint(cloudRenderGeometry, {
+        maskId: cloudGlowMaskIdFor(`p${pageNumber}-${obj?.id || renderIdentity.annotationId || i}`),
+      })
+      : null;
 
     return (
       <g
@@ -4352,16 +4379,44 @@ const SVGAnnotationLayer = memo(({
             cloud keeps its own colour and the blue only shows as a rim
             (Drawboard PDF). In page units, so it hugs the crowns at every
             zoom instead of a fixed pixel band. Stays on while selected. */}
-        {cloudGlowVisible && (
-          <g transform={cloudRenderGeometry.transform} style={{ pointerEvents: 'none' }}>
+        {cloudGlowPaint && (
+          <g transform={cloudGlowPaint.transform} style={{ pointerEvents: 'none' }}>
+            {cloudGlowPaint.mask && (
+              <mask
+                id={cloudGlowPaint.mask.id}
+                maskUnits="userSpaceOnUse"
+                x={cloudGlowPaint.mask.x}
+                y={cloudGlowPaint.mask.y}
+                width={cloudGlowPaint.mask.width}
+                height={cloudGlowPaint.mask.height}
+              >
+                <rect
+                  x={cloudGlowPaint.mask.x}
+                  y={cloudGlowPaint.mask.y}
+                  width={cloudGlowPaint.mask.width}
+                  height={cloudGlowPaint.mask.height}
+                  fill="#fff"
+                />
+                <path
+                  d={cloudGlowPaint.d}
+                  fill="none"
+                  stroke="#000"
+                  strokeWidth={cloudGlowPaint.inkWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  data-cloud-glow-knockout="true"
+                />
+              </mask>
+            )}
             <path
-              d={cloudCommandsToPathData(cloudRenderGeometry.outline)}
+              d={cloudGlowPaint.d}
               fill="none"
               stroke="#4a90e2"
               strokeOpacity={CLOUD_HOVER_GLOW_OPACITY}
-              strokeWidth={cloudHoverGlowWidth(cloudRenderGeometry.strokeWidth || 1)}
+              strokeWidth={cloudGlowPaint.glowWidth}
               strokeLinecap="round"
               strokeLinejoin="round"
+              mask={cloudGlowPaint.mask ? `url(#${cloudGlowPaint.mask.id})` : undefined}
               data-cloud-glow="true"
               style={{ pointerEvents: 'none' }}
             />
@@ -6419,6 +6474,13 @@ const SVGAnnotationLayer = memo(({
               bbox={bbox}
               handleAnchors={cloudChrome ? cloudChrome.anchors : null}
               frameRect={cloudChrome ? cloudChrome.frame : null}
+              // UX 2026-09-10 (round 4, defect 2): a cloud in bbox mode always
+              // shows all eight grabbers. On a frame too short for the edge
+              // pills (a 2-point polyline cloud is 157 x 20 page units) the
+              // four edge grabbers become corner-sized dots instead of being
+              // culled — without them the cloud's short axis could not be
+              // resized at all.
+              alwaysShowResizeHandles={!!cloudChrome}
               inverseScale={inverseScale}
               onHandleDrag={isLockedStampProxy
                 ? undefined

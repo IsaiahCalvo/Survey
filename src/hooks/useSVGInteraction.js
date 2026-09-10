@@ -3755,10 +3755,18 @@ export function useSVGInteraction({
       }
 
       // UX 2026-09-09 (export round-trip): a resize commit used to store raw
-      // float results (scaleX 1.3846070545520617). Round it exactly like a
-      // creation commit so a metadata-stripped PDF round trip rebuilds the
-      // same shape — and, for a revision cloud, the same crowns. Invisible at
-      // 1/100 pt; see annotationCommitRounding.
+      // float results (scaleX 1.3846070545520617). Positions, lengths and
+      // angles round exactly like a creation commit so a metadata-stripped PDF
+      // round trip rebuilds the same shape — and, for a revision cloud, the
+      // same crowns. Invisible at 1/100 pt.
+      //
+      // UX 2026-09-10 (round 4): SCALE is deliberately NOT on that 2-decimal
+      // grid. One 0.01 step of scaleX is rawWidth/100 PAGE UNITS, so rounding
+      // it there moved the committed box up to rawSize * 0.005 away from the
+      // preview the user just watched track their cursor — the shape visibly
+      // nudged on release. Scales round on the 1e-6 grid instead; the round
+      // trip was never relying on them (proved on 648 raw-scale cloud
+      // exports). See annotationCommitRounding.
       roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',

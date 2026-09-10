@@ -61,6 +61,16 @@ const SVGSelectionOverlay = memo(({
   // id is what drives the drag, the anchor is only where the grabber is drawn.
   handleAnchors = null,   // { tl, mt, tr, mr, br, mb, bl, ml } -> { x, y } | null
   frameRect = null,       // { left, top, width, height } | null
+  // UX 2026-09-10 (round 4, defect 2): a revision cloud in bbox mode always
+  // exposes all EIGHT grabbers. A 2-point polyline cloud's frame is 157 x 20
+  // page units and the edge PILLS need 47 units on the short axis, so the
+  // adaptive tier culled them and the cloud's vertical axis could not be
+  // resized at all. With this flag the four edge grabbers fall back to dots the
+  // size of the corner dots (see getAdaptiveSelectionHandleSpec) instead of
+  // disappearing; they drive exactly the same resize math, and on a frame too
+  // thin to hold a dot between its corner dots they are pushed straight out
+  // along the frame normal so no two grabbers can ever overlap.
+  alwaysShowResizeHandles = false,
 }) => {
   if (!bbox) return null;
 
@@ -89,8 +99,12 @@ const SVGSelectionOverlay = memo(({
     bboxHeight: frame.height,
     inverseScale,
     padding,
+    alwaysAllHandles: alwaysShowResizeHandles,
   });
   const visibleResizeHandles = new Set(handleSpec.resizeHandles);
+  // 'dot' = this frame cannot hold the 28-unit edge pills, so the edge
+  // grabbers render as corner-sized circles pushed clear of their neighbours.
+  const edgeHandlesAreDots = handleSpec.edgeHandleShape === 'dot';
   const baseHandles = { ...getHandlePositions(bbox, padding), ...(handleAnchors || {}) };
   const handles = {
     ...baseHandles,
@@ -123,6 +137,57 @@ const SVGSelectionOverlay = memo(({
 
   // Corner handle IDs
   const cornerHandles = ['tl', 'tr', 'bl', 'br'];
+
+  // Where an edge grabber is DRAWN. Identical to the frame midpoint unless it
+  // is a dot on a frame too thin to hold it, in which case it steps outward
+  // along that edge's own normal by the spec's computed clearance.
+  const edgeHandlePos = (id) => {
+    const pos = handles[id];
+    if (!edgeHandlesAreDots) return pos;
+    const out = handleSpec.edgeDotOutset || { x: 0, y: 0 };
+    if (id === 'mt') return { x: pos.x, y: pos.y - out.y };
+    if (id === 'mb') return { x: pos.x, y: pos.y + out.y };
+    if (id === 'ml') return { x: pos.x - out.x, y: pos.y };
+    if (id === 'mr') return { x: pos.x + out.x, y: pos.y };
+    return pos;
+  };
+  const rotationArmAnchor = edgeHandlePos('mt');
+
+  // One ELEMENT TYPE for an edge grabber, whatever shape it is wearing. A dot
+  // is a <rect> with rx = half its side, which renders as a circle — so when a
+  // drag grows the frame past the pill threshold mid-gesture, React updates
+  // attributes instead of unmounting the node. That matters because the hook
+  // calls setPointerCapture on the grabber at pointerdown: swapping <circle>
+  // for <rect> would detach the captured element and the drag would die on the
+  // spot (measured live 2026-09-10 on a 2-point polyline cloud's 'mb' dot).
+  const edgeHandleGeometry = (pos, axis, asPill = false) => {
+    const isDot = edgeHandlesAreDots && !asPill;
+    if (isDot) {
+      const side = handleMetrics.cornerR * 2;
+      return {
+        isDot: true,
+        x: pos.x - handleMetrics.cornerR,
+        y: pos.y - handleMetrics.cornerR,
+        width: side,
+        height: side,
+        rx: handleMetrics.cornerR,
+        strokeWidth: handleMetrics.cornerStrokeWidth,
+        shadow: cornerShadow,
+      };
+    }
+    const w = axis === 'h' ? hPillW : vPillW;
+    const h = axis === 'h' ? hPillH : vPillH;
+    return {
+      isDot: false,
+      x: pos.x - w / 2,
+      y: pos.y - h / 2,
+      width: w,
+      height: h,
+      rx: pillRx,
+      strokeWidth: 1 * is,
+      shadow: pillShadow,
+    };
+  };
 
   // Pill dimensions
   const hPillW = handleMetrics.hPillW;
@@ -197,21 +262,23 @@ const SVGSelectionOverlay = memo(({
 
           {/* Horizontal pills (mt, mb) */}
           {!horizontalResizeOnly && !hideResizeHandles && ['mt', 'mb'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
-            const pos = handles[id];
+            const pos = edgeHandlePos(id);
+            const geom = edgeHandleGeometry(pos, 'h');
             return (
               <rect
                 key={`pill-${id}`}
                 data-resize-handle={id}
-                x={pos.x - hPillW / 2}
-                y={pos.y - hPillH / 2}
-                width={hPillW}
-                height={hPillH}
-                rx={pillRx}
+                data-edge-handle-shape={edgeHandlesAreDots ? 'dot' : undefined}
+                x={geom.x}
+                y={geom.y}
+                width={geom.width}
+                height={geom.height}
+                rx={geom.rx}
                 fill={HANDLE_FILL}
                 stroke={HANDLE_RING}
-                strokeWidth={1 * is}
+                strokeWidth={geom.strokeWidth}
                 style={{
-                  filter: pillShadow,
+                  filter: geom.shadow,
                   cursor: getCursorForHandle(id, angle || 0),
                   pointerEvents: 'auto',
                 }}
@@ -227,7 +294,8 @@ const SVGSelectionOverlay = memo(({
           {!hideResizeHandles && ['ml', 'mr'].filter((id) => horizontalResizeOnly || visibleResizeHandles.has(id)).map((id) => {
             const pos = horizontalResizeOnly && horizontalHandlePositions?.[id]
               ? horizontalHandlePositions[id]
-              : handles[id];
+              : edgeHandlePos(id);
+            const geom = edgeHandleGeometry(pos, 'v', horizontalResizeOnly);
             return (
               <g key={`pill-${id}`}>
                 {horizontalResizeOnly && (
@@ -255,17 +323,18 @@ const SVGSelectionOverlay = memo(({
                 )}
                 <rect
                   data-resize-handle={id}
+                  data-edge-handle-shape={geom.isDot ? 'dot' : undefined}
                   data-text-range-handle-visual={horizontalResizeOnly ? id : undefined}
-                  x={pos.x - vPillW / 2}
-                  y={pos.y - vPillH / 2}
-                  width={vPillW}
-                  height={vPillH}
-                  rx={pillRx}
+                  x={geom.x}
+                  y={geom.y}
+                  width={geom.width}
+                  height={geom.height}
+                  rx={geom.rx}
                   fill={HANDLE_FILL}
                   stroke={HANDLE_RING}
-                  strokeWidth={1 * is}
+                  strokeWidth={geom.strokeWidth}
                   style={{
-                    filter: pillShadow,
+                    filter: geom.shadow,
                     cursor: getCursorForHandle(id, angle || 0),
                     pointerEvents: horizontalResizeOnly ? 'none' : 'auto',
                   }}
@@ -283,8 +352,8 @@ const SVGSelectionOverlay = memo(({
           <g className="rotation-handle" data-rotation-handle="mtr">
             {/* Connector line from top-center of bbox to rotation handle */}
             <line
-              x1={handles.mt.x}
-              y1={handles.mt.y}
+              x1={rotationArmAnchor.x}
+              y1={rotationArmAnchor.y}
               x2={handles.mtr.x}
               y2={handles.mtr.y}
               stroke="#d1d1d1"

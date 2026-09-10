@@ -11,8 +11,8 @@
 // to 1.58pt of crown movement).
 //
 // The fix has TWO layers and this file asserts both:
-//   1. transform commits round to 2 decimals, so the stored geometry (and the
-//      decimals the exporter writes) stay stable;
+//   1. transform commits round LENGTHS / POSITIONS / ANGLES to 2 decimals, so
+//      the stored geometry (and the decimals the exporter writes) stay stable;
 //   2. the crown engine snaps every DERIVED size onto the same 1e-6 grid the
 //      importer uses, because a live resized shape reaches it as a product
 //      (238 * 0.9 = 214.20000000000002) while a re-import reaches it as one
@@ -26,6 +26,7 @@ import { PDFDocument, PDFName, PDFArray } from 'pdf-lib';
 
 import {
   round2,
+  roundScale,
   roundCommittedAnnotationGeometry,
   roundCommittedAnnotationsGeometry,
 } from '../src/utils/annotationCommitRounding.js';
@@ -43,7 +44,7 @@ const STROKE = '#c42747';
 // The rounding helper itself
 // ---------------------------------------------------------------------------
 
-test('every geometry field a transform commit writes is rounded to 2 decimals', () => {
+test('every LENGTH / POSITION / ANGLE a transform commit writes is rounded to 2 decimals', () => {
   const obj = roundCommittedAnnotationGeometry({
     type: 'rect',
     left: 12.3456789, top: 45.6789012, width: 100.987654321, height: 60.123456789,
@@ -59,8 +60,10 @@ test('every geometry field a transform commit writes is rounded to 2 decimals', 
   assert.equal(obj.top, 45.68);
   assert.equal(obj.width, 100.99);
   assert.equal(obj.height, 60.12);
-  assert.equal(obj.scaleX, 1.38);
-  assert.equal(obj.scaleY, 0.87);
+  // Scales are MULTIPLIERS: 0.01 of scale is rawWidth/100 page units, so they
+  // keep the 1e-6 grid (float tail clipped, geometry unmoved). See the header.
+  assert.equal(obj.scaleX, 1.384607);
+  assert.equal(obj.scaleY, 0.871235);
   assert.equal(obj.angle, 27.12);
   assert.equal(obj.rx, 3.14);
   assert.equal(obj.ry, 2.72);
@@ -68,6 +71,27 @@ test('every geometry field a transform commit writes is rounded to 2 decimals', 
   assert.deepEqual(obj.points, [{ x: 0.12, y: 9.88 }, { x: 5.56, y: 1.11 }]);
   assert.deepEqual(obj.pathOffset, { x: 0.99, y: 1.23 });
   assert.deepEqual(obj.data.midpoint, { x: 10.11, y: 21 });
+});
+
+test('a scale ULP is a LENGTH: the 2-decimal grid moved the box, the 1e-6 grid does not', () => {
+  // The live symptom: a rect cloud resized with the mr grabber. rawWidth is
+  // 238 page units, so one 0.01 step of scaleX is 2.38 units wide and the
+  // committed box could land up to 1.19 units off the preview.
+  const rawWidth = 238;
+  for (const target of [261.5, 190.37, 333.33, 238.07]) {
+    const previewScale = target / rawWidth;
+    const oldBox = rawWidth * round2(previewScale);
+    const newBox = rawWidth * roundScale(previewScale);
+    assert.ok(Math.abs(newBox - target) <= 0.01,
+      `1e-6 grid: committed ${newBox} vs preview ${target}`);
+    assert.ok(Math.abs(oldBox - target) > 0.01,
+      `fixture must exhibit the old jump (got ${(oldBox - target).toFixed(4)})`);
+  }
+  // ...and the whole-object path agrees.
+  const committed = roundCommittedAnnotationGeometry({
+    type: 'rect', width: rawWidth, height: 176, scaleX: 261.5 / rawWidth, scaleY: 1,
+  });
+  assert.ok(Math.abs(committed.width * committed.scaleX - 261.5) <= 0.01);
 });
 
 test('rounding never moves a shape by more than half a hundredth of a point', () => {

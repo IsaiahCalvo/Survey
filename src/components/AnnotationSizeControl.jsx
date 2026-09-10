@@ -110,6 +110,13 @@ export default function AnnotationSizeControl({
   const allowsDecimals = decimals > 0;
   const inputProps = {
     type: 'text',
+    // UX 2026-09-10 (round 4, defect 3): this is a numeric CHROME field, not a
+    // text-editing surface. While a click-to-place draft (polygon / polyline)
+    // is in flight it yields Enter and Escape to that draft — Enter commits
+    // this value (the draft handler blurs, and blur commits) and finishes the
+    // shape, Escape cancels it. Without the opt-out, nudging Width mid-draft
+    // left the draft impossible to finish or cancel from the keyboard.
+    'data-draft-yields-keys': 'true',
     inputMode: allowsDecimals ? 'decimal' : 'numeric',
     pattern: allowsDecimals ? '[0-9.]*' : '[0-9]*',
     title: label,

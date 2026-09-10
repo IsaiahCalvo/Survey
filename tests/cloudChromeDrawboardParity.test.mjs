@@ -30,6 +30,43 @@
 //     full stroke width: 1.5 stroke widths from the centreline hull.
 // (6) ENTER TO FINISH. Enter/Escape finish/cancel a click-to-place draft
 //     wherever focus sits; only a real typing surface keeps those keys.
+//
+// ROUND 4, 2026-09-10 - four more defects measured live on
+// claude/cloud-round3-integration, and the contract changes they force:
+// (7) RELEASE JUMP. The live resize preview was exact but the pointerup commit
+//     rounded scaleX/scaleY to 2 decimals (round 3's
+//     annotationCommitRounding). A scale ULP is rawWidth/100 PAGE UNITS, so
+//     the committed box missed by up to rawSize*0.005 and the shape visibly
+//     nudged on release (~1.35 CSS px at 195%). Scales now round on the 1e-6
+//     grid; lengths, positions and angles keep the 0.01 grid. CONTRACT: the
+//     committed box equals the preview to within 0.01 page units.
+// (8) TINY POLYLINE GRABBERS. A 2-point polyline cloud's frame is 157 x 20
+//     page units and the edge PILLS need cornerR*2 + pillH + gaps = 47 units,
+//     so the adaptive tier culled all four and the cloud's short axis could
+//     not be resized at all. CONTRACT CHANGE: a cloud in bbox mode ALWAYS
+//     exposes all eight grabbers - when the pills do not fit, the edge
+//     grabbers render as DOTS the size of the corner dots on the frame's edge
+//     midpoints, driving the same resize math, pushed outward along the frame
+//     normal if a dot would otherwise overlap its neighbours. This REPLACES
+//     round 3's "the FRAME decides, not always eight" note below, which
+//     accepted four corners on a thin frame; the owner ruled that a grabber
+//     the user cannot reach is not an acceptable answer.
+// (9) DRAFT KEYS IN A NUMERIC FIELD. With a polygon/polyline draft in flight,
+//     focusing "Cloud bump size" or "Width" made Enter and Escape do nothing:
+//     both are <input type="text" inputmode="numeric">, which the typing test
+//     (correctly) calls a text-entry surface. CONTRACT: a numeric CHROME field
+//     yields both keys to a draft in flight - Enter commits its value (the
+//     handler blurs it, and these fields commit on blur) and finishes the
+//     draft, Escape blurs then cancels. Genuine text-editing surfaces keep
+//     their own keys.
+// (10) GLOW OVER TRANSLUCENT INK. The glow was a plain underlay, so an opaque
+//     stroke kept its colour but a translucent one (the app's rgba .5 cloud
+//     stroke) turned purple when selected. Verified in Drawboard PDF on
+//     2026-09-10: its glow is a plain unmasked underlay too and the same cloud
+//     at 50% stroke opacity reads purple there, so this is deliberately BETTER
+//     than Drawboard rather than parity with it. CONTRACT: the ink band (the
+//     outline stroked at the ink width) is knocked OUT of the glow, so the
+//     glow is a ring on either side of the stroke and never sits under it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -38,7 +75,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CLOUD_FRAME_PAD_STROKE_RATIO,
+  cloudOutlineBounds,
   cloudSelectionChrome,
+  resolveCloudAnnotationGeometry,
 } from '../src/utils/cloudAnnotationGeometry.js';
 import {
   ALL_RESIZE_HANDLES,
@@ -49,13 +88,24 @@ import {
   rotationGrabOffsetDeg,
   worldResizeAnchor,
 } from '../src/utils/offsetPreservingResize.js';
-import { isTextEntryTarget } from '../src/utils/draftKeyboardTarget.js';
+import {
+  DRAFT_KEY_YIELD_ATTR,
+  draftOwnsKeyboard,
+  isTextEntryTarget,
+  yieldsDraftKeys,
+} from '../src/utils/draftKeyboardTarget.js';
+import { round2, roundScale } from '../src/utils/annotationCommitRounding.js';
+import { buildCloudGlowPaint } from '../src/utils/cloudSvgPaint.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => readFileSync(path.join(here, '..', rel), 'utf8');
 
 const CLOUD = { strokeWidth: 2.5, stroke: '#c42747', fill: 'transparent', data: { pdfCloudIntensity: 2 } };
 const HANDLE_IDS = ['tl', 'mt', 'tr', 'mr', 'br', 'mb', 'bl', 'ml'];
+
+const resolveCloudGeometryFixture = () => resolveCloudAnnotationGeometry({
+  type: 'rect', left: 100, top: 100, width: 300, height: 200, ...CLOUD,
+});
 
 // ---------------------------------------------------------------------------
 // (3) GRABBER SET — the fit question belongs to the frame the grabbers sit on
@@ -113,13 +163,14 @@ test('cloud chrome: SVGSelectionOverlay sizes its handle tier from the cloud fra
 });
 
 test('cloud chrome: a 2-point polyline cloud is sized by its frame, never by the zero-height inner box', () => {
-  const tierFor = (frame) => getAdaptiveSelectionHandleSpec({
+  const specFor = (frame) => getAdaptiveSelectionHandleSpec({
     bboxWidth: frame.width, bboxHeight: frame.height, inverseScale: 1, padding: 0,
-  }).resizeHandles;
+    alwaysAllHandles: true,
+  });
 
   // Dead flat: the inner box has height 0, which collapsed the whole set to a
   // single 'br' grabber — the live symptom. Its crown frame is a real 20-unit
-  // band, which carries the four corners.
+  // band.
   const flat = cloudSelectionChrome({
     type: 'polyline', left: 100, top: 100, pathOffset: { x: 0, y: 0 },
     points: [{ x: 0, y: 0 }, { x: 150, y: 0 }], ...CLOUD,
@@ -130,18 +181,173 @@ test('cloud chrome: a 2-point polyline cloud is sized by its frame, never by the
     'the inner box is what used to produce the lone br',
   );
   assert.ok(flat.frame.height > 20, `flat polyline frame height ${flat.frame.height}`);
-  assert.deepEqual(tierFor(flat.frame), ['tl', 'tr', 'bl', 'br']);
-  // NOTE the honest limit: the app's adaptive tier drops the four edge pills
-  // when the box cannot hold a 28-unit pill between two corner circles, and a
-  // 20-unit-tall crown band genuinely cannot. Four corners (up from one) is
-  // the frame's real answer; forcing eight would stack pills on corners. The
-  // contract is "the FRAME decides", not "always eight".
+
+  // CONTRACT CHANGE 2026-09-10 (defect 8). Round 3 accepted four corners here
+  // and documented it as "the FRAME decides, not always eight" — but a 157x20
+  // frame with corners only cannot be resized on its short axis at all, which
+  // is the defect the owner measured. All eight now, with the edge grabbers
+  // demoted from 28-unit pills to corner-sized dots.
+  const spec = specFor(flat.frame);
+  assert.deepEqual(spec.resizeHandles, ALL_RESIZE_HANDLES,
+    'a cloud in bbox mode always exposes all eight grabbers');
+  assert.equal(spec.edgeHandleShape, 'dot',
+    'a 20-unit-tall frame cannot hold a 28-unit pill: the edge grabbers become dots');
+  assert.equal(spec.tier, 'corners',
+    'the tier still reports what FITS; edgeHandleShape reports what is drawn');
+
+  // The dots on the short axis have to step outward to clear the corners.
+  assert.ok(spec.edgeDotOutset.x > 0, `ml/mr outset ${spec.edgeDotOutset.x}`);
+  assert.equal(spec.edgeDotOutset.y, 0, 'the long axis has room; mt/mb stay on the frame');
+
   const sloped = cloudSelectionChrome({
     type: 'polyline', left: 100, top: 100, pathOffset: { x: 0, y: 0 },
     points: [{ x: 0, y: 0 }, { x: 150, y: 70 }], ...CLOUD,
   });
-  assert.deepEqual(tierFor(sloped.frame), ALL_RESIZE_HANDLES,
-    'as soon as the frame has room, all eight appear');
+  const slopedSpec = specFor(sloped.frame);
+  assert.deepEqual(slopedSpec.resizeHandles, ALL_RESIZE_HANDLES);
+  assert.equal(slopedSpec.edgeHandleShape, 'pill',
+    'as soon as the frame has room, the real pills come back');
+  assert.deepEqual(slopedSpec.edgeDotOutset, { x: 0, y: 0 });
+});
+
+test('cloud grabbers: eight dots on the smallest frames, and no two of them ever overlap', () => {
+  // The drawn position of each grabber, mirroring SVGSelectionOverlay's
+  // edgeHandlePos(): corners stay on the frame, edge dots step out along their
+  // own normal by the spec's clearance.
+  const drawnPoints = (frame, spec, metrics) => {
+    const right = frame.left + frame.width;
+    const bottom = frame.top + frame.height;
+    const midX = frame.left + frame.width / 2;
+    const midY = frame.top + frame.height / 2;
+    const out = spec.edgeHandleShape === 'dot' ? spec.edgeDotOutset : { x: 0, y: 0 };
+    return {
+      tl: { x: frame.left, y: frame.top },
+      tr: { x: right, y: frame.top },
+      bl: { x: frame.left, y: bottom },
+      br: { x: right, y: bottom },
+      mt: { x: midX, y: frame.top - out.y },
+      mb: { x: midX, y: bottom + out.y },
+      ml: { x: frame.left - out.x, y: midY },
+      mr: { x: right + out.x, y: midY },
+    };
+  };
+
+  // Every cloud shape a user can draw, at its most cramped, plus zoom levels
+  // where the screen-constant grabbers eat the most page space.
+  const fixtures = [
+    ['polyline-2pt-flat', { type: 'polyline', left: 100, top: 100, pathOffset: { x: 0, y: 0 }, points: [{ x: 0, y: 0 }, { x: 150, y: 0 }], ...CLOUD }],
+    ['polyline-2pt-short', { type: 'polyline', left: 100, top: 100, pathOffset: { x: 0, y: 0 }, points: [{ x: 0, y: 0 }, { x: 40, y: 0 }], ...CLOUD }],
+    ['rect-sliver', { type: 'rect', left: 100, top: 100, width: 160, height: 1, ...CLOUD }],
+    ['rect-tiny', { type: 'rect', left: 100, top: 100, width: 6, height: 6, ...CLOUD }],
+    ['ellipse-thin', { type: 'ellipse', left: 100, top: 100, rx: 90, ry: 2, ...CLOUD }],
+    ['polygon-tiny', { type: 'polygon', left: 100, top: 100, pathOffset: { x: 0, y: 0 }, points: [{ x: 0, y: 0 }, { x: 24, y: 0 }, { x: 24, y: 18 }, { x: 0, y: 18 }], ...CLOUD }],
+  ];
+
+  for (const [label, obj] of fixtures) {
+    const chrome = cloudSelectionChrome(obj);
+    assert.ok(chrome, `${label}: chrome resolves`);
+    for (const inverseScale of [1, 0.5128, 2, 4]) {
+      const spec = getAdaptiveSelectionHandleSpec({
+        bboxWidth: chrome.frame.width,
+        bboxHeight: chrome.frame.height,
+        inverseScale,
+        padding: 0,
+        alwaysAllHandles: true,
+      });
+      assert.deepEqual(spec.resizeHandles, ALL_RESIZE_HANDLES,
+        `${label}@${inverseScale}: all eight grabbers, always`);
+      const metrics = { r: 5.5 * Math.sqrt(inverseScale), gap: 4 * Math.sqrt(inverseScale) };
+      const points = drawnPoints(chrome.frame, spec, metrics);
+      const ids = Object.keys(points);
+      for (let i = 0; i < ids.length; i += 1) {
+        for (let j = i + 1; j < ids.length; j += 1) {
+          const a = points[ids[i]];
+          const b = points[ids[j]];
+          const gap = Math.hypot(a.x - b.x, a.y - b.y);
+          // Two dots of radius r need 2r between centres to stop touching.
+          // The corner pair on a genuinely tiny frame is the one case the
+          // frame itself owns (a cloud frame is never smaller than a crown
+          // depth), so only EDGE dots carry the clearance guarantee.
+          const isEdgePair = ids[i].startsWith('m') || ids[j].startsWith('m');
+          if (spec.edgeHandleShape === 'dot' && isEdgePair) {
+            assert.ok(gap >= metrics.r * 2 + metrics.gap - 1e-9,
+              `${label}@${inverseScale}: ${ids[i]}/${ids[j]} only ${gap.toFixed(2)} apart, need ${(metrics.r * 2 + metrics.gap).toFixed(2)}`);
+          } else {
+            assert.ok(gap > 0, `${label}@${inverseScale}: ${ids[i]}/${ids[j]} share a point`);
+          }
+        }
+      }
+      // Screen-constant: halve the page-per-screen ratio and the outset
+      // shrinks with the dots rather than staying a fixed page distance.
+      if (spec.edgeHandleShape === 'dot' && spec.edgeDotOutset.x > 0) {
+        const denser = getAdaptiveSelectionHandleSpec({
+          bboxWidth: chrome.frame.width,
+          bboxHeight: chrome.frame.height,
+          inverseScale: inverseScale / 4,
+          padding: 0,
+          alwaysAllHandles: true,
+        });
+        assert.ok(denser.edgeDotOutset.x <= spec.edgeDotOutset.x + 1e-9,
+          `${label}: zooming IN must not push the dots further out in page units`);
+      }
+    }
+  }
+});
+
+test('cloud grabbers: an ordinary (non-cloud) selection still culls handles it cannot fit', () => {
+  // The dot fallback is opt-in. Without the flag a small mark behaves exactly
+  // as it always has — this is the regression guard for every other shape.
+  const spec = getAdaptiveSelectionHandleSpec({
+    bboxWidth: 157, bboxHeight: 20, inverseScale: 1, padding: 2,
+  });
+  assert.deepEqual(spec.resizeHandles, ['tl', 'tr', 'bl', 'br']);
+  assert.equal(spec.edgeHandleShape, 'pill');
+  assert.deepEqual(spec.edgeDotOutset, { x: 0, y: 0 });
+});
+
+test('cloud grabbers: the overlay draws dot edge grabbers and the layer asks for them on clouds', () => {
+  const overlay = read('src/components/SVGSelectionOverlay.jsx');
+  assert.match(overlay, /alwaysAllHandles:\s*alwaysShowResizeHandles/,
+    'the overlay must forward the always-eight request to the spec');
+  assert.match(overlay, /const edgeHandlesAreDots = handleSpec\.edgeHandleShape === 'dot';/);
+  // A DOT IS A <rect>, NOT A <circle> — see the next test for why.
+  assert.equal((overlay.match(/data-edge-handle-shape=/g) || []).length, 2,
+    'both edge pairs (mt/mb and ml/mr) get the dot fallback');
+  assert.match(overlay, /const edgeHandleGeometry = \(pos, axis, asPill = false\) => \{/);
+  // The dot drives the SAME resize math as the pill it replaces.
+  const dotBlocks = overlay.split('data-edge-handle-shape=').slice(1);
+  for (const block of dotBlocks) {
+    assert.match(block.slice(0, 1200), /onHandleDrag\?\.\(e, id\)/,
+      'a dot grabber must call the same handle-drag entry point');
+  }
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /alwaysShowResizeHandles=\{!!cloudChrome\}/,
+    'clouds — and only clouds — ask for the always-eight behaviour');
+});
+
+test('cloud grabbers: an edge grabber keeps ONE element type, so a drag survives dot -> pill', () => {
+  // MEASURED LIVE 2026-09-10, and the reason this is pinned. The first cut of
+  // the dot fallback rendered a <circle> in dot mode and a <rect> in pill mode
+  // under the same key. useSVGInteraction calls e.target.setPointerCapture at
+  // pointerdown, so when a drag on a 2-point polyline cloud's 'mb' dot grew the
+  // frame past the pill threshold, React unmounted the captured <circle>, the
+  // capture died with it, and the resize stopped mid-gesture and committed
+  // nothing (verified: the grabbed node came back isConnected === false).
+  //
+  // A dot is therefore a <rect> with rx = half its side, which renders as a
+  // circle: crossing the threshold is an attribute update, not a remount.
+  const overlay = read('src/components/SVGSelectionOverlay.jsx');
+  const edgeBlockStart = overlay.indexOf("['mt', 'mb'].filter");
+  const edgeBlockEnd = overlay.indexOf('{/* Rotation handle (mtr) */}');
+  assert.ok(edgeBlockStart > 0 && edgeBlockEnd > edgeBlockStart, 'edge handle blocks found');
+  const edgeBlocks = overlay.slice(edgeBlockStart, edgeBlockEnd);
+  assert.ok(!/<circle/.test(edgeBlocks),
+    'no edge grabber may render a <circle> — swapping element type kills pointer capture mid-drag');
+  // ...and the dot really is round: a square rect with rx = half the side.
+  assert.match(overlay, /const side = handleMetrics\.cornerR \* 2;/);
+  assert.match(overlay, /rx: handleMetrics\.cornerR,/);
+  // Corner grabbers are still circles; they never change shape, so they are safe.
+  assert.match(overlay, /<circle\s+key=\{`corner-\$\{id\}`\}/);
 });
 
 // ---------------------------------------------------------------------------
@@ -160,9 +366,62 @@ test('cloud chrome: the scallop glow paints UNDER the ink so the cloud keeps its
     + 'so 0.666-opacity blue covered the user\'s stroke while hovered or selected)',
   );
   assert.equal(
-    (layer.match(/data-cloud-glow/g) || []).length, 1,
+    (layer.match(/data-cloud-glow="true"/g) || []).length, 1,
     'exactly one glow emitter — a second copy in the hit group would paint over the ink again',
   );
+});
+
+// ---------------------------------------------------------------------------
+// (10) GLOW RING — the ink band is knocked OUT of the glow
+// ---------------------------------------------------------------------------
+
+test('cloud glow: the ink band is masked OUT, so a translucent stroke keeps its own colour', () => {
+  // CONTRACT CHANGE 2026-09-10 (defect 10). Round 3 pinned "glow under the
+  // ink", which is what Drawboard PDF does and is enough while the ink is
+  // opaque. It is NOT enough at the app's translucent cloud stroke: measured
+  // live, an rgba(.5) red cloud read purple the moment it was selected because
+  // the 0.666-opacity blue showed through the crowns. (Reproduced in Drawboard
+  // itself at 50% stroke opacity on 2026-09-10, so this is an improvement on
+  // the reference, not parity with it.) The glow keeps its underlay position —
+  // the paint-order test above still stands — and additionally knocks the ink
+  // band out of itself, exactly the way the FILL knockout works.
+  const geometry = resolveCloudGeometryFixture();
+  const glow = buildCloudGlowPaint(geometry, { maskId: 'glow-1' });
+  assert.ok(glow, 'glow paint resolves');
+  assert.equal(glow.transform, geometry.transform, 'same local frame as the ink');
+  assert.ok(Math.abs(glow.glowWidth - glow.inkWidth * 2.85) < 1e-9,
+    'the glow is still 2.85x the ink (Drawboard proportions)');
+  assert.equal(glow.inkWidth, 2.5, 'the knockout is stroked at the INK width, not the glow width');
+  assert.ok(glow.mask, 'a knockout mask is emitted');
+  // The mask region has to cover the whole glow band, which reaches half a
+  // glow width past the crown hull; anything smaller would clip the ring.
+  const hull = cloudOutlineBounds(geometry);
+  assert.ok(glow.mask.x <= hull.left - glow.glowWidth / 2, 'mask clears the glow band on the left');
+  assert.ok(glow.mask.y <= hull.top - glow.glowWidth / 2, 'mask clears the glow band on the top');
+  assert.ok(glow.mask.x + glow.mask.width >= hull.left + hull.width + glow.glowWidth / 2);
+  assert.ok(glow.mask.y + glow.mask.height >= hull.top + hull.height + glow.glowWidth / 2);
+  // A cloud with no stroke width still gets a reference band to knock out.
+  const bare = buildCloudGlowPaint({ ...geometry, strokeWidth: 0 }, { maskId: 'g' });
+  assert.equal(bare.inkWidth, 1);
+});
+
+test('cloud glow: the layer paints the ring through the mask, knocked out at the ink width', () => {
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /const cloudGlowPaint = cloudGlowVisible/,
+    'the glow resolves through the shared paint model');
+  const start = layer.indexOf('{cloudGlowPaint && (');
+  assert.ok(start > 0, 'glow underlay found');
+  const block = layer.slice(start, start + 2200);
+  assert.match(block, /maskUnits="userSpaceOnUse"/, 'the knockout is in the cloud local frame');
+  assert.match(block, /data-cloud-glow-knockout="true"/);
+  assert.match(block, /strokeWidth=\{cloudGlowPaint\.inkWidth\}/,
+    'the knockout is the ink band, so the glow never sits under the stroke');
+  assert.match(block, /strokeWidth=\{cloudGlowPaint\.glowWidth\}/);
+  assert.match(block, /strokeOpacity=\{CLOUD_HOVER_GLOW_OPACITY\}/);
+  assert.match(block, /mask=\{cloudGlowPaint\.mask \? `url\(#\$\{cloudGlowPaint\.mask\.id\}\)` : undefined\}/);
+  // Round caps/joins on BOTH bands, or the knockout would miss the crown tails.
+  assert.equal((block.match(/strokeLinecap="round"/g) || []).length, 2);
+  assert.equal((block.match(/strokeLinejoin="round"/g) || []).length, 2);
 });
 
 // ---------------------------------------------------------------------------
@@ -195,7 +454,24 @@ const resizeStep = ({
   let nsy = scaleY;
   if (affectsX && width !== 0) nsx = ((isLeft ? -lx : lx) - (grabOffset?.dx || 0)) / width;
   if (affectsY && height !== 0) nsy = ((isTop ? -ly : ly) - (grabOffset?.dy || 0)) / height;
-  return { width: width * Math.abs(nsx), height: height * Math.abs(nsy) };
+  return {
+    width: width * Math.abs(nsx),
+    height: height * Math.abs(nsy),
+    scaleX: Math.abs(nsx),
+    scaleY: Math.abs(nsy),
+  };
+};
+
+// What pointerup actually STORES, and therefore what the user sees the instant
+// they let go: useSVGInteraction writes `obj.scaleX = Math.abs(newScaleX)`
+// (obj.width is untouched by a resize) and then hands the payload to
+// roundCommittedAnnotationGeometry. The rendered box is the product.
+const commitBox = (rawWidth, rawHeight, preview, { legacyScaleRounding = false } = {}) => {
+  const roundScaleValue = legacyScaleRounding ? round2 : roundScale;
+  return {
+    width: round2(rawWidth) * roundScaleValue(preview.scaleX),
+    height: round2(rawHeight) * roundScaleValue(preview.scaleY),
+  };
 };
 
 const anchorMapFor = (bbox) => {
@@ -330,6 +606,98 @@ test('grab jump: a SCALED cloud (Fabric scaleX/scaleY) tracks 1:1 on its rendere
     assert.ok(Math.abs(atGrab.width - bbox.width) < 1e-6, `scaled.${handleId} width jump`);
     assert.ok(Math.abs(atGrab.height - bbox.height) < 1e-6, `scaled.${handleId} height jump`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// (7) RELEASE JUMP — the commit must land ON the preview
+// ---------------------------------------------------------------------------
+
+// Drag a grabber by `move` page units along its own growth direction, then
+// COMMIT, and compare the stored box with the preview the user was watching.
+const assertNoReleaseJump = (label, obj, bbox, { angleDeg = 0, move = 25 } = {}) => {
+  const chrome = cloudSelectionChrome(obj);
+  assert.ok(chrome, `${label}: chrome resolves`);
+  const center = { x: bbox.left + bbox.width / 2, y: bbox.top + bbox.height / 2 };
+  const anchors = anchorMapFor(bbox);
+  let sawOldJump = false;
+  for (const handleId of HANDLE_IDS) {
+    const affectsX = !['mt', 'mb'].includes(handleId);
+    const affectsY = !['ml', 'mr'].includes(handleId);
+    const isLeft = ['tl', 'ml', 'bl'].includes(handleId);
+    const isTop = ['tl', 'mt', 'tr'].includes(handleId);
+    const drawn = angleDeg
+      ? rotatePoint(chrome.anchors[handleId].x, chrome.anchors[handleId].y,
+        chrome.rotationCenter.x, chrome.rotationCenter.y, angleDeg)
+      : chrome.anchors[handleId];
+    const common = {
+      handleId, anchor: anchors[handleId], center, angleDeg,
+      width: bbox.width, height: bbox.height,
+    };
+    const offset = resizeGrabOffset({
+      ...common,
+      pointerX: drawn.x, pointerY: drawn.y,
+      anchorX: anchors[handleId].x, anchorY: anchors[handleId].y,
+      centerX: center.x, centerY: center.y,
+    });
+    const dirX = affectsX ? (isLeft ? -1 : 1) : 0;
+    const dirY = affectsY ? (isTop ? -1 : 1) : 0;
+    const world = rotatePoint(dirX * move, dirY * move, 0, 0, angleDeg);
+    const preview = resizeStep({
+      ...common, pointer: { x: drawn.x + world.x, y: drawn.y + world.y }, grabOffset: offset,
+    });
+    const wantW = bbox.width + (affectsX ? move : 0);
+    const wantH = bbox.height + (affectsY ? move : 0);
+    // The preview itself is exact — that was never the defect.
+    assert.ok(Math.abs(preview.width - wantW) < 1e-6, `${label}.${handleId}: preview width`);
+    assert.ok(Math.abs(preview.height - wantH) < 1e-6, `${label}.${handleId}: preview height`);
+
+    const committed = commitBox(bbox.width, bbox.height, preview);
+    assert.ok(Math.abs(committed.width - wantW) <= 0.01,
+      `${label}.${handleId}: committed width ${committed.width.toFixed(4)} jumped ${(committed.width - wantW).toFixed(4)} off the preview`);
+    assert.ok(Math.abs(committed.height - wantH) <= 0.01,
+      `${label}.${handleId}: committed height ${committed.height.toFixed(4)} jumped ${(committed.height - wantH).toFixed(4)} off the preview`);
+
+    // ...and the rule it replaces really did move the shape.
+    const legacy = commitBox(bbox.width, bbox.height, preview, { legacyScaleRounding: true });
+    if (Math.abs(legacy.width - wantW) > 0.01 || Math.abs(legacy.height - wantH) > 0.01) sawOldJump = true;
+  }
+  assert.ok(sawOldJump,
+    `${label}: fixture must actually exhibit the 2-decimal scale jump it is guarding against`);
+};
+
+for (const [label, obj, bbox] of [
+  ['rect', { type: 'rect', left: 224, top: 716, width: 120.15, height: 88, ...CLOUD },
+    { left: 224, top: 716, width: 120.15, height: 88 }],
+  ['ellipse', { type: 'ellipse', left: 300, top: 200, rx: 90, ry: 55, ...CLOUD },
+    { left: 300, top: 200, width: 180, height: 110 }],
+  ['polygon', {
+    type: 'polygon', left: 100, top: 100, pathOffset: { x: 0, y: 0 },
+    points: [{ x: 0, y: 0 }, { x: 203, y: 21 }, { x: 178, y: 151 }, { x: 41, y: 119 }], ...CLOUD,
+  }, { left: 100, top: 100, width: 203, height: 151 }],
+  ['polyline', {
+    type: 'polyline', left: 100, top: 100, pathOffset: { x: 0, y: 0 },
+    points: [{ x: 0, y: 0 }, { x: 157, y: 63 }], ...CLOUD,
+  }, { left: 100, top: 100, width: 157, height: 63 }],
+]) {
+  test(`release jump: a ${label} cloud commits exactly where the preview was — upright`, () => {
+    assertNoReleaseJump(label, obj, bbox);
+  });
+
+  test(`release jump: a ${label} cloud commits exactly where the preview was — rotated 30 deg`, () => {
+    assertNoReleaseJump(`${label}@30`, { ...obj, angle: 30 }, bbox, { angleDeg: 30 });
+  });
+}
+
+test('release jump: the commit rounds LENGTHS on 0.01 and SCALES on 1e-6, not the other way round', () => {
+  const source = read('src/utils/annotationCommitRounding.js');
+  assert.match(source, /const SCALAR_GEOMETRY_KEYS = \[[^\]]*\]/);
+  const scalarKeys = source.slice(source.indexOf('const SCALAR_GEOMETRY_KEYS'), source.indexOf('const SCALE_GEOMETRY_KEYS'));
+  assert.ok(!/scaleX/.test(scalarKeys) && !/scaleY/.test(scalarKeys),
+    'scaleX / scaleY must NOT be on the 2-decimal list — a scale ULP is rawSize/100 page units');
+  assert.match(source, /const SCALE_GEOMETRY_KEYS = \['scaleX', 'scaleY'\];/);
+  assert.match(source, /export const roundScale = \(value\) => Number\(\(Number\(value\) \|\| 0\)\.toFixed\(6\)\);/);
+  // The header has to say why, or the next pass "tidies" the scales back on.
+  assert.match(source, /SCALE IS THE EXCEPTION/);
 });
 
 test('grab offset is zero for a handle that already sits on the box the math writes', () => {
@@ -480,15 +848,60 @@ test('draft keys: only a real typing surface keeps Enter / Escape', () => {
   assert.equal(isTextEntryTarget({ tagName: 'DIV', isContentEditable: true }), true);
 });
 
-test('draft keys: the listener is window-capture and uses the shared typing test', () => {
+test('draft keys: a NUMERIC CHROME FIELD yields Enter / Escape to a draft in flight', () => {
+  // CONTRACT CHANGE 2026-09-10 (defect 9). isTextEntryTarget is unchanged and
+  // still correct on its own terms — "Cloud bump size" and "Width" ARE text
+  // entry (<input type="text" inputmode="numeric">). What changed is who wins
+  // while a click-to-place draft is in flight: those two fields opt OUT, so
+  // Enter finishes the shape (after committing their value on blur) and
+  // Escape cancels it, instead of both keys dying in a 36px number box.
+  const bumpField = { tagName: 'INPUT', type: 'text', dataset: { draftYieldsKeys: 'true' } };
+  assert.equal(isTextEntryTarget(bumpField), true, 'it is still a typing surface');
+  assert.equal(yieldsDraftKeys(bumpField), true);
+  assert.equal(draftOwnsKeyboard(bumpField), true, 'but the draft owns Enter / Escape');
+
+  // Opt-in only: a genuine text-editing surface keeps its keys.
+  assert.equal(draftOwnsKeyboard({ tagName: 'TEXTAREA' }), false, 'annotation text editor');
+  assert.equal(draftOwnsKeyboard({ tagName: 'INPUT', type: 'search' }), false, 'search box');
+  assert.equal(draftOwnsKeyboard({ tagName: 'INPUT', type: 'text' }), false, 'name field');
+  assert.equal(draftOwnsKeyboard({ tagName: 'DIV', isContentEditable: true }), false);
+  // ...and everything that was never a typing surface still loses them.
+  assert.equal(draftOwnsKeyboard({ tagName: 'BUTTON' }), true);
+  assert.equal(draftOwnsKeyboard(null), true);
+
+  // A wrapper can opt a whole control in (closest()), not just the input.
+  const wrapped = {
+    tagName: 'INPUT',
+    type: 'number',
+    closest: (selector) => (selector === `[${DRAFT_KEY_YIELD_ATTR}]` ? { tagName: 'LABEL' } : null),
+  };
+  assert.equal(draftOwnsKeyboard(wrapped), true);
+});
+
+test('draft keys: both numeric chrome fields carry the opt-out attribute', () => {
+  const sizeControl = read('src/components/AnnotationSizeControl.jsx');
+  assert.match(sizeControl, /'data-draft-yields-keys': 'true'/,
+    'the shared Width / Size field yields its keys to a draft');
+  // ...and it still commits on blur, which is what makes "Enter commits the
+  // field's value AND finishes the draft" true.
+  assert.match(sizeControl, /onBlur: \(event\) => \{[\s\S]{0,160}commit\(event\.currentTarget\.value\);/);
+  const shell = read('src/AppShell.jsx');
+  const bumpAt = shell.indexOf('aria-label="Cloud bump size"');
+  assert.ok(bumpAt > 0, 'bump field found');
+  assert.match(shell.slice(bumpAt, bumpAt + 500), /data-draft-yields-keys="true"/);
+});
+
+test('draft keys: the listener is window-capture, yields only to real typing, and blurs the field', () => {
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   const start = layer.indexOf('if (!polyDraftActive) return undefined;\n    const onKeyDown');
   assert.ok(start > 0, 'poly draft keydown effect found');
-  const effect = layer.slice(start, start + 900);
-  assert.match(effect, /if \(isTextEntryTarget\(e\.target\)\) return;/,
-    'the guard must be the shared typing test, not a blanket tagName === INPUT bail');
-  assert.match(effect, /e\.key === 'Enter'[\s\S]*commitPolyDraft\('finish'\)/);
-  assert.match(effect, /e\.key === 'Escape'[\s\S]*cancelPolyDraft\(\)/);
+  const effect = layer.slice(start, start + 1200);
+  assert.match(effect, /if \(!draftOwnsKeyboard\(e\.target\)\) return;/,
+    'the guard must be the shared ownership test, not a blanket tagName === INPUT bail');
+  assert.match(effect, /e\.key === 'Enter'[\s\S]*releaseFocusForDraftTool\(e\.target\)[\s\S]*commitPolyDraft\('finish'\)/,
+    'Enter blurs the numeric field (committing its value) before finishing the draft');
+  assert.match(effect, /e\.key === 'Escape'[\s\S]*releaseFocusForDraftTool\(e\.target\)[\s\S]*cancelPolyDraft\(\)/,
+    'Escape blurs the field, then cancels the draft');
   assert.match(effect, /window\.addEventListener\('keydown', onKeyDown, true\)/,
     'capture phase on window so nothing downstream can swallow the key first');
 });
