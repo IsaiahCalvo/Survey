@@ -5084,15 +5084,30 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (Array.isArray(obj.objects)) {
     const parentLeft = Number(obj.left) || 0;
     const parentTop = Number(obj.top) || 0;
-    return obj.objects.reduce((sum, child) => sum + drawFlattenedObject(page, {
-      ...child,
-      left: (Number(child?.left) || 0) + parentLeft,
-      top: (Number(child?.top) || 0) + parentTop,
-      x1: child?.x1 !== undefined ? (Number(child.x1) || 0) + parentLeft : child?.x1,
-      y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
-      x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
-      y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
-    }, pageHeight, fonts, offset, stampImages), 0);
+    return obj.objects.reduce((sum, child) => {
+      const shiftedChild = {
+        ...child,
+        left: (Number(child?.left) || 0) + parentLeft,
+        top: (Number(child?.top) || 0) + parentTop,
+        x1: child?.x1 !== undefined ? (Number(child.x1) || 0) + parentLeft : child?.x1,
+        y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
+        x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
+        y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
+      };
+      // A child whose endpoints were just made ABSOLUTE must not also carry a
+      // frame box: resolveLineWorldGeometry (2026-09-10) reads left/top/width/
+      // height the way the renderer does, and for a fabric Line that means
+      // adding the box centre to x1..y2. Zeroing the box keeps these children
+      // exactly where they printed before that resolver existed - the same
+      // rule legacyArrowGroupToLine follows on the export side.
+      if (child?.x1 !== undefined) {
+        shiftedChild.left = 0;
+        shiftedChild.top = 0;
+        shiftedChild.width = 0;
+        shiftedChild.height = 0;
+      }
+      return sum + drawFlattenedObject(page, shiftedChild, pageHeight, fonts, offset, stampImages);
+    }, 0);
   }
   const type = String(obj.type || '').toLowerCase();
   const shifted = offset.x || offset.y

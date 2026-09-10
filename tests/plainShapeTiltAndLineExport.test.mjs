@@ -375,3 +375,73 @@ test('raster: the app painter, the exported /AP and the flattened print put the 
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// The OTHER line-storage convention: absolute endpoints. Imported /Line
+// annotations store them that way (left/top/width/height all zero), and so do
+// legacy saved arrows - a fabric GROUP holding a Line child plus a triangle,
+// which the exporter maps onto a modern line and the print flattener recurses
+// into. Both must stay exactly where they were: resolveLineWorldGeometry adds
+// a frame box centre when there is one, so the two paths that hand it absolute
+// endpoints have to hand it no box.
+// ---------------------------------------------------------------------------
+
+test('imported and legacy-group lines keep their absolute endpoints', async () => {
+  const imported = {
+    id: 'imported-line', type: 'line', left: 0, top: 0, width: 0, height: 0,
+    x1: 120, y1: 100, x2: 320, y2: 210, stroke: '#008000', strokeWidth: 2,
+  };
+  const [entry] = await annotationDicts(await exportAnnotated(imported));
+  assert.ok(entry, 'imported-style line exported');
+  const line = numbers(entry.doc, entry.dict, 'L');
+  assert.deepEqual(line.map((value) => Number(value.toFixed(4))),
+    [120, PAGE.height - 100, 320, PAGE.height - 210],
+    'absolute endpoints are written through unchanged');
+
+  // Legacy arrow group: the Line child's endpoints are relative to the group
+  // origin, so the writers add the group origin and nothing else.
+  const legacy = {
+    id: 'legacy-arrow', type: 'group', left: 40, top: 30,
+    stroke: '#804000', strokeWidth: 2,
+    objects: [
+      { type: 'line', x1: 20, y1: 10, x2: 180, y2: 120, left: 20, top: 10, width: 160, height: 110, stroke: '#804000', strokeWidth: 2 },
+      { type: 'triangle', name: 'arrowHead', left: 180, top: 120, width: 10, height: 10, fill: '#804000' },
+    ],
+  };
+  const [legacyEntry] = await annotationDicts(await exportAnnotated(legacy));
+  assert.ok(legacyEntry, 'the legacy arrow group still exports as a /Line');
+  const legacyLine = numbers(legacyEntry.doc, legacyEntry.dict, 'L');
+  assert.deepEqual(legacyLine.map((value) => Number(value.toFixed(4))),
+    [60, PAGE.height - 40, 220, PAGE.height - 150],
+    'group origin added once, the child frame box never');
+});
+
+// The export maps a legacy arrow GROUP onto one /Line with a /LE head while
+// the print flattener recurses and draws the group's own triangle child, so
+// the two lanes have never agreed on the HEAD's shape (measured 4.1pt of
+// centroid between them, on this branch and before it). What they must agree
+// on - and what the frame-box rule above protects - is where the SHAFT is.
+test('raster: a legacy arrow group prints on the endpoints it exports', {
+  skip: napiCanvas ? false : '@napi-rs/canvas not installed',
+}, async () => {
+  const legacy = {
+    id: 'legacy-arrow-raster', type: 'group', left: 40, top: 30,
+    stroke: '#804000', strokeWidth: 3,
+    objects: [
+      { type: 'line', x1: 20, y1: 10, x2: 180, y2: 120, left: 20, top: 10, width: 160, height: 110, stroke: '#804000', strokeWidth: 3 },
+    ],
+  };
+  const start = { x: 60, y: 40 };
+  const end = { x: 220, y: 150 };
+  const [entry] = await annotationDicts(await exportAnnotated(legacy));
+  assert.deepEqual(numbers(entry.doc, entry.dict, 'L').map((value) => Number(value.toFixed(4))),
+    [start.x, PAGE.height - start.y, end.x, PAGE.height - end.y]);
+  const print = inkStats(await rasterWithPdfjs(await exportFlattened(legacy)));
+  assert.ok(print, 'the flattened print has ink');
+  // Half a stroke width plus a pixel of antialiasing around the chord.
+  const margin = 3;
+  assert.ok(Math.abs(print.box.minX - start.x) < margin, `print ink starts at x ${print.box.minX.toFixed(2)}, not ${start.x}`);
+  assert.ok(Math.abs(print.box.minY - start.y) < margin, `print ink starts at y ${print.box.minY.toFixed(2)}, not ${start.y}`);
+  assert.ok(Math.abs(print.box.maxX - end.x) < margin, `print ink ends at x ${print.box.maxX.toFixed(2)}, not ${end.x}`);
+  assert.ok(Math.abs(print.box.maxY - end.y) < margin, `print ink ends at y ${print.box.maxY.toFixed(2)}, not ${end.y}`);
+});
