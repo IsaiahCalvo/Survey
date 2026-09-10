@@ -407,6 +407,78 @@ build retains its existing large-chunk warning. All source and tests were frozen
 for the final checks. No live database, account, Microsoft or deployment action
 occurred.
 
+### Client admission and runtime integration gates
+
+The client audit found that the aggregate handler's v1 receipt proves exact
+acceptance, but does not prove that its PDF generation is still current. The
+existing sync append path uses both facts separately: it keeps an accepted old
+receipt without applying its bytes or publishing erase effects into a new
+generation. Never turn every aggregate HTTP 200 into `isCurrent: true`.
+
+`annotationGenerationAggregateTransport.js` now implements the standalone binary
+transport prerequisite, not an enabled sync route. Its request adapter owns the captured actor's JWT and request
+lifecycle. The transport owns update bytes before any await, validates the exact
+receipt identity and digest, bounds response reads, and keeps capacity,
+maintenance and unconfirmed outcomes distinct. Its native Blob body preserves
+the byte snapshot across the adapter's awaits without a special synchronous-copy
+rule. The adapter remains trusted to send those bytes under the captured actor;
+an immutable body does not constrain an adapter that sends a different request.
+It returns acceptance proof only; it must not confer current access, retry
+automatically, or call a legacy write.
+
+Before wiring it into sync, extend trusted receipt/commit results with the
+current generation identity observed under the document lock. Preserve historical
+exact-receipt success after retirement or revocation; do not insert a new access
+check into that policy. Validate that identity through the handler before the
+client can use it. A separate current-access read is not an atomic replacement
+for this contract and must never erase acceptance evidence when the read fails.
+
+Opt-in model-2 sync must also stop every direct snapshot write, including repair,
+debounce, append-failure, close and page-hide paths. Trusted admission and
+maintenance own its cloud checkpoints; local staged bytes and the durable outbox
+remain available. Server-side fencing must close new model-2 public append and
+snapshot writes before rollout, while preserving model-1 behavior and exact old
+append receipts. A client flag alone cannot enforce the rule.
+
+A read-only host audit on 2026-09-10 found Node 26.5.1 and Deno 2.9.4, but no
+available Docker, Podman, Colima or VM runtime. The local Darwin resource-limit
+documentation does not establish a hard bound for all memory: RSS is a pressure
+preference, and data-segment limits do not cover all mapped buffers. Neither a
+Node worker heap limit nor an AbortController bounds synchronous Yjs work and
+all ArrayBuffer memory. Do not describe this host as proving safe execution of
+the maximum accepted document.
+
+The required production design separates compute from commit. The parent owns
+auth, immutable input and broker credentials. An isolated compute process gets
+only fixed checkpoint/tail/update bytes and no network or commit capability.
+The parent validates its returned plan and starts no commit after the compute
+deadline. Production enablement still needs a tested runtime with hard total
+memory, swap, CPU, process-count and wall-time limits. Local process-kill tests
+alone cannot prove that memory limit. A database call already sent before an
+overall request timeout may still commit; keep that result unconfirmed and
+reconcile through its exact receipt on retry.
+
+Local transport tests compose the real handler and real model-2 Yjs baseline
+and delta with synthetic auth and broker calls. They prove a first commit before
+a deliberately lost response and a receipt-only retry with no repeated commit
+or reconstruction. The byte body has exactly the raw update size, without hex
+or JSON expansion. Tests also cover input mutation, immutable body ownership,
+strict receipt and status checks, both forms of maintenance error, and aborts
+before dispatch, during a hanging request and during a stalled response body.
+Invalid and late response bodies are canceled. Only privately branded internal
+errors survive error handling; a provider stream cannot expose its diagnostics
+by spoofing an internal error code. These are local module checks, not a live
+auth, database, UI, multi-user or billing improvement claim.
+
+The frozen transport passed 22 new focused tests and 85 checks when combined
+with the existing generation transport suite. The final full `npm test` run on
+2026-09-10 ran 7,090 tests: 6,994 passed, 96 skipped, zero failed or cancelled
+(the previous committed baseline was 7,068 tests with the same 96 skips).
+The Vite build passed with its existing large-chunk warning; graph refresh also
+completed. An earlier overlapping full run failed an unchanged upload-cancellation
+test and reached that file's timeout. The final full run passed that same file;
+keep the earlier failure recorded rather than calling it a fixed product bug.
+
 ### Row-level write-limit implementation
 
 Inspection at checkpoint `80c7173c` confirmed that the model-2 append and
