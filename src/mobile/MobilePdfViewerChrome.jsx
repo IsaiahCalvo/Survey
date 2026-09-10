@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
-import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from '../utils/annotationSize';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
@@ -1014,6 +1014,7 @@ export function MobileToolProperties({ api }) {
           value={sizeValue}
           min={sizeMin}
           max={sizeMax}
+          decimals={isEraser ? 0 : ANNOTATION_WIDTH_DECIMALS}
           presets={sizePresets}
           onValueChange={handleSizeDraft}
           onValueCommit={handleSizeCommit}
@@ -1415,6 +1416,7 @@ export function MobileToolProperties({ api }) {
                       value={api.strokeWidthInputValue}
                       min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
                       max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
+                      decimals={tool === 'counter' ? 0 : ANNOTATION_WIDTH_DECIMALS}
                       presets={tool === 'counter' ? ANNOTATION_SIZE_PRESETS.counter : ANNOTATION_SIZE_PRESETS.width}
                       onValueChange={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
                       onValueCommit={(value) => api.handleStrokeWidthInputBlur?.({ currentTarget: { value } })}

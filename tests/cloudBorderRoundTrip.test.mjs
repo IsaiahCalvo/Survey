@@ -299,7 +299,16 @@ const flattenedContent = async (objects) => {
   const streams = contents instanceof PDFArray
     ? contents.asArray().map((ref) => doc.context.lookup(ref))
     : [contents];
-  return streams
+  // DELIBERATE CHANGE (2026-09-09, cloud-fill-knockout): the flattener now
+  // places the cloud's /AP form itself on the page (`/CloudAPn Do`) so print
+  // and export can never disagree; the crown curves therefore live in the
+  // form XObjects the page references, which are read here alongside the
+  // page's own content streams.
+  const xobjects = page.node.Resources()?.get(PDFName.of('XObject'));
+  const xobjectStreams = xobjects
+    ? xobjects.keys().map((key) => doc.context.lookup(xobjects.get(key)))
+    : [];
+  return [...streams, ...xobjectStreams]
     .filter((stream) => stream instanceof PDFRawStream)
     .map((stream) => new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode()))
     .join('\n');
@@ -420,7 +429,13 @@ test('every cloud shape ships an /AP form that paints the scallops itself', asyn
     assert.ok(/(^|\n)2\.5 w(\n|$)/.test(annot.content), `${name}: the stroke width is the annotation's`);
     assert.ok(/ RG(\n|$)/.test(annot.content) && /(^|\n)S(\n|$)/.test(annot.content), `${name}: the outline is stroked`);
     const filled = /rgba\(/.test(shape.fill);
-    assert.equal(/(^|\n)f(\n|$)/.test(annot.content), filled, `${name}: the scalloped region is filled only when the shape has a fill`);
+    // DELIBERATE ASSERTION CHANGE (2026-09-09, cloud-fill-knockout): a filled
+    // AND stroked cloud paints its fill knocked out under the stroke band as
+    // an even-odd region (`f*`, see cloudFillKnockoutRings) instead of the
+    // plain scalloped fill (`f`); a filled cloud without a stroke keeps `f`.
+    // Every fidelity shape here is stroked, so `f*` is the filled form.
+    assert.equal(/(^|\n)f\*(\n|$)/.test(annot.content), filled, `${name}: the scalloped region is filled (knocked out under the stroke) only when the shape has a fill`);
+    assert.equal(/(^|\n)f(\n|$)/.test(annot.content), false, `${name}: no un-knocked-out fill under the stroke`);
     assert.ok(Array.isArray(annot.bbox) && annot.bbox[2] > 0 && annot.bbox[3] > 0, `${name}: /BBox`);
 
     // /Rect must be exactly the page box of /Matrix x /BBox: any other value

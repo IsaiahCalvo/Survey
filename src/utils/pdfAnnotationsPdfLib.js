@@ -23,6 +23,7 @@ import {
   closePath as closePathOperator,
   fill as fillOperator,
   degrees,
+  drawObject,
   lineTo,
   moveTo,
   popGraphicsState,
@@ -102,11 +103,7 @@ import {
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: printed clouds come from the same resolver the screen uses.
-import {
-  cloudCommandsToPathData,
-  resolveCloudAnnotationGeometry,
-  transformCloudCommandsToWorld,
-} from './cloudAnnotationGeometry.js';
+import { cloudFillKnockoutRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 
@@ -1860,21 +1857,51 @@ const cloudCommandsToOperators = (commands, mapPoint) => {
   return lines;
 };
 
+// Per-run stroke operators: the studio (and the screen) paint one path per
+// crown, so each run is its own `S`. A single multi-subpath `S` would paint
+// the overlapping run junctions once (PDF 32000 11.7.4.4 treats one painting
+// operation as one shape) and a translucent stroke would come out lighter
+// there than on screen.
+const cloudRunStrokeOperators = (geometry, mapPoint) => {
+  const runs = Array.isArray(geometry.outlineRuns) && geometry.outlineRuns.length > 0
+    ? geometry.outlineRuns
+    : [geometry.outline];
+  return runs.flatMap((run) => [...cloudCommandsToOperators(run, mapPoint), 'S']);
+};
+
 /**
  * Build the /AP /N form for a cloud annotation. Returns null when the object
  * is not a cloud (or paints nothing), so the caller keeps its plain path.
  *
+ * FILL KNOCKOUT (2026-09-09, Drawboard parity): the fill is absent under the
+ * whole stroke band, so a translucent stroke composites over the page, never
+ * over its own fill, and fill alpha (ca) stays independent of stroke alpha
+ * (CA). PDF has no mask-under-stroke primitive and its transparency tools
+ * were probed and rejected: a knockout group (/K true) is ignored by pdf.js,
+ * and a luminosity soft mask — Drawboard's SVG mask in PDF terms — is dropped
+ * by Quartz inside annotation appearance streams (Preview showed the cloud
+ * with NO fill at all; pdf.js additionally mis-rasterises /DeviceGray groups).
+ * The knockout is therefore pure geometry (cloudFillKnockoutRings): the fill
+ * region minus the union of every run's stroke capsules, painted with plain
+ * even-odd fills that every viewer honours. It is exact to sampling precision
+ * along the crowns and under the inward tails alike.
+ *
+ * @param {object} [options]
+ * @param {object} [options.geometry]        pre-resolved cloud geometry
+ * @param {string} [options.strokeFallback]  stroke paint when the object has none
  * @returns {{
  *   ref: PDFRef, rect: number[], rd: number[]|null,
  *   strokeAlpha: number, vertices: {x:number,y:number}[],
+ *   matrix: number[]|null, bbox: number[], content: string,
  * }|null}
  */
-const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight) => {
-  const geometry = resolveAnnotationCloudSpec(fabricObj) ? resolveCloudAnnotationGeometry(fabricObj) : null;
+const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
+  const geometry = options.geometry
+    || (resolveAnnotationCloudSpec(fabricObj) ? resolveCloudAnnotationGeometry(fabricObj) : null);
   if (!geometry) return null;
   const bounds = getCloudPathBounds(geometry.outline);
   if (!bounds) return null;
-  const stroke = resolvedPdfPaint(fabricObj?.stroke, 'transparent');
+  const stroke = resolvedPdfPaint(fabricObj?.stroke, options.strokeFallback ?? 'transparent');
   const fill = geometry.fill ? resolvedPdfPaint(fabricObj?.fill, 'transparent') : null;
   const strokeWidth = stroke ? Math.max(0, Number(geometry.strokeWidth) || 0) : 0;
   const hasStroke = Boolean(stroke) && strokeWidth > 0;
@@ -1901,28 +1928,9 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight) => {
   if (!(formWidth > 0) || !(formHeight > 0)) return null;
   // Local frame is y-down (app space); form space is y-up inside /BBox.
   const toForm = (x, y) => ({ x: x - box.minX, y: box.maxY - y });
+  const bbox = [0, 0, formWidth, formHeight];
 
   const n = pdfNumberText;
-  const content = ['q'];
-  if (needsGraphicsState) content.push('/GS0 gs');
-  content.push('1 J 1 j');
-  if (fill) {
-    content.push(`${n(fill.color.red)} ${n(fill.color.green)} ${n(fill.color.blue)} rg`);
-    content.push(...cloudCommandsToOperators(geometry.fill, toForm), 'f');
-  }
-  if (hasStroke) {
-    content.push(`${n(stroke.color.red)} ${n(stroke.color.green)} ${n(stroke.color.blue)} RG`);
-    content.push(`${n(strokeWidth)} w`);
-    content.push(...cloudCommandsToOperators(geometry.outline, toForm), 'S');
-  }
-  content.push('Q');
-
-  // fabric `angle` is screen-clockwise in y-down space; the same visual tilt
-  // is a CCW rotation by -angle in PDF's y-up space (see createEllipseAnnotation).
-  const angle = Number(geometry.angle) || 0;
-  const theta = (-angle * Math.PI) / 180;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
   const resources = {};
   if (needsGraphicsState) {
     resources.ExtGState = {
@@ -1934,12 +1942,48 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight) => {
       },
     };
   }
-  const form = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+  const content = ['q'];
+  if (needsGraphicsState) content.push('/GS0 gs');
+  content.push('1 J 1 j');
+  if (fill) {
+    content.push(`${n(fill.color.red)} ${n(fill.color.green)} ${n(fill.color.blue)} rg`);
+    const knockoutRings = hasStroke ? cloudFillKnockoutRings(geometry) : null;
+    if (knockoutRings) {
+      // Fill minus the stroke band: closed polygon rings (outer + holes),
+      // painted even-odd so ring orientation cannot matter.
+      for (const ring of knockoutRings) {
+        ring.forEach((point, index) => {
+          const mapped = toForm(point.x, point.y);
+          content.push(`${cloudNumberText(mapped.x)} ${cloudNumberText(mapped.y)} ${index === 0 ? 'm' : 'l'}`);
+        });
+        content.push('h');
+      }
+      content.push('f*');
+    } else {
+      content.push(...cloudCommandsToOperators(geometry.fill, toForm), 'f');
+    }
+  }
+  if (hasStroke) {
+    content.push(`${n(stroke.color.red)} ${n(stroke.color.green)} ${n(stroke.color.blue)} RG`);
+    content.push(`${n(strokeWidth)} w`);
+    content.push(...cloudRunStrokeOperators(geometry, toForm));
+  }
+  content.push('Q');
+
+  // fabric `angle` is screen-clockwise in y-down space; the same visual tilt
+  // is a CCW rotation by -angle in PDF's y-up space (see createEllipseAnnotation).
+  const angle = Number(geometry.angle) || 0;
+  const theta = (-angle * Math.PI) / 180;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const matrix = angle ? [cos, sin, -sin, cos, 0, 0] : null;
+  const contentText = `${content.join('\n')}\n`;
+  const form = pdfDoc.context.flateStream(contentText, {
     Type: 'XObject',
     Subtype: 'Form',
     FormType: 1,
-    BBox: [0, 0, formWidth, formHeight],
-    ...(angle ? { Matrix: [cos, sin, -sin, cos, 0, 0] } : {}),
+    BBox: bbox,
+    ...(matrix ? { Matrix: matrix } : {}),
     Resources: resources,
   });
   const ref = pdfDoc.context.register(form);
@@ -1984,6 +2028,9 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight) => {
     rd,
     strokeAlpha,
     vertices: geometry.points.map(toWorld),
+    matrix,
+    bbox,
+    content: contentText,
   };
 };
 
@@ -4103,46 +4150,40 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
 };
 
 // UX 2026-09-09: printing/flattening ANY cloud shape (rect, ellipse/circle,
-// polygon, open polyline) paints exactly what the screen shows: the shared
-// resolver's crowns (scale baked into the vertices, built un-rotated and then
-// rotated as a whole - the same order the SVG layer uses, so a rotated cloud
-// keeps its on-screen crown count) with round caps/joins and no fill, under
-// which a FILLED closed cloud paints the whole scalloped region as one
-// nonzero path. The object's own opacity multiplies both paints, as on screen.
+// polygon, open polyline) paints exactly what the export's /AP paints, because
+// it IS the same form: buildCloudAppearance builds the appearance stream (fill
+// region knocked out under the stroke band through the luminosity soft mask,
+// then the crowns stroked one run at a time with round caps/joins, alpha and
+// blend baked into the ExtGState, tilt in /Matrix) and the flattener places
+// that form on the page with a pure translation — the same BBox->Rect fit a
+// viewer performs for the annotation. Print and export can therefore never
+// disagree, and the flattened raster is pixel-identical to the /AP raster.
 // Returns false when the object is not a cloud so the caller draws it plainly.
+let flattenedCloudFormCounter = 0;
 const drawFlattenedCloud = (page, obj, pageHeight) => {
   const geometry = resolveAnnotationCloudSpec(obj) ? resolveCloudAnnotationGeometry(obj) : null;
   if (!geometry) return false;
-  const stroke = resolvedPdfPaint(obj?.stroke, geometry.kind === 'polyline' ? '#000000' : 'transparent');
-  const fill = geometry.fill ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
-  const objectOpacity = Number.isFinite(Number(obj?.opacity))
-    ? Math.max(0, Math.min(1, Number(obj.opacity)))
-    : 1;
-  const blendMode = obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined;
-  // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
-  // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates.
-  if (fill) {
-    page.drawSvgPath(cloudCommandsToPathData(transformCloudCommandsToWorld(geometry.fill, geometry)), {
-      x: 0,
-      y: pageHeight,
-      color: fill.color,
-      opacity: (fill.opacity ?? 1) * objectOpacity,
-      borderWidth: 0,
-      blendMode,
-    });
-  }
-  const strokeWidth = stroke ? Math.max(0, geometry.strokeWidth) : 0;
-  if (stroke && strokeWidth > 0) {
-    page.drawSvgPath(cloudCommandsToPathData(transformCloudCommandsToWorld(geometry.outline, geometry)), {
-      x: 0,
-      y: pageHeight,
-      borderColor: stroke.color,
-      borderWidth: strokeWidth,
-      borderOpacity: (stroke.opacity ?? 1) * objectOpacity,
-      borderLineCap: LineCapStyle.Round,
-      blendMode,
-    });
-  }
+  const appearance = buildCloudAppearance(page.doc, obj, pageHeight, {
+    geometry,
+    strokeFallback: geometry.kind === 'polyline' ? '#000000' : 'transparent',
+  });
+  if (!appearance) return true; // a cloud with nothing to paint
+  // The form's /BBox under its /Matrix has an axis-aligned page box whose
+  // min corner must land on the appearance /Rect's min corner.
+  const [, , width, height] = appearance.bbox;
+  const [a, b, c, d] = appearance.matrix || [1, 0, 0, 1, 0, 0];
+  const corners = [[0, 0], [width, 0], [width, height], [0, height]]
+    .map(([x, y]) => ({ x: a * x + c * y, y: b * x + d * y }));
+  const minX = Math.min(...corners.map((point) => point.x));
+  const minY = Math.min(...corners.map((point) => point.y));
+  flattenedCloudFormCounter += 1;
+  const name = page.node.newXObject(`CloudAP${flattenedCloudFormCounter}`, appearance.ref);
+  page.pushOperators(
+    pushGraphicsState(),
+    concatTransformationMatrix(1, 0, 0, 1, appearance.rect[0] - minX, appearance.rect[1] - minY),
+    drawObject(name),
+    popGraphicsState(),
+  );
   return true;
 };
 

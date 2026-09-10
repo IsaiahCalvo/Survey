@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ANNOTATION_WIDTH_DECIMALS,
   COUNTER_SIZE_MAX,
   COUNTER_SIZE_MIN,
   normalizeAnnotationSize,
@@ -24,6 +25,25 @@ test('annotation size drafts allow empty or up to three digits only', () => {
   assert.equal(sanitizeAnnotationSizeDraft('-5'), null);
   assert.equal(sanitizeAnnotationSizeDraft('1e2'), null);
   assert.equal(sanitizeAnnotationSizeDraft('1000'), null);
+});
+
+// 2026-09-09 (cloud-fill-knockout): the whole-number contract above is kept
+// for Counter Size / Eraser Size (decimals default 0). The line Width field
+// now passes ANNOTATION_WIDTH_DECIMALS so the Cloud style's approved 2.5
+// default reads back and commits as 2.5 instead of 3.
+test('line widths keep one decimal place when the field asks for it', () => {
+  assert.equal(ANNOTATION_WIDTH_DECIMALS, 1);
+  assert.equal(normalizeAnnotationSize(2.5, 1, 50, ANNOTATION_WIDTH_DECIMALS), 2.5);
+  assert.equal(normalizeAnnotationSize('2.5', 1, 50, ANNOTATION_WIDTH_DECIMALS), 2.5);
+  assert.equal(normalizeAnnotationSize(2.55, 1, 50, ANNOTATION_WIDTH_DECIMALS), 2.6);
+  assert.equal(normalizeAnnotationSize(0.2, 1, 50, ANNOTATION_WIDTH_DECIMALS), 1);
+  assert.equal(normalizeAnnotationSize(2.5, 1, 50), 3, 'default stays whole numbers');
+  assert.equal(sanitizeAnnotationSizeDraft('2.5', ANNOTATION_WIDTH_DECIMALS), '2.5');
+  assert.equal(sanitizeAnnotationSizeDraft('2.', ANNOTATION_WIDTH_DECIMALS), '2.');
+  assert.equal(sanitizeAnnotationSizeDraft('.5', ANNOTATION_WIDTH_DECIMALS), '.5');
+  assert.equal(sanitizeAnnotationSizeDraft('2.55', ANNOTATION_WIDTH_DECIMALS), null);
+  assert.equal(sanitizeAnnotationSizeDraft('1e2', ANNOTATION_WIDTH_DECIMALS), null);
+  assert.equal(sanitizeAnnotationSizeDraft('1000', ANNOTATION_WIDTH_DECIMALS), null);
 });
 
 test('counter sizes support every approved preset through 76', () => {

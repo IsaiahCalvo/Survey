@@ -2,19 +2,36 @@
 export const COUNTER_SIZE_MIN = 4;
 export const COUNTER_SIZE_MAX = 76;
 
-export const normalizeAnnotationSize = (value, min = 1, max = 100) => {
+// UX 2026-09-09: the line Width field keeps ONE decimal place. The Cloud
+// border style's approved default is a 2.5-unit line (the revision-cloud
+// studio's), and a whole-number field showed it as "3" and, on the next
+// commit, drew and remembered 3. Counter Size and Eraser Size stay whole
+// numbers (decimals = 0, the default).
+export const ANNOTATION_WIDTH_DECIMALS = 1;
+
+const decimalsOf = (decimals) => Math.max(0, Math.min(3, Math.round(Number(decimals) || 0)));
+
+export const normalizeAnnotationSize = (value, min = 1, max = 100, decimals = 0) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return min;
-  return Math.min(max, Math.max(min, Math.round(parsed)));
+  const factor = 10 ** decimalsOf(decimals);
+  const rounded = Math.round(parsed * factor) / factor;
+  return Math.min(max, Math.max(min, rounded));
 };
 
 /**
- * Preserve an empty typing draft, accept at most three digits, and reject all
- * decimal/sign/exponent characters instead of silently changing their value.
+ * Preserve an empty typing draft, accept at most three digits (plus, when the
+ * field allows decimals, a decimal point and that many decimal digits), and
+ * reject all sign/exponent characters instead of silently changing their
+ * value.
  */
-export const sanitizeAnnotationSizeDraft = (value) => {
+export const sanitizeAnnotationSizeDraft = (value, decimals = 0) => {
   const raw = String(value ?? '');
-  return /^\d{0,3}$/.test(raw) ? raw : null;
+  const places = decimalsOf(decimals);
+  const pattern = places > 0
+    ? new RegExp(`^\\d{0,3}(\\.\\d{0,${places}})?$`)
+    : /^\d{0,3}$/;
+  return pattern.test(raw) ? raw : null;
 };
 
 /**

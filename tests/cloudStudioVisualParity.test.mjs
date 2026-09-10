@@ -256,14 +256,24 @@ for (const fixture of fixtures) {
   });
 }
 
-test('visual parity: the app SVG is the studio SVG (same crowns, same paint attributes)', { skip }, () => {
-  // Beyond pixels: the real renderer emits exactly one stroked <path> per
-  // cloud with the studio's paint attributes and the studio's `d` text.
+// DELIBERATE ASSERTION CHANGE (2026-09-09, cloud-fill-knockout): this test
+// used to require ONE stroked <path> carrying the whole outline. The studio
+// itself paints one <path> PER RUN inside a group that carries the paint
+// attributes (page.tsx cloud-ink: `<g stroke fill="none" strokeWidth
+// strokeLinecap="round" strokeLinejoin="round">{runs.map(r => <path d={r.d}/>)}`),
+// and with a translucent stroke the two structures rasterise differently at
+// the run junctions. The renderer now emits the studio's structure, so the
+// contract is stronger, not weaker: the group carries the studio paint
+// attributes and every run's `d` matches the studio's run, one to one.
+test('visual parity: the app SVG is the studio SVG (same crowns, same paint attributes, one path per run)', { skip }, () => {
   const fixture = fixtures.find((entry) => entry.name === 'rect-300x200-bump2');
   const markup = appMarkup(fixture.app);
-  const d = markup.match(/<path d="([^"]+)" fill="none" stroke="#c42747" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/)?.[1];
-  assert.ok(d, `renderer must emit the studio paint attributes: ${markup.slice(0, 300)}`);
+  const ink = markup.match(/<g fill="none" stroke="#c42747" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"[^>]*>(.*?)<\/g>/s);
+  assert.ok(ink, `renderer must emit the studio paint attributes on the ink group: ${markup.slice(0, 300)}`);
+  const runDs = [...ink[1].matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]);
   const shape = reference.makeShape('rectangle', rectPoints(0, 0, 300, 200), 'x', { size: 28, depth: 12 });
-  assert.equal(d, reference.cloudRuns(shape, new Map(), 0, false).map((run) => run.d).join(' '));
+  const studioRuns = reference.cloudRuns(shape, new Map(), 0, false).map((run) => run.d).filter(Boolean);
+  assert.equal(runDs.length, studioRuns.length, 'one <path> per studio run');
+  assert.deepEqual(runDs, studioRuns);
   assert.match(markup, /transform="translate\(100, 150\)"/);
 });
