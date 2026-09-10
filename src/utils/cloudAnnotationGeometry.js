@@ -33,6 +33,17 @@ const num = (value, fallback = 0) => {
   return Number.isFinite(number) ? number : fallback;
 };
 
+// The crown engine is a PURE FUNCTION of the vertex coordinates it is handed:
+// two inputs a millionth of a point apart can fit a different number of crowns
+// at a different phase. A live resized shape reaches it as a PRODUCT
+// (width * scaleX), while the same shape re-imported from a PDF reaches it as
+// a single decimal read back from /Rect - and 238 * 0.9 is 214.20000000000002
+// in binary floating point, not 214.2. Snapping every derived size onto the
+// same 1e-6 grid the importer uses (snapCloudCoordinate in
+// pdfAnnotationImporter) makes the two identical: measured as a 163 vs 162
+// crown difference on a resized A5 rectangle before this.
+const snapEngineCoordinate = (value) => Math.round(value * 1e6) / 1e6;
+
 /**
  * Polygon / polyline vertices in the engine frame: Fabric stores `points` in
  * local unscaled space with a `pathOffset`; the rendered chain is
@@ -46,8 +57,8 @@ export function cloudPolyEnginePoints(obj) {
   const offsetX = num(obj?.pathOffset?.x);
   const offsetY = num(obj?.pathOffset?.y);
   return points.map((point) => ({
-    x: (num(point?.x) - offsetX) * scaleX,
-    y: (num(point?.y) - offsetY) * scaleY,
+    x: snapEngineCoordinate((num(point?.x) - offsetX) * scaleX),
+    y: snapEngineCoordinate((num(point?.y) - offsetY) * scaleY),
   }));
 }
 
@@ -92,15 +103,15 @@ export function resolveCloudAnnotationGeometry(obj) {
   if (spec.kind === 'rectangle') {
     const scaleX = Math.abs(num(obj?.scaleX, 1) || 1);
     const scaleY = Math.abs(num(obj?.scaleY, 1) || 1);
-    const width = Math.abs(num(obj?.width)) * scaleX;
-    const height = Math.abs(num(obj?.height)) * scaleY;
+    const width = snapEngineCoordinate(Math.abs(num(obj?.width)) * scaleX);
+    const height = snapEngineCoordinate(Math.abs(num(obj?.height)) * scaleY);
     if (!(width > 0) || !(height > 0)) return null;
     // Imported /Square clouds carry the /RD inset the authoring app used.
     const insets = Array.isArray(obj?.data?.pdfCloudInsets) ? obj.data.pdfCloudInsets : [0, 0, 0, 0];
-    const insetLeft = num(insets[0]) * scaleX;
-    const insetTop = num(insets[1]) * scaleY;
-    const insetRight = num(insets[2]) * scaleX;
-    const insetBottom = num(insets[3]) * scaleY;
+    const insetLeft = snapEngineCoordinate(num(insets[0]) * scaleX);
+    const insetTop = snapEngineCoordinate(num(insets[1]) * scaleY);
+    const insetRight = snapEngineCoordinate(num(insets[2]) * scaleX);
+    const insetBottom = snapEngineCoordinate(num(insets[3]) * scaleY);
     points = [
       { x: insetLeft, y: insetTop },
       { x: width - insetRight, y: insetTop },
@@ -112,8 +123,8 @@ export function resolveCloudAnnotationGeometry(obj) {
   } else if (spec.kind === 'ellipse') {
     // renderEllipse sizes off the LIVE radius/rx/ry (never width/height).
     const isCircle = type === 'circle' || obj?.radius != null;
-    const rx = (isCircle ? num(obj?.radius) : num(obj?.rx)) * Math.abs(num(obj?.scaleX, 1) || 1);
-    const ry = (isCircle ? num(obj?.radius) : num(obj?.ry)) * Math.abs(num(obj?.scaleY, 1) || 1);
+    const rx = snapEngineCoordinate((isCircle ? num(obj?.radius) : num(obj?.rx)) * Math.abs(num(obj?.scaleX, 1) || 1));
+    const ry = snapEngineCoordinate((isCircle ? num(obj?.radius) : num(obj?.ry)) * Math.abs(num(obj?.scaleY, 1) || 1));
     if (!(rx > 0) || !(ry > 0)) return null;
     points = ellipseCloudPoints(0, 0, rx * 2, ry * 2);
     pivot = { x: rx, y: ry };

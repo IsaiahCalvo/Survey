@@ -4322,10 +4322,24 @@ function convertPdfTextMarkupToNative(annotation, viewport, scale = 1, context =
  * Convert PDF FreeText annotation to Fabric.js Textbox
  */
 function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
-  const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
-  if (!viewportRect) {
+  const rawViewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
+  if (!rawViewportRect) {
     return null;
   }
+  // 2026-09-09: /RD on a /FreeText is the inset from /Rect to the TEXT BOX
+  // (PDF 32000 12.5.6.6). Our exporter writes it because a plain text box now
+  // ships an /AP whose /BBox has to hold the border's outer half stroke and a
+  // descender's overhang; Acrobat writes it for bordered text too. Without
+  // reading it back the box imported that much larger every round trip.
+  const freeTextInsets = viewportCloudInsets(annotation, viewport, scale);
+  const viewportRect = (freeTextInsets[0] || freeTextInsets[1] || freeTextInsets[2] || freeTextInsets[3])
+    ? {
+        left: rawViewportRect.left + freeTextInsets[0],
+        top: rawViewportRect.top + freeTextInsets[1],
+        width: Math.max(0, rawViewportRect.width - freeTextInsets[0] - freeTextInsets[2]),
+        height: Math.max(0, rawViewportRect.height - freeTextInsets[1] - freeTextInsets[3]),
+      }
+    : rawViewportRect;
 
   const text = annotation.contents || '';
   const calloutPoints = convertPdfPointListToViewportPoints(annotation.calloutLine, viewport, scale);
@@ -4530,7 +4544,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // applies to plain FreeText; callouts have their own composite
   // positioning pipeline that shouldn't gain an angle on the textbox.
   const textBoxRotation = !isCalloutIntent
-    ? computeAppearanceRotationTransform(annotation, scale, viewport)
+    ? computeAppearanceRotationTransform(annotation, scale, viewport, { halfTurnIsInert: false })
     : null;
   if (textBoxRotation) {
     const unrotWidth = textBoxRotation.bboxWidth + 2 * TEXT_PADDING;
@@ -4832,7 +4846,16 @@ function viewportPageRotation(viewport) {
   return [0, 90, 180, 270].includes(rotation) ? rotation : 0;
 }
 
-function computeAppearanceRotationTransform(annotation, scale = 1, viewport = null) {
+/**
+ * @param {object} options
+ * @param {boolean} options.halfTurnIsInert - true when a 180-degree turn is a
+ *   VISUAL no-op for this shape (a rectangle, circle or ellipse looks the same
+ *   after a half turn), so the tilt can be dropped. FreeText must pass false:
+ *   an upside-down text box reads upside down, and dropping the half turn
+ *   silently imported it upright.
+ */
+function computeAppearanceRotationTransform(annotation, scale = 1, viewport = null, options = {}) {
+  const halfTurnIsInert = options.halfTurnIsInert !== false;
   const matrix = annotation?._appearance?.matrix;
   const bbox = annotation?._appearance?.bbox;
   if (!Array.isArray(matrix) || matrix.length !== 6) return null;
@@ -4852,7 +4875,8 @@ function computeAppearanceRotationTransform(annotation, scale = 1, viewport = nu
   // shape tilted by 90 degrees with its width and height swapped.
   const rawAngleDeg = -Math.atan2(b, a) * 180 / Math.PI + viewportPageRotation(viewport);
   const angleDeg = ((rawAngleDeg + 180) % 360 + 360) % 360 - 180;
-  if (Math.abs(angleDeg) < 0.05 || Math.abs(Math.abs(angleDeg) - 180) < 0.05) return null;
+  if (Math.abs(angleDeg) < 0.05) return null;
+  if (halfTurnIsInert && Math.abs(Math.abs(angleDeg) - 180) < 0.05) return null;
   const bboxWidth = Math.abs(bbox[2] - bbox[0]) * scale;
   const bboxHeight = Math.abs(bbox[3] - bbox[1]) * scale;
   if (!Number.isFinite(angleDeg) || bboxWidth <= 0 || bboxHeight <= 0) return null;
@@ -4958,12 +4982,22 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   // border effect (/BE /S = /C), build a scalloped edge path so it renders
   // as a revision cloud instead of a plain box. Path is in local coords
   // (0,0 origin) so normal rect positioning/scaling works unchanged.
-  const cloudInsets = cloudEffect ? viewportCloudInsets(annotation, viewport, scale) : [0, 0, 0, 0];
+  const rectDifferenceInsets = viewportCloudInsets(annotation, viewport, scale);
+  const cloudInsets = cloudEffect ? rectDifferenceInsets : [0, 0, 0, 0];
 
   // If a rotation transform is present, use the un-rotated /BBox dimensions
   // and center the rect on the viewport /Rect midpoint. Otherwise fall back
   // to the existing axis-aligned behavior.
   const useRotation = !!rotationTransform;
+  // 2026-09-09: /RD is the inset from /Rect to the base rectangle for a PLAIN
+  // /Square too (PDF 32000 12.5.6.8), not only a cloudy one. Our exporter now
+  // writes it because a plain square ships an /AP whose /BBox has to hold the
+  // outer half of the stroke, and Acrobat writes it for bordered squares. Only
+  // needed when the appearance path bounds are unavailable — those already ARE
+  // the base rectangle.
+  const plainInsets = (!cloudEffect && !useRotation && !appearanceBounds)
+    ? rectDifferenceInsets
+    : [0, 0, 0, 0];
   const boxWidth = useRotation ? rotationTransform.bboxWidth : viewportRect.width;
   const boxHeight = useRotation ? rotationTransform.bboxHeight : viewportRect.height;
   // 2026-09-09: a cloudy /Square's /Rect (or /BBox) is the scalloped
@@ -4976,10 +5010,10 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   // the crown count on a metadata-less re-import (207 vs 209 commands).
   const outWidth = cloudEffect
     ? snapCloudCoordinate(Math.max(0, boxWidth - cloudInsets[0] - cloudInsets[2]))
-    : boxWidth;
+    : Math.max(0, boxWidth - plainInsets[0] - plainInsets[2]);
   const outHeight = cloudEffect
     ? snapCloudCoordinate(Math.max(0, boxHeight - cloudInsets[1] - cloudInsets[3]))
-    : boxHeight;
+    : Math.max(0, boxHeight - plainInsets[1] - plainInsets[3]);
   let outLeft;
   let outTop;
   if (useRotation) {
@@ -4995,8 +5029,12 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     outLeft = viewportRect.left + viewportRect.width / 2 + offsetX - outWidth / 2;
     outTop = viewportRect.top + viewportRect.height / 2 + offsetY - outHeight / 2;
   } else {
-    outLeft = cloudEffect ? snapCloudCoordinate(viewportRect.left + cloudInsets[0]) : viewportRect.left;
-    outTop = cloudEffect ? snapCloudCoordinate(viewportRect.top + cloudInsets[1]) : viewportRect.top;
+    outLeft = cloudEffect
+      ? snapCloudCoordinate(viewportRect.left + cloudInsets[0])
+      : viewportRect.left + plainInsets[0];
+    outTop = cloudEffect
+      ? snapCloudCoordinate(viewportRect.top + cloudInsets[1])
+      : viewportRect.top + plainInsets[1];
   }
   const cloudPathD = cloudEffect
     ? buildCloudPathCommands(
@@ -5146,15 +5184,30 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
   // tilted cloud the inset is measured in the un-rotated /BBox frame (which is
   // what our exporter writes; the page-space and box-space definitions agree
   // whenever there is no tilt).
-  const cloudInsets = cloudEffect ? viewportCloudInsets(annotation, viewport, scale) : [0, 0, 0, 0];
-  const insetRect = (rect) => (rect && cloudEffect
-    ? {
+  const rectDifferenceInsets = viewportCloudInsets(annotation, viewport, scale);
+  const cloudInsets = cloudEffect ? rectDifferenceInsets : [0, 0, 0, 0];
+  const insetRect = (rect) => {
+    if (!rect) return rect;
+    if (cloudEffect) {
+      return {
         left: snapCloudCoordinate(rect.left + cloudInsets[0]),
         top: snapCloudCoordinate(rect.top + cloudInsets[1]),
         width: snapCloudCoordinate(Math.max(0, rect.width - cloudInsets[0] - cloudInsets[2])),
         height: snapCloudCoordinate(Math.max(0, rect.height - cloudInsets[1] - cloudInsets[3])),
-      }
-    : rect);
+      };
+    }
+    // A PLAIN /Circle's /RD means the same thing (12.5.6.8): the inset from
+    // /Rect back to the base ellipse. Our exporter writes it now that a plain
+    // circle ships an /AP whose /BBox has to hold the outer half of the stroke.
+    const [left, top, right, bottom] = rectDifferenceInsets;
+    if (!(left || top || right || bottom)) return rect;
+    return {
+      left: rect.left + left,
+      top: rect.top + top,
+      width: Math.max(0, rect.width - left - right),
+      height: Math.max(0, rect.height - top - bottom),
+    };
+  };
   const viewportRect = appearanceBounds || (rotationTransform ? rawViewportRect : insetRect(rawViewportRect));
   const hasAppearancePaint = Boolean(
     appearance && (appearance.hasFill === true || appearance.hasStroke === true)
@@ -5196,13 +5249,17 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     // The /BBox is the (inflated) appearance box; /RD shrinks it back to the
     // base ellipse, and the base centre sits off the box centre by the inset
     // asymmetry - rotated with the shape, since the box centre is what /Rect
-    // (the rotated box's page bounds) is centred on.
-    const rx = snapCloudCoordinate((rotationTransform.bboxWidth - cloudInsets[0] - cloudInsets[2]) / 2);
-    const ry = snapCloudCoordinate((rotationTransform.bboxHeight - cloudInsets[1] - cloudInsets[3]) / 2);
+    // (the rotated box's page bounds) is centred on. 2026-09-09: this holds for
+    // a PLAIN tilted ellipse too - its /BBox is padded by the outer half of the
+    // stroke so the form does not clip the outline, and /RD carries that pad.
+    const tiltInsets = cloudEffect ? cloudInsets : rectDifferenceInsets;
+    const snap = cloudEffect ? snapCloudCoordinate : ((value) => value);
+    const rx = snap((rotationTransform.bboxWidth - tiltInsets[0] - tiltInsets[2]) / 2);
+    const ry = snap((rotationTransform.bboxHeight - tiltInsets[1] - tiltInsets[3]) / 2);
     if (rx <= 0 || ry <= 0) return null;
     const localOffset = {
-      x: cloudInsets[0] + rx - rotationTransform.bboxWidth / 2,
-      y: cloudInsets[1] + ry - rotationTransform.bboxHeight / 2,
+      x: tiltInsets[0] + rx - rotationTransform.bboxWidth / 2,
+      y: tiltInsets[1] + ry - rotationTransform.bboxHeight / 2,
     };
     const tilt = (rotationTransform.angleDeg * Math.PI) / 180;
     const offsetX = localOffset.x * Math.cos(tilt) - localOffset.y * Math.sin(tilt);

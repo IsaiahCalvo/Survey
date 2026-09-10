@@ -17,6 +17,7 @@ import {
 import { createProductionPaperInk } from './productionPaperInk.js';
 import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { normalizePolyPointsToLocal } from './polyDraft.js';
+import { round2 } from './annotationCommitRounding.js';
 
 // fabric 7 base-object serialization envelope (Object.mjs toObject defaults,
 // NUM_FRACTION_DIGITS rounding upstream of these constants). Deliberately
@@ -71,8 +72,6 @@ export const PEN_FABRIC_RESIDUE = Object.freeze({
   skewX: 0,
   skewY: 0,
 });
-
-const round2 = (value) => Number((Number(value) || 0).toFixed(2));
 
 /**
  * hex + opacity% → rgba() string. Ported verbatim from

@@ -976,16 +976,28 @@ test('edited imported rotated ellipse is written as /Circle with appearance-matr
   assert.equal(dict.get(PDFName.of('Subtype')).decodeText(), 'Circle');
   assert.notEqual(dict.get(PDFName.of('Contents'))?.decodeText?.(), 'stale native shape');
 
-  // /Rect must be the axis-aligned bounds of the ROTATED ellipse, centered on
-  // the app-space center (100, 100) → PDF center (100, 100) on a 200pt page.
+  // CONTRACT CHANGE (2026-09-09): the appearance box is the ellipse box PLUS
+  // the outer half of the stroke. It used to be the exact ellipse box, so the
+  // form CLIPPED half the outline away - measured as 1.25pt of missing stroke
+  // against the app's own flattened print in poppler, cairo and Quartz
+  // (scripts/cloud-export-fidelity.mjs --shapes plain, case
+  // plain-ellipse-rotated). /RD records the pad, so a re-import still recovers
+  // rx / ry (tests/pdfPlainShapeAppearance.test.mjs covers that round trip).
+  const pad = 2 / 2 + 0.25; // strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD
+  // /Rect must be the axis-aligned bounds of the ROTATED, padded ellipse,
+  // centered on the app-space center (100, 100) → PDF center (100, 100) on a
+  // 200pt page.
   const rect = numberArray(dict, 'Rect');
   const theta = (-30 * Math.PI) / 180; // fabric screen-CW 30° → PDF CCW −30°
-  const halfW = Math.abs(40 * Math.cos(theta)) + Math.abs(20 * Math.sin(theta));
-  const halfH = Math.abs(40 * Math.sin(theta)) + Math.abs(20 * Math.cos(theta));
+  const halfW = Math.abs((40 + pad) * Math.cos(theta)) + Math.abs((20 + pad) * Math.sin(theta));
+  const halfH = Math.abs((40 + pad) * Math.sin(theta)) + Math.abs((20 + pad) * Math.cos(theta));
   approxEqual(rect[0], 100 - halfW);
   approxEqual(rect[1], 100 - halfH);
   approxEqual(rect[2], 100 + halfW);
   approxEqual(rect[3], 100 + halfH);
+  const rd = numberArray(dict, 'RD');
+  assert.equal(rd.length, 4, 'the pad is recorded in /RD');
+  rd.forEach((value) => approxEqual(value, pad));
 
   // /AP /N form: BBox carries the UN-rotated oblong dims, Matrix the rotation
   // — exactly what computeAppearanceRotationTransform inverts on import
@@ -996,8 +1008,8 @@ test('edited imported rotated ellipse is written as /Circle with appearance-matr
   assert.ok(normal, 'rotated ellipse export must carry an /AP /N form');
   const bbox = normal.dict.get(PDFName.of('BBox')).asArray()
     .map((n) => (typeof n.value === 'function' ? n.value() : Number(n)));
-  approxEqual(Math.abs(bbox[2] - bbox[0]), 80); // 2·rx
-  approxEqual(Math.abs(bbox[3] - bbox[1]), 40); // 2·ry
+  approxEqual(Math.abs(bbox[2] - bbox[0]), 80 + 2 * pad); // 2·rx + the stroke pad
+  approxEqual(Math.abs(bbox[3] - bbox[1]), 40 + 2 * pad); // 2·ry + the stroke pad
   const matrix = normal.dict.get(PDFName.of('Matrix')).asArray()
     .map((n) => (typeof n.value === 'function' ? n.value() : Number(n)));
   approxEqual(matrix[0], Math.cos(theta));

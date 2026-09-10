@@ -21,6 +21,7 @@ import {
   scaleInRotatedFrameAroundMatrix,
 } from '../utils/inkGeometryTransform.js';
 import { deepClone } from '../utils/deepClone.js';
+import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -3280,7 +3281,9 @@ export function useSVGInteraction({
             }
           }
 
-          // Save through existing pipeline
+          // Save through existing pipeline (2 decimals, exactly like a
+          // creation commit — see annotationCommitRounding).
+          roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
           onSaveAnnotations(updatedAnnotations, {
             source: 'object:modified',
             action: 'move',
@@ -3339,8 +3342,9 @@ export function useSVGInteraction({
         });
       }
     } else if (ds.mode === 'vertex') {
-      const finalAnnotations = ds.currentAnnotations || annotations;
+      const finalAnnotations = ds.currentAnnotations || deepClone(annotations);
       if (finalAnnotations?.objects?.[ds.annotationIndex]) {
+        roundCommittedAnnotationsGeometry(finalAnnotations, [ds.annotationIndex]);
         onSaveAnnotations(finalAnnotations, {
           source: 'object:modified',
           action: 'vertex-move',
@@ -3364,6 +3368,7 @@ export function useSVGInteraction({
           applyMidpointToAnnotation(targetObj, midpoint);
         }
       }
+      roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'endpoint-move',
@@ -3384,6 +3389,7 @@ export function useSVGInteraction({
       } else {
         applyMidpointToAnnotation(targetObj, midpoint);
       }
+      roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'midpoint-move',
@@ -3391,7 +3397,11 @@ export function useSVGInteraction({
       });
     } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
                && ds.groupMemberOriginals) {
-      const finalAnnotations = ds.currentAnnotations || annotations;
+      const finalAnnotations = ds.currentAnnotations || deepClone(annotations);
+      roundCommittedAnnotationsGeometry(
+        finalAnnotations,
+        Object.keys(ds.groupMemberOriginals).map(Number),
+      );
       onSaveAnnotations(finalAnnotations, {
         source: 'object:modified',
         action: ds.mode,
@@ -3505,6 +3515,10 @@ export function useSVGInteraction({
           }
         }
 
+        roundCommittedAnnotationsGeometry(
+          updatedAnnotations,
+          Object.keys(ds.groupOriginals).map(Number),
+        );
         onSaveAnnotations(updatedAnnotations, {
           source: 'object:modified',
           action: 'group-move',
@@ -3740,6 +3754,12 @@ export function useSVGInteraction({
         }
       }
 
+      // UX 2026-09-09 (export round-trip): a resize commit used to store raw
+      // float results (scaleX 1.3846070545520617). Round it exactly like a
+      // creation commit so a metadata-stripped PDF round trip rebuilds the
+      // same shape — and, for a revision cloud, the same crowns. Invisible at
+      // 1/100 pt; see annotationCommitRounding.
+      roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'scale',
@@ -3801,6 +3821,7 @@ export function useSVGInteraction({
       // called out that it snapped the selection frame back to vertical.
       rotObj.angle = ds.currentAngle;
 
+      roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'rotate',
