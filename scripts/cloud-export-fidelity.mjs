@@ -162,15 +162,18 @@ const nextRandom = () => {
 // 2026-09-10 — TILTED PLAIN SHAPES, annotated vs flattened, centroid only.
 // A tilted /Square or /FreeText now ships an /AP drawn UPRIGHT with the tilt
 // in the form's /Matrix, while the print flattener still draws the same shape
-// with its corners pre-rotated inline. Both put the ink in the same place -
-// measured on this branch: bbox delta [0,0,0,0], structural 0.0000%, Hausdorff
-// 0.25pt (ONE device pixel at 288 dpi), and poppler, cairo and Quartz all
-// report a centroid delta of exactly 0. pdf.js alone antialiases an
-// axis-aligned path under a rotated CTM a shade differently from a pre-rotated
-// path (2% fewer ink pixels on thin glyph stems), which drags the centroid
-// 0.14-0.19pt without moving an edge. So the centroid bound - and only the
-// centroid bound - is one device pixel for these two cases.
-const TILTED_PLAIN_CENTROID_PT = 0.25;
+// with its corners pre-rotated inline. Both put the ink in the same place. On
+// EVERY page frame measured on this branch the edges are identical: bbox delta
+// [0,0,0,0], structural 0.0000%, Hausdorff 0.25pt - ONE device pixel at 288
+// dpi - and poppler, cairo and Quartz each report a centroid delta of exactly
+// 0. pdf.js alone antialiases an axis-aligned path under a rotated CTM a shade
+// differently from a pre-rotated path (1-2% fewer ink pixels along the
+// perimeter), and because that hairline runs the whole way round, the centroid
+// drift grows with the shape: 0.14pt on a 320x240 page, 0.26pt on A5 turned 90
+// degrees. So the centroid bound - and ONLY the centroid bound - is half a
+// point for these cases. Hausdorff, the bbox and the structural count stay at
+// full strength, and a real placement shift moves all three.
+const TILTED_PLAIN_CENTROID_PT = 0.5;
 const plainFrameCases = (frame) => {
   const W = frame.width; const H = frame.height;
   const r = (fx, fy, fw, fh) => ({ left: Math.round(W * fx), top: Math.round(H * fy), width: Math.round(W * fw), height: Math.round(H * fh) });
