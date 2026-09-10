@@ -429,13 +429,22 @@ test('every cloud shape ships an /AP form that paints the scallops itself', asyn
     assert.ok(/(^|\n)2\.5 w(\n|$)/.test(annot.content), `${name}: the stroke width is the annotation's`);
     assert.ok(/ RG(\n|$)/.test(annot.content) && /(^|\n)S(\n|$)/.test(annot.content), `${name}: the outline is stroked`);
     const filled = /rgba\(/.test(shape.fill);
-    // DELIBERATE ASSERTION CHANGE (2026-09-09, cloud-fill-knockout): a filled
-    // AND stroked cloud paints its fill knocked out under the stroke band as
-    // an even-odd region (`f*`, see cloudFillKnockoutRings) instead of the
-    // plain scalloped fill (`f`); a filled cloud without a stroke keeps `f`.
-    // Every fidelity shape here is stroked, so `f*` is the filled form.
-    assert.equal(/(^|\n)f\*(\n|$)/.test(annot.content), filled, `${name}: the scalloped region is filled (knocked out under the stroke) only when the shape has a fill`);
-    assert.equal(/(^|\n)f(\n|$)/.test(annot.content), false, `${name}: no un-knocked-out fill under the stroke`);
+    // DELIBERATE ASSERTION CHANGE (2026-09-10, cloud-fill-knockout rework).
+    // The 2026-09-09 contract asserted `f*` — the fill MINUS the stroke band,
+    // as explicit even-odd rings from a polygon-clipping subtraction. That
+    // subtraction unioned the sampled fill contour with the crown lobes and
+    // the body polygon, which share exactly-coincident edges, and the sweep
+    // line hung for over ten minutes on some filled polygon clouds: no /AP
+    // and no flattened page were produced at all. The knockout is now a CLIP
+    // (cloudStrokeBandRings): `W*` `n` on the appearance box plus the stroke
+    // band, then the scalloped fill painted with its own nonzero `f`. Same
+    // picture — verified against the app's SVG raster in pdf.js, poppler,
+    // cairo and Quartz — with the fill edge on the engine's exact cubics
+    // instead of an 8-step resample. So a filled AND stroked cloud is now
+    // `W*` + `f`, and `f*` must NOT appear.
+    assert.equal(/(^|\n)f(\n|$)/.test(annot.content), filled, `${name}: the scalloped region is filled only when the shape has a fill`);
+    assert.equal(/(^|\n)W\*(\n|$)/.test(annot.content), filled, `${name}: the fill is clipped to the stroke band's complement (knocked out) only when there is a fill`);
+    assert.equal(/(^|\n)f\*(\n|$)/.test(annot.content), false, `${name}: no even-odd fill region — the knockout is a clip now`);
     assert.ok(Array.isArray(annot.bbox) && annot.bbox[2] > 0 && annot.bbox[3] > 0, `${name}: /BBox`);
 
     // /Rect must be exactly the page box of /Matrix x /BBox: any other value

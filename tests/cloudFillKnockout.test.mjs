@@ -29,7 +29,7 @@ const {
   hasVisibleCloudFill,
 } = await import('../src/utils/pdfAnnotationAppearance.js');
 const {
-  cloudFillKnockoutRings,
+  cloudStrokeBandRings,
   resolveCloudAnnotationGeometry,
   sampleCloudCommands,
 } = await import('../src/utils/cloudAnnotationGeometry.js');
@@ -197,14 +197,28 @@ test('source guards: CloudOutline renders the shared model, the painter knocks o
   assert.doesNotMatch(knockoutFn, /scratch\.globalAlpha = [^1]/);
   assert.doesNotMatch(knockoutFn, /context\.globalCompositeOperation = 'destination-out'/);
   const flatten = read('../src/utils/pdfAnnotationsPdfLib.js');
-  assert.match(flatten, /cloudFillKnockoutRings\(geometry\)/);
+  assert.match(flatten, /cloudStrokeBandRings\(geometry\)/);
   assert.match(flatten, /runs\.flatMap\(\(run\) => \[\.\.\.cloudCommandsToOperators\(run, mapPoint\), 'S'\]\)/);
   assert.doesNotMatch(flatten, /SMask/, 'no soft mask: Quartz drops it inside annotation appearances');
 });
 
-test('knockout rings: the fill minus the stroke band, exact along crowns and under the tails', () => {
-  const rings = cloudFillKnockoutRings(geometry);
-  assert.ok(Array.isArray(rings) && rings.length >= 1);
+// DELIBERATE CONTRACT REWRITE (2026-09-10). This test used to assert the
+// SUBTRACTED region (`fill minus band`) that cloudFillKnockoutRings returned.
+// That subtraction unioned the sampled fill contour with the crown lobes and
+// the body polygon - three families that share exactly-coincident edges - and
+// the sweep line hung for over ten minutes on some filled polygon clouds
+// (left 40 / top 30, points (0,0) (210,20) (180,160) (30,130), stroke 6, bump
+// 2) and threw on others, so those clouds got NO /AP and NO flattened page at
+// all. The knockout is now a clip to the complement of the stroke band, and
+// cloudStrokeBandRings returns that band. The property below is the same
+// contract seen from the other side, and a tighter one: every vertex of the
+// band is exactly half a stroke width from the outline centreline, and the
+// inward tail's end - the place the old rings had to prove they excluded - is
+// INSIDE the band.
+test('stroke band: half a stroke width around every run, tails included, and it never hangs', () => {
+  const band = cloudStrokeBandRings(geometry);
+  assert.ok(band && Array.isArray(band.rings) && band.rings.length >= 1);
+  assert.equal(band.mode, 'union', 'a plain rect cloud unions cleanly');
   const distanceToOutline = (point) => {
     let best = Infinity;
     for (const subpath of sampleCloudCommands(geometry.outline, 16)) {
@@ -218,18 +232,18 @@ test('knockout rings: the fill minus the stroke band, exact along crowns and und
     }
     return best;
   };
-  // Every ring vertex sits on the band's inner edge (half the stroke width
-  // from the centreline) or on the fill contour outside it - never inside
-  // the band.
   const half = object.strokeWidth / 2;
-  for (const ring of rings) {
+  for (const ring of band.rings) {
     for (const point of ring) {
-      assert.ok(distanceToOutline(point) >= half - 0.15, `ring vertex (${point.x.toFixed(2)}, ${point.y.toFixed(2)}) lies inside the stroke band`);
+      const distance = distanceToOutline(point);
+      assert.ok(
+        Math.abs(distance - half) <= 0.25,
+        `band vertex (${point.x.toFixed(2)}, ${point.y.toFixed(2)}) is ${distance.toFixed(3)} from the centreline, not ~${half}`,
+      );
     }
   }
-  // The tails: the region under a run's inward tail is knocked out too, so a
-  // point on the tail's centreline is at least `half` from every ring vertex
-  // AND outside the knocked-out region.
+  // The tails: a run's inward tail end is covered by the band, so the fill is
+  // knocked out under it too (even-odd containment across the union's rings).
   const run = geometry.outlineRuns[1];
   const tailEnd = run[run.length - 1];
   const tail = { x: tailEnd[5], y: tailEnd[6] };
@@ -241,11 +255,45 @@ test('knockout rings: the fill minus the stroke band, exact along crowns and und
     }
     return hit;
   };
-  const containment = rings.filter((ring) => inside(tail, ring)).length;
-  assert.equal(containment % 2, 0, 'the tail end is not inside the knocked-out fill (even-odd)');
-  assert.equal(cloudFillKnockoutRings(resolveCloudAnnotationGeometry({ ...object, fill: 'transparent' })), null);
-  assert.equal(cloudFillKnockoutRings({ ...geometry, strokeWidth: 0 }), null);
+  const containment = band.rings.filter((ring) => inside(tail, ring)).length;
+  assert.equal(containment % 2, 1, 'the tail end is inside the stroke band (even-odd)');
+  assert.equal(cloudStrokeBandRings(resolveCloudAnnotationGeometry({ ...object, fill: 'transparent' })), null);
+  assert.equal(cloudStrokeBandRings({ ...geometry, strokeWidth: 0 }), null);
 });
+
+// REGRESSION (2026-09-10): the two filled polygon clouds that made the old
+// subtraction hang / throw. Both are plain shapes a user can draw in one drag;
+// neither reached the exported file before this. A wall-clock budget is the
+// point of the assertion, so it is generous (200x the ~30ms these take) and
+// still fails long before a person would call the export broken.
+for (const [name, shape] of Object.entries({
+  'convex quad (hung the old subtraction for >10 min)': {
+    type: 'polygon', left: 40, top: 30, strokeWidth: 6,
+    stroke: 'rgba(196,39,71,1)', fill: 'rgba(0,0,255,0.3)',
+    points: [{ x: 0, y: 0 }, { x: 210, y: 20 }, { x: 180, y: 160 }, { x: 30, y: 130 }],
+    data: { pdfCloudIntensity: 2 },
+  },
+  'self-crossing hexagon (threw "reading depth" in the old subtraction)': {
+    type: 'polygon', left: 40, top: 30, strokeWidth: 6,
+    stroke: 'rgba(196,39,71,1)', fill: 'rgba(0,0,255,0.3)',
+    points: [{ x: 92, y: 69 }, { x: 180, y: 28 }, { x: 35, y: 51 }, { x: 83, y: 81 }, { x: 214, y: 75 }, { x: 166, y: 36 }],
+    data: { pdfCloudIntensity: 2 },
+  },
+})) {
+  test(`stroke band finishes on the ${name}`, () => {
+    const cloud = resolveCloudAnnotationGeometry(shape);
+    assert.ok(cloud, 'the cloud resolves');
+    const started = Date.now();
+    const band = cloudStrokeBandRings(cloud);
+    const elapsed = Date.now() - started;
+    assert.ok(band && band.rings.length >= 1, 'a band came back');
+    assert.ok(elapsed < 5_000, `took ${elapsed}ms`);
+    for (const ring of band.rings) {
+      assert.ok(ring.length >= 3);
+      for (const point of ring) assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y));
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // PDF structure: /AP paints the knockout region even-odd + one S per run, and
@@ -288,7 +336,7 @@ const exports = async () => {
   return { annotatedBytes, flattenedBytes };
 };
 
-test('/AP: knockout region painted even-odd, one stroke per run, and the flattened print draws the same form', async () => {
+test('/AP: the fill is clipped to the stroke band complement, one stroke per run, and the flattened print draws the same form', async () => {
   const { annotatedBytes: annotated, flattenedBytes: flattened } = await exports();
   const doc = await PDFDocument.load(annotated);
   const page = doc.getPage(0);
@@ -300,8 +348,16 @@ test('/AP: knockout region painted even-odd, one stroke per run, and the flatten
   const content = streamText(doc, normalRef);
   const strokes = (content.match(/\nS\n/g) || []).length + (content.endsWith('\nS') ? 1 : 0);
   assert.equal(strokes, geometry.outlineRuns.length, 'one S operator per run');
-  assert.match(content, /\nf\*\n/, 'the fill is the even-odd knockout region');
-  assert.doesNotMatch(content, /\nf\n/, 'no plain (un-knocked-out) fill');
+  // DELIBERATE ASSERTION CHANGE (2026-09-10): the knockout is a CLIP now (see
+  // the contract note above), so the fill is an even-odd clip to the band's
+  // complement followed by the scalloped region's own nonzero `f` - not an
+  // even-odd `f*` of a pre-subtracted region.
+  assert.match(content, /\nW\*\nn\n/, "the fill is clipped to the stroke band's complement");
+  assert.match(content, /\nf\n/, 'the scalloped region is filled through that clip');
+  assert.doesNotMatch(content, /\nf\*\n/, 'no pre-subtracted even-odd region');
+  // The clip is fenced so the crowns painted after it are not clipped too.
+  assert.ok(content.indexOf('\nq\n') < content.indexOf('\nW*\n'), 'the clip opens its own graphics state');
+  assert.ok(content.indexOf('\nQ\n') > content.indexOf('\nf\n'), 'and closes it before the stroke');
   assert.match(content, /1 J 1 j/, 'round caps and joins');
   const form = doc.context.lookup(normalRef);
   assert.equal(form.dict.get(PDFName.of('Resources')).get(PDFName.of('ExtGState'))?.get(PDFName.of('GSK')), undefined, 'no soft mask');
@@ -434,4 +490,68 @@ test('width readout: the Width control, shells and viewer handlers all carry the
   // The Cloud style default that motivated this is still 2.5.
   const database = read('../src/hooks/useDatabase.js');
   assert.match(database, /cloud: \{ strokeColor: '#c42747', strokeWidth: 2\.5, strokeOpacity: 100 \}/);
+});
+
+// ---------------------------------------------------------------------------
+// Multiply blend (2026-09-10). The canvas painter (applyBlendAndOpacity) and
+// the exported /AP (a /BM /Multiply ExtGState in buildCloudAppearance) both
+// honoured globalCompositeOperation:'multiply'; CloudOutline never emitted
+// mix-blend-mode, so a multiply cloud over a coloured backdrop rasterised
+// (74,89,26) on screen against (0,82,0) in every other lane. Every plain shape
+// branch in svgAnnotationRenderers.jsx sets mixBlendMode from the same flag -
+// the cloud branch was the one that did not.
+// ---------------------------------------------------------------------------
+
+test('a multiply cloud emits mix-blend-mode on screen, exactly like every plain shape', () => {
+  const svg = read('../src/utils/svgAnnotationRenderers.jsx');
+  const cloudOutline = svg.slice(svg.indexOf('const CloudOutline = ('), svg.indexOf('export const TEXT_PADDING'));
+  assert.match(cloudOutline, /style=\{multiply \? \{ mixBlendMode: 'multiply' \} : undefined\}/,
+    'the cloud group carries the blend');
+  // Every one of the four cloud branches (rect, polygon, polyline, ellipse)
+  // has to pass the flag, or one shape type silently keeps the old behaviour.
+  assert.equal((svg.match(/multiply=\{obj\.globalCompositeOperation === 'multiply'\}/g) || []).length, 4,
+    'all four cloud render branches pass it');
+});
+
+test('pixels (multiply): the SVG paint model matches the canvas painter over a coloured backdrop', {
+  skip: has('rsvg-convert') && nodeCanvas ? false : 'rsvg-convert + node-canvas not installed',
+}, () => {
+  const blended = { ...object, globalCompositeOperation: 'multiply', opacity: 0.5 };
+  const backdrop = { x: 40, y: 30, width: 240, height: 180, color: 'rgb(30, 160, 60)' };
+  const model = buildCloudSvgPaint(geometry, { fill: blended.fill, stroke: blended.stroke, maskId: 'cloud-multiply' });
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE.width * SCALE}" height="${PAGE.height * SCALE}" viewBox="0 0 ${PAGE.width} ${PAGE.height}">`
+    + `<rect width="${PAGE.width}" height="${PAGE.height}" fill="white"/>`
+    + `<rect x="${backdrop.x}" y="${backdrop.y}" width="${backdrop.width}" height="${backdrop.height}" fill="${backdrop.color}"/>`
+    + cloudSvgPaintMarkup(model, { opacity: blended.opacity, multiply: true })
+    + '</svg>';
+  const svgPath = join(tmp, 'multiply.svg');
+  const pngPath = join(tmp, 'multiply-svg.png');
+  writeFileSync(svgPath, svg);
+  const result = spawnSync('rsvg-convert', ['-b', 'white', '-w', String(PAGE.width * SCALE), '-h', String(PAGE.height * SCALE), '-o', pngPath, svgPath], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const svgPng = PNG.sync.read(readFileSync(pngPath));
+
+  const canvas = nodeCanvas.createCanvas(PAGE.width * SCALE, PAGE.height * SCALE);
+  const context = canvas.getContext('2d');
+  context.fillStyle = 'white';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  context.fillStyle = backdrop.color;
+  context.fillRect(backdrop.x, backdrop.y, backdrop.width, backdrop.height);
+  drawAnnotationObject(context, blended, 1);
+  const canvasPng = PNG.sync.read(canvas.toBuffer('image/png'));
+
+  let over = 0;
+  let worst = 0;
+  for (let index = 0; index < svgPng.data.length; index += 4) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      const delta = Math.abs(svgPng.data[index + channel] - canvasPng.data[index + channel]);
+      worst = Math.max(worst, delta);
+      if (delta > 8) { over += 1; break; }
+    }
+  }
+  // Before the fix the two lanes were 74/255 apart over ~850k pixels: the SVG
+  // painted the cloud NORMAL while the painter multiplied it.
+  assert.ok(over < svgPng.width * svgPng.height * 0.002, `${over} pixels differ by more than 8/255 (worst ${worst})`);
 });

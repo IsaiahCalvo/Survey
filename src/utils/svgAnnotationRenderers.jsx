@@ -89,6 +89,14 @@ const CloudOutline = ({
   fill,
   stroke,
   opacity,
+  // 2026-09-10: a cloud honours globalCompositeOperation:'multiply' exactly
+  // like every other shape here (the plain rect/ellipse/polygon branches all
+  // set mixBlendMode from the same flag). The canvas painter
+  // (applyBlendAndOpacity) and the exported /AP (a /BM /Multiply ExtGState in
+  // buildCloudAppearance) already did; only this renderer did not, so a
+  // multiply cloud over a coloured backdrop rasterised (74,89,26) on screen
+  // against (0,82,0) in every other lane.
+  multiply,
   onClick,
 }) => {
   // useId keeps the mask id unique per mounted cloud even when the same shape
@@ -101,6 +109,7 @@ const CloudOutline = ({
     <g
       transform={paint.transform}
       opacity={opacity}
+      style={multiply ? { mixBlendMode: 'multiply' } : undefined}
       data-shape-id={shapeId}
       data-shape-kind={shapeKind}
       data-cloud-geometry={geometryKind}
@@ -507,6 +516,7 @@ export const renderRect = (obj, index) => {
         fill={obj.fill}
         stroke={obj.stroke}
         opacity={obj.opacity ?? 1}
+        multiply={obj.globalCompositeOperation === 'multiply'}
         onClick={__shapeClick}
       />
     );
@@ -1035,6 +1045,7 @@ export const renderPolygon = (obj, index) => {
         fill={obj.fill}
         stroke={obj.stroke}
         opacity={obj.opacity ?? 1}
+        multiply={obj.globalCompositeOperation === 'multiply'}
         onClick={__shapeClick}
       />
     );
@@ -1146,6 +1157,7 @@ export const renderPolyline = (obj, index) => {
         fill={null}
         stroke={obj.stroke || '#000'}
         opacity={obj.opacity ?? 1}
+        multiply={obj.globalCompositeOperation === 'multiply'}
         onClick={__shapeClick}
       />
     );
@@ -1266,6 +1278,7 @@ export const renderEllipse = (obj, index) => {
         fill={obj.fill}
         stroke={obj.stroke}
         opacity={obj.opacity ?? 1}
+        multiply={obj.globalCompositeOperation === 'multiply'}
         onClick={__shapeClick}
       />
     );
