@@ -133,6 +133,17 @@ function assertStateWritable(state) {
   if (state.generationBlocked) throw state.generationError;
 }
 
+// Conditional reads are refresh work, not queued writes. Once close starts,
+// their bytes must never enter a reused registry doc or replace its prefix.
+function assertConditionalReadLive(state) {
+  assertStateWritable(state);
+  if (state.closePromise || state.destroyed) {
+    const error = new Error(`annotation handle for ${state.documentId} is closed`);
+    error.code = 'ANNOTATION_HANDLE_CLOSED';
+    throw error;
+  }
+}
+
 // Public callers must not mutate through a retired handle. Internal queued
 // appends use assertStateWritable so pre-close work can still finish safely.
 function assertHandleWritable(state) {
@@ -165,6 +176,7 @@ function invalidateDeletedState(state, error = deletedDocumentError(state.docume
   if (state.deleted) return;
   state.deleted = true;
   state.destroyed = true;
+  state.conditionalCheckpointPrefix = null;
   unregisterActiveState(state);
   if (state.snapshotTimer) {
     clearTimeout(state.snapshotTimer);
@@ -360,6 +372,7 @@ export async function openAnnotationDoc({
     generationCatchupRequested: false,
     generationRefreshRequested: false,
     generationLastSignal: null,
+    conditionalCheckpointPrefix: checkedBootstrap?.conditionalCheckpoint ?? null,
     registryKey,
     ownsRegistryDoc,
     supabase,
@@ -748,6 +761,7 @@ export async function openAnnotationDoc({
   } catch (err) {
     clearEraseOutboxRetry(state);
     state.destroyed = true;
+    state.conditionalCheckpointPrefix = null;
     clearGapRepairTimer(state);
     if (state.onDocUpdate) { try { activeDoc.off('update', state.onDocUpdate); } catch { /* */ } }
     if (state.realtimeChannel) { try { state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
@@ -1144,6 +1158,7 @@ async function retireGenerationState(state, replacementGenerationId, error = nul
   // Seal synchronously. An already-dispatched request may still return an exact
   // receipt, but no queued append, effect, snapshot or observer may start work.
   state.generationBlocked = true;
+  state.conditionalCheckpointPrefix = null;
   state.generationError ||= error || Object.assign(new Error('The PDF generation changed; saved edits require recovery review'), {
     code: 'ANNOTATION_PDF_GENERATION_RETIRED', replacementGenerationId,
   });
@@ -1224,20 +1239,22 @@ async function gunzipGenerated(state, bytes) {
   }
 }
 
-async function readGeneratedTail(state, afterSeq, throughSeq, apply, usedBytes = 0) {
+async function readGeneratedTail(state, afterSeq, throughSeq, apply, usedBytes = 0,
+  assertLive = assertStateWritable) {
   let cursor = afterSeq;
   let frontier = throughSeq;
   let pages = 0;
   for (;;) {
     if (++pages > GENERATED_TAIL_PAGES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
     const page = await generationCall(state, 'updates', { afterSeq: cursor, throughSeq: frontier, limit: 1000 });
-    assertStateWritable(state);
+    assertLive(state);
     frontier = page.throughSeq;
     for (const row of page.rows) {
-      assertStateWritable(state);
+      assertLive(state);
       const update = generatedStateBytes(row.data, GENERATED_STATE_BYTES - usedBytes);
       usedBytes += update.byteLength;
       await apply(row, update);
+      assertLive(state);
       cursor = sequence(row.seq);
     }
     if (!page.hasMore) return sequence(frontier);
@@ -1248,28 +1265,62 @@ async function readGeneratedTail(state, afterSeq, throughSeq, apply, usedBytes =
 async function readGeneratedCheckpoint(state) {
   const candidate = createDetachedYDoc(`generation-read:${state.registryKey}:${randomClientId()}`);
   try {
-    const baseline = await generationCall(state, 'snapshot');
-    assertStateWritable(state);
-    const snap = baseline.snapshot;
-    const baseAtSeq = snap ? sequence(snap.at_seq) : null;
+    const prefix = state.conditionalCheckpointPrefix;
+    const conditional = prefix == null ? null : await generationCall(
+      state, 'conditionalCheckpoint', { ...prefix.identity },
+    );
+    if (conditional) assertConditionalReadLive(state);
+    const baseline = conditional ?? await generationCall(state, 'snapshot');
+    if (conditional) assertConditionalReadLive(state);
+    else assertStateWritable(state);
+    const snap = conditional ? conditional.snapshot : baseline.snapshot;
+    const identity = conditional ? conditional.snapshotIdentity : (snap ? {
+      atSeq: snap.at_seq,
+      writerId: snap.writer_id,
+      writerEpoch: snap.writer_epoch,
+      encodingVersion: snap.encoding_version,
+      snapshotSha256: null,
+    } : null);
+    const baseAtSeq = conditional ? sequence(identity.atSeq) : (snap ? sequence(snap.at_seq) : null);
+    const tailAfterSeq = conditional?.matched ? sequence(prefix.coveredSeq) : (baseAtSeq ?? 0);
     let baselineBytes = 0;
-    if (snap?.snapshot) {
-      let bytes = generatedStateBytes(snap.snapshot);
-      if (snap.encoding_version === SNAPSHOT_ENC_GZIP) bytes = await gunzipGenerated(state, bytes);
+    if (conditional?.matched) {
+      const bytes = new Uint8Array(prefix.update);
       baselineBytes = bytes.byteLength;
-      assertStateWritable(state);
+      if (baselineBytes > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+      assertConditionalReadLive(state);
+      applyGeneratedUpdate(candidate, bytes);
+    } else if (snap?.snapshot) {
+      let bytes = generatedStateBytes(snap.snapshot);
+      if ((conditional ? identity.encodingVersion : snap.encoding_version) === SNAPSHOT_ENC_GZIP) {
+        bytes = await gunzipGenerated(state, bytes);
+        if (conditional) assertConditionalReadLive(state);
+      }
+      baselineBytes = bytes.byteLength;
+      if (conditional) assertConditionalReadLive(state);
+      else assertStateWritable(state);
       applyGeneratedUpdate(candidate, bytes);
     }
     const receipts = [];
-    const coveredSeq = await readGeneratedTail(state, baseAtSeq ?? 0, baseline.walHead, async (row, update) => {
+    const coveredSeq = await readGeneratedTail(state, tailAfterSeq, baseline.walHead, async (row, update) => {
       applyGeneratedUpdate(candidate, update);
       if (appendRecordForCloudRow(state, row, update).record) receipts.push(row);
-    }, baselineBytes);
+    }, baselineBytes, conditional ? assertConditionalReadLive : assertStateWritable);
+    if (conditional) assertConditionalReadLive(state);
     requireCompleteGeneratedState(candidate);
     const update = encodeSnapshot(candidate);
     if (update.byteLength > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
+    const nextConditionalCheckpoint = conditional == null ? null : Object.freeze({
+      // `update` is the detached candidate's private encoded result. Yjs only
+      // reads it during install, so this prefix can own the same array.
+      update,
+      coveredSeq,
+      identity: Object.freeze({ ...conditional.snapshotIdentity }),
+    });
     return { update, coveredSeq, baseAtSeq,
-      baseWriterId: snap?.writer_id ?? null, baseWriterEpoch: sequence(snap?.writer_epoch ?? 0), receipts };
+      baseWriterId: conditional ? identity.writerId : (snap?.writer_id ?? null),
+      baseWriterEpoch: sequence(conditional ? identity.writerEpoch : (snap?.writer_epoch ?? 0)),
+      receipts, nextConditionalCheckpoint };
   } finally { candidate.destroy(); }
 }
 
@@ -1776,8 +1827,16 @@ async function loadFromBackend(state) {
     state.snapshotBaseWriterId = checkpoint.baseWriterId;
     state.snapshotBaseWriterEpoch = checkpoint.baseWriterEpoch;
     state.snapshotGeneration = maxAnnotationSequence(state.snapshotGeneration, checkpoint.baseWriterEpoch);
-    for (const row of checkpoint.receipts) await applyAuthoritativeCloudRow(state, row);
+    for (const row of checkpoint.receipts) {
+      if (checkpoint.nextConditionalCheckpoint) assertConditionalReadLive(state);
+      await applyAuthoritativeCloudRow(state, row);
+      if (checkpoint.nextConditionalCheckpoint) assertConditionalReadLive(state);
+    }
     await state.outbox.compactAccepted(documentId, state.actorUserId, encodeSnapshot(state.acceptedDoc), true, state.documentIncarnation);
+    if (checkpoint.nextConditionalCheckpoint) {
+      assertConditionalReadLive(state);
+      state.conditionalCheckpointPrefix = checkpoint.nextConditionalCheckpoint;
+    }
     return;
   }
   // 1. snapshot baseline
@@ -1905,6 +1964,9 @@ function catchUpGenerated(state, refresh = false) {
     }
     return true;
   }).catch(error => {
+    if ((state.closePromise || state.destroyed) && error?.code === 'ANNOTATION_HANDLE_CLOSED') {
+      return false;
+    }
     state.generationCatchupError = error;
     state.generationLastSignal = null; // a duplicate notice may retry a failed read
     state.generationCatchupRequested = false;
@@ -4223,6 +4285,7 @@ async function drainStateQueues(state) {
 
 async function closeRetiredGeneration(state) {
   unregisterActiveState(state);
+  state.conditionalCheckpointPrefix = null;
   await Promise.allSettled([...state.localWriteTasks, state.flushQueue, state.outboxReplayChain,
     state.catchupChain, state.authoritativeChain, state.snapshotChain, state.eraseOutboxDrain,
     state.generationRetirement]);
@@ -4657,6 +4720,7 @@ function makeHandle(state) {
     destroy() {
       if (state.closePromise) return state.closePromise;
       state.closePromise = (async () => {
+      state.conditionalCheckpointPrefix = null;
       if (state.generationBlocked) return closeRetiredGeneration(state);
       // closePromise gates the observer before any awaited work completes.
       // Already-queued edits and this writer's pending effect receipts drain;
@@ -4750,6 +4814,7 @@ export async function purgeAnnotationDoc(documentId) {
   for (const state of activeStates) {
     state.deleted = true;
     state.destroyed = true;
+    state.conditionalCheckpointPrefix = null;
     unregisterActiveState(state);
     if (state.snapshotTimer) {
       clearTimeout(state.snapshotTimer);

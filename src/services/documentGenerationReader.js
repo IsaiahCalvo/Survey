@@ -37,11 +37,17 @@ function checkedCapture(issuedBundle, scope) {
 export function readCheckedGenerationBootstrap(issuedBundle, scope) {
   try {
     const captured = checkedCapture(issuedBundle, scope);
+    const conditionalCheckpoint = captured.conditionalCheckpoint == null ? null : Object.freeze({
+      update: new Uint8Array(captured.conditionalCheckpoint.update),
+      coveredSeq: captured.conditionalCheckpoint.coveredSeq,
+      identity: Object.freeze({ ...captured.conditionalCheckpoint.identity }),
+    });
     return Object.freeze({
       update: new Uint8Array(captured.update), coveredSeq: captured.throughSeq,
       baseAtSeq: captured.snapshotBase.atSeq, baseWriterId: captured.snapshotBase.writerId,
       baseWriterEpoch: captured.snapshotBase.writerEpoch,
       ...(captured.modern ? { contentModelVersion: captured.contentModelVersion } : {}),
+      ...(conditionalCheckpoint === null ? {} : { conditionalCheckpoint }),
     });
   } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
 }
@@ -126,9 +132,12 @@ export function createDocumentGenerationReader(deps) {
     && maxUpdatePages <= 10000 && timeoutMs <= 120000, 'DOCUMENT_OPEN_INPUT');
   return Object.freeze({ async open(input = {}) {
     check(object(input), 'DOCUMENT_OPEN_INPUT');
-    const { documentId, actorUserId, pdfGenerationId = null, contentModelVersion = null, signal } = input;
+    const { documentId, actorUserId, pdfGenerationId = null, contentModelVersion = null,
+      conditionalAnnotationCheckpoint = false, signal } = input;
     check(uuid(documentId) && uuid(actorUserId) && (pdfGenerationId === null || uuid(pdfGenerationId))
       && (contentModelVersion === null || [1, 2].includes(contentModelVersion))
+      && typeof conditionalAnnotationCheckpoint === 'boolean'
+      && (!conditionalAnnotationCheckpoint || contentModelVersion !== null)
       && (signal == null || (typeof signal.aborted === 'boolean' && typeof signal.addEventListener === 'function'
         && typeof signal.removeEventListener === 'function')), 'DOCUMENT_OPEN_INPUT');
     const scope = { documentId, actorUserId, pdfGenerationId, contentModelVersion }, controller = new AbortController();
@@ -235,6 +244,17 @@ export function createDocumentGenerationReader(deps) {
       // readState encoded fresh bytes and never exposed them to an adapter.
       // Retain that private allocation; only public consumers need a copy.
       const ownedUpdate = annotationUpdate;
+      const conditionalCheckpoint = conditionalAnnotationCheckpoint ? Object.freeze({
+        update: ownedUpdate,
+        coveredSeq: annotations.wal_head,
+        identity: Object.freeze({
+          atSeq: checkpoint.at_seq,
+          writerId: checkpoint.writer_id,
+          writerEpoch: checkpoint.writer_epoch,
+          encodingVersion: checkpoint.encoding_version,
+          snapshotSha256: annotations.snapshot_sha256,
+        }),
+      }) : null;
       const result = Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
         ...(contentModelVersion === null ? {} : { contentModelVersion: model }),
         document: confirmed.document, pdf: first.pdf, publication: first.publication, pdfBlob,
@@ -247,7 +267,7 @@ export function createDocumentGenerationReader(deps) {
       alive();
       checkedBundles.set(result, Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
         contentModelVersion: model, modern: contentModelVersion !== null, update: ownedUpdate, snapshotBase,
-        throughSeq: annotations.wal_head, pdfBlob }));
+        throughSeq: annotations.wal_head, conditionalCheckpoint, pdfBlob }));
       return result;
     } catch (caught) {
       if (['ANNOTATION_GENERATION_STATE', 'ANNOTATION_GENERATION_STATE_INVALID'].includes(caught?.code)) {

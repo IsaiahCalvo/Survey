@@ -27,7 +27,11 @@ Template or changes made to it later. The user delegated this choice on
   A cloud list uses the document's existing access rules, not Template access.
 - Owners manage list changes and explicit Template upgrades. Editors assign
   choices under existing annotation rights; viewers read. Each person's selected
-  tool/entity, zoom and page position remain private.
+  tool/entity, zoom and page position remain private. Palette layout, favorites
+  and filters are personal view choices, not shared entity definitions. Sharing
+  those choices would cause one person's workspace changes to disrupt another's;
+  keeping them private must not change the shared IDs, labels or export meaning.
+  This rule does not claim that a new durable favorites/filter store exists.
 - The list belongs to the document, not a PDF generation, tab or app-wide palette.
   Replacing PDF pages must retain it. Per-person caches are not separate truth.
 - Keep stable entity IDs and definition history. Renames and color changes make

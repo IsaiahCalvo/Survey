@@ -49,7 +49,9 @@ function legacyMetadata(value, documentId) {
 export function createCheckedDocumentAcquisition({ client, actorUserId, isCurrent, signal,
   supabaseUrl, publicKey, enabled = false, fetch: fetcher = globalThis.fetch,
   allowLoopback = false, timeoutMs = 60000, maxPdfBytes = 256 * 1024 * 1024,
-  maxStateBytes = 64 * 1024 * 1024, maxUpdatePages = 1000 } = {}) {
+  maxStateBytes = 64 * 1024 * 1024, maxUpdatePages = 1000,
+  conditionalAnnotationCheckpoint = false } = {}) {
+  check(typeof conditionalAnnotationCheckpoint === 'boolean');
   let retired = false;
   const pending = new Set();
   const retire = code => {
@@ -189,7 +191,8 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         }
         const bundle = await wait(() => reader.open({ documentId, actorUserId,
           pdfGenerationId: mode ? mode.generationId : pdfGenerationId,
-          contentModelVersion: mode?.modern ? mode.contentModelVersion : null, signal: controller.signal }));
+          contentModelVersion: mode?.modern ? mode.contentModelVersion : null,
+          conditionalAnnotationCheckpoint, signal: controller.signal }));
         if (discover) { await readSession(); alive(); }
         alive(); return discover ? Object.freeze({ mode: 'checked', actorUserId, documentId, checkedBundle: bundle }) : bundle;
       } catch (error) {

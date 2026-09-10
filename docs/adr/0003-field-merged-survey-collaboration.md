@@ -364,7 +364,86 @@ a digest column, but checked open already computes and verifies a digest; the
 conditional path can reuse that rule without a schema digest migration. Keep
 the new RPC private and default-off until disposable PostgreSQL tests prove
 scope, ACL, snapshot-only changes, fixed-tail races and exact response handling.
-This conditional contract is a proposal, not an implemented saving.
+The private conditional contract is now implemented in
+`read_annotation_checkpoint_conditional_v3` and the generation transport's
+`conditionalCheckpoint` method. The SQL function remains ungranted to PUBLIC,
+anon, authenticated and service_role. An absent token requests full bytes;
+only all five exact identity fields can produce a matched response. Generated
+documents must have a valid baseline or checkpoint within their generation's
+base and the fixed WAL head. Invalid scope, partial tokens, malformed stored
+state and future checkpoint claims fail closed.
+
+The frozen protocol tests passed 21/21 and a fresh disposable PostgreSQL harness
+passed 9/9, including migration replay, role privileges, revoked access,
+same-head snapshot changes, a later WAL head, malformed stored rows and a
+concurrent snapshot writer. A 128 KiB checkpoint produced 427 UTF-8 JSON response
+bytes on an exact match versus 262,573 bytes with the full payload. These are
+executed protocol response data, excluding headers and transport framing, not
+measured app traffic, latency or a Supabase bill reduction. PostgreSQL still
+reads and hashes the stored snapshot under the shared document lock; omission
+does not eliminate server CPU or lock contention. Reader/sync integration and
+its default-off rollout gate are a separate step.
+
+The reader/sync opt-in is now connected through a strict
+`conditionalAnnotationCheckpoint` acquisition option, default false. It reaches
+the reader as input and then the sync handle through the reader's private
+WeakMap capture, not a public bundle field. The capture owns a verified
+checkpoint identity, combined update and covered WAL position. An exact match
+reuses that private prefix and reads only the remaining fixed tail. A changed
+identity requires full verified bytes. The detached candidate must pass decode,
+dependency completeness, scope and 64 MiB checks before installation; a failed
+candidate cannot replace the prior prefix.
+
+Optimistic edits, outbox receipts, realtime updates and local snapshot-write
+acknowledgments never create or promote this prefix. They can remain pending
+beside the verified cloud state. The prefix reuses its detached encoded update,
+without a second full-array copy inside sync. Holding the old and new prefix
+while a refresh is checked still has a bounded peak memory cost. Close, delete
+and retirement clear the prefix and reject late work.
+
+Focused proof covers private-byte ownership despite public bundle mutation,
+default-off behavior, changed snapshots at the same head, fixed-tail reuse,
+pending-data retention, failed candidates and a digest finishing after close.
+Acquisition separately tests A-to-B-to-A rejection. A composed delayed A-read,
+account cleanup and B-open test is still absent: sync relies on the existing
+user-scoped hook calling `destroy()`, not on detecting a bare auth-session
+change while an old handle stays live. Keep live account-switch and multi-user
+proof as release gates.
+
+The full-suite check caught a fixture-only regression: adding read counters to
+`inspect()` changed an existing unchanged-state assertion after a failed read.
+Transport counters now have a separate `inspectTransport()` method. The prior
+assertion remains intact. Offline fault tests explicitly expect four snapshot
+retry warnings; the normal conditional lifecycle tests emit none.
+
+The final native-browser pass used the full viewer with real Yjs and IndexedDB
+and only the synthetic backend. A clean opted-in open plus first join reported
+two conditional matches, zero conditional full responses and zero old snapshot
+RPC reads. Publishing a newer snapshot at head 0 moved the left marker from
+x=72 to x=132; the handle fetched that changed snapshot and matched it on join.
+The normal full-stroke eraser removed one marker while offline, leaving one
+queued edit and the server unchanged. Undo restored two local markers and left
+two queued edits. Reconnect and Flush cleared the queue; checked reopen retained
+two markers, left x=132, zero local revision and WAL head 3. Both marker bounds,
+paint styles and the rendered survey view were checked, including a zoom change.
+
+A second same-head publication moved the marker back to x=72 with zero queued
+edits. The complete run reported eight conditional reads: six matched responses
+and two changed/full responses, with zero old snapshot RPC reads. Acquisition
+still reads its initial complete bundle; these counters do not imply zero full
+downloads overall. Fixture data was removed through its cleanup control, which
+reported `cleaned`, and the tab was closed. This is local browser proof of the
+opt-in path, not live account, multi-user, Microsoft, deployment or bill proof.
+
+Final verification for this conditional-read checkpoint on 2026-09-10:
+`npm test` passed across 699 files with 6,996 tests (6,900 passed, 96 skipped,
+zero failed or cancelled). The baseline before this slice had 6,965 tests
+(6,869 passed, the same 96 skipped). The focused stale-open, conditional and
+acquisition set passed 37/37; the integration/acquisition pair passed in five
+fresh runs after replacing a fixed-delay test with an observed sync-event gate.
+The final Vite build passed with its existing large-chunk warning. The AST-only
+code graph refresh completed. No migration was applied to a live database and
+no default app flag, role grant, deployment or Microsoft integration changed.
 
 The database migration defines versioned transport and model checks. Model-2
 source, preparation and publication functions remain private and ungranted.

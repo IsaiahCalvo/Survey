@@ -30,9 +30,12 @@ export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
   const [status, setStatus] = useState({ stage: 'loading' });
   const [cleanupRequested, setCleanupRequested] = useState(false);
   const [staleAction, setStaleAction] = useState(null);
+  const conditionalAnnotationCheckpoint = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).get('conditionalAnnotationCheckpoint') === '1';
   const refresh = useCallback(() => {
     const backend = backendRef.current, handle = handleRef.current;
     const server = backend?.inspect();
+    const transport = backend?.inspectTransport();
     const survey = handle?.contentModelVersion === 2 ? handle.getSurveyState() : null;
     const left = survey?.surveyMarkers?.['fixture-marker-left'];
     setStatus({ stage: handle ? 'ready' : 'opening', contentModelVersion: handle?.contentModelVersion ?? null,
@@ -41,15 +44,16 @@ export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
       leftMarkerX: left?.bounds?.x ?? null, stalePreviousX: stalePreviousRef.current,
       staleExpectedX: staleExpectedRef.current,
       staleSnapshotMatch: staleExpectedRef.current == null ? null : left?.bounds?.x === staleExpectedRef.current,
-      ...server });
-  }, []);
+      conditionalAnnotationCheckpoint,
+      ...server, ...transport });
+  }, [conditionalAnnotationCheckpoint]);
   const issueOpen = useCallback(async issuedBundle => {
     handleRef.current = null; setStatus({ stage: 'opening' });
-    const bundle = issuedBundle || await backendRef.current.read();
+    const bundle = issuedBundle || await backendRef.current.read({ conditionalAnnotationCheckpoint });
     window.__surveyTransitionE2ETemplates = templates;
     setOpen(prepareCheckedDocumentOpen(bundle, MODEL2_FIXTURE_IDS.actorUserId));
     setMount(value => value + 1);
-  }, []);
+  }, [conditionalAnnotationCheckpoint]);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -79,7 +83,7 @@ export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
     (async () => {
       const backend = backendRef.current;
       await purgeAnnotationDoc(MODEL2_FIXTURE_IDS.documentId);
-      const staleBundle = await backend.read();
+      const staleBundle = await backend.read({ conditionalAnnotationCheckpoint });
       const before = backend.inspect();
       if (before.walHead !== staleBundle.throughSeq) {
         throw new Error('Fixture changed while the stale checked bundle was captured.');

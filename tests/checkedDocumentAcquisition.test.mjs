@@ -21,6 +21,11 @@ const editedPdf = new Uint8Array([...pdf, 10, 20, 30]);
 const doc = new Y.Doc(); doc.getMap('annotations').set('base', { page: 1 });
 const baseline = Y.encodeStateAsUpdate(doc), vector = Y.encodeStateVector(doc);
 doc.getMap('annotations').set('tail', { page: 2 }); const tail = Y.encodeStateAsUpdate(doc, vector); doc.destroy();
+const modernDoc = new Y.Doc();
+modernDoc.getMap('annotations').set('base', { p: 1, o: { type: 'rect', left: 10, top: 10 } });
+const modernBaseline = Y.encodeStateAsUpdate(modernDoc), modernVector = Y.encodeStateVector(modernDoc);
+modernDoc.getMap('annotations').set('tail', { p: 2, o: { type: 'rect', left: 20, top: 20 } });
+const modernTail = Y.encodeStateAsUpdate(modernDoc, modernVector); modernDoc.destroy();
 const path = `${actor}/_generations/${documentId}/${generation}.pdf`;
 const legacyPath = `${actor}/legacy.pdf`;
 const legacyRow = { id: documentId, user_id: actor, project_id: null, name: 'Legacy.pdf',
@@ -28,6 +33,8 @@ const legacyRow = { id: documentId, user_id: actor, project_id: null, name: 'Leg
   updated_at: '2026-09-09T00:00:00Z', archived: false, user_archived_at: null };
 const modeResult = (mode = 'legacy', generationId = null) => ({ data: { version: 1,
   actor_user_id: actor, document_id: documentId, mode, generation_id: generationId } });
+const modernModeResult = () => ({ data: { version: 2, actor_user_id: actor,
+  document_id: documentId, mode: 'checked', generation_id: generation, content_model_version: 1 } });
 const manifest = { version: 1, actor_user_id: actor, document_id: documentId, generation_id: generation,
   document: { id: documentId, user_id: actor, project_id: null, name: 'Checked', file_path: path, file_size: String(pdf.length) },
   pdf: { bucket_id: 'documents', path, id: id(4), version: id(5), byte_length: String(pdf.length), content_sha256: sha(pdf) },
@@ -40,6 +47,21 @@ function rpcResult(name, params) {
     rows: [{ seq: '1', client_id: 'writer', client_seq: '1', actor_user_id: actor, data: hex(tail) }] } };
   assert.equal(name, 'read_document_generation_open');
   const data = structuredClone(manifest);
+  if (!params.p_include_snapshot) { data.annotations.snapshot = null; data.annotations.snapshot_sha256 = null; }
+  return { data };
+}
+function modernRpcResult(name, params) {
+  if (name === 'read_document_open_mode') return { error: { code: 'SG003' } };
+  if (name === 'read_document_open_mode_v2') return modernModeResult();
+  if (name === 'read_annotation_updates_v3') return { data: { version: 3, document_id: documentId,
+    generation_id: generation, content_model_version: 1, through_seq: '1', has_more: false,
+    rows: [{ seq: '1', client_id: 'writer', client_seq: '1', actor_user_id: actor, data: hex(modernTail) }] } };
+  assert.equal(name, 'read_document_generation_open_v3');
+  const data = structuredClone(manifest);
+  data.version = 3; data.content_model_version = 1;
+  data.annotations.version = 3; data.annotations.content_model_version = 1;
+  data.annotations.snapshot_sha256 = sha(modernBaseline);
+  data.annotations.snapshot.snapshot = hex(modernBaseline);
   if (!params.p_include_snapshot) { data.annotations.snapshot = null; data.annotations.snapshot_sha256 = null; }
   return { data };
 }
@@ -332,6 +354,28 @@ test('current checked open passes exact discovered generation to real reader, ne
   assert.deepEqual(new Uint8Array(await readCheckedGenerationPdf(opened.checkedBundle, scope).arrayBuffer()), pdf);
   assert.ok(h.calls.filter(c => c.name === 'read_document_generation_open').every(c => c.params.p_generation_id === generation));
   assert.ok(h.fetches.every(c => c.url.endsWith('/functions/v1/document-generation-download')));
+});
+
+test('conditional checkpoint acquisition is strict, default-off, and reaches the real private bootstrap', async () => {
+  for (const invalid of [null, 0, 1, 'true', {}, []]) {
+    assert.throws(() => harness({ conditionalAnnotationCheckpoint: invalid }), { code: 'DOCUMENT_OPEN_INPUT' });
+  }
+  for (const enabled of [false, true]) {
+    const h = harness({ conditionalAnnotationCheckpoint: enabled });
+    h.onRpc = call => modernRpcResult(call.name, call.params);
+    const opened = await h.openCurrent(); h.clean();
+    const bootstrap = readCheckedGenerationBootstrap(opened.checkedBundle,
+      { ...scope, contentModelVersion: 1 });
+    assert.equal(Object.hasOwn(bootstrap, 'conditionalCheckpoint'), enabled);
+    if (enabled) {
+      assert.equal(bootstrap.conditionalCheckpoint.coveredSeq, '1');
+      assert.deepEqual(bootstrap.conditionalCheckpoint.identity, {
+        atSeq: '0', writerId: null, writerEpoch: '0', encodingVersion: 1,
+        snapshotSha256: sha(modernBaseline),
+      });
+      assert.deepEqual(bootstrap.conditionalCheckpoint.update, bootstrap.update);
+    }
+  }
 });
 
 test('mode errors, malformed envelopes and unchecked generation changes never fall back', async () => {

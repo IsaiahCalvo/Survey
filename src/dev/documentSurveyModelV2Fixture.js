@@ -49,7 +49,8 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
   const baselineSemantic = JSON.stringify(semanticView(authoritative));
   let offline = false, head = 0n;
   const rows = [];
-  let snapshotWrites = 0;
+  let snapshotWrites = 0, conditionalReads = 0, conditionalMatches = 0,
+    conditionalFullResponses = 0, fullSnapshotReads = 0, rpcResponseDataBytes = 0;
   const initialUpdate = Y.encodeStateAsUpdate(authoritative);
   let snapshot = { at_seq: '0', snapshot: hex(initialUpdate), encoding_version: 1,
     writer_id: null, writer_epoch: '0' };
@@ -62,7 +63,7 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
   const base = { version: 3, document_id: ids.documentId, generation_id: ids.generationId,
     content_model_version: 2 };
 
-  async function rpc(name, params) {
+  async function executeRpc(name, params) {
     if (name === 'read_document_generation_collaboration') {
       if (params?.p_document_id !== ids.documentId || params?.p_generation_id !== ids.generationId) {
         throw new Error(`Fixture scope rejected: ${name}`);
@@ -92,6 +93,19 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
     if (name === 'read_annotation_writer_sequence_v3') return { data: { ...base,
       client_id: params.p_client_id, client_seq: rows.filter(row => row.client_id === params.p_client_id)
         .reduce((highest, row) => BigInt(row.client_seq) > highest ? BigInt(row.client_seq) : highest, 0n).toString() } };
+    if (name === 'read_annotation_checkpoint_conditional_v3') {
+      const snapshotSha256 = await sha256(bytesFromHex(snapshot.snapshot));
+      const matched = params.p_expected_at_seq === snapshot.at_seq
+        && params.p_expected_writer_id === snapshot.writer_id
+        && params.p_expected_writer_epoch === snapshot.writer_epoch
+        && params.p_expected_encoding_version === snapshot.encoding_version
+        && params.p_expected_snapshot_sha256 === snapshotSha256;
+      return { data: { ...base, actor_user_id: ids.actorUserId, wal_head: String(head),
+        snapshot_matches: matched, checkpoint: { at_seq: snapshot.at_seq,
+          writer_id: snapshot.writer_id, writer_epoch: snapshot.writer_epoch,
+          encoding_version: snapshot.encoding_version, snapshot_sha256: snapshotSha256,
+          snapshot: matched ? null : snapshot.snapshot } } };
+    }
     if (name === 'append_annotation_update_v3') {
       let row = rows.find(item => item.client_id === params.p_client_id && item.client_seq === params.p_client_seq);
       if (!row) {
@@ -123,6 +137,17 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
         ...(stored ? { snapshot_sha256: await sha256(bytesFromHex(params.p_snapshot)) } : {}) } };
     }
     throw new Error(`Live service blocked by model 2 fixture: ${name}`);
+  }
+  async function rpc(name, params) {
+    const result = await executeRpc(name, params);
+    rpcResponseDataBytes += new TextEncoder().encode(JSON.stringify(result?.data ?? null)).byteLength;
+    if (name === 'read_annotation_snapshot_v3') fullSnapshotReads += 1;
+    if (name === 'read_annotation_checkpoint_conditional_v3') {
+      conditionalReads += 1;
+      if (result?.data?.snapshot_matches) conditionalMatches += 1;
+      else conditionalFullResponses += 1;
+    }
+    return result;
   }
   const builder = execute => {
     const value = { setHeader() { return value; }, abortSignal() { return value; },
@@ -156,7 +181,9 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
       }
       const callbacks = new Map();
       const channel = { on(event, _filter, callback) { callbacks.set(event, callback); return channel; },
-        subscribe(callback) { channels.push(channel); queueMicrotask(() => callback?.('SUBSCRIBED')); return channel; },
+        subscribe(callback) { channel.statusCallback = callback; channels.push(channel);
+          queueMicrotask(() => callback?.('SUBSCRIBED')); return channel; },
+        emitStatus(status) { return channel.statusCallback?.(status); },
         track: async () => 'ok', untrack: async () => 'ok', presenceState: () => ({}), callbacks };
       return channel;
     },
@@ -166,8 +193,10 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
   const reader = createDocumentGenerationReader({ request: rpc,
     getActorUserId: () => ids.actorUserId, download: async () => pdfBlob });
   return Object.freeze({ ids, client,
-    read: () => reader.open({ documentId: ids.documentId, actorUserId: ids.actorUserId,
-      pdfGenerationId: ids.generationId, contentModelVersion: 2 }),
+    read: ({ conditionalAnnotationCheckpoint = false } = {}) => reader.open({
+      documentId: ids.documentId, actorUserId: ids.actorUserId,
+      pdfGenerationId: ids.generationId, contentModelVersion: 2,
+      conditionalAnnotationCheckpoint }),
     setOffline(value) { offline = value === true; },
     inspect() {
       const current = semanticView(authoritative);
@@ -184,6 +213,10 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
         baselineSemanticMatch: JSON.stringify(current) === baselineSemantic,
         markerIds: Object.keys(markers).sort(), annotationId: 'fixture-ordinary-rect',
         regionId: 'fixture-region' });
+    },
+    inspectTransport() {
+      return Object.freeze({ conditionalReads, conditionalMatches, conditionalFullResponses,
+        fullSnapshotReads, rpcResponseDataBytes });
     },
     destroy() { authoritative.destroy(); },
   });
