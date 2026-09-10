@@ -2719,6 +2719,11 @@ export default function App({ devPreviewReturnTab = null }) {
                       }}
                       {...chromeTip('Cloud bump size', 'below')}
                       aria-label="Cloud bump size"
+                      // UX 2026-09-10 (round 4, defect 3): a numeric chrome
+                      // field yields Enter / Escape to a click-to-place draft.
+                      // Enter commits this value and finishes the polygon /
+                      // polyline; Escape cancels it. See draftKeyboardTarget.
+                      data-draft-yields-keys="true"
                     />
                   </label>
                 )}

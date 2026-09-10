@@ -1089,6 +1089,9 @@ export function MobileToolProperties({ api }) {
           <input
             aria-label="Cloud bump size"
             inputMode="numeric"
+            // UX 2026-09-10: numeric chrome field — yields Enter / Escape to a
+            // click-to-place draft (see draftKeyboardTarget).
+            data-draft-yields-keys="true"
             value={api.cloudIntensity ?? 2}
             onChange={(event) => {
               const value = Number.parseInt(event.target.value, 10);
@@ -1396,6 +1399,9 @@ export function MobileToolProperties({ api }) {
                               <input
                                 aria-label="Cloud bump size"
                                 inputMode="numeric"
+                                // UX 2026-09-10: numeric chrome field — yields
+                                // Enter / Escape to a click-to-place draft.
+                                data-draft-yields-keys="true"
                                 value={api.cloudIntensity ?? 2}
                                 onChange={(event) => {
                                   const value = Number.parseInt(event.target.value, 10);

@@ -4,29 +4,48 @@
  *
  * Creation has always rounded its committed geometry to 2 decimals
  * (annotationCreationCommit's round2), but a TRANSFORM commit (resize, rotate,
- * vertex/endpoint drag, move) wrote raw float results — e.g.
- * `scaleX: 1.3846070545520617`. A PDF stores coordinates as decimal text, so
- * those tails do not survive a metadata-stripped export → re-import: the shape
- * comes back a whisker different and the revision-cloud engine re-fits a
- * different crown count / phase (measured: 40 of 150 random resize cases, up
- * to 1.58pt). Rounding a transform commit the same way creation does makes a
- * resized shape exactly as round-trip-stable as a freshly drawn one.
+ * vertex/endpoint drag, move) wrote raw float results. A PDF stores
+ * coordinates as decimal text, so long float tails made a metadata-stripped
+ * export → re-import come back a whisker different. Rounding a transform
+ * commit the same way creation does makes a resized shape exactly as
+ * round-trip-stable as a freshly drawn one.
  *
  * 2 decimals = 1/100 pt = ~1/7200 inch: far below anything the user can see or
  * a viewer can render, so this changes no visible geometry.
  *
- * This is HALF the fix. The other half lives in cloudAnnotationGeometry: the
- * crown engine now snaps every DERIVED size (width * scaleX and friends) onto
- * the same 1e-6 grid the PDF importer uses, because a live resized shape
- * reaches it as a product - 238 * 0.9 is 214.20000000000002, not 214.2 - while
- * a re-import reaches it as one decimal. Rounding here keeps the STORED
- * geometry (and the decimals the exporter writes) stable; the snap there makes
- * the engine indifferent to the last few bits either way.
+ * SCALE IS THE EXCEPTION (UX 2026-09-10, round 4 "release jump"). scaleX /
+ * scaleY are MULTIPLIERS, not lengths: one 0.01 step of scale is rawWidth/100
+ * PAGE UNITS wide, so rounding them to 2 decimals moved the committed box by
+ * up to rawSize * 0.005 — a 238-unit shape jumped 1.19 units (~1.35 CSS px at
+ * 195%) the instant the pointer was released, after a live preview that had
+ * tracked the cursor exactly. The user sees the shape nudge on release.
+ *
+ * The scale rounding was never load-bearing: an independent export checker ran
+ * 648 metadata-stripped cloud round trips with RAW unrounded scales and every
+ * one came back crown-exact (the same result tests/annotationCommitRounding
+ * pins in "raw-float resize commits round-trip too"). What actually fixed the
+ * re-import drift is the OTHER half, in cloudAnnotationGeometry: the crown
+ * engine snaps every DERIVED size (width * scaleX and friends) onto the same
+ * 1e-6 grid the PDF importer uses, because a live resized shape reaches it as
+ * a product — 238 * 0.9 is 214.20000000000002, not 214.2 — while a re-import
+ * reaches it as one decimal.
+ *
+ * So: LENGTHS, POSITIONS AND ANGLES round to 0.01 page units; SCALES round to
+ * 1e-6 (enough to clip a float tail like 1.3846070545520617, at most
+ * rawSize * 5e-7 of movement — under a thousandth of a unit on any real
+ * shape). Committed geometry therefore equals the live preview to within 0.01
+ * units on every axis and nothing moves on release.
  *
  * Pure JS — the Node test runner imports this directly.
  */
 
 export const round2 = (value) => Number((Number(value) || 0).toFixed(2));
+
+// Scale grid. 1e-6 is the same grid cloudAnnotationGeometry snaps its derived
+// sizes onto and the one the PDF importer's decimals land on, so a committed
+// scale and a re-imported one agree bit-for-bit without the commit having to
+// move the shape.
+export const roundScale = (value) => Number((Number(value) || 0).toFixed(6));
 
 // Deliberately numbers only: `null` coerces to 0, and a commit that stored an
 // explicit null (an absent angle, a cleared midpoint) must keep it.
@@ -34,12 +53,18 @@ const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(v
 const roundIfFinite = (value) => (isFiniteNumber(value) ? round2(value) : value);
 
 // Scalar geometry fields shared by every fabric-shaped annotation object.
+// LENGTHS / POSITIONS / ANGLES — 0.01 page units is invisible on all of them
+// because they are measured in page units themselves.
 const SCALAR_GEOMETRY_KEYS = [
   'left', 'top', 'width', 'height',
-  'scaleX', 'scaleY', 'angle',
+  'angle',
   'rx', 'ry', 'radius',
   'x1', 'y1', 'x2', 'y2',
 ];
+
+// MULTIPLIERS — see the header. Rounded on the 1e-6 grid, never on 0.01,
+// because 0.01 of scale is rawSize/100 page units of visible movement.
+const SCALE_GEOMETRY_KEYS = ['scaleX', 'scaleY'];
 
 // Ink ('path') objects carry their geometry inside `path` command arrays that
 // the eraser / hit-test pipelines compare against un-rounded world coordinates,
@@ -57,6 +82,9 @@ export function roundCommittedAnnotationGeometry(obj) {
   if (!obj || typeof obj !== 'object' || isFreehandInk(obj)) return obj;
   for (const key of SCALAR_GEOMETRY_KEYS) {
     if (isFiniteNumber(obj[key])) obj[key] = round2(obj[key]);
+  }
+  for (const key of SCALE_GEOMETRY_KEYS) {
+    if (isFiniteNumber(obj[key])) obj[key] = roundScale(obj[key]);
   }
   if (Array.isArray(obj.points)) {
     obj.points = obj.points.map((point) => (
