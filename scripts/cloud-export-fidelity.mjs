@@ -158,6 +158,22 @@ const nextRandom = () => {
 // appearance stream at all, so macOS Quick Look / Quartz painted NOTHING and
 // poppler synthesised its own inset box. Judged against the app's flattened
 // print of the same object under the same renderer.
+
+// 2026-09-10 — TILTED PLAIN SHAPES, annotated vs flattened, centroid only.
+// A tilted /Square or /FreeText now ships an /AP drawn UPRIGHT with the tilt
+// in the form's /Matrix, while the print flattener still draws the same shape
+// with its corners pre-rotated inline. Both put the ink in the same place. On
+// EVERY page frame measured on this branch the edges are identical: bbox delta
+// [0,0,0,0], structural 0.0000%, Hausdorff 0.25pt - ONE device pixel at 288
+// dpi - and poppler, cairo and Quartz each report a centroid delta of exactly
+// 0. pdf.js alone antialiases an axis-aligned path under a rotated CTM a shade
+// differently from a pre-rotated path (1-2% fewer ink pixels along the
+// perimeter), and because that hairline runs the whole way round, the centroid
+// drift grows with the shape: 0.14pt on a 320x240 page, 0.26pt on A5 turned 90
+// degrees. So the centroid bound - and ONLY the centroid bound - is half a
+// point for these cases. Hausdorff, the bbox and the structural count stay at
+// full strength, and a real placement shift moves all three.
+const TILTED_PLAIN_CENTROID_PT = 0.5;
 const plainFrameCases = (frame) => {
   const W = frame.width; const H = frame.height;
   const r = (fx, fy, fw, fh) => ({ left: Math.round(W * fx), top: Math.round(H * fy), width: Math.round(W * fw), height: Math.round(H * fh) });
@@ -191,10 +207,45 @@ const plainFrameCases = (frame) => {
       },
     });
   }
+  // 2026-09-10 — a line/arrow the user DRAWS, stored the way
+  // buildLineCommitJSON stores it: a frame box plus CENTER-RELATIVE x1..y2
+  // (fabric's calcLinePoints contract). The exporter and the flattener used to
+  // read those fields as absolute page coordinates, which put /L half a
+  // bounding box away and made the export's own page-geometry guard throw the
+  // annotation out entirely - annots=0 and NO-INK in every renderer below.
+  // Rotated variants cover `angle`, which both writers ignored.
+  const drawnLine = (id, start, end, extra = {}) => {
+    const left = Math.min(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    const width = Math.abs(end.x - start.x);
+    const height = Math.abs(end.y - start.y);
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    return {
+      id, type: 'line', left, top, width, height,
+      x1: start.x - centerX, y1: start.y - centerY,
+      x2: end.x - centerX, y2: end.y - centerY,
+      stroke: '#111111', strokeWidth: 2.5, fill: 'rgb(0,0,0)',
+      tool: 'line', data: { id }, ...extra,
+    };
+  };
+  const drawStart = { x: Math.round(W * 0.14), top: 0, y: Math.round(H * 0.62) };
+  const drawEnd = { x: Math.round(W * 0.66), y: Math.round(H * 0.88) };
+  cases.push({ name: 'plain-line-drawn', plain: true, object: drawnLine('plain-line-drawn', drawStart, drawEnd) });
+  cases.push({ name: 'plain-line-drawn-rotated', plain: true, object: drawnLine('plain-line-drawn-rot', drawStart, drawEnd, { angle: 31 }) });
+  cases.push({ name: 'plain-arrow-drawn', plain: true, object: drawnLine('plain-arrow-drawn', drawStart, drawEnd, { tool: 'arrow', data: { id: 'plain-arrow-drawn', arrowheadStyle: 'solidTriangle' } }) });
+  cases.push({ name: 'plain-arrow-drawn-rotated', plain: true, object: drawnLine('plain-arrow-drawn-rot', drawStart, drawEnd, { angle: -38, tool: 'arrow', data: { id: 'plain-arrow-drawn-rot', arrowheadStyle: 'solidTriangle' } }) });
+  // 2026-09-10 — a TILTED plain rect and text box. Both used to export as an
+  // axis-aligned /Square and /FreeText with no /AP at all, so every third-party
+  // renderer drew them upright while the app's own print drew them tilted: the
+  // annotated-vs-flattened lane below is exactly that disagreement.
+  cases.push({ name: 'plain-rect-tilted', plain: true, sameRendererCentroidPt: TILTED_PLAIN_CENTROID_PT, object: { id: 'plain-rect-tilted', type: 'rect', ...box, angle: 24, stroke: STROKE, strokeWidth: 3, fill: 'transparent' } });
+  cases.push({ name: 'plain-rect-tilted-filled', plain: true, sameRendererCentroidPt: TILTED_PLAIN_CENTROID_PT, object: { id: 'plain-rect-tilted-filled', type: 'rect', ...box, angle: -17, stroke: STROKE, strokeWidth: 2, fill: FILL } });
   const textBox = { left: Math.round(W * 0.1), top: Math.round(H * 0.32), width: Math.round(W * 0.6), height: Math.round(H * 0.22) };
   cases.push({ name: 'plain-freetext', plain: true, object: { id: 'plain-freetext', type: 'textbox', ...textBox, text: 'Revision note', fontSize: 12, fill: '#333333', stroke: 'transparent', strokeWidth: 0 } });
   cases.push({ name: 'plain-freetext-boxed', plain: true, object: { id: 'plain-freetext-boxed', type: 'textbox', ...textBox, text: 'Boxed note with a longer line that wraps', fontSize: 11, fill: '#222222', stroke: '#222222', strokeWidth: 1, backgroundColor: 'rgba(244, 211, 93, 0.35)' } });
   cases.push({ name: 'plain-freetext-styled', plain: true, object: { id: 'plain-freetext-styled', type: 'textbox', ...textBox, text: 'Bold italic underlined', fontSize: 13, fill: '#8a1f2f', stroke: 'transparent', strokeWidth: 0, fontWeight: 'bold', fontStyle: 'italic', underline: true } });
+  cases.push({ name: 'plain-freetext-tilted', plain: true, sameRendererCentroidPt: TILTED_PLAIN_CENTROID_PT, object: { id: 'plain-freetext-tilted', type: 'textbox', ...textBox, angle: 19, text: 'Tilted note', fontSize: 12, fill: '#222222', stroke: '#222222', strokeWidth: 1 } });
   return cases;
 };
 
@@ -231,6 +282,38 @@ const frameCases = (frame) => {
   cases.push({ name: 'edge-ellipse-top-bump4', edge: true, object: { id: 'edge-ellipse', type: 'ellipse', left: Math.round(W * 0.2), top: 0, rx: Math.round(W * 0.3), ry: Math.round(H * 0.2), width: Math.round(W * 0.6), height: Math.round(H * 0.4), angle: 0, stroke: STROKE, strokeWidth: 2.5, fill: FILL, data: { pdfCloudIntensity: 4 } } });
   cases.push({ name: 'edge-polygon-bottom-bump3', edge: true, object: { id: 'edge-polygon', type: 'polygon', left: 0, top: Math.round(H * 0.5), points: [{ x: 0, y: H - Math.round(H * 0.5) }, { x: Math.round(W * 0.3), y: 0 }, { x: W, y: Math.round(H * 0.1) }, { x: W, y: H - Math.round(H * 0.5) }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 3 } } });
   cases.push({ name: 'edge-polyline-right-bump2', edge: true, object: { id: 'edge-polyline', type: 'polyline', left: Math.round(W * 0.4), top: Math.round(H * 0.1), points: [{ x: 0, y: 0 }, { x: W - Math.round(W * 0.4), y: Math.round(H * 0.3) }, { x: Math.round(W * 0.2), y: Math.round(H * 0.7) }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 } } });
+  // 2026-09-10 — a cloud whose scalloped hull (and whose base geometry) spills
+  // off the page. The flattened print draws it clipped; the /AP export used to
+  // drop it with reason 'invalid-or-outside-page-geometry', so the two lanes
+  // disagreed about whether the annotation existed at all.
+  cases.push({
+    name: 'spill-polygon-rotated45', edge: true,
+    object: {
+      id: 'spill-poly', type: 'polygon',
+      left: Math.round(W * 0.12), top: Math.round(H * 0.12), angle: 45,
+      points: [{ x: 0, y: 0 }, { x: grid(W * 0.56), y: 0 }, { x: grid(W * 0.56), y: grid(H * 0.58) }, { x: 0, y: grid(H * 0.58) }],
+      pathOffset: { x: 0, y: 0 },
+      stroke: STROKE, strokeWidth: 5, fill: FILL, data: { pdfCloudIntensity: 2 },
+    },
+  });
+  // 2026-09-10 — the two FILLED polygon clouds whose fill knockout used to hang
+  // the polygon clipper for over ten minutes / throw inside it, so neither the
+  // /AP nor the flattened page was ever produced. Shapes, not abstractions: one
+  // convex quad and one self-crossing hexagon, both drawable in a single drag.
+  cases.push({
+    name: 'filled-polygon-clipper-hang', object: {
+      id: 'clipper-hang', type: 'polygon', left: Math.round(W * 0.12), top: Math.round(H * 0.12),
+      points: [{ x: 0, y: 0 }, { x: grid(W * 0.66), y: grid(H * 0.08) }, { x: grid(W * 0.56), y: grid(H * 0.62) }, { x: grid(W * 0.09), y: grid(H * 0.5) }],
+      pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 6, fill: FILL, data: { pdfCloudIntensity: 2 },
+    },
+  });
+  cases.push({
+    name: 'filled-polygon-clipper-throw', object: {
+      id: 'clipper-throw', type: 'polygon', left: Math.round(W * 0.12), top: Math.round(H * 0.12),
+      points: [{ x: grid(W * 0.29), y: grid(H * 0.27) }, { x: grid(W * 0.56), y: grid(H * 0.11) }, { x: grid(W * 0.11), y: grid(H * 0.2) }, { x: grid(W * 0.26), y: grid(H * 0.32) }, { x: grid(W * 0.67), y: grid(H * 0.29) }, { x: grid(W * 0.52), y: grid(H * 0.14) }],
+      pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 6, fill: FILL, data: { pdfCloudIntensity: 2 },
+    },
+  });
   // RESIZED clouds: what the app stores after a resize handle drag - a scale
   // on the committed object. Random (seeded) scales, rounded to 2 decimals the
   // way annotationCommitRounding rounds a real commit, because a raw-float
@@ -911,7 +994,13 @@ for (const frameName of frameNames) {
         flattenedPng,
         annotatedPng,
         `${base}.annotated-vs-flattened.${name}.diff.png`,
-        { centroid: SAME_RENDERER_CENTROID_TOLERANCE_PT, hausdorff: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT },
+        {
+          // A case may raise ONLY the centroid bound, and only with a reason
+          // (see sameRendererCentroidPt below). Hausdorff, the bbox and the
+          // structural count stay at full strength for every case.
+          centroid: entry.sameRendererCentroidPt ?? SAME_RENDERER_CENTROID_TOLERANCE_PT,
+          hausdorff: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT,
+        },
       );
     }
     if (!entry.plain) {

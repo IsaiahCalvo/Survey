@@ -103,8 +103,9 @@ import {
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: printed clouds come from the same resolver the screen uses.
-import { cloudFillKnockoutRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import { cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
+import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 
 const pdfExportDebug = (...args) => {
@@ -469,6 +470,13 @@ const legacyArrowGroupToLine = (obj) => {
   return {
     ...rest,
     type: 'line',
+    // The endpoints below are ABSOLUTE page coordinates, so the frame fields
+    // must not add a centre on top of them (resolveLineWorldGeometry reads
+    // left/top/width/height the way the renderer does, 2026-09-10).
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
     x1: left + Number(lineChild.x1),
     y1: top + Number(lineChild.y1),
     x2: left + Number(lineChild.x2),
@@ -1870,21 +1878,56 @@ const cloudRunStrokeOperators = (geometry, mapPoint) => {
 };
 
 /**
+ * The clip that knocks the fill out under a cloud's stroke band, as content
+ * operators (2026-09-10). Exported so the fallback path can be tested without
+ * building a whole PDF.
+ *
+ * `union` mode: ONE even-odd clip of the appearance box plus the band's rings.
+ * A proper union's rings never overlap, so even-odd on that path is exactly
+ * "the box minus the band".
+ *
+ * `pieces` mode (the clipper timed out or threw): one clip per capsule. PDF
+ * clip paths INTERSECT (32000-1 8.5.4), so intersecting the complement of
+ * each capsule in turn is the complement of their union - the same picture
+ * from a longer stream, with no boolean at all.
+ *
+ * The caller opens a `q` before these and closes it after the fill, so the
+ * crowns painted next are not clipped too.
+ */
+export const buildCloudStrokeBandClipOperators = (band, toForm, formWidth, formHeight) => {
+  if (!band?.rings?.length) return [];
+  const box = `${cloudNumberText(0)} ${cloudNumberText(0)} ${cloudNumberText(formWidth)} ${cloudNumberText(formHeight)} re`;
+  const ringOperators = (ring) => ring.map((point, index) => {
+    const mapped = toForm(point.x, point.y);
+    return `${cloudNumberText(mapped.x)} ${cloudNumberText(mapped.y)} ${index === 0 ? 'm' : 'l'}`;
+  }).concat('h');
+  if (band.mode === 'union') {
+    return [box, ...band.rings.flatMap(ringOperators), 'W*', 'n'];
+  }
+  return band.rings.flatMap((ring) => [box, ...ringOperators(ring), 'W*', 'n']);
+};
+
+/**
  * Build the /AP /N form for a cloud annotation. Returns null when the object
  * is not a cloud (or paints nothing), so the caller keeps its plain path.
  *
- * FILL KNOCKOUT (2026-09-09, Drawboard parity): the fill is absent under the
- * whole stroke band, so a translucent stroke composites over the page, never
- * over its own fill, and fill alpha (ca) stays independent of stroke alpha
- * (CA). PDF has no mask-under-stroke primitive and its transparency tools
- * were probed and rejected: a knockout group (/K true) is ignored by pdf.js,
- * and a luminosity soft mask — Drawboard's SVG mask in PDF terms — is dropped
- * by Quartz inside annotation appearance streams (Preview showed the cloud
- * with NO fill at all; pdf.js additionally mis-rasterises /DeviceGray groups).
- * The knockout is therefore pure geometry (cloudFillKnockoutRings): the fill
- * region minus the union of every run's stroke capsules, painted with plain
- * even-odd fills that every viewer honours. It is exact to sampling precision
- * along the crowns and under the inward tails alike.
+ * FILL KNOCKOUT (2026-09-09, Drawboard parity; reworked 2026-09-10): the fill
+ * is absent under the whole stroke band, so a translucent stroke composites
+ * over the page, never over its own fill, and fill alpha (ca) stays
+ * independent of stroke alpha (CA). PDF has no mask-under-stroke primitive
+ * and its transparency tools were probed and rejected: a knockout group
+ * (/K true) is ignored by pdf.js, and a luminosity soft mask — Drawboard's
+ * SVG mask in PDF terms — is dropped by Quartz inside annotation appearance
+ * streams (Preview showed the cloud with NO fill at all; pdf.js additionally
+ * mis-rasterises /DeviceGray groups). The knockout is therefore a plain CLIP:
+ * cloudStrokeBandRings returns the stroke band, and the fill is painted
+ * through the band's complement (`W*` on the appearance box plus the band).
+ * It used to be a polygon-clipping subtraction that returned `fill minus
+ * band` as rings; that unioned the fill contour with the crown lobes and the
+ * body, which share exactly-coincident edges and hung the sweep line for over
+ * ten minutes on some filled polygon clouds — the /AP and the flattened page
+ * then never built at all. Clipping needs no region boolean and keeps the
+ * fill edge on the engine's exact cubics instead of an 8-step resample.
  *
  * @param {object} [options]
  * @param {object} [options.geometry]        pre-resolved cloud geometry
@@ -1967,22 +2010,17 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
   if (needsGraphicsState) content.push('/GS0 gs');
   content.push('1 J 1 j');
   if (fill) {
+    // The fill is knocked out under the stroke band by CLIPPING it to the
+    // band's complement (see cloudStrokeBandRings): the appearance box plus
+    // the band rings, painted `W*`, leaves everything except the band. The
+    // fill itself keeps its own nonzero path, so its edge is the engine's
+    // exact scallop cubics. `q`/`Q` fence the clip so the stroke that follows
+    // is not clipped by it.
+    const band = hasStroke ? cloudStrokeBandRings(geometry) : null;
+    if (band) content.push('q', ...buildCloudStrokeBandClipOperators(band, toForm, formWidth, formHeight));
     content.push(`${n(fill.color.red)} ${n(fill.color.green)} ${n(fill.color.blue)} rg`);
-    const knockoutRings = hasStroke ? cloudFillKnockoutRings(geometry) : null;
-    if (knockoutRings) {
-      // Fill minus the stroke band: closed polygon rings (outer + holes),
-      // painted even-odd so ring orientation cannot matter.
-      for (const ring of knockoutRings) {
-        ring.forEach((point, index) => {
-          const mapped = toForm(point.x, point.y);
-          content.push(`${cloudNumberText(mapped.x)} ${cloudNumberText(mapped.y)} ${index === 0 ? 'm' : 'l'}`);
-        });
-        content.push('h');
-      }
-      content.push('f*');
-    } else {
-      content.push(...cloudCommandsToOperators(geometry.fill, toForm), 'f');
-    }
+    content.push(...cloudCommandsToOperators(geometry.fill, toForm), 'f');
+    if (band) content.push('Q');
   }
   if (hasStroke) {
     content.push(`${n(stroke.color.red)} ${n(stroke.color.green)} ${n(stroke.color.blue)} RG`);
@@ -2253,12 +2291,13 @@ const plainAppearanceGeometry = (obj) => {
     return { base, bounds: boundsOfPoints(points, pad) };
   }
   if (type === 'line') {
+    const line = resolveLineWorldGeometry(obj);
     const points = [
-      { x: getObjNumber(obj, 'x1'), y: getObjNumber(obj, 'y1') },
-      { x: getObjNumber(obj, 'x2'), y: getObjNumber(obj, 'y2') },
+      { x: line.x1, y: line.y1 },
+      { x: line.x2, y: line.y2 },
     ];
-    const midpoint = obj?.data?.midpoint;
-    if (midpoint && Number.isFinite(Number(midpoint.x)) && Number.isFinite(Number(midpoint.y))) {
+    const midpoint = line.midpoint;
+    if (midpoint) {
       // The bezier control point reaches twice as far from the chord as the
       // midpoint the user dragged (buildCurvedLineBody's quadratic).
       points.push({
@@ -2332,6 +2371,22 @@ const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fo
 };
 
 /**
+ * Put a /Matrix on a form built by buildFlattenedShapeAppearance. Returns
+ * false when the ref is not a stream we can touch, so the caller can fall
+ * back to shipping no appearance at all rather than a mis-placed one.
+ */
+const appearanceFormSetMatrix = (pdfDoc, ref, matrix) => {
+  try {
+    const form = pdfDoc.context.lookup(ref);
+    if (!form?.dict?.set) return false;
+    form.dict.set(PDFName.of('Matrix'), pdfDoc.context.obj(matrix));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Give `annotationDict` the flattener-built /AP (plus the matching /Rect and,
  * when the subtype's geometry lives in /Rect, /RD). No-op when the shape
  * already has an appearance (cloud, counter, ink) or cannot be drawn.
@@ -2340,20 +2395,78 @@ const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fo
  */
 const applyPlainShapeAppearanceToDict = (pdfDoc, annotationDict, fabricObj, pageHeight, options = {}) => {
   if (annotationDict.AP) return false;
-  const geometry = plainAppearanceGeometry(fabricObj);
+  const type = String(fabricObj?.type || '').toLowerCase();
+  // 2026-09-10 (tilted plain shapes): a /Square and a /FreeText carry their
+  // geometry in /Rect, which is axis-aligned by definition, so a tilted one
+  // used to ship with NO appearance at all and every viewer drew it upright.
+  // Give it the same shape the cloud and ellipse writers use: the appearance
+  // is drawn UN-ROTATED (the object with `angle` stripped, which is exactly
+  // what drawFlattenedRect / drawFlattenedText paint at angle 0), the tilt
+  // lives in the form's /Matrix as a rotation about the box centre, and /Rect
+  // is the page box of the four rotated /BBox corners - so /Rect and the
+  // transformed /BBox agree and the fit stays a pure translation. /RD records
+  // the appearance pad in that un-rotated frame, which is where the importer
+  // reads it back (convertSquareToFabricRect / convertFreeTextToFabricTextbox
+  // recover the angle from /Matrix and the size from /BBox less /RD).
+  // Only these two families need it: polygon, polyline and line resolve their
+  // own world points with the angle already folded in, so their flattened ink
+  // is already tilted in page space.
+  const tiltable = type === 'rect' || type === 'textbox' || type === 'text' || type === 'i-text';
+  const angle = tiltable ? (Number(fabricObj?.angle) || 0) : 0;
+  const drawObject = angle ? { ...fabricObj, angle: 0 } : fabricObj;
+  const geometry = plainAppearanceGeometry(drawObject);
   if (!geometry || !geometry.bounds || !geometry.base) return false;
   // Text needs real embedded fonts; without them the flattener cannot draw a
   // glyph, so leave the bare /FreeText (its /DA) rather than an empty form.
-  const isText = ['textbox', 'text', 'i-text'].includes(String(fabricObj?.type || '').toLowerCase());
+  const isText = ['textbox', 'text', 'i-text'].includes(type);
   if (isText && !options.fonts?.regular) return false;
   const appearance = buildFlattenedShapeAppearance(
     pdfDoc,
-    fabricObj,
+    drawObject,
     pageHeight,
     geometry.bounds,
     options.fonts,
   );
   if (!appearance) return false;
+  if (angle) {
+    // fabric `angle` is screen-clockwise in y-down space; the same visual tilt
+    // is a CCW rotation by -angle in PDF's y-up space (see
+    // createEllipseAnnotation's GOTCHA). The pivot is the BASE box centre -
+    // the pivot drawFlattenedRect / drawFlattenedText rotate about - which is
+    // also the centre of the symmetric appearance box.
+    const theta = (-angle * Math.PI) / 180;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const centerX = (geometry.base.minX + geometry.base.maxX) / 2;
+    const centerY = pageHeight - (geometry.base.minY + geometry.base.maxY) / 2;
+    if (!appearanceFormSetMatrix(pdfDoc, appearance.ref, [
+      cos, sin, -sin, cos,
+      centerX - centerX * cos + centerY * sin,
+      centerY - centerX * sin - centerY * cos,
+    ])) return false;
+    const box = appearance.rect;
+    const corners = [
+      [box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]],
+    ].map(([x, y]) => ({
+      x: centerX + (x - centerX) * cos - (y - centerY) * sin,
+      y: centerY + (x - centerX) * sin + (y - centerY) * cos,
+    }));
+    const xs = corners.map((point) => point.x);
+    const ys = corners.map((point) => point.y);
+    annotationDict.AP = pdfDoc.context.obj({ N: appearance.ref });
+    annotationDict.Rect = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    if (options.writeRectangleDifferences) {
+      // In the UN-ROTATED /BBox frame, which is where a tilted shape's inset
+      // is meaningful at all (PDF 32000 12.5.6.8 assumes an upright box).
+      annotationDict.RD = [
+        Math.max(0, geometry.base.minX - box[0]),
+        Math.max(0, box[3] - (pageHeight - geometry.base.minY)),
+        Math.max(0, box[2] - geometry.base.maxX),
+        Math.max(0, (pageHeight - geometry.base.maxY) - box[1]),
+      ];
+    }
+    return true;
+  }
   annotationDict.AP = pdfDoc.context.obj({ N: appearance.ref });
   annotationDict.Rect = appearance.rect;
   if (options.writeRectangleDifferences) {
@@ -2414,12 +2527,12 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       // A cloud rect paints its own scallops (see buildCloudAppearance); the
       // /Rect grows to the appearance box and /RD keeps the base rectangle.
       applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
-    } else if (!(Number(fabricObj?.angle) || 0)) {
+    } else {
       // Plain rectangle: ship the flattener's own drawing so Quick Look /
-      // Quartz and poppler paint what the app paints. A TILTED rect still
-      // exports as today's axis-aligned /Square (this writer has never
-      // carried its angle) - giving it a rotated appearance without a
-      // matching /Rect would put the two out of step.
+      // Quartz and poppler paint what the app paints. A TILTED rect gets the
+      // same drawing un-rotated with the tilt in the form's /Matrix and /Rect
+      // grown to the rotated box (2026-09-10) - before that it exported with
+      // no appearance at all and every viewer showed it upright.
       applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
         writeRectangleDifferences: true,
         fonts: options.flattenFonts,
@@ -3099,10 +3212,9 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
 
-    const x1 = fabricObj.x1 || 0;
-    const y1 = fabricObj.y1 || 0;
-    const x2 = fabricObj.x2 || 0;
-    const y2 = fabricObj.y2 || 0;
+    // Center-relative storage + `angle` resolved exactly as the screen does
+    // (see resolveLineWorldGeometry).
+    const { x1, y1, x2, y2 } = resolveLineWorldGeometry(fabricObj);
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = Math.min(x1, x2);
@@ -3248,9 +3360,10 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       // strikethrough. A /DA string alone left Quick Look blank, and no viewer
       // can express the decorations. /RD carries the inset back to the text
       // box so a metadata-less re-import still gets the box the user drew.
-      // (Tilted text keeps today's bare /FreeText: this writer's /Rect has
-      // never carried an angle.)
-      if (!(Number(fabricObj?.angle) || 0) && !options.isCalloutPart) {
+      // A TILTED text box gets the same appearance drawn upright with the
+      // tilt in the form's /Matrix (2026-09-10); before that it exported as a
+      // bare /FreeText and every viewer showed it upright.
+      if (!options.isCalloutPart) {
         applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
           writeRectangleDifferences: true,
           fonts: options.flattenFonts,
@@ -3519,38 +3632,46 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
     maxX: Number(crop.x) + Number(crop.width),
     maxY: Number(crop.y) + Number(crop.height),
   };
-  // A valid appearance can extend a few points past the page when a curve or
-  // stroke touches an edge. Keep that small bleed, but reject the wild Rects
-  // produced by broken transforms. Coordinate arrays below stay strict.
-  const rectBleed = Math.max(Number(crop.width), Number(crop.height)) * 0.05;
-  const rectWithinPage = (values) => (
-    Array.isArray(values)
-    && values.length === 4
-    && values.every(Number.isFinite)
-    && values[0] >= bounds.minX - rectBleed
-    && values[1] >= bounds.minY - rectBleed
-    && values[2] <= bounds.maxX + rectBleed
-    && values[3] <= bounds.maxY + rectBleed
-  );
-  const rectTouchesPage = (values) => (
-    Array.isArray(values)
-    && values.length === 4
-    && values.every(Number.isFinite)
-    && values[2] >= bounds.minX
-    && values[0] <= bounds.maxX
-    && values[3] >= bounds.minY
-    && values[1] <= bounds.maxY
-  );
-  const withinPage = (values) => (
-    Array.isArray(values)
-    && values.length % 2 === 0
-    && values.every(Number.isFinite)
-    && values.every((value, index) => (
-      index % 2 === 0
-        ? value >= bounds.minX && value <= bounds.maxX
-        : value >= bounds.minY && value <= bounds.maxY
-    ))
-  );
+  // 2026-09-10 (hull spill): this guard exists to catch the WILD geometry a
+  // broken transform produces, not to drop a shape the user deliberately drew
+  // over the edge. A shape can legitimately hang off the page - a 45-degree
+  // polygon cloud whose corner crosses y = 0, a rectangle dragged half off -
+  // and the flattened print draws exactly that, clipped by the page. Dropping
+  // it from the /AP export made print and export disagree about whether the
+  // annotation existed at all. So the test is now: the geometry must OVERLAP
+  // the page, and it must stay within one page dimension of it. Wild values
+  // (a line at x = -9000 on a 612pt page, a rect flipped around the origin by
+  // a bad matrix, anything non-finite) still fail both halves.
+  const pageSpill = Math.max(Number(crop.width), Number(crop.height));
+  const spanOverlapsPage = (min, max, low, high) => max >= low && min <= high;
+  const spanNearPage = (min, max, low, high) => min >= low - pageSpill && max <= high + pageSpill;
+  const rectOnPage = (values) => {
+    if (!Array.isArray(values) || values.length !== 4 || !values.every(Number.isFinite)) return false;
+    const [x0, y0, x1, y1] = values;
+    return spanOverlapsPage(Math.min(x0, x1), Math.max(x0, x1), bounds.minX, bounds.maxX)
+      && spanOverlapsPage(Math.min(y0, y1), Math.max(y0, y1), bounds.minY, bounds.maxY)
+      && spanNearPage(Math.min(x0, x1), Math.max(x0, x1), bounds.minX, bounds.maxX)
+      && spanNearPage(Math.min(y0, y1), Math.max(y0, y1), bounds.minY, bounds.maxY);
+  };
+  const rectWithinPage = rectOnPage;
+  const rectTouchesPage = rectOnPage;
+  const withinPage = (values) => {
+    if (!Array.isArray(values) || values.length % 2 !== 0) return false;
+    // An empty coordinate array carries no geometry to judge; it passed before
+    // this rule changed and still does, so nothing outside the wild-geometry
+    // case changes behaviour.
+    if (values.length === 0) return true;
+    if (!values.every(Number.isFinite)) return false;
+    let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+    for (let index = 0; index + 1 < values.length; index += 2) {
+      minX = Math.min(minX, values[index]); maxX = Math.max(maxX, values[index]);
+      minY = Math.min(minY, values[index + 1]); maxY = Math.max(maxY, values[index + 1]);
+    }
+    return spanOverlapsPage(minX, maxX, bounds.minX, bounds.maxX)
+      && spanOverlapsPage(minY, maxY, bounds.minY, bounds.maxY)
+      && spanNearPage(minX, maxX, bounds.minX, bounds.maxX)
+      && spanNearPage(minY, maxY, bounds.minY, bounds.maxY);
+  };
   const rect = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Rect')));
   if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(Number.isFinite)) return false;
   if (rect[2] < rect[0] || rect[3] < rect[1]) return false;
@@ -4033,6 +4154,60 @@ const getObjNumber = (obj, key, fallback = 0) => {
 
 const getPdfY = (pageHeight, appY) => pageHeight - appY;
 
+/**
+ * WHERE A LINE / ARROW ACTUALLY IS, for the exporter and the flattener.
+ *
+ * 2026-09-10 — the writers used to read `obj.x1..y2` as absolute page
+ * coordinates. That is only true for a PDF-IMPORTED line (left/top/width/
+ * height all zero); a line the user draws in the app stores them CENTER-
+ * RELATIVE, per fabric's calcLinePoints contract (buildLineCommitJSON), and
+ * the renderer resolves them through getLineEndpoints. Reading the raw fields
+ * put an app-drawn line's /L a whole half-diagonal away from the ink — far
+ * enough that the export's own page-geometry guard threw it out, so a drawn
+ * line or arrow reached the exported PDF as NOTHING at all (measured: a line
+ * from (100,80) to (300,200) on a 400x300 page exported 0 annotations).
+ *
+ * `obj.angle` was ignored as well, though the screen rotates the whole line
+ * about its curve-inclusive bbox centre (renderLine / drawLine, both via
+ * computeLineBboxCenter). Resolving both here, off the SAME helpers the
+ * renderer uses, is what keeps app SVG, /AP and flattened print on the same
+ * two points. Objects that already carry absolute coordinates (imported
+ * lines, and the synthetic `{type:'line', x1..y2}` pieces the callout
+ * flattener builds) come back unchanged: their centre is (0, 0).
+ *
+ * @returns {{x1:number,y1:number,x2:number,y2:number,midpoint:{x,y}|null}}
+ */
+const resolveLineWorldGeometry = (obj) => {
+  const endpoints = getLineEndpoints({
+    left: getObjNumber(obj, 'left'),
+    top: getObjNumber(obj, 'top'),
+    width: getObjNumber(obj, 'width'),
+    height: getObjNumber(obj, 'height'),
+    x1: getObjNumber(obj, 'x1'),
+    y1: getObjNumber(obj, 'y1'),
+    x2: getObjNumber(obj, 'x2'),
+    y2: getObjNumber(obj, 'y2'),
+  });
+  const rawMidpoint = obj?.data?.midpoint;
+  const midpoint = rawMidpoint
+    && Number.isFinite(Number(rawMidpoint.x))
+    && Number.isFinite(Number(rawMidpoint.y))
+    ? { x: Number(rawMidpoint.x), y: Number(rawMidpoint.y) }
+    : null;
+  const angle = Number(obj?.angle) || 0;
+  if (!angle) return { ...endpoints, midpoint };
+  const pivot = computeLineBboxCenter(endpoints, midpoint);
+  const start = rotateAppPoint({ x: endpoints.x1, y: endpoints.y1 }, pivot, angle);
+  const end = rotateAppPoint({ x: endpoints.x2, y: endpoints.y2 }, pivot, angle);
+  return {
+    x1: start.x,
+    y1: start.y,
+    x2: end.x,
+    y2: end.y,
+    midpoint: midpoint ? rotateAppPoint(midpoint, pivot, angle) : null,
+  };
+};
+
 const resolvedPdfPaint = (value, fallback) => {
   const paint = parsePdfDrawColor(value, fallback);
   if (paint) return paint;
@@ -4463,10 +4638,9 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
 const drawFlattenedLine = (page, obj, pageHeight) => {
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
-  const x1 = getObjNumber(obj, 'x1');
-  const y1 = getObjNumber(obj, 'y1');
-  const x2 = getObjNumber(obj, 'x2');
-  const y2 = getObjNumber(obj, 'y2');
+  // Same resolution as the screen and the /AP writer (see
+  // resolveLineWorldGeometry): center-relative storage plus `angle`.
+  const { x1, y1, x2, y2, midpoint: resolvedMidpoint } = resolveLineWorldGeometry(obj);
   // UX (2026-07-17, line style): honor a stored strokeDashArray so dashed /
   // dotted lines (and callout leader pieces, which pass the shared callout
   // dash) print with their on-screen pattern instead of flattening solid.
@@ -4480,8 +4654,8 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   const endingStyles = resolveLineEndingStyles(obj);
   const startInset = lineEndingBodyInset(endingStyles.startStyle, width);
   const endInset = lineEndingBodyInset(endingStyles.endStyle, width);
-  const midpoint = obj?.data?.midpoint;
-  const midpointOffset = midpoint && Number.isFinite(Number(midpoint.x)) && Number.isFinite(Number(midpoint.y))
+  const midpoint = resolvedMidpoint;
+  const midpointOffset = midpoint
     ? (() => {
         // distance from the chord — the screen treats ≤ 1px as straight
         const dxm = x2 - x1; const dym = y2 - y1; const len2 = dxm * dxm + dym * dym;
@@ -4764,7 +4938,7 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
 // polygon, open polyline) paints exactly what the export's /AP paints, because
 // it IS the same form: buildCloudAppearance builds the appearance stream (fill
 // region knocked out under the stroke band as plain geometry (see
-// buildCloudAppearance / cloudFillKnockoutRings),
+// buildCloudAppearance / cloudStrokeBandRings),
 // then the crowns stroked one run at a time with round caps/joins, alpha and
 // blend baked into the ExtGState, tilt in /Matrix) and the flattener places
 // that form on the page with a pure translation — the same BBox->Rect fit a
@@ -4910,15 +5084,30 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (Array.isArray(obj.objects)) {
     const parentLeft = Number(obj.left) || 0;
     const parentTop = Number(obj.top) || 0;
-    return obj.objects.reduce((sum, child) => sum + drawFlattenedObject(page, {
-      ...child,
-      left: (Number(child?.left) || 0) + parentLeft,
-      top: (Number(child?.top) || 0) + parentTop,
-      x1: child?.x1 !== undefined ? (Number(child.x1) || 0) + parentLeft : child?.x1,
-      y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
-      x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
-      y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
-    }, pageHeight, fonts, offset, stampImages), 0);
+    return obj.objects.reduce((sum, child) => {
+      const shiftedChild = {
+        ...child,
+        left: (Number(child?.left) || 0) + parentLeft,
+        top: (Number(child?.top) || 0) + parentTop,
+        x1: child?.x1 !== undefined ? (Number(child.x1) || 0) + parentLeft : child?.x1,
+        y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
+        x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
+        y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
+      };
+      // A child whose endpoints were just made ABSOLUTE must not also carry a
+      // frame box: resolveLineWorldGeometry (2026-09-10) reads left/top/width/
+      // height the way the renderer does, and for a fabric Line that means
+      // adding the box centre to x1..y2. Zeroing the box keeps these children
+      // exactly where they printed before that resolver existed - the same
+      // rule legacyArrowGroupToLine follows on the export side.
+      if (child?.x1 !== undefined) {
+        shiftedChild.left = 0;
+        shiftedChild.top = 0;
+        shiftedChild.width = 0;
+        shiftedChild.height = 0;
+      }
+      return sum + drawFlattenedObject(page, shiftedChild, pageHeight, fonts, offset, stampImages);
+    }, 0);
   }
   const type = String(obj.type || '').toLowerCase();
   const shifted = offset.x || offset.y

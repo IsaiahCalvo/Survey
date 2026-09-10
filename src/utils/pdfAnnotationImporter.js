@@ -4547,10 +4547,20 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     ? computeAppearanceRotationTransform(annotation, scale, viewport, { halfTurnIsInert: false })
     : null;
   if (textBoxRotation) {
-    const unrotWidth = textBoxRotation.bboxWidth + 2 * TEXT_PADDING;
-    const unrotHeight = textBoxRotation.bboxHeight + 2 * TEXT_PADDING + descenderRoom;
-    const cx = viewportRect.left + viewportRect.width / 2;
-    const cy = viewportRect.top + viewportRect.height / 2;
+    // 2026-09-10: the tilted /FreeText our exporter writes draws its
+    // appearance UPRIGHT with the tilt in /Matrix, so /BBox is the padded
+    // upright box and /RD (freeTextInsets) is the pad back to the text box -
+    // the same meaning the un-tilted branch already reads off /Rect. Without
+    // subtracting it the box came back one border-plus-descender pad larger
+    // on every round trip. The centre comes off the RAW /Rect: /Rect is the
+    // page box of the rotated shape, so its midpoint IS the tilt pivot, while
+    // /RD is measured in the upright frame and must not be applied to it.
+    const unrotWidth = Math.max(0, textBoxRotation.bboxWidth - freeTextInsets[0] - freeTextInsets[2])
+      + 2 * TEXT_PADDING;
+    const unrotHeight = Math.max(0, textBoxRotation.bboxHeight - freeTextInsets[1] - freeTextInsets[3])
+      + 2 * TEXT_PADDING + descenderRoom;
+    const cx = rawViewportRect.left + rawViewportRect.width / 2;
+    const cy = rawViewportRect.top + rawViewportRect.height / 2;
     return {
       type: 'textbox',
       left: cx - unrotWidth / 2,
@@ -4995,9 +5005,16 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   // outer half of the stroke, and Acrobat writes it for bordered squares. Only
   // needed when the appearance path bounds are unavailable — those already ARE
   // the base rectangle.
-  const plainInsets = (!cloudEffect && !useRotation && !appearanceBounds)
+  // 2026-09-10: a TILTED plain /Square carries /RD too now - our exporter
+  // draws its appearance un-rotated and puts the tilt in /Matrix, so /BBox is
+  // the padded upright box and /RD is the pad back to the base rectangle in
+  // that same upright frame. Reading it in the rotation branch as well is what
+  // keeps a tilted rect the size the user drew across a round trip (it used
+  // to come back one stroke width plus the AA margin larger every time).
+  const plainInsets = (!cloudEffect && !appearanceBounds)
     ? rectDifferenceInsets
     : [0, 0, 0, 0];
+  const activeInsets = cloudEffect ? cloudInsets : plainInsets;
   const boxWidth = useRotation ? rotationTransform.bboxWidth : viewportRect.width;
   const boxHeight = useRotation ? rotationTransform.bboxHeight : viewportRect.height;
   // 2026-09-09: a cloudy /Square's /Rect (or /BBox) is the scalloped
@@ -5020,8 +5037,8 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     // Centre on the /Rect midpoint (the rotated box's page bounds), moved by
     // the inset asymmetry rotated with the shape - the Circle path's rule.
     const localOffset = {
-      x: cloudInsets[0] + outWidth / 2 - boxWidth / 2,
-      y: cloudInsets[1] + outHeight / 2 - boxHeight / 2,
+      x: activeInsets[0] + outWidth / 2 - boxWidth / 2,
+      y: activeInsets[1] + outHeight / 2 - boxHeight / 2,
     };
     const tilt = (rotationTransform.angleDeg * Math.PI) / 180;
     const offsetX = localOffset.x * Math.cos(tilt) - localOffset.y * Math.sin(tilt);

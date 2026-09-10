@@ -19,7 +19,7 @@
 //  * The crown outline and the scalloped fill region come from one engine
 //    pass (buildCloudRenderPaths), so fill and stroke can never disagree.
 
-import { diff as polygonDiff, union as polygonUnion } from 'martinez-polygon-clipping';
+import { union as polygonUnion } from 'martinez-polygon-clipping';
 import {
   buildCloudRenderPaths,
   cloudCommandsToPathData,
@@ -331,90 +331,173 @@ export function cloudSelectionChrome(obj, geometry = null) {
 }
 
 
+// Wall-clock budget for the whole capsule union, and the ceiling on how many
+// capsules are worth handing it. Both are overridable per call (options
+// `budgetMs` / `maxPieces`), which is how the fallback paths are tested.
+const CLOUD_BAND_UNION_BUDGET_MS = 250;
+const CLOUD_BAND_MAX_PIECES = 1500;
+// The grid every coordinate handed to the clipper is snapped onto. 1e-4 of a
+// PDF point is ~1/700 of a device pixel at 100% — invisible — and it is what
+// turns "coincident to 12 decimal places" (undefined behaviour for a sweep
+// line) into "the same number".
+const CLOUD_CLIPPER_GRID = 1e-4;
+const CLOUD_CLIPPER_MIN_AREA = 1e-6;
+
+class CloudClipBudgetError extends Error {}
+
+const snapClipperCoordinate = (value) => Math.round(value / CLOUD_CLIPPER_GRID) * CLOUD_CLIPPER_GRID;
+
+const ringSignedArea = (ring) => {
+  let total = 0;
+  for (let index = 0; index + 1 < ring.length; index += 1) {
+    total += ring[index][0] * ring[index + 1][1] - ring[index + 1][0] * ring[index][1];
+  }
+  return total / 2;
+};
+
 /**
- * FILL KNOCKOUT for render paths without a mask primitive (the PDF /AP and
- * the flattened print) — Drawboard parity, 2026-09-09.
+ * A ring the clipper can actually take: snapped onto the shared grid, with
+ * duplicate and collinear vertices removed, closed, and rejected outright
+ * when it has collapsed to a sliver. Returns null for anything degenerate.
+ */
+const sanitizeClipperRing = (ring) => {
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  const snapped = [];
+  for (const point of ring) {
+    const x = snapClipperCoordinate(Number(point[0]));
+    const y = snapClipperCoordinate(Number(point[1]));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const last = snapped[snapped.length - 1];
+    if (last && last[0] === x && last[1] === y) continue;
+    snapped.push([x, y]);
+  }
+  while (snapped.length > 1
+    && snapped[0][0] === snapped[snapped.length - 1][0]
+    && snapped[0][1] === snapped[snapped.length - 1][1]) snapped.pop();
+  if (snapped.length < 3) return null;
+  // Drop vertices whose two neighbours are collinear through them: they carry
+  // no shape and every one of them is another chance for the sweep line to
+  // meet a zero-area event.
+  const simplified = [];
+  for (let index = 0; index < snapped.length; index += 1) {
+    const previous = simplified.length > 0 ? simplified[simplified.length - 1] : snapped[(index - 1 + snapped.length) % snapped.length];
+    const current = snapped[index];
+    const next = snapped[(index + 1) % snapped.length];
+    const cross = (current[0] - previous[0]) * (next[1] - previous[1])
+      - (current[1] - previous[1]) * (next[0] - previous[0]);
+    if (Math.abs(cross) <= CLOUD_CLIPPER_MIN_AREA) continue;
+    simplified.push(current);
+  }
+  const kept = simplified.length >= 3 ? simplified : snapped;
+  if (Math.abs(ringSignedArea([...kept, kept[0]])) < CLOUD_CLIPPER_MIN_AREA) return null;
+  return [...kept, [kept[0][0], kept[0][1]]];
+};
+
+/**
+ * STROKE BAND for render paths without a stroke-to-path primitive (the PDF
+ * /AP and the flattened print) — Drawboard parity, 2026-09-09, reworked
+ * 2026-09-10.
  *
  * SVG and canvas knock the fill out under the stroke band with a mask /
  * destination-out (see cloudSvgPaint.js, annotationCanvasPainter.js). PDF has
  * no stroke-to-path, and its transparency tools were rejected after probing:
  * a knockout group (/K true) is ignored by pdf.js, and a luminosity soft mask
  * is dropped by Quartz inside annotation appearance streams (Preview would
- * show the cloud with NO fill at all). So the region is computed here, in
- * plain geometry, as the task's fallback: the scalloped fill region MINUS the
- * union of every painted run's stroke band (each run sampled into capsules of
- * the ink width with round caps), through the app's polygon-clipping
- * dependency. The result is exact everywhere the band goes — along the
- * crowns AND under the short inward tails — to sampling precision, and
- * paints with plain fills that every viewer honours.
+ * show the cloud with NO fill at all). So the band is computed here, in plain
+ * geometry — every painted run sampled into round-capped capsules of the ink
+ * width — and the writer CLIPS the fill to the COMPLEMENT of it (PDF 32000
+ * 8.5.4: a `W*` clip of the appearance box plus the band rings), which every
+ * viewer honours.
  *
- * @returns {{x:number,y:number}[][]|null} rings in the cloud's local frame
- *   (outer rings and holes; paint with the even-odd rule), or null when the
- *   cloud has no fill or no stroke to knock out.
+ * 2026-09-10 — WHY THE BAND AND NOT THE SUBTRACTED REGION. The first version
+ * returned `fill MINUS band` as explicit rings, which meant unioning the
+ * sampled fill contour with the crown lobes and the body polygon. Those three
+ * families share long, exactly-coincident edges (the contour IS cut pieces of
+ * the lobes; a lobe's chord is collinear with the body edge it spans), and
+ * martinez-polygon-clipping — like every sweep-line clipper — is undefined on
+ * that input. Measured on this branch: one plain convex filled polygon cloud
+ * (left 40 / top 30, points (0,0) (210,20) (180,160) (30,130), stroke 6, bump
+ * 2) spun inside `connectEdges` for over ten minutes, and a self-crossing
+ * six-vertex one threw `Cannot read properties of undefined (reading 'depth')`
+ * — in BOTH cases the export produced no /AP and no flattened page at all.
+ * Clipping needs no region boolean at all: the fill keeps its own nonzero
+ * path (its exact cubics, not an 8-step polygonal resample), and the only
+ * boolean left is the union of the capsules, which overlap transversally.
+ *
+ * That union is still a third-party sweep line, so it is fenced three ways:
+ *   * every ring is snapped onto a 1e-4 grid and stripped of duplicate and
+ *     collinear vertices first, so "the same point" is bit-identical instead
+ *     of a nanometre apart (the input class that breaks the sweep);
+ *   * a wall-clock budget is checked before every union call and the piece
+ *     count is capped, so a slow input degrades instead of stalling;
+ *   * every call is wrapped, so a throw degrades too.
+ * On any of those the result comes back as `mode: 'pieces'` — the raw
+ * capsules, which the writer clips one after another (clip paths intersect,
+ * so intersecting the complement of each capsule IS the complement of their
+ * union: same picture, a longer stream). Past the piece cap the caller gets
+ * null and paints the plain fill, with the stroke covering the band.
+ *
+ * @returns {{ rings:{x:number,y:number}[][], mode:'union'|'pieces' }|null}
+ *   rings in the cloud's local frame, or null when the cloud has no fill or
+ *   no stroke to knock out.
  */
-export function cloudFillKnockoutRings(geometry, options = {}) {
+export function cloudStrokeBandRings(geometry, options = {}) {
   if (!geometry?.fill || !(num(geometry.strokeWidth) > 0)) return null;
   const half = num(geometry.strokeWidth) / 2;
   const steps = Math.max(2, Math.round(num(options.steps, 8)));
   const capSteps = Math.max(3, Math.round(num(options.capSteps, 8)));
+  const budgetMs = Math.max(1, num(options.budgetMs, CLOUD_BAND_UNION_BUDGET_MS));
+  const maxPieces = Math.max(1, Math.round(num(options.maxPieces, CLOUD_BAND_MAX_PIECES)));
 
-  // 1. The fill region: every closed subpath of the nonzero fill (contour +
-  //    safety pieces) unioned together.
-  const fillRings = sampleCloudCommands(geometry.fill, steps)
-    .filter((ring) => ring.length >= 3)
-    .map((ring) => [closeRing(ring.map((point) => [point.x, point.y]))]);
-  if (fillRings.length === 0) return null;
-  const region = unionAll(fillRings);
-  if (region.length === 0) return null;
-
-  // 2. The stroke band. Each run is sampled cubic by cubic; a cubic whose
-  //    offset stays well formed (curvature radius above the half width)
-  //    becomes ONE round-capped sausage ring, a tighter one (a tail's bend)
-  //    falls back to a capsule per sampled segment. Unions run balanced
-  //    (pairwise halves) so the cost stays n·log n instead of quadratic.
   const runs = Array.isArray(geometry.outlineRuns) && geometry.outlineRuns.length > 0
     ? geometry.outlineRuns
     : [geometry.outline];
-  const bandPieces = [];
+  const pieces = [];
   for (const run of runs) {
     for (const polyline of sampleCloudCubics(run, steps)) {
-      const sausage = polylineSausage(polyline, half, capSteps);
+      const sausage = sanitizeClipperRing(polylineSausage(polyline, half, capSteps));
       if (sausage) {
-        bandPieces.push([sausage]);
+        pieces.push(sausage);
         continue;
       }
       for (let index = 0; index + 1 < polyline.length; index += 1) {
-        const capsule = segmentCapsule(polyline[index], polyline[index + 1], half, capSteps);
-        if (capsule) bandPieces.push([capsule]);
+        const capsule = sanitizeClipperRing(segmentCapsule(polyline[index], polyline[index + 1], half, capSteps));
+        if (capsule) pieces.push(capsule);
       }
     }
+    if (pieces.length > maxPieces) return null;
   }
-  if (bandPieces.length === 0) return null;
-  const band = unionAll(bandPieces);
-  if (band.length === 0) return null;
+  if (pieces.length === 0) return null;
 
-  // 3. Fill minus band.
-  const knockedOut = normalizeMulti(polygonDiff(region, band));
-  const rings = [];
-  for (const polygon of knockedOut) {
-    for (const ring of polygon) {
-      const points = ring.map(([x, y]) => ({ x, y }));
-      if (points.length > 1) {
-        const first = points[0];
-        const last = points[points.length - 1];
-        if (Math.abs(first.x - last.x) < 1e-9 && Math.abs(first.y - last.y) < 1e-9) points.pop();
+  const toRings = (multi) => {
+    const rings = [];
+    for (const polygon of multi) {
+      for (const ring of polygon) {
+        const points = ring.map(([x, y]) => ({ x, y }));
+        if (points.length > 1) {
+          const first = points[0];
+          const last = points[points.length - 1];
+          if (Math.abs(first.x - last.x) < 1e-9 && Math.abs(first.y - last.y) < 1e-9) points.pop();
+        }
+        if (points.length >= 3) rings.push(points);
       }
-      if (points.length >= 3) rings.push(points);
+    }
+    return rings;
+  };
+
+  const deadline = Date.now() + budgetMs;
+  try {
+    const band = unionAll(pieces.map((ring) => [ring]), deadline);
+    const rings = toRings(band);
+    if (rings.length > 0) return { rings, mode: 'union' };
+  } catch (error) {
+    if (!(error instanceof CloudClipBudgetError)) {
+      console.warn('Cloud stroke-band union failed; the writer clips the capsules one by one instead:', error?.message || error);
     }
   }
-  return rings.length > 0 ? rings : null;
+  const rings = toRings(pieces.map((ring) => [ring]));
+  return rings.length > 0 ? { rings, mode: 'pieces' } : null;
 }
-
-const closeRing = (ring) => {
-  const first = ring[0];
-  const last = ring[ring.length - 1];
-  return first[0] === last[0] && first[1] === last[1] ? ring : [...ring, first];
-};
 
 // martinez returns a polygon or a multipolygon depending on the result;
 // always work with a multipolygon (array of polygons, each an array of rings).
@@ -426,14 +509,18 @@ const normalizeMulti = (result) => {
 };
 
 // Balanced pairwise union of polygons (each `[ring]`), as one multipolygon.
-const unionAll = (polygons) => {
+// The deadline is checked BEFORE every clipper call: a sweep line cannot be
+// interrupted once it is inside, so the only bound that can be enforced is
+// on entering one.
+const unionAll = (polygons, deadline) => {
   if (polygons.length === 0) return [];
   if (polygons.length === 1) return normalizeMulti(polygons[0].length && typeof polygons[0][0][0][0] === 'number' ? [polygons[0]] : polygons[0]);
   const middle = Math.floor(polygons.length / 2);
-  const left = unionAll(polygons.slice(0, middle));
-  const right = unionAll(polygons.slice(middle));
+  const left = unionAll(polygons.slice(0, middle), deadline);
+  const right = unionAll(polygons.slice(middle), deadline);
   if (left.length === 0) return right;
   if (right.length === 0) return left;
+  if (Number.isFinite(deadline) && Date.now() > deadline) throw new CloudClipBudgetError('cloud band union budget exceeded');
   return normalizeMulti(polygonUnion(left, right));
 };
 

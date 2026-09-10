@@ -149,9 +149,11 @@ const fmt = (value) => String(Math.round(Number(value) * 1e4) / 1e4);
  * Serialise the paint model to the exact markup CloudOutline renders (minus
  * React's data-* bookkeeping), for rasterising outside the app.
  */
-export function cloudSvgPaintMarkup(model, { opacity = 1 } = {}) {
+export function cloudSvgPaintMarkup(model, { opacity = 1, multiply = false } = {}) {
   if (!model) return '';
-  const parts = [`<g transform="${model.transform}" opacity="${opacity}">`];
+  // `multiply` mirrors CloudOutline's mix-blend-mode (2026-09-10) so this
+  // stand-in stays a faithful transcription of what the app renders.
+  const parts = [`<g transform="${model.transform}" opacity="${opacity}"${multiply ? ' style="mix-blend-mode:multiply"' : ''}>`];
   if (model.mask) {
     parts.push(
       `<mask id="${model.mask.id}" maskUnits="userSpaceOnUse" x="${fmt(model.mask.x)}" y="${fmt(model.mask.y)}" width="${fmt(model.mask.width)}" height="${fmt(model.mask.height)}">`
