@@ -2338,7 +2338,7 @@ const boundsOfPoints = (points, pad) => {
  * the box of the shape's BASE geometry (what /RD must point back to).
  * Returns null for a shape this appearance path does not handle.
  */
-const plainAppearanceGeometry = (obj) => {
+const plainAppearanceGeometry = (obj, fonts = null) => {
   const type = String(obj?.type || '').toLowerCase();
   const strokeWidth = plainAppearanceStrokeWidth(obj);
   const halfStroke = strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD;
@@ -2402,8 +2402,17 @@ const plainAppearanceGeometry = (obj) => {
     const base = { minX: left, minY: top, maxX: left + width, maxY: top + height };
     // The last baseline can sit a descender below the box on a large font
     // (drawFlattenedText only caps the LINE COUNT), so the appearance box
-    // keeps a third of an em of room on every side.
-    return { base, bounds: inflateAppBounds(base, halfStroke + fontSize * 0.35 + 1) };
+    // keeps a third of an em of room on every side - then is grown to hold
+    // whatever the glyphs REALLY reach, which for a box narrower than one
+    // glyph is well past that allowance. See flattenedTextInkBounds.
+    return {
+      base,
+      bounds: boundsWithFlattenedTextInk(
+        inflateAppBounds(base, halfStroke + fontSize * 0.35 + 1),
+        obj,
+        fonts,
+      ),
+    };
   }
   return null;
 };
@@ -2517,7 +2526,7 @@ const applyPlainShapeAppearanceToDict = (pdfDoc, annotationDict, fabricObj, page
   const tiltable = type === 'rect' || type === 'textbox' || type === 'text' || type === 'i-text';
   const angle = tiltable ? (Number(fabricObj?.angle) || 0) : 0;
   const drawObject = angle ? { ...fabricObj, angle: 0 } : fabricObj;
-  const geometry = plainAppearanceGeometry(drawObject);
+  const geometry = plainAppearanceGeometry(drawObject, options.fonts || null);
   if (!geometry || !geometry.bounds || !geometry.base) return false;
   // Text needs real embedded fonts; without them the flattener cannot draw a
   // glyph, so leave the bare /FreeText (its /DA) rather than an empty form.
@@ -3536,9 +3545,9 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight, options 
   // bare line and an empty text box, and macOS Preview / Quick Look - which
   // paints ONLY what an /AP says - showed nothing whatsoever where the print
   // drew a leader, an arrowhead and a labelled box.
-  const parts = calloutFlattenParts(calloutObj) || [];
-  const partsByName = new Map(parts.map((entry) => [entry.part, entry]));
   const fonts = options.fonts || null;
+  const parts = calloutFlattenParts(calloutObj, fonts) || [];
+  const partsByName = new Map(parts.map((entry) => [entry.part, entry]));
   const attachPartAppearance = (ref, part) => {
     if (!ref || !part) return;
     // No page-frame matrix here on purpose: a callout part goes on through
@@ -3877,41 +3886,51 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
     if (!Array.isArray(line) || line.length !== 4) return false;
     if (Math.hypot(line[2] - line[0], line[3] - line[1]) <= 0.01) return false;
   }
-  // 2026-09-10 (multi-piece ink drop): the coordinate arrays are judged as ONE
-  // geometry - their UNION - never one array at a time.
+  // 2026-09-10 (multi-piece ink drop): the coordinate arrays are judged ONE
+  // PIECE AT A TIME, and the annotation is kept when ANY ONE piece overlaps
+  // the page - never rejected on the first failing piece, and never judged by
+  // the pieces' union.
   //
   // /InkList holds one array PER STROKE PIECE, and a single pen stroke is
   // routinely many pieces: the eraser splits one stroke into several subpaths
   // inside ONE annotation (paperInkEraser), and a DASHED pen stroke
   // materialises into one subpath per dash (materializeDashedInkPath - 27 for
-  // a short stroke). /QuadPoints is the same shape: one quad per line of a
-  // text markup. Rejecting the WHOLE annotation the moment ANY ONE of those
-  // arrays failed meant that dragging an erased or dashed stroke until a
-  // single piece left the page by 3pt exported ZERO /Annots, while the
-  // flattened print drew every piece still on the paper - the silent loss of
-  // an entire everyday stroke, on all four page edges and on rotated / offset
-  // page frames alike.
+  // a short stroke). /QuadPoints, /Vertices, /CL and /L each carry a single
+  // piece. Rejecting the WHOLE annotation the moment ANY ONE of those arrays
+  // failed meant that dragging an erased or dashed stroke until a single piece
+  // left the page by 3pt exported ZERO /Annots, while the flattened print drew
+  // every piece still on the paper - the silent loss of an entire everyday
+  // stroke, on all four page edges and on rotated / offset page frames alike.
+  //
+  // 2026-09-10 (off-page union): the first version of that fix judged the
+  // UNION of the pieces instead, and a union is not ink. Two pieces on
+  // OPPOSITE sides of the page - one past the left edge, one past the right -
+  // have a union that spans the whole page though NEITHER piece touches it, so
+  // a stroke with no ink on the paper at all was exported: a page-wide,
+  // invisible, selectable band that also shows in a reader's comments list,
+  // while the flattened print of the same page drew nothing. Reachable by
+  // scaling an erased two-piece stroke up until both surviving pieces leave
+  // the page in opposite directions.
   //
   // CONTRACT (the same one /Rect is judged by above): keep the annotation when
-  // ANY of its ink overlaps the page; drop it only when EVERYTHING is off the
-  // page, or the geometry is non-finite (the readers above reject that) or
-  // degenerate. The union is inflated by the same ink reach, because these
-  // arrays carry BASE points while /Rect is the appearance box.
+  // ANY ONE piece's ink overlaps the page; drop it only when EVERY piece is
+  // off the page, or the geometry is non-finite (the readers above reject
+  // that) or degenerate. Each piece is inflated by the same ink reach, because
+  // these arrays carry BASE points while /Rect is the appearance box - and the
+  // reach is measured against the union, since /Rect is the box around ALL the
+  // pieces grown by that reach.
   if (coordinateArrays.length) {
-    const unionBox = coordinateArrays.reduce((accumulated, values) => {
-      const box = pointBounds(values);
-      return accumulated ? {
-        minX: Math.min(accumulated.minX, box.minX),
-        minY: Math.min(accumulated.minY, box.minY),
-        maxX: Math.max(accumulated.maxX, box.maxX),
-        maxY: Math.max(accumulated.maxY, box.maxY),
-      } : box;
-    }, null);
-    // A union that never saw a finite point is not geometry at all.
-    if (!unionBox
-      || ![unionBox.minX, unionBox.minY, unionBox.maxX, unionBox.maxY].every(Number.isFinite)) {
-      return false;
-    }
+    const pieceBoxes = coordinateArrays.map(pointBounds);
+    // A piece that never saw a finite point is not geometry at all.
+    if (pieceBoxes.some((box) => (
+      ![box.minX, box.minY, box.maxX, box.maxY].every(Number.isFinite)
+    ))) return false;
+    const unionBox = pieceBoxes.reduce((accumulated, box) => (accumulated ? {
+      minX: Math.min(accumulated.minX, box.minX),
+      minY: Math.min(accumulated.minY, box.minY),
+      maxX: Math.max(accumulated.maxX, box.maxX),
+      maxY: Math.max(accumulated.maxY, box.maxY),
+    } : box), null);
     const inkReach = Math.max(
       0,
       unionBox.minX - inkBox.minX,
@@ -3919,12 +3938,13 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
       inkBox.maxX - unionBox.maxX,
       inkBox.maxY - unionBox.maxY,
     );
-    if (!boxOverlapsPage({
-      minX: unionBox.minX - inkReach,
-      minY: unionBox.minY - inkReach,
-      maxX: unionBox.maxX + inkReach,
-      maxY: unionBox.maxY + inkReach,
-    })) return false;
+    const pieceOverlapsPage = (box) => boxOverlapsPage({
+      minX: box.minX - inkReach,
+      minY: box.minY - inkReach,
+      maxX: box.maxX + inkReach,
+      maxY: box.maxY + inkReach,
+    });
+    if (!pieceBoxes.some(pieceOverlapsPage)) return false;
   }
   return true;
 };
@@ -5039,46 +5059,25 @@ const pickFlattenedTextFont = (obj, fonts) => {
   return familyFonts.regular || fonts.regular;
 };
 
-const drawFlattenedText = (page, obj, pageHeight, fonts) => {
-  const fill = parsePdfDrawColor(obj?.fill || '#000000', '#000000') || parsePdfDrawColor('#000000');
+/**
+ * Lay out a text box's glyphs the way drawFlattenedText paints them: the
+ * wrapped, clipped, aligned lines in app space (y-down) BEFORE any `angle`
+ * tilt, each with the font runs it draws, where it starts, how wide it
+ * measures and the baseline it sits on.
+ *
+ * 2026-09-10 (/AP /BBox clipped overflowing glyphs): extracted so the
+ * appearance box can be measured from the SAME layout the draw uses. Wrapping,
+ * clipping and alignment live here and nowhere else, so the /BBox and the ink
+ * inside it cannot disagree - which is exactly how a glyph wider than its box
+ * came to be painted outside a /BBox that had only been padded by a guess.
+ */
+const layoutFlattenedText = (obj, fonts) => {
   const left = getObjNumber(obj, 'left');
   const top = getObjNumber(obj, 'top');
   const width = Math.max(1, getObjNumber(obj, 'width', 200));
   const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14));
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
-  const angle = Number(obj?.angle) || 0;
-  const pdfAngle = -angle;
-  const objectOpacity = Number.isFinite(Number(obj?.opacity))
-    ? Math.max(0, Math.min(1, Number(obj.opacity)))
-    : 1;
-  const background = resolvedPdfPaint(obj?.backgroundColor, 'transparent');
-  const border = resolvedPdfPaint(obj?.stroke, 'transparent');
-  const borderWidth = border ? Math.max(0, Number(obj?.strokeWidth) || 0) : 0;
-  const center = { x: left + width / 2, y: top + height / 2 };
-  if (background || borderWidth > 0) {
-    const common = {
-      color: background?.color,
-      opacity: background ? (background.opacity ?? 1) * objectOpacity : undefined,
-      borderColor: borderWidth > 0 ? border?.color : undefined,
-      borderWidth,
-      borderOpacity: borderWidth > 0 ? (border?.opacity ?? 1) * objectOpacity : undefined,
-    };
-    if (angle) {
-      const points = [
-        { x: left, y: top }, { x: left + width, y: top },
-        { x: left + width, y: top + height }, { x: left, y: top + height },
-      ].map((point) => rotateAppPoint(point, center, angle));
-      drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
-        x: 0, y: pageHeight, ...common,
-      });
-    } else {
-      page.drawRectangle({
-        x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
-      });
-    }
-  }
-
   // 2026-09-10 (Unicode text): every measurement and every draw below goes
   // through the fallback CHAIN, not one font. A character Helvetica can encode
   // is still drawn by Helvetica — an all-Latin box produces the exact same
@@ -5090,7 +5089,8 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   // A character no font in the chain can draw (Cyrillic, Greek, Arabic, Indic —
   // see src/assets/fonts/README.md) is left out of the drawn run rather than
   // printed as a tofu box. It still ships verbatim in /Contents, so nothing is
-  // lost from the file; say so once per text box so support can see it.
+  // lost from the file; the caller says so once per text box so support can
+  // see it.
   const droppedCodePoints = new Set();
   const runsOf = (value) => {
     const { runs, dropped } = buildTextFontRuns(value, font, fallbacks);
@@ -5126,18 +5126,84 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const verticalOffset = obj?.verticalAlign === 'middle'
     ? freeSpace / 2
     : obj?.verticalAlign === 'bottom' ? freeSpace : 0;
-  const rotatePoint = (point) => angle ? rotateAppPoint(point, center, angle) : point;
-  const wantsUnderline = obj?.underline === true;
-  const wantsLinethrough = obj?.linethrough === true || obj?.strikethrough === true;
+  return {
+    left,
+    top,
+    width,
+    height,
+    font,
+    fontSize,
+    padding,
+    innerWidth,
+    lineHeight,
+    droppedCodePoints,
+    // The line wrapper never breaks a single character onto a line of its own
+    // width: one glyph wider than `innerWidth` is still drawn, and it is drawn
+    // OUTSIDE the frame the box would suggest. `lineWidth` records that real
+    // extent so every consumer sees it.
+    wantsUnderline: obj?.underline === true,
+    wantsLinethrough: obj?.linethrough === true || obj?.strikethrough === true,
+    lines: visibleLines.map((text, index) => {
+      const runs = runsOf(text);
+      let lineWidth = innerWidth;
+      try { lineWidth = widthOfTextRunsAtSize(runs, fontSize); } catch { /* use inner width */ }
+      const textX = obj?.textAlign === 'center'
+        ? left + padding + (innerWidth - lineWidth) / 2
+        : obj?.textAlign === 'right' ? left + padding + innerWidth - lineWidth : left + padding;
+      return {
+        text,
+        runs,
+        lineWidth,
+        textX,
+        appBaseline: top + padding + verticalOffset + fontSize + index * lineHeight,
+      };
+    }),
+  };
+};
 
-  visibleLines.forEach((line, index) => {
-    const lineRuns = runsOf(line);
-    let lineWidth = innerWidth;
-    try { lineWidth = widthOfTextRunsAtSize(lineRuns, fontSize); } catch { /* use inner width */ }
-    const textX = obj?.textAlign === 'center'
-      ? left + padding + (innerWidth - lineWidth) / 2
-      : obj?.textAlign === 'right' ? left + padding + innerWidth - lineWidth : left + padding;
-    const appBaseline = top + padding + verticalOffset + fontSize + index * lineHeight;
+const drawFlattenedText = (page, obj, pageHeight, fonts) => {
+  const fill = parsePdfDrawColor(obj?.fill || '#000000', '#000000') || parsePdfDrawColor('#000000');
+  const left = getObjNumber(obj, 'left');
+  const top = getObjNumber(obj, 'top');
+  const width = Math.max(1, getObjNumber(obj, 'width', 200));
+  const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14));
+  const angle = Number(obj?.angle) || 0;
+  const pdfAngle = -angle;
+  const objectOpacity = Number.isFinite(Number(obj?.opacity))
+    ? Math.max(0, Math.min(1, Number(obj.opacity)))
+    : 1;
+  const background = resolvedPdfPaint(obj?.backgroundColor, 'transparent');
+  const border = resolvedPdfPaint(obj?.stroke, 'transparent');
+  const borderWidth = border ? Math.max(0, Number(obj?.strokeWidth) || 0) : 0;
+  const center = { x: left + width / 2, y: top + height / 2 };
+  if (background || borderWidth > 0) {
+    const common = {
+      color: background?.color,
+      opacity: background ? (background.opacity ?? 1) * objectOpacity : undefined,
+      borderColor: borderWidth > 0 ? border?.color : undefined,
+      borderWidth,
+      borderOpacity: borderWidth > 0 ? (border?.opacity ?? 1) * objectOpacity : undefined,
+    };
+    if (angle) {
+      const points = [
+        { x: left, y: top }, { x: left + width, y: top },
+        { x: left + width, y: top + height }, { x: left, y: top + height },
+      ].map((point) => rotateAppPoint(point, center, angle));
+      drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
+        x: 0, y: pageHeight, ...common,
+      });
+    } else {
+      page.drawRectangle({
+        x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
+      });
+    }
+  }
+
+  const layout = layoutFlattenedText(obj, fonts);
+  const { font, fontSize, wantsUnderline, wantsLinethrough } = layout;
+  const rotatePoint = (point) => angle ? rotateAppPoint(point, center, angle) : point;
+
+  layout.lines.forEach(({ text, runs, lineWidth, textX, appBaseline }) => {
     // One draw per font run, advanced along the (possibly rotated) baseline.
     // A single-run line — every all-Latin line — is one drawText exactly as
     // before.
@@ -5145,7 +5211,7 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     // An empty line (or one whose every character is outside every font in the
     // chain) still emits the same empty text object it always did, so a text
     // box's appearance stream never goes from "present but blank" to absent.
-    (lineRuns.length ? lineRuns : [{ text: '', font }]).forEach((run) => {
+    (runs.length ? runs : [{ text: '', font }]).forEach((run) => {
       const origin = rotatePoint({ x: textX + runAdvance, y: appBaseline });
       page.drawText(run.text, {
         x: origin.x,
@@ -5158,7 +5224,7 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
       });
       runAdvance += widthOfTextRunsAtSize([run], fontSize);
     });
-    if (!line || (!wantsUnderline && !wantsLinethrough)) return;
+    if (!text || (!wantsUnderline && !wantsLinethrough)) return;
     const thickness = Math.max(0.5, fontSize / 14);
     const drawDecoration = (offset) => {
       const start = rotatePoint({ x: textX, y: appBaseline + offset });
@@ -5173,12 +5239,101 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     if (wantsLinethrough) drawDecoration(-fontSize * 0.28);
   });
 
-  if (droppedCodePoints.size > 0) {
+  if (layout.droppedCodePoints.size > 0) {
     console.warn('[PDFExportText] no embedded font covers these characters; they were left out of the drawn text ' + JSON.stringify({
       id: obj?.id || obj?.data?.id || null,
-      codePoints: [...droppedCodePoints].map((codePoint) => `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`),
+      codePoints: [...layout.droppedCodePoints].map((codePoint) => `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`),
     }));
   }
+};
+
+/**
+ * The app-space (y-down) box the GLYPHS drawFlattenedText paints actually
+ * occupy, measured run by run in the run's own font, before any `angle` tilt.
+ * Null when there is nothing to measure (no fonts, no text).
+ *
+ * 2026-09-10 (/AP /BBox clipped overflowing glyphs): the line wrapper breaks
+ * per character, so a box narrower than ONE glyph plus its 12pt of padding
+ * still draws that glyph - outside its frame. The appearance /BBox was padded
+ * by a guess (fontSize * 0.35 + half the stroke + 1) that a wide glyph blows
+ * straight through, and a /BBox is a CLIP: pdf.js, poppler and Quick Look each
+ * cut the glyph at it while the flattened print, which has no such box, drew
+ * the whole thing. A 28pt emoji in a 20pt box lost 13% of its ink; a
+ * right-aligned CJK glyph, whose overflow runs LEFT, was cut on the left.
+ * Measuring the laid-out runs is the only description of the ink that cannot
+ * be wrong about it.
+ */
+const flattenedTextInkBounds = (obj, fonts) => {
+  // Without a real embedded font there is nothing to measure, and the caller
+  // will not attach an appearance at all.
+  if (!fonts || typeof fonts !== 'object' || !fonts.regular) return null;
+  let layout = null;
+  try { layout = layoutFlattenedText(obj, fonts); } catch { return null; }
+  if (!layout?.lines?.length) return null;
+  const { fontSize } = layout;
+  let box = null;
+  const grow = (minX, minY, maxX, maxY) => {
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return;
+    box = box ? {
+      minX: Math.min(box.minX, minX),
+      minY: Math.min(box.minY, minY),
+      maxX: Math.max(box.maxX, maxX),
+      maxY: Math.max(box.maxY, maxY),
+    } : { minX, minY, maxX, maxY };
+  };
+  for (const line of layout.lines) {
+    if (!line.runs.length && !line.text) continue;
+    // Vertical reach from the FONTS that draw the line: a CJK or emoji
+    // fallback rises and drops much further from the baseline than Helvetica.
+    // `heightAtSize(size, { descender: false })` is the ascent; the difference
+    // from the full height is the descent.
+    let ascent = 0;
+    let descent = 0;
+    for (const run of line.runs) {
+      try {
+        const above = run.font.heightAtSize(fontSize, { descender: false });
+        const full = run.font.heightAtSize(fontSize);
+        if (Number.isFinite(above)) ascent = Math.max(ascent, above);
+        if (Number.isFinite(full) && Number.isFinite(above)) descent = Math.max(descent, full - above);
+      } catch { /* fall back to the em-based estimate below */ }
+    }
+    if (!(ascent > 0)) ascent = fontSize;
+    if (!(descent > 0)) descent = fontSize * 0.25;
+    grow(
+      line.textX,
+      line.appBaseline - ascent,
+      line.textX + line.lineWidth,
+      line.appBaseline + descent,
+    );
+    if (!line.text) continue;
+    // The underline / strikethrough drawFlattenedText paints on the same span.
+    const halfDecoration = Math.max(0.5, fontSize / 14) / 2;
+    if (layout.wantsUnderline) {
+      grow(line.textX, line.appBaseline + fontSize * 0.12 - halfDecoration,
+        line.textX + line.lineWidth, line.appBaseline + fontSize * 0.12 + halfDecoration);
+    }
+    if (layout.wantsLinethrough) {
+      grow(line.textX, line.appBaseline - fontSize * 0.28 - halfDecoration,
+        line.textX + line.lineWidth, line.appBaseline - fontSize * 0.28 + halfDecoration);
+    }
+  }
+  return box;
+};
+
+/**
+ * `bounds` grown to hold the glyphs `obj` really paints. A box whose text fits
+ * inside it - every ordinary text box - comes back with the SAME numbers it
+ * went in with, so its appearance stream stays byte-identical.
+ */
+const boundsWithFlattenedTextInk = (bounds, obj, fonts) => {
+  const ink = flattenedTextInkBounds(obj, fonts);
+  if (!ink) return bounds;
+  return {
+    minX: Math.min(bounds.minX, ink.minX - PLAIN_APPEARANCE_EXTRA_PAD),
+    minY: Math.min(bounds.minY, ink.minY - PLAIN_APPEARANCE_EXTRA_PAD),
+    maxX: Math.max(bounds.maxX, ink.maxX + PLAIN_APPEARANCE_EXTRA_PAD),
+    maxY: Math.max(bounds.maxY, ink.maxY + PLAIN_APPEARANCE_EXTRA_PAD),
+  };
 };
 
 const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
@@ -5682,7 +5837,7 @@ const drawUniformHighlightMask = (page, objects, pageHeight) => {
  *
  * @returns {Array<{part: string, hidden: boolean, bounds: object, draw: Function}>|null}
  */
-const calloutFlattenParts = (calloutObj) => {
+const calloutFlattenParts = (calloutObj, fonts = null) => {
   if (!calloutObj) return null;
   const style = calloutObj.style || {};
   const stroke = style.borderColor || style.lineColor || '#1e293b';
@@ -5805,14 +5960,21 @@ const calloutFlattenParts = (calloutObj) => {
         maxX: textBox.left + textBox.width,
         maxY: textBox.top + textBox.height,
       },
-      bounds: inflateAppBounds(
-        {
-          minX: textBox.left,
-          minY: textBox.top,
-          maxX: textBox.left + textBox.width,
-          maxY: textBox.top + textBox.height,
-        },
-        strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD + fontSize * 0.35 + 1,
+      // Grown to hold the glyphs the label really paints, exactly as a plain
+      // text box's appearance box is - a callout narrow enough to clip one
+      // wide glyph is the same defect (see flattenedTextInkBounds).
+      bounds: boundsWithFlattenedTextInk(
+        inflateAppBounds(
+          {
+            minX: textBox.left,
+            minY: textBox.top,
+            maxX: textBox.left + textBox.width,
+            maxY: textBox.top + textBox.height,
+          },
+          strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD + fontSize * 0.35 + 1,
+        ),
+        textObject,
+        fonts,
       ),
       draw: (page, pageHeight, fonts) => {
         const drawn = drawFlattenedObject(page, boxObject, pageHeight, fonts);

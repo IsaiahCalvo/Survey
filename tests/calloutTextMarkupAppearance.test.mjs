@@ -24,7 +24,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PDFDocument, PDFName, PDFArray, PDFDict } from 'pdf-lib';
@@ -190,6 +190,12 @@ const rasterQuartz = (bytes, label) => {
   const pdfPath = join(tmp, `${label}.ql.pdf`);
   writeFileSync(pdfPath, bytes);
   const outDir = join(tmp, `_ql-${label}`);
+  // qlmanage does NOT create -o; it fails with "no such directory" and writes
+  // nothing, so without this the helper returned null and EVERY Quartz
+  // assertion below was silently skipped - the one renderer whose regression
+  // this file was written to catch. (scripts/cloud-export-fidelity.mjs has
+  // always done the mkdir; the test lane was missing it.)
+  mkdirSync(outDir, { recursive: true });
   const result = spawnSync('qlmanage', ['-t', '-s', String(420 * SCALE), '-o', outDir, pdfPath], { encoding: 'utf8' });
   const produced = join(outDir, `${label}.ql.pdf.png`);
   if (result.status !== 0 || !existsSync(produced)) return null;
@@ -328,6 +334,13 @@ const INK_COUNT_TOLERANCE = 0.03;
 
 const assertLanes = (label, lanes) => {
   assert.ok(Object.keys(lanes).length > 0, `${label}: at least one renderer lane must run`);
+  // A lane that quietly produces no raster is a lane that asserts nothing. The
+  // Quartz helper failed that way for the whole life of this file (it passed
+  // qlmanage an -o directory it never created), so where the tool exists the
+  // lane must actually have run.
+  if (has('qlmanage')) {
+    assert.ok(lanes.quartz, `${label}: qlmanage is installed, so the Quartz lane must have rastered`);
+  }
   for (const [lane, [annotated, printed]] of Object.entries(lanes)) {
     assert.ok(printed, `${label}/${lane}: the flattened print must draw ink`);
     assert.ok(annotated, `${label}/${lane}: the exported annotation must show ink`);
