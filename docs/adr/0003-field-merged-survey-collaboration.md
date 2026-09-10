@@ -294,6 +294,119 @@ cache bytes are not server proof. A stateless first request still needs the full
 checkpoint. Cross-request reuse needs a bounded, actor-scoped trusted cache and
 separate tests; do not rely on an Edge instance staying alive.
 
+### Authenticated admission integration constraints
+
+The caller audit at `9c7e01eb` found that the conditional checkpoint RPC from
+migration `20260909108000` is ungranted to every runtime role. The v3 snapshot,
+tail and open RPCs have different grants. Do not assume that a signed-in caller
+can use the conditional RPC, or silently grant it while adding the write handler.
+The aggregate input also needs the real generation base sequence; do not invent
+one when mapping a checkpoint response that omits it.
+
+The narrow broker must check the actual invoking database role, not an unverified
+JWT role field or `current_user` after entering `SECURITY DEFINER`. PostgREST sets
+the database role and request claims separately within each transaction. Actor
+claims bound by the broker must be restored on both success and error, including
+when the same connection serves a later request. See the
+[PostgREST transaction contract](https://postgrest.org/en/stable/references/transactions.html).
+
+The request handler must stay portable. The hosted Supabase limits checked on
+2026-09-10 are 256 MB memory and two seconds of CPU per request. A 64 MiB Yjs
+state, its in-memory representation and a hex-encoded transport response cannot
+be assumed to fit. A successful small Deno fixture does not establish production
+suitability. Hard worker isolation, measured peak memory and CPU, and data
+co-location remain required before enablement. See
+[Supabase function limits](https://supabase.com/docs/guides/functions/limits).
+
+Finally, adding a handler does not enforce aggregate admission while the direct
+model-2 append and snapshot RPCs remain callable. Rollout must close those bypasses
+without breaking model-1 callers. This integration work must not silently change
+those existing routes or grants before the replacement and recovery paths pass.
+
+The agreed handler interface is one Fetch-compatible request handler with a raw
+`application/octet-stream` body. Strict, unique query fields identify the
+document, generation, model, writer and client sequence; no request field can
+supply an actor, checkpoint, final-size claim or maintenance policy. Binary input
+avoids doubling request bytes as hexadecimal JSON. The absolute request bound is
+64 MiB, distinct from the 16 MiB new-write limit: an exact accepted historical
+update above the new-write limit must still reach receipt reconciliation when
+it fits the transport bound.
+
+Three typed service-only broker functions handle the receipt probe, full checked
+checkpoint and commit. The checkpoint adds the real generation base sequence
+under the existing conditional-read lock, without granting the private read RPC
+to app users. It checks editor permission and document lock state before returning
+large state; commit still repeats the authoritative checks. Tail reads use the
+existing v3 RPC with the verified caller's bearer token. Only a verified auth
+result supplies the actor passed to the broker. Bound actor claims use the
+authenticated role in both legacy and modern claim settings, while the actual
+database invoker remains `service_role` and all previous claim values are restored.
+
+Head races allow at most three attempts with fresh receipt/checkpoint/tail reads.
+No prior admission plan may be reused against changed state. Transport, capacity,
+maintenance and unconfirmed-write errors remain distinct. A lost response is not
+proof that no write occurred; the next exact retry must reconcile its receipt.
+The handler and broker remain disabled for app traffic pending the rollout gates.
+
+Integration review found another receipt race at the final commit: an accepted
+retry may have a different sequence from the current plan, and its response does
+not claim that this request stored a checkpoint. The handler must not reject that
+canonical receipt solely because the stale plan expected another sequence or
+compaction. Reconcile such a no-checkpoint response with a fresh trusted receipt
+probe, checking its exact actor, key, bytes digest and observed sequence. Never
+report that the current compaction plan ran merely because the edit was accepted.
+
+Authentication failure and provider failure also differ. A null or explicit
+invalid-user result cannot authorize work; a network outage is not proof that
+credentials are invalid. The installed auth SDK can return retryable errors in
+its result object as well as throw. Both failure forms must be checked before
+any broker or tail call, without exposing provider diagnostics to the client.
+
+The local handler, production RPC adapter and service-only migration
+`20260909112000` now implement this interface. Cross-review fixed the raced
+commit receipt check, noncanonical model/sequence input, returned auth-outage
+errors, and tail bounds before allocating decoded row bytes. The handler no
+longer makes a redundant full input copy before the aggregate module's own
+synchronous ownership capture. Shared app routing and direct-write grants are
+unchanged, so this remains a disabled integration, not enforced app admission.
+
+Native byte conversion replaced a per-byte string array in the new adapter and
+per-byte parsing in the handler. A local 1 MiB fixture with five samples measured
+median encoding at 59.38 ms for the draft loop versus 0.59 ms for the native
+conversion, and decoding at 31.01 ms versus 0.65 ms. These compare two encoders
+and decoders, not the old production app; no timing assertion was added. Exact
+bytes, nonzero source offsets and invalid hex remain checked. This removes the
+draft's large per-byte allocation pattern but does not measure worker peak heap,
+full-document admission latency or provider cost.
+
+The combined disposable-PostgreSQL test runs an actual Request through the
+handler and production adapter into the real service broker and private commit.
+Caller-scoped tail reads use the real v3 SQL function. Ordinary and raced accepted
+writes retain the expected marker state. Reopen uses the real checked reader
+with real SQL snapshot/tail bytes, but a synthetic publication/PDF descriptor
+and local download fixture. Auth verification is also synthetic; this does not
+prove live Auth, the actual publication/open RPC, storage download or real users.
+
+The pinned Deno entrypoint now type-checks. Shared local dependencies did not
+match its pinned SDK or Deno's Node types, so verification used Deno's separate
+dependency cache with `--node-modules-dir=none`; no project package, lockfile,
+shared node-module directory or install script changed. A Deno runtime smoke
+also executed real Yjs admission through the handler and production adapter with
+synthetic RPCs, proving ordinary acceptance and exact-receipt short-circuiting.
+The entrypoint remains guarded by an explicit tested-worker runtime contract.
+
+Final checks for this handler/broker slice on 2026-09-10 passed: `npm test`
+ran 7,068 tests (6,972 passed, 96 skipped, zero failed or cancelled), compared
+with the prior committed baseline's 7,048 tests and the same skips. The combined
+focused admission/handler/adapter set passed 47/47. The disposable PostgreSQL
+harness passed 12 checks, including a rollback-only grant test that reaches
+each broker's internal role guard independently of its normal ACL. Temporary
+test grants rolled back and WAL/head state stayed unchanged. Pinned Deno
+type-checking, actual Deno runtime execution and the Vite build passed; the
+build retains its existing large-chunk warning. All source and tests were frozen
+for the final checks. No live database, account, Microsoft or deployment action
+occurred.
+
 ### Row-level write-limit implementation
 
 Inspection at checkpoint `80c7173c` confirmed that the model-2 append and
