@@ -512,6 +512,73 @@ In particular, an older model-2 client receiving `SG005` must not attempt a
 snapshot fallback. No live client wiring or database enablement follows from
 this interface alone.
 
+`useAnnotationDoc` now exposes the same explicit nullable `aggregateRequest`
+interface. Omission and null retain the existing write path. The hook passes
+the exact callback to sync, which still validates a privately checked modern
+model-2 bundle before acquiring a document or starting storage work. Invalid
+opt-in reports `ANNOTATION_AGGREGATE_INPUT`; it does not silently choose direct
+writes. No callback is inferred from a bundle field, URL or Supabase client.
+
+Callback identity belongs to the writer's scope. Adding, replacing or removing
+it replaces the scope during render, so retained methods stop being current
+before passive cleanup closes the old writer. An unchanged callback keeps the
+writer. Callers must keep a stable adapter identity and forward sync's supplied
+request-local actor headers; a latest-function ref or a fresh auth lookup would
+let an old request use a new account or destination. Queued pre-close work can
+still finish under its original actor. The early exact-revision local-close
+receipt does not wait for that cloud result. Viewer and application route wiring
+remain separate rollout work; this hook interface enables no live service.
+
+Mounted tests exercise the real React hook, sync module, strict binary transport
+and aggregate handler with a real checked reader and IndexedDB-backed outbox.
+Authentication and server persistence remain synthetic fixtures. The opt-in edit
+uses no direct client append or snapshot call; omitted and null options retain
+those existing paths. Invalid callback, unchecked document and a reader-issued
+model-1 bundle fail closed. Callback-only replacement invalidates a previously
+valid local receipt and its retained save method, without reopening unchanged
+callbacks. Adding and removing the adapter also retire their old handles.
+
+The account test holds A's request while a checked B handle opens. B's manually
+triggered realtime refresh executes a head-0 read and holds its response. After
+A's request settles in its original scope, B's view and local revision remain
+unchanged; delivering that old head-0 response also leaves them unchanged. A
+second checked B read covering A's accepted sequence then legitimately projects
+A's edit. B can add its own edit, and a new A handle preserves B's accepted edit.
+The test verifies original request-local bearer headers, exact adapter call
+counts and saved content, without promising cancellation of accepted old work.
+An earlier timing-dependent assertion incorrectly rejected valid B catch-up;
+the final test instead waits for the actual realtime refresh promise and checks
+the old and new responses separately. No production change was needed for that
+test failure. This does not prove live multi-user authentication or rollout.
+
+The default-path full-viewer regression on frozen hook code used the local
+model-2 fixture with conditional reads in the in-app browser at 1280 by 720.
+Offline erase left one marker and one pending edit; Undo restored both markers
+and left two pending edits. Reconnect and Flush cleared the queue at WAL head 4.
+Reopen retained both colored markers, the panel count of two, left x=72 and
+local revision 0. The page was not blank, showed no framework overlay and logged
+no console errors. Missing live configuration and deliberate offline failures
+produced warnings. The exact cleanup route confirmed `cleaned` before its tab
+closed. This is regression proof for the unchanged default route, not browser
+proof of aggregate admission or live collaboration. Repeated default-path
+snapshot retry cycles during the forced outage remain an audit lead, not a
+measured production regression or evidence of billing impact.
+
+Verification for this hook interface on 2026-09-10: the 82-check existing focused
+set passed before and after the source edit. The full `npm test` run on frozen
+production source passed across 715 files with 7,137 tests (7,041 passed,
+96 skipped, zero failed or cancelled), against the prior checkpoint's 7,129
+tests and the same skips. The mounted test was refined after that run to replace
+the timing-dependent assertion described above; the exact final mounted file
+and existing focused set then passed 90/90 together. Its eight cases also
+passed in three fresh processes, and the held-account case passed five repeated
+runs. Final repeated and independent-review runs emitted no React `act`
+warnings. The disposable PostgreSQL write-fence harness passed nine checks and
+the Vite build passed with its existing large-chunk warning. No viewer, sync
+implementation, SQL, live database, role grant or Microsoft integration changed.
+The AST-only code graph refresh completed with 29,185 nodes and 48,272 edges;
+generated graph files remain unstaged.
+
 The local sync implementation now uses that interface. One deadline spans
 hashing, actor-session lookup, request dispatch and response-body reads. A late
 session cannot start a request after that deadline; a late response body is

@@ -216,6 +216,9 @@ export function useAnnotationDoc({
   eraseEffectConsumer = null,
   onHistoryQuarantine = null,
   annotationDocClient = supabase,
+  // Explicit checked-model-2 opt-in. Keep one adapter identity for one writer:
+  // it receives sync-owned actor headers, and changing it reopens the handle.
+  aggregateRequest = null,
 }) {
   const handleRef = useRef(null);
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
@@ -263,10 +266,11 @@ export function useAnnotationDoc({
   const localScopeKey = JSON.stringify([documentId || null, userId || null, pdfGenerationId]);
   if (localReceiptScopeRef.current?.key !== localScopeKey
     || localReceiptScopeRef.current?.checkedBundle !== checkedBundle
-    || localReceiptScopeRef.current?.annotationDocClient !== annotationDocClient) {
+    || localReceiptScopeRef.current?.annotationDocClient !== annotationDocClient
+    || localReceiptScopeRef.current?.aggregateRequest !== aggregateRequest) {
     localReceiptScopeRef.current = {
       key: localScopeKey, documentId, actorUserId: userId, pdfGenerationId, checkedBundle,
-      annotationDocClient,
+      annotationDocClient, aggregateRequest,
       handle: null, ready: false, closeReceipt: null, mounted: false,
       receipts: new WeakMap(),
     };
@@ -436,6 +440,7 @@ export function useAnnotationDoc({
           supabase: annotationDocClient,
           clientId: getClientId(),
           actorUserId: userId,
+          aggregateRequest,
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
             ? (...args) => {
               if (cancelled || localReceiptScopeRef.current !== localScope || !localScope.enabled) throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The erase effect belongs to a retired document.');
@@ -450,7 +455,8 @@ export function useAnnotationDoc({
             stage: 'error',
             healthy: false,
             error: err?.message || 'sync failed',
-            ...(err?.code === 'ANNOTATION_GENERATION_CAPACITY' ? { errorCode: err.code } : {}),
+            ...(['ANNOTATION_GENERATION_CAPACITY', 'ANNOTATION_AGGREGATE_INPUT'].includes(err?.code)
+              ? { errorCode: err.code } : {}),
           });
           setSyncQueueSize(0);
         }
@@ -709,7 +715,7 @@ export function useAnnotationDoc({
       } else if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, checkedBundle, pdfGenerationId, annotationDocClient,
-    setAnnotationsByPage, setSpaces, setSurveyMarkers]);
+    aggregateRequest, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an
