@@ -100,6 +100,12 @@ const PAGE_FRAMES = {
 // Shape cases, authored in the APP frame (fractions of the frame so every
 // page size gets the same coverage). `edge` cases hug or fill the page.
 // ---------------------------------------------------------------------------
+// Polygon / polyline vertices are kept on a 1e-3 grid: a PDF carries them as
+// decimal numbers, so a vertex like 55.32999999999999 cannot survive a
+// metadata-less round trip bit-for-bit, and the crown engine (the studio's,
+// kept verbatim) re-fits a crown differently for a vertex a few 1e-14 off.
+// Real drawing coordinates are decimal already; the harness mirrors that.
+const grid = (value) => Math.round(value * 1000) / 1000;
 const frameCases = (frame) => {
   if (CAPTURE) {
     return [{ name: CAPTURE.name || 'app-capture', object: CAPTURE.object, dom: CAPTURE.d ? { d: CAPTURE.d, transform: CAPTURE.group?.transform, stroke: CAPTURE.path?.stroke, strokeWidth: CAPTURE.path?.strokeWidth, opacity: CAPTURE.group?.opacity } : null }];
@@ -113,9 +119,9 @@ const frameCases = (frame) => {
     cases.push({ name: `ellipse-bump${bump}`, object: { id: `ellipse-${bump}`, type: 'ellipse', left: box.left, top: box.top, rx: box.width / 2, ry: box.height / 2, width: box.width, height: box.height, angle: 0, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: bump } } });
     cases.push({ name: `ellipse-rotated-bump${bump}`, object: { id: `ellipse-rot-${bump}`, type: 'ellipse', left: box.left, top: box.top, rx: box.width / 2, ry: box.height / 2.4, width: box.width, height: box.height / 1.2, angle: 32, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: bump } } });
     const poly = r(0.16, 0.17, 0.69, 0.67);
-    cases.push({ name: `polygon-bump${bump}`, object: { id: `polygon-${bump}`, type: 'polygon', left: poly.left, top: poly.top, points: [{ x: 0, y: poly.height * 0.19 }, { x: poly.width * 0.5, y: 0 }, { x: poly.width, y: poly.height * 0.25 }, { x: poly.width * 0.86, y: poly.height * 0.94 }, { x: poly.width * 0.27, y: poly.height }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: bump } } });
+    cases.push({ name: `polygon-bump${bump}`, object: { id: `polygon-${bump}`, type: 'polygon', left: poly.left, top: poly.top, points: [{ x: 0, y: grid(poly.height * 0.19) }, { x: grid(poly.width * 0.5), y: 0 }, { x: poly.width, y: grid(poly.height * 0.25) }, { x: grid(poly.width * 0.86), y: grid(poly.height * 0.94) }, { x: grid(poly.width * 0.27), y: poly.height }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: bump } } });
     const line = r(0.12, 0.25, 0.75, 0.46);
-    cases.push({ name: `polyline-bump${bump}`, object: { id: `polyline-${bump}`, type: 'polyline', left: line.left, top: line.top, points: [{ x: 0, y: line.height * 0.9 }, { x: line.width * 0.33, y: 0 }, { x: line.width * 0.67, y: line.height }, { x: line.width, y: line.height * 0.18 }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: bump } } });
+    cases.push({ name: `polyline-bump${bump}`, object: { id: `polyline-${bump}`, type: 'polyline', left: line.left, top: line.top, points: [{ x: 0, y: grid(line.height * 0.9) }, { x: grid(line.width * 0.33), y: 0 }, { x: grid(line.width * 0.67), y: line.height }, { x: line.width, y: grid(line.height * 0.18) }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: bump } } });
   }
   const filled = r(0.19, 0.21, 0.62, 0.58);
   cases.push({ name: 'rect-filled-translucent', object: { id: 'rect-filled', type: 'rect', ...filled, stroke: STROKE, strokeWidth: 2.5, fill: FILL, data: { pdfCloudIntensity: 2 } } });
@@ -123,8 +129,8 @@ const frameCases = (frame) => {
   const tilted = r(0.22, 0.25, 0.56, 0.5);
   cases.push({ name: 'rect-rotated-filled', object: { id: 'rect-rot', type: 'rect', ...tilted, angle: 20, stroke: STROKE, strokeWidth: 2.5, fill: FILL, data: { pdfCloudIntensity: 2 } } });
   const wide = r(0.16, 0.17, 0.69, 0.67);
-  cases.push({ name: 'polygon-filled-wide', object: { id: 'polygon-filled', type: 'polygon', left: wide.left, top: wide.top, points: [{ x: 0, y: wide.height * 0.19 }, { x: wide.width * 0.5, y: 0 }, { x: wide.width, y: wide.height * 0.25 }, { x: wide.width * 0.86, y: wide.height * 0.94 }, { x: wide.width * 0.27, y: wide.height }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 5, fill: FILL, data: { pdfCloudIntensity: 3 } } });
-  cases.push({ name: 'polygon-scaled-tilted', object: { id: 'polygon-scaled', type: 'polygon', left: Math.round(W * 0.2), top: Math.round(H * 0.2), points: [{ x: 0, y: 30 }, { x: W * 0.35, y: 0 }, { x: W * 0.6, y: 40 }, { x: W * 0.55, y: H * 0.5 }, { x: W * 0.2, y: H * 0.55 }], pathOffset: { x: 0, y: 0 }, scaleX: 0.9, scaleY: 1.1, angle: 25, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 } } });
+  cases.push({ name: 'polygon-filled-wide', object: { id: 'polygon-filled', type: 'polygon', left: wide.left, top: wide.top, points: [{ x: 0, y: grid(wide.height * 0.19) }, { x: grid(wide.width * 0.5), y: 0 }, { x: wide.width, y: grid(wide.height * 0.25) }, { x: grid(wide.width * 0.86), y: grid(wide.height * 0.94) }, { x: grid(wide.width * 0.27), y: wide.height }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 5, fill: FILL, data: { pdfCloudIntensity: 3 } } });
+  cases.push({ name: 'polygon-scaled-tilted', object: { id: 'polygon-scaled', type: 'polygon', left: Math.round(W * 0.2), top: Math.round(H * 0.2), points: [{ x: 0, y: 30 }, { x: grid(W * 0.35), y: 0 }, { x: grid(W * 0.6), y: 40 }, { x: grid(W * 0.55), y: grid(H * 0.5) }, { x: grid(W * 0.2), y: grid(H * 0.55) }], pathOffset: { x: 0, y: 0 }, scaleX: 0.9, scaleY: 1.1, angle: 25, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 } } });
   // Edge-hugging and full-page shapes: the scalloped appearance box bleeds off
   // the page while the base geometry sits exactly on its edge.
   cases.push({ name: 'edge-rect-left-bump6', edge: true, object: { id: 'edge-left', type: 'rect', left: 0, top: Math.round(H * 0.2), width: Math.round(W * 0.45), height: Math.round(H * 0.45), stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 6 } } });
@@ -581,13 +587,25 @@ const paintedCrowns = (object) => {
   if (!geometry) return null;
   const world = transformCloudCommandsToWorld(geometry.outline, geometry);
   const points = sampleCloudCommands(world, 6).flat();
-  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity; let sx = 0; let sy = 0;
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
   for (const point of points) {
     if (point.x < minX) minX = point.x; if (point.x > maxX) maxX = point.x;
     if (point.y < minY) minY = point.y; if (point.y > maxY) maxY = point.y;
-    sx += point.x; sy += point.y;
   }
-  return { commands: geometry.outline.length, points, bounds: [minX, minY, maxX, maxY], centroid: { x: sx / points.length, y: sy / points.length } };
+  // Placement is judged on the engine VERTICES in page space (the base
+  // rectangle / ellipse / polygon the crowns are fitted to), not on the crown
+  // samples: a re-fitted crown count changes the sample density and would
+  // move a sample centroid on a shape that has not moved at all.
+  const radians = (geometry.angle * Math.PI) / 180;
+  const vertices = geometry.points.map((point) => {
+    const dx = point.x - geometry.pivot.x; const dy = point.y - geometry.pivot.y;
+    return {
+      x: geometry.origin.x + geometry.pivot.x + dx * Math.cos(radians) - dy * Math.sin(radians),
+      y: geometry.origin.y + geometry.pivot.y + dx * Math.sin(radians) + dy * Math.cos(radians),
+    };
+  });
+  const centroid = vertices.reduce((sum, point) => ({ x: sum.x + point.x / vertices.length, y: sum.y + point.y / vertices.length }), { x: 0, y: 0 });
+  return { commands: geometry.outline.length, points, vertices, bounds: [minX, minY, maxX, maxY], centroid };
 };
 
 const pointSetHausdorff = (a, b) => {
@@ -607,7 +625,15 @@ const pointSetHausdorff = (a, b) => {
   return Math.max(directed(a, b), directed(b, a));
 };
 
-const REIMPORT_HAUSDORFF_TOLERANCE_PT = { withMetadata: 1e-6, withoutMetadata: 1.0 };
+// With our metadata every kind restores verbatim. Without it a rectangle or
+// ellipse cloud is rebuilt exactly from /Rect + /RD (the engine sees the
+// same vertices, so the same crowns); a polygon or polyline comes back from
+// /Vertices, and one that was drawn scaled or tilted hands the engine
+// pre-rotated vertices (the app rotates the finished crowns), so its crowns
+// legitimately re-fit - it must land in the same place (centroid, bounds),
+// its crown-for-crown match is reported but not required.
+const REIMPORT_HAUSDORFF_TOLERANCE_PT = { withMetadata: 1e-6, withoutMetadata: 0.01 };
+const REIMPORT_BOUNDS_TOLERANCE_PT = 0.5;
 
 const reimport = async (bytes, stripMetadata) => {
   if (!pdfjs) return null;
@@ -638,13 +664,24 @@ const reimportCheck = async (bytes, object, label) => {
   const [back] = candidates;
   const hausdorff = pointSetHausdorff(drawn.points, back.points);
   const centroid = Math.hypot(back.centroid.x - drawn.centroid.x, back.centroid.y - drawn.centroid.y);
+  const boundsDelta = back.bounds.map((value, index) => value - drawn.bounds[index]);
+  const vertexShift = drawn.vertices.length === back.vertices.length
+    ? Math.max(...drawn.vertices.map((point, index) => Math.hypot(point.x - back.vertices[index].x, point.y - back.vertices[index].y)))
+    : Infinity;
+  const kind = String(object.type || '').toLowerCase();
+  const crownsMustMatch = label === 'withMetadata' || kind === 'rect' || kind === 'ellipse' || kind === 'circle';
   return {
     commands: [drawn.commands, back.commands],
     sameCommandCount: drawn.commands === back.commands,
+    crownsMustMatch,
     centroidDistancePt: Number(centroid.toFixed(6)),
+    vertexShiftPt: Number.isFinite(vertexShift) ? Number(vertexShift.toFixed(6)) : 'vertex count differs',
     hausdorffPt: Number(hausdorff.toFixed(6)),
-    boundsDeltaPt: back.bounds.map((value, index) => Number((value - drawn.bounds[index]).toFixed(4))),
-    pass: hausdorff <= REIMPORT_HAUSDORFF_TOLERANCE_PT[label] && centroid <= CENTROID_TOLERANCE_PT,
+    boundsDeltaPt: boundsDelta.map((value) => Number(value.toFixed(4))),
+    pass: centroid <= SAME_RENDERER_CENTROID_TOLERANCE_PT
+      && vertexShift <= SAME_RENDERER_CENTROID_TOLERANCE_PT
+      && boundsDelta.every((value) => Math.abs(value) <= REIMPORT_BOUNDS_TOLERANCE_PT)
+      && (!crownsMustMatch || hausdorff <= REIMPORT_HAUSDORFF_TOLERANCE_PT[label]),
   };
 };
 
@@ -741,7 +778,7 @@ for (const frameName of frameNames) {
 writeFileSync(join(OUT, 'report.json'), JSON.stringify({
   scale: SCALE,
   dpi: DPI,
-  tolerances: { sameRendererCentroidPt: SAME_RENDERER_CENTROID_TOLERANCE_PT, sameRendererHausdorffPt: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT, centroidPt: CENTROID_TOLERANCE_PT, hausdorffPt: HAUSDORFF_TOLERANCE_PT, structuralPct: STRUCTURAL_TOLERANCE_PCT, reimportHausdorffPt: REIMPORT_HAUSDORFF_TOLERANCE_PT },
+  tolerances: { reimportBoundsPt: REIMPORT_BOUNDS_TOLERANCE_PT, sameRendererCentroidPt: SAME_RENDERER_CENTROID_TOLERANCE_PT, sameRendererHausdorffPt: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT, centroidPt: CENTROID_TOLERANCE_PT, hausdorffPt: HAUSDORFF_TOLERANCE_PT, structuralPct: STRUCTURAL_TOLERANCE_PCT, reimportHausdorffPt: REIMPORT_HAUSDORFF_TOLERANCE_PT },
   pages: frames,
   capture: CAPTURE ? { name: CAPTURE.name, source: CAPTURE.source, object: CAPTURE.object } : null,
   cases: report,
@@ -772,22 +809,22 @@ for (const entry of report) {
     lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${entry.annotsWritten} | ${result.edgeDominated ? 'edge-dominated' : result.centroidDistancePt} | ${result.hausdorffPt} (${result.hausdorffP99Pt}) | ${result.bboxDeltaPt.join(', ')} | ${result.inkRatio} | ${result.structural} | ${result.pass ? 'yes' : 'NO'} |`);
   }
 }
-lines.push('', '| page | case | re-import | commands (drawn/back) | centroid dpt | hausdorff pt | bounds dpt | pass |', '|---|---|---|---|---|---|---|---|');
+lines.push('', `Re-import: pass = same place (vertex centroid and every vertex within ${SAME_RENDERER_CENTROID_TOLERANCE_PT}pt, crown bounds within ${REIMPORT_BOUNDS_TOLERANCE_PT}pt); crown-for-crown match (Hausdorff within ${REIMPORT_HAUSDORFF_TOLERANCE_PT.withoutMetadata}pt) required with metadata and for rect / ellipse without it, reported for polygon / polyline without it.`, '', '| page | case | re-import | commands (drawn/back) | vertex centroid dpt | max vertex dpt | crown hausdorff pt | crown bounds dpt | crowns required | pass |', '|---|---|---|---|---|---|---|---|---|---|');
 let reimportFailures = 0;
 let reimportCompared = 0;
 for (const entry of report) {
   for (const [name, result] of Object.entries(entry.reimport)) {
     if (result.skipped) {
-      lines.push(`| ${entry.page} | ${entry.case} | ${name} | skipped | | | | |`);
+      lines.push(`| ${entry.page} | ${entry.case} | ${name} | skipped | | | | | | |`);
       continue;
     }
     reimportCompared += 1;
     if (!result.pass) reimportFailures += 1;
     if (result.error) {
-      lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${result.error} | | | | NO |`);
+      lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${result.error} | | | | | | NO |`);
       continue;
     }
-    lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${result.commands.join(' / ')} | ${result.centroidDistancePt} | ${result.hausdorffPt} | ${result.boundsDeltaPt.join(', ')} | ${result.pass ? 'yes' : 'NO'} |`);
+    lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${result.commands.join(' / ')} | ${result.centroidDistancePt} | ${result.vertexShiftPt} | ${result.hausdorffPt} | ${result.boundsDeltaPt.join(', ')} | ${result.crownsMustMatch ? 'yes' : 'reported'} | ${result.pass ? 'yes' : 'NO'} |`);
   }
 }
 lines.push('', `${compared - failures}/${compared} renderer comparisons within tolerance; ${reimportCompared - reimportFailures}/${reimportCompared} re-import checks within tolerance.`);

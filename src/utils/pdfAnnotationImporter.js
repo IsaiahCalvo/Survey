@@ -1212,17 +1212,25 @@ function extractCalloutTextBoxRectFromAppearance(annotation, viewport, scale = 1
   return convertPdfRectToViewportRect([best.minX, best.minY, best.maxX, best.maxY], viewport, scale);
 }
 
+// Fold the float noise of a coordinate rebuilt from the PDF (/Rect + /RD,
+// /BBox - /RD, a /Vertices entry minus the shape's origin) back to the
+// authored value. PDF writers keep at most five or six decimals, and the crown
+// engine is a pure function of the vertex coordinates it is handed, so a base
+// rectangle rebuilt as 320.00000000000006 instead of 320 can change the crown
+// count of a re-imported cloud. 1e-6 is below anything a viewer shows.
+const snapCloudCoordinate = (value) => Math.round(value * 1e6) / 1e6;
+
 function toRelativeFabricPoints(points) {
   if (!Array.isArray(points) || points.length === 0) return null;
 
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
+  const minX = snapCloudCoordinate(Math.min(...xs));
+  const minY = snapCloudCoordinate(Math.min(...ys));
 
   const relativePoints = points.map((point) => ({
-    x: point.x - minX,
-    y: point.y - minY
+    x: snapCloudCoordinate(point.x - minX),
+    y: snapCloudCoordinate(point.y - minY)
   }));
 
   return {
@@ -2599,7 +2607,11 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     // raw /L over pdf.js's potentially-reordered lineCoordinates so the two
     // stay in lockstep with what the PDF author wrote.
     lineCoordinates: rawMetadata.lineCoordinates || annotation.lineCoordinates,
-    vertices: annotation.vertices || rawMetadata.vertices || annotation.vertices,
+    // 2026-09-09: pdf.js hands /Vertices back as float32 (75.81 arrives as
+    // 75.809998); the raw dict keeps the author's exact numbers, and the
+    // crown engine re-fits a cloud polygon differently for a vertex that far
+    // off, so prefer the raw values - as /L above already does.
+    vertices: rawMetadata.vertices || annotation.vertices,
     quadPoints: annotation.quadPoints || rawMetadata.quadPoints || annotation.quadPoints,
     calloutLine: annotation.calloutLine || rawMetadata.calloutLine || annotation.calloutLine,
     rectangleDifferences:
@@ -4882,13 +4894,6 @@ function viewportCloudInsets(annotation, viewport, scale = 1) {
     outer.bottom - inner.bottom,
   ].map((value) => Math.max(0, value));
 }
-
-// Fold the float noise of /Rect + /RD (and /BBox - /RD) back to the authored
-// coordinate. PDF writers keep at most five or six decimals, and the crown
-// engine is a pure function of the vertex coordinates it is handed, so a base
-// rectangle rebuilt as 320.00000000000006 instead of 320 can change the
-// crown count of a re-imported cloud. 1e-6 is below anything a viewer shows.
-const snapCloudCoordinate = (value) => Math.round(value * 1e6) / 1e6;
 
 function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   const rawViewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
