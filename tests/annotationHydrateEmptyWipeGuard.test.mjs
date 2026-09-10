@@ -246,7 +246,7 @@ test('useAnnotationDoc: the empty-store hydrate branch SEEDS from local state in
 test('useAnnotationDoc: a failed open sets an error status and applies NOTHING to viewer state', () => {
   const failPath = HOOK_SOURCE.match(/catch \(err\) \{\s*\n\s*console\.error\('\[useAnnotationDoc\] open failed'[\s\S]*?return;\s*\n\s*\}/);
   assert.ok(failPath, 'the open-failure catch exists');
-  assert.match(failPath[0], /setSyncStatus\(\{ stage: 'error', healthy: false/);
+  assert.match(failPath[0], /setSyncStatus\(\{\s*stage: 'error',\s*healthy: false/);
   assert.doesNotMatch(failPath[0], /setAnnotationsByPage|setSpaces|setSurveyMarkers/);
 });
 

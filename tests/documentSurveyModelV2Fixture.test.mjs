@@ -74,13 +74,20 @@ test('fixture client opens the actual model 2 service with realtime enabled', as
     mutationId: 'fixture-realistic-erase', pageNumber: 1, renderer: 'svg',
     gesture: { points: [{ x: 90, y: 110 }], radius: 8, mode: 'whole' },
     surveyMarkerTargets: [{ markerId: 'fixture-marker-left', expectedMarker: marker }],
-    sideEffects: [{ type: 'trash-history', targetKey: 'fixture-marker-left',
-      payload: { markerId: 'fixture-marker-left', pageNumber: 1 } }],
+    sideEffects: [
+      { type: 'trash', targetKey: 'fixture-marker-left', payload: { before: structuredClone(marker) } },
+      { type: 'history', targetKey: 'fixture-marker-left', payload: { before: structuredClone(marker) } },
+    ],
   }), { permissionContext: { mode: 'registered', viewerId: MODEL2_FIXTURE_IDS.actorUserId,
     documentOwnerId: MODEL2_FIXTURE_IDS.actorUserId }, validateSurveyTarget: () => true });
   assert.equal(erased.status, 'committed');
-  await handle.drainEraseOutbox();
-  await handle.drain();
+  let effectDrain;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    effectDrain = await handle.drainEraseOutbox();
+    await tick(); await handle.drain();
+    if (effectDrain.pending === 0) break;
+  }
+  assert.equal(effectDrain?.pending, 0);
   const reopenedBundle = await backend.read();
   assert.equal(reopenedBundle.publication.wal_head, '0');
   assert.ok(BigInt(backend.inspect().walHead) > 0n);

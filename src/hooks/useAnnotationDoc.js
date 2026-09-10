@@ -296,6 +296,16 @@ export function useAnnotationDoc({
     if (Object.values(pages || {}).some((page) => page?.eraserMutation?.id)) {
       throw localReceiptError('ANNOTATION_LOCAL_EDIT_PENDING', 'An erase operation is still being committed.');
     }
+    if (handle.getSyncStatus?.().errorCode === 'ANNOTATION_GENERATION_CAPACITY') {
+      if (!handle.verifyRenderedSurveyState?.({
+        byPage: pages,
+        spaces: scope.view.spaces,
+        surveyMarkers: scope.view.surveyMarkers,
+      })) {
+        throw localReceiptError('ANNOTATION_LOCAL_REVISION_CHANGED', 'The rendered document differs from its saved local state.');
+      }
+      return;
+    }
     const result = handle.applyByPage(pages);
     if (result?.identityChanged) {
       if (result.normalizedByPage) setAnnotationsByPage((previous) => (
@@ -436,7 +446,12 @@ export function useAnnotationDoc({
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
         if (!cancelled && localReceiptScopeRef.current === localScope) {
-          setSyncStatus({ stage: 'error', healthy: false, error: err?.message || 'sync failed' });
+          setSyncStatus({
+            stage: 'error',
+            healthy: false,
+            error: err?.message || 'sync failed',
+            ...(err?.code === 'ANNOTATION_GENERATION_CAPACITY' ? { errorCode: err.code } : {}),
+          });
           setSyncQueueSize(0);
         }
         return;
@@ -453,6 +468,10 @@ export function useAnnotationDoc({
           stage: next.stage || (next.healthy === false ? 'error' : 'idle'),
           healthy: next.healthy !== false,
           error: next.error || null,
+          ...(next.errorCode ? {
+            queueSize: Math.max(0, Number(next.queueSize) || 0),
+            errorCode: next.errorCode,
+          } : {}),
         });
         setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
       };
@@ -704,7 +723,14 @@ export function useAnnotationDoc({
       : null;
     const cloudHandle = getScopedHandle();
     if (cloudHandle?.setEraseEffectConsumer) {
-      void cloudHandle.setEraseEffectConsumer(consumer);
+      if (cloudHandle.getSyncStatus?.().errorCode === 'ANNOTATION_GENERATION_CAPACITY') return;
+      try {
+        void cloudHandle.setEraseEffectConsumer(consumer);
+      } catch (error) {
+        // Capacity can land between the status read and the setter's write
+        // guard. Keep the durable erase effects pending for recovery.
+        if (error?.code !== 'ANNOTATION_GENERATION_CAPACITY') throw error;
+      }
     }
   }, [eraseEffectConsumer, initialHydration.ready, getScopedHandle]);
 
@@ -726,6 +752,21 @@ export function useAnnotationDoc({
     const hasEraserMutation = Object.values(capturedByPage || {}).some(
       (page) => page?.eraserMutation?.id,
     );
+    if (h.getSyncStatus?.().errorCode === 'ANNOTATION_GENERATION_CAPACITY') {
+      const matches = h.verifyRenderedSurveyState?.({
+        byPage: capturedByPage,
+        spaces: spacesRef.current,
+        surveyMarkers: surveyMarkersRef.current,
+      }) === true;
+      if (!matches) {
+        const survey = h.getSurveyState();
+        setAnnotationsByPage(h.getByPage());
+        setSpaces(survey.spaces);
+        setSurveyMarkers(survey.surveyMarkers);
+      }
+      setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
+      return;
+    }
     const result = h.applyByPage(capturedByPage);
     setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
     if (hasEraserMutation) {
@@ -832,18 +873,53 @@ export function useAnnotationDoc({
   const forceFlush = useCallback(async () => {
     const h = getScopedHandle();
     if (!h) return;
+    const before = h.getSyncStatus?.() || {};
+    if (before.errorCode === 'ANNOTATION_GENERATION_CAPACITY') {
+      setSyncStatus({
+        stage: before.stage || 'error',
+        healthy: false,
+        error: before.error || 'sync failed',
+        queueSize: Math.max(0, Number(before.queueSize) || 0),
+        errorCode: before.errorCode,
+      });
+      setSyncQueueSize(Math.max(0, Number(before.queueSize) || 0));
+      const error = new Error(before.error || 'This document reached its cloud save limit.');
+      error.code = before.errorCode;
+      throw error;
+    }
     setSyncStatus((prev) => ({ ...prev, stage: 'syncing' }));
-    await h.drain();
-    if (getScopedHandle() !== h) return;
-    const saved = await h.flushSnapshot();
-    if (getScopedHandle() !== h) return;
-    const next = h.getSyncStatus?.() || {};
-    setSyncStatus({
-      stage: saved && next.healthy !== false ? 'idle' : 'error',
-      healthy: saved && next.healthy !== false,
-      error: saved ? null : (next.error || 'sync failed'),
-    });
-    setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
+    try {
+      await h.drain();
+      if (getScopedHandle() !== h) return;
+      const saved = await h.flushSnapshot();
+      if (getScopedHandle() !== h) return;
+      const next = h.getSyncStatus?.() || {};
+      setSyncStatus({
+        stage: saved && next.healthy !== false ? 'idle' : 'error',
+        healthy: saved && next.healthy !== false,
+        error: saved ? null : (next.error || 'sync failed'),
+        ...(next.errorCode ? {
+          queueSize: Math.max(0, Number(next.queueSize) || 0),
+          errorCode: next.errorCode,
+        } : {}),
+      });
+      setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
+    } catch (error) {
+      if (getScopedHandle() === h) {
+        const next = h.getSyncStatus?.() || {};
+        setSyncStatus({
+          stage: next.stage || 'error',
+          healthy: next.healthy !== false,
+          error: next.error || error?.message || 'sync failed',
+          ...(next.errorCode ? {
+            queueSize: Math.max(0, Number(next.queueSize) || 0),
+            errorCode: next.errorCode,
+          } : {}),
+        });
+        setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
+      }
+      throw error;
+    }
   }, [getScopedHandle]);
 
   const commitEraserMutation = useCallback(({

@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { createAnnotationGenerationTransport } from './annotationGenerationTransport.js';
 import { computeContentSha256 } from './contentHash.js';
-import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
+import { materializeAnnotationGenerationStateForOpen } from './annotationGenerationState.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -214,7 +214,7 @@ export function createDocumentGenerationReader(deps) {
         }
         check(BigInt(cursor) === BigInt(annotations.wal_head), 'DOCUMENT_OPEN_STATE');
         check(!doc.store.pendingStructs && !doc.store.pendingDs, 'DOCUMENT_OPEN_STATE');
-        if (contentModelVersion !== null) materializeAnnotationGenerationState(doc, model);
+        if (contentModelVersion !== null) materializeAnnotationGenerationStateForOpen(doc, model);
         const update = Y.encodeStateAsUpdate(doc); check(update.length <= maxStateBytes, 'DOCUMENT_OPEN_LIMIT');
         return update;
       };

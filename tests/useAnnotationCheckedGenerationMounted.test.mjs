@@ -14,14 +14,15 @@ const hookUrl = new URL('../src/hooks/useAnnotationDoc.js', import.meta.url);
 const bundle = (generation = 'generation-a') => Object.freeze({ documentId: 'document-a', actorUserId: 'actor-a', pdfGenerationId: generation });
 const mark = id => ({ 1: { objects: [{ type: 'rect', left: 1, top: 2, width: 3, height: 4, data: { id } }] } });
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); promise.catch(() => {}); return { promise, resolve, reject }; };
-async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, deferOpen = false, docRole = 'owner', strictMode = false } = {}) {
+async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, deferOpen = false,
+  docRole = 'owner', strictMode = false, handleStatus = null } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://annotation.test' });
   const previous = new Map();
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true })) {
     previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const state = { props: { documentId: 'document-a', userId: 'actor-a', enabled: true, checkedBundle, docRole }, handles: [], opens: [],
-    stored, deferOpen, layout: null, view: null, renderViews: [], eraseEffects: [], quarantine: [], publications: [] };
+    stored, deferOpen, handleStatus, layout: null, view: null, renderViews: [], eraseEffects: [], quarantine: [], publications: [] };
   state.props.onGenerationSession = value => state.publications.push(value);
   const makeHandle = args => {
     const doc = new Y.Doc(); const seed = state.stored;
@@ -33,8 +34,13 @@ async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, d
     const h = { doc, args, documentId: args.documentId, pdfGenerationId: args.pdfGenerationId ?? null,
       writerId: `writer-${state.handles.length}`, captures: [], repairs: 0, destroys: 0, backend: [], erases: [],
       getByPage: () => docToByPage(doc), getMeta: key => getMetaValue(doc, key), getSurveyMarkers: () => docToSurveyMarkers(doc),
+      getSurveyState: () => ({ version: 2, surveyMarkers: docToSurveyMarkers(doc),
+        spaces: getMetaValue(doc, 'spaces') || [] }),
       getDeletedPdfAnnotations: () => ['deleted-old'], getLocalRevision: () => revision,
-      getSyncStatus: () => ({ stage: 'idle', healthy: true, queueSize: 7 }),
+      verifyRenderedSurveyState: value => { h.verifies = (h.verifies || 0) + 1;
+        return JSON.stringify(value) === JSON.stringify({ byPage: docToByPage(doc),
+          spaces: getMetaValue(doc, 'spaces') || [], surveyMarkers: docToSurveyMarkers(doc) }); },
+      getSyncStatus: () => h.status || ({ stage: 'idle', healthy: true, queueSize: 7 }),
       onSyncStatus: listener => { h.sync = listener; return () => {}; },
       onHistoryQuarantine: listener => { h.quarantine = listener; return () => {}; },
       onChange: listener => { h.change = listener; return () => {}; },
@@ -47,14 +53,18 @@ async function mount(t, { checkedBundle = bundle(), initial = {}, stored = {}, d
       flushLocalDurability: async options => { h.flushOptions = options; return receipt(); },
       getLocalCloseReceipt: () => receipt(), destroy: async () => { h.destroys++; },
       drain: async () => { h.backend.push('drain'); if (h.heldDrain) await h.heldDrain.promise; },
-      flushSnapshot: async () => { h.backend.push('snapshot'); return true; },
-      setEraseEffectConsumer: consumer => { h.consumer = consumer; },
+      flushSnapshot: async () => { h.backend.push('snapshot'); if (h.flushError) throw h.flushError; return true; },
+      setEraseEffectConsumer: consumer => { h.consumerCalls = (h.consumerCalls || 0) + 1;
+        if (h.consumerError) throw h.consumerError;
+        h.consumer = consumer; h.consumerDrains = (h.consumerDrains || 0) + 1; },
       applyEraserMutation: (...args) => { h.erases.push(args); return { objects: [] }; },
       commitEraseIntent: async () => { h.erases.push('intent'); if (h.heldErase) return h.heldErase.promise; return { status: 'noop', historyQuarantineGeneration: 0 }; },
       applyEraseHistoryTransition: () => { h.erases.push('history'); return { status: 'noop' }; },
       restoreEraseDeletion: () => { h.erases.push('restore'); return { status: 'noop' }; },
       getHistoryQuarantineGeneration: () => 0,
     };
+    h.status = state.handleStatus;
+    if (state.handleStatus?.errorCode === 'ANNOTATION_GENERATION_CAPACITY') h.contentModelVersion = 2;
     const receipt = () => { const value = { locallyDurable: true, documentId: args.documentId, actorUserId: args.actorUserId,
       ...(args.pdfGenerationId == null ? {} : { pdfGenerationId: args.pdfGenerationId }), writerId: h.writerId, revision }; issued.add(value); return value; };
     doc.on('update', () => { revision++; }); state.handles.push(h); return h;
@@ -103,6 +113,79 @@ test('checked bundle and generation reach open; an empty checked document replac
   assert.equal(h.state.handles[0].repairs, 1, 'repair inspects only the checked current handle');
   assert.deepEqual(h.latest().initialHydration, { ready: true, source: 'checked-generation', count: 0,
     documentId: 'document-a', pdfGenerationId: checked.pdfGenerationId, embeddedImportAllowed: false });
+});
+
+test('capacity status survives listener and failed manual flush without a stuck syncing state', async t => {
+  const h = await mount(t), handle = h.state.handles[0];
+  const capacity = { stage: 'error', healthy: false, queueSize: 1,
+    error: 'This document reached its cloud save limit.', errorCode: 'ANNOTATION_GENERATION_CAPACITY' };
+  await act(async () => handle.sync(capacity));
+  assert.deepEqual(h.latest().status, capacity); assert.equal(h.latest().queueSize, 1);
+  handle.status = capacity;
+  handle.flushError = Object.assign(new Error(capacity.error), { code: capacity.errorCode });
+  await act(async () => assert.rejects(h.latest().forceFlush(), { code: capacity.errorCode }));
+  assert.deepEqual(h.latest().status, capacity); assert.equal(h.latest().queueSize, 1);
+});
+
+test('capacity-blocked checked handle still proves local durability and closes without mutation calls', async t => {
+  const h = await mount(t), handle = h.state.handles[0]; let mutations = 0;
+  const blocked = () => { mutations++; throw Object.assign(new Error('capacity'),
+    { code: 'ANNOTATION_GENERATION_CAPACITY' }); };
+  handle.applyByPage = blocked; handle.setMeta = blocked; handle.applySurveyMarkers = blocked;
+  handle.status = { stage: 'error', healthy: false, queueSize: 1,
+    error: 'This document reached its cloud save limit.', errorCode: 'ANNOTATION_GENERATION_CAPACITY' };
+  const receipt = await h.latest().ensureLocalDurability();
+  assert.equal(receipt.locallyDurable, true); assert.equal(mutations, 0); assert.ok(handle.verifies >= 1);
+  await h.unmount(); assert.equal(mutations, 0); assert.equal(handle.destroys, 1); assert.ok(handle.verifies >= 2);
+});
+
+test('cold capacity hydration mounts exact recovered model2 state with zero mutation calls', async t => {
+  const recovered = { byPage: mark('recovered'), spaces: [{ id: 'recovered-space' }],
+    markers: { recovered: { annotationId: 'recovered', pageNumber: 1 } } };
+  const capacity = { stage: 'error', healthy: false, queueSize: 2,
+    error: 'This document reached its cloud save limit.', errorCode: 'ANNOTATION_GENERATION_CAPACITY' };
+  const h = await mount(t, { stored: recovered, handleStatus: capacity });
+  const handle = h.state.handles[0];
+  assert.deepEqual(h.state.view, recovered); assert.deepEqual(handle.captures, []);
+  assert.equal((await h.latest().ensureLocalDurability()).locallyDurable, true);
+  assert.deepEqual(handle.captures, []); assert.deepEqual(h.latest().status, capacity);
+});
+
+test('cold capacity hydration replaces stale React projections from the current local handle without writes', async t => {
+  const recovered = { byPage: mark('current'), spaces: [{ id: 'current-space' }],
+    markers: { current: { annotationId: 'current', pageNumber: 1 } } };
+  const stale = { byPage: mark('stale'), spaces: [{ id: 'stale-space' }],
+    markers: { stale: { annotationId: 'stale', pageNumber: 1 } } };
+  const capacity = { stage: 'error', healthy: false, queueSize: 2,
+    error: 'This document reached its cloud save limit.', errorCode: 'ANNOTATION_GENERATION_CAPACITY' };
+  const h = await mount(t, { stored: recovered, initial: stale, handleStatus: capacity });
+  const handle = h.state.handles[0];
+  assert.deepEqual(h.state.view, recovered); assert.deepEqual(handle.captures, []);
+  assert.equal((await h.latest().ensureLocalDurability()).locallyDurable, true);
+  assert.deepEqual(handle.captures, []); assert.deepEqual(h.latest().status, capacity);
+});
+
+test('cold capacity mount skips erase consumer install and drain while keeping recovered effects and status', async t => {
+  const capacity = { stage: 'error', healthy: false, queueSize: 2,
+    error: 'This document reached its cloud save limit.', errorCode: 'ANNOTATION_GENERATION_CAPACITY' };
+  const recovered = { byPage: mark('capacity-consumer'), spaces: [], markers: {} };
+  const h = await mount(t, { stored: recovered, handleStatus: capacity });
+  const handle = h.state.handles[0]; handle.pendingEffects = [{ mutationId: 'kept-effect' }];
+  assert.equal(handle.consumerCalls || 0, 0); assert.equal(handle.consumerDrains || 0, 0);
+  assert.deepEqual(handle.pendingEffects, [{ mutationId: 'kept-effect' }]);
+  assert.deepEqual(h.state.view, recovered); assert.deepEqual(h.latest().status, capacity);
+  assert.equal(h.latest().queueSize, 2);
+});
+
+test('erase consumer capacity race is caught but unrelated install errors still fail', async t => {
+  const h = await mount(t), handle = h.state.handles[0];
+  handle.consumerCalls = 0; handle.consumerDrains = 0;
+  handle.consumerError = Object.assign(new Error('capacity'), { code: 'ANNOTATION_GENERATION_CAPACITY' });
+  await h.render({ docRole: 'editor' });
+  assert.equal(handle.consumerCalls, 1); assert.equal(handle.consumerDrains, 0);
+  assert.deepEqual(h.state.view, { byPage: {}, spaces: [], markers: {} });
+  handle.consumerError = Object.assign(new Error('unexpected install failure'), { code: 'OTHER' });
+  await assert.rejects(h.render({ docRole: 'owner' }), /unexpected install failure/);
 });
 
 test('partly populated checked document clears other kinds rather than seeding old React state', async t => {

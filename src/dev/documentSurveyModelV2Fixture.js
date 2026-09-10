@@ -47,10 +47,11 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
       label: 'Ordinary annotation' } }] } });
   const semanticView = doc => ({ survey: materializeSurveyCrdtV2(doc), annotationsByPage: docToByPage(doc) });
   const baselineSemantic = JSON.stringify(semanticView(authoritative));
-  let offline = false, head = 0n;
+  let offline = false, capacityFault = null, head = 0n;
   const rows = [];
   let snapshotWrites = 0, conditionalReads = 0, conditionalMatches = 0,
-    conditionalFullResponses = 0, fullSnapshotReads = 0, rpcResponseDataBytes = 0;
+    conditionalFullResponses = 0, fullSnapshotReads = 0, rpcResponseDataBytes = 0,
+    capacityAppendAttempts = 0, capacitySnapshotAttempts = 0;
   const initialUpdate = Y.encodeStateAsUpdate(authoritative);
   let snapshot = { at_seq: '0', snapshot: hex(initialUpdate), encoding_version: 1,
     writer_id: null, writer_epoch: '0' };
@@ -76,6 +77,14 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
       || params?.p_content_model_version !== 2) throw new Error(`Fixture scope rejected: ${name}`);
     if (offline && ['append_annotation_update_v3', 'store_annotation_snapshot_v3'].includes(name)) {
       throw Object.assign(new Error('Fixture is offline.'), { code: 'MODEL2_FIXTURE_OFFLINE' });
+    }
+    if (capacityFault === 'append' && name === 'append_annotation_update_v3') {
+      capacityAppendAttempts += 1;
+      return { error: { code: 'SG004', message: 'The fixture reached its model 2 WAL size limit.' } };
+    }
+    if (capacityFault === 'snapshot' && name === 'store_annotation_snapshot_v3') {
+      capacitySnapshotAttempts += 1;
+      return { error: { code: 'SG004', message: 'The fixture reached its model 2 snapshot size limit.' } };
     }
     if (name === 'read_document_generation_open_v3') return { data: { ...base,
       actor_user_id: ids.actorUserId,
@@ -198,6 +207,7 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
       pdfGenerationId: ids.generationId, contentModelVersion: 2,
       conditionalAnnotationCheckpoint }),
     setOffline(value) { offline = value === true; },
+    setCapacityFault(value) { capacityFault = ['append', 'snapshot'].includes(value) ? value : null; },
     inspect() {
       const current = semanticView(authoritative);
       const markers = current.survey.surveyMarkers;
@@ -216,7 +226,62 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
     },
     inspectTransport() {
       return Object.freeze({ conditionalReads, conditionalMatches, conditionalFullResponses,
-        fullSnapshotReads, rpcResponseDataBytes });
+        fullSnapshotReads, rpcResponseDataBytes, capacityFault,
+        capacityAppendAttempts, capacitySnapshotAttempts });
+    },
+    async inspectSavedVersion() {
+      const pendingDependencies = doc => [...(doc.store.pendingStructs?.missing?.entries?.() || [])]
+        .slice(0, 100).map(([clientId, clock]) => ({ clientId: String(clientId), clock }));
+      const structClockIntervals = update => {
+        const decoded = Y.decodeUpdate(update);
+        const intervals = [];
+        for (const struct of decoded.structs) {
+          const clientId = String(struct.id.client), start = struct.id.clock;
+          const endExclusive = start + struct.length, prior = intervals.at(-1);
+          if (prior && prior.clientId === clientId && prior.endExclusive === start) {
+            prior.endExclusive = endExclusive;
+          } else intervals.push({ clientId, start, endExclusive });
+        }
+        return { intervals: intervals.slice(0, 100), truncated: intervals.length > 100 };
+      };
+      const raw = bytesFromHex(snapshot.snapshot);
+      const decoded = snapshot.encoding_version === 2
+        ? new Uint8Array(await new Response(new Blob([raw]).stream()
+          .pipeThrough(new DecompressionStream('gzip'))).arrayBuffer())
+        : raw;
+      const diagnostic = createDetachedYDoc('model2-fixture-saved-version');
+      try {
+        Y.applyUpdate(diagnostic, decoded);
+        const standalonePendingStructs = !!diagnostic.store.pendingStructs;
+        const standalonePendingDs = !!diagnostic.store.pendingDs;
+        const standaloneMissingDependencies = pendingDependencies(diagnostic);
+        const standaloneMarkerIds = Object.keys(materializeSurveyCrdtV2(diagnostic).surveyMarkers).sort();
+        const recentRowsSource = rows.slice(-32);
+        const recentAcceptedWalRows = recentRowsSource.map(row => {
+          const clocks = structClockIntervals(bytesFromHex(row.data));
+          return { seq: row.seq, clientId: row.client_id, clientSeq: row.client_seq,
+            structClockIntervals: clocks.intervals,
+            structClockIntervalsTruncated: clocks.truncated };
+        });
+        const tailRows = []; let firstPendingDependency = null;
+        const fixedTail = rows.filter(item => BigInt(item.seq) > BigInt(snapshot.at_seq));
+        for (const row of fixedTail.slice(0, 1000)) {
+          Y.applyUpdate(diagnostic, bytesFromHex(row.data));
+          const pendingStructs = !!diagnostic.store.pendingStructs, pendingDs = !!diagnostic.store.pendingDs;
+          const item = { seq: row.seq, clientId: row.client_id, clientSeq: row.client_seq,
+            pendingStructs, pendingDs, missingDependencies: pendingDependencies(diagnostic) };
+          tailRows.push(item);
+          if (!firstPendingDependency && (pendingStructs || pendingDs)) firstPendingDependency = item;
+        }
+        return Object.freeze({ snapshot: { atSeq: snapshot.at_seq, writerId: snapshot.writer_id,
+          writerEpoch: snapshot.writer_epoch, encodingVersion: snapshot.encoding_version,
+          byteLength: raw.length }, standalonePendingStructs, standalonePendingDs,
+        standaloneMissingDependencies, standaloneMarkerIds, tailRows,
+        tailRowsTruncated: fixedTail.length > tailRows.length,
+        recentAcceptedWalRows, recentAcceptedWalRowsTruncated: rows.length > recentRowsSource.length,
+        firstPendingDependency, finalMarkerIds: Object.keys(
+          materializeSurveyCrdtV2(diagnostic).surveyMarkers).sort() });
+      } finally { diagnostic.destroy(); }
     },
     destroy() { authoritative.destroy(); },
   });

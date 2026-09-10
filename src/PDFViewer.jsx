@@ -30,7 +30,9 @@ import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
 import {
+  buildPendingSurveyMarkerProjection,
   capturePendingSurveyMarkerUi,
+  collectPendingSurveyMarkerDraftIds,
   deletePendingSurveyMarkerUi,
 } from './utils/pendingSurveyMarkerHistory.js';
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
@@ -30383,30 +30385,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // Rebuild newSurveyMarkersByPage by merging:
     // 1. Pending surveyMarkers (not yet in surveyMarkers) for current module
     // 2. Saved surveyMarkers from surveyMarkers for current module
+    const pendingMarkerIds = collectPendingSurveyMarkerDraftIds({
+      pendingSurveyMarker,
+      pendingEntitySelection,
+      pendingSurveyMarkerName,
+    });
     setNewSurveyMarkersByPage(prev => {
-      const surveyMarkersByPage = {};
-
-      // First, preserve pending surveyMarkers for this module (not yet saved to surveyMarkers)
-      Object.entries(prev).forEach(([pageNum, pageSurveyMarkers]) => {
-        pageSurveyMarkers.forEach(surveyMarker => {
-          const surveyMarkerModuleId = surveyMarker.moduleId;
-          if (surveyMarkerModuleId === selectedModuleId && surveyMarker.annotationId) {
-            // Check if this survey marker is already saved in surveyMarkers
-            const isSaved = surveyMarkers && surveyMarkers[surveyMarker.annotationId];
-            if (!isSaved) {
-              // This is a pending survey marker, preserve it
-              const pageNumber = parseInt(pageNum);
-              if (!surveyMarkersByPage[pageNumber]) {
-                surveyMarkersByPage[pageNumber] = [];
-              }
-              // Avoid duplicates
-              const exists = surveyMarkersByPage[pageNumber].some(h => h.annotationId === surveyMarker.annotationId);
-              if (!exists) {
-                surveyMarkersByPage[pageNumber].push(surveyMarker);
-              }
-            }
-          }
-        });
+      // Model 2 removes deleted markers from its canonical marker map. Only
+      // keep page-only rows that belong to an active, unsaved marker flow;
+      // otherwise a remote or recovered delete would remain painted.
+      const surveyMarkersByPage = buildPendingSurveyMarkerProjection({
+        previousByPage: prev,
+        savedMarkers: surveyMarkers,
+        selectedModuleId,
+        pendingMarkerIds,
+        requireExplicitPending: checkedBundle?.contentModelVersion === 2,
       });
 
       // Now add saved surveyMarkers from surveyMarkers for this module
@@ -30467,7 +30460,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       // for this module has settled.
       return surveyMarkersByPage;
     });
-  }, [selectedModuleId, surveyMarkers]);
+  }, [
+    checkedBundle?.contentModelVersion,
+    pendingEntitySelection,
+    pendingSurveyMarker,
+    pendingSurveyMarkerName,
+    selectedModuleId,
+    surveyMarkers,
+  ]);
 
   // Cleanup orphaned canvas surveyMarkers - ensures surveyMarkers can only exist if they have a corresponding survey panel item
   useEffect(() => {

@@ -35,6 +35,19 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  if (status?.errorCode === 'ANNOTATION_GENERATION_CAPACITY') {
+    return {
+      state: 'offline',
+      label: pendingCount > 0
+        ? `Backup paused · ${pendingCount} kept locally`
+        : 'Cloud backup paused',
+      detail: pendingCount > 0
+        ? 'This document reached its cloud save limit. Pending changes remain on this device and need recovery.'
+        : 'This document reached its cloud save limit. No pending local changes are queued.',
+      retryLabel: 'Automatic backup is paused.',
+    };
+  }
+
   if (manualSyncing) {
     return {
       state: 'syncing',
@@ -107,6 +120,12 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
   const stage = status?.stage || 'idle';
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
+
+  if (status?.errorCode === 'ANNOTATION_GENERATION_CAPACITY') {
+    return pendingCount > 0
+      ? `Cloud backup is paused; ${pendingCount} change${pendingCount === 1 ? '' : 's'} remain on this device and need recovery.`
+      : 'Cloud backup is paused; this document needs recovery.';
+  }
 
   if (stage === 'error') {
     if (/timed[_ -]?out|timeout/.test(errorText)) {

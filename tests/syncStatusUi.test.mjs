@@ -111,6 +111,25 @@ test('sync status view model keeps queued and error states visible', () => {
   );
 });
 
+test('generation capacity pauses backup without an automatic retry or false local-save claim', () => {
+  const capacity = { stage: 'error', healthy: false, error: 'safe capacity message',
+    errorCode: 'ANNOTATION_GENERATION_CAPACITY' };
+  assert.deepEqual(getSyncStatusViewModel(capacity, 2, true), {
+    state: 'offline', label: 'Backup paused · 2 kept locally',
+    detail: 'This document reached its cloud save limit. Pending changes remain on this device and need recovery.',
+    retryLabel: 'Automatic backup is paused.',
+  });
+  assert.equal(getCompactSyncStatusMessage(capacity, 2),
+    'Cloud backup is paused; 2 changes remain on this device and need recovery.');
+  assert.deepEqual(getSyncStatusViewModel(capacity, 0, true), {
+    state: 'offline', label: 'Cloud backup paused',
+    detail: 'This document reached its cloud save limit. No pending local changes are queued.',
+    retryLabel: 'Automatic backup is paused.',
+  });
+  assert.equal(getCompactSyncStatusMessage(capacity, 0),
+    'Cloud backup is paused; this document needs recovery.');
+});
+
 test('yellow and red sync states explain the cause, local backup, and retry behavior', () => {
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'pending' }, 0),

@@ -139,7 +139,11 @@ test('an effect already running at close records its receipt before the final sn
   });
   handle.doc.transact(() => handle.doc.getMap(ERASE_OUTBOX_MAP).set('erase-before-close', {
     mutationId: 'erase-before-close', actorUserId: 'test-actor', status: 'pending',
-    effects: [{ idempotencyKey: 'one-effect', kind: 'history' }], acknowledgedEffectKeys: [],
+    committedAt: '2026-09-10T00:00:00.000Z',
+    effects: [{ type: 'trash', targetKey: 'marker-one',
+      idempotencyKey: 'erase-before-close:trash:marker-one',
+      payload: { before: { id: 'marker-one', pageNumber: 1 } } }],
+    acknowledgedEffectKeys: [],
   }), 'erase-local');
   await effectEntered.promise;
   const closing = handle.destroy();

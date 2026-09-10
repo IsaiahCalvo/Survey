@@ -216,6 +216,8 @@ test('a changed conditional response finishing after handle destroy cannot mutat
     call => call.name === 'read_annotation_checkpoint_conditional_v3').length > settledConditionalReads,
   'observed SUBSCRIBED catch-up did not request the checkpoint');
   await until(() => changes >= 1, 'observed SUBSCRIBED catch-up did not notify');
+  await until(() => handle.getSyncStatus().stage === 'idle',
+    'observed SUBSCRIBED catch-up did not return to idle');
   const changesBeforeDelayedRefresh = changes;
   await publishSnapshot(backend, bundle, candidate => candidate.getMap('annoMeta').set('lateCandidate', 'blocked'));
 

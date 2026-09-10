@@ -85,6 +85,109 @@ function acknowledgedOutboxTombstone(entry, mutationId) {
   };
 }
 
+const isRecord = value => (
+  !!value
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && [Object.prototype, null].includes(Object.getPrototypeOf(value))
+);
+const isNonEmptyString = value => typeof value === 'string' && value.length > 0;
+const RECOVERABLE_ERASE_EFFECT_TYPES = new Set([
+  'annotation-delete-history',
+  'trash',
+  'history',
+  'excel-delete',
+  'legacy-marker-delete',
+]);
+
+function isValidRecoverableEffectPayload(effect) {
+  if (!isRecord(effect.payload)) return false;
+  if (effect.type === 'trash' || effect.type === 'history') {
+    if (!Object.hasOwn(effect.payload, 'before') || !isRecord(effect.payload.before)) return false;
+    const markerId = effect.payload.before.annotationId ?? effect.payload.before.id;
+    return markerId === effect.targetKey
+      && Number.isSafeInteger(effect.payload.before.pageNumber)
+      && effect.payload.before.pageNumber > 0;
+  }
+  if (effect.type === 'annotation-delete-history') {
+    return Object.hasOwn(effect.payload, 'mutations')
+      && Array.isArray(effect.payload.mutations)
+      && effect.payload.mutations.length > 0
+      && effect.payload.mutations.every(mutation => (
+        isRecord(mutation)
+        && Object.hasOwn(mutation, 'operation')
+        && Object.hasOwn(mutation, 'pageNumber')
+        && Object.hasOwn(mutation, 'storageKey')
+        && mutation.operation === 'delete'
+        && Number.isSafeInteger(mutation.pageNumber)
+        && mutation.pageNumber > 0
+        && isNonEmptyString(mutation.storageKey)
+        && (isRecord(mutation.before) || isRecord(mutation.eraseDeleteLane))
+      ));
+  }
+  if (effect.type === 'excel-delete') {
+    if (!Object.hasOwn(effect.payload, 'excelProjection')) return false;
+    const projection = effect.payload.excelProjection;
+    if (!isRecord(projection) || !Object.hasOwn(projection, 'required')
+      || !Object.hasOwn(projection, 'templateKey') || !Object.hasOwn(projection, 'workbookKey')
+      || typeof projection.required !== 'boolean') return false;
+    if (projection.required) {
+      if (!isNonEmptyString(projection.templateKey) || !isNonEmptyString(projection.workbookKey)) return false;
+    } else if (projection.templateKey !== null || projection.workbookKey !== null) return false;
+  }
+  if (Object.hasOwn(effect.payload, 'markerIds')) {
+    if (!Array.isArray(effect.payload.markerIds)
+      || effect.payload.markerIds.length === 0
+      || effect.payload.markerIds.some(id => !isNonEmptyString(id))) return false;
+  }
+  return true;
+}
+
+/**
+ * Validate the durable erase-effect recovery envelope without authorizing it.
+ * The caller must still bind the entry to accepted document state and require
+ * the initiating actor before it runs any effect.
+ */
+export function isValidEraseOutboxEntry(entry, mutationId, { allowPending = false } = {}) {
+  if (!isRecord(entry) || !isNonEmptyString(mutationId)
+    || !['mutationId', 'status', 'effects', 'acknowledgedEffectKeys'].every(key => Object.hasOwn(entry, key))
+    || entry.mutationId !== mutationId
+    || !Array.isArray(entry.effects) || !Array.isArray(entry.acknowledgedEffectKeys)) {
+    return false;
+  }
+  if (entry.status === 'acknowledged') {
+    return entry.effects.length === 0
+      && entry.acknowledgedEffectKeys.length === 0
+      && Number.isSafeInteger(entry.effectCount)
+      && entry.effectCount >= 0;
+  }
+  if (!allowPending || entry.status !== 'pending'
+    || !Object.hasOwn(entry, 'actorUserId') || !Object.hasOwn(entry, 'committedAt')
+    || !isNonEmptyString(entry.actorUserId)
+    || !isNonEmptyString(entry.committedAt)
+    || entry.effects.length === 0) {
+    return false;
+  }
+  const effectKeys = new Set();
+  for (const effect of entry.effects) {
+    if (!isRecord(effect) || !Object.hasOwn(effect, 'type') || !Object.hasOwn(effect, 'targetKey')
+      || !Object.hasOwn(effect, 'idempotencyKey') || !Object.hasOwn(effect, 'payload')
+      || !RECOVERABLE_ERASE_EFFECT_TYPES.has(effect.type) || !isNonEmptyString(effect.targetKey)
+      || !isValidRecoverableEffectPayload(effect)) {
+      return false;
+    }
+    const expectedKey = `${mutationId}:${effect.type}:${effect.targetKey}`;
+    if (effect.idempotencyKey !== expectedKey || effectKeys.has(expectedKey)) return false;
+    effectKeys.add(expectedKey);
+  }
+  const acknowledgedKeys = new Set();
+  for (const key of entry.acknowledgedEffectKeys) {
+    if (!isNonEmptyString(key) || acknowledgedKeys.has(key) || !effectKeys.has(key)) return false;
+    acknowledgedKeys.add(key);
+  }
+  return acknowledgedKeys.size < effectKeys.size;
+}
+
 function pruneAcknowledgedOutboxTombstones(outbox, doc = null) {
   const acknowledged = [...outbox.entries()]
     .filter(([, entry]) => entry?.status === 'acknowledged')

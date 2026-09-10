@@ -3,6 +3,7 @@ import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { docToByPage, docToDeletedPdfAnnotations,
   deletedPdfAnnotationStorageKey } from './annotationDocStore.js';
 import { materializeSurveyCrdtV2, SURVEY_V2_ROOTS } from './documentSurveyCrdtV2.js';
+import { isValidEraseOutboxEntry } from '../utils/annotationEraseTransaction.js';
 
 const ROOTS = new Set(['annotations', 'annotationEraserOps', 'deletedPdfAnnotations',
   'surveyMarkers', 'annoMeta', 'eraseOutbox']);
@@ -58,7 +59,7 @@ const record = value => !!value && typeof value === 'object' && !Array.isArray(v
 const pageNumber = value => Number.isSafeInteger(value) && value > 0;
 const nonempty = value => typeof value === 'string' && value.length > 0;
 
-function validateRecord(name, key, value) {
+function validateRecord(name, key, value, { allowPendingEraseOutbox = false } = {}) {
   if (name === 'annoMeta') return;
   if (!nonempty(key)) invalid('empty map key');
   if (!record(value)) invalid(`malformed ${name} record`);
@@ -84,10 +85,7 @@ function validateRecord(name, key, value) {
       }
     }
   } else if (name === 'eraseOutbox') {
-    if (value.status !== 'acknowledged' || value.mutationId !== key
-      || !Array.isArray(value.effects) || value.effects.length !== 0
-      || !Array.isArray(value.acknowledgedEffectKeys) || value.acknowledgedEffectKeys.length !== 0
-      || !Number.isSafeInteger(value.effectCount) || value.effectCount < 0) {
+    if (!isValidEraseOutboxEntry(value, key, { allowPending: allowPendingEraseOutbox })) {
       invalid('pending or ambiguous erase outbox');
     }
   }
@@ -130,7 +128,11 @@ function validateMaterialization(owned) {
 
 /** Materialize only Yjs semantic state. The caller proves acceptance and owns
  * page remapping; this does not capture sidebar state or build a checkpoint. */
-export function materializeAnnotationGenerationState(doc, contentModelVersion = 1) {
+function materializeAnnotationGenerationStateInternal(
+  doc,
+  contentModelVersion,
+  { allowPendingEraseOutbox = false } = {},
+) {
   if (!(doc instanceof Y.Doc) || doc.isDestroyed) invalid('live Y.Doc required');
   if (![1, 2].includes(contentModelVersion)) invalid('content model version required');
   if (doc.store.pendingStructs || doc.store.pendingDs) invalid('unresolved Yjs history');
@@ -152,7 +154,7 @@ export function materializeAnnotationGenerationState(doc, contentModelVersion = 
       }
       for (const [key, value] of entries) {
         const copy = copyJson(value);
-        validateRecord(name, key, copy);
+        validateRecord(name, key, copy, { allowPendingEraseOutbox });
         owned.getMap(name).set(key, copy);
       }
     }
@@ -186,4 +188,20 @@ export function materializeAnnotationGenerationState(doc, contentModelVersion = 
   } finally {
     owned.destroy();
   }
+}
+
+/** Publication and source capture require every external erase effect to have
+ * reached its durable acknowledged tombstone. */
+export function materializeAnnotationGenerationState(doc, contentModelVersion = 1) {
+  return materializeAnnotationGenerationStateInternal(doc, contentModelVersion);
+}
+
+/** Checked opens may recover a valid pending effect envelope. This only
+ * materializes shared core state; it neither authorizes nor executes effects. */
+export function materializeAnnotationGenerationStateForOpen(doc, contentModelVersion = 1) {
+  return materializeAnnotationGenerationStateInternal(
+    doc,
+    contentModelVersion,
+    { allowPendingEraseOutbox: true },
+  );
 }

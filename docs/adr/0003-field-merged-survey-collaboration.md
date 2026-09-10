@@ -34,6 +34,19 @@ they cannot be inferred from a generic recursive JSON merge.
 
 ## Compatibility and privacy
 
+Document entity definitions are shared document data. Personal favorites, palette
+display order and the selected tool are private user preferences. Shared IDs,
+names and definitions let collaborators interpret the same annotations and
+produce consistent exports. Making those definitions private would let the same
+document mean different things to different users. Sharing every palette setting
+would instead let one user's tool choices disrupt another user's work.
+
+Changing a shared definition needs the document's edit permission and a checked,
+versioned write; a personal palette change must not rewrite shared definitions.
+Personal template libraries stay private unless explicitly copied into a document.
+This is the target ownership rule, not permission to merge legacy per-user lists
+silently or enable a live migration before conflicts and recovery are tested.
+
 - Keep existing documents on their current model until an explicit checked
   generation transition publishes a verified baseline.
 - Enforce the model at the database read/write contracts, not a UI flag alone.
@@ -139,42 +152,209 @@ publication, or offline-merge safety.
 
 ## Remaining capacity and recovery gates
 
-The following work is proposed and is not implemented:
+The row-level write limits below are implemented locally. The following work
+remains required before rollout:
 
-1. Limit each newly inserted model-2 WAL row to the SQL page bound and each stored
-   checkpoint to the checked-open bound. Apply a new-row check after exact receipt
-   lookup so an older accepted write can still return its lost-success receipt.
-2. Put model-2 append behind a trusted server path. At a fixed generation and WAL
+1. Put model-2 append behind a trusted server path. At a fixed generation and WAL
    head, reconstruct the checked state, apply the proposed update, reject missing
    Yjs dependencies, and measure the exact encoded result against the 64 MiB read
    bound. A private SQL append must compare the expected head while holding the
    existing document lock. On a race, rebuild from the new head; never trust a
    client-supplied size or snapshot claim.
-3. Measure publishability through the same source capture and replacement
+2. Measure publishability through the same source capture and replacement
    transform used for publication. The exact 16 MiB body/output and 10,000-row
    checks are authoritative. A warning threshold may start an early refresh, but
    no fixed local percentage can prove safety for offline peers or other source
    domains.
-4. If a merged update would exceed the checked-read bound, perform no server
-   write. Freeze the handle in a capacity-recovery state while retaining the exact
+3. If a merged update would exceed the checked-read bound, perform no server
+   write. Extend the write-admission pause to aggregate validation, retaining the exact
    staged snapshot and actor-scoped IndexedDB outbox. Do not treat capacity as a
    final permission rejection, delete pending bytes, or replay them into another
    generation.
-5. Refresh through the existing checked source, archive, prepare and publication
+4. Refresh through the existing checked source, archive, prepare and publication
    contract under the document lock. Carry every valid erase-history record into
    the new baseline. Writes accepted before source capture belong to that source;
    retired-generation receipts remain exact; later pending work stays bound to
    its old generation.
-6. Recover offline work by rebuilding the old accepted state plus its pending
+5. Recover offline work by rebuilding the old accepted state plus its pending
    updates, deriving a survey-level change, and applying checked model-2 plans to
    the new generation. Do not apply raw Yjs updates across generations. Keep
    conflicts and their exact bytes available for review.
-7. A merged document whose live state or valid undo history cannot fit the
+6. A merged document whose live state or valid undo history cannot fit the
    publication bound cannot be made safe by silent history eviction. Keep it
    readable and recovery-only. Before rollout can support that case, add an
    immutable, access-checked history archive with a digest and generation/frontier
    receipt, and make Undo read that archive. Until then, reject new erase history
    before ordinary writes and retain all existing valid Undo data.
+
+The next trusted-admission slice must preserve retry ordering. Probe exact
+historical receipts before reconstruction, including the existing retired/revoked
+retry policy, and repeat that lookup under the commit lock before current-scope
+and head checks. Exact bytes return the accepted receipt; collisions remain
+`23505`. A genuinely new write reconstructs at a fixed head and retries from a
+fresh head after `40001`.
+
+Keep the final encoded-state capacity limit separate from worker memory, gzip
+expansion, replay-input and time budgets. Exhausting a worker budget is not proof
+that the logical document exceeds capacity. Current readers also limit expanded
+checkpoint plus raw tail bytes; a new write must not leave a read-safe final
+state behind an unreadable replay chain. A trusted append may need to publish
+its compact checked checkpoint atomically, or report a maintenance need. This
+server path remains planned, private and disabled; it is not implemented by the
+row-limit migration below.
+
+### Row-level write-limit implementation
+
+Inspection at checkpoint `80c7173c` confirmed that the model-2 append and
+snapshot functions accepted unbounded input bytes. Adding SQL size checks
+alone was not a complete fix: the sync append catch treated a program
+limit like a transient failure and forced a full checkpoint, while snapshot
+failure ran through the ordinary retry loop. A deterministic size rejection
+must retain the exact pending edits and staged checkpoint without repeatedly
+sending the same oversized bytes or treating them as a permission rejection.
+
+Preserve the two existing retry rules. Append looks up an exact accepted receipt
+before checking whether a new write is allowed; historical matching receipts
+must remain available under that contract. Snapshot checks write scope first,
+then checks its exact stored tuple and compare-and-swap conditions. A new limit
+must not grant retired or revoked snapshot access, change a stale comparison
+into a successful write, or invalidate an otherwise authorized exact retry.
+Enforce limits on new writes without rewriting or deleting historical rows.
+
+Disposable PostgreSQL characterization confirmed that current model 1 and model
+2 each accept a new 16,777,217-byte WAL row and a 67,108,865-byte snapshot. These
+are synthetic bytea storage-admission checks, not valid Yjs-state or reopen
+proof. The client red test also reproduces the forced-snapshot fallback and
+continued mutation after an admission failure while retaining the pending row.
+
+Use SQLSTATE `SG004` exclusively for the new explicit byte-admission checks,
+mapped to `ANNOTATION_GENERATION_CAPACITY` in model-2 generated write calls.
+Do not classify a generic `54000` as a proven admission failure: PostgreSQL can
+report other program limits with that code. Capacity is not generation
+retirement or loss of permission. The status must retain a typed code through
+the hook and show paused backup instead of the existing automatic-retry copy.
+Do not claim a local save unless the durable local write actually succeeded.
+
+Migration `20260909109000_annotation_model2_capacity.sql` now limits new model-2
+WAL rows to 16 MiB and stored snapshots to 64 MiB. Exact boundaries remain valid.
+Matching historical receipts and stale snapshot CAS keep their existing access
+and return rules; rejected writes change no row, head or notification signal.
+Model 1 and null-generation legacy paths retain their previous behavior.
+
+The client holds a distinct capacity error for that handle. It retains the exact
+outbox and staged checkpoint, stops automatic upload and snapshot retries, and
+rejects supported new edits before invoking their updater. A fresh explicit open
+may try once again. Capacity does not stop the local persistence observer: direct
+or raced Yjs writes must remain journaled, including after a cold reopen restores
+the pending writer sequence. This is not a hard global freeze of mutable Yjs.
+Local save and close use an exact read-only projection check and durable receipt;
+they do not call a blocked edit method. Hook status keeps the typed pause through
+manual flush and cold hydration without reporting automatic backup or an
+unproved save. Full browser and combined verification are still in progress.
+
+The frozen browser capacity flow now preserves the pending erase across reopen,
+keeps the pause sticky without repeated uploads, and recovers after the synthetic
+fault is cleared and the document is explicitly reopened. That check exposed and
+led to fixes for blocked writes from hydration and erase-consumer mount effects,
+plus a model-2-only projection rule that no longer treats erased markers as
+unfinished drafts. Explicit draft workflows and legacy model 1 are preserved.
+
+The first browser pass was not a completed checkpoint. A follow-on normal
+erase/Undo after recovery rendered the restored marker locally but failed the
+local revision receipt; checked reopen then rejected the fixture's document
+version. Passing the isolated capacity flow or the combined 7,010-test run
+(6,914 passed, 96 skipped) did not override that failure.
+
+A fresh browser diagnostic moved the first failure earlier: before the second
+erase or Undo, the snapshot stored at sequence 2 after capacity recovery already
+has unresolved Yjs structs and delete-set dependencies when decoded by itself.
+It is a 1,450-byte gzip checkpoint with no later WAL rows at inspection. The
+expected remaining marker is present, so semantic appearance alone cannot prove
+checkpoint completeness. The direct handle-only recovery at sequence 1 passes;
+the browser's extra acknowledgement/projection step must be included in the
+regression. Fixture summary counters can be stale after a failed flush and its
+in-memory document does not ingest stored snapshots; inspect actual snapshot
+bytes and the fixed tail before attributing a failure to an individual update.
+
+The real registry-document reproduction identifies the missing range: the erase
+row records client clocks 0 through 2, recovery projection consumes clocks 3
+through 5 before the observer is attached, and the real erase acknowledgement
+starts at clock 6. The fix detects actual projection writes and starts
+later observed writes with a fresh client identity and rebased staging. Rotation
+alone is insufficient when an acknowledgement replaces a hidden projection item.
+No-op projection must retain its current behavior. Verification must include the
+real trash/history and acknowledgement lifecycle, not a substitute metadata row.
+
+The canonical recovery test also found that the erase consumer could run during
+open before the update observer was attached. Its side effects ran, but their
+acknowledgements never entered the journal. Later drains correctly refused the
+mismatch between live and accepted entries. The fix must defer consumption until
+the observer is ready and then wake the existing drain. More polling cannot repair
+an acknowledgement that was never recorded.
+
+Checked open also needs a recovery validator separate from publication capture.
+A complete checkpoint may contain valid pending erase effects after a crash.
+Collaborators may read that state, but only the entry's actor may execute its
+effects, after checking the exact accepted entry again. Malformed or ambiguous
+entries still fail closed. The checked recovery validator admits only the five
+production effect types, with required payload, target identity, actor and
+acknowledgement checks. Publication and accepted-state capture keep their
+settled-outbox requirement. The generic local consumer remains extensible.
+
+The expanded recovery test now passes five cases. It exercises the real shared
+registry and trash/history consumer, both orders of disjoint peer note/name edits
+around recovery rebase, accepted partial and final acknowledgements, standalone
+checkpoint completeness, later erase/Undo, cached reopen and fresh-reader reopen.
+It also proves a pure offline model-2 field edit survives cold local recovery,
+active deletion clears every model-2 root without later append or snapshot calls,
+and Undo survives a held consumer. The recovery-open validator and final sync
+source passed independent cross-review and 65 focused checks.
+
+The frozen native-browser retest on 2026-09-10 now passes the previously failing
+flow. A blocked erase kept one pending edit and made one failed append attempt;
+cold reopen preserved it and made one further attempt. A blocked second erase,
+Flush, and clearing the fault made no additional attempts. Explicit reopen after
+clearing the fault recovered the erase plus both real acknowledgements at head 3.
+The actual stored gzip snapshot was 1,299 bytes with no unresolved structs,
+delete-set dependencies or later WAL rows. A normal erase, immediate Undo, Flush
+and checked reopen preserved the right marker, an empty queue and local revision
+zero. The stored head-7 gzip snapshot was 1,486 bytes and independently complete.
+The real SVG marker and rendered viewer were checked. The fixture's exact data
+was removed through its cleanup control (`cleaned`) and the tab was closed.
+This uses the full local viewer with real Yjs and IndexedDB plus a synthetic
+backend; it is not live multi-user, Microsoft, deployment or quota-bill proof.
+
+The full suite also exposed a timing race in the earlier conditional-checkpoint
+test. Subscription catch-up could still emit its second notification after the
+test recorded its event baseline. The test now waits for the public `idle` state
+before recording that baseline; the sealed-document and no-late-mutation checks
+are unchanged. The delayed-close case passed in 20 fresh processes and the full
+conditional test file passed 9/9. No source change was needed for this test fix.
+The teardown test also needed a valid pending trash envelope: its earlier stub
+omitted the commit time, target and payload, so the new validator correctly never
+entered the consumer. The replacement uses the real production shape and retains
+the same timeout and close/receipt/final-snapshot assertions. The teardown file
+passed 4/4 and the related cloud-consumer group passed 18/18.
+The realtime fixture test used an unsupported combined `trash-history` action;
+it now sends the real `trash` and `history` actions and waits for their accepted
+receipts before checking reopen. Its realtime and stale-publication assertions
+remain intact. The related reader/materializer/fixture group passed 31/31.
+
+Final frozen-source verification on 2026-09-10: `npm test` passed with 7,021
+tests (6,925 passed, 96 skipped, zero failed or cancelled). The committed
+baseline had 6,996 tests (6,900 passed and the same 96 skipped). The final Vite
+build passed with its existing large-chunk warning. A fresh disposable PostgreSQL
+run passed the row boundaries, rejection atomicity, historical retries,
+collisions, access checks and model-1 compatibility. The native result above
+uses those same unchanged source files. Nothing was pushed, deployed, or applied
+to a live database, and no Microsoft session or account was used.
+The final AST-only graph refresh passed; its generated files are not part of the
+checkpoint. Large-graph HTML output was skipped by the tool's existing size cap.
+
+The limits on individual stored rows still
+cannot prove the size of merged Yjs state, decompressed snapshots, retained Undo
+history or publication source bodies. The trusted aggregate validation and
+recovery gates above remain required; no live migration is approved here.
 
 ## Current rollout boundary
 

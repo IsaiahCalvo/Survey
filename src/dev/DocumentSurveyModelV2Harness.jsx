@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import { MSGraphContext } from '../contexts/MSGraphContext.jsx';
@@ -23,6 +23,27 @@ const auth = Object.freeze({ user: { id: MODEL2_FIXTURE_IDS.actorUserId, email: 
 const ms = Object.freeze({ account: null, graphClient: null, isAuthenticated: false, isLoading: false,
   needsReconnect: false, login: async () => {}, ensureFreshToken: async () => false });
 const hex = bytes => `\\x${Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')}`;
+class FixtureErrorBoundary extends Component {
+  state = { error: null, errorStack: '', componentStack: '' };
+  static getDerivedStateFromError(error) { return { error,
+    errorStack: String(error?.stack || '').slice(0, 4000), componentStack: '' }; }
+  componentDidCatch(error, info) {
+    const componentStack = String(info?.componentStack || '').slice(0, 4000);
+    this.setState({ error, componentStack });
+    this.props.onError?.(error, componentStack);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <section role="alert" data-model2-fixture-render-error style={{ margin: 16, padding: 12,
+      maxWidth: 720, maxHeight: '60vh', overflow: 'auto', whiteSpace: 'pre-wrap',
+      overflowWrap: 'anywhere', background: '#450a0a', color: 'white' }}>
+      <strong>Model 2 fixture viewer failed</strong>{'\n'}
+      {String(this.state.error?.message || this.state.error).slice(0, 2000)}
+      {this.state.errorStack ? `\n${this.state.errorStack}` : ''}
+      {this.state.componentStack ? `\n${this.state.componentStack}` : ''}
+    </section>;
+  }
+}
 export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
   const backendRef = useRef(null), handleRef = useRef(null), staleExpectedRef = useRef(null),
     stalePreviousRef = useRef(null);
@@ -125,6 +146,9 @@ export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
   const controls = useMemo(() => ({
     async flush() { await handleRef.current?.drain(); await handleRef.current?.flushLocalDurability(); refresh(); },
     offline(value) { backendRef.current?.setOffline(value); refresh(); },
+    capacity(value) { backendRef.current?.setCapacityFault(value); refresh(); },
+    async inspectSavedVersion() { const savedVersion = await backendRef.current?.inspectSavedVersion();
+      setStatus(current => ({ ...current, savedVersion })); },
     async reopen() { await handleRef.current?.destroy(); await issueOpen(); },
     async staleSameHead() {
       const oldX = handleRef.current?.getSurveyState?.().surveyMarkers?.['fixture-marker-left']?.bounds?.x;
@@ -141,11 +165,17 @@ export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
     try { await action(); } catch (error) { setStatus(current => ({ ...current,
       stage: 'error', error: error?.message || String(error) })); }
   }, []);
+  const onRenderError = useCallback((error, componentStack) => setStatus(current => ({ ...current,
+    stage: 'render-error', error: String(error?.message || error).slice(0, 2000),
+    errorStack: String(error?.stack || '').slice(0, 4000),
+    componentStack: String(componentStack || '').slice(0, 4000) })), []);
   if (!open) return <main data-model2-fixture-state={status.stage}>{status.error || status.stage}</main>;
   return <AuthContext.Provider value={auth}><MSGraphContext.Provider value={ms}>
       <div style={{ height: '100vh' }}>
-        <App key={mount} devInitialCheckedBundle={open.checkedBundle}
-          annotationDocClient={backendRef.current.client} devOnGenerationSession={onGenerationSession} />
+        <FixtureErrorBoundary key={mount} onError={onRenderError}>
+          <App devInitialCheckedBundle={open.checkedBundle}
+            annotationDocClient={backendRef.current.client} devOnGenerationSession={onGenerationSession} />
+        </FixtureErrorBoundary>
         <details aria-label="Model 2 fixture controls" style={{ position: 'fixed', bottom: 8, left: 8,
           zIndex: 20000, background: '#111827', color: 'white', padding: 8,
           width: 'min(86vw, 360px)', maxHeight: '45vh', overflow: 'auto', fontSize: 11 }}>
@@ -156,6 +186,10 @@ export default function DocumentSurveyModelV2Harness({ cleanupOnly = false }) {
             <button onClick={() => void run(controls.flush)}>Flush</button>
             <button onClick={() => controls.offline(true)}>Go offline</button>
             <button onClick={() => controls.offline(false)}>Go online</button>
+            <button onClick={() => controls.capacity('append')}>Fail next WAL writes</button>
+            <button onClick={() => controls.capacity('snapshot')}>Fail snapshots</button>
+            <button onClick={() => controls.capacity(null)}>Clear capacity fault</button>
+            <button onClick={() => void run(controls.inspectSavedVersion)}>Inspect saved version</button>
             <button onClick={() => void run(controls.reopen)}>Reopen</button>
             <button onClick={() => void run(controls.staleSameHead)}>Test stale same-head open</button>
             <button onClick={() => void run(controls.cleanup)}>Remove fixture data</button>
