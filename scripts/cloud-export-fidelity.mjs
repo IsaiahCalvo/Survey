@@ -28,6 +28,20 @@
 //
 //   node scripts/cloud-export-fidelity.mjs --out /tmp/cloud-fidelity [--scale 4]
 //        [--pages base,rot90,...] [--only rect-bump2,...]
+//        [--shapes cloud|plain|all]
+//
+// 2026-09-09 additions:
+//   * page frames with a MALFORMED /CropBox - corners in reverse order (legal
+//     per PDF 32000-1 7.9.5), a CropBox larger than the MediaBox, and one
+//     hanging off it - because the exporter used the raw box where the app
+//     (pdf.js) normalises and intersects;
+//   * RESIZED clouds (seeded random scales), because a resize commit's raw
+//     float scale did not survive a metadata-stripped round trip;
+//   * `--shapes plain`: the non-cloud shapes (square, circle, tilted ellipse,
+//     polygon, polyline, line, every arrowhead style, text box), judged
+//     against the app's own FLATTENED print under the same renderer, plus an
+//     ink-presence check per renderer - the plain-shape defect showed up as an
+//     empty Quartz / Quick Look raster.
 //
 // pdf.js 6 renders in Node through @napi-rs/canvas; the repo does not ship it,
 // so point CLOUD_FIDELITY_PDFJS_DIR at a node_modules holding pdfjs-dist +
@@ -63,6 +77,9 @@ const SCALE = Number(argValue('--scale', '4'));
 const DPI = 72 * SCALE;
 const ONLY_PAGES = argValue('--pages', '').split(',').filter(Boolean);
 const ONLY_CASES = argValue('--only', '').split(',').filter(Boolean);
+// 'cloud' (revision clouds only), 'plain' (the non-cloud shapes, judged
+// against the app's own flattened print) or 'all'.
+const SHAPES = argValue('--shapes', 'all');
 const STROKE = '#c42747';
 const FILL = 'rgba(196, 39, 71, 0.25)';
 
@@ -94,6 +111,23 @@ const PAGE_FRAMES = {
   a5: { mediaBox: [0, 0, 420, 595] },
   'half-letter': { mediaBox: [0, 0, 396, 612] },
   'a5-rot90': { mediaBox: [0, 0, 420, 595], rotate: 90 },
+  // Malformed / awkward boxes the app renders perfectly (pdf.js normalises a
+  // box's corners and uses CropBox INTERSECT MediaBox, PDF 32000-1 14.11.2).
+  // The exporter used the raw /CropBox: reversed corners gave it a NEGATIVE
+  // page height, which failed every annotation's geometry check and emptied
+  // the export; a CropBox bigger than or hanging off the MediaBox moved every
+  // annotation 60-78pt.
+  // `rendererPageBoxVaries`: poppler and cairo pick a DIFFERENT page box than
+  // pdf.js for a malformed box (poppler's -cropbox falls back to the MediaBox
+  // where pdf.js takes the intersection), so their raster is a different size
+  // from the app's frame and cannot be laid over it. Their annotated-vs-
+  // flattened comparison still runs - both rasters come from the same renderer
+  // at the same size - and pdf.js and Quartz still judge against the app.
+  'cropbox-reversed': { mediaBox: [0, 0, 320, 240], cropBox: [320, 240, 0, 0], rendererPageBoxVaries: true },
+  'cropbox-reversed-rot90': { mediaBox: [0, 0, 320, 240], cropBox: [320, 240, 0, 0], rotate: 90, rendererPageBoxVaries: true },
+  'cropbox-larger-than-mediabox': { mediaBox: [0, 0, 320, 240], cropBox: [-40, -30, 380, 290], rendererPageBoxVaries: true },
+  'cropbox-hangs-off-mediabox': { mediaBox: [0, 0, 320, 240], cropBox: [60, 40, 420, 320], rendererPageBoxVaries: true },
+  'cropbox-hangs-off-mediabox-rot270': { mediaBox: [0, 0, 320, 240], cropBox: [60, 40, 420, 320], rotate: 270, rendererPageBoxVaries: true },
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +140,64 @@ const PAGE_FRAMES = {
 // kept verbatim) re-fits a crown differently for a vertex a few 1e-14 off.
 // Real drawing coordinates are decimal already; the harness mirrors that.
 const grid = (value) => Math.round(value * 1000) / 1000;
+
+// Deterministic pseudo-random scales for the "resized cloud" cases: a resize
+// commit stores scaleX/scaleY, and before the commit-rounding fix it stored
+// them at full float precision, so a metadata-stripped re-import re-fitted a
+// different number of crowns. Same seed every run.
+let resizeSeed = 0x2f6e2b1;
+const nextRandom = () => {
+  resizeSeed ^= resizeSeed << 13; resizeSeed >>>= 0;
+  resizeSeed ^= resizeSeed >>> 17;
+  resizeSeed ^= resizeSeed << 5; resizeSeed >>>= 0;
+  return resizeSeed / 0xffffffff;
+};
+
+// The plain (non-cloud) shapes. Their proof is the /AP: before it, an exported
+// /Square, /Circle, /Polygon, /PolyLine, /Line and /FreeText carried no
+// appearance stream at all, so macOS Quick Look / Quartz painted NOTHING and
+// poppler synthesised its own inset box. Judged against the app's flattened
+// print of the same object under the same renderer.
+const plainFrameCases = (frame) => {
+  const W = frame.width; const H = frame.height;
+  const r = (fx, fy, fw, fh) => ({ left: Math.round(W * fx), top: Math.round(H * fy), width: Math.round(W * fw), height: Math.round(H * fh) });
+  const box = r(0.18, 0.2, 0.44, 0.3);
+  const cases = [
+    { name: 'plain-rect', plain: true, object: { id: 'plain-rect', type: 'rect', ...box, stroke: STROKE, strokeWidth: 3, fill: 'transparent' } },
+    { name: 'plain-rect-filled', plain: true, object: { id: 'plain-rect-filled', type: 'rect', ...box, stroke: STROKE, strokeWidth: 2, fill: FILL } },
+    { name: 'plain-rect-hairline', plain: true, object: { id: 'plain-rect-hairline', type: 'rect', ...box, stroke: STROKE, strokeWidth: 0.75, fill: 'transparent' } },
+    { name: 'plain-circle', plain: true, object: { id: 'plain-circle', type: 'circle', left: Math.round(W * 0.62), top: Math.round(H * 0.2), radius: Math.round(Math.min(W, H) * 0.14), stroke: '#1c6fd0', strokeWidth: 2.5, fill: 'transparent' } },
+    { name: 'plain-circle-filled', plain: true, object: { id: 'plain-circle-filled', type: 'circle', left: Math.round(W * 0.62), top: Math.round(H * 0.2), radius: Math.round(Math.min(W, H) * 0.14), stroke: '#1c6fd0', strokeWidth: 2, fill: 'rgba(28, 111, 208, 0.3)' } },
+    { name: 'plain-ellipse-rotated', plain: true, object: { id: 'plain-ellipse-rot', type: 'ellipse', left: Math.round(W * 0.2), top: Math.round(H * 0.2), rx: Math.round(W * 0.2), ry: Math.round(H * 0.13), width: Math.round(W * 0.4), height: Math.round(H * 0.26), angle: 27, stroke: '#7a2f8f', strokeWidth: 2.5, fill: 'transparent' } },
+    { name: 'plain-polygon', plain: true, object: { id: 'plain-polygon', type: 'polygon', left: Math.round(W * 0.12), top: Math.round(H * 0.55), points: [{ x: 0, y: 0 }, { x: grid(W * 0.3), y: grid(H * 0.06) }, { x: grid(W * 0.36), y: grid(H * 0.33) }, { x: grid(W * 0.05), y: grid(H * 0.28) }], pathOffset: { x: 0, y: 0 }, stroke: '#2c8a3d', strokeWidth: 2.5, fill: 'transparent' } },
+    { name: 'plain-polygon-sharp', plain: true, object: { id: 'plain-polygon-sharp', type: 'polygon', left: Math.round(W * 0.12), top: Math.round(H * 0.55), points: [{ x: 0, y: 0 }, { x: grid(W * 0.34), y: grid(H * 0.02) }, { x: grid(W * 0.02), y: grid(H * 0.05) }, { x: grid(W * 0.2), y: grid(H * 0.3) }], pathOffset: { x: 0, y: 0 }, stroke: '#2c8a3d', strokeWidth: 4, fill: 'transparent' } },
+    { name: 'plain-polygon-filled', plain: true, object: { id: 'plain-polygon-filled', type: 'polygon', left: Math.round(W * 0.12), top: Math.round(H * 0.55), points: [{ x: 0, y: 0 }, { x: grid(W * 0.3), y: grid(H * 0.06) }, { x: grid(W * 0.36), y: grid(H * 0.33) }, { x: grid(W * 0.05), y: grid(H * 0.28) }], pathOffset: { x: 0, y: 0 }, stroke: '#2c8a3d', strokeWidth: 2, fill: 'rgba(44, 138, 61, 0.28)' } },
+    { name: 'plain-polyline', plain: true, object: { id: 'plain-polyline', type: 'polyline', left: Math.round(W * 0.55), top: Math.round(H * 0.55), points: [{ x: 0, y: 0 }, { x: grid(W * 0.18), y: grid(H * 0.24) }, { x: grid(W * 0.38), y: grid(H * 0.04) }], pathOffset: { x: 0, y: 0 }, stroke: '#8a2c7d', strokeWidth: 2.5, fill: 'transparent' } },
+    { name: 'plain-polyline-arrow', plain: true, object: { id: 'plain-polyline-arrow', type: 'polyline', left: Math.round(W * 0.55), top: Math.round(H * 0.55), points: [{ x: 0, y: 0 }, { x: grid(W * 0.18), y: grid(H * 0.24) }, { x: grid(W * 0.38), y: grid(H * 0.04) }], pathOffset: { x: 0, y: 0 }, stroke: '#8a2c7d', strokeWidth: 2.5, fill: 'transparent', data: { arrowheadStyle: 'solidTriangle' } } },
+    { name: 'plain-line', plain: true, object: { id: 'plain-line', type: 'line', tool: 'line', x1: Math.round(W * 0.12), y1: Math.round(H * 0.86), x2: Math.round(W * 0.52), y2: Math.round(H * 0.94), stroke: '#111111', strokeWidth: 2, fill: 'rgb(0,0,0)' } },
+    { name: 'plain-line-curved', plain: true, object: { id: 'plain-line-curved', type: 'line', tool: 'line', x1: Math.round(W * 0.12), y1: Math.round(H * 0.86), x2: Math.round(W * 0.52), y2: Math.round(H * 0.94), stroke: '#111111', strokeWidth: 2, fill: 'rgb(0,0,0)', data: { midpoint: { x: Math.round(W * 0.32), y: Math.round(H * 0.72) } } } },
+  ];
+  // Every arrowhead style the app can put on a line, both ends.
+  for (const style of ['solidTriangle', 'openTriangle', 'vShape', 'openCircle', 'diamond', 'square', 'slash', 'horizontalLine']) {
+    cases.push({
+      name: `plain-arrow-${style}`,
+      plain: true,
+      object: {
+        id: `plain-arrow-${style}`, type: 'line', tool: 'arrow',
+        x1: Math.round(W * 0.12), y1: Math.round(H * 0.86),
+        x2: Math.round(W * 0.52), y2: Math.round(H * 0.94),
+        stroke: '#111111', strokeWidth: 2.5, fill: 'rgb(0,0,0)',
+        data: { arrowheadStyle: style, startArrowheadStyle: style },
+      },
+    });
+  }
+  const textBox = { left: Math.round(W * 0.1), top: Math.round(H * 0.32), width: Math.round(W * 0.6), height: Math.round(H * 0.22) };
+  cases.push({ name: 'plain-freetext', plain: true, object: { id: 'plain-freetext', type: 'textbox', ...textBox, text: 'Revision note', fontSize: 12, fill: '#333333', stroke: 'transparent', strokeWidth: 0 } });
+  cases.push({ name: 'plain-freetext-boxed', plain: true, object: { id: 'plain-freetext-boxed', type: 'textbox', ...textBox, text: 'Boxed note with a longer line that wraps', fontSize: 11, fill: '#222222', stroke: '#222222', strokeWidth: 1, backgroundColor: 'rgba(244, 211, 93, 0.35)' } });
+  cases.push({ name: 'plain-freetext-styled', plain: true, object: { id: 'plain-freetext-styled', type: 'textbox', ...textBox, text: 'Bold italic underlined', fontSize: 13, fill: '#8a1f2f', stroke: 'transparent', strokeWidth: 0, fontWeight: 'bold', fontStyle: 'italic', underline: true } });
+  return cases;
+};
+
 const frameCases = (frame) => {
   if (CAPTURE) {
     return [{ name: CAPTURE.name || 'app-capture', object: CAPTURE.object, dom: CAPTURE.d ? { d: CAPTURE.d, transform: CAPTURE.group?.transform, stroke: CAPTURE.path?.stroke, strokeWidth: CAPTURE.path?.strokeWidth, opacity: CAPTURE.group?.opacity } : null }];
@@ -139,7 +231,42 @@ const frameCases = (frame) => {
   cases.push({ name: 'edge-ellipse-top-bump4', edge: true, object: { id: 'edge-ellipse', type: 'ellipse', left: Math.round(W * 0.2), top: 0, rx: Math.round(W * 0.3), ry: Math.round(H * 0.2), width: Math.round(W * 0.6), height: Math.round(H * 0.4), angle: 0, stroke: STROKE, strokeWidth: 2.5, fill: FILL, data: { pdfCloudIntensity: 4 } } });
   cases.push({ name: 'edge-polygon-bottom-bump3', edge: true, object: { id: 'edge-polygon', type: 'polygon', left: 0, top: Math.round(H * 0.5), points: [{ x: 0, y: H - Math.round(H * 0.5) }, { x: Math.round(W * 0.3), y: 0 }, { x: W, y: Math.round(H * 0.1) }, { x: W, y: H - Math.round(H * 0.5) }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 3 } } });
   cases.push({ name: 'edge-polyline-right-bump2', edge: true, object: { id: 'edge-polyline', type: 'polyline', left: Math.round(W * 0.4), top: Math.round(H * 0.1), points: [{ x: 0, y: 0 }, { x: W - Math.round(W * 0.4), y: Math.round(H * 0.3) }, { x: Math.round(W * 0.2), y: Math.round(H * 0.7) }], pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 2.5, fill: 'transparent', data: { pdfCloudIntensity: 2 } } });
-  return ONLY_CASES.length ? cases.filter((entry) => ONLY_CASES.includes(entry.name)) : cases;
+  // RESIZED clouds: what the app stores after a resize handle drag - a scale
+  // on the committed object. Random (seeded) scales, rounded to 2 decimals the
+  // way annotationCommitRounding rounds a real commit, because a raw-float
+  // scale does not survive the decimal round trip through a PDF and the crown
+  // engine then re-fits a different crown count.
+  resizeSeed = 0x2f6e2b1;
+  for (let index = 0; index < 6; index += 1) {
+    const scaleX = Math.round((0.55 + nextRandom() * 1.1) * 100) / 100;
+    const scaleY = Math.round((0.55 + nextRandom() * 1.1) * 100) / 100;
+    const source = r(0.14, 0.16, 0.42, 0.4);
+    const bump = 2 + (index % 3);
+    cases.push({
+      name: `resized-rect-bump${bump}-${index}`,
+      object: {
+        id: `resized-rect-${index}`, type: 'rect', ...source,
+        scaleX, scaleY,
+        stroke: STROKE, strokeWidth: 2.5, fill: index % 2 ? FILL : 'transparent',
+        data: { pdfCloudIntensity: bump },
+      },
+    });
+    cases.push({
+      name: `resized-ellipse-bump${bump}-${index}`,
+      object: {
+        id: `resized-ellipse-${index}`, type: 'ellipse',
+        left: source.left, top: source.top,
+        rx: source.width / 2, ry: source.height / 2,
+        width: source.width, height: source.height, angle: 0,
+        scaleX, scaleY,
+        stroke: STROKE, strokeWidth: 2.5, fill: 'transparent',
+        data: { pdfCloudIntensity: bump },
+      },
+    });
+  }
+  if (SHAPES !== 'cloud') cases.push(...plainFrameCases(frame));
+  const selected = SHAPES === 'plain' ? cases.filter((entry) => entry.plain) : cases;
+  return ONLY_CASES.length ? selected.filter((entry) => ONLY_CASES.includes(entry.name)) : selected;
 };
 
 // ---------------------------------------------------------------------------
@@ -716,10 +843,16 @@ for (const frameName of frameNames) {
     const flattenedBytes = await exportFlattened(file, frame, entry.object);
     writeFileSync(annotatedPdf, annotatedBytes);
     writeFileSync(flattenedPdf, flattenedBytes);
-    const svgPath = `${base}.app.svg`;
-    const appPng = `${base}.app.png`;
-    writeFileSync(svgPath, appSvg(entry.object, frame, entry.dom));
-    rasterSvg(svgPath, appPng, frame);
+    // A plain (non-cloud) shape has no CloudOutline markup to rasterise; its
+    // reference is the app's own FLATTENED print of the same object under the
+    // same renderer (the annotated-vs-flattened family below).
+    let appPng = null;
+    if (!entry.plain) {
+      const svgPath = `${base}.app.svg`;
+      appPng = `${base}.app.png`;
+      writeFileSync(svgPath, appSvg(entry.object, frame, entry.dom));
+      rasterSvg(svgPath, appPng, frame);
+    }
 
     const annotCount = (await PDFDocument.load(annotatedBytes)).getPage(0).node.lookup(PDFName.of('Annots'));
     const results = {
@@ -727,9 +860,11 @@ for (const frameName of frameNames) {
       frame,
       case: entry.name,
       edge: Boolean(entry.edge),
+      plain: Boolean(entry.plain),
       annotsWritten: annotCount instanceof PDFArray ? annotCount.size() : 0,
       renderers: {},
       reimport: {},
+      ink: {},
     };
     const renderers = [
       ['pdfjs', (pdf, png) => rasterPdfjs(readFileSync(pdf), png)],
@@ -746,7 +881,22 @@ for (const frameName of frameNames) {
           results.renderers[`${kind}.${name}`] = { skipped: true };
           continue;
         }
-        results.renderers[`${kind}.${name}`] = compare(appPng, png, `${base}.${kind}.${name}.diff.png`);
+        // The plain-shape defect in its rawest form: an /Annots entry with no
+        // /AP left Quartz (macOS Quick Look / Preview) painting NOTHING. Count
+        // the ink in every raster of the annotated file - zero is a failure
+        // even before any geometry is compared.
+        if (kind === 'annotated') {
+          const png2 = readPng(png);
+          const { count } = inkMask(png2.data, png2.width, png2.height);
+          results.ink[name] = { pixels: count, pass: count > 0 };
+        }
+        let comparison = appPng
+          ? compare(appPng, png, `${base}.${kind}.${name}.diff.png`)
+          : { skipped: true, reason: 'plain shape: judged against the flattened print' };
+        if (spec.rendererPageBoxVaries && typeof comparison.error === 'string' && comparison.error.startsWith('size mismatch')) {
+          comparison = { skipped: true, reason: `${name} rendered a different page box for this malformed /CropBox (${comparison.error})` };
+        }
+        results.renderers[`${kind}.${name}`] = comparison;
       }
     }
     // The /Annots path against the print path under the same renderer.
@@ -764,18 +914,24 @@ for (const frameName of frameNames) {
         { centroid: SAME_RENDERER_CENTROID_TOLERANCE_PT, hausdorff: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT },
       );
     }
-    for (const label of ['withMetadata', 'withoutMetadata']) {
-      // eslint-disable-next-line no-await-in-loop
-      results.reimport[label] = await reimportCheck(annotatedBytes, entry.object, label);
+    if (!entry.plain) {
+      for (const label of ['withMetadata', 'withoutMetadata']) {
+        // eslint-disable-next-line no-await-in-loop
+        results.reimport[label] = await reimportCheck(annotatedBytes, entry.object, label);
+      }
     }
     report.push(results);
     const summary = Object.entries(results.renderers)
-      .map(([name, result]) => (result.skipped ? `${name}:skip` : `${name}:${result.pass ? 'ok' : 'FAIL'}(c${result.centroidDistancePt ?? '?'} h${result.hausdorffPt ?? '?'})`))
+      .filter(([, result]) => !result.skipped)
+      .map(([name, result]) => `${name}:${result.pass ? 'ok' : 'FAIL'}(c${result.centroidDistancePt ?? '?'} h${result.hausdorffPt ?? '?'})`)
+      .join(' ');
+    const inkSummary = Object.entries(results.ink)
+      .map(([name, result]) => `${name}:${result.pass ? result.pixels : 'NO-INK'}`)
       .join(' ');
     const reimportSummary = Object.entries(results.reimport)
       .map(([name, result]) => (result.skipped ? `${name}:skip` : `${name}:${result.pass ? 'ok' : 'FAIL'}(${result.commands ? result.commands.join('/') : result.error} h${result.hausdorffPt ?? '?'})`))
       .join(' ');
-    console.log(`${entry.name.padEnd(28)} annots=${results.annotsWritten} ${summary} | ${reimportSummary}`);
+    console.log(`${entry.name.padEnd(30)} annots=${results.annotsWritten} ink[${inkSummary}] ${summary}${reimportSummary ? ` | ${reimportSummary}` : ''}`);
   }
 }
 
@@ -831,8 +987,21 @@ for (const entry of report) {
     lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${result.commands.join(' / ')} | ${result.centroidDistancePt} | ${result.vertexShiftPt} | ${result.hausdorffPt} | ${result.boundsDeltaPt.join(', ')} | ${result.crownsMustMatch ? 'yes' : 'reported'} | ${result.pass ? 'yes' : 'NO'} |`);
   }
 }
-lines.push('', `${compared - failures}/${compared} renderer comparisons within tolerance; ${reimportCompared - reimportFailures}/${reimportCompared} re-import checks within tolerance.`);
+// Ink presence in the ANNOTATED file: the plain-shape defect showed up as an
+// empty Quartz/Quick Look raster long before any geometry could be measured.
+lines.push('', '| page | case | renderer | annotated ink px | pass |', '|---|---|---|---|---|');
+let inkFailures = 0;
+let inkCompared = 0;
+for (const entry of report) {
+  for (const [name, result] of Object.entries(entry.ink)) {
+    inkCompared += 1;
+    if (!result.pass) inkFailures += 1;
+    lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${result.pixels} | ${result.pass ? 'yes' : 'NO'} |`);
+  }
+}
+
+lines.push('', `${compared - failures}/${compared} renderer comparisons within tolerance; ${reimportCompared - reimportFailures}/${reimportCompared} re-import checks within tolerance; ${inkCompared - inkFailures}/${inkCompared} annotated rasters carry ink.`);
 writeFileSync(join(OUT, 'report.md'), `${lines.join('\n')}\n`);
 console.log(`\nreport: ${join(OUT, 'report.md')}`);
 console.log(lines[lines.length - 1]);
-if (failures > 0 || reimportFailures > 0) process.exit(1);
+if (failures > 0 || reimportFailures > 0 || inkFailures > 0) process.exit(1);

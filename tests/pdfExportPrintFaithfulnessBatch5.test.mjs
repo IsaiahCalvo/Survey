@@ -123,9 +123,41 @@ test('print-fidelity E2E round-trip state exports no non-finite, outside-page, o
       }
     };
     for (const [annotIndex, dict] of pageAnnotationDicts(pdf, pageIndex).entries()) {
-      for (const key of ['Rect', 'L', 'QuadPoints', 'Vertices', 'CL']) {
+      for (const key of ['L', 'QuadPoints', 'Vertices', 'CL']) {
         const raw = dict.get(PDFName.of(key));
         if (raw !== undefined) assertPairs(numberArray(pdf, raw), `page ${pageIndex + 1} annot ${annotIndex} /${key}`);
+      }
+      // CONTRACT CHANGE (2026-09-09, plain-shape /AP): /Rect is the APPEARANCE
+      // box, and an appearance box legitimately extends past the page - by the
+      // outer half of the stroke for a shape drawn flush to the edge, and by a
+      // whole crown for a revision cloud. The BASE geometry is what has to be
+      // on the page, and /RD (PDF 32000-1 12.5.6.8) is the inset from /Rect
+      // back to it - the same judgement the exporter's own guard
+      // (exportAnnotationRefHasValidGeometry) makes. Judging the raw /Rect
+      // failed a rectangle drawn on the page edge purely because its outline
+      // is 3pt wide. The coordinate arrays above stay strict: that is where
+      // the non-finite / wild-transform geometry this test was written for
+      // would show up.
+      const rectRaw = dict.get(PDFName.of('Rect'));
+      if (rectRaw !== undefined) {
+        const rect = numberArray(pdf, rectRaw);
+        assert.ok(rect.every(Number.isFinite), `page ${pageIndex + 1} annot ${annotIndex} /Rect must be finite`);
+        const rd = dict.get(PDFName.of('RD')) !== undefined ? numberArray(pdf, dict.get(PDFName.of('RD'))) : null;
+        const hasCoordinateArrays = ['QuadPoints', 'Vertices', 'CL', 'L', 'InkList']
+          .some((key) => dict.get(PDFName.of(key)) !== undefined);
+        if (hasCoordinateArrays) {
+          // Judged by its own (strict) arrays above; the appearance box only
+          // has to touch the page.
+          assert.ok(
+            rect[2] >= minX && rect[0] <= maxX && rect[3] >= minY && rect[1] <= maxY,
+            `page ${pageIndex + 1} annot ${annotIndex} /Rect must touch the page`,
+          );
+        } else {
+          const base = Array.isArray(rd) && rd.length === 4 && rd.every(Number.isFinite)
+            ? [rect[0] + rd[0], rect[1] + rd[3], rect[2] - rd[2], rect[3] - rd[1]]
+            : rect;
+          assertPairs(base, `page ${pageIndex + 1} annot ${annotIndex} /Rect base`);
+        }
       }
       const line = numberArray(pdf, dict.get(PDFName.of('L')));
       if (line.length === 4) assert.ok(Math.hypot(line[2] - line[0], line[3] - line[1]) > 0.01);

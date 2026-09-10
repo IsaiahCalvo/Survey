@@ -2054,6 +2054,279 @@ const applyCloudAppearanceToDict = (pdfDoc, annotationDict, fabricObj, pageHeigh
   return appearance;
 };
 
+// ---------------------------------------------------------------------------
+// Plain-shape /AP /N (2026-09-09).
+//
+// Before this, only clouds, counters, ink and the tilted-ellipse writer shipped
+// an appearance stream: a plain /Square, /Circle, /Polygon, /PolyLine, /Line or
+// /FreeText went out as a bare dict and left the drawing to the viewer. Every
+// PDF viewer is ALLOWED to do that (PDF 32000-1 12.5.5 lets a conforming reader
+// synthesise an appearance), but most do not: macOS Quick Look / Quartz drew
+// NOTHING at all, and poppler synthesised its own inset box (measured 2.12pt
+// Hausdorff off a 3pt rect). The annotated export therefore looked empty in
+// Preview while the flattened print was right.
+//
+// The appearance is the PRINT FLATTENER'S OWN OUTPUT, not a second drawing of
+// the same shape: the object is drawn onto a scratch page with
+// drawFlattenedObject and that page's operators become the form's content. One
+// drawing routine, so /AP and the flattened print can never drift, and every
+// fix to one is a fix to both.
+//
+// FRAME: the writers author a virtual page (viewport-sized, y flipped around
+// pageHeight); the form's /BBox is written in that same space with an identity
+// /Matrix, and /Rect is set to the same box, so the viewer's BBox -> Rect fit
+// (12.5.5) is the identity and the page-frame remap at the end of the export
+// (remapAnnotationRefToPageFrame) moves the /Rect and composes the /Matrix
+// together.
+//
+// /RD: /BBox has to include the stroke's outer half (a clipped BBox would eat
+// half the outline), so /Rect is the padded appearance box and /RD carries the
+// inset back to the base rectangle / circle / text box - the same convention
+// the cloud writer already uses, and the one the importer reads.
+//
+// Alpha stays baked in the stream's ExtGState (the flattener already does it);
+// no /CA is added, so a viewer never multiplies the alpha twice.
+// ---------------------------------------------------------------------------
+
+// A hair beyond the geometric half-stroke: rasterisers round a stroke edge
+// outward and a clipped BBox shows as a shaved outline.
+const PLAIN_APPEARANCE_EXTRA_PAD = 0.25;
+
+const plainAppearanceStrokeWidth = (obj) => {
+  const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
+  return stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
+};
+
+// Worst-case outward reach of a miter join at one vertex (PDF 32000-1 8.4.3.5:
+// a miter longer than the miter limit - default 10 - is bevelled back to the
+// half width). pdf-lib's drawSvgPath sets no join, so PDF's miter default is
+// what polygons and polylines get.
+const miterJoinExtent = (prev, point, next, strokeWidth) => {
+  const half = strokeWidth / 2;
+  const inX = point.x - prev.x; const inY = point.y - prev.y;
+  const outX = next.x - point.x; const outY = next.y - point.y;
+  const inLength = Math.hypot(inX, inY);
+  const outLength = Math.hypot(outX, outY);
+  if (!(inLength > 0) || !(outLength > 0)) return half;
+  // Angle between the two segments AT the vertex (both pointing away from it).
+  const cosTheta = Math.max(-1, Math.min(1, (
+    (-inX / inLength) * (outX / outLength) + (-inY / inLength) * (outY / outLength)
+  )));
+  const halfTheta = Math.acos(cosTheta) / 2;
+  const sinHalf = Math.sin(halfTheta);
+  if (!(sinHalf > 1e-6)) return half * 10; // straight-back spike: miter limit
+  const miter = half / sinHalf;
+  return miter > half * 10 ? half : miter;
+};
+
+const polyJoinPad = (points, strokeWidth, closed) => {
+  let pad = strokeWidth / 2;
+  const count = points.length;
+  if (count < 3) return pad;
+  const first = closed ? 0 : 1;
+  const last = closed ? count - 1 : count - 2;
+  for (let index = first; index <= last; index += 1) {
+    const prev = points[(index - 1 + count) % count];
+    const next = points[(index + 1) % count];
+    pad = Math.max(pad, miterJoinExtent(prev, points[index], next, strokeWidth));
+  }
+  return pad;
+};
+
+// How far an arrowhead reaches past the point it sits on. buildArrowheadRenderSpec
+// sizes every style off max(8, strokeWidth * 3); the solid/open triangle is the
+// longest (2/3 of that beyond the tip). One generous number covers all nine.
+const lineEndingPad = (obj, strokeWidth) => {
+  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
+  if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return 0;
+  return Math.max(8, strokeWidth * 3) + strokeWidth;
+};
+
+const inflateAppBounds = (bounds, pad) => ({
+  minX: bounds.minX - pad,
+  minY: bounds.minY - pad,
+  maxX: bounds.maxX + pad,
+  maxY: bounds.maxY + pad,
+});
+
+const boundsOfPoints = (points, pad) => {
+  const xs = points.map((point) => Number(point?.x) || 0);
+  const ys = points.map((point) => Number(point?.y) || 0);
+  if (!xs.length) return null;
+  return {
+    minX: Math.min(...xs) - pad,
+    minY: Math.min(...ys) - pad,
+    maxX: Math.max(...xs) + pad,
+    maxY: Math.max(...ys) + pad,
+  };
+};
+
+/**
+ * The app-space (y-down) box the flattener's ink for `obj` fits inside, plus
+ * the box of the shape's BASE geometry (what /RD must point back to).
+ * Returns null for a shape this appearance path does not handle.
+ */
+const plainAppearanceGeometry = (obj) => {
+  const type = String(obj?.type || '').toLowerCase();
+  const strokeWidth = plainAppearanceStrokeWidth(obj);
+  const halfStroke = strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD;
+  const scaleX = Math.abs(Number(obj?.scaleX ?? 1) || 1);
+  const scaleY = Math.abs(Number(obj?.scaleY ?? 1) || 1);
+  const left = getObjNumber(obj, 'left');
+  const top = getObjNumber(obj, 'top');
+  if (type === 'rect') {
+    const width = Math.max(0, getObjNumber(obj, 'width') * scaleX);
+    const height = Math.max(0, getObjNumber(obj, 'height') * scaleY);
+    if (!(width > 0 && height > 0)) return null;
+    const base = { minX: left, minY: top, maxX: left + width, maxY: top + height };
+    return { base, bounds: inflateAppBounds(base, halfStroke) };
+  }
+  if (type === 'circle' || type === 'ellipse') {
+    const radius = Number(obj?.radius) || Math.max(
+      getObjNumber(obj, 'width') * scaleX,
+      getObjNumber(obj, 'height') * scaleY,
+    ) / 2 || 10;
+    const xRadius = (Number(obj?.rx) || radius) * scaleX;
+    const yRadius = (Number(obj?.ry) || radius) * scaleY;
+    if (!(xRadius > 0 && yRadius > 0)) return null;
+    const base = {
+      minX: left, minY: top, maxX: left + xRadius * 2, maxY: top + yRadius * 2,
+    };
+    return { base, bounds: inflateAppBounds(base, halfStroke) };
+  }
+  if (type === 'polygon' || type === 'polyline') {
+    const points = fabricPolygonWorldPoints(obj);
+    if (points.length < (type === 'polygon' ? 3 : 2)) return null;
+    const base = boundsOfPoints(points, 0);
+    const pad = polyJoinPad(points, strokeWidth, type === 'polygon')
+      + PLAIN_APPEARANCE_EXTRA_PAD
+      + (type === 'polyline' ? lineEndingPad(obj, strokeWidth) : 0);
+    return { base, bounds: boundsOfPoints(points, pad) };
+  }
+  if (type === 'line') {
+    const points = [
+      { x: getObjNumber(obj, 'x1'), y: getObjNumber(obj, 'y1') },
+      { x: getObjNumber(obj, 'x2'), y: getObjNumber(obj, 'y2') },
+    ];
+    const midpoint = obj?.data?.midpoint;
+    if (midpoint && Number.isFinite(Number(midpoint.x)) && Number.isFinite(Number(midpoint.y))) {
+      // The bezier control point reaches twice as far from the chord as the
+      // midpoint the user dragged (buildCurvedLineBody's quadratic).
+      points.push({
+        x: 2 * Number(midpoint.x) - (points[0].x + points[1].x) / 2,
+        y: 2 * Number(midpoint.y) - (points[0].y + points[1].y) / 2,
+      });
+    }
+    const base = boundsOfPoints(points, 0);
+    const pad = Math.max(strokeWidth / 2, lineEndingPad(obj, strokeWidth))
+      + PLAIN_APPEARANCE_EXTRA_PAD;
+    return { base, bounds: boundsOfPoints(points, pad) };
+  }
+  if (type === 'textbox' || type === 'text' || type === 'i-text') {
+    const width = Math.max(1, getObjNumber(obj, 'width', 200));
+    const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14));
+    const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
+    const base = { minX: left, minY: top, maxX: left + width, maxY: top + height };
+    // The last baseline can sit a descender below the box on a large font
+    // (drawFlattenedText only caps the LINE COUNT), so the appearance box
+    // keeps a third of an em of room on every side.
+    return { base, bounds: inflateAppBounds(base, halfStroke + fontSize * 0.35 + 1) };
+  }
+  return null;
+};
+
+/**
+ * Draw `fabricObj` through the print flattener onto a throwaway page and wrap
+ * the resulting operators in an /AP /N form. Returns null (and changes
+ * nothing) when the shape paints no ink or anything goes wrong - the caller
+ * then keeps its plain, appearance-less dict.
+ */
+const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fonts) => {
+  let scratch = null;
+  try {
+    // The size is irrelevant: every draw helper writes ABSOLUTE page
+    // coordinates (y flipped around the pageHeight passed in) and pdf-lib
+    // never clips to the page box. The form's /BBox is the real frame.
+    scratch = pdfDoc.addPage([1, 1]);
+    const drawn = drawFlattenedObject(scratch, fabricObj, pageHeight, fonts || {});
+    if (!drawn) return null;
+    const content = scratch.contentStream ? scratch.contentStream.getContentsString() : '';
+    if (!content.trim()) return null;
+    const resources = typeof scratch.node.Resources === 'function' ? scratch.node.Resources() : null;
+    const bbox = [
+      bounds.minX,
+      pageHeight - bounds.maxY,
+      bounds.maxX,
+      pageHeight - bounds.minY,
+    ];
+    const appearance = pdfDoc.context.flateStream(content, {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: bbox,
+      ...(resources ? { Resources: resources } : {}),
+    });
+    return { ref: pdfDoc.context.register(appearance), rect: bbox };
+  } catch (error) {
+    console.warn('Failed to build plain-shape appearance stream:', error);
+    return null;
+  } finally {
+    if (scratch) {
+      try {
+        const index = pdfDoc.getPages().indexOf(scratch);
+        if (index >= 0) pdfDoc.removePage(index);
+        if (scratch.contentStreamRef) pdfDoc.context.delete(scratch.contentStreamRef);
+        pdfDoc.context.delete(scratch.ref);
+      } catch { /* the scratch page is already gone from the tree */ }
+    }
+  }
+};
+
+/**
+ * Give `annotationDict` the flattener-built /AP (plus the matching /Rect and,
+ * when the subtype's geometry lives in /Rect, /RD). No-op when the shape
+ * already has an appearance (cloud, counter, ink) or cannot be drawn.
+ *
+ * @returns {boolean} whether an appearance was attached
+ */
+const applyPlainShapeAppearanceToDict = (pdfDoc, annotationDict, fabricObj, pageHeight, options = {}) => {
+  if (annotationDict.AP) return false;
+  const geometry = plainAppearanceGeometry(fabricObj);
+  if (!geometry || !geometry.bounds || !geometry.base) return false;
+  // Text needs real embedded fonts; without them the flattener cannot draw a
+  // glyph, so leave the bare /FreeText (its /DA) rather than an empty form.
+  const isText = ['textbox', 'text', 'i-text'].includes(String(fabricObj?.type || '').toLowerCase());
+  if (isText && !options.fonts?.regular) return false;
+  const appearance = buildFlattenedShapeAppearance(
+    pdfDoc,
+    fabricObj,
+    pageHeight,
+    geometry.bounds,
+    options.fonts,
+  );
+  if (!appearance) return false;
+  annotationDict.AP = pdfDoc.context.obj({ N: appearance.ref });
+  annotationDict.Rect = appearance.rect;
+  if (options.writeRectangleDifferences) {
+    // /RD [left, top, right, bottom]: the inset from the padded appearance box
+    // back to the base shape, in the writers' page frame (y-up), which is what
+    // the spec means whenever the shape is not tilted.
+    const baseRect = [
+      geometry.base.minX,
+      pageHeight - geometry.base.maxY,
+      geometry.base.maxX,
+      pageHeight - geometry.base.minY,
+    ];
+    annotationDict.RD = [
+      Math.max(0, baseRect[0] - appearance.rect[0]),
+      Math.max(0, appearance.rect[3] - baseRect[3]),
+      Math.max(0, appearance.rect[2] - baseRect[2]),
+      Math.max(0, baseRect[1] - appearance.rect[1]),
+    ];
+  }
+  return true;
+};
+
 /**
  * Create Square annotation (rectangle)
  */
@@ -2092,6 +2365,16 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       // A cloud rect paints its own scallops (see buildCloudAppearance); the
       // /Rect grows to the appearance box and /RD keeps the base rectangle.
       applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
+    } else if (!(Number(fabricObj?.angle) || 0)) {
+      // Plain rectangle: ship the flattener's own drawing so Quick Look /
+      // Quartz and poppler paint what the app paints. A TILTED rect still
+      // exports as today's axis-aligned /Square (this writer has never
+      // carried its angle) - giving it a rotated appearance without a
+      // matching /Rect would put the two out of step.
+      applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
+        writeRectangleDifferences: true,
+        fonts: options.flattenFonts,
+      });
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2236,6 +2519,13 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       // Counters never resolve as clouds, so this only ever replaces the
       // viewer-drawn oval of a plain /Circle with the engine's scallops.
       applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
+    } else if (!counterAppearance) {
+      // Plain circle: the flattener's own oval, so Quartz/poppler stop
+      // guessing. (The counter above already ships its pin appearance.)
+      applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
+        writeRectangleDifferences: true,
+        fonts: options.flattenFonts,
+      });
     }
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2277,8 +2567,6 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     const theta = (-(Number(fabricObj.angle) || 0) * Math.PI) / 180;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
-    const halfW = Math.abs(rx * cos) + Math.abs(ry * sin);
-    const halfH = Math.abs(rx * sin) + Math.abs(ry * cos);
     const pdfCenterY = pageHeight - centerY;
 
     const strokePaint = fabricObj.stroke || '#000000';
@@ -2287,6 +2575,16 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     const fillColor = hasFill ? hexToRGB(fabricObj.fill) : null;
     const strokeWidth = Number(fabricObj.strokeWidth) || 1;
     const alpha = paintAlpha(strokePaint, fabricObj.opacity);
+    // 2026-09-09: the /BBox used to be the EXACT ellipse box, so the outer half
+    // of the stroke was clipped away by the form - measured 1.25pt of missing
+    // outline (exactly half a 2.5pt stroke) against the flattened print in
+    // poppler, cairo and Quartz. Pad the box by that half stroke and record
+    // the pad in /RD so a re-import still recovers rx / ry.
+    const strokePad = strokePaint && strokePaint !== 'transparent'
+      ? strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD
+      : 0;
+    const halfW = Math.abs((rx + strokePad) * cos) + Math.abs((ry + strokePad) * sin);
+    const halfH = Math.abs((rx + strokePad) * sin) + Math.abs((ry + strokePad) * cos);
 
     // UX 2026-09-09: a cloud ellipse's /AP paints the engine's scallops
     // (buildCloudAppearance) instead of this plain oval - same /Matrix tilt
@@ -2324,7 +2622,10 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
         Type: 'XObject',
         Subtype: 'Form',
         FormType: 1,
-        BBox: [0, 0, 2 * rx, 2 * ry],
+        // Padded so the outer half of the stroke is not clipped; /RD below
+        // records the pad. The rotation pivot stays the ellipse centre, which
+        // is the centre of this box too, so /Matrix is unchanged.
+        BBox: [-strokePad, -strokePad, 2 * rx + strokePad, 2 * ry + strokePad],
         Matrix: [cos, sin, -sin, cos, 0, 0],
         Resources: resources,
       });
@@ -2350,7 +2651,15 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
-    if (cloudAppearance?.rd) annotationDict.RD = cloudAppearance.rd;
+    if (cloudAppearance?.rd) {
+      annotationDict.RD = cloudAppearance.rd;
+    } else if (strokePad > 0) {
+      // The pad from the appearance box back to the base ellipse, measured in
+      // the un-rotated /BBox frame (the same convention the cloud writer uses
+      // for a tilted shape; identical to the spec's page-space definition
+      // whenever there is no tilt).
+      annotationDict.RD = [strokePad, strokePad, strokePad, strokePad];
+    }
     applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
@@ -2635,6 +2944,13 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
         I: PDFNumber.of(fabricObj.cloudIntensity || 2),
       });
       annotationDict.IT = PDFName.of('PolygonCloud');
+    } else {
+      // Plain polygon: the flattener's own outline/fill. /Vertices stays the
+      // authority for geometry, so no /RD - only /Rect grows to the padded
+      // appearance box (a sharp corner's miter spike included).
+      applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
+        fonts: options.flattenFonts,
+      });
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2688,6 +3004,11 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       // polylines with /LE used to re-export bare).
       applyLineEndingsToDict(annotationDict, fabricObj);
       applyLineEndingInteriorColor(annotationDict, fabricObj, color);
+      // Plain polyline: the flattener's own body + endings, so a viewer that
+      // does not synthesise /LE heads still shows them.
+      applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
+        fonts: options.flattenFonts,
+      });
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2792,6 +3113,16 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       };
     }
 
+    // Plain line / arrow: the flattener's own body, curve and head styles, so
+    // Quick Look shows the arrow instead of nothing and no viewer has to guess
+    // a head shape. Callout leader lines are left alone - a callout is a
+    // composite whose parts are reassembled from its own metadata.
+    if (!options.calloutMetadataJson && !options.isCalloutPart) {
+      applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
+        fonts: options.flattenFonts,
+      });
+    }
+
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
   } catch (e) {
     console.error('Error creating line annotation:', e);
@@ -2864,6 +3195,18 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       annotationDict[PDF_CALLOUT_METADATA_KEY] = PDFString.of(options.calloutMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
+      // Plain text box: the flattener's own glyphs, box, underline and
+      // strikethrough. A /DA string alone left Quick Look blank, and no viewer
+      // can express the decorations. /RD carries the inset back to the text
+      // box so a metadata-less re-import still gets the box the user drew.
+      // (Tilted text keeps today's bare /FreeText: this writer's /Rect has
+      // never carried an angle.)
+      if (!(Number(fabricObj?.angle) || 0) && !options.isCalloutPart) {
+        applyPlainShapeAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight, {
+          writeRectangleDifferences: true,
+          fonts: options.flattenFonts,
+        });
+      }
     }
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2924,9 +3267,15 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   const pageNumber = calloutObj.pageNumber || originalCallout.pageNumber || null;
   const buildCalloutOptions = (part) => {
     const calloutMetadataJson = serializePdfCalloutMetadata(originalCallout, pageNumber, part);
-    if (!calloutMetadataJson) return {};
+    // `isCalloutPart` is stamped even when the metadata blob could not be
+    // built: a callout is a COMPOSITE that the flatten path draws as one piece
+    // (drawFlattenedCallout), so its leader lines and text box must not pick up
+    // the per-shape /AP the plain writers add - the appearance box pad would
+    // also push a leader that starts on the page edge off the page.
+    if (!calloutMetadataJson) return { isCalloutPart: true };
     const calloutMetadata = JSON.parse(calloutMetadataJson);
     return {
+      isCalloutPart: true,
       calloutMetadataJson,
       calloutMetadata,
       name: `${calloutMetadata.id}-${part}`,
@@ -3111,7 +3460,11 @@ const readPdfNativeNestedNumberArrays = (pdfDoc, value) => {
 const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
   const dict = lookupPdfValue(pdfDoc, ref);
   if (!(dict instanceof PDFDict)) return false;
-  const crop = page.getCropBox();
+  // The SAME normalised CropBox ∩ MediaBox frame the writers author in (see
+  // getTextMarkupPageGeometry). Reading the raw /CropBox here meant a legally
+  // reversed box (negative width/height) failed EVERY annotation and silently
+  // emptied the export.
+  const crop = getTextMarkupPageGeometry(page, 0);
   const bounds = {
     minX: Number(crop.x), minY: Number(crop.y),
     maxX: Number(crop.x) + Number(crop.width),
@@ -5029,6 +5382,26 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
   return diagnostics;
 };
 
+// The font set drawFlattenedText picks from. Shared by the print flattener and
+// the plain-shape /AP builder (a text box's appearance IS the flattener's
+// output), so both draw a bold / italic / Times / Courier run identically.
+// UX 2026-07-17: the oblique variants exist so italic and bold-italic text
+// keeps its on-screen slant (flatten used to force regular Helvetica).
+const embedFlattenFonts = async (pdfDoc) => ({
+  regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+  bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+  oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
+  boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+  timesRegular: await pdfDoc.embedFont(StandardFonts.TimesRoman),
+  timesBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+  timesItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+  timesBoldItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
+  courierRegular: await pdfDoc.embedFont(StandardFonts.Courier),
+  courierBold: await pdfDoc.embedFont(StandardFonts.CourierBold),
+  courierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
+  courierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
+});
+
 export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   pdfFile,
   annotationsByPage,
@@ -5040,23 +5413,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const screenAnnotationsByPage = options?.screenAnnotationsByPage || annotationsByPage || {};
   const arrayBuffer = await pdfFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const fonts = {
-    regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
-    bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
-    // UX 2026-07-17: oblique variants embedded so italic / bold-italic text
-    // annotations print with their on-screen slant (Bug: flatten always used
-    // regular Helvetica for text, dropping weight and style).
-    oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
-    boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
-    timesRegular: await pdfDoc.embedFont(StandardFonts.TimesRoman),
-    timesBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
-    timesItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
-    timesBoldItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
-    courierRegular: await pdfDoc.embedFont(StandardFonts.Courier),
-    courierBold: await pdfDoc.embedFont(StandardFonts.CourierBold),
-    courierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
-    courierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
-  };
+  const fonts = await embedFlattenFonts(pdfDoc);
   // Rebuild the caller's payload defensively. Survey Markers stay in the same
   // all-visible print set as survey, space, and region shapes.
   const printablePayload = buildPrintableRegularAnnotationPayload({
@@ -5320,6 +5677,16 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
 
+    // The plain-shape /AP for a text box is drawn by the print flattener, which
+    // needs real embedded fonts. Embed the same set the flatten path uses, and
+    // only when the export actually carries a text annotation (font embedding
+    // costs bytes in every exported file otherwise).
+    const exportHasTextAnnotation = (exportPlan.items || []).some((item) => (
+      item?.type !== 'callout'
+      && ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
+    ));
+    const flattenFonts = exportHasTextAnnotation ? await embedFlattenFonts(pdfDoc) : null;
+
     const deletedPdfAnnotations = [
       ...new Map(
         (Array.isArray(options?.deletedPdfAnnotations)
@@ -5427,13 +5794,18 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       const appAnnotationMetadataJson = (!isCounter && item.type !== 'callout')
         ? serializePdfAppAnnotationMetadata(obj, item)
         : null;
-      const appAnnotationOptions = appAnnotationMetadataJson
-        ? {
-            appAnnotationMetadataJson,
-            appAnnotationMetadata: JSON.parse(appAnnotationMetadataJson),
-            name: item.id || getObjectId(obj),
-          }
-        : {};
+      const appAnnotationOptions = {
+        ...(appAnnotationMetadataJson
+          ? {
+              appAnnotationMetadataJson,
+              appAnnotationMetadata: JSON.parse(appAnnotationMetadataJson),
+              name: item.id || getObjectId(obj),
+            }
+          : {}),
+        // Fonts for the plain-shape /AP of a text box (null when this export
+        // carries no text annotation).
+        ...(flattenFonts ? { flattenFonts } : {}),
+      };
 
       // UX 2026-07-17 (subtype-preserving export for edited imports): when an
       // EDITED imported copy carries a native subtype whose in-app proxy is a

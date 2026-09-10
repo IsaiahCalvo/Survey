@@ -329,6 +329,39 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
         out[key] = jsonSafe(geometry[key], 0, GEOMETRY_METADATA_ARRAY_LIMIT);
       }
     });
+    // 2026-09-09: `radius` and `rx`/`ry` are mutually exclusive ways to size
+    // the same oval, and the two sides of the round trip choose differently:
+    // the importer rebuilds an oval from /Rect as a CIRCLE (radius = the small
+    // half-axis, with scaleX/scaleY stretching it), while an app ellipse
+    // carries rx/ry. Restoring only the keys the metadata holds left BOTH
+    // encodings on the object, and the restored scaleX (1 for an unresized
+    // shape) then cancelled the importer's stretch while its stale `radius`
+    // still won in the cloud engine - a RESIZED cloud ellipse came back as a
+    // circle with the wrong crown count even WITH our metadata. The metadata
+    // is the authority: drop the encoding it did not write, and put the object
+    // back on the fabric type the app used so the engine reads the right one.
+    const OVALS = ['ellipse', 'circle'];
+    const authoredType = String(metadata.fabricType || '').toLowerCase();
+    const importedType = String(fabricObj.type || '').toLowerCase();
+    if (OVALS.includes(authoredType) || OVALS.includes(importedType)) {
+      const hasRadius = geometry.radius !== undefined;
+      const hasRadii = geometry.rx !== undefined || geometry.ry !== undefined;
+      if (hasRadii && !hasRadius) {
+        delete out.radius;
+      } else if (hasRadius && !hasRadii) {
+        delete out.rx;
+        delete out.ry;
+      }
+      // The importer's scale is part of ITS encoding (radius + stretch), so it
+      // must not survive next to the app's own radii. A geometry snapshot that
+      // omits scaleX/scaleY means the app object was unscaled - fabric's
+      // default - not "keep whatever the importer computed".
+      out.scaleX = geometry.scaleX !== undefined ? jsonSafe(geometry.scaleX) : 1;
+      out.scaleY = geometry.scaleY !== undefined ? jsonSafe(geometry.scaleY) : 1;
+      if (OVALS.includes(authoredType) && OVALS.includes(importedType) && authoredType !== importedType) {
+        out.type = authoredType;
+      }
+    }
   }
 
   if (metadata.flags?.lineEnding1 && out.lineEnding1 === undefined) {

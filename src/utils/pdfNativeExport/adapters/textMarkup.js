@@ -27,14 +27,86 @@ const normalizedRightAngle = (value) => {
   return [0, 90, 180, 270].includes(angle) ? angle : 0;
 };
 
+// PDF 32000-1 §7.9.5: a rectangle's corners may be given in EITHER order, so
+// [x1 y1 x0 y0] is a legal /CropBox. pdf-lib's asRectangle() subtracts blindly
+// and hands back a negative width/height; pdf.js normalises (lookupNormalRect)
+// and the app renders such a page perfectly. An un-normalised box gave the
+// exporter negative-height page bounds, which made every /Rect fail
+// exportAnnotationRefHasValidGeometry - a silent, total annotation loss (the
+// export came out with 0 /Annots and the flattened print blank).
+const normalizeBoxRect = (box) => {
+  if (!box) return null;
+  const x = Number(box.x);
+  const y = Number(box.y);
+  const width = Number(box.width);
+  const height = Number(box.height);
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  return {
+    x: Math.min(x, x + width),
+    y: Math.min(y, y + height),
+    width: Math.abs(width),
+    height: Math.abs(height),
+  };
+};
+
+const usableBoxRect = (box) => Boolean(box) && box.width > 0 && box.height > 0;
+
+const intersectBoxRects = (first, second) => {
+  const x = Math.max(first.x, second.x);
+  const y = Math.max(first.y, second.y);
+  const right = Math.min(first.x + first.width, second.x + second.width);
+  const bottom = Math.min(first.y + first.height, second.y + second.height);
+  return { x, y, width: right - x, height: bottom - y };
+};
+
+/**
+ * The page frame every annotation writer and the print flattener author in.
+ *
+ * It must be the frame the APP shows, which is pdf.js' default viewport, and
+ * pdf.js (PDF 32000-1 §14.11.2, Page#view) uses CropBox INTERSECT MediaBox
+ * with both boxes normalised - NOT the raw /CropBox. A CropBox that is larger
+ * than the MediaBox, or hangs off it, therefore put every exported annotation
+ * 60-78pt away from where the app draws it in both the annotated and the
+ * flattened output. Same fallback order as pdf.js: an empty intersection or an
+ * unusable box falls back to the MediaBox rather than dropping annotations.
+ */
 export function getTextMarkupPageGeometry(page, fallbackPageHeight = 0) {
   const size = page?.getSize?.() || { width: 0, height: Number(fallbackPageHeight) || 0 };
-  const crop = page?.getCropBox?.() || { x: 0, y: 0, width: size.width, height: size.height };
+  const sizeBox = normalizeBoxRect({ x: 0, y: 0, width: size.width, height: size.height });
+  let media = null;
+  try {
+    media = normalizeBoxRect(page?.getMediaBox?.());
+  } catch {
+    media = null;
+  }
+  if (!usableBoxRect(media)) {
+    if (media) console.warn('[pdf-export] unusable /MediaBox; falling back to the page size');
+    media = usableBoxRect(sizeBox)
+      ? sizeBox
+      : { x: 0, y: 0, width: Number(size.width) || 0, height: Number(fallbackPageHeight) || 0 };
+  }
+  let crop = null;
+  try {
+    crop = normalizeBoxRect(page?.getCropBox?.());
+  } catch {
+    crop = null;
+  }
+  let box = media;
+  if (usableBoxRect(crop)) {
+    const intersection = intersectBoxRects(crop, media);
+    if (usableBoxRect(intersection)) {
+      box = intersection;
+    } else {
+      console.warn('[pdf-export] empty /CropBox ∩ /MediaBox intersection; using the /MediaBox');
+    }
+  } else if (crop) {
+    console.warn('[pdf-export] unusable /CropBox; using the /MediaBox');
+  }
   return {
-    x: Number(crop.x) || 0,
-    y: Number(crop.y) || 0,
-    width: Number(crop.width) || Number(size.width) || 0,
-    height: Number(crop.height) || Number(size.height) || Number(fallbackPageHeight) || 0,
+    x: box.x,
+    y: box.y,
+    width: box.width || Number(size.width) || 0,
+    height: box.height || Number(size.height) || Number(fallbackPageHeight) || 0,
     rotation: normalizedRightAngle(page?.getRotation?.()?.angle),
   };
 }
