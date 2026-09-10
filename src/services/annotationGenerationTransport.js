@@ -13,7 +13,7 @@ const uuid = value => typeof value === 'string' && UUID.test(value);
 const generation = value => value === null || uuid(value);
 const text = value => typeof value === 'string' && value.length > 0 && value.length <= 512;
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const ERROR_CODES = new Set(['SG001', 'SG002', 'SG003', 'SG004', '42501', '40001', '55P03', '23505',
+const ERROR_CODES = new Set(['SG001', 'SG002', 'SG003', 'SG004', 'SG005', '42501', '40001', '55P03', '23505',
   '23514', '22023', '25001', '54000', '57014', 'PGRST202', 'PGRST301', 'PGRST302',
   'ETIMEDOUT', 'ANNOTATION_ACTOR_MISMATCH']);
 const error = (code = 'ANNOTATION_GENERATION_PROTOCOL') => Object.assign(new Error(

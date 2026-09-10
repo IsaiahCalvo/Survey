@@ -30,6 +30,8 @@ import {
   annotationOutboxRecordKey,
 } from './annotationDocOutbox.js';
 import { bindAnnotationGenerationOutbox } from './annotationGenerationOutbox.js';
+import { createAnnotationGenerationAggregateTransport }
+  from './annotationGenerationAggregateTransport.js';
 import { createAnnotationGenerationTransport } from './annotationGenerationTransport.js';
 import { readCheckedGenerationBootstrap } from './documentGenerationReader.js';
 import { SURVEY_V2_ROOTS, materializeSurveyCrdtV2, updateSurveyMarkersV2, updateSurveySpacesV2 }
@@ -147,18 +149,42 @@ function generationCapacityError() {
   ), { code: 'ANNOTATION_GENERATION_CAPACITY' });
 }
 
-function isGenerationCapacityAdmission(state, error) {
-  return state.generationTransport && state.contentModelVersion === 2
-    && String(error?.code || '') === 'SG004';
+function generationAdmissionRequiredError() {
+  return Object.assign(new Error(
+    'This PDF generation requires checked aggregate saves. Pending changes need recovery.',
+  ), { code: 'ANNOTATION_GENERATION_ADMISSION_REQUIRED' });
 }
 
-function enterGenerationCapacityState(state) {
+function generationMaintenanceError(reason = null) {
+  const error = Object.assign(new Error(
+    'This document needs checked maintenance before more cloud saves.',
+  ), { code: 'ANNOTATION_AGGREGATE_WORK_LIMIT' });
+  if (typeof reason === 'string' && reason.length > 0) error.reason = reason;
+  return error;
+}
+
+function isGenerationCapacityAdmission(state, error) {
+  if (!state.generationTransport || state.contentModelVersion !== 2) return false;
+  const code = String(error?.code || '');
+  return code === 'SG004' || code === 'SG005'
+    || (state.aggregateGenerationTransport && code === 'ANNOTATION_AGGREGATE_WORK_LIMIT');
+}
+
+function enterGenerationCapacityState(state, cause = null) {
   if (state.capacityError) return state.capacityError;
   const wasHealthy = state.syncHealthy;
-  state.capacityError = generationCapacityError();
+  const code = String(cause?.code || '');
+  state.capacityError = code === 'SG005'
+    ? generationAdmissionRequiredError()
+    : code === 'ANNOTATION_AGGREGATE_WORK_LIMIT'
+      ? generationMaintenanceError(cause?.reason)
+      : generationCapacityError();
   if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
   if (state.outboxReplayTimer) { clearTimeout(state.outboxReplayTimer); state.outboxReplayTimer = null; }
   clearGapRepairTimer(state);
+  if (state.aggregateGenerationTransport || state.capacityError.code === 'ANNOTATION_GENERATION_ADMISSION_REQUIRED') {
+    clearEraseOutboxRetry(state);
+  }
   markSyncHealth(state, false, state.capacityError);
   if (!wasHealthy) notifySyncStatus(state);
   return state.capacityError;
@@ -350,6 +376,7 @@ export async function openAnnotationDoc({
   eraseEffectConsumer = null,
   eraseOutboxRetryBaseMs = 250,
   eraseOutboxRetryMaxMs = 30_000,
+  aggregateRequest = null,
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
   if (!actorUserId) throw new Error('openAnnotationDoc: actorUserId required');
@@ -369,6 +396,18 @@ export async function openAnnotationDoc({
   const contentModelVersion = checkedBootstrap?.contentModelVersion ?? 1;
   const contentModelProtocolModern = checkedBootstrap != null
     && Object.hasOwn(checkedBootstrap, 'contentModelVersion');
+  const useAggregateGeneration = aggregateRequest !== null;
+  if (useAggregateGeneration && (
+    typeof aggregateRequest !== 'function'
+    || pdfGenerationId === null
+    || !contentModelProtocolModern
+    || contentModelVersion !== 2
+    || typeof supabase?.auth?.getSession !== 'function'
+  )) {
+    throw Object.assign(new Error(
+      'Aggregate annotation admission requires an authenticated model 2 PDF generation.',
+    ), { code: 'ANNOTATION_AGGREGATE_INPUT' });
+  }
 
   // Default: a dedicated registry-managed Y.Doc for this document's flat store.
   const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}:content-model:${contentModelVersion}`}`;
@@ -396,6 +435,7 @@ export async function openAnnotationDoc({
     contentModelVersion,
     contentModelProtocolModern,
     generationTransport: null,
+    aggregateGenerationTransport: null,
     generationBlocked: false,
     generationError: null,
     generationRetirement: null,
@@ -529,6 +569,17 @@ export async function openAnnotationDoc({
     ...(contentModelProtocolModern ? { contentModelVersion } : {}),
     request: (name, params, label) => withActorRequest(state, () => state.supabase.rpc(name, params), label),
   });
+  if (useAggregateGeneration) {
+    state.aggregateGenerationTransport = createAnnotationGenerationAggregateTransport({
+      receiptVersion: 2,
+      request: call => withAggregateActorRequest(
+        state,
+        aggregateRequest,
+        call,
+        'aggregate annotation WAL append',
+      ),
+    });
+  }
 
   // Everything below can fail (network, storage). A partially-opened state must
   // not outlive the failure: the update observer would keep appending ops from a
@@ -771,6 +822,7 @@ export async function openAnnotationDoc({
         if (
           state.destroyed
           || state.capacityError
+          || state.aggregateGenerationTransport
           || state.editEpoch === state.snapshottedEpoch
           || state.pendingAppends > 0
         ) return;
@@ -1148,7 +1200,7 @@ function withCloudRequest(state, request, label) {
   });
 }
 
-async function withActorRequest(state, createRequest, label) {
+async function captureActorAccessToken(state, label, { required = false } = {}) {
   assertStateWritable(state);
   if (state.generationTransport) {
     try { await state.outbox.assertScopeCurrent(state.documentId, state.actorUserId, state.documentIncarnation); }
@@ -1161,7 +1213,12 @@ async function withActorRequest(state, createRequest, label) {
   // Older local test adapters have no auth transport. Production Supabase
   // clients must bind each request to the actor who owns this handle/outbox.
   if (typeof state.supabase.auth?.getSession !== 'function') {
-    return withCloudRequest(state, createRequest(), label);
+    if (required) {
+      const mismatch = new Error('Authenticated annotation requests require an actor session');
+      mismatch.code = 'ANNOTATION_ACTOR_MISMATCH';
+      throw mismatch;
+    }
+    return null;
   }
   const { data, error } = await withCloudRequest(
     state, state.supabase.auth.getSession(), `${label} session`,
@@ -1173,6 +1230,13 @@ async function withActorRequest(state, createRequest, label) {
     throw mismatch;
   }
   assertStateWritable(state);
+  return session.access_token;
+}
+
+async function withActorRequest(state, createRequest, label) {
+  const accessToken = await captureActorAccessToken(state, label);
+  assertStateWritable(state);
+  if (accessToken === null) return withCloudRequest(state, createRequest(), label);
   const request = createRequest();
   if (typeof request?.setHeader !== 'function') {
     throw new Error('Authenticated annotation requests require request-local headers');
@@ -1180,8 +1244,26 @@ async function withActorRequest(state, createRequest, label) {
   // Request-local only: do not change the shared client's auth or headers.
   // Capturing the JWT also closes the account-switch race before actual fetch.
   return withCloudRequest(
-    state, request.setHeader('Authorization', `Bearer ${session.access_token}`), label,
+    state, request.setHeader('Authorization', `Bearer ${accessToken}`), label,
   );
+}
+
+async function withAggregateActorRequest(state, request, call, label) {
+  const accessToken = await captureActorAccessToken(state, label, { required: true });
+  assertStateWritable(state);
+  if (call.signal?.aborted) {
+    throw Object.assign(new Error('Aggregate annotation request was not confirmed.'), {
+      code: 'ANNOTATION_AGGREGATE_UNCONFIRMED',
+    });
+  }
+  const headers = Object.freeze({
+    ...call.headers,
+    Authorization: `Bearer ${accessToken}`,
+  });
+  // The aggregate transport owns one AbortSignal across auth, dispatch and
+  // response-body reads. Returning the callback promise lets it cancel a late
+  // Response body instead of hiding that Response behind a second timeout.
+  return request(Object.freeze({ ...call, headers }));
 }
 
 function isGenerationFailure(error) {
@@ -2162,7 +2244,27 @@ function currentSyncStatus(state) {
       : 'error',
     queueSize,
     ...(state.capacityError ? { errorCode: state.capacityError.code } : {}),
+    ...(state.capacityError?.reason ? { errorReason: state.capacityError.reason } : {}),
   };
+}
+
+function aggregateCloudAccepted(state, caughtUp) {
+  return caughtUp === true
+    && !state.deleted
+    && !state.generationBlocked
+    && !state.capacityError
+    && state.syncHealthy
+    && !state.durabilityGap
+    && !state.repairCheckpointUpdate
+    && state.pendingAppends === 0
+    && state.appendRecords.size === 0
+    && compareSequence(state.coveredSeq, state.lastSeq) === 0
+    && state.unresolvedReceiptConflicts.size === 0
+    && !state.quarantinedLocalHistory
+    && state.openHistoryQuarantineEvidenceKeys.size === 0
+    && !state.legacyRecoveryPending
+    && state.legacyUnresolvedEntries === 0
+    && state.editEpoch <= state.acceptedEditEpoch;
 }
 
 function captureNotReady(reason) {
@@ -2462,6 +2564,7 @@ function scheduleGapRepair(state) {
     state.destroyed
     || state.generationBlocked
     || state.capacityError
+    || state.aggregateGenerationTransport
     || !state.durabilityGap
     || !state.repairCheckpointUpdate
     || state.repairTimer
@@ -2745,7 +2848,7 @@ async function replayOutbox(state) {
             laterRecord.checkpointUpdate = encodeSnapshot(state.stagedDoc);
           }
         }
-        enterGenerationCapacityState(state);
+        enterGenerationCapacityState(state, error);
         return;
       }
       if (state.generationBlocked || isGenerationFailure(error)) {
@@ -2936,7 +3039,7 @@ async function resolveAmbiguousAppends(state) {
         state.durabilityGap = true;
         state.durabilityGapGeneration += 1;
         setRepairCheckpoint(state, record.checkpointUpdate, record.editEpoch);
-        enterGenerationCapacityState(state);
+        enterGenerationCapacityState(state, error);
         return { status: 'capacity' };
       }
       if (String(error?.code || '') === '23505') {
@@ -3156,7 +3259,7 @@ function enqueueAppend(
         state.durabilityGap = true;
         state.durabilityGapGeneration += 1;
         setRepairCheckpoint(state, checkpointUpdate, editEpoch);
-        enterGenerationCapacityState(state);
+        enterGenerationCapacityState(state, err);
         return;
       }
       if (state.generationBlocked || isGenerationFailure(err)) {
@@ -3199,7 +3302,12 @@ function enqueueAppend(
       // survives — this is BL-24's fix: a dropped op no longer relies on the debounce
       // + a clean unmount. Also surface the failure so the UI can stop claiming
       // "saved" while writes are failing.
-      console.warn('[annotationDocSync] append failed — forcing checkpoint', err?.message);
+      console.warn(
+        state.aggregateGenerationTransport
+          ? '[annotationDocSync] aggregate append failed — exact receipt kept for retry'
+          : '[annotationDocSync] append failed — forcing checkpoint',
+        err?.message,
+      );
       if (String(err?.code || '') === 'ETIMEDOUT') {
         record.status = 'ambiguous';
       }
@@ -3211,6 +3319,14 @@ function enqueueAppend(
         await persistOutboxRecord(state, record).catch((persistError) => {
           console.warn('[annotationDocSync] ambiguous outbox status persistence failed', persistError?.message);
         });
+      }
+      if (state.aggregateGenerationTransport) {
+        // Aggregate admission must resolve the exact WAL receipt. Uploading an
+        // old direct snapshot here would bypass admission and could falsely
+        // cover bytes whose aggregate request is still unconfirmed.
+        if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+        scheduleOutboxReplay(state, { delayed: true });
+        return;
       }
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
       const snapshotResult = await writeSnapshot(
@@ -3504,15 +3620,45 @@ async function appendOp(state, record) {
     checkpointUpdate,
     editEpoch,
   } = record;
-  const row = {
-    document_id: state.documentId,
-    client_id: record.writerId,
-    client_seq: record.clientSeq,
-    data: bytesToPgHex(update),
-  };
   let data;
   let error;
-  if (state.generationTransport) {
+  if (state.aggregateGenerationTransport) {
+    const controller = new AbortController();
+    const timeoutMs = Math.max(1, Number(state.requestTimeoutMs) || CLOUD_REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let receipt;
+    try {
+      receipt = await state.aggregateGenerationTransport.submit({
+        documentId: state.documentId,
+        generationId: state.pdfGenerationId,
+        contentModelVersion: 2,
+        actorUserId: state.actorUserId,
+        writerId: record.writerId,
+        clientSeq: String(record.clientSeq),
+        update,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    record.seq = sequence(receipt.seq);
+    if (!receipt.isCurrent || state.generationBlocked) {
+      // Receipt v2 proves these exact old-generation bytes were accepted. It
+      // does not authorize their projection or effects in the current PDF.
+      try { await state.outbox.settleAccepted({ ...record, status: 'accepted' }); }
+      catch (failure) { if (!failure.acceptedEvidenceSaved) throw failure; }
+      record.status = 'accepted';
+      await retireGenerationState(state, receipt.isCurrent ? null : receipt.currentGenerationId);
+      throw state.generationError;
+    }
+    data = { seq: receipt.seq };
+  } else if (state.generationTransport) {
+    const row = {
+      document_id: state.documentId,
+      client_id: record.writerId,
+      client_seq: record.clientSeq,
+      data: bytesToPgHex(update),
+    };
     const receipt = await generationCall(state, 'append', { writerId: record.writerId, clientSeq: record.clientSeq, data: row.data });
     record.seq = receipt.seq;
     if (!receipt.isCurrent || state.generationBlocked) {
@@ -3526,6 +3672,12 @@ async function appendOp(state, record) {
     }
     data = { seq: receipt.seq };
   } else if (typeof state.supabase.rpc === 'function') {
+    const row = {
+      document_id: state.documentId,
+      client_id: record.writerId,
+      client_seq: record.clientSeq,
+      data: bytesToPgHex(update),
+    };
     ({ data, error } = await withActorRequest(
       state,
       () => state.supabase.rpc('append_annotation_update', {
@@ -3537,6 +3689,12 @@ async function appendOp(state, record) {
       'annotation WAL append',
     ));
   } else {
+    const row = {
+      document_id: state.documentId,
+      client_id: record.writerId,
+      client_seq: record.clientSeq,
+      data: bytesToPgHex(update),
+    };
     ({ data, error } = await withActorRequest(
       state,
       () => state.supabase
@@ -3594,10 +3752,19 @@ async function appendOp(state, record) {
     if (compareSequence(assignedSeq, state.lastSeq) > 0) state.lastSeq = assignedSeq;
     // The server-assigned immediate successor proves there is no unseen row
     // between the last contiguous baseline and this already-applied local op.
-    if (compareSequence(assignedSeq, nextAnnotationSequence(state.coveredSeq)) === 0) state.coveredSeq = assignedSeq;
+    if (compareSequence(assignedSeq, nextAnnotationSequence(state.coveredSeq)) === 0) {
+      state.coveredSeq = assignedSeq;
+    } else if (state.aggregateGenerationTransport
+      && compareSequence(assignedSeq, state.coveredSeq) > 0) {
+      const catchupError = Object.assign(new Error('Checked annotation catch-up is required.'), {
+        code: 'ANNOTATION_GENERATION_CATCHUP_REQUIRED',
+      });
+      markSyncHealth(state, false, catchupError);
+      void catchUpGenerated(state);
+    }
   }
   state.opsSinceSnapshot += 1;
-  if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
+  if (!state.aggregateGenerationTransport && state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
     state.opsSinceSnapshot = 0;
     const repairsGap = state.durabilityGap;
     const result = await writeSnapshot(state, {
@@ -3625,7 +3792,8 @@ async function finalizeSnapshotResult(state, result) {
 
 // Debounce a full-state checkpoint after edits settle. Cheap to call on every op.
 function scheduleSnapshot(state) {
-  if (state.destroyed || state.generationBlocked || state.capacityError) return;
+  if (state.destroyed || state.generationBlocked || state.capacityError
+    || state.aggregateGenerationTransport) return;
   if (state.snapshotTimer) clearTimeout(state.snapshotTimer);
   state.snapshotTimer = setTimeout(() => {
     state.snapshotTimer = null;
@@ -3650,6 +3818,15 @@ function scheduleSnapshot(state) {
 // which drops those ops on the next reopen (they're skipped by the seq>at_seq
 // tail read). The chain guarantees the last write to land is always the freshest.
 function writeSnapshot(state, options = {}) {
+  if (state.aggregateGenerationTransport) {
+    return Promise.resolve({
+      ok: false,
+      aggregateManaged: true,
+      permissionDenied: false,
+      containsUnacceptedPrefix: Boolean(options.repairsGap),
+      error: null,
+    });
+  }
   const sealed = {
     ...options,
     atSeq: state.coveredSeq,
@@ -4047,7 +4224,7 @@ async function writeSnapshotNow(state, {
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
     } catch (err) {
       if (isGenerationCapacityAdmission(state, err)) {
-        const capacityError = enterGenerationCapacityState(state);
+        const capacityError = enterGenerationCapacityState(state, err);
         return {
           ok: false,
           capacityExceeded: true,
@@ -4194,9 +4371,14 @@ function subscribeRealtime(state) {
           // found every remote row is not complete while a known local WAL gap
           // is still awaiting its authoritative checkpoint (or rollback).
           const hadDurabilityGap = state.durabilityGap;
-          if (hadDurabilityGap) {
+          if (hadDurabilityGap && !state.aggregateGenerationTransport) {
             const result = await writeSnapshot(state, captureSnapshotOptions(state));
             await finalizeSnapshotResult(state, result);
+          } else if (hadDurabilityGap) {
+            // A reconnect may reveal the accepted row in the ordered tail. If
+            // it did not, replay the same outbox receipt; never repair an
+            // aggregate write gap through the old snapshot endpoint.
+            scheduleOutboxReplay(state);
           }
           if (state.destroyed || state.generationBlocked || catchupGeneration !== state.realtimeCatchupGeneration) return;
           state.realtimePhase = 'ready';
@@ -4242,10 +4424,18 @@ function clearEraseOutboxRetry(state) {
   }
 }
 
+function eraseOutboxPausedForAdmission(state) {
+  return Boolean(state.capacityError && (
+    state.aggregateGenerationTransport
+    || state.capacityError.code === 'ANNOTATION_GENERATION_ADMISSION_REQUIRED'
+  ));
+}
+
 function scheduleEraseOutboxRetry(state) {
   if (
     state.destroyed
     || state.eraseOutboxClosing
+    || eraseOutboxPausedForAdmission(state)
     || !state.eraseEffectConsumer
     || state.eraseOutboxRetryTimer
     || pendingEraseOutboxCount(state.doc, state.actorUserId) === 0
@@ -4270,6 +4460,7 @@ function queueEraseOutboxDrain(state, options = {}) {
     || !state.onDocUpdate
     || state.destroyed
     || state.eraseOutboxClosing
+    || eraseOutboxPausedForAdmission(state)
   ) {
     return Promise.resolve({
       status: 'unavailable',
@@ -4282,9 +4473,16 @@ function queueEraseOutboxDrain(state, options = {}) {
     .then(() => drainEraseOutboxOnDoc({
       ...options,
       doc: state.doc,
-      executeEffect: state.eraseEffectConsumer,
+      executeEffect: (effect, context) => {
+        // Validation happens once per outbox entry. Recheck immediately before
+        // each external effect so a pause or retirement that lands while an
+        // earlier effect is in flight cannot start the next destination.
+        if (state.generationBlocked) throw state.generationError;
+        if (eraseOutboxPausedForAdmission(state)) throw state.capacityError;
+        return state.eraseEffectConsumer(effect, context);
+      },
       validateEntry: ({ mutationId, entry }) => {
-        if (state.generationBlocked) return false;
+        if (state.generationBlocked || eraseOutboxPausedForAdmission(state)) return false;
         // Local-only consumers are intentionally extensible. The checked cloud
         // reader is the boundary that may recover only the viewer's closed set
         // of external effects.
@@ -4928,8 +5126,23 @@ function makeHandle(state) {
     /** Force a compacted snapshot now (e.g. on explicit save). */
     async flushSnapshot() {
       assertHandleWritable(state);
-      await catchUpTail(state);
+      let caughtUp = await catchUpTail(state);
       await drainStateQueues(state);
+      if (state.aggregateGenerationTransport) {
+        assertHandleWritable(state);
+        // Aggregate commit chooses any required checkpoint atomically. This
+        // manual save may confirm exact pending receipts, but it must never use
+        // the direct snapshot endpoint or claim checkpoint coverage itself.
+        if (state.appendRecords.size > 0 || state.durabilityGap) {
+          await replayOutbox(state);
+          await drainStateQueues(state);
+        }
+        caughtUp = await catchUpTail(state);
+        await drainStateQueues(state);
+        assertHandleWritable(state);
+        if (state.capacityError) throw state.capacityError;
+        return aggregateCloudAccepted(state, caughtUp);
+      }
       const result = await writeSnapshot(state, captureSnapshotOptions(state));
       await finalizeSnapshotResult(state, result);
       await drainStateQueues(state);
@@ -4987,7 +5200,7 @@ function makeHandle(state) {
       // must not upload another full snapshot just because the viewer closed.
       await state.snapshotChain.catch(() => {});
       if (state.generationBlocked) return closeRetiredGeneration(state);
-      if (!state.capacityError && state.supabase && (
+      if (!state.capacityError && !state.aggregateGenerationTransport && state.supabase && (
         state.durabilityGap || state.acceptedEditEpoch > state.snapshottedEpoch
       )) {
         try {

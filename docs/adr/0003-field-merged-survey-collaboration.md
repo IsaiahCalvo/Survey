@@ -450,8 +450,8 @@ key, bytes digest and sequence, then return that probe's newer generation
 observation. Do not retain an earlier `is_current: true` after that probe observes
 a replacement. A revoked actor's exact receipt can still be current; none of
 these fields grant present access or make later cloud actions exempt from their
-own permission checks. This contract remains unwired pending the full sync and
-runtime gates below.
+own permission checks. The contract now has the explicit sync opt-in below;
+application wiring and the runtime gates remain incomplete.
 
 Local verification composes the actual v2 client transport, native Request,
 handler, production Supabase adapter, service brokers and disposable PostgreSQL.
@@ -482,6 +482,84 @@ maintenance own its cloud checkpoints; local staged bytes and the durable outbox
 remain available. Server-side fencing must close new model-2 public append and
 snapshot writes before rollout, while preserving model-1 behavior and exact old
 append receipts. A client flag alone cannot enforce the rule.
+
+The local write-fence migration is per PDF generation, not a blanket change for all model-2
+documents. A private, initially empty fence table records explicit enablement.
+Enablement takes the publication/WAL document lock, checks the exact current
+model-2 generation and inserts once. It grants no client or service-role direct
+table writes. A later publication must enable its replacement generation within
+that same publication transaction; fence inheritance must not be inferred from
+the old generation. Do not insert any fence until its clients, aggregate runtime
+and recovery paths meet the rollout gates.
+
+For a fenced generation, public append keeps its exact-receipt-first policy,
+then rejects a new write with `SG005`. Public snapshot keeps its current access
+policy and exact stored/stale-CAS results, but rejects an otherwise eligible new
+write. Trusted aggregate private commit keeps its existing transaction and
+checks. Old/null-generation entry points and direct table access must not offer
+an alternate write path.
+
+The matching sync interface is an optional `aggregateRequest` native request
+callback in `openAnnotationDoc`, not a new application flag or route. Sync owns
+the strict v2 transport, the original actor's request-local bearer header and
+the existing checked outbox scope. Only a checked modern model-2 document can
+select it. Reads keep the existing generation transport. Saves use exact
+aggregate receipts; they must not invent a stored checkpoint or snapshot
+frontier. Generic failure retries the exact durable outbox bytes. Capacity,
+maintenance and admission-required responses pause that handle with distinct
+errors, keep unsent bytes and stop automatic write retries until cold reopen.
+In particular, an older model-2 client receiving `SG005` must not attempt a
+snapshot fallback. No live client wiring or database enablement follows from
+this interface alone.
+
+The local sync implementation now uses that interface. One deadline spans
+hashing, actor-session lookup, request dispatch and response-body reads. A late
+session cannot start a request after that deadline; a late response body is
+canceled. The request captures its own bearer header without changing the shared
+client. An exact retired receipt remains in the original generation's outbox,
+but cannot run its external effects or project its bytes into the replacement.
+
+Explicit Save drains pending work, retries exact receipts and performs a final
+checked catch-up. It returns success only when the accepted state has no known
+gap or pending recovery, and its contiguous covered sequence equals the observed
+head. This matters when a peer commits sequence 1 after the caller read head 0,
+then the caller receives sequence 2: its own receipt alone does not prove that
+the peer's update is present. Aggregate mode never substitutes a direct snapshot
+for that missing state, including on reconnect, page hide or close.
+
+Admission pause checks run before each external erase effect, not just once for
+an outbox entry. A held first effect may finish and retain its acknowledgment;
+the next effect stays pending without reaching its destination after a pause or
+generation retirement. The regression uses two real queued effect descriptions
+and an explicit first-effect barrier. This does not prove a running multi-effect
+drain across account teardown or close: those lifecycle conditions are not part
+of this new per-effect check. Read-only tracing found that `useAnnotationDoc`
+checks cancellation and the exact current scope before each consumer call, and
+sets cancellation before teardown. Its replacement consumer also checks the
+scoped handle. A mounted two-effect account-switch test is still needed to prove
+that composed behavior. Direct custom sync consumers and purge/unmount ordering
+remain separate lifecycle follow-ups.
+
+The composed disposable-PostgreSQL proof now starts with the actual sync handle.
+It explicitly observes head 0, commits a peer update at sequence 1, then commits
+the local update at sequence 2 through the native request, handler and production
+adapter under the write fence. It drops that local response, retries the exact
+receipt without repeating the commit, catches up and checks both edits after a
+fresh reopen. Public append and snapshot call counts remain zero. Authentication
+and PDF/open descriptors remain local fixtures; this is not live account,
+publication, UI, cross-device or deployed proof.
+
+Final frozen-source verification for this sync/write-fence slice on 2026-09-10:
+122/122 focused sync and transport checks, 9/9 disposable PostgreSQL fence and
+composed-sync checks, and 14/14 existing service-broker PostgreSQL checks passed.
+The full `npm test` rerun passed across 712 files: 7,119 tests, 7,023 passed,
+96 skipped, zero failed or cancelled. The prior committed baseline had 7,101
+tests with the same 96 skips. An earlier full pass was repeated after review
+found and fixed the mid-entry external-effect pause gap; only the final run is
+the evidence for the frozen source. The Vite build passed with its existing
+large-chunk warning, and the AST-only code graph refresh completed. No live
+migration, fence insertion, client
+flag, application route, deploy or Microsoft integration changed.
 
 A read-only host audit on 2026-09-10 found Node 26.5.1 and Deno 2.9.4, but no
 available Docker, Podman, Colima or VM runtime. The local Darwin resource-limit

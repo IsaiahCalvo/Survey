@@ -259,6 +259,19 @@ for (const code of ['SG001', 'SG002']) test(`${code} remains typed and sanitized
   assert.equal(h.calls.length, 1);
 });
 
+test('SG005 remains typed so fenced model2 writers can pause without snapshot fallback', async () => {
+  const h = harness(async () => ({ data: null, error: {
+    code: 'SG005', message: 'private fence detail', details: 'service-key',
+  } }));
+  await assert.rejects(h.transport.append(appendInput()), error => {
+    assert.equal(error.code, 'SG005');
+    assert.equal(String(error.message).includes('private fence detail'), false);
+    assert.equal(JSON.stringify(error).includes('service-key'), false);
+    return true;
+  });
+  assert.equal(h.calls.length, 1);
+});
+
 test('malformed method argument containers produce the typed input error before any request', async () => {
   for (const method of ['append', 'storeSnapshot', 'updates']) {
     for (const value of [null, 1, 'invalid', []]) {
