@@ -203,6 +203,97 @@ its compact checked checkpoint atomically, or report a maintenance need. This
 server path remains planned, private and disabled; it is not implemented by the
 row-limit migration below.
 
+The aggregate-admission work now has an agreed contract. A server-only module
+will probe exact receipts before reading any checkpoint, reconstruct one fixed
+head, validate the proposed update and measure the complete encoded result.
+Every new admission carries the exact source checkpoint identity as well as its
+head: another writer can replace a checkpoint without advancing the head. The
+private commit must reject either kind of stale source. Ordinary small writes
+leave the checkpoint alone; only an explicit maintenance request or a replay
+budget that requires compaction produces a replacement checkpoint, committed
+atomically with the new WAL row. No full checkpoint upload is required for every
+small edit.
+
+The private receipt/commit functions derive the actor from `auth.uid()` and gain
+no public or service-role grants in this step. The production trusted caller and
+its authenticated actor context remain an explicit rollout gate. Streaming gzip
+limits bound input bytes, not the heap or execution time of synchronous Yjs
+decoding; worker isolation and hard resource limits also remain deployment gates.
+The private foundation is now implemented locally in
+`annotationGenerationAggregateAdmission.js` and migration `20260909110000`.
+The admission module owns its input bytes before waiting, probes accepted
+receipts first, reads a fixed and scope-checked checkpoint/tail, rejects missing
+Yjs dependencies, validates recovery state and measures the final encoding.
+Worker input/page ceilings have a distinct maintenance-needed error; they do not
+become a false logical-capacity error. Historical accepted rows retain their
+previous retry and read rules instead of being reclassified by the new row cap.
+
+Cross-review found and corrected two multi-user assumptions: historical WAL rows
+may belong to a peer even though the enclosing read is bound to the caller, and
+receipt identity includes the actor as well as writer ID and client sequence.
+Tests now preserve peer and caller changes when actors reuse the same writer key,
+while rejecting duplicate keys within one actor's history.
+
+Review also found a receipt race: the initial probe could miss an edit that a
+concurrent request then commits before the fixed-tail read. The module now
+tracks that actor/writer/sequence tuple, checks the complete tail for gaps and
+duplicate keys, and probes the trusted receipt again before applying the proposed
+update or checking final logical capacity. Its sequence must match the observed
+row. Exact bytes return the accepted receipt; different bytes fail with `23505`;
+missing, malformed or mismatched receipts fail closed. This raced path still
+requires valid, bounded checkpoint/tail reads; only an initial receipt hit skips
+reconstruction entirely. The SQL commit retains its own receipt-first check for
+races after the fixed read.
+
+Focused Node checks pass 27/27, including 22 independent cases. A real disposable
+PostgreSQL flow now reads
+a model-2 checkpoint/tail into the actual admission module, commits through the
+new private function and reopens through the existing checked reader. It proves
+ordinary append with no checkpoint write and explicit maintenance compaction.
+Automatic reader-limit compaction is covered separately by real-Yjs module tests;
+do not describe the PostgreSQL composed case as testing that automatic trigger.
+SQL tests also cover exact retired/revoked retries, collisions, same-head snapshot
+changes, head races, overflow rollback, unchanged signals on rejection and denied
+access for all runtime roles.
+
+The shared validator imports `yjs` and indirectly imports geometry validation.
+Two Deno import mappings now pin those already-installed dependencies to
+`yjs@13.6.30` and `martinez-polygon-clipping@0.7.4`. No duplicate state validator or
+viewer refactor was introduced. Deno checking and an actual ordinary/maintenance
+execution both passed using manual node-module resolution; no package versions
+or shared dependency directory were changed. The app build also passed.
+
+Final frozen-source checks on 2026-09-10 passed: `npm test` ran 7,048 tests
+(6,952 passed, 96 skipped, zero failed or cancelled), compared with the prior
+committed baseline's 7,021 tests and the same 96 skips. The final 27-test focused
+run, disposable PostgreSQL flow, Deno check, Deno runtime smoke and Vite build
+also passed after the receipt-race fix. The build retains its existing large-chunk
+warning. These are local module/runtime/database checks: no user-facing route
+was enabled by this batch, and this is not live two-user or deployed proof.
+
+This is not a measured latency or bill reduction. New admission still reconstructs
+and encodes the complete state. One representative fixture read 77,043 bytes to
+produce a 12,910-byte final state and a 496-byte gzip checkpoint; those are local
+fixture bytes, not production traffic. A trusted actor-bound caller, verified
+cache reuse or suitable co-location, hard worker resource limits and app routing
+still need implementation and proof. No live grants, database changes or rollout
+flags were changed by this private foundation.
+
+The next caller must verify the bearer token with the existing auth service and
+keep checkpoint and tail reads bound to that verified user. Never accept an actor
+from the request body or an admission plan. A narrow, service-only broker can
+bind the verified actor for the private receipt and commit calls; both private
+functions must remain ungranted to app users. Prove role rejection and actor
+binding before adding that broker or enabling a route. This is a design boundary,
+not an implemented or deployed endpoint.
+
+Verified-prefix reuse can first be limited to a single request and its head-race
+retries. Reuse only owned, server-verified bytes after the conditional checkpoint
+identity matches; a changed identity requires a fresh checked snapshot. Browser
+cache bytes are not server proof. A stateless first request still needs the full
+checkpoint. Cross-request reuse needs a bounded, actor-scoped trusted cache and
+separate tests; do not rely on an Edge instance staying alive.
+
 ### Row-level write-limit implementation
 
 Inspection at checkpoint `80c7173c` confirmed that the model-2 append and

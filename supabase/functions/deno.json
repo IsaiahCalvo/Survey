@@ -1,4 +1,8 @@
 {
   "nodeModulesDir": "auto",
-  "lock": false
+  "lock": false,
+  "imports": {
+    "martinez-polygon-clipping": "npm:martinez-polygon-clipping@0.7.4",
+    "yjs": "npm:yjs@13.6.30"
+  }
 }
