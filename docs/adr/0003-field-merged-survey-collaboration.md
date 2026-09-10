@@ -479,6 +479,17 @@ completed. An earlier overlapping full run failed an unchanged upload-cancellati
 test and reached that file's timeout. The final full run passed that same file;
 keep the earlier failure recorded rather than calling it a fixed product bug.
 
+Read-only follow-up reproduced that fixture race in 6 of 20 whole-file runs.
+Two event-loop ticks sometimes ended before either upload request started; the
+early request-count assertion then left a deferred response unresolved. The
+test now waits for the observed request count with a deadline and always aborts,
+resolves its deferred response and observes the pending request in `finally`.
+The changed upload test file passed 31/31 locally and in 20 consecutive runs
+without forced process exit (620 test-case executions, no hangs). Root
+also reran the file successfully. This test-only follow-up came after the full
+suite result above; neither upload production code nor the frozen transport
+changed.
+
 ### Row-level write-limit implementation
 
 Inspection at checkpoint `80c7173c` confirmed that the model-2 append and

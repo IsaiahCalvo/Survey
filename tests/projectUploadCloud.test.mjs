@@ -18,6 +18,13 @@ const document = { id: documentId, user_id: actorId, project_id: projectId, name
   user_archived_at: null, updated_at: '2026-09-08T12:00:00.000Z' };
 const { user_archived_at: _archive, updated_at: _updated, ...documentInput } = document;
 const tick = () => new Promise(setImmediate);
+async function waitFor(check, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for the fixture request boundary.');
+    await tick();
+  }
+}
 function deferred() { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { resolve, reject, promise }; }
 function fixture() {
   const state = { session: { user: { id: actorId }, access_token: 'fixture-token-a' }, current: true, requests: [], listeners: new Set(), responder: null, sessionReader: null };
@@ -325,11 +332,18 @@ test('lost upload reply retries create-only and verifies existing bytes without 
 test('conflict verification download aborts on retirement and cannot acknowledge late bytes', async () => {
   const f = fixture(); const controller = new AbortController(); const cloud = await f.create({ signal: controller.signal }); const gate = deferred();
   f.state.responder = request => request.method === 'POST' ? storageConflict() : gate.promise;
-  const pending = cloud.uploadFile(filePath, pdf); await tick(); await tick();
-  assert.equal(f.state.requests.length, 2); controller.abort();
-  await assert.rejects(pending, error => error.code === 'PROJECT_UPLOAD_RETIRED');
-  assert.equal(f.state.requests[1].signal.aborted, true);
-  gate.resolve(new Response(pdf)); await tick();
+  const pending = cloud.uploadFile(filePath, pdf);
+  try {
+    await waitFor(() => f.state.requests.length === 2);
+    assert.equal(f.state.requests.length, 2); controller.abort();
+    await assert.rejects(pending, error => error.code === 'PROJECT_UPLOAD_RETIRED');
+    assert.equal(f.state.requests[1].signal.aborted, true);
+  } finally {
+    controller.abort();
+    gate.resolve(new Response(pdf));
+    await pending.catch(() => {});
+    await tick();
+  }
 });
 
 test('empty alias CAS refuses to erase concurrent names even without a timestamp change', async () => {
