@@ -682,7 +682,10 @@ test('call-site parity: a rotated cloud is built un-rotated and rotated as a who
   // Print used to rotate the four corners first and hand those to the
   // engine, whose rectangle fit then saw a different box (a 60x40 rect at
   // 30 degrees printed 8 crowns of width 28 while the screen showed 12 of
-  // width 18). Both now share transformCloudCommandsToWorld.
+  // width 18). Both build from the same un-rotated geometry: the flattener
+  // now draws the /AP form itself (built un-rotated, tilted by /Matrix), and
+  // transformCloudCommandsToWorld remains the page-space mapping for the
+  // hit test and the tests.
   const obj = {
     type: 'rect', left: 100, top: 150, width: 60, height: 40, scaleX: 1, scaleY: 1,
     angle: 30, strokeWidth: 2.5, stroke: '#c42747', data: { pdfCloudIntensity: 2 },

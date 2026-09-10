@@ -20,9 +20,14 @@ test('toolbar publishes synchronous pen and eraser width drafts instead of stale
     viewerSource,
     /eraserSizeInputValue:\s*eraserSizeInputValueRef\.current/,
   );
+  // DELIBERATE ASSERTION CHANGE (2026-09-09, cloud-fill-knockout): the width
+  // draft is still applied synchronously (setStrokeWidth before the draft is
+  // published), but it now goes through the shared decimal-aware
+  // normalizeAnnotationSize (one decimal for line widths, whole numbers for
+  // counter sizes) instead of parseInt, so "2.5" no longer truncates to 2.
   assert.match(
     viewerSource,
-    /strokeWidthInputValueRef\.current = value;\s*setStrokeWidthInputValue\(value\);[\s\S]*?const isCounterSize = activeTool === 'counter' \|\| getSelectedShapeMeta\(\)\.isCounter;[\s\S]*?const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : 50;[\s\S]*?setStrokeWidth\(Math\.min\(Math\.max\(parseInt\(value, 10\), minWidth\), maxWidth\)\);[\s\S]*?publishToolbarDraft\('strokeWidthInputValue', value\)/,
+    /const isCounterSize = activeTool === 'counter' \|\| getSelectedShapeMeta\(\)\.isCounter;[\s\S]*?strokeWidthInputValueRef\.current = value;\s*setStrokeWidthInputValue\(value\);[\s\S]*?const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : 50;[\s\S]*?setStrokeWidth\(normalizeAnnotationSize\(value, minWidth, maxWidth, widthDecimals\)\);[\s\S]*?publishToolbarDraft\('strokeWidthInputValue', value\)/,
   );
   assert.match(
     viewerSource,

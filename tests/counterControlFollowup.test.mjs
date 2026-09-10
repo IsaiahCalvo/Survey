@@ -49,7 +49,12 @@ test('desktop and mobile annotation sizes use one Radix-backed whole-number cont
   assert.match(packageSource, /"@radix-ui\/react-popover"/);
   assert.match(sizeControlSource, /@radix-ui\/react-popover/);
   assert.match(sizeControlSource, /normalizeAnnotationSize/);
-  assert.match(sizeControlSource, /maxLength=\{3\}/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-09, cloud-fill-knockout): the control
+  // stays whole-number by default (maxLength 3) but the line Width field now
+  // keeps one decimal (`decimals` prop, "2.5" for the Cloud style's approved
+  // default), so its maxLength grows to hold the decimal point and place.
+  assert.match(sizeControlSource, /maxLength=\{allowsDecimals \? 4 \+ decimals : 3\}/);
+  assert.match(sizeControlSource, /decimals = 0,/);
   assert.match(sizeControlSource, /aria-label=\{label\}/);
   assert.match(sizeControlSource, /data-annotation-size-popover/);
   assert.match(appShellSource, /<AnnotationSizeControl/);

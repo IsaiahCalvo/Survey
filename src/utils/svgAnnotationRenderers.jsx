@@ -42,10 +42,10 @@ import {
 // both painted paths (crown outline + scalloped fill region) through the one
 // shared resolver, so the SVG ink, the hit target, the canvas painter and the
 // pdf-lib flattener can never disagree about what a cloud looks like.
-import {
-  cloudCommandsToPathData,
-  resolveCloudAnnotationGeometry,
-} from './cloudAnnotationGeometry.js';
+import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+// UX 2026-09-09: the cloud's SVG paint (fill knockout mask + one path per
+// run) is one shared model, serialised identically by the fidelity tests.
+import { buildCloudSvgPaint, cloudMaskIdFor } from './cloudSvgPaint.js';
 // Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
 // cheap no-ops when disabled. Toggle in DevTools console:
 //   __shapeSpyOn()  __shapeSpyOff()  __captureAllShapes()
@@ -68,13 +68,19 @@ import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
 // UX 2026-09-09: a cloud paints exactly as the approved studio does — the
-// engine's crowns stroked with fill:none, round caps and joins, so every
-// crown keeps its rounded separator tail — placed by translate + rotate only
-// (scale is already baked into the engine vertices, so crowns never stretch).
+// engine's crowns stroked with fill:none, round caps and joins, ONE <path> PER
+// RUN (the studio's cloud-ink group), so every crown keeps its rounded
+// separator tail and a translucent stroke composites per run — placed by
+// translate + rotate only (scale is already baked into the engine vertices,
+// so crowns never stretch).
 // A FILLED cloud paints the whole region bounded by the scalloped outline,
 // humps included, as one nonzero path under the crowns (the professional
-// Drawboard/Bluebeam look); the fill colour carries its own alpha, independent
-// of the stroke. An OPEN polyline cloud has no interior and never fills.
+// Drawboard/Bluebeam look), KNOCKED OUT under the stroke band exactly as
+// Drawboard PDF does (mask = the region filled white with the outline stroked
+// black at the ink width): a translucent stroke never tints with the fill
+// beneath it, and the fill colour carries its own alpha, independent of the
+// stroke. An OPEN polyline cloud has no interior and never fills.
+// See cloudSvgPaint.js for the shared paint model.
 const CloudOutline = ({
   shapeId,
   shapeKind,
@@ -85,29 +91,63 @@ const CloudOutline = ({
   opacity,
   onClick,
 }) => {
+  // useId keeps the mask id unique per mounted cloud even when the same shape
+  // id renders in more than one SVG (page + thumbnail).
+  const maskId = cloudMaskIdFor(React.useId());
   if (!geometry) return null;
-  const d = cloudCommandsToPathData(geometry.outline);
-  const fillD = geometry.fill ? cloudCommandsToPathData(geometry.fill) : null;
+  const paint = buildCloudSvgPaint(geometry, { fill, stroke: stroke || 'transparent', maskId });
+  if (!paint) return null;
   return (
     <g
-      transform={geometry.transform}
+      transform={paint.transform}
       opacity={opacity}
       data-shape-id={shapeId}
       data-shape-kind={shapeKind}
       data-cloud-geometry={geometryKind}
       onClick={onClick}
     >
-      {fillD && (
-        <path d={fillD} fill={fill} fillRule="nonzero" stroke="none" />
+      {paint.mask && (
+        <mask
+          id={paint.mask.id}
+          maskUnits="userSpaceOnUse"
+          x={paint.mask.x}
+          y={paint.mask.y}
+          width={paint.mask.width}
+          height={paint.mask.height}
+        >
+          <path d={paint.fillD} fill="#fff" fillRule="nonzero" stroke="none" />
+          <path
+            d={paint.outlineD}
+            fill="none"
+            stroke="#000"
+            strokeWidth={paint.strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </mask>
       )}
-      <path
-        d={d}
+      {paint.fillD && (
+        <path
+          d={paint.fillD}
+          fill={paint.fill}
+          fillRule="nonzero"
+          stroke="none"
+          mask={paint.mask ? `url(#${paint.mask.id})` : undefined}
+          data-cloud-fill="true"
+        />
+      )}
+      <g
         fill="none"
-        stroke={stroke || 'transparent'}
-        strokeWidth={geometry.strokeWidth}
+        stroke={paint.stroke}
+        strokeWidth={paint.strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
+        data-cloud-ink="true"
+      >
+        {paint.runDs.map((d, index) => (
+          <path key={index} d={d} data-run={index} />
+        ))}
+      </g>
     </g>
   );
 };

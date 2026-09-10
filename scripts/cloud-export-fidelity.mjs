@@ -32,10 +32,8 @@ import {
   savePDFWithAnnotationsPdfLib,
   savePDFWithFlattenedRegularAnnotationsForPrint,
 } from '../src/utils/pdfAnnotationsPdfLib.js';
-import {
-  cloudCommandsToPathData,
-  resolveCloudAnnotationGeometry,
-} from '../src/utils/cloudAnnotationGeometry.js';
+import { resolveCloudAnnotationGeometry } from '../src/utils/cloudAnnotationGeometry.js';
+import { buildCloudSvgPaint, cloudSvgPaintMarkup } from '../src/utils/cloudSvgPaint.js';
 
 const args = process.argv.slice(2);
 const argValue = (name, fallback) => {
@@ -160,19 +158,21 @@ const exportFlattened = (object) => withWindow(async () => savePDFWithFlattenedR
   { returnBytes: true },
 ));
 
-// The app's on-screen markup for a cloud (svgAnnotationRenderers CloudOutline).
+// The app's on-screen markup for a cloud: the SAME paint model CloudOutline
+// (svgAnnotationRenderers.jsx) renders - fill knocked out under the stroke
+// band through the mask, one <path> per run - serialised by cloudSvgPaint.js.
 const appSvg = (object) => {
   const geometry = resolveCloudAnnotationGeometry(object);
   if (!geometry) throw new Error(`not a cloud: ${object.id}`);
-  const fillPath = geometry.fill
-    ? `<path d="${cloudCommandsToPathData(geometry.fill)}" fill="${object.fill}" fill-rule="nonzero" stroke="none"/>`
-    : '';
+  const model = buildCloudSvgPaint(geometry, {
+    fill: object.fill,
+    stroke: object.stroke || 'transparent',
+    maskId: `cloud-fill-mask-${object.id}`,
+  });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE.width * SCALE}" height="${PAGE.height * SCALE}" viewBox="0 0 ${PAGE.width} ${PAGE.height}">`
     + `<rect width="${PAGE.width}" height="${PAGE.height}" fill="white"/>`
-    + `<g transform="${geometry.transform}" opacity="${object.opacity ?? 1}">`
-    + fillPath
-    + `<path d="${cloudCommandsToPathData(geometry.outline)}" fill="none" stroke="${object.stroke || 'transparent'}" stroke-width="${geometry.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`
-    + '</g></svg>';
+    + cloudSvgPaintMarkup(model, { opacity: object.opacity ?? 1 })
+    + '</svg>';
 };
 
 const run = (command, commandArgs) => spawnSync(command, commandArgs, { encoding: 'utf8' });

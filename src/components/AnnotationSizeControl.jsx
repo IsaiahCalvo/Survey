@@ -14,17 +14,24 @@ export const ANNOTATION_SIZE_PRESETS = Object.freeze({
 });
 
 /**
- * Shared whole-number size field with a Radix Popover preset menu.
+ * Shared size field with a Radix Popover preset menu.
  *
  * The visible input remains fast for custom sizes while the adjacent chevron
  * exposes battle-tested, keyboard-accessible preset selection. Callers own the
  * draft/commit state so the same control can drive drawing, erasing, and edits.
+ *
+ * UX 2026-09-09: `decimals` is how many decimal places the field keeps (0 =
+ * whole numbers, the default for Counter Size / Eraser Size). The line Width
+ * field passes ANNOTATION_WIDTH_DECIMALS (1) so the Cloud style's approved
+ * 2.5-unit default reads back as "2.5" and stays 2.5 when committed, instead
+ * of rounding to 3 at the display boundary.
  */
 export default function AnnotationSizeControl({
   value,
   label = 'Size',
   min = 1,
   max = 100,
+  decimals = 0,
   presets = ANNOTATION_SIZE_PRESETS.width,
   onValueChange,
   onValueCommit,
@@ -39,11 +46,12 @@ export default function AnnotationSizeControl({
   const [focusedPresetIndex, setFocusedPresetIndex] = useState(0);
   const presetOptionRefs = useRef([]);
   const rawValueText = value == null ? '' : String(value).trim();
-  // Normalize legacy/persisted fractional values at the display boundary too;
-  // the field must never visually present a decimal even before its first edit.
+  // Normalize legacy/persisted values at the display boundary too: the field
+  // never presents more decimal places than it keeps, even before its first
+  // edit.
   const valueText = rawValueText === ''
     ? ''
-    : String(normalizeAnnotationSize(rawValueText, min, max));
+    : String(normalizeAnnotationSize(rawValueText, min, max, decimals));
   const [customValue, setCustomValue] = useState(valueText);
 
   useEffect(() => {
@@ -69,7 +77,7 @@ export default function AnnotationSizeControl({
   };
 
   const updateDraft = (next) => {
-    const raw = sanitizeAnnotationSizeDraft(next);
+    const raw = sanitizeAnnotationSizeDraft(next, decimals);
     if (raw !== null) {
       setCustomValue(raw);
       onValueChange?.(raw);
@@ -77,8 +85,7 @@ export default function AnnotationSizeControl({
   };
 
   const commit = (next, { close = false } = {}) => {
-    const whole = normalizeAnnotationSize(next, min, max);
-    const normalized = String(whole);
+    const normalized = String(normalizeAnnotationSize(next, min, max, decimals));
     setCustomValue(normalized);
     onValueChange?.(normalized);
     onValueCommit?.(normalized);
@@ -100,10 +107,11 @@ export default function AnnotationSizeControl({
     presetOptionRefs.current[nextIndex]?.focus();
   };
 
+  const allowsDecimals = decimals > 0;
   const inputProps = {
     type: 'text',
-    inputMode: 'numeric',
-    pattern: '[0-9]*',
+    inputMode: allowsDecimals ? 'decimal' : 'numeric',
+    pattern: allowsDecimals ? '[0-9.]*' : '[0-9]*',
     title: label,
     disabled,
     value: customValue,
@@ -115,7 +123,7 @@ export default function AnnotationSizeControl({
     },
     onKeyDown: (event) => {
       if (event.key === 'Enter') event.currentTarget.blur();
-      if (event.key === '.' || event.key === ',' || event.key === '-' || event.key === '+' || event.key === 'e') {
+      if ((event.key === '.' && !allowsDecimals) || event.key === ',' || event.key === '-' || event.key === '+' || event.key === 'e') {
         event.preventDefault();
       }
     },
@@ -124,7 +132,7 @@ export default function AnnotationSizeControl({
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <div className={`annotation-size-control ${className}`.trim()} data-annotation-size-control="true">
-        <input {...inputProps} maxLength={3} aria-label={label} />
+        <input {...inputProps} maxLength={allowsDecimals ? 4 + decimals : 3} aria-label={label} />
         <Popover.Trigger asChild>
           <button
             type="button"

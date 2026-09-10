@@ -602,30 +602,123 @@ function drawLine(context, object) {
   context.restore();
 }
 
-// Twin of CloudOutline (svgAnnotationRenderers.jsx): the scalloped fill region
-// (one nonzero path, only when the fill paint is visible) under the engine
-// crowns stroked with round caps/joins, placed by translate + rotate only.
-// `strokeFallback` mirrors each SVG renderer's default stroke paint.
+// UX 2026-09-09 (Drawboard/studio parity, twin of CloudOutline in
+// svgAnnotationRenderers.jsx / cloudSvgPaint.js):
+//  * the scalloped fill region (one nonzero path, only when the fill paint is
+//    visible) is KNOCKED OUT under the whole stroke band before the crowns are
+//    painted, so a translucent stroke composites over the page and never over
+//    its own fill. Canvas has no mask primitive, so the fill is painted on a
+//    scratch layer, the stroke band is erased from it (destination-out with
+//    the outline at the ink width, round caps/joins) and the layer is
+//    composited back with the object's own opacity/blend — never a
+//    destination-out on the shared canvas, which would punch holes in
+//    annotations painted underneath.
+//  * the crowns are stroked ONE RUN AT A TIME (the studio's per-run <path>s),
+//    so overlapping run junctions composite per run like the SVG layer.
+// A context without a backing canvas (recording contexts, unsupported
+// environments) falls back to the plain fill, which keeps the geometry path
+// identical; only the knockout is lost.
+const scratchLayerByContext = typeof WeakMap === 'function' ? new WeakMap() : null;
+
+const createScratchCanvas = (width, height, base) => {
+  try {
+    if (typeof OffscreenCanvas === 'function') return new OffscreenCanvas(width, height);
+  } catch { /* fall through */ }
+  try {
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    }
+  } catch { /* fall through */ }
+  try {
+    // node-canvas exposes a constructible Canvas class on the element.
+    if (base && typeof base.constructor === 'function') {
+      const canvas = new base.constructor(width, height);
+      if (canvas && typeof canvas.getContext === 'function') return canvas;
+    }
+  } catch { /* fall through */ }
+  return null;
+};
+
+const acquireScratchLayer = (context) => {
+  const base = context?.canvas;
+  const width = Number(base?.width);
+  const height = Number(base?.height);
+  if (!(width > 0) || !(height > 0) || typeof context.getTransform !== 'function') return null;
+  let layer = scratchLayerByContext?.get(context) || null;
+  if (!layer || layer.canvas.width !== width || layer.canvas.height !== height) {
+    const canvas = createScratchCanvas(width, height, base);
+    const scratch = canvas?.getContext?.('2d') || null;
+    if (!scratch) return null;
+    layer = { canvas, context: scratch };
+    scratchLayerByContext?.set(context, layer);
+  }
+  return layer;
+};
+
+const strokeCloudRuns = (context, geometry, stroke, strokeWidth) => {
+  const runs = Array.isArray(geometry.outlineRuns) && geometry.outlineRuns.length > 0
+    ? geometry.outlineRuns
+    : [geometry.outline];
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.strokeStyle = stroke;
+  context.lineWidth = strokeWidth;
+  for (const run of runs) {
+    context.beginPath();
+    traceCommandsInto(context, run);
+    context.stroke();
+  }
+};
+
+// Paint the fill with the stroke band knocked out. Returns false when no
+// scratch layer is available so the caller paints the plain fill instead.
+const paintKnockedOutCloudFill = (context, object, geometry) => {
+  const layer = acquireScratchLayer(context);
+  if (!layer) return false;
+  const scratch = layer.context;
+  scratch.save();
+  scratch.setTransform(1, 0, 0, 1, 0, 0);
+  scratch.globalAlpha = 1;
+  scratch.globalCompositeOperation = 'source-over';
+  scratch.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+  scratch.setTransform(context.getTransform());
+  scratch.beginPath();
+  traceCommandsInto(scratch, geometry.fill);
+  scratch.fillStyle = object.fill;
+  scratch.fill('nonzero');
+  scratch.globalCompositeOperation = 'destination-out';
+  strokeCloudRuns(scratch, geometry, '#000', geometry.strokeWidth);
+  scratch.restore();
+  // Composite the knocked-out fill with the object's opacity / blend mode,
+  // which applyBlendAndOpacity already put on `context`.
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.drawImage(layer.canvas, 0, 0);
+  context.restore();
+  return true;
+};
+
 function drawCloud(context, object, geometry, strokeFallback = null) {
+  const strokePaint = isVisiblePaint(object.stroke) ? object.stroke : strokeFallback;
+  const hasStroke = isVisiblePaint(strokePaint) && geometry.strokeWidth > 0;
+  const hasFill = Boolean(geometry.fill) && isVisiblePaint(object.fill);
   context.save();
   applyBlendAndOpacity(context, object);
   context.translate(geometry.origin.x, geometry.origin.y);
   applyRotation(context, geometry.angle, geometry.pivot.x, geometry.pivot.y);
-  if (geometry.fill && isVisiblePaint(object.fill)) {
-    context.beginPath();
-    traceCommandsInto(context, geometry.fill);
-    paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0, fillRule: 'nonzero' });
+  if (hasFill) {
+    const knockedOut = hasStroke && paintKnockedOutCloudFill(context, object, geometry);
+    if (!knockedOut) {
+      context.beginPath();
+      traceCommandsInto(context, geometry.fill);
+      paintCurrentPath(context, { fill: object.fill, stroke: null, strokeWidth: 0, fillRule: 'nonzero' });
+    }
   }
-  context.beginPath();
-  traceCommandsInto(context, geometry.outline);
-  if (typeof context.setLineDash === 'function') context.setLineDash([]);
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  paintCurrentPath(context, {
-    fill: null,
-    stroke: isVisiblePaint(object.stroke) ? object.stroke : strokeFallback,
-    strokeWidth: geometry.strokeWidth,
-  });
+  if (hasStroke) strokeCloudRuns(context, geometry, strokePaint, geometry.strokeWidth);
   context.restore();
 }
 

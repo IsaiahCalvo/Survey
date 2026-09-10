@@ -19,6 +19,7 @@
 //  * The crown outline and the scalloped fill region come from one engine
 //    pass (buildCloudRenderPaths), so fill and stroke can never disagree.
 
+import { diff as polygonDiff, union as polygonUnion } from 'martinez-polygon-clipping';
 import {
   buildCloudRenderPaths,
   cloudCommandsToPathData,
@@ -72,7 +73,8 @@ const bboxCenter = (points) => {
  *   angle: number,                   // degrees, applied to the whole cloud
  *   pivot: {x:number,y:number},      // rotation pivot in the local frame
  *   strokeWidth: number,             // painted line width (page units)
- *   outline: Array,                  // engine crowns, M/C commands
+ *   outline: Array,                  // engine crowns, M/C commands (all runs)
+ *   outlineRuns: Array<Array>,       // the same crowns, one command array per run
  *   fill: Array|null,                // scalloped region, M/L/C/Z, null when open
  *   transform: string,               // SVG transform placing the local frame
  * }|null}
@@ -149,6 +151,9 @@ export function resolveCloudAnnotationGeometry(obj) {
     strokeWidth,
     filled,
     outline: paths.outline,
+    outlineRuns: Array.isArray(paths.outlineRuns) && paths.outlineRuns.length > 0
+      ? paths.outlineRuns
+      : [paths.outline],
     fill: filled ? paths.fill : null,
     cusps: paths.cusps || [],
     transform,
@@ -292,6 +297,219 @@ export function cloudSelectionChrome(obj, geometry = null) {
     cusps: cusps.map((cusp) => ({ x: cusp.x + origin.x, y: cusp.y + origin.y })),
   };
 }
+
+
+/**
+ * FILL KNOCKOUT for render paths without a mask primitive (the PDF /AP and
+ * the flattened print) — Drawboard parity, 2026-09-09.
+ *
+ * SVG and canvas knock the fill out under the stroke band with a mask /
+ * destination-out (see cloudSvgPaint.js, annotationCanvasPainter.js). PDF has
+ * no stroke-to-path, and its transparency tools were rejected after probing:
+ * a knockout group (/K true) is ignored by pdf.js, and a luminosity soft mask
+ * is dropped by Quartz inside annotation appearance streams (Preview would
+ * show the cloud with NO fill at all). So the region is computed here, in
+ * plain geometry, as the task's fallback: the scalloped fill region MINUS the
+ * union of every painted run's stroke band (each run sampled into capsules of
+ * the ink width with round caps), through the app's polygon-clipping
+ * dependency. The result is exact everywhere the band goes — along the
+ * crowns AND under the short inward tails — to sampling precision, and
+ * paints with plain fills that every viewer honours.
+ *
+ * @returns {{x:number,y:number}[][]|null} rings in the cloud's local frame
+ *   (outer rings and holes; paint with the even-odd rule), or null when the
+ *   cloud has no fill or no stroke to knock out.
+ */
+export function cloudFillKnockoutRings(geometry, options = {}) {
+  if (!geometry?.fill || !(num(geometry.strokeWidth) > 0)) return null;
+  const half = num(geometry.strokeWidth) / 2;
+  const steps = Math.max(2, Math.round(num(options.steps, 8)));
+  const capSteps = Math.max(3, Math.round(num(options.capSteps, 8)));
+
+  // 1. The fill region: every closed subpath of the nonzero fill (contour +
+  //    safety pieces) unioned together.
+  const fillRings = sampleCloudCommands(geometry.fill, steps)
+    .filter((ring) => ring.length >= 3)
+    .map((ring) => [closeRing(ring.map((point) => [point.x, point.y]))]);
+  if (fillRings.length === 0) return null;
+  const region = unionAll(fillRings);
+  if (region.length === 0) return null;
+
+  // 2. The stroke band. Each run is sampled cubic by cubic; a cubic whose
+  //    offset stays well formed (curvature radius above the half width)
+  //    becomes ONE round-capped sausage ring, a tighter one (a tail's bend)
+  //    falls back to a capsule per sampled segment. Unions run balanced
+  //    (pairwise halves) so the cost stays n·log n instead of quadratic.
+  const runs = Array.isArray(geometry.outlineRuns) && geometry.outlineRuns.length > 0
+    ? geometry.outlineRuns
+    : [geometry.outline];
+  const bandPieces = [];
+  for (const run of runs) {
+    for (const polyline of sampleCloudCubics(run, steps)) {
+      const sausage = polylineSausage(polyline, half, capSteps);
+      if (sausage) {
+        bandPieces.push([sausage]);
+        continue;
+      }
+      for (let index = 0; index + 1 < polyline.length; index += 1) {
+        const capsule = segmentCapsule(polyline[index], polyline[index + 1], half, capSteps);
+        if (capsule) bandPieces.push([capsule]);
+      }
+    }
+  }
+  if (bandPieces.length === 0) return null;
+  const band = unionAll(bandPieces);
+  if (band.length === 0) return null;
+
+  // 3. Fill minus band.
+  const knockedOut = normalizeMulti(polygonDiff(region, band));
+  const rings = [];
+  for (const polygon of knockedOut) {
+    for (const ring of polygon) {
+      const points = ring.map(([x, y]) => ({ x, y }));
+      if (points.length > 1) {
+        const first = points[0];
+        const last = points[points.length - 1];
+        if (Math.abs(first.x - last.x) < 1e-9 && Math.abs(first.y - last.y) < 1e-9) points.pop();
+      }
+      if (points.length >= 3) rings.push(points);
+    }
+  }
+  return rings.length > 0 ? rings : null;
+}
+
+const closeRing = (ring) => {
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  return first[0] === last[0] && first[1] === last[1] ? ring : [...ring, first];
+};
+
+// martinez returns a polygon or a multipolygon depending on the result;
+// always work with a multipolygon (array of polygons, each an array of rings).
+const normalizeMulti = (result) => {
+  if (!Array.isArray(result) || result.length === 0) return [];
+  const isRing = (value) => Array.isArray(value) && Array.isArray(value[0]) && typeof value[0][0] === 'number';
+  if (isRing(result[0])) return [result];
+  return result.filter((polygon) => Array.isArray(polygon) && polygon.length > 0);
+};
+
+// Balanced pairwise union of polygons (each `[ring]`), as one multipolygon.
+const unionAll = (polygons) => {
+  if (polygons.length === 0) return [];
+  if (polygons.length === 1) return normalizeMulti(polygons[0].length && typeof polygons[0][0][0][0] === 'number' ? [polygons[0]] : polygons[0]);
+  const middle = Math.floor(polygons.length / 2);
+  const left = unionAll(polygons.slice(0, middle));
+  const right = unionAll(polygons.slice(middle));
+  if (left.length === 0) return right;
+  if (right.length === 0) return left;
+  return normalizeMulti(polygonUnion(left, right));
+};
+
+// Sample every cubic of a run (M/C commands) into its own polyline.
+const sampleCloudCubics = (commands, steps) => {
+  const polylines = [];
+  let cursor = null;
+  for (const command of commands || []) {
+    if (command[0] === 'M') {
+      cursor = { x: command[1], y: command[2] };
+    } else if (command[0] === 'L' && cursor) {
+      const end = { x: command[1], y: command[2] };
+      polylines.push([cursor, end]);
+      cursor = end;
+    } else if (command[0] === 'C' && cursor) {
+      const [x1, y1, x2, y2, x3, y3] = command.slice(1);
+      const points = [cursor];
+      for (let step = 1; step <= steps; step += 1) {
+        const t = step / steps;
+        const mt = 1 - t;
+        const a = mt * mt * mt;
+        const b = 3 * mt * mt * t;
+        const c = 3 * mt * t * t;
+        const d = t * t * t;
+        points.push({ x: a * cursor.x + b * x1 + c * x2 + d * x3, y: a * cursor.y + b * y1 + c * y2 + d * y3 });
+      }
+      polylines.push(points);
+      cursor = { x: x3, y: y3 };
+    }
+  }
+  return polylines;
+};
+
+// The round-capped stroke outline of a polyline as ONE ring, or null when
+// the inner offset would fold back on itself (curvature tighter than `half`).
+const polylineSausage = (points, half, capSteps) => {
+  const count = points.length;
+  if (count < 2) return null;
+  const tangents = [];
+  for (let index = 0; index < count; index += 1) {
+    const prev = points[Math.max(0, index - 1)];
+    const next = points[Math.min(count - 1, index + 1)];
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const length = Math.hypot(dx, dy);
+    if (!(length > 1e-9)) return null;
+    tangents.push({ x: dx / length, y: dy / length });
+  }
+  const left = [];
+  const right = [];
+  for (let index = 0; index < count; index += 1) {
+    const normal = { x: -tangents[index].y, y: tangents[index].x };
+    left.push([points[index].x + half * normal.x, points[index].y + half * normal.y]);
+    right.push([points[index].x - half * normal.x, points[index].y - half * normal.y]);
+  }
+  for (let index = 0; index + 1 < count; index += 1) {
+    const dx = points[index + 1].x - points[index].x;
+    const dy = points[index + 1].y - points[index].y;
+    if ((left[index + 1][0] - left[index][0]) * dx + (left[index + 1][1] - left[index][1]) * dy <= 0) return null;
+    if ((right[index + 1][0] - right[index][0]) * dx + (right[index + 1][1] - right[index][1]) * dy <= 0) return null;
+  }
+  const ring = [...left];
+  const end = points[count - 1];
+  const endTangent = tangents[count - 1];
+  const endNormal = { x: -endTangent.y, y: endTangent.x };
+  for (let step = 1; step < capSteps; step += 1) {
+    const theta = (Math.PI * step) / capSteps;
+    ring.push([
+      end.x + half * (Math.cos(theta) * endNormal.x + Math.sin(theta) * endTangent.x),
+      end.y + half * (Math.cos(theta) * endNormal.y + Math.sin(theta) * endTangent.y),
+    ]);
+  }
+  for (let index = count - 1; index >= 0; index -= 1) ring.push(right[index]);
+  const start = points[0];
+  const startTangent = tangents[0];
+  const startNormal = { x: -startTangent.y, y: startTangent.x };
+  for (let step = 1; step < capSteps; step += 1) {
+    const theta = (Math.PI * step) / capSteps;
+    ring.push([
+      start.x + half * (-Math.cos(theta) * startNormal.x - Math.sin(theta) * startTangent.x),
+      start.y + half * (-Math.cos(theta) * startNormal.y - Math.sin(theta) * startTangent.y),
+    ]);
+  }
+  ring.push(ring[0]);
+  return ring;
+};
+
+// A round-capped band of half-width `half` around the segment a→b.
+const segmentCapsule = (a, b, half, capSteps) => {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+  if (!(length > 1e-9) || !(half > 0)) return null;
+  const angle = Math.atan2(dy, dx);
+  const ring = [];
+  // cap around b (from +90° to -90° relative to the direction), then cap
+  // around a (from -90° to +90° going the long way): one convex loop.
+  for (let step = 0; step <= capSteps; step += 1) {
+    const theta = angle + Math.PI / 2 - (Math.PI * step) / capSteps;
+    ring.push([b.x + half * Math.cos(theta), b.y + half * Math.sin(theta)]);
+  }
+  for (let step = 0; step <= capSteps; step += 1) {
+    const theta = angle - Math.PI / 2 - (Math.PI * step) / capSteps;
+    ring.push([a.x + half * Math.cos(theta), a.y + half * Math.sin(theta)]);
+  }
+  ring.push(ring[0]);
+  return ring;
+};
 
 /**
  * Map local-frame commands to page coordinates: rotate every coordinate pair

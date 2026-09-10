@@ -250,15 +250,23 @@ const buildCloudShapeRuns = (points, intensity, strokeWidth, unitScale, kind, op
   const runs = cloudRuns(shape, new Map(), 0, false);
   const outline = [];
   const subpaths = [];
+  // UX 2026-09-09 (studio parity): the studio paints one <path> PER RUN
+  // (page.tsx cloud-ink group, `runs.map(r => <path d={r.d}/>)`), so each
+  // painted crown composites on its own and a translucent stroke darkens at
+  // the run junctions exactly as it does there. `outlineRuns` keeps that
+  // per-run split (absolute M/C commands per run, engine order); `outline`
+  // stays the flat concatenation for hit surfaces, bounds and the glow.
+  const outlineRuns = [];
   for (const run of runs) {
     if (!run?.d) continue;
     const parsed = parseCloudPathData(run.d);
     if (!parsed) return null;
     outline.push(...parsed);
+    outlineRuns.push(parsed);
     subpaths.push(...splitCloudSubpaths(parsed));
   }
   if (outline.length === 0) return null;
-  return { engineKind, shape, runs, outline, subpaths };
+  return { engineKind, shape, runs, outline, outlineRuns, subpaths };
 };
 
 // Split flat M/C commands into subpaths of points: [p0, c1, c2, p1, c3, c4, p2…]
@@ -506,6 +514,8 @@ export function buildCloudRenderPaths(
   // have no visible fill paint ask for the outline alone (options.fill=false).
   return {
     outline: built.outline,
+    // One command array per painted run (see buildCloudShapeRuns).
+    outlineRuns: built.outlineRuns,
     fill: options?.fill === false ? null : buildCloudFillFromRuns(built),
     // Crown apexes (the outer cusps of the scallops) straight from the
     // engine's lobes - the studio locks polygon vertices to these, and the

@@ -24,7 +24,7 @@ import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
 import BodyPortal from './components/BodyPortal.js';
-import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import {
@@ -2564,6 +2564,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     : bottomToolbarApi.contextTool === 'counter'
                       ? COUNTER_SIZE_MAX
                       : 50}
+                  // UX 2026-09-09: line widths keep one decimal (the Cloud
+                  // style's 2.5 default); counter/eraser sizes stay whole.
+                  decimals={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter'
+                    ? 0
+                    : ANNOTATION_WIDTH_DECIMALS}
                   presets={bottomToolbarApi.activeTool === 'eraser'
                     ? ANNOTATION_SIZE_PRESETS.eraser
                     : bottomToolbarApi.contextTool === 'counter'

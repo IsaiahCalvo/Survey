@@ -210,7 +210,7 @@ import {
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
-import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
@@ -8098,19 +8098,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Handle width input changes (allows empty string while typing)
   const handleStrokeWidthInputChange = useCallback((e) => {
     const value = e.target.value;
+    // UX 2026-09-09: line widths keep one decimal place (the Cloud style's
+    // approved 2.5-unit default must type, read back and draw as 2.5);
+    // counter sizes stay whole numbers. A trailing "2." is a legal draft.
+    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const widthDecimals = isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS;
     // Allow empty string or valid numbers
-    if (value === '' || /^\d+$/.test(value)) {
+    if (sanitizeAnnotationSizeDraft(value, widthDecimals) !== null) {
       isStrokeWidthFocusedRef.current = true;
       strokeWidthInputValueRef.current = value;
       setStrokeWidthInputValue(value);
-      if (value !== '') {
+      if (value !== '' && value !== '.') {
         // Drawing starts on pointer-down, before clicking the page has finished
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
-        const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
         const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
         const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
-        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), minWidth), maxWidth));
+        setStrokeWidth(normalizeAnnotationSize(value, minWidth, maxWidth, widthDecimals));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
@@ -8121,10 +8125,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleStrokeWidthFocusChange(false);
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
-    const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValueRef.current, 10);
     const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
     const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+    const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
+    const parsed = rawValue === ''
+      ? NaN
+      : normalizeAnnotationSize(rawValue, -Infinity, Infinity, isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS);
     if (isNaN(parsed) || parsed < minWidth) {
       // Reset to minimum if empty or invalid
       const minimumValue = String(minWidth);
