@@ -39,6 +39,7 @@ import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcqu
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
 import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
 import { createDocumentEntityCatalogClient } from './services/documentEntityCatalog.js';
+import { createDocumentSurveyDefinitionClient } from './services/documentSurveyDefinition.js';
 import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
   transformCheckedPageStructure } from './services/checkedPageStructure.js';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
@@ -128,6 +129,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   checkedPageReplacementEnabled = CHECKED_PAGE_REPLACEMENT_ENABLED,
   documentEntityCatalogEnabled = DOCUMENT_ENTITY_CATALOG_ENABLED,
   documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
+  documentSurveyDefinitionEnabled = false,
+  documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null,
   localDocumentStateWriter = null, localDocumentFileReplacer = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
@@ -139,6 +142,13 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
         return signal && typeof request.abortSignal === 'function' ? request.abortSignal(signal) : request;
       },
     }) : null), [documentEntityCatalogClient, documentEntityCatalogEnabled]);
+  const resolvedDocumentSurveyDefinitionClient = useMemo(() => documentSurveyDefinitionClient
+    || (documentSurveyDefinitionEnabled ? createDocumentSurveyDefinitionClient({ enabled: true,
+      rpc: (name, args, { signal } = {}) => {
+        const request = supabase.rpc(name, args);
+        return signal && typeof request.abortSignal === 'function' ? request.abortSignal(signal) : request;
+      },
+    }) : null), [documentSurveyDefinitionClient, documentSurveyDefinitionEnabled]);
 
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -3490,6 +3500,9 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       documentEntityCatalogEnabled={documentEntityCatalogEnabled}
                       documentEntityCatalogClient={resolvedDocumentEntityCatalogClient}
                       documentEntityAdoptionStore={documentEntityAdoptionStore}
+                      documentSurveyDefinitionEnabled={documentSurveyDefinitionEnabled}
+                      documentSurveyDefinitionClient={resolvedDocumentSurveyDefinitionClient}
+                      documentSurveyDefinitionAdoptionStore={documentSurveyDefinitionAdoptionStore}
                       saveManagedLocalState={localDocumentStateWriter || undefined}
                     />
                     </Suspense>

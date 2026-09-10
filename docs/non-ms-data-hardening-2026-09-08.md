@@ -5435,6 +5435,87 @@ remain supported. Early array/string limits prevent oversized source data from
 being fully copied before rejection. Timestamp checks reject invalid calendar
 dates and offsets. These are contract tests, not real two-user/device proof.
 
+## Document survey runtime integration (local verification)
+
+Local readers now accept the six legacy entries plus either or both independent
+document-owned records. Recovery copies validate the source before reading PDF
+bytes and rebind each optional record to the new document ID without changing
+its content IDs or source digest. The root reran the local-state, recovery-copy
+and mounted rail tests: 25/25 passed. These checks include ordinary store save,
+byte replacement and cold reopen with both optional records.
+
+The new adoption store keeps exact actor/document-scoped intents and immutable
+accepted caches. The mounted hook tests cover restart, canceled or retired
+callbacks, forbidden reads, feature changes and late local commits. An early
+version could expose legacy state after a successful late save; stronger tests
+also caught a stuck busy state and an old operation clearing a newer review.
+The corrected focused client, migration, hook and lifecycle set passes 25/25
+in the root run (`/tmp/survey-definition-runtime-focused-20260909.log`). This
+includes disposable PostgreSQL, not a deployed migration or real account test.
+
+The rail now distinguishes omitted legacy structure, unresolved authority and
+accepted document structure. Its mounted tests verify document-only reads,
+static export access and blocked retained private-author callbacks. The new
+dev-only viewer fixture uses the real local store and can remount the app with
+no private templates. The final mounted rail and viewer checks pass 12/12;
+hook/store lifecycle checks pass 17/17 and dev-route contracts pass 46/46.
+
+Root exercised the actual local viewer in the in-app browser. Fresh adoption
+supports review, cancel, a second review and explicit acceptance. Save reached
+stored revision 4 with both document records accepted. Cold reopen with an empty
+private-template library showed Document survey. Selecting its saved module
+enabled marker creation; the marker's name, assigned entity and Y/N checklist
+answers survived another save and cold reopen at stored revision 6. The real
+downloaded workbook contained that name, entity and both answers in the correct
+eight columns, with its metadata sheet very hidden. The same saved checklist
+rendered correctly at 390 by 844. Reopen requires selecting the saved module;
+automatic module selection is not claimed.
+
+Browser checks caught an adoption offer covered by the rail and a cold-open rail
+that fell back to the private picker despite accepted stored data. The offer and
+review now use the existing body portal, and accepted structure no longer depends
+on the legacy panel flag. The final fresh adoption flow passed after both fixes.
+Both synthetic fixture databases were removed through their exact cleanup control,
+with deletion confirmed, and the owned browser tabs and dev server were closed.
+
+Production build passed in 1.56 seconds with the existing large-chunk warning.
+The first full test run hit an unchanged catch-up test's retry/timeout race;
+isolated triage passed four times and the whole file passed 15/15. The test-only
+repair uses its existing zero retry-delay option and guaranteed handle cleanup,
+without raising timeouts or weakening assertions. The next full runs found four
+older extracted PDFViewer test harnesses missing the new survey-definition
+dependencies; one also used the retired boolean adoption permit. Their harnesses
+now supply the legacy definition state and exact refs, and the entity test uses
+the entity-only permit. Existing assertions remain intact. Focused checks passed
+39/39 for the entity/definition set and 60/60 for save/tombstone/definition tests
+(these sets overlap). The export lifecycle harness also binds the captured
+definition scope, and a broader scan found the legacy sidecar loader needed
+explicit legacy definition state. These two files pass 23/23, preserving all old
+export retirement and cloud restore assertions. A continuation scan covered all
+390 files after the export
+lifecycle test: 388 passed; the known sidecar harness and an entity-rail harness
+failed. The rail harness omitted the export-menu setter supplied by the sole real
+app mount; adding that prop restored all 14/14 tests without a source change.
+
+A subsequent standard run timed out in unchanged `partialEraserSequentialStress`
+at the existing 120-second file limit. Its preceding property stress file took
+78.2 seconds versus 21.7 seconds in the continuation scan. The sequential test
+passed unchanged in that scan (36.2 seconds) and an isolated rerun (40.1 seconds).
+Host load is the likely cause, not a reproduced source failure; unrelated app and
+test processes were left alone. No stress test, timeout or assertion was changed.
+
+The final standard `npm test` run exited 0: 6,853 tests across 680 files,
+6,758 passed, 95 skipped, zero failures and zero cancellations. Log:
+`/tmp/survey-definition-runtime-full-tests-clean-20260909.log`. Both stress
+files passed unchanged in this complete run. Skipped checks are not claimed as
+verified. Production source remained frozen throughout these harness repairs,
+so the earlier build and actual browser evidence cover the committed source.
+
+No cloud feature has been enabled and no Microsoft service has been used.
+Accepted cloud mode cannot write the legacy mutable survey sidecar or a stale
+private template ID; full shared survey publication remains pending. This is
+local runtime evidence, not deployed SQL, live collaboration or Microsoft proof.
+
 ## Sources
 
 - [PostgreSQL string escape rules](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)
@@ -5506,6 +5587,8 @@ turning its client flag off. Deployment needs a compatible reader/writer plan
 before any cloud list is adopted; the flag is still off in this checkpoint.
 For document survey definitions, preserve accepted snapshots and seed receipts
 once any future caller is enabled. Do not substitute the source template's
-current contents on rollback. This checkpoint adds only the disabled contract;
-local state, compatible readers/writers and cloud deployment still need their
-own tested integration before adoption becomes available in the app.
+current contents on rollback. Compatible local readers, writers, recovery copies
+and opt-in viewer adoption now have local test coverage. Keep these readers and
+writers when disabling new adoption; older six-entry-only writers are unsafe for
+adopted files. Cloud deployment and shared publication still need their own tested
+integration before cloud adoption is enabled.

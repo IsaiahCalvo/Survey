@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildLocalDocumentState, createLocalDocumentStateReader, restoreLocalDocumentState, isManagedLocalDocument } from '../src/services/localDocumentState.js';
+import { buildLocalDocumentState, createLocalDocumentStateReader, restoreLocalDocumentState, isManagedLocalDocument,
+  rebindManagedLocalEntityCatalog, rebindManagedLocalSurveyDefinition } from '../src/services/localDocumentState.js';
 import { transformPageState } from '../src/utils/pageAnnotationReindex.js';
 
 const localId = 'local:12345678-1234-1234-1234-123456789abc';
 const file = () => ({ localId, _surveyPdfId: localId, storageMode: 'local' });
+const entityCatalog = (documentId=localId) => ({status:'accepted',version:1,documentId,catalogRevision:1,
+  sourceTemplateId:'template',sourceTemplateUpdatedAt:null,sourceEntitiesSha256:'a'.repeat(64),
+  entities:[{id:'entity',name:'Entity',color:'#123456',opacity:0.5,borderColor:'#654321',borderOpacity:1,matchFill:false}]});
+const surveyDefinition = (documentId=localId) => ({status:'accepted',version:1,documentId,definitionRevision:1,
+  sourceTemplateId:'template',sourceTemplateUpdatedAt:null,sourceStructureSha256:'b'.repeat(64),
+  modules:[{id:'module',name:'Module',categories:[{id:'category',name:'Category',checklist:[{id:'check',text:'Check'}]}]}]});
 function memoryStorage() {
   const values = new Map([['unrelated', 'keep']]);
   return { values, getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
@@ -81,5 +88,61 @@ test('wrong JSON entry shapes fail before the file can hydrate', () => {
     const state=buildLocalDocumentState({pdfId:localId});
     state.entries[prefix+localId]=value;
     assert.throws(()=>createLocalDocumentStateReader({...file(),_localDocumentState:state}),/invalid entry/);
+  }
+});
+
+test('managed snapshots use only the four exact six, seven, or eight-key sets', () => {
+  const cases=[
+    [{},6,[]],
+    [{entityCatalog:entityCatalog()},7,[`entityCatalog_${localId}`]],
+    [{surveyDefinition:surveyDefinition()},7,[`surveyDefinition_${localId}`]],
+    [{entityCatalog:entityCatalog(),surveyDefinition:surveyDefinition()},8,
+      [`entityCatalog_${localId}`,`surveyDefinition_${localId}`]],
+  ];
+  for(const [optional,count,keys] of cases) {
+    const state=buildLocalDocumentState({pdfId:localId,...optional});
+    assert.equal(Object.keys(state.entries).length,count);
+    const reader=createLocalDocumentStateReader({...file(),_localDocumentState:state});
+    for(const key of keys) assert.deepEqual(JSON.parse(reader.getItem(key)),optional[key.startsWith('entity')?'entityCatalog':'surveyDefinition']);
+  }
+});
+
+test('optional native definitions reject foreign IDs, malformed values, and substitute or extra keys', () => {
+  assert.throws(()=>buildLocalDocumentState({pdfId:localId,entityCatalog:entityCatalog('local:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')}));
+  assert.throws(()=>buildLocalDocumentState({pdfId:localId,surveyDefinition:surveyDefinition('local:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')}));
+  for(const mutate of [
+    state=>{state.entries[`entityCatalog_${localId}`]=JSON.stringify({...entityCatalog(),entities:'bad'});},
+    state=>{state.entries[`surveyDefinition_${localId}`]=JSON.stringify({...surveyDefinition(),modules:'bad'});},
+    state=>{state.entries[`surveyDefinition_${localId}`]=state.entries[`entityCatalog_${localId}`];},
+    state=>{state.entries[`surveyDefinition_${localId}-copy`]=state.entries[`surveyDefinition_${localId}`];},
+    state=>{state.entries[`entityCatalog_${localId.toUpperCase()}`]=state.entries[`entityCatalog_${localId}`];},
+  ]) {
+    const state=buildLocalDocumentState({pdfId:localId,entityCatalog:entityCatalog(),surveyDefinition:surveyDefinition()});
+    mutate(state);
+    assert.throws(()=>createLocalDocumentStateReader({...file(),_localDocumentState:state}));
+  }
+});
+
+test('reader requires a plain own-key entry map, never inherited keys or a function object', () => {
+  const valid=buildLocalDocumentState({pdfId:localId});
+  const inherited={...valid,entries:Object.create(valid.entries)};
+  assert.throws(()=>createLocalDocumentStateReader({...file(),_localDocumentState:inherited}));
+  const callable=function entries() {};
+  for(const [key,value] of Object.entries(valid.entries)) callable[key]=value;
+  assert.throws(()=>createLocalDocumentStateReader({...file(),_localDocumentState:{...valid,entries:callable}}));
+  const exotic=new Date(0);
+  for(const [key,value] of Object.entries(valid.entries)) exotic[key]=value;
+  assert.throws(()=>createLocalDocumentStateReader({...file(),_localDocumentState:{...valid,entries:exotic}}));
+});
+
+test('definition rebind helpers require exact valid source and target local identities', () => {
+  const target='local:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  for(const [rebind,value] of [[rebindManagedLocalEntityCatalog,entityCatalog()],
+    [rebindManagedLocalSurveyDefinition,surveyDefinition()]]) {
+    assert.equal(rebind(value,localId,target).documentId,target);
+    for(const source of [undefined,'','local:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','bad']) {
+      assert.throws(()=>rebind(value,source,target));
+    }
+    for(const invalidTarget of [undefined,'','bad']) assert.throws(()=>rebind(value,localId,invalidTarget));
   }
 });

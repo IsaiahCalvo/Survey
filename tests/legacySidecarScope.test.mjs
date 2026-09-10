@@ -15,6 +15,7 @@ function harness({ download, doc = { id: 'doc-a', projectId: 'project-a', name: 
   const values = {
     legacySidecarScope: scope, legacySidecarScopeRef: scopeRef,
     pdfFile: doc, numPages: 10, getPDFId: (file) => `${file.name}-${file.size}`,
+    surveyDefinition: { mode: 'legacy' },
     downloadFromStorage: async (...args) => { state.downloads++; return download(...args); },
     console: { warn() {} },
     surveyMarkersRef: { current: {} }, savedAnnotationsByPageRef: { current: {} },

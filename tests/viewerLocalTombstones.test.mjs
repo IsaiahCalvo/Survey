@@ -133,7 +133,9 @@ test('actual managed snapshot and memo dependencies include deletion-only change
   };
   const scope = { ...state(), useMemo, isManagedLocalDocument, buildLocalDocumentState,
     pendingManagedEntityCatalog: null,
-    entityCatalog: { mode: 'legacy', busy: false, catalog: null } };
+    entityCatalog: { mode: 'legacy', busy: false, catalog: null },
+    pendingManagedSurveyDefinition: null,
+    surveyDefinition: { mode: 'legacy', busy: false, definition: null } };
   const clean = evaluate(variable('managedLocalSnapshot').init, scope);
   const dirty = evaluate(variable('managedLocalSnapshot').init, { ...scope, deletedPdfAnnotations: deleted });
   assert.notEqual(dirty, clean, 'deletion-only dependency reruns the actual useMemo');
@@ -153,6 +155,7 @@ test('actual page persistence stores items and deletion data with new bytes befo
     const persist = evaluate(variable('persistPageMutationFile').init.arguments[0], {
       isManagedLocalDocument, buildLocalDocumentState, deriveCalloutsFromByPage, tabId: 'tab',
       entityCatalog: { mode: 'legacy', busy: false, catalog: null },
+      surveyDefinition: { mode: 'legacy', busy: false, definition: null },
       onUpdatePDFFile: async updated => {
         assert.equal(committed, false);
         assert.deepEqual(JSON.parse(updated._localDocumentState.entries[`pdfData_${row.localId}`]).deletedPdfAnnotations, deleted);
@@ -176,7 +179,9 @@ test('actual manual-save capture and native quit revision detect a deletion with
     annotationsByPageRef: { current: fields.annotationsByPage }, surveyMarkersRef: { current: fields.surveyMarkers },
     spacesRef: { current: fields.spaces }, user: null, entities: [],
     pendingManagedEntityCatalog: null,
-    entityCatalog: { mode: 'legacy', busy: false, catalog: null } };
+    entityCatalog: { mode: 'legacy', busy: false, catalog: null },
+    pendingManagedSurveyDefinition: null,
+    surveyDefinition: { mode: 'legacy', busy: false, definition: null } };
   evaluate(assignment('managedLocalStateRef'), scope);
   const capture = evaluate(variable('captureManagedLocalSnapshot').init, scope);
   const before = capture(file, fields.annotationsByPage);

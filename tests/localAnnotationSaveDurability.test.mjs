@@ -166,6 +166,7 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     annotationsByPageRef: { current: overrides.annotationsByPage || next },
     flushPendingFormFieldsRef: { current: () => {} },
     user, features: { cloudSync: cloud },
+    surveyDefinition: { mode: 'legacy', busy: false, definition: null },
     document: { body: { getAttribute: () => null } },
     summarizeAnnotationCountsForSaveExport: () => ({ byType: {} }),
     saveAnnotationsByPage: () => localSaved,
@@ -198,11 +199,15 @@ function managedLocalHelpers(file, write) {
     entityCatalog: { mode: 'legacy', busy: false, catalog: null },
     pendingManagedEntityCatalog: null, pendingManagedEntityCatalogRef: { current: null },
     managedEntityCatalogReadyRef: { current: { file, ready: true } },
+    surveyDefinition: { mode: 'legacy', busy: false, definition: null },
+    pendingManagedSurveyDefinition: null, pendingManagedSurveyDefinitionRef: { current: null },
+    managedSurveyDefinitionReadyRef: { current: { file, ready: true } },
     managedLocalWritesRef: { current: new WeakMap() },
     managedLocalPageMutationRef: { current: false },
     saveDocumentScopeRef: { current: { pdfFile: file, pdfId: file.localId, actorUserId: 'owner', managedLocalReady: true } },
     surveyMarkersRef: { current: {} }, spacesRef: { current: [] },
     annotationsByPageRef: { current: {} }, persistEntityCatalogRef: { current: null },
+    persistSurveyDefinitionRef: { current: null },
     saveManagedLocalState: write };
   const helpers = new Function(...Object.keys(scope), `${viewerSource.slice(start, end)}
     return { captureManagedLocalSnapshot, persistManagedLocalSnapshot };`)(...Object.values(scope));

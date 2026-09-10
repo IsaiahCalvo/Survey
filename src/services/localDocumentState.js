@@ -1,9 +1,11 @@
 import { normalizeCalloutsForSync } from '../utils/calloutSyncPayload.js';
 import { validateManagedLocalEntityCatalog } from './documentEntityCatalog.js';
+import { validateManagedLocalSurveyDefinition } from './documentSurveyDefinition.js';
 
 const localIdPattern = /^local:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const prefixes = ['annotationsByPage_', 'pdfData_', 'surveyMarkers_', 'callouts_', 'pdfSidebar_', 'regionOverlayStates_', 'entityCatalog_'];
-const legacyPrefixes = prefixes.slice(0, 6);
+const legacyPrefixes = ['annotationsByPage_', 'pdfData_', 'surveyMarkers_', 'callouts_', 'pdfSidebar_', 'regionOverlayStates_'];
+const optionalPrefixes = ['entityCatalog_', 'surveyDefinition_'];
+const prefixes = [...legacyPrefixes, ...optionalPrefixes];
 
 function invalidNativeDeletion() {
   throw new Error('The saved local document state has invalid native deletion data. Its copy was kept.');
@@ -62,7 +64,7 @@ export function isManagedLocalDocument(file) {
 // data with unknown provenance, not a managed file's hydration transport.
 export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations,
   surveyMarkers, callouts, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations,
-  regionOverlayDisabled, entityCatalog = null }) {
+  regionOverlayDisabled, entityCatalog = null, surveyDefinition = null }) {
   if (!localIdPattern.test(pdfId || '')) throw new Error('Invalid local document identity');
   const values = [annotationsByPage || {}, { items: items || {}, annotations: annotations || {},
     ...(deletedPdfAnnotations === undefined ? {} : { deletedPdfAnnotations: copyDeletedPdfAnnotations(deletedPdfAnnotations) }) },
@@ -74,7 +76,26 @@ export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annot
   if (entityCatalog != null) {
     entries[`entityCatalog_${pdfId}`] = JSON.stringify(validateManagedLocalEntityCatalog(entityCatalog, pdfId));
   }
+  if (surveyDefinition != null) {
+    entries[`surveyDefinition_${pdfId}`] = JSON.stringify(validateManagedLocalSurveyDefinition(surveyDefinition, pdfId));
+  }
   return { version: 1, pdfId, entries };
+}
+
+export function rebindManagedLocalEntityCatalog(value, sourceId, targetId) {
+  if (!localIdPattern.test(sourceId || '') || !localIdPattern.test(targetId || '')) {
+    throw new Error('Valid source and target local document identities are required');
+  }
+  const source = validateManagedLocalEntityCatalog(value, sourceId);
+  return validateManagedLocalEntityCatalog({ ...source, documentId: targetId }, targetId);
+}
+
+export function rebindManagedLocalSurveyDefinition(value, sourceId, targetId) {
+  if (!localIdPattern.test(sourceId || '') || !localIdPattern.test(targetId || '')) {
+    throw new Error('Valid source and target local document identities are required');
+  }
+  const source = validateManagedLocalSurveyDefinition(value, sourceId);
+  return validateManagedLocalSurveyDefinition({ ...source, documentId: targetId }, targetId);
 }
 
 export function createLocalDocumentStateReader(file) {
@@ -82,12 +103,23 @@ export function createLocalDocumentStateReader(file) {
   const state = file._localDocumentState;
   const keys = prefixes.map(prefix => prefix + file.localId);
   const legacyKeys = legacyPrefixes.map(prefix => prefix + file.localId);
+  const allowedKeys = new Set(keys);
   const entries = Object.create(null);
   if (state != null) {
+    const stateEntriesArePlain = state.entries !== null && typeof state.entries === 'object'
+      && !Array.isArray(state.entries)
+      && [Object.prototype, null].includes(Object.getPrototypeOf(state.entries));
+    const entryKeys = stateEntriesArePlain
+      ? Object.keys(state.entries) : [];
     if (state.version !== 1 || state.pdfId !== file.localId || !state.entries
-    || ![legacyKeys.length, keys.length].includes(Object.keys(state.entries).length)
-    || legacyKeys.some(key => typeof state.entries[key] !== 'string')
-    || (Object.keys(state.entries).length === keys.length && typeof state.entries[keys.at(-1)] !== 'string')) {
+    || !stateEntriesArePlain
+    || entryKeys.some(key => !allowedKeys.has(key))
+    || legacyKeys.some(key => !Object.hasOwn(state.entries, key)
+      || typeof state.entries[key] !== 'string')
+    || optionalPrefixes.some(prefix => {
+      const key = prefix + file.localId;
+      return Object.hasOwn(state.entries, key) && typeof state.entries[key] !== 'string';
+    })) {
       throw new Error('The saved local document state is invalid. Its copy was kept.');
     }
     for (const key of keys) {
@@ -96,8 +128,11 @@ export function createLocalDocumentStateReader(file) {
       const parsed = JSON.parse(raw);
       const isCallouts = key === `callouts_${file.localId}`;
       const isCatalog = key === `entityCatalog_${file.localId}`;
-      if ((!isCatalog && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) !== isCallouts))
-        || (isCatalog && !validateManagedLocalEntityCatalog(parsed, file.localId))) {
+      const isSurveyDefinition = key === `surveyDefinition_${file.localId}`;
+      if ((!isCatalog && !isSurveyDefinition
+          && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) !== isCallouts))
+        || (isCatalog && !validateManagedLocalEntityCatalog(parsed, file.localId))
+        || (isSurveyDefinition && !validateManagedLocalSurveyDefinition(parsed, file.localId))) {
         throw new Error('The saved local document state has an invalid entry. Its copy was kept.');
       }
       if (key === `pdfData_${file.localId}` && Object.hasOwn(parsed, 'deletedPdfAnnotations')) {

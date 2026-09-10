@@ -10,6 +10,19 @@ category or checklist definitions. Use an explicit, reviewed, document-owned
 copy, alongside the separate entity list. This decision does not enable a cloud
 feature or claim that the runtime migration is complete.
 
+## Why this choice
+
+Private per-user lists allow each person to work their own way, but collaborators
+could see different labels, checklists and exports for the same marks. Sharing
+the whole private template library would avoid some missing definitions, but
+would expose unrelated settings and tie existing documents to later library edits.
+
+A document-owned copy gives everyone with document access the same definitions,
+while personal templates and view choices stay private. The cost is explicit
+review when copying a template and a future versioned update flow; edits must not
+silently rewrite existing answers. Local-only documents use the same model without
+uploading or sharing them.
+
 ## Scope
 
 - Copy stable module IDs/names, category IDs/names and checklist IDs/text in their
@@ -70,6 +83,23 @@ Microsoft services before wiring larger accepted checklists.
   behavior remains intact without silent adoption or wider template access.
 
 ## Release limits
+
+The local state format keeps its six required legacy entries and accepts the
+entity list and survey definition as two independent optional entries. A recovery
+copy changes only each record's document ID; it retains source digests, module,
+category, checklist and entity IDs, and all existing answers. A reader rejects
+foreign, malformed, extra or inherited entries before exposing the file.
+
+The rail has three explicit inputs: omitted means the legacy private-template
+path, null means unresolved document authority, and an accepted projection means
+document-owned structure. An accepted projection never contains private Excel
+links or template author settings. Manual static Excel export remains available;
+linked Microsoft actions remain on the legacy path pending their own tests.
+
+Local adoption must also handle a write that commits after the initiating view
+retires. The open matching file must reread its committed state; a stale file
+object must stay unresolved until reopened. An old operation must not clear a
+new account or generation's review, or leave a reopened view permanently busy.
 
 Document definition history, explicit upgrades, legacy sidecar retirement,
 real two-user/offline/revocation verification and cloud deployment remain part

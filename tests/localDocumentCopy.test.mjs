@@ -6,12 +6,19 @@ import { buildLocalDocumentState, createLocalDocumentStateReader } from '../src/
 
 const pdf = (text = 'old pages', name = 'recovered.pdf') => new File([`%PDF-1.7\n${text}\n%%EOF`], name, { type: 'application/pdf' });
 const sourceId = 'local:12345678-1234-1234-1234-123456789abc';
-const snapshot = (pdfId = sourceId) => buildLocalDocumentState({ pdfId,
+const entityCatalog = documentId => ({status:'accepted',version:1,documentId,catalogRevision:1,
+  sourceTemplateId:'entity-template',sourceTemplateUpdatedAt:null,sourceEntitiesSha256:'a'.repeat(64),
+  entities:[{id:'entity',name:'Entity',color:'#123456',opacity:0.5,borderColor:'#654321',borderOpacity:1,matchFill:false}]});
+const surveyDefinition = documentId => ({status:'accepted',version:1,documentId,definitionRevision:1,
+  sourceTemplateId:'survey-template',sourceTemplateUpdatedAt:null,sourceStructureSha256:'b'.repeat(64),
+  modules:[{id:'module',name:'Module',categories:[{id:'category',name:'Category',checklist:[{id:'check',text:'Check'}]}]}]});
+const snapshot = (pdfId = sourceId, options = {}) => buildLocalDocumentState({ pdfId,
   annotationsByPage: { 1: { objects: [{ id: `mark:${pdfId}`, meta: { authorId: 'original-author' }, data: { text: pdfId } }] } },
   items: { item: { name: 'Keep this' } }, annotations: { annotation: { page: 1 } },
   surveyMarkers: { marker: { pageNumber: 1 } }, callouts: [], pageNames: { 1: 'Old page' },
   bookmarks: [{ id: 'bookmark', pageNumber: 1 }], spaces: [], activeSpaceId: null,
   pageTransformations: { 1: { rotation: 90 } }, regionOverlayDisabled: new Map([['region', true]]),
+  ...options,
 });
 
 test('recovery copy commits complete state with retained bytes under a fresh independent identity', async () => {
@@ -201,4 +208,54 @@ test('copy rejects malformed or oversized snapshots and bad PDF bytes before exp
   await assert.rejects(limited.importLocalDocumentCopy(pdf(), snapshot()), { code: 'state-too-large' });
   assert.deepEqual(await store.listLocalDocuments(), []);
   store.close(); limited.close();
+});
+
+test('save, byte replacement, and cold reopen preserve both optional document-owned snapshots', async () => {
+  const indexedDB=new IDBFactory();let store=createLocalDocumentStore({indexedDB});
+  const imported=await store.importLocalDocument(pdf());
+  const state=snapshot(imported.localId,{entityCatalog:entityCatalog(imported.localId),surveyDefinition:surveyDefinition(imported.localId)});
+  await store.saveLocalDocumentState(imported.localId,state,{expectedRevision:1});
+  await store.replaceLocalDocument(imported.localId,pdf('replaced pages'),{expectedRevision:2,state});
+  store.close();store=createLocalDocumentStore({indexedDB});
+  const reopened=await store.openLocalDocument(imported.localId);
+  assert.match(await reopened.text(),/replaced pages/);
+  assert.equal((await store.listLocalDocuments()).find(value=>value.localId===imported.localId).revision,3);
+  assert.deepEqual(JSON.parse(reopened._localDocumentState.entries[`entityCatalog_${imported.localId}`]),entityCatalog(imported.localId));
+  assert.deepEqual(JSON.parse(reopened._localDocumentState.entries[`surveyDefinition_${imported.localId}`]),surveyDefinition(imported.localId));
+  store.close();
+});
+
+test('recovery copy preserves content IDs and rebinds only both embedded document identities', async () => {
+  const indexedDB=new IDBFactory();const store=createLocalDocumentStore({indexedDB});
+  const source=await store.importLocalDocument(pdf());
+  const state=snapshot(source.localId,{entityCatalog:entityCatalog(source.localId),surveyDefinition:surveyDefinition(source.localId)});
+  const sourceBefore=structuredClone(state);
+  const copy=await store.importLocalDocumentCopy(await store.openLocalDocument(source.localId),state);
+  const opened=await store.openLocalDocument(copy.localId);
+  const copiedCatalog=JSON.parse(opened._localDocumentState.entries[`entityCatalog_${copy.localId}`]);
+  const copiedDefinition=JSON.parse(opened._localDocumentState.entries[`surveyDefinition_${copy.localId}`]);
+  assert.deepEqual(copiedCatalog,{...entityCatalog(source.localId),documentId:copy.localId});
+  assert.deepEqual(copiedDefinition,{...surveyDefinition(source.localId),documentId:copy.localId});
+  assert.match(opened._localDocumentState.entries[`annotationsByPage_${copy.localId}`],new RegExp(`mark:${source.localId}`));
+  assert.deepEqual(state,sourceBefore,'the recovery source remains unchanged');
+  store.close();
+});
+
+test('copy captures optional snapshots before async PDF preparation and corrupt input creates no artifact', async () => {
+  const indexedDB=new IDBFactory();const store=createLocalDocumentStore({indexedDB});
+  const source=await store.importLocalDocument(pdf());
+  const state=snapshot(source.localId,{entityCatalog:entityCatalog(source.localId),surveyDefinition:surveyDefinition(source.localId)});
+  const copying=store.importLocalDocumentCopy(pdf('delayed bytes'),state);
+  state.entries[`entityCatalog_${source.localId}`]=JSON.stringify({...entityCatalog(source.localId),entities:[]});
+  state.entries[`surveyDefinition_${source.localId}`]=JSON.stringify({...surveyDefinition(source.localId),modules:[]});
+  const copy=await copying;const opened=await store.openLocalDocument(copy.localId);
+  assert.equal(JSON.parse(opened._localDocumentState.entries[`entityCatalog_${copy.localId}`]).entities.length,1);
+  assert.equal(JSON.parse(opened._localDocumentState.entries[`surveyDefinition_${copy.localId}`]).modules.length,1);
+
+  const corrupt=snapshot(source.localId,{entityCatalog:entityCatalog(source.localId),surveyDefinition:surveyDefinition(source.localId)});
+  corrupt.entries[`surveyDefinition_${source.localId}`]=JSON.stringify({...surveyDefinition(source.localId),documentId:copy.localId});
+  const before=await store.listLocalDocuments();
+  await assert.rejects(store.importLocalDocumentCopy(await store.openLocalDocument(source.localId),corrupt));
+  assert.deepEqual(await store.listLocalDocuments(),before);
+  store.close();
 });

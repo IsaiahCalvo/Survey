@@ -1,6 +1,10 @@
 // Device-owned PDFs, not a cache: no auth, cloud bindings, eviction or legacy
 // migration. Metadata reads never load PDF bytes. Both records commit together.
-import { createLocalDocumentStateReader } from './localDocumentState.js';
+import {
+  createLocalDocumentStateReader,
+  rebindManagedLocalEntityCatalog,
+  rebindManagedLocalSurveyDefinition,
+} from './localDocumentState.js';
 import { LocalPdfByteSnapshotError, snapshotLocalPdfBlob } from './localPdfByteSnapshot.js';
 export const LOCAL_DOCUMENT_DB_NAME = 'survey-local-documents-v1';
 export const LOCAL_DOCUMENT_MAX_BYTES = 256 * 1024 * 1024;
@@ -239,8 +243,8 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
   }
 
   // Recovery creates a separate document, never a patch to its source. Capture
-  // state before reading bytes; only the six outer storage keys are rekeyed.
-  // Annotation IDs, authors, page layout and user content remain unchanged.
+  // and validate state before reading bytes. Document-owned records bind to the
+  // new local id; all other ids, source hashes and user content stay unchanged.
   async function importLocalDocumentCopy(file, inputState) {
     active();
     const sourceId = inputState && Object.getOwnPropertyDescriptor(inputState, 'pdfId')?.value;
@@ -252,10 +256,20 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
     const reader = createLocalDocumentStateReader({ localId: sourceId,
       _surveyPdfId: sourceId, storageMode: 'local', _localDocumentState: snapshot });
     const localId = `local:${crypto.randomUUID()}`;
-    const entries = Object.fromEntries(Object.keys(snapshot.entries).map(key => [
-      key.slice(0, -sourceId.length) + localId, reader.getItem(key),
-    ]));
+    const entries = Object.fromEntries(Object.keys(snapshot.entries).map(key => {
+      const targetKey = key.slice(0, -sourceId.length) + localId;
+      const raw = reader.getItem(key);
+      if (key === `entityCatalog_${sourceId}`) {
+        return [targetKey, JSON.stringify(rebindManagedLocalEntityCatalog(JSON.parse(raw), sourceId, localId))];
+      }
+      if (key === `surveyDefinition_${sourceId}`) {
+        return [targetKey, JSON.stringify(rebindManagedLocalSurveyDefinition(JSON.parse(raw), sourceId, localId))];
+      }
+      return [targetKey, raw];
+    }));
     const state = copyDocumentState({ version: 1, pdfId: localId, entries }, localId, maxStateBytes);
+    createLocalDocumentStateReader({ localId, _surveyPdfId: localId,
+      storageMode: 'local', _localDocumentState: state });
     const prepared = await prepare(file);
     return commitImport(prepared, localId, state);
   }

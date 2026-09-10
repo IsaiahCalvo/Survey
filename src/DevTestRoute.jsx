@@ -10,6 +10,7 @@ import App from './AppShell';
 import PageReplacementExpiredHarness from './dev/PageReplacementExpiredHarness.jsx';
 import DocumentEntityCatalogHarness from './dev/DocumentEntityCatalogHarness.jsx';
 import { createLocalDocumentStore } from './services/localDocumentStore.js';
+import { createLocalDocumentStateReader } from './services/localDocumentState.js';
 import { randomUUID } from './utils/randomUUIDPolyfill.js';
 
 const noop = () => {};
@@ -116,6 +117,18 @@ const documentEntityCatalogE2ETemplates = [{
     borderColor: '#8b6422', borderOpacity: 0.8, matchFill: false },
   { id: 'subcontractor', name: 'Subcontractor', color: '#5ba1f0', opacity: 0.5,
     borderColor: null, borderOpacity: null, matchFill: true }],
+}, {
+  id: 'document-survey-definition-template', name: 'Document Survey Definition Fixture',
+  updatedAt: '2026-09-09T15:00:00.000Z',
+  modules: [{ id: 'definition-module', name: 'Definition Module', categories: [{ id: 'definition-category',
+    name: 'Definition Category', color: '#d8a84e', checklist: [
+      { id: 'definition-check-one', text: 'Definition check one' },
+      { id: 'definition-check-two', text: 'Definition check two' },
+    ] }] }],
+  entities: [{ id: 'definition-general-contractor', name: 'Definition General Contractor', color: '#d8a84e', opacity: 0.7,
+    borderColor: '#8b6422', borderOpacity: 0.8, matchFill: false },
+  { id: 'definition-subcontractor', name: 'Definition Subcontractor', color: '#5ba1f0', opacity: 0.5,
+    borderColor: null, borderOpacity: null, matchFill: true }],
 }];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
@@ -143,6 +156,8 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   const [error, setError] = useState(null);
   const [catalogViewerMount, setCatalogViewerMount] = useState(0);
   const [catalogViewerCleanup, setCatalogViewerCleanup] = useState(null);
+  const [catalogViewerStoredStatus, setCatalogViewerStoredStatus] = useState(null);
+  const [surveyDefinitionPrivateTemplatesCleared, setSurveyDefinitionPrivateTemplatesCleared] = useState(false);
   const surveyTransitionE2E = new URLSearchParams(window.location.search)
     .get('surveyTransitionE2E') === '1';
   const surveyTemplateWorkflowE2E = new URLSearchParams(window.location.search)
@@ -155,6 +170,9 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     .get('documentEntityCatalogE2E') === '1';
   const documentEntityCatalogViewerE2E = new URLSearchParams(window.location.search)
     .get('documentEntityCatalogViewerE2E') === '1';
+  const documentSurveyDefinitionViewerE2E = new URLSearchParams(window.location.search)
+    .get('documentSurveyDefinitionViewerE2E') === '1';
+  const documentOwnedViewerE2E = documentEntityCatalogViewerE2E || documentSurveyDefinitionViewerE2E;
   const catalogViewerDbNameRef = useRef(`survey-entity-catalog-viewer-${randomUUID()}`);
   const catalogViewerStoreRef = useRef(null);
   const catalogViewerLocalIdRef = useRef(null);
@@ -165,6 +183,26 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   const replaceCatalogViewerLocalFile = useCallback((...args) => {
     if (!catalogViewerStoreRef.current) throw new Error('The catalog viewer fixture is not ready.');
     return catalogViewerStoreRef.current.replaceLocalDocument(...args);
+  }, []);
+  const inspectCatalogViewerStoredFile = useCallback(async (openedFile = null) => {
+    try {
+      const file = openedFile || await catalogViewerStoreRef.current.openLocalDocument(
+        catalogViewerLocalIdRef.current,
+      );
+      const reader = createLocalDocumentStateReader(file);
+      const readStatus = prefix => {
+        const value = reader.getItem(`${prefix}_${file.localId}`);
+        return value == null ? 'absent' : JSON.parse(value).status;
+      };
+      const next = { revision: file.localRevision,
+        entityCatalog: readStatus('entityCatalog'),
+        surveyDefinition: readStatus('surveyDefinition') };
+      setCatalogViewerStoredStatus(next);
+      return next;
+    } catch {
+      setCatalogViewerStoredStatus({ error: 'Stored fixture state could not be read.' });
+      return null;
+    }
   }, []);
   const removeCatalogViewerFixture = useCallback(async () => {
     const store = catalogViewerStoreRef.current;
@@ -182,8 +220,11 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     }
   }, []);
 
-  if (documentEntityCatalogViewerE2E) {
-    window.__surveyTransitionE2ETemplates = documentEntityCatalogE2ETemplates;
+  if (documentOwnedViewerE2E) {
+    window.__surveyTransitionE2ETemplates = documentSurveyDefinitionViewerE2E
+      && surveyDefinitionPrivateTemplatesCleared
+      ? []
+      : documentEntityCatalogE2ETemplates;
   } else if (surveyTransitionE2E) {
     window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
   } else if (surveyTemplateWorkflowE2E) {
@@ -217,7 +258,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
             filePath: '/debug/deep-link-test.pdf',
             __localFile: file,
           }];
-        } else if (documentEntityCatalogViewerE2E) {
+        } else if (documentOwnedViewerE2E) {
           const store = createLocalDocumentStore({ indexedDB: globalThis.indexedDB,
             dbName: catalogViewerDbNameRef.current, timeoutMs: 2_000 });
           catalogViewerStoreRef.current = store;
@@ -240,13 +281,13 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     loadPdf();
     return () => {
       cancelled = true;
-      if (documentEntityCatalogViewerE2E) {
+      if (documentOwnedViewerE2E) {
         catalogViewerStoreRef.current?.close();
         try { globalThis.indexedDB.deleteDatabase(catalogViewerDbNameRef.current); } catch { /* exact fixture DB */ }
       }
     };
   }, [pdfName, displayName, documentDeepLinkE2E, documentEntityCatalogE2E,
-    documentEntityCatalogViewerE2E, pageReplacementExpiredE2E]);
+    documentOwnedViewerE2E, pageReplacementExpiredE2E]);
 
   if (status === 'loading') {
     return (
@@ -290,10 +331,11 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   // status === 'ready'
   if (pageReplacementExpiredE2E) return <PageReplacementExpiredHarness />;
   if (documentEntityCatalogE2E) return <DocumentEntityCatalogHarness />;
-  if (documentEntityCatalogViewerE2E && catalogViewerCleanup) return <main style={{ minHeight: '100vh',
+  if (documentOwnedViewerE2E && catalogViewerCleanup) return <main style={{ minHeight: '100vh',
     padding: '32px', color: '#20242b', background: '#f5f5f5',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-    <h1>Document entity list viewer fixture</h1>
+    <h1>{documentSurveyDefinitionViewerE2E
+      ? 'Document survey definition viewer fixture' : 'Document entity list viewer fixture'}</h1>
     <p data-document-entity-catalog-viewer-fixture-removed={catalogViewerCleanup.removed == null
       ? 'pending' : String(catalogViewerCleanup.removed)}>{catalogViewerCleanup.message}</p>
   </main>;
@@ -301,12 +343,13 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     <ErrorBoundary>
       <AuthContext.Provider value={mockAuthValue}>
         <MSGraphContext.Provider value={mockMSGraphValue}>
-          <App key={documentEntityCatalogViewerE2E ? `catalog-viewer-${catalogViewerMount}` : 'app'}
+          <App key={documentOwnedViewerE2E ? `document-owned-viewer-${catalogViewerMount}` : 'app'}
             devPreviewReturnTab={returnTab}
-            documentEntityCatalogEnabled={documentEntityCatalogViewerE2E}
-            localDocumentStateWriter={documentEntityCatalogViewerE2E
+            documentEntityCatalogEnabled={documentOwnedViewerE2E}
+            documentSurveyDefinitionEnabled={documentSurveyDefinitionViewerE2E}
+            localDocumentStateWriter={documentOwnedViewerE2E
               ? saveCatalogViewerLocalState : null}
-            localDocumentFileReplacer={documentEntityCatalogViewerE2E
+            localDocumentFileReplacer={documentOwnedViewerE2E
               ? replaceCatalogViewerLocalFile : null} />
           {documentEntityCatalogViewerE2E && <button type="button"
             data-document-entity-catalog-reopen
@@ -317,7 +360,31 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
               );
               setCatalogViewerMount(value => value + 1);
             })(); }}>Reopen stored fixture</button>}
-          {documentEntityCatalogViewerE2E && <button type="button"
+          {documentSurveyDefinitionViewerE2E && <button type="button"
+            data-document-survey-definition-reopen-without-private-templates
+            style={{ position: 'fixed', right: 70, top: 52, zIndex: 9000 }}
+            onClick={() => { void (async () => {
+              setSurveyDefinitionPrivateTemplatesCleared(true);
+              const openedFile = await catalogViewerStoreRef.current.openLocalDocument(
+                catalogViewerLocalIdRef.current,
+              );
+              await inspectCatalogViewerStoredFile(openedFile);
+              window.__devTestPdf = openedFile;
+              setCatalogViewerMount(value => value + 1);
+            })(); }}>Reopen without private templates</button>}
+          {documentSurveyDefinitionViewerE2E && <button type="button"
+            data-document-survey-definition-inspect-stored-fixture
+            style={{ position: 'fixed', right: 70, top: 92, zIndex: 9000 }}
+            onClick={() => { void inspectCatalogViewerStoredFile(); }}>Inspect stored fixture</button>}
+          {documentSurveyDefinitionViewerE2E && catalogViewerStoredStatus && <output
+            data-document-survey-definition-stored-status
+            style={{ position: 'fixed', right: 70, top: 132, zIndex: 9000, padding: 8,
+              background: '#202631', color: '#f4f6f8', border: '1px solid #465164' }}>
+            {catalogViewerStoredStatus.error || `Stored revision: ${catalogViewerStoredStatus.revision}; `
+              + `entity catalog: ${catalogViewerStoredStatus.entityCatalog}; `
+              + `survey definition: ${catalogViewerStoredStatus.surveyDefinition}`}
+          </output>}
+          {documentOwnedViewerE2E && <button type="button"
             data-document-entity-catalog-viewer-remove-fixture
             style={{ position: 'fixed', right: 238, top: 12, zIndex: 9000 }}
             onClick={() => { void removeCatalogViewerFixture(); }}>Remove fixture data</button>}

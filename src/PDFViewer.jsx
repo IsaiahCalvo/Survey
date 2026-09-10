@@ -18,7 +18,9 @@ import { buildLocalDocumentState, createLocalDocumentStateReader, isManagedLocal
 import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from './hooks/useManagedLocalSaveTracking.js';
 import { useManagedLocalDraftTracking } from './hooks/useManagedLocalDraftTracking.js';
 import { useDocumentEntityCatalog } from './hooks/useDocumentEntityCatalog.js';
+import { useDocumentSurveyDefinition } from './hooks/useDocumentSurveyDefinition.js';
 import DocumentEntityCatalogAdoptionNotice from './components/DocumentEntityCatalogAdoptionNotice.jsx';
+import DocumentSurveyDefinitionAdoptionNotice from './components/DocumentSurveyDefinitionAdoptionNotice.jsx';
 import { saveLocalDocumentState } from './services/localDocumentStore.js';
 import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
 import { loadPdfjs, getPdfjsDocumentOptions } from './utils/pdfWorkerConfig';
@@ -445,7 +447,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -4644,6 +4646,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const persistEntityCatalogRef = useRef(null);
   const pendingManagedEntityCatalogRef = useRef(null);
   const managedEntityCatalogReadyRef = useRef(null);
+  const persistSurveyDefinitionRef = useRef(null);
+  const pendingManagedSurveyDefinitionRef = useRef(null);
+  const managedSurveyDefinitionReadyRef = useRef(null);
   const readManagedEntityCatalog = useCallback(file => {
     if (!isManagedLocalDocument(file)) return null;
     const raw = createLocalDocumentStateReader(file).getItem(`entityCatalog_${file.localId}`);
@@ -4676,6 +4681,75 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     isCurrent: isEntityCatalogScopeCurrent,
   });
   const documentEntityChoices = entityCatalog.entities;
+  const readManagedSurveyDefinition = useCallback(file => {
+    if (!isManagedLocalDocument(file)) return null;
+    const raw = createLocalDocumentStateReader(file).getItem(`surveyDefinition_${file.localId}`);
+    return raw ? JSON.parse(raw) : null;
+  }, []);
+  const persistManagedSurveyDefinition = useCallback((file, definition) => {
+    const persist = persistSurveyDefinitionRef.current;
+    if (typeof persist !== 'function') {
+      throw new Error('The local document is still loading. Retry after it opens.');
+    }
+    const pending = { file, localId: file.localId, definition };
+    pendingManagedSurveyDefinitionRef.current = pending;
+    return Promise.resolve().then(() => persist(file, definition)).catch(error => {
+      if (pendingManagedSurveyDefinitionRef.current === pending) {
+        pendingManagedSurveyDefinitionRef.current = null;
+      }
+      throw error;
+    });
+  }, []);
+  const surveyDefinitionScopeRef = useRef(null);
+  surveyDefinitionScopeRef.current = { active: isActive, actorUserId: user?.id || null,
+    documentId: pdfFile?.id || null, generationId: pdfFile?.pdfGenerationId || null,
+    localId: pdfFile?.localId || null, file: pdfFile };
+  const isSurveyDefinitionScopeCurrent = useCallback((candidate) => {
+    const live = surveyDefinitionScopeRef.current;
+    return live?.active === true && live.file === candidate.file
+      && live.actorUserId === candidate.actorUserId && live.documentId === candidate.documentId
+      && live.generationId === candidate.generationId && live.localId === candidate.localId;
+  }, []);
+  const surveyDefinition = useDocumentSurveyDefinition({ enabled: documentSurveyDefinitionEnabled,
+    file: pdfFile, actorUserId: user?.id || null, template: selectedTemplate,
+    cloudClient: documentSurveyDefinitionClient,
+    adoptionStore: documentSurveyDefinitionAdoptionStore,
+    readManagedLocal: readManagedSurveyDefinition,
+    persistManagedLocal: persistManagedSurveyDefinition,
+    isCurrent: isSurveyDefinitionScopeCurrent,
+  });
+  const pendingManagedSurveyDefinition = pendingManagedSurveyDefinitionRef.current?.file === pdfFile
+    && pendingManagedSurveyDefinitionRef.current?.localId === pdfFile?.localId
+    ? pendingManagedSurveyDefinitionRef.current : null;
+  if (pendingManagedSurveyDefinition
+    && surveyDefinition.definition?.status === 'accepted'
+    && surveyDefinition.definition.documentId === pendingManagedSurveyDefinition.definition.documentId) {
+    pendingManagedSurveyDefinitionRef.current = null;
+  }
+  const effectiveSurveyTemplate = useMemo(() => {
+    if (surveyDefinition.mode === 'legacy') return selectedTemplate;
+    if (surveyDefinition.mode !== 'accepted') return null;
+    const definition = surveyDefinition.definition;
+    return Object.freeze({
+      id: definition.source?.templateId || definition.sourceTemplateId,
+      name: 'Document survey',
+      modules: definition.modules,
+    });
+  }, [selectedTemplate, surveyDefinition.definition, surveyDefinition.mode]);
+  const documentSurveyTemplate = surveyDefinition.mode === 'legacy'
+    ? undefined : effectiveSurveyTemplate;
+  const documentSurveyDefinitionScope = useMemo(() => Object.freeze({
+    active: isActive === true, actorUserId: user?.id || null, tabId: tabId || null, file: pdfFile,
+    generationId: pdfFile?.pdfGenerationId || null, mode: surveyDefinition.mode,
+    definition: surveyDefinition.definition,
+  }), [isActive, pdfFile, pdfFile?.pdfGenerationId, surveyDefinition.definition,
+    surveyDefinition.mode, tabId, user?.id]);
+  const documentSurveyDefinitionScopeRef = useRef(documentSurveyDefinitionScope);
+  documentSurveyDefinitionScopeRef.current = documentSurveyDefinitionScope;
+  const mayReviewSurveyDefinition = documentSurveyDefinitionEnabled
+    && entityCatalog.mode === 'accepted' && surveyDefinition.mode === 'legacy'
+    && Boolean(selectedTemplate) && (isManagedLocalDocument(pdfFile)
+      || (pdfFile?.id && pdfFile?.user_id === user?.id));
   const documentEntityChoiceScope = useMemo(() => Object.freeze({
     actorUserId: user?.id || null, tabId: tabId || null, file: pdfFile,
     choices: documentEntityChoices,
@@ -4689,6 +4763,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     pendingManagedEntityCatalogRef.current = null;
   }
   const [selectedModuleId, setSelectedModuleId] = useState(null);
+  useEffect(() => {
+    if (surveyDefinition.mode !== 'accepted') return;
+    const modules = effectiveSurveyTemplate?.modules || [];
+    if (modules.length === 0) return;
+    if (!modules.some(module => module.id === selectedModuleId)) {
+      setSelectedModuleId(modules[0].id);
+    }
+  }, [effectiveSurveyTemplate, selectedModuleId, surveyDefinition.mode]);
   useEffect(() => {
     pdfjsSelectedModuleIdRef.current = selectedModuleId;
   }, [selectedModuleId]);
@@ -8643,11 +8725,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       spaceId: activeSpaceId ?? null,
       selectedSpaceId: selectedSpaceId ?? null,
       surveyPanelOpen: Boolean(showSurveyPanel),
-      templateId: selectedTemplate?.id ?? selectedTemplate?.supabaseId ?? null,
+      templateId: effectiveSurveyTemplate?.id ?? effectiveSurveyTemplate?.supabaseId ?? null,
       moduleId: selectedModuleId ?? null,
       categoryId: selectedCategoryId ?? null,
     };
-  }, [activeSpaceId, selectedSpaceId, showSurveyPanel, selectedTemplate, selectedModuleId, selectedCategoryId]);
+  }, [activeSpaceId, selectedSpaceId, showSurveyPanel, effectiveSurveyTemplate,
+    selectedModuleId, selectedCategoryId]);
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
   const [mobileRegionToolbarApi, setMobileRegionToolbarApi] = useState(null);
@@ -12788,15 +12871,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const persistPageMutationFile = useCallback((file, next) => {
     if (isManagedLocalDocument(file)) {
       if (entityCatalog.mode === 'unknown' || entityCatalog.busy) throw new Error('The document entity list must finish before this PDF can be changed.');
+      if (surveyDefinition.mode === 'unknown' || surveyDefinition.busy) throw new Error('The document survey definition must finish before this PDF can be changed.');
       if (!next) throw new Error('Local page state is required before replacing PDF bytes');
       file._localDocumentState = buildLocalDocumentState({
         ...next, pdfId: file.localId,
         callouts: deriveCalloutsFromByPage(next.annotationsByPage),
         entityCatalog: entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null,
+        surveyDefinition: surveyDefinition.definition?.status === 'accepted'
+          ? surveyDefinition.definition : null,
       });
     }
     return onUpdatePDFFile?.(file, tabId);
-  }, [entityCatalog.busy, entityCatalog.catalog, entityCatalog.mode, onUpdatePDFFile, tabId]);
+  }, [entityCatalog.busy, entityCatalog.catalog, entityCatalog.mode, onUpdatePDFFile,
+    surveyDefinition.busy, surveyDefinition.definition, surveyDefinition.mode, tabId]);
   const checkedReplacementSessionRef = useRef(null);
   const captureAcceptedState = useCallback(() => {
     const session = checkedReplacementSessionRef.current;
@@ -13798,8 +13885,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
     const { silent = false } = options;
     const sourceScope = excelExportScope(excelBaselineId, selectedTemplate);
+    const sourceDefinitionScope = documentSurveyDefinitionScope;
     const assertCurrentExport = () => {
-      if (excelExportScopeRef.current !== sourceScope) {
+      if (excelExportScopeRef.current !== sourceScope
+        || sourceDefinitionScope.active !== true
+        || sourceDefinitionScope !== documentSurveyDefinitionScopeRef.current) {
         throw new Error('The linked document changed. Export again from the current document.');
       }
     };
@@ -13809,7 +13899,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
-    if (!selectedTemplate) {
+    if (surveyDefinition.mode === 'unknown') {
+      throw new Error('The document survey definition must finish before export.');
+    }
+    if (surveyDefinition.mode === 'accepted' && (silent || targetPath)) {
+      throw new Error('Document survey definitions support standalone Excel export only.');
+    }
+    assertCurrentExport();
+    const exportTemplate = surveyDefinition.mode === 'accepted'
+      ? effectiveSurveyTemplate : selectedTemplate;
+    if (!exportTemplate) {
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
       return false;
     }
@@ -13845,9 +13944,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         state: 'veryHidden' // Cannot be unhidden via Excel UI
       });
       metaSheet.getCell('A1').value = 'template_id';
-      metaSheet.getCell('B1').value = selectedTemplate.supabaseId || selectedTemplate.id || '';
+      metaSheet.getCell('B1').value = exportTemplate.supabaseId || exportTemplate.id || '';
       metaSheet.getCell('A2').value = 'template_name';
-      metaSheet.getCell('B2').value = selectedTemplate.name || '';
+      metaSheet.getCell('B2').value = exportTemplate.name || '';
       metaSheet.getCell('A3').value = 'export_timestamp';
       metaSheet.getCell('B3').value = rowIdExportId;
       metaSheet.getCell('A4').value = 'app_version';
@@ -13866,8 +13965,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       let registeredWorkbookId = null;
       try {
         const supabaseDocId = pdfFile?.id ?? null;
-        const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
-        if (supabaseDocId && supabaseTemplateId) {
+        const supabaseTemplateId = exportTemplate?.supabaseId || exportTemplate?.id || null;
+        if (surveyDefinition.mode !== 'accepted' && supabaseDocId && supabaseTemplateId) {
           const capabilityTier =
             selectedTemplate?.isSharePoint ? 'business'
             : selectedTemplate?.isOneDrive ? 'personal'
@@ -13890,7 +13989,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         console.warn('KAL-307: workbook registration failed — export proceeds without registration:', regErr?.message ?? regErr);
       }
 
-      const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
+      const modulesList = exportTemplate.modules || exportTemplate.spaces || [];
       const sheetNames = new Set();
       sheetNames.add('_SurveyMetadata'); // Reserve metadata sheet name
       const schemaMappings = []; // Track schema mappings for Excel add-in sync
@@ -13992,7 +14091,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
             // Get module data key for accessing item data
             const moduleDataKey = getModuleDataKey(moduleName);
-            const categoryName = getCategoryName(selectedTemplate, moduleId, category.id);
+            const categoryName = getCategoryName(exportTemplate, moduleId, category.id);
 
             // Get all surveyMarkers for this category and module (same logic as sidebar)
             const categorySurveyMarkers = [];
@@ -14042,7 +14141,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             // color fallback below keeps the old template list so it cannot
             // recolor a marker whose assignment predates adoption.
             const assignmentEntities = documentEntityChoices;
-            const entities = selectedTemplate?.entities || [];
+            const entities = surveyDefinition.mode === 'accepted'
+              ? documentEntityChoices : (selectedTemplate?.entities || []);
             const entityNames = assignmentEntities.map(e => e.name).filter(Boolean);
 
             // Build data rows
@@ -14519,6 +14619,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             }
 
             assertCurrentExport();
+            if (surveyDefinition.mode === 'accepted') {
+              setIsExporting(false);
+              if (!silent) showToast('Survey Excel file exported.', 'success');
+              return true;
+            }
             const updatedTemplate = {
               ...selectedTemplate,
               linkedExcelPath: targetPath,
@@ -14586,14 +14691,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           }
         } else {
           // Export - show location choice modal
-          const fileName = sanitizeFilename(selectedTemplate?.name || 'survey', 'survey');
+          const fileName = sanitizeFilename(exportTemplate?.name || 'survey', 'survey');
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
             identityRecords: identityRecordsByMarkerId,
             exportedMarkers: surveyMarkers,
             sourceScope,
-            templateSnapshot: selectedTemplate
+            sourceDefinitionScope,
+            definitionMode: surveyDefinition.mode,
+            templateSnapshot: exportTemplate
           });
           // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
@@ -14607,7 +14714,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${sanitizeFilename(selectedTemplate?.name || 'survey', 'survey')}_export.xlsx`;
+        link.download = `${sanitizeFilename(exportTemplate?.name || 'survey', 'survey')}_export.xlsx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -14623,7 +14730,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelExportSynced, excelBaselineId]);
+  }, [documentSurveyDefinitionScope, effectiveSurveyTemplate, selectedTemplate, surveyDefinition.mode, items, surveyMarkers,
+    graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus,
+    markExcelExportSynced, excelBaselineId]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -15095,12 +15204,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const performOneDriveExport = useCallback(async (selection = null) => {
     // Prevent multiple simultaneous exports
     if (isExportInProgressRef.current || !exportPendingData || !graphClient) return false;
+    if (exportPendingData.sourceDefinitionScope !== documentSurveyDefinitionScopeRef.current
+      || documentSurveyDefinitionScopeRef.current?.active !== true) {
+      showToast('The document survey changed. Export again from the current document.', 'warn');
+      return false;
+    }
+    if (exportPendingData.definitionMode === 'accepted') {
+      showToast('Document survey definitions support standalone computer export only.', 'warn');
+      return false;
+    }
 
     isExportInProgressRef.current = true;
     setIsExportingToOneDrive(true);
 
     try {
-      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope
+        || exportPendingData.sourceDefinitionScope !== documentSurveyDefinitionScopeRef.current
+        || documentSurveyDefinitionScopeRef.current?.active !== true) {
         throw new Error('The linked document changed. Export again from the current document.');
       }
       // Ensure we have a fresh token before making the API call
@@ -15111,7 +15231,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         }
       }
 
-      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope
+        || exportPendingData.sourceDefinitionScope !== documentSurveyDefinitionScopeRef.current
+        || documentSurveyDefinitionScopeRef.current?.active !== true) {
         throw new Error('The linked document changed. Export again from the current document.');
       }
 
@@ -15150,7 +15272,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
       const oneDriveFileId = uploadResult?.id;
       if (!oneDriveFileId) throw new Error('Microsoft did not confirm the exported file. Please check OneDrive before retrying.');
-      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope
+        || exportPendingData.sourceDefinitionScope !== documentSurveyDefinitionScopeRef.current
+        || documentSurveyDefinitionScopeRef.current?.active !== true) {
         throw new Error('The file was exported, but the open document changed. Its sync state was not changed.');
       }
 
@@ -21433,17 +21557,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const savedAnnotationsByPageRef = useRef({});
   const managedLocalSnapshot = useMemo(() => isManagedLocalDocument(pdfFile) && pdfId === pdfFile.localId
     && entityCatalog.mode !== 'unknown' && !entityCatalog.busy
+    && surveyDefinition.mode !== 'unknown' && !surveyDefinition.busy
     ? buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations, surveyMarkers, callouts,
       pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled,
       entityCatalog: pendingManagedEntityCatalog?.catalog
-        || (entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null) })
+        || (entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null),
+      surveyDefinition: pendingManagedSurveyDefinition?.definition
+        || (surveyDefinition.definition?.status === 'accepted' ? surveyDefinition.definition : null) })
     : null, [pdfFile, pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations, surveyMarkers, callouts,
     pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled,
-    entityCatalog.busy, entityCatalog.catalog, entityCatalog.mode]);
+    entityCatalog.busy, entityCatalog.catalog, entityCatalog.mode,
+    pendingManagedSurveyDefinition, surveyDefinition.busy,
+    surveyDefinition.definition, surveyDefinition.mode]);
   const managedLocalSaveTracking = useManagedLocalSaveTracking({ file: pdfFile, pdfId, snapshot: managedLocalSnapshot,
     hydrated: !!pdfDoc && !isLoadingPDF && !pdfLoadError });
   if (!entityCatalog.busy) {
     managedEntityCatalogReadyRef.current = { file: pdfFile,
+      ready: managedLocalSaveTracking.ready === true };
+  }
+  if (!surveyDefinition.busy) {
+    managedSurveyDefinitionReadyRef.current = { file: pdfFile,
       ready: managedLocalSaveTracking.ready === true };
   }
   const managedLocalDraftTracking = useManagedLocalDraftTracking({ file: pdfFile, snapshot: managedLocalSnapshot,
@@ -21666,12 +21799,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           return safeSpacesSnapshot.value;
         });
       }
-      if (data.entities) setEntities(data.entities);
-
-      // Restore view state if available
-      if (data.zoomLevel) setScale(data.zoomLevel);
-      const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
-      if (restoredPage) setPageNum(restoredPage);
+      // An adopted cloud document owns its shared entity/definition data and
+      // its generation-scoped view state outside this old mutable sidecar.
+      // Legacy and unmanaged documents keep their prior load path unchanged.
+      if (!doc.id || surveyDefinition.mode === 'legacy') {
+        if (data.entities) setEntities(data.entities);
+        if (data.zoomLevel) setScale(data.zoomLevel);
+        const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
+        if (restoredPage) setPageNum(restoredPage);
+      }
 
       // Template restoration is handled by the document's template_id usually, 
       // but we can fallback to data.templateId if needed.
@@ -21679,7 +21815,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     } catch (error) {
       // It's normal for new documents to not have data yet
     }
-  }, [downloadFromStorage, pdfFile, numPages, legacySidecarScope]);
+  }, [downloadFromStorage, pdfFile, numPages, legacySidecarScope, surveyDefinition.mode]);
 
   // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
@@ -21931,28 +22067,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   managedLocalStateRef.current = { items, annotations, deletedPdfAnnotations, callouts, pageNames, bookmarks,
     activeSpaceId, pageTransformations, regionOverlayDisabled,
     entityCatalog: pendingManagedEntityCatalog?.catalog
-      || (entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null) };
+      || (entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null),
+    surveyDefinition: pendingManagedSurveyDefinition?.definition
+      || (surveyDefinition.definition?.status === 'accepted' ? surveyDefinition.definition : null) };
   const captureManagedLocalSnapshot = (file, snapshot) => {
     if (entityCatalog.mode === 'unknown' || entityCatalog.busy) {
       throw new Error('The document entity list must finish before saving.');
+    }
+    if (surveyDefinition.mode === 'unknown' || surveyDefinition.busy) {
+      throw new Error('The document survey definition must finish before saving.');
     }
     return buildLocalDocumentState({ ...managedLocalStateRef.current,
       pdfId: file.localId, annotationsByPage: snapshot,
       surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current });
   };
   const persistManagedLocalSnapshot = (file, snapshot,
-    state = captureManagedLocalSnapshot(file, snapshot), allowEntityCatalogAdoption = false) => {
-    if (entityCatalog.mode === 'unknown' || (entityCatalog.busy && !allowEntityCatalogAdoption)) {
-      throw new Error('The document entity list must finish before saving.');
+    state = captureManagedLocalSnapshot(file, snapshot), adoptionKind = null) => {
+    if (entityCatalog.mode === 'unknown' || surveyDefinition.mode === 'unknown'
+      || (entityCatalog.busy && adoptionKind !== 'entity')
+      || (surveyDefinition.busy && adoptionKind !== 'survey')) {
+      throw new Error('The document lists must finish before saving.');
     }
     const writes = managedLocalWritesRef.current;
     const previous = writes.get(file);
     const signature = JSON.stringify(state.entries);
     if (previous?.signature === signature) return previous.promise;
     const scope = saveDocumentScopeRef.current;
-    const adoptionReady = allowEntityCatalogAdoption
-      && managedEntityCatalogReadyRef.current?.file === file
-      && managedEntityCatalogReadyRef.current.ready === true;
+    const adoptionReady = adoptionKind === 'entity'
+      ? managedEntityCatalogReadyRef.current?.file === file
+        && managedEntityCatalogReadyRef.current.ready === true
+      : adoptionKind === 'survey'
+        ? managedSurveyDefinitionReadyRef.current?.file === file
+          && managedSurveyDefinitionReadyRef.current.ready === true
+        : false;
     const write = async () => {
       const current = saveDocumentScopeRef.current;
       if (current?.pdfFile !== file || current.pdfId !== file.localId
@@ -21981,10 +22128,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     const state = buildLocalDocumentState({ ...managedLocalStateRef.current,
       pdfId: file.localId, annotationsByPage: annotationsByPageRef.current,
       surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current,
-      entityCatalog: catalog });
-    return persistManagedLocalSnapshot(file, annotationsByPageRef.current, state, true).then(result => {
+      entityCatalog: catalog,
+      surveyDefinition: managedLocalStateRef.current.surveyDefinition });
+    return persistManagedLocalSnapshot(file, annotationsByPageRef.current, state, 'entity').then(result => {
       if (pendingManagedEntityCatalogRef.current?.file === file
         && pendingManagedEntityCatalogRef.current.catalog === catalog) pendingManagedEntityCatalogRef.current = null;
+      return result;
+    });
+  };
+  persistSurveyDefinitionRef.current = (file, definition) => {
+    const state = buildLocalDocumentState({ ...managedLocalStateRef.current,
+      pdfId: file.localId, annotationsByPage: annotationsByPageRef.current,
+      surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current,
+      entityCatalog: managedLocalStateRef.current.entityCatalog,
+      surveyDefinition: definition });
+    return persistManagedLocalSnapshot(file, annotationsByPageRef.current, state, 'survey').then(result => {
+      if (pendingManagedSurveyDefinitionRef.current?.file === file
+        && pendingManagedSurveyDefinitionRef.current.definition === definition) {
+        pendingManagedSurveyDefinitionRef.current = null;
+      }
       return result;
     });
   };
@@ -22066,8 +22228,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       // Report a failed local write before any network wait can outlast the
       // desktop quit grace period. Other save callers need no callback.
       onLocalBackupResult?.(localBackupSaved);
+      const legacySidecarSaveRequested = features?.cloudSync && !managedLocal
+        && surveyDefinition.mode === 'legacy';
       if (features?.cloudSync && !managedLocal) {
-        await saveSurveyDataToSupabase(surveyMarkers, spaces, selectedTemplate);
+        if (legacySidecarSaveRequested) {
+          await saveSurveyDataToSupabase(surveyMarkers, spaces, selectedTemplate);
+        }
         if (pdfFile?.id && user?.id && typeof cloudSyncForceFlush === 'function') {
           try {
             await cloudSyncForceFlush();
@@ -22095,7 +22261,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         annotationCountSummary: annotationCounts,
         embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
         localBackupSaved,
-        surveyDataStorageSaveRequested: !!features?.cloudSync,
+        surveyDataStorageSaveRequested: legacySidecarSaveRequested,
         silent
       }));
 
@@ -22143,7 +22309,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       }
       return false;
     }
-  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush,
+  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush, surveyDefinition.mode,
     managedLocalSaveTracking.ready, managedLocalSaveTracking.markSaved, managedLocalDraftTracking.flush]);
 
   useManagedLocalAutoSave({ file: pdfFile,
@@ -22315,17 +22481,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   // Migrate legacy surveyMarkers to new system (one-time, when template is selected)
   useEffect(() => {
-    if (!selectedTemplate || !pdfId || Object.keys(surveyMarkers).length === 0) return;
+    if (!effectiveSurveyTemplate || !pdfId || Object.keys(surveyMarkers).length === 0) return;
     if (Object.keys(items).length > 0) return; // Already migrated or has data
 
-    const migrated = migrateLegacySurveyMarkers(surveyMarkers, items, annotations, selectedTemplate);
+    const migrated = migrateLegacySurveyMarkers(surveyMarkers, items, annotations, effectiveSurveyTemplate);
     if (Object.keys(migrated.items).length > 0) {
       setItems(migrated.items);
       setAnnotations(migrated.annotations);
       // Optionally clear legacy data
       // setSurveyMarkers({});
     }
-  }, [selectedTemplate, pdfId]); // Only run when template changes
+  }, [effectiveSurveyTemplate, pdfId]); // Only run when the effective definition changes
 
   useEffect(() => {
     let cancelled = false;
@@ -24038,8 +24204,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   }, [commitZoomInput]);
 
   const mobileSurveyModules = useMemo(
-    () => selectedTemplate?.modules || selectedTemplate?.spaces || [],
-    [selectedTemplate]
+    () => effectiveSurveyTemplate?.modules || effectiveSurveyTemplate?.spaces || [],
+    [effectiveSurveyTemplate]
   );
   const mobileSurveyCategories = useMemo(
     () => mobileSurveyModules.find((module) => module.id === selectedModuleId)?.categories || [],
@@ -24293,7 +24459,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       lastShapeTool,
       lastReviewTool,
       showSurveyPanel,
-      surveyToolbar: selectedTemplate ? {
+      surveyToolbar: effectiveSurveyTemplate ? {
         modules: mobileSurveyModules,
         categories: mobileSurveyCategories,
         entities: mobileSurveyEntities,
@@ -24424,7 +24590,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     lastShapeTool,
     lastReviewTool,
     showSurveyPanel,
-    selectedTemplate,
+    effectiveSurveyTemplate,
     mobileSurveyModules,
     mobileSurveyCategories,
     mobileSurveyEntities,
@@ -26027,7 +26193,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // (c) Survey panel + selected template/module/category.
     if (resolved.hasSurveyPanel) {
       if (resolved.surveyPanelOpen) {
-        if (resolved.hasTemplate
+        if (surveyDefinition.mode === 'legacy' && resolved.hasTemplate
           && (!selectedTemplate || (selectedTemplate.id !== resolved.templateId && selectedTemplate.supabaseId !== resolved.templateId))) {
           const template = (templates || []).find(
             (candidate) => candidate?.id === resolved.templateId || candidate?.supabaseId === resolved.templateId,
@@ -26046,7 +26212,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       setSelectedCategoryId(resolved.categoryId);
     }
     return spaceContextRestored;
-  }, [activeSpaceId, handleSetActiveSpace, handleExitSpaceMode, handleSelectSurveyTemplate, handleCloseSurveyMode, selectedTemplate, templates, showSurveyPanel]);
+  }, [activeSpaceId, handleSetActiveSpace, handleExitSpaceMode, handleSelectSurveyTemplate,
+    handleCloseSurveyMode, selectedTemplate, templates, showSurveyPanel, surveyDefinition.mode]);
 
   // Embedded import — exactly once per document, durably.
   //
@@ -27679,7 +27846,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   // Navigate to survey item when surveyMarker is clicked (reverse navigation)
   const handleSurveyMarkerClicked = useCallback((annotationId) => {
-    if (!annotationId || !selectedTemplate) return;
+    if (!annotationId || !effectiveSurveyTemplate) return;
 
     const surveyMarker = surveyMarkers[annotationId];
     if (!surveyMarker) return;
@@ -27721,7 +27888,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         }, 2000);
       }
     }, 300);
-  }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
+  }, [surveyMarkers, effectiveSurveyTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
 
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((surveyMarker) => {
@@ -28053,7 +28220,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // Survey Marker to remove, so deletion proceeds regardless of which
     // module/template is active. Only bail when there's nothing to match
     // against (no id AND no active module to scan by bounds).
-    if (!annotationId && (!selectedModuleId || !selectedTemplate)) {
+    if (!annotationId && (!selectedModuleId || !effectiveSurveyTemplate)) {
       return;
     }
 
@@ -28193,10 +28360,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         // The item/annotation association cleanup below needs the template to
         // resolve category and module names. If no template is loaded, skip
         // it — the Survey Marker itself is already fully removed above.
-        if (!selectedTemplate) return;
+        if (!effectiveSurveyTemplate) return;
 
         // Find associated item by matching name and category
-        const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
+        const categoryName = getCategoryName(effectiveSurveyTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
         const matchingItem = Object.values(items).find(item =>
           item.name === surveyMarker.name &&
           item.itemType === categoryName
@@ -28221,7 +28388,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
           // Check if item has data in other modules - if not, delete the item
           const surveyMarkerModuleId = surveyMarker.moduleId;
-          const moduleName = getModuleName(selectedTemplate, surveyMarkerModuleId);
+          const moduleName = getModuleName(effectiveSurveyTemplate, surveyMarkerModuleId);
           const dataKey = getModuleDataKey(moduleName);
           const item = items[matchingItem.itemId];
 
@@ -28231,11 +28398,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             delete updatedItem[dataKey];
 
             // Check if item has any module data left
-            const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+            const allModules = effectiveSurveyTemplate?.modules || effectiveSurveyTemplate?.spaces || [];
             const hasOtherModuleData = allModules.some(module => {
               const moduleId = module.id;
               if (moduleId === surveyMarkerModuleId) return false;
-              const otherModuleName = getModuleName(selectedTemplate, moduleId);
+              const otherModuleName = getModuleName(effectiveSurveyTemplate, moduleId);
               const otherDataKey = getModuleDataKey(otherModuleName);
               return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
             });
@@ -28301,7 +28468,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         });
       }, 100);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentOwnerId, managedLocalEditingContext, documentSyncEnabled]);
+  }, [addHistoryCheckpoint, selectedModuleId, effectiveSurveyTemplate, selectedTemplate,
+    surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey,
+    pdfFile?.id, user?.id, documentOwnerId, managedLocalEditingContext, documentSyncEnabled]);
 
   // After a Survey Marker delete commits to surveyMarkers, re-export the
   // linked Excel so the deleted marker's row is removed there too. The
@@ -28330,7 +28499,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   }, [surveyMarkers, handleSurveyMarkerDeleted]);
 
   const handleReorderSurveyCategories = useCallback((moduleId, activeId, overId) => {
-    if (!selectedTemplate || !moduleId || !activeId || !overId || activeId === overId) return;
+    if (surveyDefinition.mode !== 'legacy'
+      || !selectedTemplate || !moduleId || !activeId || !overId || activeId === overId) return;
 
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
     let changed = false;
@@ -28378,10 +28548,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         console.warn('Failed to persist survey category order:', err);
       });
     }
-  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
+  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate,
+    sanitizeTemplateConfig, surveyDefinition.mode]);
 
   const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
-    if (!selectedTemplate || !moduleId || !categoryId) return;
+    if (surveyDefinition.mode !== 'legacy' || !selectedTemplate || !moduleId || !categoryId) return;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
     let changed = false;
     const updatedModules = sourceModules.map((module) => {
@@ -28420,7 +28591,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         showToast('Category deleted locally but could not be saved to the cloud.', 'error');
       });
     }
-  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate,
+    sanitizeTemplateConfig, showToast, surveyDefinition.mode]);
 
   // The eraser previews only markers this viewer can actually delete. Saved
   // markers use the canonical source-owned permission adapter; a marker absent
@@ -28708,9 +28880,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // modal chain unchanged. Reuses the exact store writes of the desktop name
   // prompt's save path so sync sees identical operations.
   const commitMobileSurveyMarker = useCallback((surveyMarker, categoryId) => {
-    if (!selectedTemplate || !surveyMarker?.id || !categoryId) return;
+    if (!effectiveSurveyTemplate || !surveyMarker?.id || !categoryId) return;
     const moduleId = surveyMarker.moduleId || selectedModuleId;
-    const categoryName = getCategoryName(selectedTemplate, moduleId, categoryId);
+    const categoryName = getCategoryName(effectiveSurveyTemplate, moduleId, categoryId);
     const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === categoryId);
     const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
     const highlightColor = surveyMarker.entityColor
@@ -28731,7 +28903,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // If an entity was pre-selected (mobile entity strip), mirror the desktop
     // name-prompt save path: store it on the item's module-specific data too.
     if (surveyMarkerData.entityId && moduleId) {
-      const moduleName = getModuleName(selectedTemplate, moduleId);
+      const moduleName = getModuleName(effectiveSurveyTemplate, moduleId);
       const dataKey = getModuleDataKey(moduleName);
       const existingItem = Object.values(items).find(item =>
         item.name === defaultName &&
@@ -28755,7 +28927,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           }));
         }
       } else {
-        const newItem = createItem(selectedTemplate, moduleId, categoryId, defaultName, 1);
+        const newItem = createItem(effectiveSurveyTemplate, moduleId, categoryId, defaultName, 1);
         if (entity) {
           newItem[dataKey] = {
             entityId: entity.id,
@@ -28767,7 +28939,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           ...prev,
           [newItem.itemId]: newItem
         }));
-        const annotation = createAnnotation(surveyMarker.bounds, 'highlight', selectedTemplate, selectedSpaceId, newItem.itemId, categoryName);
+        const annotation = createAnnotation(surveyMarker.bounds, 'highlight', effectiveSurveyTemplate, selectedSpaceId, newItem.itemId, categoryName);
         if (entity) {
           annotation.entityId = entity.id;
           annotation.entityName = entity.name;
@@ -28803,7 +28975,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setExpandedSurveyMarkers({ [surveyMarker.id]: true });
     setShowSurveyPanel(true);
     requestRightRailExpand();
-  }, [selectedTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand]);
+  }, [effectiveSurveyTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand]);
 
   // Handle surveyMarker creation from annotation tool
   const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
@@ -28822,14 +28994,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
 
     // Only handle if survey mode is active
-    if (!showSurveyPanel || !selectedTemplate) {
+    if (!showSurveyPanel || !effectiveSurveyTemplate) {
       return;
     }
 
     // If no module is selected, try to default to the first one
     let effectiveModuleId = selectedModuleId;
     if (!effectiveModuleId) {
-      const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
+      const modules = effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces || [];
       if (modules.length > 0) {
         effectiveModuleId = modules[0].id;
         setSelectedModuleId(effectiveModuleId);
@@ -28917,7 +29089,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
     // Unique ID for this surveyMarker (generated up-front for the checkpoint stamp)
     const annotationId = newMarkerId;
-    const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
+    const moduleName = getModuleName(effectiveSurveyTemplate, effectiveModuleId);
     const mobileSelectedEntity = documentEntityChoices.find(
       (entity) => entity.id === mobileSurveyEntityId
     ) || null;
@@ -29053,12 +29225,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
+  }, [addHistoryCheckpoint, selectedModuleId, effectiveSurveyTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
     // Only auto-switch once when first entering survey mode, then allow user to switch tools freely
-    if (showSurveyPanel && selectedTemplate && selectedModuleId && !hasSwitchedToSurveyMarkerRef.current) {
+    if (showSurveyPanel && effectiveSurveyTemplate && selectedModuleId && !hasSwitchedToSurveyMarkerRef.current) {
       setActiveTool('survey-marker');
       hasSwitchedToSurveyMarkerRef.current = true;
     }
@@ -29066,7 +29238,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     if (!showSurveyPanel) {
       hasSwitchedToSurveyMarkerRef.current = false;
     }
-  }, [showSurveyPanel, selectedTemplate, selectedModuleId]);
+  }, [showSurveyPanel, effectiveSurveyTemplate, selectedModuleId]);
 
   // Measure toolbar heights and middle area bounds for survey panel positioning
   useEffect(() => {
@@ -31676,6 +31848,8 @@ ${pageBlocks}
       deleteCategory: handleDeleteSurveyCategoryDefinition,
       documentEntityChoiceScope,
       documentEntityChoices,
+      documentSurveyDefinitionScope,
+      documentSurveyTemplate,
       documentSyncEnabled,
       expandedCategories,
       expandedSurveyMarkers,
@@ -31818,6 +31992,8 @@ ${pageBlocks}
     handleDeleteSurveyCategoryDefinition,
     documentEntityChoiceScope,
     documentEntityChoices,
+    documentSurveyDefinitionScope,
+    documentSurveyTemplate,
     documentSyncEnabled,
     expandedCategories,
     expandedSurveyMarkers,
@@ -32105,6 +32281,12 @@ ${pageBlocks}
         busy={entityCatalog.busy} error={entityCatalog.error}
         onConfirm={() => entityCatalog.confirmAdoption().catch(() => {})}
         onCancel={entityCatalog.cancelAdoption} />
+      <DocumentSurveyDefinitionAdoptionNotice available={mayReviewSurveyDefinition}
+        review={surveyDefinition.review} busy={surveyDefinition.busy}
+        error={surveyDefinition.error}
+        onRequest={() => surveyDefinition.requestAdoption(selectedTemplate).catch(() => {})}
+        onConfirm={() => surveyDefinition.confirmAdoption().catch(() => {})}
+        onCancel={surveyDefinition.cancelAdoption} />
       {/* Hidden custom print panel implementation. */}
       <PrintPanel
         open={printPanelOpen}
@@ -34985,7 +35167,7 @@ ${pageBlocks}
             )}
 
             {activeCategoryDropdown === 'survey' && (() => {
-              const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+              const modules = effectiveSurveyTemplate?.modules || effectiveSurveyTemplate?.spaces || [];
               const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
               const categories = selectedModule?.categories || [];
 
@@ -35792,7 +35974,7 @@ ${pageBlocks}
 
         {/* Category Selection Modal (after highlighting) */}
         {
-          pendingSurveyMarker && selectedTemplate && selectedModuleId && (
+          pendingSurveyMarker && effectiveSurveyTemplate && selectedModuleId && (
             <>
               <div
                 onClick={() => {
@@ -35914,7 +36096,7 @@ ${pageBlocks}
                   </p>
 
                   {(() => {
-                    const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
+                    const module = ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
                     if (!module || !module.categories || module.categories.length === 0) {
                       return (
                         <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
@@ -36003,7 +36185,7 @@ ${pageBlocks}
 
         {/* Entity Selection Dialog */}
         {
-          pendingEntitySelection && selectedTemplate && selectedModuleId && (() => {
+          pendingEntitySelection && effectiveSurveyTemplate && selectedModuleId && (() => {
             const entities = documentEntityChoices;
 
             return (
@@ -36196,8 +36378,8 @@ ${pageBlocks}
 
         {/* Name Prompt Modal (after categorizing surveyMarker) */}
         {
-          pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
-            const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
+          pendingSurveyMarkerName && effectiveSurveyTemplate && selectedModuleId && (() => {
+            const module = ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
             const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
             const categoryName = category?.name?.trim() || 'Untitled Category';
             const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
@@ -36311,10 +36493,10 @@ ${pageBlocks}
                           }));
 
                           // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
+                          if (surveyMarkerData.entityId && effectiveSurveyTemplate && selectedModuleId) {
                             // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                            const categoryName = getCategoryName(effectiveSurveyTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
+                            const moduleName = getModuleName(effectiveSurveyTemplate, selectedModuleId);
                             const dataKey = getModuleDataKey(moduleName);
 
                             // Find existing item by name and category
@@ -36345,7 +36527,7 @@ ${pageBlocks}
                             } else {
                               // Create new item with entity in module-specific data
                               const newItem = createItem(
-                                selectedTemplate,
+                                effectiveSurveyTemplate,
                                 selectedModuleId,
                                 pendingSurveyMarkerName.categoryId,
                                 defaultName,
@@ -36370,7 +36552,7 @@ ${pageBlocks}
                               const annotation = createAnnotation(
                                 pendingSurveyMarkerName.surveyMarker.bounds,
                                 'highlight',
-                                selectedTemplate,
+                                effectiveSurveyTemplate,
                                 selectedSpaceId,
                                 newItem.itemId,
                                 categoryName
@@ -36553,10 +36735,10 @@ ${pageBlocks}
                           }));
 
                           // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
+                          if (surveyMarkerData.entityId && effectiveSurveyTemplate && selectedModuleId) {
                             // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                            const categoryName = getCategoryName(effectiveSurveyTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
+                            const moduleName = getModuleName(effectiveSurveyTemplate, selectedModuleId);
                             const dataKey = getModuleDataKey(moduleName);
 
                             // Find existing item by name and category
@@ -36587,7 +36769,7 @@ ${pageBlocks}
                             } else {
                               // Create new item with entity in module-specific data
                               const newItem = createItem(
-                                selectedTemplate,
+                                effectiveSurveyTemplate,
                                 selectedModuleId,
                                 pendingSurveyMarkerName.categoryId,
                                 defaultName,
@@ -36612,7 +36794,7 @@ ${pageBlocks}
                               const annotation = createAnnotation(
                                 pendingSurveyMarkerName.surveyMarker.bounds,
                                 'highlight',
-                                selectedTemplate,
+                                effectiveSurveyTemplate,
                                 selectedSpaceId,
                                 newItem.itemId,
                                 categoryName
@@ -36687,10 +36869,10 @@ ${pageBlocks}
                           }));
 
                           // If entity was selected, also store it in the item's module-specific data
-                          if (surveyMarkerData.entityId && selectedTemplate && selectedModuleId) {
+                          if (surveyMarkerData.entityId && effectiveSurveyTemplate && selectedModuleId) {
                             // Find or create item for this surveyMarker
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
-                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                            const categoryName = getCategoryName(effectiveSurveyTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
+                            const moduleName = getModuleName(effectiveSurveyTemplate, selectedModuleId);
                             const dataKey = getModuleDataKey(moduleName);
 
                             // Find existing item by name and category
@@ -36721,7 +36903,7 @@ ${pageBlocks}
                             } else {
                               // Create new item with entity in space-specific data
                               const newItem = createItem(
-                                selectedTemplate,
+                                effectiveSurveyTemplate,
                                 selectedSpaceId,
                                 pendingSurveyMarkerName.categoryId,
                                 name,
@@ -36746,7 +36928,7 @@ ${pageBlocks}
                               const annotation = createAnnotation(
                                 pendingSurveyMarkerName.surveyMarker.bounds,
                                 'highlight',
-                                selectedTemplate,
+                                effectiveSurveyTemplate,
                                 selectedSpaceId,
                                 newItem.itemId,
                                 categoryName
@@ -37141,7 +37323,8 @@ ${pageBlocks}
 
         {/* Item Transfer - Destination Selection Modal */}
         {
-          transferState && transferState.mode === 'select' && selectedTemplate && (
+          transferState && transferState.mode === 'select'
+          && surveyDefinition.mode === 'legacy' && selectedTemplate && (
             <>
               <div
                 onClick={() => setTransferState(null)}
@@ -37463,7 +37646,8 @@ ${pageBlocks}
 
         {/* Item Transfer - Checklist Prompt Modal */}
         {
-          transferState && transferState.mode === 'checklist' && selectedTemplate && (
+          transferState && transferState.mode === 'checklist'
+          && surveyDefinition.mode === 'legacy' && selectedTemplate && (
             <>
               <div
                 onClick={() => setTransferState(null)}
@@ -37795,9 +37979,9 @@ ${pageBlocks}
                     let categoryName = '';
                     let moduleName = '';
 
-                    if (selectedTemplate) {
+                    if (effectiveSurveyTemplate) {
                       const moduleId = surveyMarker.moduleId;
-                      const module = (selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === moduleId);
+                      const module = (effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces || []).find(m => m.id === moduleId);
                       if (module) {
                         moduleName = module.name;
                         const category = module.categories?.find(c => c.id === surveyMarker.categoryId);
@@ -37983,6 +38167,9 @@ ${pageBlocks}
                     if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
                       throw new Error('The linked document changed. Export again from the current document.');
                     }
+                    if (documentSurveyDefinitionScopeRef.current !== exportPendingData.sourceDefinitionScope) {
+                      throw new Error('The document survey definition changed. Export again.');
+                    }
                     const defaultName = `${exportPendingData.fileName}_export.xlsx`;
                     const result = await window.electronAPI.saveFile({
                       title: 'Save survey export',
@@ -37994,6 +38181,17 @@ ${pageBlocks}
                     if (result && !result.canceled && result.filePath) {
                       if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
                         throw new Error('The file was exported, but the open document changed. Its sync state was not changed.');
+                      }
+                      if (documentSurveyDefinitionScopeRef.current !== exportPendingData.sourceDefinitionScope) {
+                        throw new Error('The file was exported, but the survey definition changed. Its sync state was not changed.');
+                      }
+                      if (exportPendingData.definitionMode === 'accepted') {
+                        showToast('Export to computer successful!', 'success');
+                        if (exportPendingDataRef.current === exportPendingData) {
+                          setExportPendingData(null);
+                          setIsExporting(false);
+                        }
+                        return;
                       }
                       const updatedTemplate = {
                         ...selectedTemplate,

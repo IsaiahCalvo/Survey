@@ -321,6 +321,8 @@ const SurveySpacesRail = ({
   deleteAnnotations,
   deleteCategory = () => {},
   documentEntityChoiceScope = null,
+  documentSurveyDefinitionScope = null,
+  documentSurveyTemplate,
   documentSyncEnabled,
   documentEntityChoices,
   expandedCategories,
@@ -465,6 +467,31 @@ const SurveySpacesRail = ({
       if (entityChoiceScopeRef.current === capturedScope) entityChoiceScopeRef.current = null;
     };
   }, [activeEntityChoiceScope]);
+  const effectiveSurveyTemplate = documentSurveyTemplate === undefined
+    ? selectedTemplate
+    : documentSurveyTemplate;
+  const hasAcceptedDocumentSurvey = documentSurveyTemplate != null;
+  const canMutatePrivateTemplate = documentSurveyTemplate === undefined;
+  const activeSurveyDefinitionScope = useMemo(() => Object.freeze({
+    upstream: documentSurveyDefinitionScope,
+    template: documentSurveyTemplate,
+    actorUserId: user?.id || null,
+    file: pdfFile,
+  }), [documentSurveyDefinitionScope, documentSurveyTemplate, pdfFile, user?.id]);
+  const surveyDefinitionScopeRef = useRef(activeSurveyDefinitionScope);
+  surveyDefinitionScopeRef.current = activeSurveyDefinitionScope;
+  const surveyDefinitionScopeIsCurrent = () => documentSurveyTemplate !== null
+    && surveyDefinitionScopeRef.current === activeSurveyDefinitionScope;
+  useEffect(() => {
+    if (surveyDefinitionScopeRef.current === null
+      || surveyDefinitionScopeRef.current === activeSurveyDefinitionScope) {
+      surveyDefinitionScopeRef.current = activeSurveyDefinitionScope;
+    }
+    const capturedScope = activeSurveyDefinitionScope;
+    return () => {
+      if (surveyDefinitionScopeRef.current === capturedScope) surveyDefinitionScopeRef.current = null;
+    };
+  }, [activeSurveyDefinitionScope]);
   const [isModuleSelectorOpen, setIsModuleSelectorOpen] = useState(false);
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
   // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
@@ -485,13 +512,20 @@ const SurveySpacesRail = ({
   // editor that has since been removed, leaving the button dead). Persistence
   // lives in PDFViewer via addCategoryToCurrentTemplate/addCategoryAsNewTemplate.
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
+  useEffect(() => {
+    setIsCreateCategoryModalOpen(false);
+    setIsTemplateSelectorOpen(false);
+    setShowExportMenu(false);
+  }, [activeSurveyDefinitionScope, setShowExportMenu]);
   const [railIconHover, setRailIconHover] = useState(null);
   const moduleSelectorRef = useRef(null);
   const templateSelectorRef = useRef(null);
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
-  const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
-  const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
+  const availableSurveyTemplates = documentSurveyTemplate === undefined && Array.isArray(surveyTemplates)
+    ? surveyTemplates : [];
+  const surveyModuleOptions = effectiveSurveyTemplate
+    ? ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || []) : [];
   const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
   const canSelectPreviousModule = selectedModuleIndex > 0;
@@ -500,6 +534,7 @@ const SurveySpacesRail = ({
   // Create Category (desktop): hoisted from the old action-row IIFE so the
   // heading-row plus button and the modal share component scope.
   const openCreateCategoryModal = () => {
+    if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
     if (!selectedTemplate?.id || !selectedModuleId) {
       showToast('Please select a template and module before creating a category.', 'warn');
       return;
@@ -508,12 +543,16 @@ const SurveySpacesRail = ({
   };
 
   const handleCreateCategoryConfirm = async (option, { categoryName, newTemplateName }) => {
+    const scope = activeSurveyDefinitionScope;
+    if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
     try {
       if (option === 'modifyTemplate') {
         await addCategoryToCurrentTemplate?.(selectedModuleId, categoryName);
+        if (surveyDefinitionScopeRef.current !== scope) return;
         showToast('Category added', 'success');
       } else if (option === 'newTemplate') {
         await addCategoryAsNewTemplate?.(selectedModuleId, categoryName, newTemplateName);
+        if (surveyDefinitionScopeRef.current !== scope) return;
         showToast(`New template '${newTemplateName}' created`, 'success');
       }
       setIsCreateCategoryModalOpen(false);
@@ -548,7 +587,7 @@ const SurveySpacesRail = ({
   const mobileChecklistWindowHeight = (mobileChecklistVisibleCount * 36) + ((mobileChecklistVisibleCount - 1) * 5);
   const mobileSurveyPanelBaseHeight = mobileDetailMarker
     ? 314 + mobileChecklistWindowHeight
-    : selectedTemplate
+    : effectiveSurveyTemplate
       ? 392
       : 154 + Math.max(availableSurveyTemplates.length, 1) * 48;
 
@@ -725,8 +764,10 @@ const SurveySpacesRail = ({
   // O(1) entity-by-id lookup for the per-marker render loop below (entity ids are
   // unique, so a Map.get matches the old entities.find first-and-only result).
   const legacyDisplayEntitiesMap = useMemo(() => new Map(
-    (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES).map((entity) => [entity.id, entity]),
-  ), [selectedTemplate?.entities]);
+    (documentSurveyTemplate === undefined
+      ? (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES)
+      : availableEntityChoices).map((entity) => [entity.id, entity]),
+  ), [availableEntityChoices, documentSurveyTemplate, selectedTemplate?.entities]);
 
   // O(1) item-by-name+type lookup for the per-marker render loop below.
   // Replaces repeated O(|items|) Object.values(items).find(name && itemType)
@@ -746,6 +787,7 @@ const SurveySpacesRail = ({
   }, [items]);
 
   const commitSurveyMarkerName = (annotationId, categoryId, previousName, nextRawName, fallbackName) => {
+    if (!surveyDefinitionScopeIsCurrent()) return;
     const nextName = (nextRawName || '').trim() || fallbackName;
     const oldName = (previousName || '').trim() || fallbackName;
     if (!annotationId || nextName === oldName) return;
@@ -759,8 +801,8 @@ const SurveySpacesRail = ({
       }
     }));
 
-    if (!selectedTemplate || !selectedModuleId || !categoryId) return;
-    const categoryName = getCategoryName(selectedTemplate, selectedModuleId, categoryId);
+    if (!effectiveSurveyTemplate || !selectedModuleId || !categoryId) return;
+    const categoryName = getCategoryName(effectiveSurveyTemplate, selectedModuleId, categoryId);
     const itemFromMarkerId = currentMarker.itemId ? items[currentMarker.itemId] : null;
     const matchingItem = itemFromMarkerId || itemsByNameType.get(`${oldName}\0${categoryName}`);
     if (!matchingItem?.itemId) return;
@@ -780,14 +822,14 @@ const SurveySpacesRail = ({
   // writes. These helpers are the single source for those writes so the
   // CRDT/sync layer sees identical operations from both surfaces.
   const findMarkerMatchingItem = (annotationId, markerModuleId, category) => {
-    if (!selectedTemplate || !markerModuleId || !category) {
+    if (!effectiveSurveyTemplate || !markerModuleId || !category) {
       return { matchingItem: null, moduleData: {}, dataKey: null };
     }
     const surveyMarkerData = surveyMarkers[annotationId];
-    const categoryName = getCategoryName(selectedTemplate, markerModuleId, category.id);
+    const categoryName = getCategoryName(effectiveSurveyTemplate, markerModuleId, category.id);
     const markerName = surveyMarkerData?.name || '';
     const matchingItem = itemsByNameType.get(`${markerName}\0${categoryName}`) || null;
-    const moduleName = getModuleName(selectedTemplate, markerModuleId);
+    const moduleName = getModuleName(effectiveSurveyTemplate, markerModuleId);
     const dataKey = getModuleDataKey(moduleName);
     const moduleData = matchingItem?.[dataKey] || {};
     return { matchingItem, moduleData, dataKey };
@@ -798,13 +840,13 @@ const SurveySpacesRail = ({
   // module-specific data and its annotations. Only the explicit None option
   // clears; a stale nonempty id must keep its assignment-time snapshot.
   const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId) => {
-    if (!entityChoiceScopeIsCurrent()) return false;
+    if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return false;
     const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const clear = entityId === '';
     const entity = clear ? null : availableEntityChoices.find(candidate => candidate.id === entityId);
     if (!clear && !entity) return false;
 
-    setSurveyMarkers(prev => !entityChoiceScopeIsCurrent() ? prev : ({
+    setSurveyMarkers(prev => !entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent() ? prev : ({
       ...prev,
       [annotationId]: {
         ...prev[annotationId],
@@ -824,12 +866,12 @@ const SurveySpacesRail = ({
           entityColor: entity ? entity.color : undefined
         }
       };
-      setItems(prev => !entityChoiceScopeIsCurrent() ? prev : ({
+      setItems(prev => !entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent() ? prev : ({
         ...prev,
         [matchingItem.itemId]: updatedItem
       }));
       setAnnotations(prev => {
-        if (!entityChoiceScopeIsCurrent()) return prev;
+        if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return prev;
         const updated = { ...prev };
         Object.values(updated).forEach(ann => {
           if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
@@ -852,9 +894,9 @@ const SurveySpacesRail = ({
   // and the desktop row share one implementation, including the KAL-44
   // auto-"Complete"-entity behavior when every active item is Y or N/A.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
-    if (!entityChoiceScopeIsCurrent()) return false;
+    if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return false;
     setSurveyMarkers(prev => {
-      if (!entityChoiceScopeIsCurrent()) return prev;
+      if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return prev;
       const updated = {
         ...prev,
         [annotationId]: {
@@ -874,7 +916,7 @@ const SurveySpacesRail = ({
       // active items count toward "all complete".
       const updatedSurveyMarker = updated[annotationId];
       const activeChecklist = (category.checklist || []).filter(it => it && it.archived !== true);
-      if (updatedSurveyMarker && activeChecklist.length > 0 && selectedTemplate && selectedSpaceId) {
+      if (updatedSurveyMarker && activeChecklist.length > 0 && effectiveSurveyTemplate && selectedSpaceId) {
         const allItemsComplete = activeChecklist.every(checklistItem => {
           const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
           const selection = response?.selection;
@@ -883,12 +925,12 @@ const SurveySpacesRail = ({
 
         // Find the item associated with this surveyMarker
         const surveyMarkerData = updated[annotationId];
-        const categoryName = getCategoryName(selectedTemplate, markerModuleId, category.id);
+        const categoryName = getCategoryName(effectiveSurveyTemplate, markerModuleId, category.id);
         const surveyMarkerName = surveyMarkerData?.name || markerRowName || '';
         const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
 
         // Get module-specific data
-        const moduleName = getModuleName(selectedTemplate, markerModuleId);
+        const moduleName = getModuleName(effectiveSurveyTemplate, markerModuleId);
         const dataKey = getModuleDataKey(moduleName);
         const moduleData = matchingItem?.[dataKey] || {};
 
@@ -913,7 +955,7 @@ const SurveySpacesRail = ({
                 }
               };
 
-              setItems(prev2 => !entityChoiceScopeIsCurrent() ? prev2 : ({
+              setItems(prev2 => !entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent() ? prev2 : ({
                 ...prev2,
                 [matchingItem.itemId]: updatedItem
               }));
@@ -1297,6 +1339,7 @@ const SurveySpacesRail = ({
                   }}>
                     <button
                       onClick={() => {
+                        if (hasAcceptedDocumentSurvey && !showSurveyPanel) handleSurveyToggle();
                         setIsSurveyPanelCollapsed(false);
                         requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                       }}
@@ -1421,7 +1464,7 @@ const SurveySpacesRail = ({
                     </button>
                   </div>
 
-                  {selectedTemplate && showSurveyPanel ? (
+                  {hasAcceptedDocumentSurvey || (effectiveSurveyTemplate && showSurveyPanel) ? (
                   <>
                   {/* Template title lives below the rail tabs, not in the collapse row. */}
                   <div style={{
@@ -1439,7 +1482,7 @@ const SurveySpacesRail = ({
                       style={{ flex: 1, minWidth: 0, position: 'relative' }}
                     >
                       {mobileMode ? <span className="mobile-survey-sheet-eyebrow">Survey template</span> : null}
-                      {mobileMode ? (
+                      {mobileMode && !hasAcceptedDocumentSurvey ? (
                         <>
                           <button
                             type="button"
@@ -1448,7 +1491,7 @@ const SurveySpacesRail = ({
                             aria-expanded={isTemplateSelectorOpen}
                             onClick={() => setIsTemplateSelectorOpen((open) => !open)}
                           >
-                            <span>{selectedTemplate.name || 'Survey'}</span>
+                            <span>{selectedTemplate?.name || 'Survey'}</span>
                             <Icon name="chevronDown" size={13} color="currentColor" />
                           </button>
                           {isTemplateSelectorOpen && (
@@ -1461,6 +1504,7 @@ const SurveySpacesRail = ({
                                   aria-selected={template.id === selectedTemplate.id}
                                   className={template.id === selectedTemplate.id ? 'is-active' : ''}
                                   onClick={() => {
+                                    if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                                     onSelectSurveyTemplate?.(template);
                                     setIsTemplateSelectorOpen(false);
                                   }}
@@ -1487,11 +1531,11 @@ const SurveySpacesRail = ({
                           }}
                         >
                           {categorySelectModeActive && selectedModuleId
-                            ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
-                            : (selectedTemplate.name || 'Survey')}
+                            ? ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
+                            : (effectiveSurveyTemplate.name || 'Survey')}
                         </h2>
                       )}
-                      {!categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
+                      {!hasAcceptedDocumentSurvey && !categorySelectModeActive && selectedTemplate?.linkedExcelPath && lastSyncMessage && (() => {
                         // Color the banner by the message's tone so warnings (close Excel,
                         // needs your choice, queued) and successes (synced/saved) no longer
                         // look identical to neutral info. See services/excelSyncStatus.
@@ -1547,18 +1591,19 @@ const SurveySpacesRail = ({
                                 <strong>Export Excel</strong>
                                 <span>Create workbook from survey data</span>
                               </button>
-                              <button
+                              {!hasAcceptedDocumentSurvey && <button
                                 type="button"
                                 role="menuitem"
-                                disabled={isExporting || !selectedTemplate.linkedExcelPath || linkedExcelExists !== true}
+                                disabled={isExporting || !selectedTemplate?.linkedExcelPath || linkedExcelExists !== true}
                                 onClick={() => {
+                                  if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                                   setIsMobileExportMenuOpen(false);
                                   handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
                                 }}
                               >
                                 <strong>Sync Microsoft 365</strong>
                                 <span>Update the shared workbook location</span>
-                              </button>
+                              </button>}
                             </div>
                           )}
                         </div>
@@ -2101,7 +2146,7 @@ const SurveySpacesRail = ({
                     minHeight: 0
                   }}>
                     {selectedModuleId ? (() => {
-                      const module = (selectedTemplate.modules || selectedTemplate.spaces || [])?.find(m => m.id === selectedModuleId);
+                      const module = (effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces || [])?.find(m => m.id === selectedModuleId);
                       if (!module) return null;
 
                       // Get surveyMarkers for this module, grouped by category
@@ -2146,6 +2191,8 @@ const SurveySpacesRail = ({
                             const hasSelectedCategories = selectedCategoryCount > 0;
 
                             const deleteSelectedCategories = async () => {
+                              const definitionScope = activeSurveyDefinitionScope;
+                              if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
                                 showToast('Please select at least one category to delete.', 'warn');
@@ -2160,6 +2207,8 @@ const SurveySpacesRail = ({
                               if (!confirmed) {
                                 return;
                               }
+                              if (surveyDefinitionScopeRef.current !== definitionScope
+                                || !canMutatePrivateTemplate) return;
 
                               selectedCatIds.forEach(catId => {
                                 const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
@@ -2202,7 +2251,7 @@ const SurveySpacesRail = ({
 
                             return (
                               <div className="survey-marker-category-action-row">
-                                <div className="survey-marker-category-action-strip">
+                                {canMutatePrivateTemplate && <div className="survey-marker-category-action-strip">
                                   {categorySelectModeActive ? (
                                     <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Category selection actions">
                                       <button
@@ -2268,7 +2317,7 @@ const SurveySpacesRail = ({
                                       Select
                                     </button>
                                   )}
-                                </div>
+                                </div>}
                                 {/* Compact survey Excel EXPORT — moved up from the old
                                     bottom-pinned bar (the panel bottom is being taken over
                                     by the zoom cluster; long survey content scrolls beneath
@@ -2276,7 +2325,7 @@ const SurveySpacesRail = ({
                                     opens DOWNWARD because its anchor sits near the top of
                                     the panel instead of at the bottom. Height is locked to
                                     24px to match .survey-marker-category-create-button. */}
-                                {(!selectedTemplate.linkedExcelPath || linkedExcelExists !== true) ? (
+                                {(hasAcceptedDocumentSurvey || !selectedTemplate?.linkedExcelPath || linkedExcelExists !== true) ? (
                                   <button
                                     type="button"
                                     onClick={() => handleExportSurveyToExcel()}
@@ -2315,6 +2364,7 @@ const SurveySpacesRail = ({
                                       <div className="survey-marker-export-compact-menu">
                           <div
                             onClick={async () => {
+                              if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                               const excelPath = selectedTemplate.linkedExcelPath;
                               const isOneDrive = selectedTemplate.isOneDrive;
 
@@ -2507,6 +2557,7 @@ const SurveySpacesRail = ({
                           </div>
                           <div
                             onClick={() => {
+                              if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                               handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
                               setShowExportMenu(false);
                             }}
@@ -2532,6 +2583,7 @@ const SurveySpacesRail = ({
                           {selectedTemplate?.isOneDrive && (
                           <div
                             onClick={() => {
+                              if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                               handleSyncFromExcel();
                               setShowExportMenu(false);
                             }}
@@ -2563,6 +2615,7 @@ const SurveySpacesRail = ({
                             return (
                             <div
                               onClick={() => {
+                                if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                                 if (liveSyncSupported === false) return;
                                 if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
                               }}
@@ -2629,6 +2682,7 @@ const SurveySpacesRail = ({
                             return (
                             <div
                               onClick={() => {
+                                if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                                 if (verifying) return;
                                 if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
                               }}
@@ -2880,7 +2934,7 @@ const SurveySpacesRail = ({
                                   surveyMarkersToDelete.forEach(surveyMarker => {
 
                                     // Find associated item by matching name and category
-                                    const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
+                                    const categoryName = getCategoryName(effectiveSurveyTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
                                     const matchingItem = itemsByNameType.get(`${surveyMarker.name}\0${categoryName}`);
 
                                     if (matchingItem) {
@@ -2897,7 +2951,7 @@ const SurveySpacesRail = ({
 
                                       // Check if item has data in other modules - if not, delete the item
                                       const surveyMarkerModuleId = surveyMarker.moduleId;
-                                      const moduleName = getModuleName(selectedTemplate, surveyMarkerModuleId);
+                                      const moduleName = getModuleName(effectiveSurveyTemplate, surveyMarkerModuleId);
                                       const dataKey = getModuleDataKey(moduleName);
                                       const item = items[matchingItem.itemId];
 
@@ -2907,11 +2961,11 @@ const SurveySpacesRail = ({
                                         delete updatedItem[dataKey];
 
                                         // Check if item has any module data left
-                                        const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+                                        const allModules = effectiveSurveyTemplate?.modules || effectiveSurveyTemplate?.spaces || [];
                                         const hasOtherModuleData = allModules.some(module => {
                                           const moduleId = module.id;
                                           if (moduleId === surveyMarkerModuleId) return false;
-                                          const otherModuleName = getModuleName(selectedTemplate, moduleId);
+                                          const otherModuleName = getModuleName(effectiveSurveyTemplate, moduleId);
                                           const otherDataKey = getModuleDataKey(otherModuleName);
                                           return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
                                         });
@@ -3018,7 +3072,7 @@ const SurveySpacesRail = ({
                                   .survey-marker-category-create-button class); it now opens
                                   CreateCategoryModal instead of the removed template-editor
                                   route that left it doing nothing. */}
-                              {!mobileMode && (
+                              {!mobileMode && canMutatePrivateTemplate && (
                                 <button
                                   type="button"
                                   onClick={openCreateCategoryModal}
@@ -3034,7 +3088,10 @@ const SurveySpacesRail = ({
                             {module.categories && module.categories.length > 0 ? (
                               <SortableRearrangeList
                                 ids={module.categories.map((category) => category.id)}
-                                onReorder={(activeId, overId) => handleReorderSurveyCategories(selectedModuleId, activeId, overId)}
+                                onReorder={(activeId, overId) => {
+                                  if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
+                                  handleReorderSurveyCategories(selectedModuleId, activeId, overId);
+                                }}
                                 variableHeight
                                 gap={6}
                                 dropSettleMs={160}
@@ -3110,7 +3167,7 @@ const SurveySpacesRail = ({
                                             select circle on mobile — demo category rows lead
                                             straight with the name (styles.ts:3113-3126); reorder
                                             stays a desktop affordance. */}
-                                        {mobileMode ? null : isCategorySelectable ? (
+                                        {mobileMode || !canMutatePrivateTemplate ? null : isCategorySelectable ? (
                                           <SurveyMarkerLeadingSelect
                                             selected={isCategorySelectionSelected}
                                             category
@@ -3520,9 +3577,9 @@ const SurveySpacesRail = ({
                                                         // Get entity entity for indicator - data-driven from category item's entity field
                                                         let indicatorColor = null;
                                                         let indicatorTooltip = null;
-                                                        if (selectedTemplate && selectedModuleId) {
+                                                        if (effectiveSurveyTemplate && selectedModuleId) {
                                                           const surveyMarkerData = surveyMarkers[annotationId];
-                                                          const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
+                                                          const categoryName = getCategoryName(effectiveSurveyTemplate, selectedModuleId, category.id);
                                                           const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
                                                           const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
 
@@ -3530,7 +3587,7 @@ const SurveySpacesRail = ({
                                                           let entityId = null;
                                                           let moduleData = {};
                                                           if (matchingItem) {
-                                                            const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                                                            const moduleName = getModuleName(effectiveSurveyTemplate, selectedModuleId);
                                                             const dataKey = getModuleDataKey(moduleName);
                                                             moduleData = matchingItem[dataKey] || {};
                                                             entityId = moduleData.entityId;
@@ -3723,15 +3780,15 @@ const SurveySpacesRail = ({
 
                                                 {/* Entity selector */}
                                                 {
-                                                  !mobileMode && isSurveyMarkerExpanded && selectedTemplate && selectedModuleId && (() => {
+                                                  !mobileMode && isSurveyMarkerExpanded && effectiveSurveyTemplate && selectedModuleId && (() => {
                                                     // Find the item associated with this surveyMarker
                                                     const surveyMarkerData = surveyMarkers[annotationId];
-                                                    const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
+                                                    const categoryName = getCategoryName(effectiveSurveyTemplate, selectedModuleId, category.id);
                                                     const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
                                                     const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
 
                                                     // Get module-specific data
-                                                    const moduleName = getModuleName(selectedTemplate, selectedModuleId);
+                                                    const moduleName = getModuleName(effectiveSurveyTemplate, selectedModuleId);
                                                     const dataKey = getModuleDataKey(moduleName);
                                                     const moduleData = matchingItem?.[dataKey] || {};
 
@@ -4020,11 +4077,12 @@ const SurveySpacesRail = ({
                             ) : (
                               <div style={{ color: '#8d96a6', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
                                 <div>No categories available for this space.</div>
-                                {selectedTemplate && selectedModuleId && (
+                                {canMutatePrivateTemplate && selectedTemplate && selectedModuleId && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                                       if (!selectedTemplate?.id || !selectedModuleId) {
                                         showToast('Please select a template and module before creating a category.', 'warn');
                                         return;
@@ -4077,6 +4135,29 @@ const SurveySpacesRail = ({
                   </div>
                   )}
                   </>
+                  ) : documentSurveyTemplate === null ? (
+                    <div data-document-survey-definition-unavailable style={{
+                      flex: 1,
+                      minHeight: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      padding: '24px 16px',
+                      background: '#12151c',
+                      color: '#8d96a6',
+                      textAlign: 'center',
+                      fontFamily: FONT_FAMILY
+                    }}>
+                      <Icon name="survey" size={26} color="#8d96a6" />
+                      <div style={{ color: '#e8e2d4', fontSize: '13px', fontWeight: 600 }}>
+                        Document survey structure unavailable
+                      </div>
+                      <div style={{ fontSize: '12px', lineHeight: 1.4 }}>
+                        The saved survey structure could not be loaded.
+                      </div>
+                    </div>
                   ) : (
                     <div style={{
                       flex: 1,
@@ -4162,6 +4243,7 @@ const SurveySpacesRail = ({
                                      affordance on touch, so the mouse handlers are desktop-only. */
                                   className={mobileMode ? 'mobile-survey-template-row' : undefined}
                                   onClick={() => {
+                                    if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
                                     onSelectSurveyTemplate?.(template);
                                   }}
                                   style={{
@@ -4219,7 +4301,7 @@ const SurveySpacesRail = ({
               )}
 
               {/* Microsoft Reconnect Banner */}
-              {!isSurveyPanelCollapsed && msNeedsReconnect && selectedTemplate?.isOneDrive && (
+              {!isSurveyPanelCollapsed && canMutatePrivateTemplate && msNeedsReconnect && selectedTemplate?.isOneDrive && (
                 <div style={{
                   padding: '10px 12px',
                   borderTop: '1px solid #2a3140',
@@ -4238,7 +4320,10 @@ const SurveySpacesRail = ({
                   </div>
                   <button
                     type="button"
-                    onClick={msLogin}
+                    onClick={() => {
+                      if (!canMutatePrivateTemplate || !surveyDefinitionScopeIsCurrent()) return;
+                      msLogin?.();
+                    }}
                     style={{
                       background: COLORS.modal.primaryButton,
                       border: `1px solid ${COLORS.modal.borderActive}`,
@@ -4275,7 +4360,7 @@ const SurveySpacesRail = ({
                 plus button). Duplicate-name data comes straight from props the
                 rail already receives: the selected module's categories and the
                 app template list. */}
-            {!mobileMode && (
+            {!mobileMode && canMutatePrivateTemplate && (
               <CreateCategoryModal
                 isOpen={isCreateCategoryModalOpen}
                 onClose={() => setIsCreateCategoryModalOpen(false)}

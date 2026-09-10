@@ -85,6 +85,7 @@ function mountRail(t, { choices, railTemplate = template, initialItems = {}, mob
       DEFAULT_SURVEY_MARKER_OPACITY: 0.35, features: {}, showToast: noop,
       setActiveTool: noop, setSelectedCategoryId: noop, setSelectedModuleId: noop,
       setSelectedSpaceId: noop, setShowSurveyPanel: noop, setShowSpaceSelection: noop,
+      setShowExportMenu: noop,
       setPendingLocationItem: noop, setNoteDialogContent: noop, setNoteDialogOpen: noop,
       setNewSurveyMarkersByPage: noop, setSurveyMarkersToRemoveByPage: noop,
       handleSurveyToggle: noop, handleToggleSurveyAnnotations: noop,

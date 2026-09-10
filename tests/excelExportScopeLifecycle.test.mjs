@@ -16,7 +16,9 @@ function deferred() {
 
 function harness({ token, upload, persist } = {}) {
   const template = { id: 'template-a', supabaseId: 'cloud-template-a', name: 'Plan A' };
+  const definitionScope = { active: true, mode: 'legacy', file: { id: 'doc-a' }, generationId: null };
   const pending = { sourceScope: excelExportScope('account-a-doc-a', template), fileName: 'Plan A',
+    sourceDefinitionScope: definitionScope, definitionMode: 'legacy',
     buffer: new Uint8Array([1, 2]), exportedMarkers: { m: { name: 'Export snapshot' } }, identityRecords: { m: { token: 'row-a' } } };
   const state = { pending, selection: { fileName: 'pending-selection.xlsx' }, writes: [], uploads: [], toasts: [],
     templates: [template], template, linked: false, localCalls: [], scopeRef: { current: pending.sourceScope } };
@@ -26,6 +28,7 @@ function harness({ token, upload, persist } = {}) {
     useCallback: fn => fn, exportPendingData: pending, graphClient: { account: 'account-a' }, selectedTemplate: template,
     excelExportScope, excelBaselineId: 'account-a-doc-a', pdfIdRef: { current: 'account-a-doc-a' },
     excelExportScopeRef: state.scopeRef, isExportInProgressRef: { current: false },
+    documentSurveyDefinitionScopeRef: { current: definitionScope },
     exportPendingDataRef: { current: pending },
     setIsExportingToOneDrive: value => record('oneDriveBusy', value), setIsExporting: value => record('busy', value),
     setExportPendingData: setter('pending', 'pending'), setPendingOneDriveExport: value => record('pendingOneDrive', value),

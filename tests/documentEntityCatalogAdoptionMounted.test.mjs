@@ -39,16 +39,32 @@ const localPersistStart = viewerSource.indexOf('  const captureManagedLocalSnaps
 const localPersistEnd = viewerSource.indexOf('  const handleSaveDocument = useCallback(', localPersistStart);
 assert.ok(localPersistStart > 0 && localPersistEnd > localPersistStart,
   'test the real managed-local save queue');
-const actualLocalPersistence = scope => new Function(...Object.keys(scope),
+const actualLocalPersistence = inputScope => {
+  const file = inputScope.saveDocumentScopeRef?.current?.pdfFile;
+  const scope = {
+    surveyDefinition: { mode: 'legacy', busy: false, definition: null },
+    pendingManagedSurveyDefinitionRef: { current: null },
+    managedSurveyDefinitionReadyRef: { current: { file, ready: true } },
+    persistSurveyDefinitionRef: { current: null },
+    ...inputScope,
+  };
+  return new Function(...Object.keys(scope),
   `${viewerSource.slice(localPersistStart, localPersistEnd)}\nreturn { captureManagedLocalSnapshot, persistManagedLocalSnapshot };`)(
-  ...Object.values(scope));
+    ...Object.values(scope));
+};
 const pagePersistStart = viewerSource.indexOf('  const persistPageMutationFile = useCallback(');
 const pagePersistEnd = viewerSource.indexOf('  const checkedReplacementSessionRef = useRef(', pagePersistStart);
 assert.ok(pagePersistStart > 0 && pagePersistEnd > pagePersistStart,
   'test the real managed-local page mutation persistence');
-const actualPageMutationPersistence = scope => new Function(...Object.keys(scope),
+const actualPageMutationPersistence = inputScope => {
+  const scope = {
+    surveyDefinition: { mode: 'legacy', busy: false, definition: null },
+    ...inputScope,
+  };
+  return new Function(...Object.keys(scope),
   `${viewerSource.slice(pagePersistStart, pagePersistEnd)}\nreturn persistPageMutationFile;`)(
-  ...Object.values(scope));
+    ...Object.values(scope));
+};
 
 const id = n => `b1000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actorA = id(1);
@@ -330,7 +346,7 @@ test('failed catalog adoption cannot leak its pending catalog through a normal q
   const adoptionState = buildLocalDocumentState({ pdfId: localId,
     annotationsByPage: { 1: { objects: [{ id: 'dirty' }] } }, entityCatalog: catalog });
   await assert.rejects(helpers.persistManagedLocalSnapshot(file,
-    { 1: { objects: [{ id: 'dirty' }] } }, adoptionState, true), /disk full/);
+    { 1: { objects: [{ id: 'dirty' }] } }, adoptionState, 'entity'), /disk full/);
   assert.throws(() => helpers.captureManagedLocalSnapshot(file,
     { 1: { objects: [{ id: 'newer-dirty' }] } }), /must finish before saving/);
   assert.equal(writes.length, 1, 'only the explicit adoption write may contain the pending catalog');

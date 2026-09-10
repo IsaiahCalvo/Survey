@@ -549,49 +549,55 @@ test('catch-up failure leaves a bounded outbox that a later reconnect authorizes
   const doc = new Y.Doc();
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-catchup-offline', supabase, clientId: 'me',
-    enableLocal: false, enableRealtime: true, doc,
+    enableLocal: false, enableRealtime: true, doc, snapshotRetryDelayMs: 0,
   });
-  supabase.failTailReads = true;
-  supabase.failWrites = true;
-  handle.setMeta('offline-outbox', 'survives');
+  let destroyed = false;
+  try {
+    supabase.failTailReads = true;
+    supabase.failWrites = true;
+    handle.setMeta('offline-outbox', 'survives');
 
-  await Promise.race([
-    handle.drain(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('drain timed out')), 4000)),
-  ]);
-  assert.equal(await Promise.race([
-    handle.flushSnapshot(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('save timed out')), 4000)),
-  ]), false);
-  assert.equal(
-    handle.getSyncStatus().queueSize,
-    1,
-    'failed WAL and snapshot keep one durable outbox record pending',
-  );
-  assert.equal(getMetaValue(doc, 'offline-outbox'), 'survives', 'local/IDB projection retains the outbox');
+    await Promise.race([
+      handle.drain(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('drain timed out')), 4000)),
+    ]);
+    assert.equal(await Promise.race([
+      handle.flushSnapshot(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('save timed out')), 4000)),
+    ]), false);
+    assert.equal(
+      handle.getSyncStatus().queueSize,
+      1,
+      'failed WAL and snapshot keep one durable outbox record pending',
+    );
+    assert.equal(getMetaValue(doc, 'offline-outbox'), 'survives', 'local/IDB projection retains the outbox');
 
-  supabase.failWrites = false;
-  supabase.fireSubscribed();
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  if (supabase.lastSnapshot) {
-    assert.equal(supabase.lastSnapshot.at_seq, 0, 'autonomous repair claims only the safe empty WAL frontier');
-    const autonomousCold = new Y.Doc();
-    Y.applyUpdate(autonomousCold, gunzipSync(pgHexToBytes(supabase.lastSnapshot.snapshot)));
-    assert.equal(getMetaValue(autonomousCold, 'offline-outbox'), 'survives');
+    supabase.failWrites = false;
+    supabase.fireSubscribed();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (supabase.lastSnapshot) {
+      assert.equal(supabase.lastSnapshot.at_seq, 0, 'autonomous repair claims only the safe empty WAL frontier');
+      const autonomousCold = new Y.Doc();
+      Y.applyUpdate(autonomousCold, gunzipSync(pgHexToBytes(supabase.lastSnapshot.snapshot)));
+      assert.equal(getMetaValue(autonomousCold, 'offline-outbox'), 'survives');
+    }
+
+    supabase.failTailReads = false;
+    supabase.fireSubscribed();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(supabase.lastSnapshot, 'autonomous or reconnect repair checkpoints the staged outbox');
+    const cold = new Y.Doc();
+    Y.applyUpdate(cold, gunzipSync(pgHexToBytes(supabase.lastSnapshot.snapshot)));
+    assert.equal(getMetaValue(cold, 'offline-outbox'), 'survives');
+
+    await Promise.race([
+      handle.destroy(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('destroy timed out')), 500)),
+    ]);
+    destroyed = true;
+  } finally {
+    if (!destroyed) await handle.destroy().catch(() => {});
   }
-
-  supabase.failTailReads = false;
-  supabase.fireSubscribed();
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.ok(supabase.lastSnapshot, 'autonomous or reconnect repair checkpoints the staged outbox');
-  const cold = new Y.Doc();
-  Y.applyUpdate(cold, gunzipSync(pgHexToBytes(supabase.lastSnapshot.snapshot)));
-  assert.equal(getMetaValue(cold, 'offline-outbox'), 'survives');
-
-  await Promise.race([
-    handle.destroy(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('destroy timed out')), 500)),
-  ]);
 });
 
 test('a channel close invalidates an in-flight catch-up and cannot turn status green', async () => {
