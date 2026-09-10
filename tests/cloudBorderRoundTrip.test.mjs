@@ -537,8 +537,10 @@ test('without our metadata, /RD still rebuilds the base rectangle and ellipse', 
   const rect = byType.rect;
   assert.ok(rect, 'rect comes back');
   assert.equal(rect.data?.pdfCloudIntensity, 2);
-  // The Square importer keeps the (inflated) /Rect as the box and carries the
-  // /RD insets on the object, so the base rectangle is box + insets.
+  // Since 2026-09-09 the Square importer frames the object on the BASE
+  // rectangle (/Rect inset by /RD, snapped to 1e-6) with no insets on the
+  // object, exactly like a drawn cloud; the box + insets form is tolerated
+  // here so the assertion stays about the base rectangle either way.
   const rectInsets = rect.data?.pdfCloudInsets || [0, 0, 0, 0];
   near(rect.left + rectInsets[0], FIDELITY_SHAPES.rect.left, 0.05, 'rect base left (via /Rect + /RD)');
   near(rect.top + rectInsets[1], FIDELITY_SHAPES.rect.top, 0.05, 'rect base top');

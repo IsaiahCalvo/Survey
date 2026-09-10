@@ -3130,6 +3130,15 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
     && values[2] <= bounds.maxX + rectBleed
     && values[3] <= bounds.maxY + rectBleed
   );
+  const rectTouchesPage = (values) => (
+    Array.isArray(values)
+    && values.length === 4
+    && values.every(Number.isFinite)
+    && values[2] >= bounds.minX
+    && values[0] <= bounds.maxX
+    && values[3] >= bounds.minY
+    && values[1] <= bounds.maxY
+  );
   const withinPage = (values) => (
     Array.isArray(values)
     && values.length % 2 === 0
@@ -3141,8 +3150,24 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
     ))
   );
   const rect = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Rect')));
-  if (!rectWithinPage(rect)) return false;
+  if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(Number.isFinite)) return false;
   if (rect[2] < rect[0] || rect[3] < rect[1]) return false;
+  // 2026-09-09: /Rect is the APPEARANCE box. For a cloud that box is inflated
+  // by the scallops (up to a full crown plus the round caps), so a max-Bump
+  // cloud flush to the edge of an A5 / half-letter page used to fail the 5%
+  // bleed and vanish from the export while the print path drew it. Judge the
+  // BASE geometry instead: /Rect inset by /RD (Square / Circle / FreeText)
+  // must sit on the page within the bleed; a dict that carries its own
+  // coordinate arrays (Polygon / PolyLine / Line / Ink / markup) is judged by
+  // those strict arrays below and its appearance box only has to touch the
+  // page. Off-page garbage still fails: its base rect or its points are off.
+  const rd = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('RD')));
+  const baseRect = Array.isArray(rd) && rd.length === 4 && rd.every(Number.isFinite)
+    ? [rect[0] + rd[0], rect[1] + rd[3], rect[2] - rd[2], rect[3] - rd[1]]
+    : rect;
+  const hasCoordinateArrays = ['QuadPoints', 'Vertices', 'CL', 'L', 'InkList']
+    .some((key) => dict.get(PDFName.of(key)) !== undefined);
+  if (hasCoordinateArrays ? !rectTouchesPage(rect) : !rectWithinPage(baseRect)) return false;
 
   const subtype = decodePdfDictText(pdfDoc, dict, 'Subtype');
   const line = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('L')));
@@ -3639,6 +3664,190 @@ const withPrintPageTransform = (page, viewportHeight, draw) => {
     concatTransformationMatrix(dx.x, dx.y, -dy.x, -dy.y, e, f),
   );
   try { return draw(); } finally { page.pushOperators(popGraphicsState()); }
+};
+
+// ---------------------------------------------------------------------------
+// /Annots page frame (2026-09-09).
+//
+// Every annotation writer above authors a VIRTUAL page: a viewport-sized,
+// un-rotated, origin-at-zero page where app y-down is flipped around the
+// app's page height (`pageHeight - y`). The app's page size is pdf.js'
+// default viewport (CropBox-sized, /Rotate applied) and the importer maps
+// /Rect and every coordinate array back through that same rotated viewport,
+// so on a /Rotate 90/180/270 page or a page whose CropBox/MediaBox does not
+// start at (0, 0) the virtual frame is NOT PDF user space: the exported
+// annotation landed rotated and/or shifted by the box origin while the
+// print/flatten path (withPrintPageTransform) was right. The single fix is
+// the affine below - the same viewport -> user-space mapping the flattener
+// and the text-markup adapters already use - applied ONCE to every dict the
+// /Annots exporter registers: /Rect, /RD, /Vertices, /QuadPoints, /L, /CL,
+// /InkList and the /AP form /Matrix (so the viewer's BBox -> /Rect fit stays
+// a pure translation and the appearance turns with the page).
+const PAGE_FRAME_IDENTITY_EPSILON = 1e-9;
+
+const applyPdfMatrixToPoint = (matrix, x, y) => ({
+  x: matrix[0] * x + matrix[2] * y + matrix[4],
+  y: matrix[1] * x + matrix[3] * y + matrix[5],
+});
+
+// `first` then `second` (PDF row-vector convention: first x second).
+const composePdfMatrices = (first, second) => [
+  first[0] * second[0] + first[1] * second[2],
+  first[0] * second[1] + first[1] * second[3],
+  first[2] * second[0] + first[3] * second[2],
+  first[2] * second[1] + first[3] * second[3],
+  first[4] * second[0] + first[5] * second[2] + second[4],
+  first[4] * second[1] + first[5] * second[3] + second[5],
+];
+
+/**
+ * Affine [a b c d e f] taking the virtual (viewport-sized, y-up, origin 0)
+ * page the annotation writers author into the page's real user space. Null
+ * when the two frames coincide (unrotated page with a zero-origin box whose
+ * height matches the app's), so the common case costs nothing.
+ */
+const getAnnotationPageFrameMatrix = (page, viewportHeight) => {
+  const geometry = getTextMarkupPageGeometry(page, viewportHeight);
+  const origin = viewportPointToPdfPoint({ x: 0, y: 0 }, geometry);
+  const xBasis = viewportPointToPdfPoint({ x: 1, y: 0 }, geometry);
+  const yBasis = viewportPointToPdfPoint({ x: 0, y: 1 }, geometry);
+  const dx = { x: xBasis.x - origin.x, y: xBasis.y - origin.y };
+  const dy = { x: yBasis.x - origin.x, y: yBasis.y - origin.y };
+  const height = Number(viewportHeight) || 0;
+  // Virtual (X, Y) = (u, H - v)  =>  P = origin + X * dx + (H - Y) * dy.
+  const matrix = [
+    dx.x, dx.y,
+    -dy.x, -dy.y,
+    origin.x + height * dy.x,
+    origin.y + height * dy.y,
+  ];
+  const identity = [1, 0, 0, 1, 0, 0];
+  const isIdentity = matrix.every((value, index) => Math.abs(value - identity[index]) <= PAGE_FRAME_IDENTITY_EPSILON);
+  return isIdentity ? null : matrix;
+};
+
+const mapPdfRectThroughMatrix = (rect, matrix) => {
+  const corners = [
+    applyPdfMatrixToPoint(matrix, rect[0], rect[1]),
+    applyPdfMatrixToPoint(matrix, rect[2], rect[1]),
+    applyPdfMatrixToPoint(matrix, rect[2], rect[3]),
+    applyPdfMatrixToPoint(matrix, rect[0], rect[3]),
+  ];
+  return [
+    Math.min(...corners.map((point) => point.x)),
+    Math.min(...corners.map((point) => point.y)),
+    Math.max(...corners.map((point) => point.x)),
+    Math.max(...corners.map((point) => point.y)),
+  ];
+};
+
+const pdfNumberArray = (pdfDoc, values) => pdfDoc.context.obj(values.map((value) => PDFNumber.of(value)));
+
+// Exact readers: the native-dedupe readers above round to a few decimals,
+// which must not nudge a coordinate that is only changing frames.
+const readPdfExactNumberArray = (pdfDoc, value) => {
+  const resolved = lookupPdfValue(pdfDoc, value);
+  if (!resolved || typeof resolved.asArray !== 'function') return null;
+  const numbers = resolved.asArray().map((entry) => {
+    const item = lookupPdfValue(pdfDoc, entry);
+    return typeof item?.asNumber === 'function' ? item.asNumber() : Number(item);
+  });
+  return numbers.every(Number.isFinite) ? numbers : null;
+};
+
+const readPdfExactNestedNumberArrays = (pdfDoc, value) => {
+  const resolved = lookupPdfValue(pdfDoc, value);
+  if (!resolved || typeof resolved.asArray !== 'function') return null;
+  const arrays = resolved.asArray().map((entry) => readPdfExactNumberArray(pdfDoc, entry));
+  return arrays.every(Array.isArray) ? arrays : null;
+};
+
+const remapPdfPointArray = (pdfDoc, dict, key, matrix) => {
+  const values = readPdfExactNumberArray(pdfDoc, dict.get(PDFName.of(key)));
+  if (!Array.isArray(values) || values.length % 2 !== 0) return;
+  const mapped = [];
+  for (let index = 0; index + 1 < values.length; index += 2) {
+    const point = applyPdfMatrixToPoint(matrix, values[index], values[index + 1]);
+    mapped.push(point.x, point.y);
+  }
+  dict.set(PDFName.of(key), pdfNumberArray(pdfDoc, mapped));
+};
+
+const remapAppearanceStreamMatrix = (pdfDoc, streamRef, matrix, remappedStreams) => {
+  const stream = lookupPdfValue(pdfDoc, streamRef);
+  const dict = stream?.dict instanceof PDFDict ? stream.dict : null;
+  if (!dict) return;
+  if (remappedStreams.has(stream)) return; // shared between /N, /D, /R
+  remappedStreams.add(stream);
+  const existing = readPdfExactNumberArray(pdfDoc, dict.get(PDFName.of('Matrix')));
+  const current = Array.isArray(existing) && existing.length === 6 ? existing : [1, 0, 0, 1, 0, 0];
+  dict.set(PDFName.of('Matrix'), pdfNumberArray(pdfDoc, composePdfMatrices(current, matrix)));
+};
+
+const remapAppearanceDictMatrices = (pdfDoc, dict, matrix, remappedStreams) => {
+  const ap = lookupPdfValue(pdfDoc, dict.get(PDFName.of('AP')));
+  if (!(ap instanceof PDFDict)) return;
+  for (const key of ['N', 'D', 'R']) {
+    const entry = ap.get(PDFName.of(key));
+    if (entry === undefined) continue;
+    const resolved = lookupPdfValue(pdfDoc, entry);
+    if (resolved instanceof PDFDict) {
+      // Appearance sub-dictionary (one stream per appearance state).
+      resolved.entries().forEach(([, stateRef]) => remapAppearanceStreamMatrix(pdfDoc, stateRef, matrix, remappedStreams));
+    } else {
+      remapAppearanceStreamMatrix(pdfDoc, entry, matrix, remappedStreams);
+    }
+  }
+};
+
+/**
+ * Move one freshly written annotation dict (and its appearance forms) from
+ * the writers' virtual frame into the page's real user space. Idempotence is
+ * the caller's job: call it exactly once per created ref.
+ */
+const remapAnnotationRefToPageFrame = (pdfDoc, ref, matrix, remappedStreams = new Set()) => {
+  if (!matrix) return;
+  const dict = lookupPdfValue(pdfDoc, ref);
+  if (!(dict instanceof PDFDict)) return;
+  const rect = readPdfExactNumberArray(pdfDoc, dict.get(PDFName.of('Rect')));
+  if (Array.isArray(rect) && rect.length === 4) {
+    const mappedRect = mapPdfRectThroughMatrix(rect, matrix);
+    // /RD [left, top, right, bottom] is the inset from /Rect to the base
+    // shape in user space, so it turns with the page: rebuild it from the
+    // remapped base rectangle instead of permuting by hand.
+    const rd = readPdfExactNumberArray(pdfDoc, dict.get(PDFName.of('RD')));
+    if (Array.isArray(rd) && rd.length === 4) {
+      const inner = mapPdfRectThroughMatrix(
+        [rect[0] + rd[0], rect[1] + rd[3], rect[2] - rd[2], rect[3] - rd[1]],
+        matrix,
+      );
+      dict.set(PDFName.of('RD'), pdfNumberArray(pdfDoc, [
+        inner[0] - mappedRect[0],
+        mappedRect[3] - inner[3],
+        mappedRect[2] - inner[2],
+        inner[1] - mappedRect[1],
+      ].map((value) => Math.max(0, value))));
+    }
+    dict.set(PDFName.of('Rect'), pdfNumberArray(pdfDoc, mappedRect));
+  }
+  for (const key of ['Vertices', 'QuadPoints', 'L', 'CL']) {
+    if (dict.get(PDFName.of(key)) !== undefined) remapPdfPointArray(pdfDoc, dict, key, matrix);
+  }
+  const inkList = lookupPdfValue(pdfDoc, dict.get(PDFName.of('InkList')));
+  if (inkList instanceof PDFArray) {
+    const strokes = readPdfExactNestedNumberArrays(pdfDoc, inkList);
+    if (Array.isArray(strokes)) {
+      dict.set(PDFName.of('InkList'), pdfDoc.context.obj(strokes.map((stroke) => {
+        const mapped = [];
+        for (let index = 0; index + 1 < stroke.length; index += 2) {
+          const point = applyPdfMatrixToPoint(matrix, stroke[index], stroke[index + 1]);
+          mapped.push(point.x, point.y);
+        }
+        return pdfNumberArray(pdfDoc, mapped);
+      })));
+    }
+  }
+  remapAppearanceDictMatrices(pdfDoc, dict, matrix, remappedStreams);
 };
 
 const fabricPolygonWorldPoints = (obj) => {
@@ -4152,7 +4361,8 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
 // UX 2026-09-09: printing/flattening ANY cloud shape (rect, ellipse/circle,
 // polygon, open polyline) paints exactly what the export's /AP paints, because
 // it IS the same form: buildCloudAppearance builds the appearance stream (fill
-// region knocked out under the stroke band through the luminosity soft mask,
+// region knocked out under the stroke band as plain geometry (see
+// buildCloudAppearance / cloudFillKnockoutRings),
 // then the crowns stroked one run at a time with round caps/joins, alpha and
 // blend baked into the ExtGState, tilt in /Matrix) and the flattener places
 // that form on the page with a pure translation — the same BBox->Rect fit a
@@ -5201,6 +5411,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
       let annotRef = null;
       let annotRefs = null;
+      let writesPageFrameDirectly = false;
       const objType = obj?.type?.toLowerCase?.() || item.fabricType || 'unknown';
       if (objType === 'line') {
         const lineValues = [obj?.x1, obj?.y1, obj?.x2, obj?.y2].map(Number);
@@ -5247,7 +5458,10 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           };
           const markupType = String(obj?.data?.markupType || obj?.exportType || '').toLowerCase();
           const writer = obj?.data?.type === 'text-markup' ? markupWriters[markupType] : null;
-          if (writer) annotRef = writer(obj, { pdfDoc, page, pageHeight });
+          if (writer) {
+            annotRef = writer(obj, { pdfDoc, page, pageHeight });
+            writesPageFrameDirectly = true;
+          }
           break;
         }
         case 'path':
@@ -5306,6 +5520,16 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       }
 
       const createdRefs = Array.isArray(annotRefs) ? annotRefs : (annotRef ? [annotRef] : []);
+      // Every writer above authors the virtual viewport frame (see
+      // getAnnotationPageFrameMatrix); the text-markup adapters are the one
+      // family already in user space, so they must not be moved twice.
+      if (!writesPageFrameDirectly) {
+        const pageFrameMatrix = getAnnotationPageFrameMatrix(page, pageHeight);
+        if (pageFrameMatrix) {
+          const remappedStreams = new Set();
+          createdRefs.forEach((ref) => remapAnnotationRefToPageFrame(pdfDoc, ref, pageFrameMatrix, remappedStreams));
+        }
+      }
       const refsToPush = createdRefs.filter((ref) => exportAnnotationRefHasValidGeometry(pdfDoc, page, ref));
       if (refsToPush.length !== createdRefs.length) {
         recordSkip(exportDiagnostics, item, 'invalid-or-outside-page-geometry');
@@ -5353,11 +5577,12 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       const pageIndex = pageNumber - 1;
       const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber];
       if (!pageSize || pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
-      const drawnCount = drawUniformHighlightMask(
-        pdfDoc.getPage(pageIndex),
+      const maskPage = pdfDoc.getPage(pageIndex);
+      const drawnCount = withPrintPageTransform(maskPage, pageSize.height, () => drawUniformHighlightMask(
+        maskPage,
         items.map((item) => item.object),
         pageSize.height,
-      );
+      ));
       if (drawnCount > 0) {
         exportDiagnostics.uniformHighlightMasksFlattened = (
           exportDiagnostics.uniformHighlightMasksFlattened || 0
