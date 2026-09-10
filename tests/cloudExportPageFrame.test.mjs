@@ -20,6 +20,11 @@ import { PDFDocument, PDFName, PDFArray } from 'pdf-lib';
 
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 import { importAnnotationsFromPdf } from '../src/utils/pdfAnnotationImporter.js';
+import {
+  resolveCloudAnnotationGeometry,
+  sampleCloudCommands,
+  transformCloudCommandsToWorld,
+} from '../src/utils/cloudAnnotationGeometry.js';
 
 const STROKE = '#c42747';
 
@@ -165,3 +170,59 @@ test('a scaled, tilted polygon cloud whose crowns bleed past a small page edge i
   const bytes = await exportObjects(file, [polygon]);
   assert.equal(await annotCount(bytes), 1, 'the cloud is in the file (every vertex is on the page)');
 });
+
+// The crowns the app paints for an object, sampled in page space.
+const paintedCrowns = (obj) => {
+  const geometry = resolveCloudAnnotationGeometry(obj);
+  assert.ok(geometry, 'the object is a cloud');
+  const world = transformCloudCommandsToWorld(geometry.outline, geometry);
+  return { commands: geometry.outline.length, points: sampleCloudCommands(world, 6).flat() };
+};
+
+const hausdorff = (a, b) => {
+  const directed = (from, to) => {
+    let worst = 0;
+    for (const p of from) {
+      let best = Infinity;
+      for (const q of to) {
+        const distance = Math.hypot(p.x - q.x, p.y - q.y);
+        if (distance < best) best = distance;
+      }
+      if (best > worst) worst = best;
+    }
+    return worst;
+  };
+  return Math.max(directed(a, b), directed(b, a));
+};
+
+// (c) An edge-hugging / full-page cloud re-imported WITHOUT app metadata must
+// rebuild the exact base rectangle from /Rect + /RD: the crown engine is a
+// pure function of the vertex coordinates, so a base rebuilt with float
+// noise (320.00000000000006) or framed as inflated-box-plus-insets grew or
+// lost a crown (207 vs 209 commands) and shifted the crown phase.
+for (const [label, options, page] of [
+  ['an unrotated page', {}, { width: 320, height: 240 }],
+  ['a /Rotate 90 page', { rotate: 90 }, { width: 240, height: 320 }],
+  ['an offset-box page', { mediaBox: [100, 50, 420, 290] }, { width: 320, height: 240 }],
+]) {
+  test(`a full-page Bump-2 cloud on ${label} re-imports with the identical crowns, metadata or not`, async () => {
+    const file = await makePdfFile(options);
+    assert.deepEqual(await appPageSize(file), page);
+    const shape = cloudRect(0, 0, page.width, page.height, 2);
+    const drawn = paintedCrowns(shape);
+    const bytes = await exportObjects(file, [shape]);
+    assert.equal(await annotCount(bytes), 1, 'the cloud is in the file');
+    const [stripped] = await reimportWithoutMetadata(bytes);
+    assert.ok(stripped, 'the cloud re-imports without metadata');
+    assert.equal(stripped.data?.pdfCloudInsets, undefined, 'framed on the base rectangle, not box + insets');
+    const box = baseBoxOf(stripped);
+    assert.deepEqual(
+      [box.left, box.top, box.width, box.height],
+      [shape.left, shape.top, shape.width, shape.height],
+      'the base rectangle is rebuilt exactly',
+    );
+    const reimported = paintedCrowns(stripped);
+    assert.equal(reimported.commands, drawn.commands, 'same crown count');
+    assert.ok(hausdorff(drawn.points, reimported.points) <= 1e-6, 'same crowns');
+  });
+}
