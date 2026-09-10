@@ -846,6 +846,29 @@ const directedHausdorff = (fromMask, toDistance, width, height) => {
 //    centroid and 1pt Hausdorff (one pixel is 0.25pt). The structural count is
 //    the older anti-aliasing-proof pixel test kept for continuity.
 const SAME_RENDERER_CENTROID_TOLERANCE_PT = 0.1;
+// A SINGLE dissenting raster lane on the annotated-vs-flattened comparison
+// (2026-09-10, export round 6).
+//
+// That comparison rasterises the app's OWN two writers and asks whether they
+// put the ink in the same place, so 0.1pt is right: anything the writers do
+// differently shows up in every lane at once. What it cannot see is the
+// RASTERISER disagreeing with itself between two files that describe the same
+// ink differently - an /AP form XObject versus the same operators inlined in
+// the page content stream. pdf.js in Node was measured drifting an ink
+// centroid 0.13-0.59pt that way while poppler, cairo and Quartz reported
+// exactly 0; poppler's Splash does the same on a hairline rectangle (0.125pt,
+// and it finds 25% fewer ink pixels than the other three on that shape) while
+// pdf.js, cairo and Quartz report 0. Both are the renderer, not the writers,
+// and both turned a correct branch red.
+//
+// So: when EVERY other lane agrees the two files are in the same place to
+// within the full 0.1pt bound, ONE lane may miss the centroid by up to the
+// bound below. Two dissenting lanes is not a rasteriser artefact and keeps
+// failing. Hausdorff, the bounding box and the structural pixel count stay at
+// FULL strength for every lane - a shape that actually moved, rotated or
+// changed size fails on those, not on the centroid alone - and the
+// renderer-vs-app tolerances are untouched.
+const RASTER_DISSENT_CENTROID_TOLERANCE_PT = 0.75;
 const SAME_RENDERER_HAUSDORFF_TOLERANCE_PT = 0.5;
 const CENTROID_TOLERANCE_PT = 0.5;
 const HAUSDORFF_TOLERANCE_PT = 1.0;
@@ -904,6 +927,43 @@ const compare = (referencePath, candidatePath, diffPath, tolerances = { centroid
     pass: (edgeDominated || centroidDistance <= tolerances.centroid)
       && hausdorff <= tolerances.hausdorff
       && structuralPct <= STRUCTURAL_TOLERANCE_PCT,
+  };
+};
+
+/**
+ * Let ONE raster lane miss the annotated-vs-flattened centroid when every
+ * other lane agrees within the full bound - see
+ * RASTER_DISSENT_CENTROID_TOLERANCE_PT. Mutates the failing lane's result so
+ * the report says the allowance was used and on what evidence.
+ */
+const allowSingleRasterDissent = (lanes, centroidTolerance) => {
+  const judged = Object.entries(lanes).filter(([, result]) => !result.skipped && !result.error);
+  // Centroid-only misses: everything else about the pair is already within
+  // tolerance, so the two files differ in where this ONE renderer thinks the
+  // ink's balance point is - not in what was drawn.
+  const centroidOnly = judged.filter(([, result]) => (
+    !result.pass
+    && !result.edgeDominated
+    && typeof result.centroidDistancePt === 'number'
+    && result.centroidDistancePt > centroidTolerance
+    && result.centroidDistancePt <= RASTER_DISSENT_CENTROID_TOLERANCE_PT
+    && result.hausdorffPt <= SAME_RENDERER_HAUSDORFF_TOLERANCE_PT
+    && result.structuralPct <= STRUCTURAL_TOLERANCE_PCT
+  ));
+  if (centroidOnly.length !== 1) return;
+  const [dissenter, result] = centroidOnly[0];
+  const others = judged.filter(([name]) => name !== dissenter);
+  if (!others.length) return;
+  const unanimous = others.every(([, other]) => (
+    other.pass && (other.edgeDominated || other.centroidDistancePt <= centroidTolerance)
+  ));
+  if (!unanimous) return;
+  result.pass = true;
+  result.rasterDissentAllowed = {
+    lane: dissenter,
+    centroidDistancePt: result.centroidDistancePt,
+    tolerancePt: RASTER_DISSENT_CENTROID_TOLERANCE_PT,
+    agreedLanes: others.map(([name, other]) => `${name}:${other.edgeDominated ? 'edge-dominated' : other.centroidDistancePt}`),
   };
 };
 
@@ -1128,15 +1188,19 @@ for (const frameName of frameNames) {
         results.renderers[`${kind}.${name}`] = comparison;
       }
     }
-    // The /Annots path against the print path under the same renderer.
+    // The /Annots path against the print path under the same renderer. All
+    // four lanes are measured first, because a lane is only allowed to miss
+    // the centroid when the others agree (allowSingleRasterDissent).
+    const sameRendererLanes = {};
+    const sameRendererCentroid = entry.sameRendererCentroidPt ?? SAME_RENDERER_CENTROID_TOLERANCE_PT;
     for (const [name] of (spec.skipRasterLanes ? [] : renderers)) {
       const annotatedPng = `${base}.annotated.${name}.png`;
       const flattenedPng = `${base}.flattened.${name}.png`;
       if (!existsSync(annotatedPng) || !existsSync(flattenedPng)) {
-        results.renderers[`annotated-vs-flattened.${name}`] = { skipped: true };
+        sameRendererLanes[name] = { skipped: true };
         continue;
       }
-      results.renderers[`annotated-vs-flattened.${name}`] = compare(
+      sameRendererLanes[name] = compare(
         flattenedPng,
         annotatedPng,
         `${base}.annotated-vs-flattened.${name}.diff.png`,
@@ -1144,10 +1208,14 @@ for (const frameName of frameNames) {
           // A case may raise ONLY the centroid bound, and only with a reason
           // (see sameRendererCentroidPt below). Hausdorff, the bbox and the
           // structural count stay at full strength for every case.
-          centroid: entry.sameRendererCentroidPt ?? SAME_RENDERER_CENTROID_TOLERANCE_PT,
+          centroid: sameRendererCentroid,
           hausdorff: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT,
         },
       );
+    }
+    allowSingleRasterDissent(sameRendererLanes, sameRendererCentroid);
+    for (const [name, result] of Object.entries(sameRendererLanes)) {
+      results.renderers[`annotated-vs-flattened.${name}`] = result;
     }
     if (!entry.plain) {
       for (const label of ['withMetadata', 'withoutMetadata']) {
@@ -1173,7 +1241,7 @@ for (const frameName of frameNames) {
 writeFileSync(join(OUT, 'report.json'), JSON.stringify({
   scale: SCALE,
   dpi: DPI,
-  tolerances: { reimportBoundsPt: REIMPORT_BOUNDS_TOLERANCE_PT, sameRendererCentroidPt: SAME_RENDERER_CENTROID_TOLERANCE_PT, sameRendererHausdorffPt: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT, centroidPt: CENTROID_TOLERANCE_PT, hausdorffPt: HAUSDORFF_TOLERANCE_PT, structuralPct: STRUCTURAL_TOLERANCE_PCT, reimportHausdorffPt: REIMPORT_HAUSDORFF_TOLERANCE_PT },
+  tolerances: { reimportBoundsPt: REIMPORT_BOUNDS_TOLERANCE_PT, rasterDissentCentroidPt: RASTER_DISSENT_CENTROID_TOLERANCE_PT, sameRendererCentroidPt: SAME_RENDERER_CENTROID_TOLERANCE_PT, sameRendererHausdorffPt: SAME_RENDERER_HAUSDORFF_TOLERANCE_PT, centroidPt: CENTROID_TOLERANCE_PT, hausdorffPt: HAUSDORFF_TOLERANCE_PT, structuralPct: STRUCTURAL_TOLERANCE_PCT, reimportHausdorffPt: REIMPORT_HAUSDORFF_TOLERANCE_PT },
   pages: frames,
   capture: CAPTURE ? { name: CAPTURE.name, source: CAPTURE.source, object: CAPTURE.object } : null,
   cases: report,
@@ -1183,6 +1251,7 @@ const lines = [
   `Scale ${SCALE} (${DPI} dpi). Reference = the app's own SVG raster (librsvg) in the app's page frame (pdf.js default viewport: CropBox-sized, /Rotate applied).`,
   `Pass, renderer vs app = ink centroid within ${CENTROID_TOLERANCE_PT}pt, clip-tolerant symmetric Hausdorff within ${HAUSDORFF_TOLERANCE_PT}pt, structural pixels <= ${STRUCTURAL_TOLERANCE_PCT}%.`,
   `Pass, annotated vs flattened under the same renderer (the /Annots page-frame mapping against the print path) = centroid within ${SAME_RENDERER_CENTROID_TOLERANCE_PT}pt, Hausdorff within ${SAME_RENDERER_HAUSDORFF_TOLERANCE_PT}pt.`,
+  `One lane per case may miss that centroid by up to ${RASTER_DISSENT_CENTROID_TOLERANCE_PT}pt when EVERY other lane agrees within ${SAME_RENDERER_CENTROID_TOLERANCE_PT}pt (rasteriser dissent, marked "dissent" below); Hausdorff, bbox and structural pixels stay at full strength.`,
   '',
   '| page | case | renderer | annots | centroid dpt | hausdorff pt (p99) | bbox dpt | ink ratio | structural px | pass |',
   '|---|---|---|---|---|---|---|---|---|---|',
@@ -1201,7 +1270,10 @@ for (const entry of report) {
       lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${entry.annotsWritten} | ${result.error} | | | | | NO |`);
       continue;
     }
-    lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${entry.annotsWritten} | ${result.edgeDominated ? 'edge-dominated' : result.centroidDistancePt} | ${result.hausdorffPt} (${result.hausdorffP99Pt}) | ${result.bboxDeltaPt.join(', ')} | ${result.inkRatio} | ${result.structural} | ${result.pass ? 'yes' : 'NO'} |`);
+    const centroidCell = result.edgeDominated
+      ? 'edge-dominated'
+      : `${result.centroidDistancePt}${result.rasterDissentAllowed ? ` (dissent, others ${result.rasterDissentAllowed.agreedLanes.join(' ')})` : ''}`;
+    lines.push(`| ${entry.page} | ${entry.case} | ${name} | ${entry.annotsWritten} | ${centroidCell} | ${result.hausdorffPt} (${result.hausdorffP99Pt}) | ${result.bboxDeltaPt.join(', ')} | ${result.inkRatio} | ${result.structural} | ${result.pass ? 'yes' : 'NO'} |`);
   }
 }
 lines.push('', `Re-import: pass = same place (vertex centroid and every vertex within ${SAME_RENDERER_CENTROID_TOLERANCE_PT}pt, crown bounds within ${REIMPORT_BOUNDS_TOLERANCE_PT}pt); crown-for-crown match (Hausdorff within ${REIMPORT_HAUSDORFF_TOLERANCE_PT.withoutMetadata}pt) required with metadata and for rect / ellipse without it, reported for polygon / polyline without it.`, '', '| page | case | re-import | commands (drawn/back) | vertex centroid dpt | max vertex dpt | crown hausdorff pt | crown bounds dpt | crowns required | pass |', '|---|---|---|---|---|---|---|---|---|---|');

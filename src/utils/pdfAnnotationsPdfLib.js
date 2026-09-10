@@ -24,6 +24,7 @@ import {
   fill as fillOperator,
   degrees,
   drawObject,
+  drawSvgPath as buildSvgPathOperators,
   lineTo,
   moveTo,
   popGraphicsState,
@@ -110,6 +111,74 @@ import { cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnn
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
+
+// ---------------------------------------------------------------------------
+// Linear operator append (2026-09-10).
+//
+// pdf-lib hands operators to a content stream as `contentStream.push(...ops)`
+// - one ARGUMENT per operator - inside BOTH PDFPage#pushOperators and
+// PDFPage#drawSvgPath. Past roughly 125,000 arguments V8 throws
+// `RangeError: Maximum call stack size exceeded`, so a pen stroke or an
+// imported ink path of ~80,000 commands could not be drawn at all: the print
+// flattener's per-annotation fence swallowed the throw and the sheet printed
+// WITHOUT that stroke while the /Annots export still wrote it - print and
+// export disagreeing about what is on the page, silently. (50,000 commands
+// drew fine; 80,000 / 120,000 / 200,000 all threw.) Everything below appends
+// in fixed-size chunks instead: same operators, same order, same bytes, in
+// constant stack space. Sibling of src/utils/arrayExtrema.js, which did the
+// same for Math.min / Math.max spreads.
+const PDF_OPERATOR_PUSH_CHUNK = 1024;
+
+/** `target.push(...items)` without the one-argument-per-item spread. */
+const appendAllInto = (target, items) => {
+  for (let index = 0; index < items.length; index += 1) target.push(items[index]);
+  return target;
+};
+
+const pushPdfOperators = (page, operators) => {
+  const list = [];
+  for (let index = 0; index < operators.length; index += 1) {
+    if (operators[index]) list.push(operators[index]);
+  }
+  for (let index = 0; index < list.length; index += PDF_OPERATOR_PUSH_CHUNK) {
+    page.pushOperators(...list.slice(index, index + PDF_OPERATOR_PUSH_CHUNK));
+  }
+  return list.length;
+};
+
+/**
+ * pdf-lib's PDFPage#drawSvgPath, operator for operator (same graphics-state
+ * embed, same default black border when the caller names neither colour), but
+ * the operators reach the content stream through pushPdfOperators - so the
+ * path length no longer bounds what can be drawn.
+ */
+const drawSvgPathLinear = (page, path, options = {}) => {
+  const graphicsState = typeof page.maybeEmbedGraphicsState === 'function'
+    ? page.maybeEmbedGraphicsState({
+      opacity: options.opacity,
+      borderOpacity: options.borderOpacity,
+      blendMode: options.blendMode,
+    })
+    : undefined;
+  // pdf-lib defaults the border to black only when the caller names NEITHER
+  // key (`'color' in options`), so key presence - not value - decides here too.
+  const borderColor = (!('color' in options) && !('borderColor' in options))
+    ? rgb(0, 0, 0)
+    : options.borderColor;
+  pushPdfOperators(page, buildSvgPathOperators(path, {
+    x: options.x ?? page.getX(),
+    y: options.y ?? page.getY(),
+    scale: options.scale,
+    rotate: options.rotate ?? degrees(0),
+    color: options.color ?? undefined,
+    borderColor: borderColor ?? undefined,
+    borderWidth: options.borderWidth ?? 0,
+    borderDashArray: options.borderDashArray ?? undefined,
+    borderDashPhase: options.borderDashPhase ?? undefined,
+    borderLineCap: options.borderLineCap ?? undefined,
+    graphicsState,
+  }));
+};
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -2020,15 +2089,19 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
     // exact scallop cubics. `q`/`Q` fence the clip so the stroke that follows
     // is not clipped by it.
     const band = hasStroke ? cloudStrokeBandRings(geometry) : null;
-    if (band) content.push('q', ...buildCloudStrokeBandClipOperators(band, toForm, formWidth, formHeight));
+    if (band) {
+      content.push('q');
+      appendAllInto(content, buildCloudStrokeBandClipOperators(band, toForm, formWidth, formHeight));
+    }
     content.push(`${n(fill.color.red)} ${n(fill.color.green)} ${n(fill.color.blue)} rg`);
-    content.push(...cloudCommandsToOperators(geometry.fill, toForm), 'f');
+    appendAllInto(content, cloudCommandsToOperators(geometry.fill, toForm));
+    content.push('f');
     if (band) content.push('Q');
   }
   if (hasStroke) {
     content.push(`${n(stroke.color.red)} ${n(stroke.color.green)} ${n(stroke.color.blue)} RG`);
     content.push(`${n(strokeWidth)} w`);
-    content.push(...cloudRunStrokeOperators(geometry, toForm));
+    appendAllInto(content, cloudRunStrokeOperators(geometry, toForm));
   }
   content.push('Q');
 
@@ -3653,71 +3726,108 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
   // so print and export disagreed again for exactly the reason the first fix
   // was written to stop.
   //
-  // CONTRACT: any annotation whose BASE geometry OVERLAPS the page at all is
-  // exported. Viewers clip what runs past the edge; nothing is lost by writing
-  // it. Only geometry that is entirely off the page (a line at x = -9000 on a
-  // 612pt page), non-finite, or degenerate is rejected.
+  // 2026-09-10 (crown spill): judging the BASE geometry left the mirror of the
+  // hull-spill bug open. A revision cloud's INK is not its base geometry - the
+  // crowns bulge one crown depth plus the stroke's outer half OUTSIDE the base
+  // rectangle (~13pt at Bump 2, stroke 2.5). A cloud whose base sits 2pt off a
+  // page edge therefore still paints a visible band of scallops ON the page,
+  // the flattened print draws that band, and the base-rect guard threw the
+  // annotation out of /Annots: print and export disagreed about whether the
+  // shape existed at all, on all four edges and for rect, polygon and ellipse
+  // clouds alike. (The mirror of the hull-spill case above: there the base was
+  // ON the page and the hull spilled off; here the base is OFF and the hull
+  // spills on.)
+  //
+  // CONTRACT: an annotation is exported when its INK overlaps the page - the
+  // same appearance the flattened print puts on the paper. /Rect IS that ink
+  // box: it is the /AP /BBox mapped into page space, i.e. the base geometry
+  // grown by the engine's crown depth and strokeWidth / 2 (see
+  // buildCloudAppearance and applyPlainShapeAppearanceToDict), so /Rect is what
+  // this guard judges - clouds and plain shapes alike, which is what keeps print
+  // and export agreeing on what is on the page. Viewers clip what runs past
+  // the edge; nothing is lost by writing it. Only an annotation whose INK is
+  // ENTIRELY off the page (a line at x = -9000 on a 612pt page), non-finite,
+  // or degenerate is rejected.
   const spanOverlapsPage = (min, max, low, high) => max >= low && min <= high;
-  const rectOnPage = (values) => {
-    if (!Array.isArray(values) || values.length !== 4 || !values.every(Number.isFinite)) return false;
-    const [x0, y0, x1, y1] = values;
-    return spanOverlapsPage(Math.min(x0, x1), Math.max(x0, x1), bounds.minX, bounds.maxX)
-      && spanOverlapsPage(Math.min(y0, y1), Math.max(y0, y1), bounds.minY, bounds.maxY);
-  };
-  const rectWithinPage = rectOnPage;
-  const rectTouchesPage = rectOnPage;
-  const withinPage = (values) => {
-    if (!Array.isArray(values) || values.length % 2 !== 0) return false;
-    // An empty coordinate array carries no geometry to judge; it passed before
-    // this rule changed and still does, so nothing outside the wild-geometry
-    // case changes behaviour.
-    if (values.length === 0) return true;
-    if (!values.every(Number.isFinite)) return false;
+  const boxOverlapsPage = (box) => (
+    !!box
+    && spanOverlapsPage(box.minX, box.maxX, bounds.minX, bounds.maxX)
+    && spanOverlapsPage(box.minY, box.maxY, bounds.minY, bounds.maxY)
+  );
+  // Linear, not `Math.min(...values)`: an ink stroke or a many-vertex polygon
+  // carries tens of thousands of coordinates and a spread passes one ARGUMENT
+  // per element (see src/utils/arrayExtrema.js).
+  const pointBounds = (values) => {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
     for (let index = 0; index + 1 < values.length; index += 2) {
-      minX = Math.min(minX, values[index]); maxX = Math.max(maxX, values[index]);
-      minY = Math.min(minY, values[index + 1]); maxY = Math.max(maxY, values[index + 1]);
+      if (values[index] < minX) minX = values[index];
+      if (values[index] > maxX) maxX = values[index];
+      if (values[index + 1] < minY) minY = values[index + 1];
+      if (values[index + 1] > maxY) maxY = values[index + 1];
     }
-    return spanOverlapsPage(minX, maxX, bounds.minX, bounds.maxX)
-      && spanOverlapsPage(minY, maxY, bounds.minY, bounds.maxY);
+    return { minX, minY, maxX, maxY };
   };
   const rect = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Rect')));
   if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(Number.isFinite)) return false;
   if (rect[2] < rect[0] || rect[3] < rect[1]) return false;
-  // 2026-09-09: /Rect is the APPEARANCE box. For a cloud that box is inflated
-  // by the scallops (up to a full crown plus the round caps), so a max-Bump
-  // cloud flush to the edge of an A5 / half-letter page used to fail the 5%
-  // bleed and vanish from the export while the print path drew it. Judge the
-  // BASE geometry instead: /Rect inset by /RD (Square / Circle / FreeText)
-  // must sit on the page within the bleed; a dict that carries its own
-  // coordinate arrays (Polygon / PolyLine / Line / Ink / markup) is judged by
-  // those strict arrays below and its appearance box only has to touch the
-  // page. Off-page garbage still fails: its base rect or its points are off.
-  const rd = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('RD')));
-  const baseRect = Array.isArray(rd) && rd.length === 4 && rd.every(Number.isFinite)
-    ? [rect[0] + rd[0], rect[1] + rd[3], rect[2] - rd[2], rect[3] - rd[1]]
-    : rect;
-  const hasCoordinateArrays = ['QuadPoints', 'Vertices', 'CL', 'L', 'InkList']
-    .some((key) => dict.get(PDFName.of(key)) !== undefined);
-  if (hasCoordinateArrays ? !rectTouchesPage(rect) : !rectWithinPage(baseRect)) return false;
+  const inkBox = { minX: rect[0], minY: rect[1], maxX: rect[2], maxY: rect[3] };
+  if (!boxOverlapsPage(inkBox)) return false;
 
-  const subtype = decodePdfDictText(pdfDoc, dict, 'Subtype');
-  const line = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('L')));
-  if (subtype === 'Line') {
-    if (!withinPage(line) || line.length !== 4) return false;
-    if (Math.hypot(line[2] - line[0], line[3] - line[1]) <= 0.01) return false;
-  }
-  for (const key of ['QuadPoints', 'Vertices', 'CL']) {
+  // The coordinate arrays stay in the guard, because a broken transform's WILD
+  // geometry is exactly what shows up there - but they carry BASE points, so
+  // they are judged against the page grown by the ink reach /Rect records (the
+  // largest gap between the appearance box and those base points: a full crown
+  // for a cloud, the stroke's outer half for a plain shape). Without that
+  // inflation a polygon cloud whose crowns reach onto the page would clear the
+  // /Rect test above and then be rejected by its own off-page /Vertices.
+  const coordinateArrays = [];
+  for (const key of ['QuadPoints', 'Vertices', 'CL', 'L']) {
     const raw = dict.get(PDFName.of(key));
-    if (raw !== undefined) {
-      const values = readPdfNativeNumberArray(pdfDoc, raw);
-      if (!withinPage(values)) return false;
-    }
+    if (raw === undefined) continue;
+    const values = readPdfNativeNumberArray(pdfDoc, raw);
+    if (!Array.isArray(values) || values.length % 2 !== 0) return false;
+    // An empty coordinate array carries no geometry to judge; it passed before
+    // this rule changed and still does.
+    if (values.length) coordinateArrays.push(values);
   }
   const inkListRaw = dict.get(PDFName.of('InkList'));
   if (inkListRaw !== undefined) {
     const strokes = readPdfNativeNestedNumberArrays(pdfDoc, inkListRaw);
-    if (!Array.isArray(strokes) || strokes.some((stroke) => !withinPage(stroke))) return false;
+    if (!Array.isArray(strokes)) return false;
+    for (const stroke of strokes) {
+      if (!Array.isArray(stroke) || stroke.length % 2 !== 0) return false;
+      if (stroke.length) coordinateArrays.push(stroke);
+    }
+  }
+  const subtype = decodePdfDictText(pdfDoc, dict, 'Subtype');
+  const line = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('L')));
+  if (subtype === 'Line') {
+    if (!Array.isArray(line) || line.length !== 4) return false;
+    if (Math.hypot(line[2] - line[0], line[3] - line[1]) <= 0.01) return false;
+  }
+  if (coordinateArrays.length) {
+    const boxes = coordinateArrays.map(pointBounds);
+    const baseBox = boxes.reduce((accumulated, box) => ({
+      minX: Math.min(accumulated.minX, box.minX),
+      minY: Math.min(accumulated.minY, box.minY),
+      maxX: Math.max(accumulated.maxX, box.maxX),
+      maxY: Math.max(accumulated.maxY, box.maxY),
+    }));
+    const inkReach = Math.max(
+      0,
+      baseBox.minX - inkBox.minX,
+      baseBox.minY - inkBox.minY,
+      inkBox.maxX - baseBox.maxX,
+      inkBox.maxY - baseBox.maxY,
+    );
+    for (const box of boxes) {
+      if (!boxOverlapsPage({
+        minX: box.minX - inkReach,
+        minY: box.minY - inkReach,
+        maxX: box.maxX + inkReach,
+        maxY: box.maxY + inkReach,
+      })) return false;
+    }
   }
   return true;
 };
@@ -4521,16 +4631,16 @@ const drawFilledOutlineInk = (page, pathData, pageHeight, attrs) => {
     ? PDFOperator.of(PDFOperatorNames.FillEvenOdd)
     : fillOperator();
   const { red, green, blue } = paint.color;
-  page.pushOperators(
+  const operators = [
     pushGraphicsState(),
     ...(graphicsStateKey ? [setGraphicsState(graphicsStateKey)] : []),
     translateOperator(0, pageHeight),
     scaleOperator(1, -1),
     setFillingRgbColor(red, green, blue),
-    ...pathOperators,
-    fillRuleOperator,
-    popGraphicsState(),
-  );
+  ];
+  appendAllInto(operators, pathOperators);
+  operators.push(fillRuleOperator, popGraphicsState());
+  pushPdfOperators(page, operators);
   return 1;
 };
 
@@ -4580,7 +4690,7 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
     ]);
     const d = `M ${pts[0][0]} ${pts[0][1]} L ${pts[1][0]} ${pts[1][1]} L ${pts[2][0]} ${pts[2][1]} Z`;
     if (spec.kind === 'solidTriangle') {
-      page.drawSvgPath(d, {
+      drawSvgPathLinear(page, d, {
         x: 0,
         y: pageHeight,
         color: stroke.color,
@@ -4588,7 +4698,7 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
         borderWidth: 0,
       });
     } else {
-      page.drawSvgPath(d, {
+      drawSvgPathLinear(page, d, {
         x: 0,
         y: pageHeight,
         borderColor: stroke.color,
@@ -4626,7 +4736,7 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
       .map(([lx, ly]) => [spec.tipX + (lx * cos) - (ly * sin), spec.tipY + (lx * sin) + (ly * cos)]);
     const d = `M ${pts.map(([x, y]) => `${x} ${y}`).join(' L ')} Z`;
     const polyFill = spec.polygon.fill && spec.polygon.fill !== 'none' ? parsePdfDrawColor(spec.polygon.fill, null) : null;
-    page.drawSvgPath(d, {
+    drawSvgPathLinear(page, d, {
       x: 0,
       y: pageHeight,
       borderColor: stroke.color,
@@ -4681,7 +4791,7 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
     const body = buildCurvedLineBody({ x: x1, y: y1 }, { x: x2, y: y2 }, { x: Number(midpoint.x), y: Number(midpoint.y) }, startInset, endInset);
     startAngleDeg = body.startAngleDeg;
     endAngleDeg = body.endAngleDeg;
-    page.drawSvgPath(body.d, {
+    drawSvgPathLinear(page, body.d, {
       x: 0,
       y: pageHeight,
       borderColor: stroke.color,
@@ -4796,7 +4906,7 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
         { x: left, y: top }, { x: left + width, y: top },
         { x: left + width, y: top + height }, { x: left, y: top + height },
       ].map((point) => rotateAppPoint(point, center, angle));
-      page.drawSvgPath(`${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
+      drawSvgPathLinear(page, `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
         x: 0, y: pageHeight, ...common,
       });
     } else {
@@ -4928,7 +5038,7 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
     'Z',
   ].join(' ');
 
-  page.drawSvgPath(d, {
+  drawSvgPathLinear(page, d, {
     x: 0,
     y: pageHeight,
     color: color.color,
@@ -5007,7 +5117,7 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
   const fill = closePath ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
   const strokeWidth = stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
-  page.drawSvgPath(d, {
+  drawSvgPathLinear(page, d, {
     x: 0,
     y: pageHeight,
     borderColor: stroke?.color,
@@ -5049,7 +5159,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
         ];
         const path = `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
         const unappliedRedaction = markupType === 'redact' && obj?.data?.applied !== true;
-        page.drawSvgPath(path, {
+        drawSvgPathLinear(page, path, {
           x: 0,
           y: pageHeight,
           color: unappliedRedaction ? undefined : (markupType === 'redact' ? rgb(0, 0, 0) : color.color),
@@ -5189,7 +5299,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       ? Math.max(0, Math.min(1, Number(shifted.opacity)))
       : 1;
     page.pushOperators(pushGraphicsState(), setLineJoin(1));
-    page.drawSvgPath(path, {
+    drawSvgPathLinear(page, path, {
       x: 0,
       y: pageHeight,
       borderColor: stroke?.color,
@@ -5216,7 +5326,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       const glyphFill = parsePdfDrawColor(shifted.fill || '#ffeb3b', '#ffeb3b');
       const glyphStroke = parsePdfDrawColor(stickyNoteOutlineColor(shifted.fill), '#5f5200');
       const glyphStrokeWidth = Math.max(1, Math.min(width, height) * 0.06);
-      page.drawSvgPath(glyph.bubblePath, {
+      drawSvgPathLinear(page, glyph.bubblePath, {
         x: center.x,
         y: getPdfY(pageHeight, center.y),
         rotate: degrees(-angle),
@@ -5276,7 +5386,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
         { x: left + width, y: top + height }, { x: left, y: top + height },
       ].map((point) => rotateAppPoint(point, center, angle));
       const d = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
-      page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
+      drawSvgPathLinear(page, d, { x: 0, y: pageHeight, ...common });
     } else {
       page.drawRectangle({
         x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
@@ -5302,7 +5412,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
         return rotateAppPoint({ x: cx + Math.cos(theta) * xRadius, y: cy + Math.sin(theta) * yRadius }, { x: cx, y: cy }, angle);
       });
       const d = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
-      page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
+      drawSvgPathLinear(page, d, { x: 0, y: pageHeight, ...common });
     } else {
       page.drawEllipse({ x: cx, y: getPdfY(pageHeight, cy), xScale: xRadius, yScale: yRadius, ...common });
     }
@@ -5346,7 +5456,7 @@ const drawUniformHighlightMask = (page, objects, pageHeight) => {
     return `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
   }).filter(Boolean).join(' ');
   if (!path) return 0;
-  page.drawSvgPath(path, {
+  drawSvgPathLinear(page, path, {
     x: 0,
     y: pageHeight,
     color: color.color,
