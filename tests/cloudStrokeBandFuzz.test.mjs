@@ -229,6 +229,7 @@ test('per-capsule clips paint the same pixels as the unioned clip', {
     stroke: 'rgba(196,39,71,1)', strokeWidth: 6, fill: 'rgba(0,0,255,0.35)',
     data: { pdfCloudIntensity: 2 },
   };
+  const { buildCloudStrokeBandClipOperators } = await import('../src/utils/pdfAnnotationsPdfLib.js');
   const geometry = resolveCloudAnnotationGeometry(shape);
   const toForm = (x, y) => ({ x, y: PAGE.height - y });
   const streamFor = (band) => [
@@ -251,7 +252,6 @@ test('per-capsule clips paint the same pixels as the unioned clip', {
     'f', 'Q',
   ].join('\n');
 
-  const { buildCloudStrokeBandClipOperators } = await import('../src/utils/pdfAnnotationsPdfLib.js');
   const render = async (text) => {
     const doc = await PDFDocument.create();
     const page = doc.addPage([PAGE.width, PAGE.height]);
