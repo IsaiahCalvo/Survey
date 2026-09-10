@@ -2400,19 +2400,27 @@ const plainAppearanceGeometry = (obj) => {
 };
 
 /**
- * Draw `fabricObj` through the print flattener onto a throwaway page and wrap
- * the resulting operators in an /AP /N form. Returns null (and changes
- * nothing) when the shape paints no ink or anything goes wrong - the caller
- * then keeps its plain, appearance-less dict.
+ * Run `draw` (a print-flattener call, or several) onto a throwaway page and
+ * wrap the resulting operators in an /AP /N form whose /BBox is `bounds`.
+ * Returns null (and changes nothing) when the draw paints no ink or anything
+ * goes wrong - the caller then keeps its plain, appearance-less dict.
+ *
+ * `draw` receives the scratch page and returns how many pieces it painted.
+ * Taking a CALLBACK rather than one fabric object is what lets a COMPOSITE -
+ * a callout's arrow leader plus its head, its text box plus the glyphs inside
+ * it - become one appearance stream drawn by exactly the code the print runs.
  */
-const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fonts) => {
+const buildFlattenedAppearanceForm = (pdfDoc, pageHeight, bounds, draw) => {
+  if (!bounds || ![bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].every(Number.isFinite)) {
+    return null;
+  }
   let scratch = null;
   try {
     // The size is irrelevant: every draw helper writes ABSOLUTE page
     // coordinates (y flipped around the pageHeight passed in) and pdf-lib
     // never clips to the page box. The form's /BBox is the real frame.
     scratch = pdfDoc.addPage([1, 1]);
-    const drawn = drawFlattenedObject(scratch, fabricObj, pageHeight, fonts || {});
+    const drawn = draw(scratch);
     if (!drawn) return null;
     const content = scratch.contentStream ? scratch.contentStream.getContentsString() : '';
     if (!content.trim()) return null;
@@ -2432,7 +2440,7 @@ const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fo
     });
     return { ref: pdfDoc.context.register(appearance), rect: bbox };
   } catch (error) {
-    console.warn('Failed to build plain-shape appearance stream:', error);
+    console.warn('Failed to build flattened appearance stream:', error);
     return null;
   } finally {
     if (scratch) {
@@ -2445,6 +2453,16 @@ const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fo
     }
   }
 };
+
+/**
+ * The single-fabric-object case of buildFlattenedAppearanceForm: the shape the
+ * plain writers hand to the flattener.
+ */
+const buildFlattenedShapeAppearance = (pdfDoc, fabricObj, pageHeight, bounds, fonts) => (
+  buildFlattenedAppearanceForm(pdfDoc, pageHeight, bounds, (scratch) => (
+    drawFlattenedObject(scratch, fabricObj, pageHeight, fonts || {})
+  ))
+);
 
 /**
  * Put a /Matrix on a form built by buildFlattenedShapeAppearance. Returns
@@ -3491,7 +3509,7 @@ const resolveCalloutArrowheadStyle = (style) => (
   style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE
 );
 
-const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
+const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight, options = {}) => {
   const refs = [];
   const style = calloutObj?.style || {};
   const stroke = style.borderColor || style.lineColor || '#1e293b';
@@ -3501,6 +3519,31 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   const textBox = calloutObj?.textBox;
 
   if (!arrowTip || !knee || !textBox) return refs;
+
+  // 2026-09-10 (callouts had no /AP): a callout is a COMPOSITE the app draws
+  // as one piece, so its three exported parts get the three slices of that one
+  // drawing - the same ones the flattened print paints (calloutFlattenParts).
+  // Until today every part shipped with no appearance at all: Acrobat drew a
+  // bare line and an empty text box, and macOS Preview / Quick Look - which
+  // paints ONLY what an /AP says - showed nothing whatsoever where the print
+  // drew a leader, an arrowhead and a labelled box.
+  const parts = calloutFlattenParts(calloutObj) || [];
+  const partsByName = new Map(parts.map((entry) => [entry.part, entry]));
+  const fonts = options.fonts || null;
+  const attachPartAppearance = (ref, part) => {
+    if (!ref || !part) return;
+    // No page-frame matrix here on purpose: a callout part goes on through
+    // remapAnnotationRefToPageFrame with every other writer's dict, and that
+    // pass composes the /AP /Matrix and maps /Rect.
+    applyFlattenedAppearanceToRef(
+      pdfDoc,
+      ref,
+      pageHeight,
+      part.bounds,
+      (scratch) => part.draw(scratch, pageHeight, fonts || {}),
+      { baseBounds: part.base || null },
+    );
+  };
 
   const originalCallout = calloutObj.originalCallout || calloutObj;
   const pageNumber = calloutObj.pageNumber || originalCallout.pageNumber || null;
@@ -3530,17 +3573,29 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   // arrowhead /LE mapping above).
   const leaderDash = calloutLineDashArray(style.lineStyle);
 
-  const line1 = createLineAnnotation(pdfDoc, page, {
-    type: 'line',
-    x1: textBox.left,
-    y1: textBox.top + textBox.height / 2,
-    x2: knee.x,
-    y2: knee.y,
-    stroke,
-    strokeWidth,
-    ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
-  }, pageHeight, buildCalloutOptions('line1'));
-  if (line1) refs.push(line1);
+  const line1Part = partsByName.get('line1');
+  // /L is the segment the app actually draws: the box-edge point nearest the
+  // knee, ending at the effective knee (calculateCalloutConnection), which is
+  // what the print and the /AP below paint. It used to be a fixed left-middle
+  // anchor, so the file described one line and drew another - and when the
+  // rescue hides line1 entirely there is no line to describe, so no /Line part
+  // is written rather than one no surface draws.
+  const line1 = line1Part && !line1Part.hidden
+    ? createLineAnnotation(pdfDoc, page, {
+      type: 'line',
+      x1: line1Part.geometry.x1,
+      y1: line1Part.geometry.y1,
+      x2: line1Part.geometry.x2,
+      y2: line1Part.geometry.y2,
+      stroke,
+      strokeWidth,
+      ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
+    }, pageHeight, buildCalloutOptions('line1'))
+    : null;
+  if (line1) {
+    attachPartAppearance(line1, line1Part);
+    refs.push(line1);
+  }
 
   const line2 = createLineAnnotation(pdfDoc, page, {
     type: 'line',
@@ -3556,7 +3611,10 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     lineEnding2: ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[resolveCalloutArrowheadStyle(style)]
       || 'ClosedArrow',
   }, pageHeight, buildCalloutOptions('line2'));
-  if (line2) refs.push(line2);
+  if (line2) {
+    attachPartAppearance(line2, partsByName.get('line2'));
+    refs.push(line2);
+  }
 
   const textRef = createFreeTextAnnotation(pdfDoc, page, {
     type: 'textbox',
@@ -3575,7 +3633,10 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     fontStyle: style.italic ? 'italic' : 'normal',
     backgroundColor: style.backgroundColor || null,
   }, pageHeight, buildCalloutOptions('text'));
-  if (textRef) refs.push(textRef);
+  if (textRef) {
+    attachPartAppearance(textRef, partsByName.get('text'));
+    refs.push(textRef);
+  }
 
   return refs;
 };
@@ -3779,7 +3840,9 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
   // largest gap between the appearance box and those base points: a full crown
   // for a cloud, the stroke's outer half for a plain shape). Without that
   // inflation a polygon cloud whose crowns reach onto the page would clear the
-  // /Rect test above and then be rejected by its own off-page /Vertices.
+  // /Rect test above and then be rejected by its own off-page /Vertices. They
+  // are collected here and judged as one union below - see the multi-piece
+  // note there for why never one array at a time.
   const coordinateArrays = [];
   for (const key of ['QuadPoints', 'Vertices', 'CL', 'L']) {
     const raw = dict.get(PDFName.of(key));
@@ -3805,29 +3868,54 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
     if (!Array.isArray(line) || line.length !== 4) return false;
     if (Math.hypot(line[2] - line[0], line[3] - line[1]) <= 0.01) return false;
   }
+  // 2026-09-10 (multi-piece ink drop): the coordinate arrays are judged as ONE
+  // geometry - their UNION - never one array at a time.
+  //
+  // /InkList holds one array PER STROKE PIECE, and a single pen stroke is
+  // routinely many pieces: the eraser splits one stroke into several subpaths
+  // inside ONE annotation (paperInkEraser), and a DASHED pen stroke
+  // materialises into one subpath per dash (materializeDashedInkPath - 27 for
+  // a short stroke). /QuadPoints is the same shape: one quad per line of a
+  // text markup. Rejecting the WHOLE annotation the moment ANY ONE of those
+  // arrays failed meant that dragging an erased or dashed stroke until a
+  // single piece left the page by 3pt exported ZERO /Annots, while the
+  // flattened print drew every piece still on the paper - the silent loss of
+  // an entire everyday stroke, on all four page edges and on rotated / offset
+  // page frames alike.
+  //
+  // CONTRACT (the same one /Rect is judged by above): keep the annotation when
+  // ANY of its ink overlaps the page; drop it only when EVERYTHING is off the
+  // page, or the geometry is non-finite (the readers above reject that) or
+  // degenerate. The union is inflated by the same ink reach, because these
+  // arrays carry BASE points while /Rect is the appearance box.
   if (coordinateArrays.length) {
-    const boxes = coordinateArrays.map(pointBounds);
-    const baseBox = boxes.reduce((accumulated, box) => ({
-      minX: Math.min(accumulated.minX, box.minX),
-      minY: Math.min(accumulated.minY, box.minY),
-      maxX: Math.max(accumulated.maxX, box.maxX),
-      maxY: Math.max(accumulated.maxY, box.maxY),
-    }));
+    const unionBox = coordinateArrays.reduce((accumulated, values) => {
+      const box = pointBounds(values);
+      return accumulated ? {
+        minX: Math.min(accumulated.minX, box.minX),
+        minY: Math.min(accumulated.minY, box.minY),
+        maxX: Math.max(accumulated.maxX, box.maxX),
+        maxY: Math.max(accumulated.maxY, box.maxY),
+      } : box;
+    }, null);
+    // A union that never saw a finite point is not geometry at all.
+    if (!unionBox
+      || ![unionBox.minX, unionBox.minY, unionBox.maxX, unionBox.maxY].every(Number.isFinite)) {
+      return false;
+    }
     const inkReach = Math.max(
       0,
-      baseBox.minX - inkBox.minX,
-      baseBox.minY - inkBox.minY,
-      inkBox.maxX - baseBox.maxX,
-      inkBox.maxY - baseBox.maxY,
+      unionBox.minX - inkBox.minX,
+      unionBox.minY - inkBox.minY,
+      inkBox.maxX - unionBox.maxX,
+      inkBox.maxY - unionBox.maxY,
     );
-    for (const box of boxes) {
-      if (!boxOverlapsPage({
-        minX: box.minX - inkReach,
-        minY: box.minY - inkReach,
-        maxX: box.maxX + inkReach,
-        maxY: box.maxY + inkReach,
-      })) return false;
-    }
+    if (!boxOverlapsPage({
+      minX: unionBox.minX - inkReach,
+      minY: unionBox.minY - inkReach,
+      maxX: unionBox.maxX + inkReach,
+      maxY: unionBox.maxY + inkReach,
+    })) return false;
   }
   return true;
 };
@@ -4544,6 +4632,72 @@ const remapAnnotationRefToPageFrame = (pdfDoc, ref, matrix, remappedStreams = ne
     }
   }
   remapAppearanceDictMatrices(pdfDoc, dict, matrix, remappedStreams);
+};
+
+/**
+ * Give one ALREADY-REGISTERED annotation dict the /AP /N form that `draw`
+ * paints, plus the /Rect that form's box maps to.
+ *
+ * 2026-09-10 - this exists for the two families the per-shape writers above
+ * cannot give an appearance to:
+ *
+ *   * a CALLOUT, which is a composite the app draws as one piece
+ *     (drawFlattenedCallout) and exports as three annotations, so each part
+ *     needs the slice of that one drawing it owns rather than the plain-shape
+ *     /AP a lone /Line or /FreeText would get;
+ *   * a TEXT MARKUP (highlight, underline, strikeout, squiggly), whose dict is
+ *     built by the native-export adapters and carried no appearance at all.
+ *
+ * Both used to ship with NO /AP, so macOS Preview / Quick Look - which paints
+ * only what an appearance stream says - showed NOTHING where the flattened
+ * print drew a leader, an arrowhead, a labelled box or a marked line of text.
+ *
+ * `pageFrameMatrix` is for a caller that is ALREADY in the page's user space
+ * (the text-markup adapters): the form is authored in the writers' virtual
+ * frame, so the matrix moves it and /Rect is the mapped box. A caller whose
+ * dict still goes through remapAnnotationRefToPageFrame passes nothing and
+ * lets that pass compose the matrix, exactly as it does for every other /AP.
+ *
+ * @returns {boolean} whether an appearance was attached
+ */
+const applyFlattenedAppearanceToRef = (pdfDoc, ref, pageHeight, bounds, draw, options = {}) => {
+  try {
+    const dict = lookupPdfValue(pdfDoc, ref);
+    if (!(dict instanceof PDFDict)) return false;
+    // Never overwrite an appearance a writer already chose (a marked-for-
+    // redaction overlay, say).
+    if (dict.get(PDFName.of('AP')) !== undefined) return false;
+    const appearance = buildFlattenedAppearanceForm(pdfDoc, pageHeight, bounds, draw);
+    if (!appearance) return false;
+    const matrix = options.pageFrameMatrix || null;
+    if (matrix && !appearanceFormSetMatrix(pdfDoc, appearance.ref, matrix)) return false;
+    dict.set(PDFName.of('AP'), pdfDoc.context.obj({ N: appearance.ref }));
+    // /Rect IS the transformed /BBox, so the viewer's BBox -> /Rect fit stays
+    // the identity and the ink lands where the print puts it.
+    dict.set(PDFName.of('Rect'), pdfNumberArray(
+      pdfDoc,
+      matrix ? mapPdfRectThroughMatrix(appearance.rect, matrix) : appearance.rect,
+    ));
+    // /RD [left, top, right, bottom] (PDF 32000-1 12.5.6.8): the inset from
+    // the padded appearance box back to the shape the user actually drew, so
+    // an /AP-grown /Rect never loses where the base box was. `baseBounds` is
+    // in app space (y-down), the frame every writer here authors in.
+    const base = options.baseBounds;
+    if (base && [base.minX, base.minY, base.maxX, base.maxY].every(Number.isFinite) && !matrix) {
+      const rect = appearance.rect;
+      const baseRect = [base.minX, pageHeight - base.maxY, base.maxX, pageHeight - base.minY];
+      dict.set(PDFName.of('RD'), pdfNumberArray(pdfDoc, [
+        Math.max(0, baseRect[0] - rect[0]),
+        Math.max(0, rect[3] - baseRect[3]),
+        Math.max(0, rect[2] - baseRect[2]),
+        Math.max(0, baseRect[1] - rect[1]),
+      ]));
+    }
+    return true;
+  } catch (error) {
+    console.warn('Failed to attach a flattened appearance stream:', error);
+    return false;
+  }
 };
 
 const fabricPolygonWorldPoints = (obj) => {
@@ -5466,15 +5620,30 @@ const drawUniformHighlightMask = (page, objects, pageHeight) => {
   return 1;
 };
 
-const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
-  if (!calloutObj) return 0;
+/**
+ * The three pieces the app draws for a callout - the leader from the text box
+ * to the knee, the leader from the knee to the arrow with its head, and the
+ * text box with its border, fill and glyphs - each as the ink it paints and
+ * the app-space (y-down) box that ink fits inside.
+ *
+ * ONE description of the callout's ink, used by BOTH surfaces: the flattened
+ * print (drawFlattenedCallout, right below) paints the three in order, and the
+ * /Annots writer (createCalloutAnnotations) gives each exported part its own
+ * /AP /N built from the SAME draw. That is what makes the composite of the
+ * three appearance streams the print, piece for piece - and it cannot drift,
+ * because there is only one description to change.
+ *
+ * @returns {Array<{part: string, hidden: boolean, bounds: object, draw: Function}>|null}
+ */
+const calloutFlattenParts = (calloutObj) => {
+  if (!calloutObj) return null;
   const style = calloutObj.style || {};
   const stroke = style.borderColor || style.lineColor || '#1e293b';
   const strokeWidth = Math.max(1, Number(style.lineThickness || 2));
   const arrowTip = calloutObj.arrowTip;
   const knee = calloutObj.knee;
   const textBox = calloutObj.textBox;
-  if (!arrowTip || !knee || !textBox) return 0;
+  if (!arrowTip || !knee || !textBox) return null;
   // UX (2026-07-17, callout line style): style.lineStyle dashes line1/line2
   // AND the box border in print, mirroring the SVG renderer / canvas painter;
   // the arrowhead stays solid (same as the arrow tool). Absent → solid.
@@ -5488,9 +5657,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
   );
   const line1Start = connection.line1Start;
   const effectiveKnee = connection.effectiveKnee || knee;
-  if (!connection.shouldHideLine1) {
-    drawFlattenedLine(page, { type: 'line', x1: line1Start.x, y1: line1Start.y, x2: effectiveKnee.x, y2: effectiveKnee.y, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
-  }
+  const line1Object = { type: 'line', x1: line1Start.x, y1: line1Start.y, x2: effectiveKnee.x, y2: effectiveKnee.y, stroke, strokeWidth, ...leaderDashProps };
   // UX (print flatten callout arrowhead): honor style.arrowheadStyle via the
   // shared arrow-tool spec — same default (solid triangle) and same line2
   // shortening the SVG renderer / canvas painter use, so print matches the
@@ -5513,9 +5680,14 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
     line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
   }
-  drawFlattenedLine(page, { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
-  drawFlattenedArrowheadSpec(page, arrowheadSpec, pageHeight);
-  drawFlattenedObject(page, {
+  // The leader into the arrow starts at the RAW knee, which is what this
+  // surface has always drawn. (The screen surfaces start it at
+  // connection.line2Start; the two only differ in the knee-inside-the-box
+  // rescue, and that print/screen difference is deliberately left alone here -
+  // it is a separate defect, and the /AP below reproduces the PRINT so export
+  // and print cannot disagree about a callout.)
+  const line2Object = { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps };
+  const boxObject = {
     type: 'rect',
     left: textBox.left,
     top: textBox.top,
@@ -5525,8 +5697,9 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     strokeWidth,
     ...leaderDashProps,
     fill: style.backgroundColor || '#ffffff',
-  }, pageHeight, fonts);
-  drawFlattenedText(page, {
+  };
+  const fontSize = style.fontSize || 14;
+  const textObject = {
     type: 'textbox',
     left: textBox.left + 4,
     top: textBox.top + 4,
@@ -5534,7 +5707,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     height: Math.max(1, textBox.height - 8),
     text: calloutObj.text || '',
     fill: style.fontColor || '#1e293b',
-    fontSize: style.fontSize || 14,
+    fontSize,
     // UX 2026-07-17: thread the callout text-style booleans through so the
     // printed callout text matches the on-screen bold/italic/underline/
     // strikethrough styling (mapped inside drawFlattenedText).
@@ -5542,7 +5715,144 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     italic: style.italic === true,
     underline: style.underline === true,
     strikethrough: style.strikethrough === true,
-  }, pageHeight, fonts);
+  };
+  // Ink boxes in app space (y-down). A leader pads by the stroke's outer half;
+  // the arrow part must also hold the head, which reaches max(8, 3w) past the
+  // tip (buildArrowheadRenderSpec). The text part holds the box border and a
+  // third of an em of descender room - the same allowance
+  // plainAppearanceGeometry keeps for a plain text box.
+  const leaderPad = strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD;
+  const headPad = Math.max(8, strokeWidth * 3) + strokeWidth + PLAIN_APPEARANCE_EXTRA_PAD;
+  return [
+    {
+      part: 'line1',
+      hidden: connection.shouldHideLine1 === true,
+      geometry: { x1: line1Start.x, y1: line1Start.y, x2: effectiveKnee.x, y2: effectiveKnee.y },
+      bounds: boundsOfPoints([{ x: line1Start.x, y: line1Start.y }, { x: effectiveKnee.x, y: effectiveKnee.y }], leaderPad),
+      // drawFlattenedLine returns nothing; a leader always paints, so the
+      // part reports the one piece it drew.
+      draw: (page, pageHeight) => {
+        drawFlattenedLine(page, line1Object, pageHeight);
+        return 1;
+      },
+    },
+    {
+      part: 'line2',
+      hidden: false,
+      geometry: { x1: knee.x, y1: knee.y, x2: arrowTip.x, y2: arrowTip.y },
+      bounds: boundsOfPoints([{ x: knee.x, y: knee.y }, { x: arrowTip.x, y: arrowTip.y }], headPad),
+      draw: (page, pageHeight) => {
+        drawFlattenedLine(page, line2Object, pageHeight);
+        drawFlattenedArrowheadSpec(page, arrowheadSpec, pageHeight);
+        return 1;
+      },
+    },
+    {
+      part: 'text',
+      hidden: false,
+      // The box the user drew, which /RD points back to from the padded
+      // appearance box.
+      base: {
+        minX: textBox.left,
+        minY: textBox.top,
+        maxX: textBox.left + textBox.width,
+        maxY: textBox.top + textBox.height,
+      },
+      bounds: inflateAppBounds(
+        {
+          minX: textBox.left,
+          minY: textBox.top,
+          maxX: textBox.left + textBox.width,
+          maxY: textBox.top + textBox.height,
+        },
+        strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD + fontSize * 0.35 + 1,
+      ),
+      draw: (page, pageHeight, fonts) => {
+        const drawn = drawFlattenedObject(page, boxObject, pageHeight, fonts);
+        drawFlattenedText(page, textObject, pageHeight, fonts);
+        return drawn || 1;
+      },
+    },
+  ];
+};
+
+// The four text-markup kinds that paint ink of their own. /Link paints
+// nothing, and /Redact already carries the marked-for-redaction overlay its
+// own writer attaches.
+const TEXT_MARKUP_APPEARANCE_KINDS = new Set(['highlight', 'underline', 'strikeout', 'squiggly']);
+
+/**
+ * Give an exported text markup the /AP /N that draws exactly what the print
+ * draws for it: the multiply-blended quads of a highlight, the line at the
+ * baseline offset of an underline, the line through the middle of a strikeout,
+ * the zigzag of a squiggly.
+ *
+ * 2026-09-10 - buildTextMarkupDict never built one, so a marked-up file opened
+ * in macOS Preview / Quick Look showed NOTHING (they paint only appearance
+ * streams), and readers that improvise from /QuadPoints drew their own idea of
+ * the mark: poppler's underline came out 25% heavier than the app's and its
+ * squiggly half again as dense.
+ *
+ * The markup adapters author the page's REAL user space, so the appearance -
+ * which is drawn in the writers' virtual frame like every other /AP - carries
+ * the page-frame matrix itself instead of going through
+ * remapAnnotationRefToPageFrame.
+ */
+const applyTextMarkupAppearanceToRef = (pdfDoc, page, ref, fabricObj, pageHeight, markupKind) => {
+  if (!TEXT_MARKUP_APPEARANCE_KINDS.has(markupKind)) return false;
+  const quads = Array.isArray(fabricObj?.data?.quads) ? fabricObj.data.quads : [];
+  if (!quads.length) return false;
+  const authoredLineWidth = fabricObj?.data?.lineWidthSource === 'pdf-border'
+    && Number.isFinite(fabricObj.data.lineWidth)
+    ? Math.max(0, fabricObj.data.lineWidth)
+    : null;
+  let bounds = null;
+  let pad = 0;
+  for (const quad of quads) {
+    const xs = [quad.x1, quad.x2, quad.x3, quad.x4].map(Number);
+    const ys = [quad.y1, quad.y2, quad.y3, quad.y4].map(Number);
+    if (![...xs, ...ys].every(Number.isFinite)) continue;
+    const left = Math.min(...xs); const right = Math.max(...xs);
+    const top = Math.min(...ys); const bottom = Math.max(...ys);
+    if (right <= left || bottom <= top) continue;
+    bounds = bounds ? {
+      minX: Math.min(bounds.minX, left),
+      minY: Math.min(bounds.minY, top),
+      maxX: Math.max(bounds.maxX, right),
+      maxY: Math.max(bounds.maxY, bottom),
+    } : {
+      minX: left, minY: top, maxX: right, maxY: bottom,
+    };
+    // How far this kind's ink can reach outside the quad: half the line's
+    // thickness, and for a squiggly the amplitude of the zigzag on top of it
+    // (the same numbers drawFlattenedObject uses for the markup below).
+    const thickness = authoredLineWidth ?? Math.max(0.6, (bottom - top) * 0.06);
+    const amplitude = markupKind === 'squiggly'
+      ? Math.max(1.5, (bottom - top) * 0.2) * 0.35
+      : 0;
+    pad = Math.max(pad, thickness / 2 + amplitude);
+  }
+  if (!bounds) return false;
+  return applyFlattenedAppearanceToRef(
+    pdfDoc,
+    ref,
+    pageHeight,
+    inflateAppBounds(bounds, pad + PLAIN_APPEARANCE_EXTRA_PAD),
+    // The print's own markup drawer, on the same quads the dict's /QuadPoints
+    // record - one description of the mark, drawn once.
+    (scratch) => drawFlattenedObject(scratch, fabricObj, pageHeight, {}),
+    { pageFrameMatrix: getAnnotationPageFrameMatrix(page, pageHeight) },
+  );
+};
+
+const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
+  const parts = calloutFlattenParts(calloutObj);
+  if (!parts) return 0;
+  // The order the composite has always been painted in: leader to the knee,
+  // leader to the arrow with its head, then the box and its text on top.
+  parts.forEach((part) => {
+    if (!part.hidden) part.draw(page, pageHeight, fonts);
+  });
   return 1;
 };
 
@@ -6069,13 +6379,15 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
 
-    // The plain-shape /AP for a text box is drawn by the print flattener, which
-    // needs real embedded fonts. Embed the same set the flatten path uses, and
-    // only when the export actually carries a text annotation (font embedding
-    // costs bytes in every exported file otherwise).
+    // The /AP for a text box - and, since 2026-09-10, for a callout's text
+    // part - is drawn by the print flattener, which needs real embedded fonts.
+    // Embed the same set the flatten path uses, and only when the export
+    // actually carries text (font embedding costs bytes in every exported file
+    // otherwise). Callouts count now: their exported parts carry the print's
+    // own drawing, glyphs included.
     const exportHasTextAnnotation = (exportPlan.items || []).some((item) => (
-      item?.type !== 'callout'
-      && ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
+      item?.type === 'callout'
+      || ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
     ));
     const flattenFonts = exportHasTextAnnotation ? await embedFlattenFonts(pdfDoc) : null;
 
@@ -6225,6 +6537,12 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           if (writer) {
             annotRef = writer(obj, { pdfDoc, page, pageHeight });
             writesPageFrameDirectly = true;
+            // The mark's own appearance, so a viewer paints what the print
+            // paints instead of improvising from /QuadPoints - or, in Quick
+            // Look's case, painting nothing at all (2026-09-10).
+            if (annotRef) {
+              applyTextMarkupAppearanceToRef(pdfDoc, page, annotRef, obj, pageHeight, markupType);
+            }
           }
           break;
         }
@@ -6277,7 +6595,9 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           annotRef = createFreeTextAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           break;
         case 'callout':
-          annotRefs = createCalloutAnnotations(pdfDoc, page, obj, pageHeight);
+          annotRefs = createCalloutAnnotations(pdfDoc, page, obj, pageHeight, {
+            fonts: flattenFonts,
+          });
           break;
         default:
           break;
