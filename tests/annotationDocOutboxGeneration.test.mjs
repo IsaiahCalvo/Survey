@@ -39,7 +39,7 @@ for (const memory of [false, true]) test(`${memory ? 'memory' : 'IndexedDB'} gen
   for (const record of [legacy, first, second]) await store.put(record);
   assert.deepEqual((await store.list('doc', 'actor')).map(r => r.key), [legacy.key]);
   assert.deepEqual((await store.list('doc', 'actor', options(A))).map(r => r.dependsOn), [first.dependsOn]);
-  await store.settleAccepted(first);
+  await store.settleAccepted({ ...first, seq: 1 });
   await store.compactAccepted('doc', 'actor', first.update, true, 0, options(A));
   const clean = await store.loadCleanState('doc', 'actor', options(A));
   assert.deepEqual(clean.acceptedKeys, [first.key]); assert.deepEqual(clean.records, []);
@@ -64,7 +64,7 @@ test('generated keys and exact keyed mutation scope fail closed', async t => {
 
 for (const lateFirst of [true, false]) test(`two connections retire versus queued put, put first=${lateFirst}`, async t => {
   const { a, b } = await stores(t); const first = row(A), accepted = row(A, 2);
-  await a.put(accepted); await a.settleAccepted(accepted);
+  await a.put(accepted); await a.settleAccepted({ ...accepted, seq: 2 });
   await a.compactAccepted('doc', 'actor', accepted.update, true, 0, options(A));
   const work = lateFirst ? [a.put(first), retire(b)] : [retire(b), a.put(first)];
   const result = await Promise.allSettled(work);
@@ -143,7 +143,7 @@ test('legacy caller cannot overwrite a generated key or mix keyed delete scopes'
 });
 
 for (const compactFirst of [true, false]) test(`compaction versus retirement is atomic, compaction first=${compactFirst}`, async t => {
-  const { a, b } = await stores(t); const first = row(A); await a.put(first); await a.settleAccepted(first);
+  const { a, b } = await stores(t); const first = row(A); await a.put(first); await a.settleAccepted({ ...first, seq: 1 });
   const compact = () => a.compactAccepted('doc', 'actor', first.update, true, 0, options(A));
   const results = await Promise.allSettled(compactFirst ? [compact(), retire(b)] : [retire(b), compact()]);
   const saved = await b.readRetiredScope('doc', 'actor', 0, options(A));
@@ -166,7 +166,7 @@ test('late puts and acceptance cannot change quarantined bytes, dependencies or 
 });
 
 test('retired scope keeps its compacted acceptance receipt without reintroducing supplied bytes', async t => {
-  const { a, b } = await stores(t); const first = row(A); await a.put(first); await a.settleAccepted(first);
+  const { a, b } = await stores(t); const first = row(A); await a.put(first); await a.settleAccepted({ ...first, seq: 1 });
   await a.compactAccepted('doc', 'actor', first.update, true, 0, options(A)); await retire(b);
   const before = await b.readRetiredScope('doc', 'actor', 0, options(A));
   await assert.rejects(a.settleAccepted(first), { code: 'ANNOTATION_OUTBOX_SCOPE_MISMATCH' });
@@ -274,7 +274,7 @@ test('generated recovery prefix may be enriched once but neither it nor ordinal 
 });
 
 for (const isRetired of [false, true]) test(`compacted keys cannot be republished with different bytes, retired=${isRetired}`, async t => {
-  const { a, b } = await stores(t); const first = row(A); await a.put(first); await a.settleAccepted(first);
+  const { a, b } = await stores(t); const first = row(A); await a.put(first); await a.settleAccepted({ ...first, seq: 1 });
   await a.compactAccepted('doc', 'actor', first.update, true, 0, options(A));
   if (isRetired) await retire(b);
   const read = () => isRetired ? b.readRetiredScope('doc', 'actor', 0, options(A)) : b.readLocalState('doc', 'actor', 0, options(A));

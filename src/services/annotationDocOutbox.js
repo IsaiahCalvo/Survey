@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { normalizeAnnotationSequence } from './annotationSequence.js';
 
 const DB_NAME = 'survey-annotation-outbox-v2';
 const DB_VERSION = 4;
@@ -269,6 +270,31 @@ function sameReceiptValue(left, right) {
   return keys.length === otherKeys.length && keys.every((key, index) => key === otherKeys[index] && sameReceiptValue(left[key], right[key]));
 }
 
+function normalizedAcceptedSequence(record) {
+  if (!Object.hasOwn(record, 'seq')) return null;
+  let value;
+  try { value = normalizeAnnotationSequence(record.seq); }
+  catch { throw scopeError('Accepted annotation sequence is invalid'); }
+  if (value === 0) throw scopeError('Accepted annotation sequence must be positive');
+  return value;
+}
+
+function acceptedReceiptResolution(existing, incoming) {
+  const existingSequence = normalizedAcceptedSequence(existing);
+  const incomingSequence = normalizedAcceptedSequence(incoming);
+  const existingBase = { ...existing }, incomingBase = { ...incoming };
+  delete existingBase.seq; delete incomingBase.seq;
+  if (!sameReceiptValue(existingBase, incomingBase)
+    || (existingSequence !== null && incomingSequence !== null
+      && existingSequence !== incomingSequence)) {
+    throw scopeError('An accepted annotation receipt is immutable');
+  }
+  return {
+    sequence: existingSequence ?? incomingSequence,
+    enrich: existingSequence === null && incomingSequence !== null,
+  };
+}
+
 function quarantineRecord(record) {
   return { ...cloneRecord(record), originalStatus: record.originalStatus ?? record.status, status: 'generation-retired' };
 }
@@ -428,7 +454,13 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
       });
     },
     async settleAccepted(record) {
-      const normalized = normalizedRecord({ ...record, status: 'accepted' });
+      const acceptedRecord = { ...record, status: 'accepted' };
+      if (pdfGeneration(record) != null) {
+        const sequence = normalizedAcceptedSequence(record);
+        if (sequence === null) delete acceptedRecord.seq;
+        else acceptedRecord.seq = sequence;
+      }
+      const normalized = normalizedRecord(acceptedRecord);
       const marker = await run(ALL_STORES, 'readwrite', async stores => {
         await assertNoOtherModelEvidence(stores, record.documentId, record.actorUserId, record);
         await incarnation(stores, record.documentId, Number(record.incarnation) || 0);
@@ -446,7 +478,14 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
           if (name === ACCEPTED_STORE) accepted = existing;
         }
         if (accepted && (pdfGeneration(record) != null || retired)) {
-          if (!sameReceiptValue(accepted, normalized)) throw scopeError('An accepted annotation receipt is immutable');
+          if (pdfGeneration(record) != null) {
+            const resolution = acceptedReceiptResolution(accepted, normalized);
+            if (resolution.enrich) {
+              await stores[ACCEPTED_STORE].put({ ...accepted, seq: resolution.sequence });
+            }
+          } else if (!sameReceiptValue(accepted, normalized)) {
+            throw scopeError('An accepted annotation receipt is immutable');
+          }
           return retired;
         }
         if (pdfGeneration(record) != null || retired) {
@@ -478,17 +517,26 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
         await assertOpen(stores, scopeKey);
         const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
         const records = sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey));
-        if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
+        // A generated snapshot can prove bytes durable before the exact WAL
+        // append returns. Keep that per-record proof until its positive WAL
+        // sequence arrives; acceptedKeys alone cannot validate a late receipt.
+        const compactableRecords = pdfGeneration(options) == null
+          ? records
+          : records.filter(record => normalizedAcceptedSequence(record) !== null);
+        if (!force && compactableRecords.length < COMPACT_AFTER_DELTAS) return false;
         const updates = [checkpoint?.update, acceptedSnapshot, ...records.map(record => record.update)].filter(Boolean).map(cloneBytes);
         if (updates.length) {
           const update = Y.mergeUpdates(updates);
-          const acceptedKeys = [...new Set([...(checkpoint?.acceptedKeys || []), ...records.map(record => record.key)])];
-          if (!records.length && checkpoint?.update && sameBytes(checkpoint.update, update)
+          const acceptedKeys = [...new Set([
+            ...(checkpoint?.acceptedKeys || []),
+            ...compactableRecords.map(record => record.key),
+          ])];
+          if (!compactableRecords.length && checkpoint?.update && sameBytes(checkpoint.update, update)
             && (checkpoint.acceptedKeys || []).length === acceptedKeys.length
             && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key)) return false;
           await stores[CHECKPOINT_STORE].put({ scopeKey, update, acceptedKeys });
         }
-        for (const record of records) await stores[ACCEPTED_STORE].delete(record.key);
+        for (const record of compactableRecords) await stores[ACCEPTED_STORE].delete(record.key);
         return true;
       });
     },

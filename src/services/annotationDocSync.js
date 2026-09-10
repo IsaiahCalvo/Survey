@@ -420,6 +420,7 @@ export async function openAnnotationDoc({
     historyQuarantineGeneration: 0,
     lastHistoryQuarantineEvent: null,
     openHistoryQuarantineEvidenceKeys: new Set(),
+    persistedSequenceReceipts: new Map(),
     syncHealthy: true,     // false once an op append fails until it recovers (BL-24)
     durabilityGap: false,  // a locally-applied update is absent from both WAL and snapshot
     durabilityGapGeneration: 0,
@@ -1543,7 +1544,32 @@ async function settleAcceptedRecord(
   update = record.update,
   { alreadyApplied = false } = {},
 ) {
-  if (!record || record.status === 'accepted') return;
+  if (!record) return;
+  if (state.acceptedReceiptKeys.has(record.key)) {
+    // Snapshot coverage can accept this exact record while its WAL append is
+    // still in flight. The later positive WAL sequence is extra receipt proof,
+    // not a second acceptance: persist only that enrichment and repeat none of
+    // the document, compaction, health, or erase-effect side effects below. A
+    // WAL-first receipt may already have been compacted, so never re-settle a
+    // sequence that this handle has proved durable.
+    if (Object.hasOwn(record, 'seq')) {
+      const incomingSequence = sequence(record.seq);
+      const persistedSequence = state.persistedSequenceReceipts.get(record.key);
+      if (persistedSequence !== undefined && persistedSequence !== null) {
+        if (compareSequence(persistedSequence, incomingSequence) !== 0) {
+          throw Object.assign(new Error('A durable annotation receipt sequence cannot change.'),
+            { code: 'ANNOTATION_OUTBOX_SCOPE_MISMATCH' });
+        }
+        return;
+      }
+      if (persistedSequence === null) return; // Compacted clean evidence has no per-row receipt left.
+      if (typeof state.outbox?.settleAccepted === 'function') {
+        await state.outbox.settleAccepted({ ...record, status: 'accepted', seq: incomingSequence });
+        state.persistedSequenceReceipts.set(record.key, incomingSequence);
+      }
+    }
+    return;
+  }
   if (!alreadyApplied) applyAuthoritativeCloudUpdate(state, update);
   const previousStatus = record.status;
   if (typeof state.outbox?.settleAccepted === 'function') {
@@ -1558,6 +1584,7 @@ async function settleAcceptedRecord(
   }
   record.status = 'accepted';
   state.acceptedReceiptKeys.add(record.key);
+  if (Object.hasOwn(record, 'seq')) state.persistedSequenceReceipts.set(record.key, sequence(record.seq));
   state.appendRecords.delete(record.key);
   state.acceptedEditEpoch = Math.max(
     state.acceptedEditEpoch,
@@ -1664,7 +1691,9 @@ async function hydrateCleanAcceptedState(state) {
   for (const key of clean?.acceptedKeys || []) state.acceptedReceiptKeys.add(key);
   for (const record of clean?.records || []) {
     state.acceptedReceiptKeys.add(record.key);
+    if (Object.hasOwn(record, 'seq')) state.persistedSequenceReceipts.set(record.key, sequence(record.seq));
   }
+  for (const key of clean?.acceptedKeys || []) state.persistedSequenceReceipts.set(key, null);
   for (const update of updates) {
     Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
     Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);

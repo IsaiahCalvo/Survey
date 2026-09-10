@@ -201,7 +201,33 @@ the sequence. The immutable-receipt check rejects that added evidence, and the
 catch path tries to move an accepted row back to pending. Data and strict reopen
 remain correct in the reproduction, but settlement must still allow the same
 evidence to advance monotonically from a missing sequence to its verified
-sequence. That fix remains a rollout gate.
+sequence. This is now implemented through the existing outbox settlement
+interface. A handle tracks the exact persisted sequence, so a duplicate is a
+no-op but a contradictory known sequence fails before another outbox write.
+Compacted identities remain fenced. Memory and IndexedDB tests cover receipt
+ordering, retirement, immutable fields and repeat compaction with delete sets;
+a checked-handle test covers a stale callback after WAL-first compaction.
+
+A later full-app browser run kept offline Undo through reconnect and checked
+reopen without the immutable-receipt or replay-status warnings. It took the
+snapshot-only path: three WAL rows, two snapshots, no queued local writes, and
+two rendered markers after reopen. The fixture's `inspect()` reports only its
+WAL-built document, not stored snapshot contents; its one-marker summary is not
+the checked reader's projection. The browser also reused its local clean
+IndexedDB evidence, so this browser run proves local reopen, not server-only
+recovery. A separate integration test blocks the WAL request before execution,
+checks that the WAL head and row count remain unchanged and that WAL-built state
+still lacks the undone marker, then applies the checked reader's update to a
+fresh detached document. That document recovers Undo from the stored snapshot
+without local outbox evidence. Releasing the WAL request then enriches the exact
+receipt. This is synthetic-backend proof, not real SQL or live-cloud proof.
+Simulated offline transport retries remain expected warnings.
+
+Snapshot-only accepted records retain their full proof until a WAL sequence can
+be added. If the append never succeeded, current replay does not revisit that
+accepted record, so this retained data has no proven storage bound. Bounded,
+exact append reconciliation remains a rollout gate. Do not silently evict the
+record, downgrade it to pending, or weaken the compacted-identity check.
 
 The database migration defines versioned transport and model checks. Model-2
 source, preparation and publication functions remain private and ungranted.
@@ -218,6 +244,28 @@ sidebar expansion separately from shared region content before enabling a migrat
 copying a legacy whole record does not establish that every field belongs to the
 team. Keep the original data and existing model-1 paths intact. Live Microsoft
 365 work remains out of scope for this batch.
+
+## Deferred no-op projection shortcut
+
+A proposed fast path compared fully normalized state before mutation planning.
+It kept input validation, fresh peer reads and frozen results; review also added
+a guard so malformed order arrays would still take the existing repair path.
+The shortcut was then removed because paired measurements showed a cost for
+updates that change data, contrary to the requested no-regression constraint.
+
+The local fixture had 1,000 markers with 20 responses each, plus 250 spaces,
+1,000 assigned pages and 1,000 regions. An interleaved same-process comparison
+against checkpoint `2bfa3733`, with two warmups and 11 measured samples, showed
+about 40% faster marker no-ops but 5.7% slower marker changes. Restricting the
+shortcut to spaces restored marker performance, but that run measured space
+no-ops 34.4% faster and space changes 4.3% slower. A separate structural-comparison
+trial showed no clear gain and was also removed.
+
+These are synthetic module measurements, not browser or production results.
+No timing assertions were added to CI. Additional tests preserve the no-op,
+input-clone, malformed-state, order-repair and peer-freshness contracts, but the
+original core implementation remains in place. Large-document update cost is
+still a rollout gate; do not claim a shipped speed gain from these trials.
 
 ## References
 

@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { initializeSurveyCrdtV2, materializeSurveyCrdtV2 } from '../services/documentSurveyCrdtV2.js';
 import { createDocumentGenerationReader } from '../services/documentGenerationReader.js';
 import { docToByPage, syncByPageToDoc } from '../services/annotationDocStore.js';
@@ -23,7 +24,7 @@ async function sha256(bytes) {
 export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
   if (!(pdfBlob instanceof Blob) || pdfBlob.size === 0) throw new Error('A local PDF fixture is required.');
   const ids = MODEL2_FIXTURE_IDS;
-  const authoritative = new Y.Doc();
+  const authoritative = createDetachedYDoc(`document-survey-model-v2-fixture:${ids.generationId}`);
   initializeSurveyCrdtV2(authoritative, { surveyMarkers: {
     'fixture-marker-left': { annotationId: 'fixture-marker-left', pageNumber: 1,
       bounds: { x: 72, y: 96, width: 54, height: 54 }, moduleId: 'fixture-module',
