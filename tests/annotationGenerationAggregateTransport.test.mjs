@@ -20,6 +20,9 @@ const receipt = {
   seq: '9',
   data_sha256: digest,
 };
+const currentGenerationId = 'ad000000-0000-4000-8000-000000000004';
+const receiptV2 = { ...receipt, version: 2, current_generation_id: currentGenerationId,
+  is_current: false };
 const input = overrides => ({ documentId, generationId, contentModelVersion: 2,
   actorUserId, writerId: 'writer', clientSeq: '1', update: new Uint8Array(update), ...overrides });
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
@@ -44,6 +47,32 @@ test('submits one owned binary request and returns a sealed receipt proof', asyn
   assert.equal(call.body.type, 'application/octet-stream');
   assert.deepEqual(new Uint8Array(await call.body.arrayBuffer()), update);
   assert.equal(new URL(`https://unit.invalid/${call.functionName}`).searchParams.has('actor_user_id'), false);
+});
+
+test('explicit receipt v2 returns locked current-generation observation without changing v1 default', async () => {
+  let call;
+  const transport = createAnnotationGenerationAggregateTransport({ receiptVersion: 2,
+    request: async value => { call = value; return json({ result: receiptV2 }); } });
+  const result = await transport.submit(input());
+  assert.deepEqual(result, { documentId, generationId, contentModelVersion: 2, actorUserId,
+    writerId: 'writer', clientSeq: '1', seq: '9', updateSha256: digest,
+    currentGenerationId, isCurrent: false });
+  assert.equal(new URL(`https://unit.invalid/${call.functionName}`).searchParams.get('receipt_version'), '2');
+  let v1Call;
+  const explicitV1 = createAnnotationGenerationAggregateTransport({ receiptVersion: 1,
+    request: async value => { v1Call = value; return json({ result: receipt }); } });
+  const v1Result = await explicitV1.submit(input());
+  assert.equal(new URL(`https://unit.invalid/${v1Call.functionName}`).searchParams.has('receipt_version'), false);
+  assert.equal(Object.hasOwn(v1Result, 'currentGenerationId'), false);
+  await assert.rejects(async () => createAnnotationGenerationAggregateTransport({ request: async () => {},
+    receiptVersion: 3 }), { code: 'ANNOTATION_AGGREGATE_PROTOCOL' });
+  for (const bad of [null, undefined]) {
+    await assert.rejects(async () => createAnnotationGenerationAggregateTransport({
+      request: async () => {}, receiptVersion: bad,
+    }), { code: 'ANNOTATION_AGGREGATE_PROTOCOL' });
+  }
+  await assert.rejects(async () => createAnnotationGenerationAggregateTransport({ request: async () => {},
+    receiptVersion: 2, extra: true }), { code: 'ANNOTATION_AGGREGATE_PROTOCOL' });
 });
 
 test('the immutable request body cannot be changed through a returned buffer', async () => {

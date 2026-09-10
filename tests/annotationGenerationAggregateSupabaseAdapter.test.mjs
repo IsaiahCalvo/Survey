@@ -33,6 +33,10 @@ test('the Supabase adapter keeps caller JWT reads separate from service broker w
   const backing = new Uint8Array([99, 1, 2, 3, 88]);
   const update = backing.subarray(1, 4);
   await adapter.probe(actor, { ...scope, writerId: 'writer-a', clientSeq: '5', update }, signal);
+  await adapter.probeV2(actor, { ...scope, writerId: 'writer-a', clientSeq: '5', update }, signal);
+  await adapter.commitV2(actor, { ...scope, writerId: 'writer-a', clientSeq: '5', update,
+    expectedHead: '9', sourceCheckpoint: { atSeq: '4', writerId: null, writerEpoch: '0',
+      encodingVersion: 1, snapshotSha256: 'a'.repeat(64) }, checkpoint: null }, signal);
 
   assert.equal(calls.find(call => call.name === 'read_annotation_updates_v3').kind, 'caller');
   assert.deepEqual(calls.find(call => call.name === 'read_annotation_updates_v3').params, {
@@ -44,6 +48,13 @@ test('the Supabase adapter keeps caller JWT reads separate from service broker w
   assert.equal(probe.kind, 'service');
   assert.equal(probe.params.p_actor_user_id, actor);
   assert.equal(probe.params.p_data, '\\x010203');
+  assert.equal(calls.find(call => call.name
+    === 'probe_annotation_generation_aggregate_receipt_service_v2').kind, 'service');
+  const commitV2 = calls.find(call => call.name
+    === 'commit_annotation_generation_aggregate_service_v2');
+  assert.equal(commitV2.kind, 'service');
+  assert.equal(commitV2.params.p_expected_head, '9');
+  assert.equal(commitV2.params.p_result_checkpoint, null);
 });
 
 test('an auth provider throw stays an unconfirmed outage while explicit rejection is unauthorized', async () => {

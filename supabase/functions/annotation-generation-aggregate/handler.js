@@ -11,12 +11,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const QUERY_KEYS = ['client_id', 'client_seq', 'content_model_version', 'document_id', 'generation_id'];
+const QUERY_V2_KEYS = [...QUERY_KEYS, 'receipt_version'];
 const MAX_TRANSPORT_BYTES = 64 * 1024 * 1024;
 const MAX_ATTEMPTS = 3;
 const PROBE_MISSING_KEYS = ['actor_user_id', 'client_id', 'client_seq', 'content_model_version',
   'document_id', 'generation_id', 'status', 'version'];
 const PROBE_ACCEPTED_KEYS = ['accepted', 'actor_user_id', 'client_id', 'client_seq',
   'content_model_version', 'data_sha256', 'document_id', 'generation_id', 'seq', 'status', 'version'];
+const PROBE_V2_ACCEPTED_KEYS = ['accepted', 'actor_user_id', 'client_id', 'client_seq',
+  'content_model_version', 'current_generation_id', 'data_sha256', 'document_id', 'generation_id',
+  'is_current', 'seq', 'status', 'version'];
 const CHECKPOINT_ENVELOPE_KEYS = ['actor_user_id', 'base_seq', 'checkpoint',
   'content_model_version', 'document_id', 'generation_id', 'head', 'version'];
 const CHECKPOINT_KEYS = ['at_seq', 'encoding_version', 'snapshot', 'snapshot_sha256',
@@ -27,6 +31,9 @@ const TAIL_ROW_KEYS = ['actor_user_id', 'client_id', 'client_seq', 'data', 'seq'
 const COMMIT_KEYS = ['accepted', 'actor_user_id', 'checkpoint', 'checkpoint_stored',
   'client_id', 'client_seq', 'content_model_version', 'data_sha256', 'document_id',
   'generation_id', 'seq', 'status', 'version'];
+const COMMIT_V2_KEYS = ['accepted', 'actor_user_id', 'checkpoint', 'checkpoint_stored',
+  'client_id', 'client_seq', 'content_model_version', 'current_generation_id', 'data_sha256',
+  'document_id', 'generation_id', 'is_current', 'seq', 'status', 'version'];
 const COMMIT_CHECKPOINT_KEYS = ['at_seq', 'encoding_version', 'snapshot_sha256',
   'writer_epoch', 'writer_id'];
 const WORK_REASONS = new Set(['aggregate-input-bytes', 'checkpoint-expanded-bytes',
@@ -139,9 +146,13 @@ function requestIdentity(request) {
   let url;
   try { url = new URL(request.url); } catch { fail('invalid_request'); }
   const keys = [...url.searchParams.keys()];
-  check(keys.length === QUERY_KEYS.length
-    && QUERY_KEYS.every(key => url.searchParams.getAll(key).length === 1)
-    && keys.every(key => QUERY_KEYS.includes(key)), 'invalid_request');
+  const receiptVersions = url.searchParams.getAll('receipt_version');
+  const receiptVersion = receiptVersions.length === 0 ? 1
+    : receiptVersions.length === 1 && receiptVersions[0] === '2' ? 2 : null;
+  const expectedKeys = receiptVersion === 2 ? QUERY_V2_KEYS : QUERY_KEYS;
+  check(receiptVersion !== null && keys.length === expectedKeys.length
+    && expectedKeys.every(key => url.searchParams.getAll(key).length === 1)
+    && keys.every(key => expectedKeys.includes(key)), 'invalid_request');
   const documentId = url.searchParams.get('document_id');
   const generationId = url.searchParams.get('generation_id');
   const model = url.searchParams.get('content_model_version');
@@ -150,29 +161,46 @@ function requestIdentity(request) {
   const clientSeq = url.searchParams.get('client_seq');
   check(uuid(documentId) && uuid(generationId) && contentModelVersion === 2
     && writer(writerId) && decimal(clientSeq, true), 'invalid_request');
-  return Object.freeze({ documentId, generationId, contentModelVersion, writerId, clientSeq });
+  return Object.freeze({
+    identity: Object.freeze({ documentId, generationId, contentModelVersion, writerId, clientSeq }),
+    receiptVersion,
+  });
 }
 
-function checkedScope(value, identity, actor) {
-  check(value.version === 1 && value.document_id === identity.documentId
+function checkedScope(value, identity, actor, receiptVersion = 1) {
+  check(value.version === receiptVersion && value.document_id === identity.documentId
     && value.generation_id === identity.generationId && value.content_model_version === 2
     && value.actor_user_id === actor);
 }
 
-function checkedProbe(value, identity, actor, update, updateSha256) {
+function checkedCurrent(value, identity, receiptVersion) {
+  if (receiptVersion === 1) return null;
+  check((value.current_generation_id === null || uuid(value.current_generation_id))
+    && typeof value.is_current === 'boolean'
+    && value.is_current === (value.current_generation_id === identity.generationId));
+  return Object.freeze({ currentGenerationId: value.current_generation_id,
+    isCurrent: value.is_current });
+}
+
+function checkedProbe(value, identity, actor, update, updateSha256, receiptVersion = 1) {
   const status = value?.status;
   const keys = status === 'missing' ? PROBE_MISSING_KEYS
-    : status === 'accepted' ? PROBE_ACCEPTED_KEYS : [];
+    : status === 'accepted' ? (receiptVersion === 2
+      ? PROBE_V2_ACCEPTED_KEYS : PROBE_ACCEPTED_KEYS) : [];
   const owned = exactObject(value, keys);
   check(owned);
-  checkedScope(owned, identity, actor);
+  checkedScope(owned, identity, actor, receiptVersion);
   check(owned.client_id === identity.writerId && owned.client_seq === identity.clientSeq);
-  if (status === 'missing') return null;
+  if (status === 'missing') return Object.freeze({ receipt: null, current: null });
   check(owned.accepted === true && decimal(owned.seq, true)
     && owned.data_sha256 === updateSha256 && SHA256.test(owned.data_sha256));
-  return { documentId: identity.documentId, generationId: identity.generationId,
-    actorUserId: actor, contentModelVersion: 2, writerId: identity.writerId,
-    clientSeq: identity.clientSeq, seq: owned.seq, update: new Uint8Array(update) };
+  return Object.freeze({
+    receipt: { documentId: identity.documentId, generationId: identity.generationId,
+      actorUserId: actor, contentModelVersion: 2, writerId: identity.writerId,
+      clientSeq: identity.clientSeq, seq: owned.seq, update: new Uint8Array(update) },
+    current: checkedCurrent(owned, identity, receiptVersion),
+    updateSha256: owned.data_sha256,
+  });
 }
 
 function checkedCheckpoint(value, identity, actor) {
@@ -223,10 +251,10 @@ function checkedTail(value, identity, actor, requested) {
     }) };
 }
 
-function checkedCommit(value, identity, actor, updateSha256, admitted) {
-  const owned = exactObject(value, COMMIT_KEYS);
+function checkedCommit(value, identity, actor, updateSha256, admitted, receiptVersion = 1) {
+  const owned = exactObject(value, receiptVersion === 2 ? COMMIT_V2_KEYS : COMMIT_KEYS);
   check(owned);
-  checkedScope(owned, identity, actor);
+  checkedScope(owned, identity, actor, receiptVersion);
   check(owned.status === 'accepted' && owned.accepted === true
     && owned.client_id === identity.writerId && owned.client_seq === identity.clientSeq
     && decimal(owned.seq, true)
@@ -234,10 +262,9 @@ function checkedCommit(value, identity, actor, updateSha256, admitted) {
     && typeof owned.checkpoint_stored === 'boolean');
   if (!owned.checkpoint_stored) {
     check(owned.checkpoint === null);
-    return { result: { version: 1, status: 'accepted', document_id: identity.documentId,
-      generation_id: identity.generationId, content_model_version: 2, actor_user_id: actor,
-      client_id: identity.writerId, client_seq: identity.clientSeq, seq: owned.seq,
-      data_sha256: owned.data_sha256 }, needsReceiptProof: admitted.checkpoint !== null
+    return { result: receiptResult({ seq: owned.seq, updateSha256: owned.data_sha256 },
+      identity, actor, receiptVersion, checkedCurrent(owned, identity, receiptVersion)),
+      needsReceiptProof: admitted.checkpoint !== null
         || owned.seq !== admitted.nextSeq };
   }
   check(admitted.checkpoint !== null && owned.seq === admitted.nextSeq);
@@ -249,17 +276,20 @@ function checkedCommit(value, identity, actor, updateSha256, admitted) {
       && checkpoint.encoding_version === admitted.checkpoint.encodingVersion
       && checkpoint.snapshot_sha256 === admitted.checkpoint.snapshotSha256);
   }
-  return { result: { version: 1, status: 'accepted', document_id: identity.documentId,
-    generation_id: identity.generationId, content_model_version: 2, actor_user_id: actor,
-    client_id: identity.writerId, client_seq: identity.clientSeq, seq: owned.seq,
-    data_sha256: owned.data_sha256 }, needsReceiptProof: false };
+  return { result: receiptResult({ seq: owned.seq, updateSha256: owned.data_sha256 },
+    identity, actor, receiptVersion, checkedCurrent(owned, identity, receiptVersion)),
+    needsReceiptProof: false };
 }
 
-function receiptResult(receipt, identity, actor) {
-  return { version: 1, status: 'accepted', document_id: identity.documentId,
+function receiptResult(receipt, identity, actor, receiptVersion = 1, current = null) {
+  check(receiptVersion === 1 || (current && typeof current.isCurrent === 'boolean'));
+  return { version: receiptVersion, status: 'accepted', document_id: identity.documentId,
     generation_id: identity.generationId, content_model_version: 2, actor_user_id: actor,
     client_id: identity.writerId, client_seq: identity.clientSeq, seq: receipt.seq,
-    data_sha256: receipt.updateSha256 };
+    data_sha256: receipt.updateSha256,
+    ...(receiptVersion === 2 ? { current_generation_id: current.currentGenerationId,
+      is_current: current.isCurrent } : {}),
+  };
 }
 
 const ERRORS = Object.freeze({
@@ -312,7 +342,8 @@ export async function handleAnnotationGenerationAggregate(request, deps) {
     check(deps?.runtimeVerified === true, 'unavailable');
     check(request.headers.get('Content-Type')?.toLowerCase() === 'application/octet-stream',
       'invalid_request');
-    const identity = requestIdentity(request);
+    const requested = requestIdentity(request);
+    const { identity, receiptVersion } = requested;
     const tokenMatch = request.headers.get('Authorization')?.match(/^Bearer ([^\s]+)$/i);
     const token = tokenMatch?.[1];
     check(token && token.length <= 16_384, 'unauthorized');
@@ -323,14 +354,29 @@ export async function handleAnnotationGenerationAggregate(request, deps) {
     live(signal);
     const updateSha256 = await sha256(update);
     live(signal);
+    const probe = receiptVersion === 2 ? deps.probeV2 : deps.probe;
+    const commit = receiptVersion === 2 ? deps.commitV2 : deps.commit;
+    check(typeof probe === 'function' && typeof commit === 'function');
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
+        let latestReceiptCurrent = null;
+        let latestReceiptSha256 = null;
+        let latestReceiptSeq = null;
+        const lookupReceipt = async () => {
+          const checked = checkedProbe(
+            await call(() => probe.call(deps, actor, {
+              ...identity, update: new Uint8Array(update),
+            }, signal), signal),
+            identity, actor, update, updateSha256, receiptVersion,
+          );
+          latestReceiptCurrent = checked.current;
+          latestReceiptSha256 = checked.updateSha256 ?? null;
+          latestReceiptSeq = checked.receipt?.seq ?? null;
+          return checked.receipt;
+        };
         const adapter = {
-          lookupReceipt: async () => checkedProbe(
-            await call(() => deps.probe(actor, { ...identity, update: new Uint8Array(update) }, signal), signal),
-            identity, actor, update, updateSha256,
-          ),
+          lookupReceipt,
           readFixedCheckpoint: async () => checkedCheckpoint(
             await call(() => deps.readFixedCheckpoint(actor, {
               documentId: identity.documentId, generationId: identity.generationId,
@@ -351,9 +397,12 @@ export async function handleAnnotationGenerationAggregate(request, deps) {
         }, adapter);
         live(signal);
         if (admitted.kind === 'accepted-retry') {
-          return response(200, { result: receiptResult(admitted.receipt, identity, actor) });
+          check(latestReceiptSeq === admitted.receipt.seq
+            && latestReceiptSha256 === admitted.receipt.updateSha256);
+          return response(200, { result: receiptResult(admitted.receipt, identity, actor,
+            receiptVersion, latestReceiptCurrent) });
         }
-        const committed = await call(() => deps.commit(actor, {
+        const committed = await call(() => commit.call(deps, actor, {
           ...identity, update: new Uint8Array(admitted.update), expectedHead: admitted.expectedHead,
           sourceCheckpoint: { ...admitted.sourceCheckpoint },
           checkpoint: admitted.checkpoint === null ? null : {
@@ -361,14 +410,14 @@ export async function handleAnnotationGenerationAggregate(request, deps) {
           },
         }, signal), signal);
         live(signal);
-        const checked = checkedCommit(committed, identity, actor, updateSha256, admitted);
+        const checked = checkedCommit(committed, identity, actor, updateSha256, admitted,
+          receiptVersion);
         if (checked.needsReceiptProof) {
-          const receipt = checkedProbe(
-            await call(() => deps.probe(actor, {
-              ...identity, update: new Uint8Array(update),
-            }, signal), signal), identity, actor, update, updateSha256,
-          );
+          const receipt = await lookupReceipt();
           check(receipt !== null && receipt.seq === checked.result.seq);
+          return response(200, { result: receiptResult({ ...receipt,
+            updateSha256: latestReceiptSha256 }, identity, actor,
+            receiptVersion, latestReceiptCurrent) });
         }
         return response(200, { result: checked.result });
       } catch (error) {

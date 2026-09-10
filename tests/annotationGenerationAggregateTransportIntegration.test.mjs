@@ -23,6 +23,8 @@ const hex = bytes => `\\x${Buffer.from(bytes).toString('hex')}`;
 const publicReceipt = (overrides = {}) => ({ version: 1, status: 'accepted', document_id: documentId,
   generation_id: generationId, content_model_version: 2, actor_user_id: actorUserId,
   client_id: writerId, client_seq: '1', seq: '7', data_sha256: sha(update), ...overrides });
+const publicReceiptV2 = (overrides = {}) => ({ ...publicReceipt(), version: 2,
+  current_generation_id: generationId, is_current: true, ...overrides });
 const ok = value => new Response(JSON.stringify({ result: value }), { status: 200,
   headers: { 'content-type': 'application/json' } });
 const errorResponse = (code, reason) => new Response(JSON.stringify({ error: { code, message: 'safe',
@@ -47,6 +49,59 @@ test('submits owned binary bytes to the strict handler route and returns accepta
   assert.ok(call.body instanceof Blob); assert.equal(call.body.type, 'application/octet-stream');
   assert.deepEqual(new Uint8Array(await call.body.arrayBuffer()), update);
   assert.equal(call.body.size, update.byteLength); assert.equal(url.searchParams.has('actor_user_id'), false);
+});
+
+test('receipt v2 is explicit, adds one unique query field, and returns generation identity without access authority', async () => {
+  let call;
+  const transport = createAnnotationGenerationAggregateTransport({ receiptVersion: 2,
+    request: async value => { call = value; return ok(publicReceiptV2()); } });
+  const result = await transport.submit(input());
+  assert.equal(result.currentGenerationId, generationId); assert.equal(result.isCurrent, true);
+  assert.equal(Object.hasOwn(result, 'writeAuthorized'), false); assert.equal(Object.isFrozen(result), true);
+  const params = new URLSearchParams(call.functionName.slice(call.functionName.indexOf('?') + 1));
+  assert.deepEqual(params.getAll('receipt_version'), ['2']);
+});
+
+test('default and explicit v1 remain exact and never accept or request v2 fields', async () => {
+  for (const options of [{}, { receiptVersion: 1 }]) {
+    let call; const transport = createAnnotationGenerationAggregateTransport({ ...options,
+      request: async value => { call = value; return ok(publicReceipt()); } });
+    const result = await transport.submit(input());
+    assert.equal(Object.hasOwn(result, 'isCurrent'), false);
+    assert.equal(call.functionName.includes('receipt_version'), false);
+  }
+});
+
+test('bad receipt versions and unknown factory fields fail before any request', async () => {
+  for (const options of [{ receiptVersion: null }, { receiptVersion: undefined },
+    { receiptVersion: 0 }, { receiptVersion: 3 }, { receiptVersion: '2' },
+    { receiptVersion: 2, extra: true }]) {
+    let calls = 0;
+    assert.throws(() => createAnnotationGenerationAggregateTransport({ request: async () => { calls++; }, ...options }),
+      { code: 'ANNOTATION_AGGREGATE_PROTOCOL' });
+    assert.equal(calls, 0);
+  }
+});
+
+test('v1 rejects a v2 response rather than inferring or stripping current metadata', async () => {
+  const transport = createAnnotationGenerationAggregateTransport({ request: async () => ok(publicReceiptV2()) });
+  await assert.rejects(transport.submit(input()), { code: 'ANNOTATION_AGGREGATE_PROTOCOL' });
+});
+
+test('v2 rejects contradictory current identity and never downgrades to v1', async () => {
+  for (const receipt of [publicReceiptV2({ is_current: false }), publicReceiptV2({ current_generation_id: id(9) }),
+    publicReceiptV2({ current_generation_id: null }), publicReceiptV2({ is_current: 'true' }), publicReceipt()]) {
+    let calls = 0; const transport = createAnnotationGenerationAggregateTransport({ receiptVersion: 2,
+      request: async () => { calls++; return ok(receipt); } });
+    await assert.rejects(transport.submit(input()), { code: 'ANNOTATION_AGGREGATE_PROTOCOL' });
+    assert.equal(calls, 1);
+  }
+  for (const receipt of [publicReceiptV2({ current_generation_id: id(9), is_current: false }),
+    publicReceiptV2({ current_generation_id: null, is_current: false })]) {
+    const transport = createAnnotationGenerationAggregateTransport({ receiptVersion: 2, request: async () => ok(receipt) });
+    const result = await transport.submit(input()); assert.equal(result.isCurrent, false);
+    assert.equal(result.currentGenerationId, receipt.current_generation_id);
+  }
 });
 
 test('captures caller bytes and identity before the request await', async () => {
@@ -103,12 +158,19 @@ test('pre-abort makes no request; in-flight abort is passed through and seals a 
   assert.equal(observedSignal.aborted, true);
 });
 
-function composedRequest({ loseFirstReply = false } = {}) {
+function composedRequest({ loseFirstReply = false, receiptVersion = 1, currentGenerationId = generationId,
+  initiallyAccepted = false, commitSeq = '1', reprobingGenerationId = currentGenerationId,
+  missingExtra = null } = {}) {
   let stored = null, calls = 0, probes = 0, checkpoints = 0, commits = 0;
   const deps = { runtimeVerified: true, timeoutMs: 2_000, getUser: async () => ({ id: actorUserId }),
-    probe: async () => { probes++; return stored === null ? ({ version: 1, status: 'missing', document_id: documentId,
+    probe: async () => { probes++; const accepted = stored !== null || initiallyAccepted;
+      return !accepted ? ({ version: receiptVersion, status: 'missing', document_id: documentId,
       generation_id: generationId, content_model_version: 2, actor_user_id: actorUserId,
-      client_id: writerId, client_seq: '1' }) : publicReceipt({ accepted: true, seq: stored.seq }); },
+      client_id: writerId, client_seq: '1', ...(missingExtra ?? {}) }) : (receiptVersion === 2
+        ? publicReceiptV2({ accepted: true, seq: stored?.seq ?? '7',
+          current_generation_id: stored ? reprobingGenerationId : currentGenerationId,
+          is_current: (stored ? reprobingGenerationId : currentGenerationId) === generationId })
+        : publicReceipt({ accepted: true, seq: stored?.seq ?? '7' })); },
     readFixedCheckpoint: async () => { checkpoints++; return ({ version: 1, actor_user_id: actorUserId, document_id: documentId,
       generation_id: generationId, content_model_version: 2, head: '0', base_seq: '0', checkpoint: {
         at_seq: '0', writer_id: null, writer_epoch: '0', encoding_version: 1,
@@ -116,14 +178,21 @@ function composedRequest({ loseFirstReply = false } = {}) {
     readFixedTailPage: async () => { throw new Error('head zero must not read tail'); },
     commit: async (_actor, value) => {
       commits++;
-      stored = { version: 1, status: 'accepted', accepted: true, document_id: documentId,
+      stored = { version: receiptVersion, status: 'accepted', accepted: true, document_id: documentId,
         generation_id: generationId, content_model_version: 2, actor_user_id: actorUserId,
-        client_id: writerId, client_seq: '1', seq: '1', data_sha256: sha(update),
+        client_id: writerId, client_seq: '1', seq: commitSeq, data_sha256: sha(update),
+        ...(receiptVersion === 2 ? { current_generation_id: currentGenerationId,
+          is_current: currentGenerationId === generationId } : {}),
         checkpoint_stored: value.checkpoint !== null, checkpoint: value.checkpoint === null ? null : {
           at_seq: value.checkpoint.atSeq, writer_id: 'survey-private-aggregate-v1', writer_epoch: '1',
           encoding_version: value.checkpoint.encodingVersion, snapshot_sha256: value.checkpoint.snapshotSha256 } };
       return stored;
     } };
+  if (receiptVersion === 2) {
+    deps.probeV2 = deps.probe; deps.commitV2 = deps.commit;
+    deps.probe = async () => { throw new Error('v1 probe must not run'); };
+    deps.commit = async () => { throw new Error('v1 commit must not run'); };
+  }
   return { get counts() { return { calls, probes, checkpoints, commits }; }, request: async call => {
     calls++; const response = await handleAnnotationGenerationAggregate(new Request(
       `https://edge.invalid/functions/v1/${call.functionName}`, { method: 'POST', headers: {
@@ -143,6 +212,42 @@ test('portable transport composes with the real handler for a new write and exac
   const accepted = await transport.submit(input());
   assert.equal(accepted.seq, '1'); assert.equal(accepted.updateSha256, sha(update));
   assert.deepEqual(composed.counts, { calls: 2, probes: 2, checkpoints: 1, commits: 1 });
+});
+
+test('receipt v2 composes through the real handler and keeps retired identity non-authorizing', async () => {
+  const replacement = id(8), composed = composedRequest({ receiptVersion: 2, currentGenerationId: replacement });
+  const transport = createAnnotationGenerationAggregateTransport({ request: composed.request, receiptVersion: 2 });
+  const result = await transport.submit(input());
+  assert.equal(result.seq, '1'); assert.equal(result.currentGenerationId, replacement); assert.equal(result.isCurrent, false);
+  assert.equal(Object.hasOwn(result, 'writeAuthorized'), false);
+});
+
+test('already accepted v2 receipts short-circuit all state reads for current, retired, and revoked same-generation cases', async () => {
+  for (const currentGenerationId of [generationId, id(8), generationId]) {
+    const composed = composedRequest({ receiptVersion: 2, currentGenerationId, initiallyAccepted: true });
+    const transport = createAnnotationGenerationAggregateTransport({ request: composed.request, receiptVersion: 2 });
+    const result = await transport.submit(input());
+    assert.equal(result.currentGenerationId, currentGenerationId);
+    assert.deepEqual(composed.counts, { calls: 1, probes: 1, checkpoints: 0, commits: 0 });
+  }
+});
+
+test('raced v2 commit uses current metadata from the exact fresh re-probe, not the stale commit result', async () => {
+  const replacement = id(9);
+  const composed = composedRequest({ receiptVersion: 2, currentGenerationId: generationId,
+    commitSeq: '7', reprobingGenerationId: replacement });
+  const transport = createAnnotationGenerationAggregateTransport({ request: composed.request, receiptVersion: 2 });
+  const result = await transport.submit(input());
+  assert.equal(result.seq, '7'); assert.equal(result.currentGenerationId, replacement); assert.equal(result.isCurrent, false);
+  assert.deepEqual(composed.counts, { calls: 1, probes: 2, checkpoints: 1, commits: 1 });
+});
+
+test('v2 missing receipt discloses no current-generation metadata', async () => {
+  const composed = composedRequest({ receiptVersion: 2, missingExtra: {
+    current_generation_id: generationId, is_current: true } });
+  const transport = createAnnotationGenerationAggregateTransport({ request: composed.request, receiptVersion: 2 });
+  await assert.rejects(transport.submit(input()), { code: 'ANNOTATION_AGGREGATE_UNCONFIRMED' });
+  assert.deepEqual(composed.counts, { calls: 1, probes: 1, checkpoints: 0, commits: 0 });
 });
 
 test('a lost response retries only when the caller resubmits the exact key and bytes', async () => {

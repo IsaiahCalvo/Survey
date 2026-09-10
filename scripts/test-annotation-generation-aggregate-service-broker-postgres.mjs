@@ -9,6 +9,8 @@ import { handleAnnotationGenerationAggregate }
   from '../supabase/functions/annotation-generation-aggregate/handler.js';
 import { createAnnotationGenerationAggregateSupabaseAdapter }
   from '../supabase/functions/annotation-generation-aggregate/supabaseAdapter.js';
+import { createAnnotationGenerationAggregateTransport }
+  from '../src/services/annotationGenerationAggregateTransport.js';
 import { createDetachedYDoc } from '../src/lib/collab/ydocRegistry.js';
 import { createDocumentGenerationReader } from '../src/services/documentGenerationReader.js';
 import { initializeSurveyCrdtV2, materializeSurveyCrdtV2, updateSurveyMarkersV2 }
@@ -26,7 +28,7 @@ const owner = id(1), editor = id(2), viewer = id(3), other = id(4), project = id
 const sha = hex => createHash('sha256').update(Buffer.from(hex, 'hex')).digest('hex');
 
 await withDisposablePostgres(async pg => {
-  const { sql, scalar, asRole, errorState, applyMigration, quote } = pg;
+  const { sql, scalar, asRole, errorState, applyMigration, quote, session } = pg;
   // Reuse the full local generation schema setup. Every object lives only in
   // this disposable cluster and no connection string can be supplied.
   const prior = readFileSync(new URL('./test-document-generation-source-receipts-postgres.mjs', import.meta.url), 'utf8');
@@ -67,10 +69,12 @@ await withDisposablePostgres(async pg => {
     '20260909108000_annotation_checkpoint_conditional.sql',
     '20260909109000_annotation_model2_capacity.sql',
     '20260909110000_annotation_generation_aggregate_admission.sql',
-    '20260909112000_annotation_generation_aggregate_service_broker.sql']) {
+    '20260909112000_annotation_generation_aggregate_service_broker.sql',
+    '20260909113000_annotation_generation_aggregate_current_receipts.sql']) {
     applyMigration(migrationPath(migration));
   }
   applyMigration(migrationPath('20260909112000_annotation_generation_aggregate_service_broker.sql'));
+  applyMigration(migrationPath('20260909113000_annotation_generation_aggregate_current_receipts.sql'));
 
   const createGeneration = (number, { actor = owner, baseline = '0102', model = 2,
     baseSeq = 0 } = {}) => {
@@ -109,17 +113,26 @@ await withDisposablePostgres(async pg => {
       ${checkpointEncoding},'${checkpointSha}',
       ${result === null ? 'NULL::bytea' : `decode('${result}','hex')`},
       ${resultEncoding === null ? 'NULL::integer' : resultEncoding})`;
+  const receiptV2 = (scope, actor, client = 'broker-writer', seq = 1, data = 'aa') =>
+    `public.probe_annotation_generation_aggregate_receipt_service_v2(
+      '${actor}','${scope.documentId}','${scope.generationId}',2::smallint,
+      '${client}',${seq},decode('${data}','hex'))`;
+  const commitV2 = (scope, actor, options = {}) => commit(scope, actor, options)
+    .replace('commit_annotation_generation_aggregate_service_v1',
+      'commit_annotation_generation_aggregate_service_v2');
   const service = expression => JSON.parse(asRole(null,
     `SET request.jwt.claims='{"sub":"service-sentinel","role":"service_role"}';SELECT ${expression}`,
     'service_role').stdout);
   let checks = 0;
   const check = async (label, work) => { await work(); checks += 1; console.log(`PASS ${label}`); };
 
-  await check('migration replay keeps only the three typed brokers service executable', () => {
+  await check('migration replay keeps only the five typed brokers service executable', () => {
     const signatures = [
       'public.probe_annotation_generation_aggregate_receipt_service_v1(uuid,uuid,uuid,smallint,text,bigint,bytea)',
       'public.read_annotation_generation_aggregate_checkpoint_service_v1(uuid,uuid,uuid,smallint)',
       'public.commit_annotation_generation_aggregate_service_v1(uuid,uuid,uuid,smallint,text,bigint,bytea,bigint,bigint,text,bigint,integer,text,bytea,integer)',
+      'public.probe_annotation_generation_aggregate_receipt_service_v2(uuid,uuid,uuid,smallint,text,bigint,bytea)',
+      'public.commit_annotation_generation_aggregate_service_v2(uuid,uuid,uuid,smallint,text,bigint,bytea,bigint,bigint,text,bigint,integer,text,bytea,integer)',
     ];
     for (const signature of signatures) {
       assert.equal(scalar(`SELECT count(*) FROM pg_proc p CROSS JOIN LATERAL
@@ -159,6 +172,10 @@ await withDisposablePostgres(async pg => {
         checkpoint(scope, owner)],
       ['public.commit_annotation_generation_aggregate_service_v1(uuid,uuid,uuid,smallint,text,bigint,bytea,bigint,bigint,text,bigint,integer,text,bytea,integer)',
         commit(scope, owner)],
+      ['public.probe_annotation_generation_aggregate_receipt_service_v2(uuid,uuid,uuid,smallint,text,bigint,bytea)',
+        receiptV2(scope, owner)],
+      ['public.commit_annotation_generation_aggregate_service_v2(uuid,uuid,uuid,smallint,text,bigint,bytea,bigint,bigint,text,bigint,integer,text,bytea,integer)',
+        commitV2(scope, owner)],
     ];
     for (const role of ['anon', 'authenticated']) {
       for (const [signature, expression] of cases) {
@@ -303,6 +320,122 @@ await withDisposablePostgres(async pg => {
       'service_role', false), 'SG002');
   });
 
+  await check('v2 accepted results bind current generation without granting current access', async () => {
+    const scope = createGeneration(21);
+    const missing = service(receiptV2(scope, owner, 'missing-key', 1, 'bb'));
+    assert.deepEqual(Object.keys(missing).sort(), ['actor_user_id', 'client_id', 'client_seq',
+      'content_model_version', 'document_id', 'generation_id', 'status', 'version']);
+    assert.equal(missing.version, 2); assert.equal(missing.status, 'missing');
+    assert.equal(Object.hasOwn(missing, 'current_generation_id'), false);
+    assert.equal(Object.hasOwn(missing, 'is_current'), false);
+
+    const v1Missing = service(receipt(scope, owner, 'v1-missing', 1, 'bb'));
+    assert.equal(v1Missing.version, 1);
+    assert.deepEqual(Object.keys(v1Missing).sort(), Object.keys(missing).filter(key => key !== 'version').concat('version').sort());
+    const accepted = service(commitV2(scope, owner));
+    assert.equal(accepted.version, 2); assert.equal(accepted.current_generation_id, scope.generationId);
+    assert.equal(accepted.is_current, true);
+    const rowsBefore = scalar(`SELECT count(*) FROM survey_private.annotation_generation_updates
+      WHERE document_id='${scope.documentId}'`);
+    const headBefore = scalar(`SELECT generation_id||':'||last_seq FROM survey_private.annotation_generation_heads
+      WHERE document_id='${scope.documentId}'`);
+    const signalsBefore = scalar(`SELECT count(*) FROM public.annotation_generation_signals
+      WHERE document_id='${scope.documentId}'`);
+    const exact = service(receiptV2(scope, owner));
+    assert.equal(exact.seq, '1'); assert.equal(exact.current_generation_id, scope.generationId);
+    assert.equal(exact.is_current, true);
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.annotation_generation_updates
+      WHERE document_id='${scope.documentId}'`), rowsBefore);
+    assert.equal(scalar(`SELECT generation_id||':'||last_seq FROM survey_private.annotation_generation_heads
+      WHERE document_id='${scope.documentId}'`), headBefore);
+    assert.equal(scalar(`SELECT count(*) FROM public.annotation_generation_signals
+      WHERE document_id='${scope.documentId}'`), signalsBefore);
+
+    const revoked = createGeneration(22);
+    sql(`UPDATE documents SET project_id=NULL WHERE id='${revoked.documentId}';
+      INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES
+      ('${revoked.documentId}','${editor}','editor','active')`);
+    assert.equal(service(commitV2(revoked, editor)).is_current, true);
+    sql(`UPDATE document_collaborators SET status='revoked'
+      WHERE document_id='${revoked.documentId}' AND user_id='${editor}'`);
+    const revokedExact = service(receiptV2(revoked, editor));
+    assert.equal(revokedExact.is_current, true);
+    assert.equal(revokedExact.current_generation_id, revoked.generationId);
+    errorState(asRole(null, `SELECT ${commitV2(revoked, editor, { seq: 2, data: 'bb', head: 1 })}`,
+      'service_role', false), '42501');
+
+    const retired = createGeneration(23);
+    assert.equal(service(commitV2(retired, owner)).is_current, true);
+    const replacement = id(223);
+    sql(`INSERT INTO survey_private.annotation_generations(
+      document_id,generation_id,base_seq,baseline_snapshot,baseline_encoding_version,content_model_version)
+      VALUES('${retired.documentId}','${replacement}',1,decode('0102','hex'),1,2);
+      UPDATE survey_private.annotation_generation_heads SET generation_id='${replacement}',last_seq=1
+      WHERE document_id='${retired.documentId}'`);
+    const retiredProbe = service(receiptV2(retired, owner));
+    assert.equal(retiredProbe.current_generation_id, replacement); assert.equal(retiredProbe.is_current, false);
+    const retiredCommit = service(commitV2(retired, owner, { head: 999, checkpointSha: 'f'.repeat(64) }));
+    assert.equal(retiredCommit.seq, '1'); assert.equal(retiredCommit.current_generation_id, replacement);
+    assert.equal(retiredCommit.is_current, false);
+    errorState(asRole(null, `SELECT ${receiptV2(retired, owner, 'broker-writer', 1, 'bb')}`,
+      'service_role', false), '23505');
+
+    const deleted = createGeneration(25);
+    sql(`DELETE FROM documents WHERE id='${deleted.documentId}'`);
+    const deletedMissing = service(receiptV2(deleted, owner));
+    assert.equal(deletedMissing.status, 'missing');
+    assert.equal(Object.hasOwn(deletedMissing, 'current_generation_id'), false);
+    assert.equal(Object.hasOwn(deletedMissing, 'is_current'), false);
+
+    const raced = createGeneration(26);
+    service(commitV2(raced, owner));
+    const racedReplacement = id(226);
+    sql(`INSERT INTO survey_private.annotation_generations(
+      document_id,generation_id,base_seq,baseline_snapshot,baseline_encoding_version,content_model_version)
+      VALUES('${raced.documentId}','${racedReplacement}',1,decode('0102','hex'),1,2)`);
+    const switcher = session('aggregate-current-generation-switch', { role: 'postgres' });
+    switcher.send(`SELECT pg_advisory_xact_lock(hashtextextended('${raced.documentId}',0));
+      UPDATE survey_private.annotation_generation_heads SET generation_id='${racedReplacement}',last_seq=1
+      WHERE document_id='${raced.documentId}';SELECT 'CURRENT_SWITCH_READY';`);
+    await switcher.wait('CURRENT_SWITCH_READY');
+    errorState(asRole(null, `SELECT ${receiptV2(raced, owner)}`, 'service_role', false), '40001');
+    await switcher.finish(true);
+    const afterSwitch = service(receiptV2(raced, owner));
+    assert.equal(afterSwitch.current_generation_id, racedReplacement);
+    assert.equal(afterSwitch.is_current, false);
+  });
+
+  await check('v2 wrappers preserve service claims and reject spoofed roles', () => {
+    const scope = createGeneration(27);
+    service(commitV2(scope, owner));
+    sql(`BEGIN;SET ROLE service_role;
+      SET request.jwt.claim.sub='${other}';SET request.jwt.claim.role='service_role';
+      SET request.jwt.claims='{"sub":"${other}","role":"service_role","sentinel":"v2"}';
+      SELECT ${receiptV2(scope, owner)};
+      DO $$BEGIN
+        BEGIN PERFORM ${receiptV2(scope, owner, 'broker-writer', 1, 'bb')};
+          RAISE EXCEPTION 'expected receipt collision';
+        EXCEPTION WHEN SQLSTATE '23505' THEN NULL; END;
+      END$$;
+      DO $$BEGIN
+        IF current_setting('request.jwt.claim.sub',true) IS DISTINCT FROM '${other}'
+          OR current_setting('request.jwt.claim.role',true) IS DISTINCT FROM 'service_role'
+          OR current_setting('request.jwt.claims',true) IS DISTINCT FROM
+            '{"sub":"${other}","role":"service_role","sentinel":"v2"}' THEN
+          RAISE EXCEPTION 'v2 wrapper leaked delegated claims';
+        END IF;
+      END$$;ROLLBACK;`);
+    for (const role of ['anon', 'authenticated']) {
+      const attempt = asRole(owner,
+        `SET request.jwt.claim.role='service_role';
+         SET request.jwt.claims='{"sub":"${owner}","role":"service_role"}';
+         SELECT ${receiptV2(scope, owner)}`, role, false);
+      errorState(attempt, '42501');
+    }
+    errorState(asRole(null, `SET request.jwt.claims='not-json';SELECT ${receiptV2(scope, owner)}`,
+      'service_role', false), '42501');
+  });
+
   await check('commit keeps source checkpoint CAS and optional checkpoint atomic', () => {
     const scope = createGeneration(17);
     const fixed = service(checkpoint(scope, owner));
@@ -351,14 +484,16 @@ await withDisposablePostgres(async pg => {
     };
     const serviceRpc = (name, params) => {
       let expression;
-      if (name === 'probe_annotation_generation_aggregate_receipt_service_v1') {
+      if (['probe_annotation_generation_aggregate_receipt_service_v1',
+        'probe_annotation_generation_aggregate_receipt_service_v2'].includes(name)) {
         expression = `public.${name}(${quote(params.p_actor_user_id)},${quote(params.p_document_id)},
           ${quote(params.p_generation_id)},${params.p_content_model_version}::smallint,
           ${quote(params.p_client_id)},${params.p_client_seq}::bigint,${quote(params.p_data)}::bytea)`;
       } else if (name === 'read_annotation_generation_aggregate_checkpoint_service_v1') {
         expression = `public.${name}(${quote(params.p_actor_user_id)},${quote(params.p_document_id)},
           ${quote(params.p_generation_id)},${params.p_content_model_version}::smallint)`;
-      } else if (name === 'commit_annotation_generation_aggregate_service_v1') {
+      } else if (['commit_annotation_generation_aggregate_service_v1',
+        'commit_annotation_generation_aggregate_service_v2'].includes(name)) {
         expression = `public.${name}(${quote(params.p_actor_user_id)},${quote(params.p_document_id)},
           ${quote(params.p_generation_id)},${params.p_content_model_version}::smallint,
           ${quote(params.p_client_id)},${params.p_client_seq}::bigint,${quote(params.p_data)}::bytea,
@@ -379,25 +514,38 @@ await withDisposablePostgres(async pg => {
         ${params.p_content_model_version}::smallint,${params.p_after_seq}::bigint,
         ${params.p_through_seq}::bigint,${params.p_limit}::integer)`).stdout);
     };
-    const makeAdapter = ({ beforeCommit } = {}) => createAnnotationGenerationAggregateSupabaseAdapter({
+    const makeAdapter = ({ beforeCommit, afterCommit, actor = owner, calls = [] } = {}) => createAnnotationGenerationAggregateSupabaseAdapter({
       caller: supplied => {
         assert.equal(supplied, token);
         return { auth: { getUser: async received => {
           assert.equal(received, token);
-          return { data: { user: { id: owner } }, error: null };
-        } }, rpc: async (name, params) => ({ data: callerRpc(owner, name, params), error: null }) };
+          return { data: { user: { id: actor } }, error: null };
+        } }, rpc: async (name, params) => {
+          calls.push(name); return { data: callerRpc(actor, name, params), error: null };
+        } };
       },
       service: () => ({ rpc: async (name, params) => {
-        if (name === 'commit_annotation_generation_aggregate_service_v1' && beforeCommit) {
+        calls.push(name);
+        if (name.startsWith('commit_annotation_generation_aggregate_service_v') && beforeCommit) {
           const work = beforeCommit; beforeCommit = null; work(params);
         }
-        return { data: serviceRpc(name, params), error: null };
+        let data;
+        try { data = serviceRpc(name, params); }
+        catch (error) {
+          const code = String(error?.message || '').match(/ERROR:\s+([A-Z0-9]{5}):/)?.[1];
+          return { data: null, error: { code: code || 'unconfirmed' } };
+        }
+        if (name.startsWith('commit_annotation_generation_aggregate_service_v') && afterCommit) {
+          const work = afterCommit; afterCommit = null; work(params, data);
+        }
+        return { data, error: null };
       } }),
     });
-    const runHandler = async (flow, writerId, clientSeq, adapter) => {
+    const runHandler = async (flow, writerId, clientSeq, adapter, receiptVersion = 1) => {
       const params = new URLSearchParams({ document_id: flow.scope.documentId,
         generation_id: flow.scope.generationId, content_model_version: '2',
         client_id: writerId, client_seq: String(clientSeq) });
+      if (receiptVersion === 2) params.set('receipt_version', '2');
       const response = await handleAnnotationGenerationAggregate(new Request(
         `https://local.invalid/annotation-generation-aggregate?${params}`, {
           method: 'POST', headers: { authorization: `Bearer ${token}`,
@@ -405,6 +553,14 @@ await withDisposablePostgres(async pg => {
         }), { runtimeVerified: true, timeoutMs: 10_000, ...adapter });
       return { status: response.status, body: await response.json() };
     };
+    const aggregateTransport = adapter => createAnnotationGenerationAggregateTransport({
+      receiptVersion: 2,
+      request: call => handleAnnotationGenerationAggregate(new Request(
+        `https://local.invalid/functions/v1/${call.functionName}`, {
+          method: 'POST', headers: { authorization: `Bearer ${token}`, ...call.headers },
+          body: call.body, signal: call.signal,
+        }), { runtimeVerified: true, timeoutMs: 10_000, ...adapter }),
+    });
     const reopen = async (flow, number) => {
       const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x0a]);
       const pdfHash = createHash('sha256').update(pdf).digest('hex');
@@ -482,6 +638,67 @@ await withDisposablePostgres(async pg => {
     assert.equal(scalar(`SELECT count(*) FROM survey_private.annotation_generation_updates
       WHERE document_id='${raced.scope.documentId}'`), '2');
     assert.equal((await reopen(raced, 31)).throughSeq, '2');
+
+    const current = makeFlow(32), currentCalls = [];
+    const currentTransport = aggregateTransport(makeAdapter({ calls: currentCalls }));
+    const currentReceipt = await currentTransport.submit({ documentId: current.scope.documentId,
+      generationId: current.scope.generationId, contentModelVersion: 2, actorUserId: owner,
+      writerId: 'handler-v2', clientSeq: '1', update: current.update });
+    assert.equal(currentReceipt.seq, '1'); assert.equal(currentReceipt.isCurrent, true);
+    assert.equal(currentReceipt.currentGenerationId, current.scope.generationId);
+    assert.deepEqual(currentCalls.filter(name => name.includes('_service_v2')), [
+      'probe_annotation_generation_aggregate_receipt_service_v2',
+      'commit_annotation_generation_aggregate_service_v2',
+    ]);
+    assert.equal((await reopen(current, 32)).throughSeq, '1');
+
+    const revoked = makeFlow(33), revokedCalls = [];
+    sql(`UPDATE documents SET project_id=NULL WHERE id='${revoked.scope.documentId}';
+      INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES
+      ('${revoked.scope.documentId}','${editor}','editor','active')`);
+    const revokedTransport = aggregateTransport(makeAdapter({ actor: editor, calls: revokedCalls }));
+    const revokedInput = { documentId: revoked.scope.documentId,
+      generationId: revoked.scope.generationId, contentModelVersion: 2, actorUserId: editor,
+      writerId: 'handler-v2-revoked', clientSeq: '1', update: revoked.update };
+    assert.equal((await revokedTransport.submit(revokedInput)).isCurrent, true);
+    sql(`UPDATE document_collaborators SET status='revoked'
+      WHERE document_id='${revoked.scope.documentId}' AND user_id='${editor}'`);
+    revokedCalls.length = 0;
+    const revokedRetry = await revokedTransport.submit(revokedInput);
+    assert.equal(revokedRetry.isCurrent, true);
+    assert.deepEqual(revokedCalls, ['probe_annotation_generation_aggregate_receipt_service_v2']);
+    revokedCalls.length = 0;
+    await assert.rejects(revokedTransport.submit({ ...revokedInput, clientSeq: '2' }),
+      error => error?.code === '42501');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.annotation_generation_updates
+      WHERE document_id='${revoked.scope.documentId}'`), '1');
+
+    const reprobing = makeFlow(34);
+    const replacement = id(234);
+    const reprobingAdapter = makeAdapter({
+      beforeCommit: params => {
+        JSON.parse(asRole(owner, `SELECT public.append_annotation_update_v3(
+          '${reprobing.scope.documentId}','${reprobing.scope.generationId}',2::smallint,
+          'peer-before-v2',1,decode('00','hex'))`).stdout);
+        JSON.parse(asRole(owner, `SELECT public.append_annotation_update_v3(
+          '${reprobing.scope.documentId}','${reprobing.scope.generationId}',2::smallint,
+          ${quote(params.p_client_id)},${params.p_client_seq},${quote(params.p_data)}::bytea)`).stdout);
+      },
+      afterCommit: () => sql(`INSERT INTO survey_private.annotation_generations(
+        document_id,generation_id,base_seq,baseline_snapshot,baseline_encoding_version,content_model_version)
+        VALUES('${reprobing.scope.documentId}','${replacement}',2,
+          decode('${reprobing.scope.baseline}','hex'),1,2);
+        UPDATE survey_private.annotation_generation_heads
+        SET generation_id='${replacement}',last_seq=2
+        WHERE document_id='${reprobing.scope.documentId}'`),
+    });
+    const reprobingReceipt = await aggregateTransport(reprobingAdapter).submit({
+      documentId: reprobing.scope.documentId, generationId: reprobing.scope.generationId,
+      contentModelVersion: 2, actorUserId: owner, writerId: 'handler-v2-race',
+      clientSeq: '1', update: reprobing.update });
+    assert.equal(reprobingReceipt.seq, '2');
+    assert.equal(reprobingReceipt.currentGenerationId, replacement);
+    assert.equal(reprobingReceipt.isCurrent, false);
   });
 
   console.log(`PASS ${checks} annotation aggregate service broker PostgreSQL checks`);

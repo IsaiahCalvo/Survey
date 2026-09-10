@@ -423,15 +423,58 @@ maintenance and unconfirmed outcomes distinct. Its native Blob body preserves
 the byte snapshot across the adapter's awaits without a special synchronous-copy
 rule. The adapter remains trusted to send those bytes under the captured actor;
 an immutable body does not constrain an adapter that sends a different request.
-It returns acceptance proof only; it must not confer current access, retry
-automatically, or call a legacy write.
+It returns acceptance proof and, with version 2, a current-generation observation;
+it must not confer current access, retry automatically, or call a legacy write.
 
-Before wiring it into sync, extend trusted receipt/commit results with the
+Before wiring it into sync, trusted receipt/commit results must include the
 current generation identity observed under the document lock. Preserve historical
 exact-receipt success after retirement or revocation; do not insert a new access
 check into that policy. Validate that identity through the handler before the
 client can use it. A separate current-access read is not an atomic replacement
 for this contract and must never erase acceptance evidence when the read fails.
+
+The local implementation now adds receipt version 2. Service-only v2 probe
+and commit wrappers reuse the existing guarded v1 brokers under the same document
+advisory lock; they do not duplicate actor-claim delegation or change v1 output.
+An accepted v2 receipt adds a nullable `current_generation_id` and an `is_current`
+flag equal to comparison with the requested generation. A missing receipt gets
+no current-generation fields and does not read the head: knowing a document ID
+and guessing an unowned receipt key must not disclose that metadata.
+
+The handler opts in only through one unique `receipt_version=2` query field.
+The client factory selects it explicitly with `receiptVersion: 2`; default and
+explicit version 1 keep the old request and proof shapes. Version 2 never falls
+back to v1. Fixed checkpoint and tail reads keep their existing interfaces. If
+a raced commit requires a new exact-receipt probe, match the immutable actor,
+key, bytes digest and sequence, then return that probe's newer generation
+observation. Do not retain an earlier `is_current: true` after that probe observes
+a replacement. A revoked actor's exact receipt can still be current; none of
+these fields grant present access or make later cloud actions exempt from their
+own permission checks. This contract remains unwired pending the full sync and
+runtime gates below.
+
+Local verification composes the actual v2 client transport, native Request,
+handler, production Supabase adapter, service brokers and disposable PostgreSQL.
+It checks a new current write and checked reopen, an exact retry after access
+revocation with no reconstruction or commit, and refusal of that actor's new
+write. A controlled race accepts the exact row at sequence 2, then replaces the
+head before the canonical re-probe; the client receives that replacement and
+`isCurrent: false`, not the commit's earlier observation. PDF/publication
+descriptors and authentication are fixtures: this is not a live publication,
+real-account collaboration or UI claim. The SQL matrix also checks both broker
+migration replays, service-only ACLs and actual-invoker guards, claim restoration,
+missing-receipt privacy, retired receipts, digest collisions and document-lock
+contention. V1 behavior and its prior checks remain in place.
+
+Verification for this v2 slice on 2026-09-10 passed: 53/53 focused client,
+handler and adapter checks; 14/14 disposable PostgreSQL checks; and the full
+`npm test` run with 7,101 tests, 7,005 passed, 96 skipped, zero failed or
+cancelled (previous baseline: 7,090 tests with the same 96 skips). Two extra
+invalid-option cases were added to an existing independent test after the full
+run began; the final 53-check rerun covers that exact test revision. Production
+source stayed frozen throughout. The pinned Deno entry check and Vite build
+passed; the build retains its existing large-chunk warning. No live migration,
+deploy, application wiring or Microsoft test is part of this slice.
 
 Opt-in model-2 sync must also stop every direct snapshot write, including repair,
 debounce, append-failure, close and page-hide paths. Trusted admission and

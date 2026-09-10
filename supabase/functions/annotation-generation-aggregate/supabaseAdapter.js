@@ -31,6 +31,37 @@ async function rpc(connection, name, params) {
  * service clients can reach only the service-role broker functions. */
 export function createAnnotationGenerationAggregateSupabaseAdapter({ caller, service }) {
   if (typeof caller !== 'function' || typeof service !== 'function') throw safeError(null);
+  const probe = (version, actor, input, signal) => rpc(service(signal),
+    `probe_annotation_generation_aggregate_receipt_service_v${version}`, {
+      p_actor_user_id: actor,
+      p_document_id: input.documentId,
+      p_generation_id: input.generationId,
+      p_content_model_version: input.contentModelVersion,
+      p_client_id: input.writerId,
+      p_client_seq: input.clientSeq,
+      p_data: bytea(input.update),
+    });
+  const commit = (version, actor, input, signal) => {
+    const source = input.sourceCheckpoint;
+    const checkpoint = input.checkpoint;
+    return rpc(service(signal), `commit_annotation_generation_aggregate_service_v${version}`, {
+      p_actor_user_id: actor,
+      p_document_id: input.documentId,
+      p_generation_id: input.generationId,
+      p_content_model_version: input.contentModelVersion,
+      p_client_id: input.writerId,
+      p_client_seq: input.clientSeq,
+      p_data: bytea(input.update),
+      p_expected_head: input.expectedHead,
+      p_expected_checkpoint_at_seq: source.atSeq,
+      p_expected_checkpoint_writer_id: source.writerId,
+      p_expected_checkpoint_writer_epoch: source.writerEpoch,
+      p_expected_checkpoint_encoding_version: source.encodingVersion,
+      p_expected_checkpoint_sha256: source.snapshotSha256,
+      p_result_checkpoint: checkpoint === null ? null : bytea(checkpoint.bytes),
+      p_result_checkpoint_encoding_version: checkpoint === null ? null : checkpoint.encodingVersion,
+    });
+  };
   return Object.freeze({
     async getUser(token, signal) {
       let result;
@@ -43,15 +74,10 @@ export function createAnnotationGenerationAggregateSupabaseAdapter({ caller, ser
       return result?.data?.user ?? null;
     },
     probe(actor, input, signal) {
-      return rpc(service(signal), 'probe_annotation_generation_aggregate_receipt_service_v1', {
-        p_actor_user_id: actor,
-        p_document_id: input.documentId,
-        p_generation_id: input.generationId,
-        p_content_model_version: input.contentModelVersion,
-        p_client_id: input.writerId,
-        p_client_seq: input.clientSeq,
-        p_data: bytea(input.update),
-      });
+      return probe(1, actor, input, signal);
+    },
+    probeV2(actor, input, signal) {
+      return probe(2, actor, input, signal);
     },
     readFixedCheckpoint(actor, input, signal) {
       return rpc(service(signal), 'read_annotation_generation_aggregate_checkpoint_service_v1', {
@@ -72,25 +98,10 @@ export function createAnnotationGenerationAggregateSupabaseAdapter({ caller, ser
       });
     },
     commit(actor, input, signal) {
-      const source = input.sourceCheckpoint;
-      const checkpoint = input.checkpoint;
-      return rpc(service(signal), 'commit_annotation_generation_aggregate_service_v1', {
-        p_actor_user_id: actor,
-        p_document_id: input.documentId,
-        p_generation_id: input.generationId,
-        p_content_model_version: input.contentModelVersion,
-        p_client_id: input.writerId,
-        p_client_seq: input.clientSeq,
-        p_data: bytea(input.update),
-        p_expected_head: input.expectedHead,
-        p_expected_checkpoint_at_seq: source.atSeq,
-        p_expected_checkpoint_writer_id: source.writerId,
-        p_expected_checkpoint_writer_epoch: source.writerEpoch,
-        p_expected_checkpoint_encoding_version: source.encodingVersion,
-        p_expected_checkpoint_sha256: source.snapshotSha256,
-        p_result_checkpoint: checkpoint === null ? null : bytea(checkpoint.bytes),
-        p_result_checkpoint_encoding_version: checkpoint === null ? null : checkpoint.encodingVersion,
-      });
+      return commit(1, actor, input, signal);
+    },
+    commitV2(actor, input, signal) {
+      return commit(2, actor, input, signal);
     },
   });
 }

@@ -11,6 +11,9 @@ const INPUT_KEYS = ['actorUserId', 'clientSeq', 'contentModelVersion', 'document
 const REQUIRED_INPUT_KEYS = INPUT_KEYS.filter(key => key !== 'signal');
 const RESULT_KEYS = ['actor_user_id', 'client_id', 'client_seq', 'content_model_version',
   'data_sha256', 'document_id', 'generation_id', 'seq', 'status', 'version'];
+const RESULT_V2_KEYS = ['actor_user_id', 'client_id', 'client_seq', 'content_model_version',
+  'current_generation_id', 'data_sha256', 'document_id', 'generation_id', 'is_current',
+  'seq', 'status', 'version'];
 const ERROR_KEYS = ['code', 'message'];
 const ERROR_REASON_KEYS = ['code', 'message', 'reason'];
 const WORK_REASONS = new Set(['aggregate-input-bytes', 'checkpoint-expanded-bytes',
@@ -178,11 +181,11 @@ function checkedError(response, body) {
   fail(mapped[1]);
 }
 
-function checkedReceipt(body, identity, updateSha256) {
+function checkedReceipt(body, identity, updateSha256, receiptVersion) {
   const top = exactObject(body, ['result']);
   check(top);
-  const receipt = exactObject(top.result, RESULT_KEYS);
-  check(receipt && receipt.version === 1 && receipt.status === 'accepted'
+  const receipt = exactObject(top.result, receiptVersion === 2 ? RESULT_V2_KEYS : RESULT_KEYS);
+  check(receipt && receipt.version === receiptVersion && receipt.status === 'accepted'
     && receipt.document_id === identity.documentId
     && receipt.generation_id === identity.generationId
     && receipt.content_model_version === 2
@@ -192,22 +195,34 @@ function checkedReceipt(body, identity, updateSha256) {
     && positiveInt64(receipt.seq)
     && typeof receipt.data_sha256 === 'string' && SHA256.test(receipt.data_sha256)
     && receipt.data_sha256 === updateSha256);
+  if (receiptVersion === 2) {
+    check((receipt.current_generation_id === null || uuid(receipt.current_generation_id))
+      && typeof receipt.is_current === 'boolean'
+      && receipt.is_current === (receipt.current_generation_id === identity.generationId));
+  }
   return Object.freeze({ documentId: identity.documentId, generationId: identity.generationId,
     contentModelVersion: 2, actorUserId: identity.actorUserId, writerId: identity.writerId,
-    clientSeq: identity.clientSeq, seq: receipt.seq, updateSha256 });
+    clientSeq: identity.clientSeq, seq: receipt.seq, updateSha256,
+    ...(receiptVersion === 2 ? { currentGenerationId: receipt.current_generation_id,
+      isCurrent: receipt.is_current } : {}),
+  });
 }
 
 /**
  * Creates a portable, default-off client for the checked aggregate handler.
  * The injected request adapter owns the captured bearer-token lifetime and any
  * request deadline. A successful result proves only that these exact bytes were
- * accepted; it does not prove current generation or access, and this client has
- * no legacy write fallback.
+ * accepted. Version 2 also returns locked current-generation observation, not
+ * present access authority. This client has no legacy write fallback.
  */
 export function createAnnotationGenerationAggregateTransport(options) {
-  const ownedOptions = exactObject(options, ['request']);
+  const ownedOptions = exactObject(options, ['request'])
+    || exactObject(options, ['receiptVersion', 'request']);
   check(ownedOptions && typeof ownedOptions.request === 'function');
   const request = ownedOptions.request;
+  const receiptVersion = Object.hasOwn(ownedOptions, 'receiptVersion')
+    ? ownedOptions.receiptVersion : 1;
+  check(receiptVersion === 1 || receiptVersion === 2);
 
   return Object.freeze({
     async submit(value) {
@@ -239,6 +254,7 @@ export function createAnnotationGenerationAggregateTransport(options) {
       params.set('content_model_version', '2');
       params.set('client_id', identity.writerId);
       params.set('client_seq', identity.clientSeq);
+      if (receiptVersion === 2) params.set('receipt_version', '2');
       const headers = Object.freeze({ 'Content-Type': 'application/octet-stream' });
       let response;
       try {
@@ -262,7 +278,7 @@ export function createAnnotationGenerationAggregateTransport(options) {
       assertLive(signal);
       if (response.status !== 200) checkedError(response, responseBody);
       check(response.status === 200);
-      return checkedReceipt(responseBody, identity, updateSha256);
+      return checkedReceipt(responseBody, identity, updateSha256, receiptVersion);
     },
   });
 }
