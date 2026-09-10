@@ -1482,6 +1482,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
       revalidateCapture: input.revalidateCapture,
       retireGeneration: input.retireGeneration,
       currentGenerationId: expectedCheckedBundle.pdfGenerationId,
+      contentModelVersion: expectedCheckedBundle.contentModelVersion ?? 1,
       signal: input.signal,
       persistSourceLocalState: async ({ generationId, localPageState }) => {
         if (!current()) throw new Error('The checked document changed.');

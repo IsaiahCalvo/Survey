@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { createAnnotationGenerationTransport } from './annotationGenerationTransport.js';
 import { computeContentSha256 } from './contentHash.js';
+import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -9,7 +10,7 @@ const MAX_INTEGER = 9223372036854775807n;
 const uuid = v => typeof v === 'string' && UUID.test(v);
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const codes = new Set(['42501', '40001', '55P03', '23514', '22023', '25001', '54000',
-  'SG001', 'SG002', 'PGRST202', 'PGRST301', 'PGRST302', 'DOCUMENT_OPEN_INPUT',
+  'SG001', 'SG002', 'SG003', 'PGRST202', 'PGRST301', 'PGRST302', 'DOCUMENT_OPEN_INPUT',
   'DOCUMENT_OPEN_PROTOCOL', 'DOCUMENT_OPEN_LIMIT', 'DOCUMENT_OPEN_ABORTED',
   'DOCUMENT_OPEN_ACTOR_CHANGED', 'DOCUMENT_OPEN_BYTES', 'DOCUMENT_OPEN_STATE']);
 const failure = (code = 'DOCUMENT_OPEN_PROTOCOL') => Object.assign(
@@ -20,9 +21,13 @@ const check = (v, code) => { if (!v) throw failure(code); };
 const checkedBundles = new WeakMap();
 function checkedCapture(issuedBundle, scope) {
   const captured = checkedBundles.get(issuedBundle);
-  check(captured && keys(scope, ['documentId', 'actorUserId', 'pdfGenerationId'])
+  const scopedModel = Object.hasOwn(scope || {}, 'contentModelVersion');
+  check(captured && keys(scope, scopedModel
+    ? ['documentId', 'actorUserId', 'pdfGenerationId', 'contentModelVersion']
+    : ['documentId', 'actorUserId', 'pdfGenerationId'])
     && scope.documentId === captured.documentId && scope.actorUserId === captured.actorUserId
-    && scope.pdfGenerationId === captured.pdfGenerationId, 'DOCUMENT_OPEN_INPUT');
+    && scope.pdfGenerationId === captured.pdfGenerationId
+    && (!scopedModel || scope.contentModelVersion === captured.contentModelVersion), 'DOCUMENT_OPEN_INPUT');
   return captured;
 }
 
@@ -36,6 +41,7 @@ export function readCheckedGenerationBootstrap(issuedBundle, scope) {
       update: new Uint8Array(captured.update), coveredSeq: captured.throughSeq,
       baseAtSeq: captured.snapshotBase.atSeq, baseWriterId: captured.snapshotBase.writerId,
       baseWriterEpoch: captured.snapshotBase.writerEpoch,
+      ...(captured.modern ? { contentModelVersion: captured.contentModelVersion } : {}),
     });
   } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
 }
@@ -66,11 +72,16 @@ function hexBytes(v, limit) {
   return b;
 }
 function bundle(value, scope, includeSnapshot, stateLimit) {
-  check(keys(value, ['version', 'actor_user_id', 'document_id', 'generation_id', 'document', 'publication', 'pdf', 'annotations']));
+  const modern = scope.contentModelVersion != null;
+  check(keys(value, modern
+    ? ['version', 'actor_user_id', 'document_id', 'generation_id', 'content_model_version', 'document', 'publication', 'pdf', 'annotations']
+    : ['version', 'actor_user_id', 'document_id', 'generation_id', 'document', 'publication', 'pdf', 'annotations']));
   // Own the response before any later await. A transport/cache cannot change
   // a checked identity while bytes are in flight.
   const b = JSON.parse(JSON.stringify(value));
-  check(b.version === 1 && b.actor_user_id === scope.actorUserId && b.document_id === scope.documentId
+  check(b.version === (modern ? 3 : 1) && (!modern || (b.content_model_version === scope.contentModelVersion
+    && [1, 2].includes(b.content_model_version)))
+    && b.actor_user_id === scope.actorUserId && b.document_id === scope.documentId
     && uuid(b.generation_id) && (scope.pdfGenerationId === null || b.generation_id === scope.pdfGenerationId));
   const d = b.document, p = b.pdf, r = b.publication, a = b.annotations;
   check(object(d) && d.id === scope.documentId && uuid(d.user_id)
@@ -83,8 +94,11 @@ function bundle(value, scope, includeSnapshot, stateLimit) {
   check(keys(r, ['operation_id', 'generation_id', 'published_at', 'wal_head'])
     && uuid(r.operation_id) && r.generation_id === b.generation_id
     && typeof r.published_at === 'string' && Number.isFinite(Date.parse(r.published_at)));
-  check(keys(a, ['version', 'document_id', 'generation_id', 'wal_head', 'snapshot', 'snapshot_sha256'])
-    && a.version === 2 && a.document_id === scope.documentId && a.generation_id === b.generation_id);
+  check(keys(a, modern
+    ? ['version', 'document_id', 'generation_id', 'content_model_version', 'wal_head', 'snapshot', 'snapshot_sha256']
+    : ['version', 'document_id', 'generation_id', 'wal_head', 'snapshot', 'snapshot_sha256'])
+    && a.version === (modern ? 3 : 2) && (!modern || a.content_model_version === scope.contentModelVersion)
+    && a.document_id === scope.documentId && a.generation_id === b.generation_id);
   const head = decimal(a.wal_head), base = decimal(r.wal_head); check(base <= head);
   if (includeSnapshot) {
     const s = a.snapshot;
@@ -112,11 +126,12 @@ export function createDocumentGenerationReader(deps) {
     && maxUpdatePages <= 10000 && timeoutMs <= 120000, 'DOCUMENT_OPEN_INPUT');
   return Object.freeze({ async open(input = {}) {
     check(object(input), 'DOCUMENT_OPEN_INPUT');
-    const { documentId, actorUserId, pdfGenerationId = null, signal } = input;
+    const { documentId, actorUserId, pdfGenerationId = null, contentModelVersion = null, signal } = input;
     check(uuid(documentId) && uuid(actorUserId) && (pdfGenerationId === null || uuid(pdfGenerationId))
+      && (contentModelVersion === null || [1, 2].includes(contentModelVersion))
       && (signal == null || (typeof signal.aborted === 'boolean' && typeof signal.addEventListener === 'function'
         && typeof signal.removeEventListener === 'function')), 'DOCUMENT_OPEN_INPUT');
-    const scope = { documentId, actorUserId, pdfGenerationId }, controller = new AbortController();
+    const scope = { documentId, actorUserId, pdfGenerationId, contentModelVersion }, controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort();
     const deadline = performance.now() + timeoutMs;
@@ -140,8 +155,11 @@ export function createDocumentGenerationReader(deps) {
       if (r?.error) throw failure(codes.has(r.error.code) ? r.error.code : undefined);
       return r;
     };
-    const read = async (generationId, includeSnapshot) => bundle((await rpc('read_document_generation_open', {
-      p_document_id: documentId, p_generation_id: generationId, p_include_snapshot: includeSnapshot,
+    const read = async (generationId, includeSnapshot) => bundle((await rpc(
+      contentModelVersion === null ? 'read_document_generation_open' : 'read_document_generation_open_v3', {
+      p_document_id: documentId, p_generation_id: generationId,
+      ...(contentModelVersion === null ? {} : { p_content_model_version: contentModelVersion }),
+      p_include_snapshot: includeSnapshot,
     }))?.data, { ...scope, pdfGenerationId: generationId }, includeSnapshot, maxStateBytes);
     let doc;
     try {
@@ -166,7 +184,10 @@ export function createDocumentGenerationReader(deps) {
       }
       doc = createDetachedYDoc();
       try { Y.applyUpdate(doc, baseline); } catch { throw failure('DOCUMENT_OPEN_STATE'); }
-      const transport = createAnnotationGenerationTransport({ documentId, actorUserId, pdfGenerationId: generationId, request: rpc });
+      const model = contentModelVersion ?? 1;
+      const transport = createAnnotationGenerationTransport({ documentId, actorUserId,
+        pdfGenerationId: generationId,
+        ...(contentModelVersion === null ? {} : { contentModelVersion: model }), request: rpc });
       const readState = async () => {
         let cursor = checkpoint.at_seq, used = baseline.length, pages = 0;
         while (BigInt(cursor) < BigInt(annotations.wal_head)) {
@@ -184,6 +205,7 @@ export function createDocumentGenerationReader(deps) {
         }
         check(BigInt(cursor) === BigInt(annotations.wal_head), 'DOCUMENT_OPEN_STATE');
         check(!doc.store.pendingStructs && !doc.store.pendingDs, 'DOCUMENT_OPEN_STATE');
+        if (contentModelVersion !== null) materializeAnnotationGenerationState(doc, model);
         const update = Y.encodeStateAsUpdate(doc); check(update.length <= maxStateBytes, 'DOCUMENT_OPEN_LIMIT');
         return update;
       };
@@ -214,6 +236,7 @@ export function createDocumentGenerationReader(deps) {
       // Retain that private allocation; only public consumers need a copy.
       const ownedUpdate = annotationUpdate;
       const result = Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
+        ...(contentModelVersion === null ? {} : { contentModelVersion: model }),
         document: confirmed.document, pdf: first.pdf, publication: first.publication, pdfBlob,
         get annotationUpdate() { return new Uint8Array(ownedUpdate); },
         snapshotBase, encodingVersion: 1, throughSeq: annotations.wal_head,
@@ -223,10 +246,13 @@ export function createDocumentGenerationReader(deps) {
           first.pdf.id, first.pdf.version, first.pdf.content_sha256, first.pdf.byte_length]) });
       alive();
       checkedBundles.set(result, Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
-        update: ownedUpdate, snapshotBase, throughSeq: annotations.wal_head, pdfBlob }));
+        contentModelVersion: model, modern: contentModelVersion !== null, update: ownedUpdate, snapshotBase,
+        throughSeq: annotations.wal_head, pdfBlob }));
       return result;
     } catch (caught) {
-      if (caught?.code === 'ANNOTATION_GENERATION_STATE') throw failure('DOCUMENT_OPEN_STATE');
+      if (['ANNOTATION_GENERATION_STATE', 'ANNOTATION_GENERATION_STATE_INVALID'].includes(caught?.code)) {
+        throw failure('DOCUMENT_OPEN_STATE');
+      }
       throw failure(codes.has(caught?.code) ? caught.code : undefined);
     } finally {
       controller.abort(); clearTimeout(timer); signal?.removeEventListener('abort', abort); doc?.destroy();

@@ -22,9 +22,13 @@ export function createGenerationCollaborationSession({
   recoveryFactory = createGenerationLegacyRecovery, presenceFactory = createGenerationPresence,
 }) {
   const { documentId, actorUserId, pdfGenerationId } = checkedBundle || {};
+  const contentModelVersion = checkedBundle?.contentModelVersion ?? 1;
   if (![documentId, actorUserId, pdfGenerationId].every(v => typeof v === 'string' && UUID.test(v))
+    || ![1, 2].includes(contentModelVersion)
     || generationSession?.documentId !== documentId || generationSession?.actorUserId !== actorUserId
-    || generationSession?.pdfGenerationId !== pdfGenerationId || typeof generationSession.onSyncStatus !== 'function'
+    || generationSession?.pdfGenerationId !== pdfGenerationId
+    || (generationSession?.contentModelVersion ?? 1) !== contentModelVersion
+    || typeof generationSession.onSyncStatus !== 'function'
     || typeof generationSession.getGenerationStatus !== 'function' || typeof getCurrentActorUserId !== 'function'
     || typeof isCurrentOpen !== 'function'
     || !client?.rpc || !client?.auth?.getSession || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw fail();
@@ -143,7 +147,8 @@ export function createGenerationCollaborationSession({
     pendingAuthority = task;
     return task;
   }
-  const recovery = recoveryFactory({ documentId, actorUserId, pdfGenerationId, indexedDb, isCurrent: scopeCurrent });
+  const recovery = recoveryFactory({ documentId, actorUserId, pdfGenerationId,
+    contentModelVersion, indexedDb, isCurrent: scopeCurrent });
   const closeCurrent = receipt => {
     const issued = receipts.get(receipt);
     return Boolean(issued && scopeCurrent() && issued.epoch === epoch && recovery.isCurrent(issued.recovery));

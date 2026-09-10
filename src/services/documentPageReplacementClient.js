@@ -45,7 +45,10 @@ function captureOperation(value) {
 function validateCapture(value, actorUserId, documentId) {
   check(object(value) && value.version === 1 && value.actorUserId === actorUserId
     && value.documentId === documentId && uuid(value.pdfGenerationId)
-    && Number.isSafeInteger(value.coveredSeq) && value.coveredSeq >= 0);
+    && Number.isSafeInteger(value.coveredSeq) && value.coveredSeq >= 0
+    && (value.contentModelVersion === undefined || value.contentModelVersion === 1)
+    && (value.annotationState?.contentModelVersion === undefined
+      || value.annotationState.contentModelVersion === 1));
   return { generationId: value.pdfGenerationId, walHead: String(value.coveredSeq) };
 }
 
@@ -163,9 +166,10 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
   };
   async function run({ documentId, operation, captureAccepted, revalidateCapture,
     retireGeneration, install, persistSourceLocalState, currentGenerationId, localPageState,
-    resumeOnly = false, signal } = {}) {
+    contentModelVersion = 1, resumeOnly = false, signal } = {}) {
     const actorUserId = getActorUserId();
     check(uuid(actorUserId) && uuid(documentId) && uuid(currentGenerationId)
+      && contentModelVersion === 1
       && typeof retireGeneration === 'function'
       && typeof install === 'function' && typeof persistSourceLocalState === 'function');
     current(actorUserId, documentId);
@@ -270,6 +274,7 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
     check(opened?.mode === 'checked' && opened.actorUserId === actorUserId
       && opened.documentId === documentId && opened.checkedBundle
       && uuid(opened.checkedBundle.pdfGenerationId)
+      && (opened.checkedBundle.contentModelVersion ?? 1) === 1
       && opened.checkedBundle.pdfGenerationId !== row.body.generation_id,
     'DOCUMENT_PAGE_REPLACEMENT_STALE');
     if (currentGenerationId === row.body.generation_id) {
@@ -290,7 +295,8 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
   return Object.freeze({
     replace(input) {
       const actorUserId = getActorUserId(), documentId = input?.documentId;
-      check(uuid(actorUserId) && uuid(documentId));
+      check(uuid(actorUserId) && uuid(documentId)
+        && (input?.contentModelVersion ?? 1) === 1);
       const key = `${actorUserId}:${documentId}`;
       if (pending.has(key)) throw fail('DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
       let captured;
@@ -304,7 +310,8 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
     },
     resume(input) {
       const actorUserId = getActorUserId(), documentId = input?.documentId;
-      check(uuid(actorUserId) && uuid(documentId));
+      check(uuid(actorUserId) && uuid(documentId)
+        && (input?.contentModelVersion ?? 1) === 1);
       const key = `${actorUserId}:${documentId}`;
       if (pending.has(key)) return pending.get(key);
       const task = run({ ...input, resumeOnly: true }).catch(error => {

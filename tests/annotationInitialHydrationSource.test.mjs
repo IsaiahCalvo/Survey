@@ -16,8 +16,12 @@ test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the leg
   // durable Y.Doc (useAnnotationDoc) then paints them. They are NO LONGER read
   // from the legacy document_annotations table on open.
   assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*managedLocalStateReader\s*\?\s*JSON\.parse\(managedLocalStateReader\.getItem\(`surveyMarkers_\$\{id\}`\) \|\| '\{\}'\)\s*:\s*loadSurveyMarkers\(id\);/);
-  // useAnnotationDoc now owns highlight hydrate + capture + realtime.
-  assert.match(APP_SOURCE, /useAnnotationDoc\(\{[\s\S]*?surveyMarkers,\s*setSurveyMarkers,/);
+  // useAnnotationDoc owns highlight hydrate + capture + realtime. Hydration
+  // receives the raw React setter; user intents go through the model-aware,
+  // scope-fenced bridge so a hydrate read can never become a remote write.
+  assert.match(APP_SOURCE, /useAnnotationDoc\(\{[\s\S]*?surveyMarkers,\s*setSurveyMarkers: setSurveyMarkersState,/);
+  assert.match(APP_SOURCE, /const setSurveyMarkers = useCallback\(\(updater\) => \{[\s\S]*?bridge\.updateMarkers\(updater\)/);
+  assert.match(APP_SOURCE, /surveyV2MutationScopeRef\.current !== surveyV2MutationScope/);
   // The legacy survey-marker SELECT is retired (no document_annotations read).
   assert.doesNotMatch(APP_SOURCE, /loadAnnotationsFromSupabase\(documentId\)/);
   // The hydration-ready signal is now sourced from the annotation doc.

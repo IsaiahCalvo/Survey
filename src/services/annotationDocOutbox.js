@@ -170,7 +170,14 @@ function pdfGeneration(options) {
   return value;
 }
 
-function generationScopeKey(documentId, actorUserId, options) {
+function contentModel(options) {
+  const value = options?.contentModelVersion;
+  if (value == null) return 1;
+  if (value !== 1 && value !== 2) throw scopeError('contentModelVersion must be 1 or 2');
+  return value;
+}
+
+function legacyGenerationScopeKey(documentId, actorUserId, options) {
   const generation = pdfGeneration(options);
   if (generation == null) return actorScopeKey(documentId, actorUserId);
   if (!documentId || !actorUserId || [documentId, actorUserId].some(value => typeof value !== 'string' || value.includes('\u0000'))) {
@@ -179,9 +186,16 @@ function generationScopeKey(documentId, actorUserId, options) {
   return actorScopeKey(documentId, actorUserId) + '\u0000pdf-generation\u0000' + generation;
 }
 
+function generationScopeKey(documentId, actorUserId, options) {
+  const scopeKey = legacyGenerationScopeKey(documentId, actorUserId, options);
+  return pdfGeneration(options) != null && contentModel(options) === 2
+    ? scopeKey + '\u0000content-model\u0000' + String(contentModel(options)) : scopeKey;
+}
+
 /** Null/absent generation retains the historical key byte-for-byte. */
-export function annotationOutboxRecordKey({ documentId, actorUserId, writerId, clientSeq, pdfGenerationId }) {
-  const scopeKey = generationScopeKey(documentId, actorUserId, { pdfGenerationId });
+export function annotationOutboxRecordKey({ documentId, actorUserId, writerId, clientSeq,
+  pdfGenerationId, contentModelVersion }) {
+  const scopeKey = generationScopeKey(documentId, actorUserId, { pdfGenerationId, contentModelVersion });
   if (pdfGenerationId != null && (
     typeof writerId !== 'string' || !writerId || writerId.includes('\u0000')
     || !Number.isSafeInteger(clientSeq) || clientSeq < 0
@@ -194,6 +208,7 @@ function normalizedRecord(record) {
   const generation = pdfGeneration(record);
   normalized.scopeKey = generationScopeKey(record.documentId, record.actorUserId, record);
   if (generation != null) {
+    if (contentModel(record) === 2 && record.contentModelVersion !== 2) throw scopeError();
     requireIncarnation(record.incarnation);
     if (record.key !== annotationOutboxRecordKey(record)) throw scopeError();
     if (record.dependsOn != null && (!Array.isArray(record.dependsOn)
@@ -216,7 +231,7 @@ function retiredError(marker, evidence = {}) {
 function assertKeyScope(record, options) {
   const generation = pdfGeneration(options);
   if (!record) return;
-  if (generation !== pdfGeneration(record)
+  if (generation !== pdfGeneration(record) || contentModel(options) !== contentModel(record)
     || (options?.documentId != null && options.documentId !== record.documentId)
     || (options?.actorUserId != null && options.actorUserId !== record.actorUserId)
     || (generation != null && (!options?.documentId || !options?.actorUserId))) throw scopeError();
@@ -235,6 +250,7 @@ function assertSameEvidence(existing, record) {
   if (['key', 'documentId', 'actorUserId', 'writerId', 'clientSeq', 'ordinal'].some(key => existing[key] !== record[key])
     || (Number(existing.incarnation) || 0) !== (Number(record.incarnation) || 0)
     || pdfGeneration(existing) !== pdfGeneration(record)
+    || contentModel(existing) !== contentModel(record)
     || !sameBytes(existing.update, record.update)
     || (existing.checkpointUpdate != null && !sameBytes(existing.checkpointUpdate, record.checkpointUpdate))
     || JSON.stringify(existing.dependsOn || []) !== JSON.stringify(record.dependsOn || [])) {
@@ -273,9 +289,24 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     const marker = await markerFor(stores, scopeKey);
     if (marker) throw retiredError(marker);
   };
+  const assertNoOtherModelEvidence = async (stores, documentId, actorUserId, options) => {
+    if (pdfGeneration(options) == null) return;
+    const legacyKey = legacyGenerationScopeKey(documentId, actorUserId, options);
+    const otherKey = contentModel(options) === 2 ? legacyKey
+      : legacyKey + '\u0000content-model\u00002';
+    const rows = await Promise.all([PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]
+      .map(name => stores[name].hasAny(otherKey)));
+    const [checkpoint, retired] = await Promise.all([
+      stores[CHECKPOINT_STORE].get(otherKey), stores[RETIRED_STORE].get(otherKey),
+    ]);
+    if (rows.some(Boolean) || checkpoint || retired) {
+      throw scopeError('Saved annotations use another content model');
+    }
+  };
   const scopedRead = (storeName, documentId, actorUserId, options) => {
     const scopeKey = generationScopeKey(documentId, actorUserId, options);
-    return run([storeName, RETIRED_STORE], 'readonly', async stores => {
+    return run(ALL_STORES, 'readonly', async stores => {
+      await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
       await assertOpen(stores, scopeKey);
       return sortedRecords(await stores[storeName].getAll(scopeKey));
     });
@@ -283,6 +314,7 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
   const localState = (documentId, actorUserId, expectedIncarnation, options, retiredOnly = false) => {
     const scopeKey = generationScopeKey(documentId, actorUserId, options);
     return run(ALL_STORES, 'readonly', async stores => {
+      await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
       const current = await incarnation(stores, documentId, expectedIncarnation);
       const marker = await markerFor(stores, scopeKey);
       if (retiredOnly && !marker) throw scopeError('The requested annotation scope is not retired');
@@ -306,7 +338,8 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
       generationScopeKey(options?.documentId, options?.actorUserId, options);
     }
     if (!keys?.length) return Promise.resolve();
-    return run([PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE, RETIRED_STORE, INCARNATION_STORE], 'readwrite', async stores => {
+    return run(ALL_STORES, 'readwrite', async stores => {
+      await assertNoOtherModelEvidence(stores, options?.documentId, options?.actorUserId, options);
       if (pdfGeneration(options) != null) await incarnation(stores, options.documentId, expectedIncarnation);
       const records = await Promise.all(keys.map(key => stores[PENDING_STORE].get(key)));
       for (let index = 0; index < keys.length; index += 1) {
@@ -345,7 +378,8 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     async assertScopeCurrent(documentId, actorUserId, expectedIncarnation, options) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
       if (pdfGeneration(options) != null) requireIncarnation(expectedIncarnation);
-      return run([INCARNATION_STORE, RETIRED_STORE], 'readonly', async stores => {
+      return run(ALL_STORES, 'readonly', async stores => {
+        await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         await incarnation(stores, documentId, expectedIncarnation);
         await assertOpen(stores, scopeKey);
       });
@@ -353,6 +387,7 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     async put(record) {
       const normalized = normalizedRecord(record);
       const marker = await run(ALL_STORES, 'readwrite', async stores => {
+        await assertNoOtherModelEvidence(stores, record.documentId, record.actorUserId, record);
         await incarnation(stores, record.documentId, Number(record.incarnation) || 0);
         const retired = await markerFor(stores, normalized.scopeKey);
         let quarantined, accepted;
@@ -380,7 +415,8 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     async deleteFromOrdinal(documentId, actorUserId, writerId, ordinal, expectedIncarnation = null, options) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
       if (pdfGeneration(options) != null) requireIncarnation(expectedIncarnation);
-      return run([PENDING_STORE, RETIRED_STORE, INCARNATION_STORE], 'readwrite', async stores => {
+      return run(ALL_STORES, 'readwrite', async stores => {
+        await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         if (pdfGeneration(options) != null) await incarnation(stores, documentId, expectedIncarnation);
         await assertOpen(stores, scopeKey);
         for (const record of await stores[PENDING_STORE].getAll(scopeKey)) {
@@ -394,6 +430,7 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     async settleAccepted(record) {
       const normalized = normalizedRecord({ ...record, status: 'accepted' });
       const marker = await run(ALL_STORES, 'readwrite', async stores => {
+        await assertNoOtherModelEvidence(stores, record.documentId, record.actorUserId, record);
         await incarnation(stores, record.documentId, Number(record.incarnation) || 0);
         const retired = await markerFor(stores, normalized.scopeKey);
         if (pdfGeneration(record) != null || retired) {
@@ -425,7 +462,8 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     },
     async loadCleanState(documentId, actorUserId, options) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
-      return run([CHECKPOINT_STORE, ACCEPTED_STORE, RETIRED_STORE], 'readonly', async stores => {
+      return run(ALL_STORES, 'readonly', async stores => {
+        await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         await assertOpen(stores, scopeKey);
         const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
         return { checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
@@ -434,7 +472,8 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
     },
     async compactAccepted(documentId, actorUserId, acceptedSnapshot, force = false, expectedIncarnation = 0, options) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
-      return run([CHECKPOINT_STORE, ACCEPTED_STORE, INCARNATION_STORE, RETIRED_STORE], 'readwrite', async stores => {
+      return run(ALL_STORES, 'readwrite', async stores => {
+        await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         await incarnation(stores, documentId, expectedIncarnation);
         await assertOpen(stores, scopeKey);
         const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
@@ -460,6 +499,7 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
       if (!replacementGenerationId || replacementGenerationId === pdfGeneration(options)
         || options.reason !== 'cloud-generation-replaced' || expectedIncarnation == null) throw scopeError('Invalid PDF generation retirement');
       return run(ALL_STORES, 'readwrite', async stores => {
+        await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         const current = await incarnation(stores, documentId, expectedIncarnation);
         const previous = await markerFor(stores, scopeKey);
         if (previous) {
@@ -484,6 +524,7 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
       if (pdfGeneration(options) != null) requireIncarnation(expectedIncarnation);
       return run(ALL_STORES, 'readwrite', async stores => {
+        await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         await incarnation(stores, documentId, expectedIncarnation ?? 0);
         await assertOpen(stores, scopeKey);
         for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
@@ -539,6 +580,9 @@ export function createMemoryAnnotationOutbox() {
         async getAll(scopeKey) {
           return [...maps[name].values()].filter(record => scopeKey === undefined || record.scopeKey === scopeKey).map(record => structuredClone(record));
         },
+        async hasAny(scopeKey) {
+          return [...maps[name].values()].some(record => record.scopeKey === scopeKey);
+        },
       }]));
       try { return await operation(stores); } catch (error) {
         for (const [name, records] of undo) for (const [key, previous] of records) {
@@ -584,6 +628,12 @@ export async function createAnnotationOutbox({
             delete: key => requestResult(store.delete(key), transaction, timeoutMs),
             getAll: scopeKey => requestResult(scopeKey === undefined ? store.getAll()
               : store.index('scopeKey').getAll(scopeKey), transaction, timeoutMs),
+            hasAny: scopeKey => {
+              const index = store.index('scopeKey');
+              return typeof index.count === 'function'
+                ? requestResult(index.count(scopeKey), transaction, timeoutMs).then(count => count > 0)
+                : requestResult(index.getAll(scopeKey), transaction, timeoutMs).then(rows => rows.length > 0);
+            },
           }];
         }));
         const value = await operation(stores);

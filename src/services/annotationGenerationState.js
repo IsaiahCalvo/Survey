@@ -2,9 +2,11 @@ import * as Y from 'yjs';
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { docToByPage, docToDeletedPdfAnnotations,
   deletedPdfAnnotationStorageKey } from './annotationDocStore.js';
+import { materializeSurveyCrdtV2, SURVEY_V2_ROOTS } from './documentSurveyCrdtV2.js';
 
 const ROOTS = new Set(['annotations', 'annotationEraserOps', 'deletedPdfAnnotations',
   'surveyMarkers', 'annoMeta', 'eraseOutbox']);
+const SURVEY_V2_ROOT_NAMES = new Set(Object.values(SURVEY_V2_ROOTS));
 
 function invalid(reason) {
   const error = new Error(`Annotation generation state cannot be captured: ${reason}`);
@@ -128,8 +130,9 @@ function validateMaterialization(owned) {
 
 /** Materialize only Yjs semantic state. The caller proves acceptance and owns
  * page remapping; this does not capture sidebar state or build a checkpoint. */
-export function materializeAnnotationGenerationState(doc) {
+export function materializeAnnotationGenerationState(doc, contentModelVersion = 1) {
   if (!(doc instanceof Y.Doc) || doc.isDestroyed) invalid('live Y.Doc required');
+  if (![1, 2].includes(contentModelVersion)) invalid('content model version required');
   if (doc.store.pendingStructs || doc.store.pendingDs) invalid('unresolved Yjs history');
   const owned = createDetachedYDoc();
   try {
@@ -139,14 +142,30 @@ export function materializeAnnotationGenerationState(doc) {
       if (!(root instanceof Y.Map) && root.constructor !== Y.AbstractType) invalid('unsupported root type');
       if (root._start !== null) invalid('non-map root content');
       const entries = [...Y.Map.prototype.entries.call(root)];
-      if (!ROOTS.has(name)) {
+      if (!ROOTS.has(name) && !(contentModelVersion === 2 && SURVEY_V2_ROOT_NAMES.has(name))) {
         if (entries.length) invalid('unknown nonempty root');
+        continue;
+      }
+      if (contentModelVersion === 2 && SURVEY_V2_ROOT_NAMES.has(name)) {
+        for (const [key, value] of entries) owned.getMap(name).set(key, copyJson(value));
         continue;
       }
       for (const [key, value] of entries) {
         const copy = copyJson(value);
         validateRecord(name, key, copy);
         owned.getMap(name).set(key, copy);
+      }
+    }
+    const inputEntries = name => {
+      const root = doc.share.get(name);
+      return root ? [...Y.Map.prototype.entries.call(root)] : [];
+    };
+    if (contentModelVersion === 2) {
+      if (inputEntries('surveyMarkers').length) invalid('legacy survey markers in content model 2');
+      if (inputEntries('annoMeta').some(([key]) => key === 'spaces')) invalid('legacy spaces in content model 2');
+    } else {
+      for (const name of SURVEY_V2_ROOT_NAMES) {
+        if (inputEntries(name).length) invalid('content model 2 state in legacy generation');
       }
     }
     validateMaterialization(owned);
@@ -156,9 +175,12 @@ export function materializeAnnotationGenerationState(doc) {
       delete page.eraserMaterializedMutationIds;
       delete page.eraserPresentationRevision;
     }
-    return freeze(copyJson({ version: 1, annotationsByPage,
+    const survey = contentModelVersion === 2 ? materializeSurveyCrdtV2(owned) : null;
+    return freeze(copyJson({ version: 1, ...(contentModelVersion === 2 ? { contentModelVersion } : {}), annotationsByPage,
       deletedPdfAnnotations: docToDeletedPdfAnnotations(owned),
-      surveyMarkers: Object.fromEntries(owned.getMap('surveyMarkers').entries()),
+      surveyMarkers: survey?.surveyMarkers
+        || Object.fromEntries(owned.getMap('surveyMarkers').entries()),
+      ...(survey ? { spaces: survey.spaces } : {}),
       annoMeta: Object.fromEntries(owned.getMap('annoMeta').entries()),
     }));
   } finally {

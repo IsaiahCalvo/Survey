@@ -298,10 +298,12 @@ export function useAnnotationDoc({
     }
     // Match hydration's empty-state rule. Do not invent an empty metadata
     // update when a read-only document has never stored spaces.
-    if (handle.getMeta(SPACES_KEY) !== undefined || scope.view.spaces?.length > 0) {
-      handle.setMeta(SPACES_KEY, scope.view.spaces);
+    if (handle.contentModelVersion !== 2) {
+      if (handle.getMeta(SPACES_KEY) !== undefined || scope.view.spaces?.length > 0) {
+        handle.setMeta(SPACES_KEY, scope.view.spaces);
+      }
+      handle.applySurveyMarkers(scope.view.surveyMarkers);
     }
-    handle.applySurveyMarkers(scope.view.surveyMarkers);
   };
 
   const ensureLocalDurability = useCallback(async () => {
@@ -497,10 +499,11 @@ export function useAnnotationDoc({
         else setAnnotationsByPage((previousByPage) => (
           preserveTransientPagePresentationState(previousByPage, nextByPage)
         ));
-        const s = handle.getMeta(SPACES_KEY);
+        const surveyState = handle.contentModelVersion === 2 ? handle.getSurveyState() : null;
+        const s = surveyState?.spaces ?? handle.getMeta(SPACES_KEY);
         if (checkedBundle !== null) setSpaces(Array.isArray(s) ? s : []);
         else if (Array.isArray(s)) setSpaces(s);
-        const sm = handle.getSurveyMarkers();
+        const sm = surveyState?.surveyMarkers ?? handle.getSurveyMarkers();
         if (checkedBundle !== null) setSurveyMarkers(sm && typeof sm === 'object' ? sm : {});
         else if (sm && typeof sm === 'object') setSurveyMarkers(sm);
         setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
@@ -539,8 +542,9 @@ export function useAnnotationDoc({
 
       const storeByPage = handle.getByPage();
       setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
-      const storeSpaces = handle.getMeta(SPACES_KEY);
-      const storeSurvey = handle.getSurveyMarkers();
+      const surveyState = handle.contentModelVersion === 2 ? handle.getSurveyState() : null;
+      const storeSpaces = surveyState?.spaces ?? handle.getMeta(SPACES_KEY);
+      const storeSurvey = surveyState?.surveyMarkers ?? handle.getSurveyMarkers();
       const count = pageCount(storeByPage);
       const hasSpaces = Array.isArray(storeSpaces) && storeSpaces.length > 0;
       const hasSurvey = storeSurvey && Object.keys(storeSurvey).length > 0;
@@ -594,11 +598,11 @@ export function useAnnotationDoc({
         // Document-level kinds: if the store has SOME state but not this kind yet
         // (first open after each kind's migration shipped), seed it from the
         // per-device state the viewer already loaded so nothing is dropped.
-        if (!hasSpaces) {
+        if (!hasSpaces && handle.contentModelVersion !== 2) {
           const curSpaces = spacesRef.current;
           if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
         }
-        if (!hasSurvey) {
+        if (!hasSurvey && handle.contentModelVersion !== 2) {
           const curSurvey = surveyMarkersRef.current;
           if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
         }
@@ -614,10 +618,12 @@ export function useAnnotationDoc({
             setAnnotationsByPage(result.normalizedByPage);
           }
         }
-        const curSpaces = spacesRef.current;
-        if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
-        const curSurvey = surveyMarkersRef.current;
-        if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
+        if (handle.contentModelVersion !== 2) {
+          const curSpaces = spacesRef.current;
+          if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
+          const curSurvey = surveyMarkersRef.current;
+          if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
+        }
       }
 
       readyRef.current = true;
@@ -762,6 +768,7 @@ export function useAnnotationDoc({
   useEffect(() => {
     const h = getScopedHandle();
     if (!h || !readyRef.current) return;
+    if (h.contentModelVersion === 2) return;
     // An absent kind in a checked baseline is already empty. Do not turn
     // hydration into a local metadata edit, including for read-only roles.
     if (checkedBundle !== null && h.getMeta(SPACES_KEY) === undefined
@@ -775,8 +782,43 @@ export function useAnnotationDoc({
   useEffect(() => {
     const h = getScopedHandle();
     if (!h || !readyRef.current) return;
+    if (h.contentModelVersion === 2) return;
     h.applySurveyMarkers(surveyMarkers);
   }, [surveyMarkers, getScopedHandle]);
+
+  const updateSurveyMarkers = useCallback((updater, options = {}) => {
+    const h = getScopedHandle();
+    if (!h || !readyRef.current || h.contentModelVersion !== 2) {
+      throw localReceiptError('ANNOTATION_LOCAL_NOT_READY', 'Survey collaboration is not ready.');
+    }
+    if (!isWritableDocRole(docRoleRef.current)) {
+      throw localReceiptError('ANNOTATION_DOCUMENT_READ_ONLY', 'This document is read-only.');
+    }
+    const result = h.updateSurveyMarkers(updater, options);
+    if (getScopedHandle() !== h || !readyRef.current) {
+      throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The survey edit belongs to a retired document.');
+    }
+    surveyMarkersRef.current = result.surveyMarkers;
+    setSurveyMarkers(result.surveyMarkers);
+    return result;
+  }, [getScopedHandle, setSurveyMarkers]);
+
+  const updateSurveySpaces = useCallback((updater, options = {}) => {
+    const h = getScopedHandle();
+    if (!h || !readyRef.current || h.contentModelVersion !== 2) {
+      throw localReceiptError('ANNOTATION_LOCAL_NOT_READY', 'Survey collaboration is not ready.');
+    }
+    if (!isWritableDocRole(docRoleRef.current)) {
+      throw localReceiptError('ANNOTATION_DOCUMENT_READ_ONLY', 'This document is read-only.');
+    }
+    const result = h.updateSurveySpaces(updater, options);
+    if (getScopedHandle() !== h || !readyRef.current) {
+      throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The survey edit belongs to a retired document.');
+    }
+    spacesRef.current = result.spaces;
+    setSpaces(result.spaces);
+    return result;
+  }, [getScopedHandle, setSpaces]);
 
   // Cmd/Ctrl+S → drain pending appends + write a fresh snapshot.
   const forceFlush = useCallback(async () => {
@@ -986,6 +1028,8 @@ export function useAnnotationDoc({
     isLocalDurabilityCurrent,
     forceFlush,
     commitEraserMutation,
+    updateSurveyMarkers,
+    updateSurveySpaces,
     metaGet,
     metaSet,
     status: renderedStateScopeRef.current === localScope ? syncStatus : { stage: enabled ? 'hydrating' : 'idle', healthy: true, error: null },

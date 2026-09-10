@@ -130,14 +130,21 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
           alive(); return response;
         };
         const readMode = async () => {
-          const response = await request('read_document_open_mode', { p_document_id: documentId });
+          let response = await request('read_document_open_mode', { p_document_id: documentId });
+          if (response?.error?.code === 'SG003') {
+            response = await request('read_document_open_mode_v2', { p_document_id: documentId });
+          }
           if (response?.error) throw response.error;
           const value = response?.data;
-          check(exactKeys(value, 'version,actor_user_id,document_id,mode,generation_id')
-            && value.version === 1 && value.actor_user_id === actorUserId && value.document_id === documentId
+          const old = exactKeys(value, 'version,actor_user_id,document_id,mode,generation_id')
+            && value.version === 1;
+          const modern = exactKeys(value, 'version,actor_user_id,document_id,mode,generation_id,content_model_version')
+            && value.version === 2 && [1, 2].includes(value.content_model_version);
+          check((old || modern) && value.actor_user_id === actorUserId && value.document_id === documentId
             && ((value.mode === 'legacy' && value.generation_id === null)
               || (value.mode === 'checked' && validId(value.generation_id))), 'DOCUMENT_OPEN_PROTOCOL');
-          return Object.freeze({ mode: value.mode, generationId: value.generation_id });
+          return Object.freeze({ mode: value.mode, generationId: value.generation_id,
+            contentModelVersion: modern ? value.content_model_version : 1, modern });
         };
         const readMetadata = async () => {
           await readSession(); alive();
@@ -181,7 +188,8 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
           return Object.freeze({ mode: 'legacy', actorUserId, documentId, document, blob, checkedBundle: null });
         }
         const bundle = await wait(() => reader.open({ documentId, actorUserId,
-          pdfGenerationId: mode ? mode.generationId : pdfGenerationId, signal: controller.signal }));
+          pdfGenerationId: mode ? mode.generationId : pdfGenerationId,
+          contentModelVersion: mode?.modern ? mode.contentModelVersion : null, signal: controller.signal }));
         if (discover) { await readSession(); alive(); }
         alive(); return discover ? Object.freeze({ mode: 'checked', actorUserId, documentId, checkedBundle: bundle }) : bundle;
       } catch (error) {

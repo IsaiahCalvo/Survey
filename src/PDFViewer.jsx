@@ -7699,7 +7699,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const [noteDialogContent, setNoteDialogContent] = useState({ text: '', photos: [], videos: [] });
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
-  const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const [surveyMarkers, setSurveyMarkersState] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const surveyV2MutationBridgeRef = useRef(null);
+  const surveyV2MutationScopeRef = useRef(null);
+  const surveyV2MutationScope = useMemo(() => Object.freeze({
+    checkedBundle,
+    file: pdfFile,
+    actorUserId: user?.id || null,
+    pdfGenerationId: pdfFile?.pdfGenerationId || null,
+    contentModelVersion: checkedBundle?.contentModelVersion ?? 1,
+  }), [checkedBundle, pdfFile, user?.id, pdfFile?.pdfGenerationId]);
+  surveyV2MutationScopeRef.current = surveyV2MutationScope;
+  useLayoutEffect(() => {
+    surveyV2MutationScopeRef.current = surveyV2MutationScope;
+    return () => {
+      if (surveyV2MutationScopeRef.current === surveyV2MutationScope) {
+        surveyV2MutationScopeRef.current = null;
+      }
+    };
+  }, [surveyV2MutationScope]);
+  const setSurveyMarkers = useCallback((updater) => {
+    if (surveyV2MutationScopeRef.current !== surveyV2MutationScope) return;
+    if (surveyV2MutationScope.contentModelVersion !== 2) {
+      setSurveyMarkersState(updater);
+      return;
+    }
+    const bridge = surveyV2MutationBridgeRef.current;
+    if (!bridge || bridge.scope !== surveyV2MutationScope
+      || surveyV2MutationScopeRef.current !== surveyV2MutationScope) return;
+    return bridge.updateMarkers(updater);
+  }, [surveyV2MutationScope]);
   // UX: print shows exactly what the screen shows. Survey Markers are visible
   // only inside a template, and only the selected module's set (clean slate per
   // module — owner rule, 2026-09-02), so print carries that set and nothing
@@ -8710,7 +8739,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Pdfjs primary, PDF.js fallback)
   const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
   const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
-  const [spaces, setSpaces] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
+  const [spaces, setSpacesState] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
+  const setSpaces = useCallback((updater) => {
+    if (surveyV2MutationScopeRef.current !== surveyV2MutationScope) return;
+    if (surveyV2MutationScope.contentModelVersion !== 2) {
+      setSpacesState(updater);
+      return;
+    }
+    const bridge = surveyV2MutationBridgeRef.current;
+    if (!bridge || bridge.scope !== surveyV2MutationScope
+      || surveyV2MutationScopeRef.current !== surveyV2MutationScope) return;
+    return bridge.updateSpaces(updater);
+  }, [surveyV2MutationScope]);
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
   useEffect(() => {
     pdfjsActiveSpaceIdRef.current = activeSpaceId;
@@ -19747,6 +19787,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     captureAcceptedState: generationCaptureAcceptedState,
     revalidateAcceptedState: generationRevalidateAcceptedState,
     retirePdfGeneration: generationRetirePdfGeneration,
+    updateSurveyMarkers: updateSurveyMarkersInDoc,
+    updateSurveySpaces: updateSurveySpacesInDoc,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -19761,9 +19803,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     annotationsByPage,
     setAnnotationsByPage,
     spaces,
-    setSpaces,
+    setSpaces: setSpacesState,
     surveyMarkers,
-    setSurveyMarkers,
+    setSurveyMarkers: setSurveyMarkersState,
     eraseEffectConsumer: consumeEraseOutboxEffect,
     onHistoryQuarantine: handleAnnotationHistoryQuarantine,
     // The unscaled per-page PDF pixel sizes the SVG layer inverts callouts
@@ -19780,6 +19822,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
   });
+  surveyV2MutationBridgeRef.current = checkedBundle?.contentModelVersion === 2
+    && normalAnnotationHydration.ready === true
+    ? {
+        scope: surveyV2MutationScope,
+        updateMarkers: updateSurveyMarkersInDoc,
+        updateSpaces: updateSurveySpacesInDoc,
+      }
+    : null;
   checkedReplacementSessionRef.current = checkedBundle === null ? null : {
     checkedBundle,
     capture: generationCaptureAcceptedState,

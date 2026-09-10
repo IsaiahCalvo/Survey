@@ -57,23 +57,27 @@ function transportError(value, documentId, pdfGenerationId) {
  * and deadlines. No method falls back to unscoped table reads or old RPCs. */
 export function createAnnotationGenerationTransport(options) {
   requireValue(plain(options), 'ANNOTATION_GENERATION_INPUT');
-  const { documentId, pdfGenerationId, actorUserId, request } = options;
+  const { documentId, pdfGenerationId, actorUserId, contentModelVersion, request } = options;
+  const modern = Object.hasOwn(options, 'contentModelVersion');
   requireValue(uuid(documentId) && generation(pdfGenerationId) && uuid(actorUserId)
+    && (!modern || [1, 2].includes(contentModelVersion))
     && typeof request === 'function', 'ANNOTATION_GENERATION_INPUT');
-  const base = Object.freeze({ p_document_id: documentId, p_generation_id: pdfGenerationId });
+  const base = Object.freeze({ p_document_id: documentId, p_generation_id: pdfGenerationId,
+    ...(modern ? { p_content_model_version: contentModelVersion } : {}) });
   async function rpc(name, params, label) {
     let result;
     try { result = await request(name, { ...base, ...params }, label); }
     catch (caught) { throw transportError(caught, documentId, pdfGenerationId); }
     if (result?.error) throw transportError(result.error, documentId, pdfGenerationId);
     const value = result?.data;
-    requireValue(plain(value) && value.version === 2 && value.document_id === documentId
-      && value.generation_id === pdfGenerationId);
+    requireValue(plain(value) && value.version === (modern ? 3 : 2) && value.document_id === documentId
+      && value.generation_id === pdfGenerationId
+      && (!modern || value.content_model_version === contentModelVersion));
     return value;
   }
   return Object.freeze({
     async snapshot() {
-      const result = await rpc('read_annotation_snapshot_v2', {}, 'generation snapshot read');
+      const result = await rpc(`read_annotation_snapshot_v${modern ? 3 : 2}`, {}, 'generation snapshot read');
       const walHead = sequence(result.wal_head);
       let snapshot = null;
       if (result.snapshot !== null) {
@@ -92,7 +96,7 @@ export function createAnnotationGenerationTransport(options) {
       const after = decimal(afterSeq), through = decimal(throughSeq, true);
       requireValue(Number.isInteger(limit) && limit >= 1 && limit <= 1000
         && (through === null || compareAnnotationSequences(after, through) <= 0), 'ANNOTATION_GENERATION_INPUT');
-      const result = await rpc('read_annotation_updates_v2', {
+      const result = await rpc(`read_annotation_updates_v${modern ? 3 : 2}`, {
         p_after_seq: after, p_through_seq: through, p_limit: limit,
       }, 'generation annotation tail read');
       const frontier = sequence(result.through_seq);
@@ -123,7 +127,7 @@ export function createAnnotationGenerationTransport(options) {
     },
     async writerSequence(writerId) {
       requireValue(text(writerId), 'ANNOTATION_GENERATION_INPUT');
-      const result = await rpc('read_annotation_writer_sequence_v2', { p_client_id: writerId }, 'generation writer sequence read');
+      const result = await rpc(`read_annotation_writer_sequence_v${modern ? 3 : 2}`, { p_client_id: writerId }, 'generation writer sequence read');
       requireValue(result.client_id === writerId);
       return sequence(result.client_seq);
     },
@@ -134,7 +138,7 @@ export function createAnnotationGenerationTransport(options) {
       const counter = decimal(clientSeq), payload = bytea(data, true);
       requireValue(compareAnnotationSequences(counter, 0) > 0, 'ANNOTATION_GENERATION_INPUT');
       const expectedHash = await digest(payload);
-      const result = await rpc('append_annotation_update_v2', {
+      const result = await rpc(`append_annotation_update_v${modern ? 3 : 2}`, {
         p_client_id: writerId, p_client_seq: counter, p_data: payload,
       }, 'generation annotation WAL append');
       requireValue(result.accepted === true && result.actor_user_id === actorUserId
@@ -159,7 +163,7 @@ export function createAnnotationGenerationTransport(options) {
         p_writer_id: writerId, p_writer_epoch: epoch, p_expected_at_seq: decimal(expectedAtSeq, true),
         p_expected_writer_id: expectedWriterId, p_expected_writer_epoch: decimal(expectedWriterEpoch) };
       const expectedHash = await digest(payload);
-      const result = await rpc('store_annotation_snapshot_v2', params, 'generation annotation snapshot write');
+      const result = await rpc(`store_annotation_snapshot_v${modern ? 3 : 2}`, params, 'generation annotation snapshot write');
       requireValue(typeof result.stored === 'boolean' && String(sequence(result.at_seq)) === at
         && result.writer_id === writerId && String(sequence(result.writer_epoch)) === epoch);
       if (result.stored) requireValue(result.snapshot_sha256 === expectedHash && result.encoding_version === encodingVersion);

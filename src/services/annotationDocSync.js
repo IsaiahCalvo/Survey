@@ -32,6 +32,8 @@ import {
 import { bindAnnotationGenerationOutbox } from './annotationGenerationOutbox.js';
 import { createAnnotationGenerationTransport } from './annotationGenerationTransport.js';
 import { readCheckedGenerationBootstrap } from './documentGenerationReader.js';
+import { materializeSurveyCrdtV2, updateSurveyMarkersV2, updateSurveySpacesV2 }
+  from './documentSurveyCrdtV2.js';
 import { normalizeAnnotationSequence as sequence, compareAnnotationSequences as compareSequence,
   nextAnnotationSequence, maxAnnotationSequence, annotationSequenceToSafeInteger } from './annotationSequence.js';
 import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
@@ -319,9 +321,12 @@ export async function openAnnotationDoc({
   const checkedBootstrap = checkedBundle == null ? null : readCheckedGenerationBootstrap(
     checkedBundle, { documentId, actorUserId, pdfGenerationId },
   );
+  const contentModelVersion = checkedBootstrap?.contentModelVersion ?? 1;
+  const contentModelProtocolModern = checkedBootstrap != null
+    && Object.hasOwn(checkedBootstrap, 'contentModelVersion');
 
   // Default: a dedicated registry-managed Y.Doc for this document's flat store.
-  const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}`}`;
+  const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}:content-model:${contentModelVersion}`}`;
   const ownsRegistryDoc = !doc;
   const activeDoc = doc || getOrCreateYDoc(registryKey);
   const priorScope = DOC_SCOPE_BINDINGS.get(activeDoc);
@@ -343,6 +348,8 @@ export async function openAnnotationDoc({
   const state = {
     documentId,
     pdfGenerationId,
+    contentModelVersion,
+    contentModelProtocolModern,
     generationTransport: null,
     generationBlocked: false,
     generationError: null,
@@ -471,6 +478,7 @@ export async function openAnnotationDoc({
   };
   if (pdfGenerationId != null) state.generationTransport = createAnnotationGenerationTransport({
     documentId, pdfGenerationId, actorUserId,
+    ...(contentModelProtocolModern ? { contentModelVersion } : {}),
     request: (name, params, label) => withActorRequest(state, () => state.supabase.rpc(name, params), label),
   });
 
@@ -1127,7 +1135,7 @@ async function withActorRequest(state, createRequest, label) {
 }
 
 function isGenerationFailure(error) {
-  return ['SG001', 'SG002', 'ANNOTATION_PDF_GENERATION_RETIRED'].includes(error?.code);
+  return ['SG001', 'SG002', 'SG003', 'ANNOTATION_PDF_GENERATION_RETIRED'].includes(error?.code);
 }
 
 async function retireGenerationState(state, replacementGenerationId, error = null) {
@@ -1884,6 +1892,11 @@ function handleGenerationSignal(state, payload) {
     if (row?.document_id !== state.documentId || row?.generation_id !== state.pdfGenerationId) {
       throw new Error('changed or missing generation');
     }
+    if (state.contentModelProtocolModern
+      ? row.content_model_version !== state.contentModelVersion
+      : row.content_model_version != null && row.content_model_version !== 1) {
+      throw new Error('changed or missing content model');
+    }
     hint = { head: sequence(row.last_seq), wake: sequence(row.wake_revision),
       epoch: sequence(row.snapshot_writer_epoch) };
   } catch {
@@ -2100,14 +2113,15 @@ async function captureAcceptedAnnotationStateForActor(state, assertActorUnchange
     throw captureNotReady('the accepted head changed during capture');
   }
   for (const value of [state.coveredSeq, state.snapshotBaseAtSeq ?? 0, state.snapshotBaseWriterEpoch]) sequence(value);
-  const annotationState = materializeAnnotationGenerationState(state.acceptedDoc);
-  const liveState = materializeAnnotationGenerationState(state.doc);
+  const annotationState = materializeAnnotationGenerationState(state.acceptedDoc, state.contentModelVersion);
+  const liveState = materializeAnnotationGenerationState(state.doc, state.contentModelVersion);
   if (acceptedCaptureJson(annotationState) !== acceptedCaptureJson(liveState)) {
     throw captureNotReady('visible state contains changes without accepted proof');
   }
   const capture = Object.freeze({
     version: 1,
     ...(state.pdfGenerationId == null ? {} : { pdfGenerationId: state.pdfGenerationId }),
+    ...(state.contentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
     documentId: state.documentId,
     actorUserId: state.actorUserId,
     writerId: state.writerId,
@@ -2807,8 +2821,10 @@ function enqueueAppend(
   const clientSeq = ++state.clientSeq;
   const record = {
     key: annotationOutboxRecordKey({ documentId: state.documentId, actorUserId: state.actorUserId,
-      writerId: state.writerId, clientSeq, pdfGenerationId: state.pdfGenerationId }),
+      writerId: state.writerId, clientSeq, pdfGenerationId: state.pdfGenerationId,
+      ...(state.contentModelVersion === 2 ? { contentModelVersion: 2 } : {}) }),
     ...(state.pdfGenerationId == null ? {} : { pdfGenerationId: state.pdfGenerationId }),
+    ...(state.pdfGenerationId != null && state.contentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
     documentId: state.documentId,
     actorUserId: state.actorUserId,
     incarnation: state.documentIncarnation,
@@ -2976,6 +2992,7 @@ function isLocalReceiptCurrent(state, receipt) {
     || receipt.revision !== state.localReceiptRevision
     || receipt.documentId !== state.documentId || receipt.actorUserId !== state.actorUserId
     || (receipt.pdfGenerationId ?? null) !== state.pdfGenerationId
+    || (receipt.contentModelVersion ?? 1) !== state.contentModelVersion
     || receipt.incarnation !== state.documentIncarnation || receipt.writerId !== state.writerId) return false;
   // The live observer counts every Yjs update, including remote changes and
   // delete-only transactions. Avoid serializing the full doc on active checks.
@@ -3063,6 +3080,7 @@ async function flushLocalDurability(state, {
     locallyDurable: true, documentId: state.documentId, actorUserId: state.actorUserId,
     ...(state.pdfGenerationId == null ? {} : { pdfGenerationId: state.pdfGenerationId }),
     incarnation: state.documentIncarnation, writerId: state.writerId, revision,
+    contentModelVersion: state.contentModelVersion,
   });
   ISSUED_LOCAL_RECEIPTS.set(receipt, { state, update: capturedUpdate });
   return receipt;
@@ -4099,6 +4117,7 @@ function makeHandle(state) {
     documentId: state.documentId,
     get actorUserId() { return state.actorUserId; },
     get pdfGenerationId() { return state.pdfGenerationId; },
+    get contentModelVersion() { return state.contentModelVersion; },
     getGenerationStatus: () => ({ pdfGenerationId: state.pdfGenerationId, blocked: state.generationBlocked,
       error: state.generationError, retirement: state.generationRetirement }),
     retireGeneration: ({ replacementGenerationId } = {}) => {
@@ -4261,20 +4280,62 @@ function makeHandle(state) {
     },
 
     /** Read a document-level meta value (e.g. the callouts list). */
-    getMeta(key) { return getMetaValue(state.doc, key); },
+    getMeta(key) {
+      if (state.contentModelVersion === 2 && key === 'spaces') {
+        return materializeSurveyCrdtV2(state.doc).spaces;
+      }
+      return getMetaValue(state.doc, key);
+    },
 
     /** Write a document-level meta value (idempotent; coarse whole-value). */
     setMeta(key, value) {
       assertHandleWritable(state);
+      if (state.contentModelVersion === 2 && key === 'spaces') {
+        throw Object.assign(new Error('Whole-space writes cannot update survey collaboration model 2.'),
+          { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
+      }
       return setMetaValue(state.doc, key, value, 'local');
     },
 
     /** Current survey markers as { [annotationId]: marker }. */
-    getSurveyMarkers() { return docToSurveyMarkers(state.doc); },
+    getSurveyMarkers() {
+      return state.contentModelVersion === 2
+        ? materializeSurveyCrdtV2(state.doc).surveyMarkers : docToSurveyMarkers(state.doc);
+    },
+
+    getSurveyState() {
+      if (state.contentModelVersion !== 2) {
+        throw Object.assign(new Error('This document does not use survey collaboration model 2.'),
+          { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
+      }
+      return materializeSurveyCrdtV2(state.doc);
+    },
+
+    updateSurveyMarkers(updater, opts = {}) {
+      assertHandleWritable(state);
+      if (state.contentModelVersion !== 2) {
+        throw Object.assign(new Error('This document does not use survey collaboration model 2.'),
+          { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
+      }
+      return updateSurveyMarkersV2(state.doc, updater, { ...opts, origin: 'local' });
+    },
+
+    updateSurveySpaces(updater, opts = {}) {
+      assertHandleWritable(state);
+      if (state.contentModelVersion !== 2) {
+        throw Object.assign(new Error('This document does not use survey collaboration model 2.'),
+          { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
+      }
+      return updateSurveySpacesV2(state.doc, updater, { ...opts, origin: 'local' });
+    },
 
     /** Push the survey-marker dict into the doc (minimal per-marker diff → ops). */
     applySurveyMarkers(markers, opts = {}) {
       assertHandleWritable(state);
+      if (state.contentModelVersion !== 1) {
+        throw Object.assign(new Error('Whole-marker writes cannot update survey collaboration model 2.'),
+          { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
+      }
       return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local', ...opts });
     },
 
@@ -4310,7 +4371,8 @@ function makeHandle(state) {
           mutationId: intent.mutationId,
           historyQuarantineGeneration: state.historyQuarantineGeneration,
           byPage: docToByPage(state.doc),
-          surveyMarkers: docToSurveyMarkers(state.doc),
+          surveyMarkers: state.contentModelVersion === 2
+            ? materializeSurveyCrdtV2(state.doc).surveyMarkers : docToSurveyMarkers(state.doc),
         };
       }
       if (result.status !== 'committed' && result.status !== 'noop') return result;
@@ -4326,7 +4388,8 @@ function makeHandle(state) {
         },
         historyQuarantineGeneration: quarantineGeneration,
         byPage,
-        surveyMarkers: docToSurveyMarkers(state.doc),
+        surveyMarkers: state.contentModelVersion === 2
+          ? materializeSurveyCrdtV2(state.doc).surveyMarkers : docToSurveyMarkers(state.doc),
       };
     },
 

@@ -10,6 +10,7 @@ import { gunzipSync } from 'node:zlib';
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
 import { syncByPageToDoc, syncSurveyMarkersToDoc, deletedPdfAnnotationStorageKey } from './annotationDocStore.js';
+import { initializeSurveyCrdtV2 } from './documentSurveyCrdtV2.js';
 import { transformPageState, pageNumberAfterOperation } from '../utils/pageAnnotationReindex.js';
 import { calloutToAnnotationObject, deriveCalloutsFromByPage } from '../utils/calloutAnnotationBridge.js';
 import { mapSurveyMarkerRowToLocalAnnotation } from './documentSurveyMarkerMapper.js';
@@ -215,7 +216,13 @@ export async function transformDocumentGenerationSource(input) {
     const payload = cloneJson(input.sourcePayload), sidecars = cloneJson(input.sidecars ?? []);
     check(Buffer.byteLength(JSON.stringify(payload)) <= 16 * 1024 * 1024, 'capacity');
     const semantic = payload.semantic, s = semantic?.sources;
-    check(object(semantic) && semantic.version === 1 && object(s) && object(semantic.document), 'source');
+    check(object(semantic) && [1, 2].includes(semantic.version) && object(s) && object(semantic.document), 'source');
+    const sourceContentModelVersion = semantic.version === 2
+      ? semantic.content_model_version : 1;
+    check([1, 2].includes(sourceContentModelVersion), 'content-model');
+    const targetContentModelVersion = input.targetContentModelVersion ?? sourceContentModelVersion;
+    check([1, 2].includes(targetContentModelVersion)
+      && !(sourceContentModelVersion === 2 && targetContentModelVersion !== 2), 'content-model');
     const documentId = semantic.document_id, generationId = semantic.generation_id;
     check(UUID.test(documentId) && semantic.document.id === documentId && (generationId === null || UUID.test(generationId))
       && UUID.test(input.operationId), 'source-binding');
@@ -246,9 +253,17 @@ export async function transformDocumentGenerationSource(input) {
     };
     const newDoc = () => { const doc = createDetachedYDoc(); docs.push(doc); return doc; };
     const apply = (doc, bytes) => { Y.applyUpdate(doc, bytes); };
-    const boundedDoc = doc => { let n = 0; for (const root of doc.share.values()) {
+    const boundedDoc = (doc, contentModelVersion = 1) => { let n = 0, surveyV2Entries = 0;
+      const surveyV2Roots = new Set(['surveyV2Meta', 'surveyMarkerLifecycle', 'surveyMarkerGroups',
+        'surveyChecklistResponses', 'surveySpaceLifecycle', 'surveySpaceGroups',
+        'surveySpacePageLifecycle', 'surveySpacePageGroups', 'surveyRegionLifecycle',
+        'surveyRegionGroups', 'surveyOrders']);
+      for (const [name, root] of doc.share) {
       check(root instanceof Y.Map || root.constructor === Y.AbstractType, 'yjs-root'); check(root._start === null, 'yjs-root');
-      n += [...Y.Map.prototype.keys.call(root)].length; check(n <= MAX_ROWS, 'capacity');
+      const count = [...Y.Map.prototype.keys.call(root)].length;
+      if (contentModelVersion === 2 && surveyV2Roots.has(name)) {
+        surveyV2Entries += count; check(surveyV2Entries <= MAX_ROWS * 16, 'capacity');
+      } else { n += count; check(n <= MAX_ROWS, 'capacity'); }
     } check(!doc.store.pendingStructs && !doc.store.pendingDs, 'yjs-dependencies'); };
     const validateRow = (row, generated = false) => { check(object(row) && row.document_id === documentId, 'row-binding');
       if (generated) check(row.generation_id === generationId, 'row-binding');
@@ -259,6 +274,7 @@ export async function transformDocumentGenerationSource(input) {
     check(Array.isArray(updates), 'wal'); let at = 0n;
     if (generationId !== null) {
       const baseline = s.generation_baseline; validateRow(baseline, true); at = seq(baseline.base_seq);
+      if (semantic.version === 2) check(baseline.content_model_version === sourceContentModelVersion, 'content-model');
       check([1,2].includes(baseline.baseline_encoding_version), 'encoding');
       check(at <= head, 'checkpoint');
       // A current snapshot is a standalone full state, not a CRDT delta from
@@ -270,8 +286,8 @@ export async function transformDocumentGenerationSource(input) {
     for (const row of updates) { validateRow(row, generationId !== null); const next = seq(row.seq);
       check(next > at && (generationId === null || next === at + 1n) && next <= head, 'wal-order');
       apply(modernDoc, decode(row.data_base64)); at = next; }
-    check(at === head, 'wal-head'); boundedDoc(modernDoc);
-    const materialized = cloneJson(materializeAnnotationGenerationState(modernDoc));
+    check(at === head, 'wal-head'); boundedDoc(modernDoc, sourceContentModelVersion);
+    const materialized = cloneJson(materializeAnnotationGenerationState(modernDoc, sourceContentModelVersion));
     // Accepted empty state is authoritative too; map count cannot authorize
     // resurrection from stale secondary stores.
     const authoritative = generationId !== null || snapshot !== null || updates.length > 0;
@@ -306,7 +322,7 @@ export async function transformDocumentGenerationSource(input) {
     };
     const regionTargets = new Set();
     const mint = ({ kind, sourceId }) => {
-      check(['annotation', 'region', 'row', 'survey-item'].includes(kind) && typeof sourceId === 'string' && sourceId.length > 0, 'copy-identity');
+      check(['annotation', 'region', 'row', 'survey-item', 'incarnation'].includes(kind) && typeof sourceId === 'string' && sourceId.length > 0, 'copy-identity');
       const hex = createHash('sha256').update(`${input.operationId}\u0000${kind}\u0000${sourceId}`).digest('hex');
       const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
       if (kind === 'annotation' || kind === 'region') put(identities[kind === 'annotation' ? 'annotations' : 'regions'],sourceId,id);
@@ -554,13 +570,29 @@ export async function transformDocumentGenerationSource(input) {
     // remains intact; fallback insertion order matches first source arrival.
     if(!authoritative)materialized.annotationsByPage=byPage(Object.values(modernIdentities).map(v=>[v.p,v.o]));
     const transformedModern = transform({ annotationsByPage: materialized.annotationsByPage,
-      surveyMarkers: materialized.surveyMarkers, deletedPdfAnnotations: materialized.deletedPdfAnnotations });
+      surveyMarkers: materialized.surveyMarkers,
+      spaces: materialized.spaces ?? materialized.annoMeta?.spaces ?? [],
+      deletedPdfAnnotations: materialized.deletedPdfAnnotations });
     // Include modern-only and sidecar-only carriers before resolving links.
     projectSurveyItems();
-    const modern = { version: 1, annotationsByPage: transformedModern.annotationsByPage,
-      surveyMarkers: transformedModern.surveyMarkers, deletedPdfAnnotations: transformedModern.deletedPdfAnnotations, annoMeta: nextMeta };
+    if (targetContentModelVersion === 2) delete nextMeta.spaces;
+    const modern = { version: 1,
+      ...(targetContentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
+      annotationsByPage: transformedModern.annotationsByPage,
+      surveyMarkers: transformedModern.surveyMarkers,
+      ...(targetContentModelVersion === 2 ? { spaces: transformedModern.spaces } : {}),
+      deletedPdfAnnotations: transformedModern.deletedPdfAnnotations, annoMeta: nextMeta };
     const fresh = newDoc(); fresh.clientID = createHash('sha256').update(input.operationId).digest().readUInt32BE(0) || 1;
-    syncByPageToDoc(fresh, modern.annotationsByPage); syncSurveyMarkersToDoc(fresh, modern.surveyMarkers);
+    syncByPageToDoc(fresh, modern.annotationsByPage);
+    if (targetContentModelVersion === 2) {
+      let incarnationSequence = 0;
+      initializeSurveyCrdtV2(fresh, {
+        surveyMarkers: modern.surveyMarkers,
+        spaces: modern.spaces,
+        origin: 'generation-transform',
+        createId: () => mint({ kind: 'incarnation', sourceId: String(++incarnationSequence) }),
+      });
+    } else syncSurveyMarkersToDoc(fresh, modern.surveyMarkers);
     for (const [key, value] of Object.entries(nextMeta)) fresh.getMap('annoMeta').set(key, value);
     for (const d of modern.deletedPdfAnnotations) fresh.getMap('deletedPdfAnnotations').set(deletedPdfAnnotationStorageKey(d.pageNumber, d.pdfAnnotationId), d);
     const document = { ...semantic.document };
@@ -594,8 +626,12 @@ export async function transformDocumentGenerationSource(input) {
       state: Y.encodeStateAsUpdate(freshLegacy), stateVector: Y.encodeStateVector(freshLegacy) };
     const baselineUpdate = Y.encodeStateAsUpdate(fresh);
     check(baselineUpdate.byteLength + legacyCheckpoint.state.byteLength + legacyCheckpoint.stateVector.byteLength <= MAX_BYTES, 'capacity');
-    return { version: 1, operationId: input.operationId, operation: op,
-      source: { documentId, generationId, walHead: semantic.wal_head, sourceObject: cloneJson(semantic.source_object) },
+    return { version: targetContentModelVersion === 2 ? 2 : 1,
+      ...(targetContentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
+      operationId: input.operationId, operation: op,
+      source: { documentId, generationId, walHead: semantic.wal_head,
+        ...(targetContentModelVersion === 2 ? { contentModelVersion: sourceContentModelVersion } : {}),
+        sourceObject: cloneJson(semantic.source_object) },
       baselineUpdate, legacyCheckpoint, identityMap: identities,
       projection: { document, modern, documentAnnotations: rows, legacyYjs: legacyProjection,
         surveySessions: [...sessions.values()], surveyItems, sidecars: transformedSidecars },

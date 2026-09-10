@@ -40,7 +40,8 @@ export function HookOwnedGeneratedDocumentProvider({ checkedBundle, currentActor
       || record?.checkedBundle !== checkedBundle || !handle
       || handle.actorUserId !== checkedBundle.actorUserId
       || handle.documentId !== checkedBundle.documentId
-      || handle.pdfGenerationId !== checkedBundle.pdfGenerationId) return false;
+      || handle.pdfGenerationId !== checkedBundle.pdfGenerationId
+      || (handle.contentModelVersion ?? 1) !== (checkedBundle.contentModelVersion ?? 1)) return false;
     setPublished(previous => previous?.scope === scope && previous.open === open && previous.handle === handle
       ? previous : { scope, open, handle });
     return true;
@@ -71,7 +72,7 @@ export function GeneratedDocumentProvider(props) {
     return () => { openScopeRef.current = null; };
   }, []);
   const key = JSON.stringify([props.checkedBundle?.actorUserId, props.checkedBundle?.documentId,
-    props.checkedBundle?.pdfGenerationId]);
+    props.checkedBundle?.pdfGenerationId, props.checkedBundle?.contentModelVersion ?? 1]);
   return <GeneratedDocumentProviderInner key={key} {...props} openScopeRef={openScopeRef} />;
 }
 

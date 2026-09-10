@@ -1,8 +1,15 @@
 // Bind the existing journal API once so no generated call can fall back to a
 // legacy namespace. Records still carry their own exact scope and key.
-export function bindAnnotationGenerationOutbox(store, { documentId, actorUserId, pdfGenerationId }) {
+export function bindAnnotationGenerationOutbox(store, {
+  documentId, actorUserId, pdfGenerationId, contentModelVersion = 1,
+}) {
   if (!pdfGenerationId) return store;
-  const options = Object.freeze({ documentId, actorUserId, pdfGenerationId });
+  if (![1, 2].includes(contentModelVersion)) {
+    throw Object.assign(new Error('Annotation content model must be 1 or 2.'),
+      { code: 'ANNOTATION_OUTBOX_SCOPE_MISMATCH' });
+  }
+  const options = Object.freeze({ documentId, actorUserId, pdfGenerationId,
+    ...(contentModelVersion === 1 ? {} : { contentModelVersion }) });
   const positions = { list:2, listQuarantined:2, loadCleanState:2, readLocalState:3,
     readLocalStateFresh:3, readRetiredScope:3, assertScopeCurrent:3,
     delete:2, deleteMany:2, markRejected:2, deleteFromOrdinal:5, compactAccepted:5, deleteScope:3, retireScope:3 };
