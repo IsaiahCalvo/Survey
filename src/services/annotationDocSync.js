@@ -4421,6 +4421,8 @@ function makeHandle(state) {
         ...result,
         historyQuarantineGeneration: quarantineGeneration,
         byPage,
+        surveyMarkers: state.contentModelVersion === 2
+          ? materializeSurveyCrdtV2(state.doc).surveyMarkers : docToSurveyMarkers(state.doc),
         deletedPdfAnnotations: docToDeletedPdfAnnotations(state.doc),
       };
     },
@@ -4440,6 +4442,8 @@ function makeHandle(state) {
       return {
         ...result,
         byPage,
+        surveyMarkers: state.contentModelVersion === 2
+          ? materializeSurveyCrdtV2(state.doc).surveyMarkers : docToSurveyMarkers(state.doc),
         deletedPdfAnnotations: docToDeletedPdfAnnotations(state.doc),
       };
     },

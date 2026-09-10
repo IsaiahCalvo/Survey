@@ -51,6 +51,7 @@ export default function DocumentLockBanner({
   viewerUserId,
   onLockStateChange,
   isActive = true,
+  client,
 }) {
   const [lockedAt, setLockedAt] = useState(null);
   const [lockedBy, setLockedBy] = useState(null);
@@ -109,8 +110,8 @@ export default function DocumentLockBanner({
     // guard prevents a slower read from overwriting any newer Realtime event.
     const unsubscribe = subscribeDocumentLockState(documentId, (state) => {
       if (!cancelled) sequence.applyRealtime(state);
-    });
-    fetchDocumentLockState(documentId).then((state) => {
+    }, client);
+    fetchDocumentLockState(documentId, client).then((state) => {
       if (cancelled) return;
       sequence.applyInitial(initialGeneration, state);
     });
@@ -118,7 +119,7 @@ export default function DocumentLockBanner({
       cancelled = true;
       unsubscribe();
     };
-  }, [documentId]);
+  }, [client, documentId]);
 
   // body[data-readonly] toggle while locked. ReadOnlyGate.css owns the visual
   // treatment — we just flip the same flag so the toolbar dims for free. We

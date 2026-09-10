@@ -690,7 +690,7 @@ test('atomic erase preserves old save-pipeline side effects without re-entering 
   );
 });
 
-test('saved and pending survey markers stay on the established whole-delete path', () => {
+test('pending and model-1 survey markers keep the whole-delete path while model 2 commits exact ids', () => {
   const canEraseStart = VIEWER_SOURCE.indexOf('const canEraseSurveyMarker = useCallback');
   const canEraseEnd = VIEWER_SOURCE.indexOf('const handleDeleteSurveyMarker', canEraseStart);
   const canEraseSource = VIEWER_SOURCE.slice(canEraseStart, canEraseEnd);
@@ -701,10 +701,12 @@ test('saved and pending survey markers stay on the established whole-delete path
   const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
   assert.match(
     commitSource,
-    /if \(targets\.length === 0\)[\s\S]*?onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/,
+    /if \(targets\.length === 0 && \([\s\S]*?surveyMarkerHitIds\.length === 0[\s\S]*?onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/,
   );
   assert.doesNotMatch(commitSource, /durableMarkerIds/);
   assert.doesNotMatch(commitSource, /transientSurveyMarkerIds/);
+  assert.match(commitSource, /surveyMarkerIds: surveyMarkerHitIds/);
+  assert.match(commitSource, /committedSurveyMarkerIds\.has\(String\(annotationId\)\)/);
 
   const viewerCommitStart = VIEWER_SOURCE.indexOf('const handleEraseIntent = useCallback');
   const viewerCommitEnd = VIEWER_SOURCE.indexOf('\n  const getPageSurveyRegionId', viewerCommitStart);

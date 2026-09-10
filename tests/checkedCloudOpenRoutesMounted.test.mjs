@@ -304,15 +304,32 @@ test('no-ID and DEV files stay on local selection paths with no cloud open', asy
     && shellSource.slice(node.start, node.end).includes('window.__devTestPdf')).arguments[0];
   const devFile = new File(['dev'], 'dev.pdf');
   const devWindow = { __devTestPdf: devFile };
-  const callback = Function('window', 'handleDocumentSelect',
+  const callback = Function('window', 'handleDocumentSelect', 'devInitialCheckedBundle',
     `return (${shellSource.slice(devEffect.start, devEffect.end).replaceAll('import.meta.env.DEV', 'true')});`)(
-      devWindow, file => selected.push(file),
+      devWindow, file => selected.push(file), null,
     );
   callback();
 
   assert.deepEqual(selected, [localFile, devFile]);
   assert.equal(devWindow.__devTestPdf, null);
   assert.deepEqual(cloudOpens, []);
+});
+
+test('DEV issued checked open uses the central checked selector before the raw PDF seam', () => {
+  const ast = parse(shellSource, { sourceType: 'module', plugins: ['jsx'] });
+  const devEffect = find(ast, node => node.type === 'CallExpression' && node.callee.name === 'useEffect'
+    && shellSource.slice(node.start, node.end).includes('window.__devTestPdf')).arguments[0];
+  const checkedBundle = Object.freeze({ fixture: 'issued-bundle-identity' });
+  const rawFile = new File(['dev'], 'dev.pdf');
+  const devWindow = { __devTestPdf: rawFile };
+  const calls = [];
+  const callback = Function('window', 'handleDocumentSelect', 'devInitialCheckedBundle',
+    `return (${shellSource.slice(devEffect.start, devEffect.end).replaceAll('import.meta.env.DEV', 'true')});`)(
+      devWindow, (...args) => calls.push(args), checkedBundle,
+    );
+  callback();
+  assert.deepEqual(calls, [[null, null, checkedBundle]]);
+  assert.equal(devWindow.__devTestPdf, rawFile);
 });
 
 const noop = () => {};

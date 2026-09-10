@@ -131,7 +131,9 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
   documentSurveyDefinitionEnabled = false,
   documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null,
-  localDocumentStateWriter = null, localDocumentFileReplacer = null }) {
+  localDocumentStateWriter = null, localDocumentFileReplacer = null,
+  annotationDocClient = null, devInitialCheckedBundle = null,
+  devOnGenerationSession = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
   const { replaceDocument, downloadDocument: downloadFromStorage } = useStorage();
@@ -1183,6 +1185,10 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
 
   // DEV-ONLY: Auto-open test PDF when loaded via dev test route
   useEffect(() => {
+    if (import.meta.env.DEV && devInitialCheckedBundle) {
+      handleDocumentSelect(null, null, devInitialCheckedBundle);
+      return;
+    }
     if (import.meta.env.DEV && window.__devTestPdf) {
       const file = window.__devTestPdf;
       window.__devTestPdf = null; // consume so it only fires once
@@ -3435,6 +3441,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                 >
                   <DocumentTabProvider tab={tab}
                     currentActorUserId={user?.id || null} isActive={isVisible}
+                    client={annotationDocClient || undefined}
                     closeDocument={() => handleTabClose(tab.id)}>
                     {({ checkedBundle, onGenerationSession }) => <>
                     <PageReplacementRecoveryNotice
@@ -3447,6 +3454,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
+                      client={annotationDocClient || undefined}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -3460,7 +3468,13 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
                       checkedBundle={checkedBundle}
-                      onGenerationSession={onGenerationSession}
+                      onGenerationSession={(record) => {
+                        const accepted = onGenerationSession?.(record);
+                        if (import.meta.env.DEV && accepted !== false
+                          && typeof devOnGenerationSession === 'function') devOnGenerationSession(record);
+                        return accepted;
+                      }}
+                      annotationDocClient={annotationDocClient || undefined}
                       onBack={handleBack}
                       tabId={tab.id}
                       isActive={isVisible}

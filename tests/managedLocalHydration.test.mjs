@@ -106,11 +106,13 @@ test('actual sidebar load uses canonical page names/bookmarks and keeps the deli
     checkedLocalPageState: null,
     migrateSidebarData: data => data,
     setPageNames: value => { values.pageNames = value; }, setBookmarks: value => { values.bookmarks = value; },
-    setHasImportedPdfBookmarks() {}, setSpaces() {}, setPageTransformations() {}, setActiveSpaceId: value => { values.activeSpaceId = value; },
+    setHasImportedPdfBookmarks() {}, setSpacesState: value => { values.spaces = value; },
+    setPageTransformations() {}, setActiveSpaceId: value => { values.activeSpaceId = value; },
   };
   evaluate(effect.arguments[0], scope)();
   assert.deepEqual(values.pageNames, { 1: 'saved-page' });
   assert.deepEqual(values.bookmarks, [{ id: 'saved-bookmark', pageIds: [1] }]);
+  assert.deepEqual(values.spaces, JSON.parse(canonical.entries[`pdfSidebar_${localId}`]).spaces);
   assert.equal(values.activeSpaceId, null);
 });
 

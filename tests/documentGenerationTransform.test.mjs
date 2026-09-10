@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as Y from 'yjs';
 import { gzipSync } from 'node:zlib';
 import { transformDocumentGenerationSource } from '../src/services/documentGenerationTransform.js';
@@ -10,9 +11,15 @@ import { transformPageState } from '../src/utils/pageAnnotationReindex.js';
 import { mapSurveyMarkerRowToLocalAnnotation } from '../src/services/documentSurveyMarkerMapper.js';
 const uuid=n=>`86000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const documentId=uuid(1),actor=uuid(2),operationId=uuid(3);
+const transformSource=readFileSync(new URL('../src/services/documentGenerationTransform.js',import.meta.url),'utf8');
 const b64=bytes=>Buffer.from(bytes).toString('base64');
 const shape={type:'rect',pageNumber:2,left:10,top:20,width:30,height:40,
   data:{id:'mark',pageNumber:2,notes:'kept'},meta:{authorId:actor}};
+test('model 2 capacity uses the complete shared survey root registry',()=>{
+  assert.match(transformSource,/import \{ initializeSurveyCrdtV2, SURVEY_V2_ROOTS \}/);
+  assert.match(transformSource,/const surveyV2Roots = new Set\(Object\.values\(SURVEY_V2_ROOTS\)\);/);
+  assert.doesNotMatch(transformSource,/const surveyV2Roots = new Set\(\['surveyV2Meta'/);
+});
 function fixture({generation=null,gzip=false}={}){
   const doc=new Y.Doc();syncByPageToDoc(doc,{2:{objects:[structuredClone(shape)]}});
   doc.getMap('annoMeta').set('spaces',[{id:'space',assignedPages:[{pageId:2,regions:[{regionId:'region',pageId:2,points:[1,2]}]}]}]);

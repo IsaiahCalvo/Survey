@@ -212,8 +212,10 @@ export function useAnnotationDoc({
   // comment above). Resolves async, so it is read through a ref at open time
   // and a dedicated effect re-checks when it lands late.
   docRole = null,
+  documentLocked = false,
   eraseEffectConsumer = null,
   onHistoryQuarantine = null,
+  annotationDocClient = supabase,
 }) {
   const handleRef = useRef(null);
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
@@ -237,6 +239,7 @@ export function useAnnotationDoc({
   const spacesRef = useRef(spaces);
   const surveyMarkersRef = useRef(surveyMarkers);
   const docRoleRef = useRef(docRole);
+  const documentLockedRef = useRef(documentLocked);
   // Ids of legacy meta callouts projected LOCALLY by the read-only fallback —
   // stripped out of every capture until the durable migration lands.
   const metaFallbackIdsRef = useRef(new Set());
@@ -253,13 +256,17 @@ export function useAnnotationDoc({
   spacesRef.current = spaces;
   surveyMarkersRef.current = surveyMarkers;
   docRoleRef.current = docRole;
+  documentLockedRef.current = documentLocked;
 
   const localReceiptScopeRef = useRef(null);
   const pdfGenerationId = checkedBundle?.pdfGenerationId ?? null;
   const localScopeKey = JSON.stringify([documentId || null, userId || null, pdfGenerationId]);
-  if (localReceiptScopeRef.current?.key !== localScopeKey || localReceiptScopeRef.current?.checkedBundle !== checkedBundle) {
+  if (localReceiptScopeRef.current?.key !== localScopeKey
+    || localReceiptScopeRef.current?.checkedBundle !== checkedBundle
+    || localReceiptScopeRef.current?.annotationDocClient !== annotationDocClient) {
     localReceiptScopeRef.current = {
       key: localScopeKey, documentId, actorUserId: userId, pdfGenerationId, checkedBundle,
+      annotationDocClient,
       handle: null, ready: false, closeReceipt: null, mounted: false,
       receipts: new WeakMap(),
     };
@@ -416,7 +423,7 @@ export function useAnnotationDoc({
         handle = await openAnnotationDoc({
           documentId,
           ...(checkedBundle === null ? {} : { checkedBundle, pdfGenerationId }),
-          supabase,
+          supabase: annotationDocClient,
           clientId: getClientId(),
           actorUserId: userId,
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
@@ -682,7 +689,8 @@ export function useAnnotationDoc({
         localScope.closeReceipt.catch(() => {});
       } else if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, checkedBundle, pdfGenerationId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
+  }, [enabled, documentId, userId, checkedBundle, pdfGenerationId, annotationDocClient,
+    setAnnotationsByPage, setSpaces, setSurveyMarkers]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an
@@ -710,7 +718,7 @@ export function useAnnotationDoc({
   // must never become the first diff a viewer-tier client pushes.
   useEffect(() => {
     const h = getScopedHandle();
-    if (!h || !readyRef.current) return;
+    if (!h || !readyRef.current || !localScope.renderedReady) return;
     const capturedByPage = stripMetaFallbackCallouts(
       annotationsByPage,
       metaFallbackIdsRef.current,
@@ -767,7 +775,7 @@ export function useAnnotationDoc({
   // instead of the localStorage/Storage-sidecar pair.
   useEffect(() => {
     const h = getScopedHandle();
-    if (!h || !readyRef.current) return;
+    if (!h || !readyRef.current || !localScope.renderedReady) return;
     if (h.contentModelVersion === 2) return;
     // An absent kind in a checked baseline is already empty. Do not turn
     // hydration into a local metadata edit, including for read-only roles.
@@ -781,7 +789,7 @@ export function useAnnotationDoc({
   // for highlights — hydrate, realtime, and durability all flow through here.
   useEffect(() => {
     const h = getScopedHandle();
-    if (!h || !readyRef.current) return;
+    if (!h || !readyRef.current || !localScope.renderedReady) return;
     if (h.contentModelVersion === 2) return;
     h.applySurveyMarkers(surveyMarkers);
   }, [surveyMarkers, getScopedHandle]);
@@ -884,6 +892,13 @@ export function useAnnotationDoc({
 
     const ownerHandle = cloudHandle;
 
+    if (ownerHandle.contentModelVersion === 2 && !isWritableDocRole(docRoleRef.current)) {
+      return { status: 'cancelled', reason: 'read-only', mutationId: intent?.mutationId || null };
+    }
+    if (ownerHandle.contentModelVersion === 2 && documentLockedRef.current) {
+      return { status: 'cancelled', reason: 'document-locked', mutationId: intent?.mutationId || null };
+    }
+
     const result = await ownerHandle.commitEraseIntent(intent, options);
     if (getScopedHandle() !== ownerHandle || !readyRef.current) {
       return {
@@ -947,6 +962,12 @@ export function useAnnotationDoc({
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
+    if (ownerHandle.contentModelVersion === 2 && !isWritableDocRole(docRoleRef.current)) {
+      return { status: 'conflict', reason: 'read-only' };
+    }
+    if (ownerHandle.contentModelVersion === 2 && documentLockedRef.current) {
+      return { status: 'conflict', reason: 'document-locked' };
+    }
     const result = ownerHandle.applyEraseHistoryTransition(transition, direction);
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
@@ -960,13 +981,22 @@ export function useAnnotationDoc({
         || [],
     );
     setAnnotationsByPage(nextByPage);
-    return { ...result, byPage: nextByPage };
-  }, [setAnnotationsByPage, getScopedHandle]);
+    const nextSurveyMarkers = result.surveyMarkers || ownerHandle.getSurveyMarkers();
+    surveyMarkersRef.current = nextSurveyMarkers;
+    setSurveyMarkers(nextSurveyMarkers);
+    return { ...result, byPage: nextByPage, surveyMarkers: nextSurveyMarkers };
+  }, [setAnnotationsByPage, setSurveyMarkers, getScopedHandle]);
 
   const restoreEraseDeletion = useCallback((restoreActions, options = {}) => {
     const ownerHandle = getScopedHandle();
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
+    }
+    if (ownerHandle.contentModelVersion === 2 && !isWritableDocRole(docRoleRef.current)) {
+      return { status: 'conflict', reason: 'read-only' };
+    }
+    if (ownerHandle.contentModelVersion === 2 && documentLockedRef.current) {
+      return { status: 'conflict', reason: 'document-locked' };
     }
     const result = ownerHandle.restoreEraseDeletion(restoreActions, options);
     if (result.status !== 'applied' && result.status !== 'noop') return result;
@@ -981,8 +1011,11 @@ export function useAnnotationDoc({
         || [],
     );
     setAnnotationsByPage(nextByPage);
-    return { ...result, byPage: nextByPage };
-  }, [setAnnotationsByPage, getScopedHandle]);
+    const nextSurveyMarkers = result.surveyMarkers || ownerHandle.getSurveyMarkers();
+    surveyMarkersRef.current = nextSurveyMarkers;
+    setSurveyMarkers(nextSurveyMarkers);
+    return { ...result, byPage: nextByPage, surveyMarkers: nextSurveyMarkers };
+  }, [setAnnotationsByPage, setSurveyMarkers, getScopedHandle]);
 
   const getHistoryQuarantineGeneration = useCallback(() => (
     getScopedHandle()?.getHistoryQuarantineGeneration?.() ?? null

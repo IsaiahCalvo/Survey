@@ -15,7 +15,12 @@ test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the leg
   // Cloud docs start highlights empty (or the same-pdf-reload snapshot); the
   // durable Y.Doc (useAnnotationDoc) then paints them. They are NO LONGER read
   // from the legacy document_annotations table on open.
-  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*managedLocalStateReader\s*\?\s*JSON\.parse\(managedLocalStateReader\.getItem\(`surveyMarkers_\$\{id\}`\) \|\| '\{\}'\)\s*:\s*loadSurveyMarkers\(id\);/);
+  assert.match(APP_SOURCE, /const hasCheckedHydratedState = checkedBundle !== null[\s\S]*?normalAnnotationHydration\.documentId === pdfFile\?\.id;/);
+  assert.match(APP_SOURCE, /annotationsByPageRef\.current = checkedBundle !== null\s*\? previouslyVisibleAnnotationsByPage : \{\};/);
+  assert.match(APP_SOURCE, /let initialAnnotationsByPage = hasCheckedHydratedState\s*\? previouslyVisibleAnnotationsByPage : migratedAnnotationsByPage;/);
+  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \|\| hasCheckedHydratedState \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*managedLocalStateReader\s*\?\s*JSON\.parse\(managedLocalStateReader\.getItem\(`surveyMarkers_\$\{id\}`\) \|\| '\{\}'\)\s*:\s*loadSurveyMarkers\(id\);/);
+  assert.match(APP_SOURCE, /if \(checkedBundle === null\) setSurveyMarkersState\(loadedSurveyMarkers\);/);
+  assert.match(APP_SOURCE, /if \(checkedBundle === null\) \{\s*setAnnotationsByPage\(initialAnnotationsByPage\);[\s\S]*?setCallouts\(loadedCallouts\);\s*\}/);
   // useAnnotationDoc owns highlight hydrate + capture + realtime. Hydration
   // receives the raw React setter; user intents go through the model-aware,
   // scope-fenced bridge so a hydrate read can never become a remote write.
@@ -26,6 +31,13 @@ test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the leg
   assert.doesNotMatch(APP_SOURCE, /loadAnnotationsFromSupabase\(documentId\)/);
   // The hydration-ready signal is now sourced from the annotation doc.
   assert.match(APP_SOURCE, /source: 'annotation-doc'/);
+  // Model 2 survey markers live outside annotationsByPage. The legacy orphan
+  // cleanup uses a broad translucent-rectangle heuristic and must not erase
+  // ordinary model-2 rectangles after the checked hook hydrates them.
+  assert.match(
+    APP_SOURCE,
+    /Cleanup orphaned canvas surveyMarkers[\s\S]*?if \(checkedBundle\?\.contentModelVersion === 2\) return;[\s\S]*?Clean up orphaned surveyMarkers from annotationsByPage/,
+  );
 });
 
 test('survey marker hydration cannot stay pending after a cancelled same-document load', () => {
@@ -43,8 +55,8 @@ test('same-document reload preserves cloud-owned layers instead of blanking them
   assert.match(APP_SOURCE, /const previousSurveyMarkersForSamePdf = surveyMarkersRef\.current \|\| \{\};/);
   assert.match(APP_SOURCE, /const previousCalloutsForSamePdf = calloutsRef\.current \|\| \[\];/);
   assert.match(APP_SOURCE, /const previousSpacesForSamePdf = spacesRef\.current \|\| \[\];/);
-  assert.match(APP_SOURCE, /spacesRef\.current = isSamePdfReload \? previousSpacesForSamePdf : \[\];/);
-  assert.match(APP_SOURCE, /setSpaces\(isSamePdfReload \? previousSpacesForSamePdf : \[\]\);/);
+  assert.match(APP_SOURCE, /spacesRef\.current = checkedBundle !== null \|\| isSamePdfReload \? previousSpacesForSamePdf : \[\];/);
+  assert.match(APP_SOURCE, /if \(checkedBundle === null\) \{\s*setSpacesState\(isSamePdfReload \? previousSpacesForSamePdf : \[\]\);\s*\}/);
   assert.match(APP_SOURCE, /const loadedCallouts = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousCalloutsForSamePdf : \[\]\)\s*:\s*managedLocalStateReader\s*\?\s*JSON\.parse\(managedLocalStateReader\.getItem\(`callouts_\$\{id\}`\) \|\| '\[\]'\)\s*:\s*loadCallouts\(id\);/);
 });
 

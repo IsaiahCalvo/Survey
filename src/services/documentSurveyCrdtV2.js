@@ -15,11 +15,15 @@ export const SURVEY_V2_ROOTS = Object.freeze({
   regionLifecycle: 'surveyRegionLifecycle',
   regionGroups: 'surveyRegionGroups',
   orders: 'surveyOrders',
+  eraseHistory: 'surveyMarkerEraseHistory',
 });
 
 const MODEL_KEY = 'contentModelVersion';
 const LIVE = 'live';
 const DELETED = 'deleted';
+const MAX_ERASE_HISTORY_ENTRIES = 4_096;
+const MAX_ERASE_HISTORY_BYTES = 16 * 1024 * 1024;
+const PREPARED_SURVEY_PLANS = new WeakMap();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -113,6 +117,83 @@ function storedData(value) {
   return decodeStoredJson(value.json);
 }
 
+const eraseHistoryKey = (mutationId, markerId) => tuple(mutationId, markerId);
+
+function parseEraseHistoryKey(value) {
+  if (typeof value !== 'string' || value[0] !== '[') return null;
+  try {
+    const parts = JSON.parse(value);
+    return Array.isArray(parts) && parts.length === 2
+      && parts.every(part => typeof part === 'string' && part.length > 0)
+      ? parts : null;
+  } catch {
+    return null;
+  }
+}
+
+function readEraseHistory(historyMap, mutationId) {
+  const legacyRaw = historyMap.get(mutationId);
+  const splitEntries = [];
+  historyMap.forEach((raw, key) => {
+    const parts = parseEraseHistoryKey(key);
+    if (parts?.[0] !== mutationId) return;
+    const data = storedData(raw);
+    if (!record(data) || data.version !== 2 || data.mutationId !== mutationId
+      || data.markerId !== parts[1] || !Number.isInteger(data.index) || data.index < 0
+      || !Number.isInteger(data.total) || data.total < 1 || data.index >= data.total
+      || !UUID.test(data.incarnationId)
+      || (data.phase !== 'deleted' && data.phase !== 'restored')) {
+      invalid('malformed survey erase history');
+    }
+    splitEntries.push({ key, raw, data, ...data });
+  });
+  if (legacyRaw !== undefined && splitEntries.length > 0) invalid('mixed survey erase history versions');
+  if (legacyRaw !== undefined) {
+    const data = storedData(legacyRaw);
+    if (!record(data) || data.version !== 1 || data.mutationId !== mutationId
+      || !Array.isArray(data.entries)) invalid('malformed survey erase history');
+    return {
+      version: 1,
+      data,
+      entries: data.entries.map(entry => ({
+        ...entry,
+        key: mutationId,
+        raw: legacyRaw,
+        data: entry,
+        markerId: identifier(entry?.markerId, 'marker id'),
+      })),
+    };
+  }
+  if (splitEntries.length === 0) return null;
+  const total = splitEntries[0].total;
+  if (splitEntries.some(entry => entry.total !== total)
+    || splitEntries.length !== total
+    || new Set(splitEntries.map(entry => entry.index)).size !== total) {
+    invalid('incomplete survey erase history');
+  }
+  splitEntries.sort((left, right) => left.index - right.index);
+  return { version: 2, entries: splitEntries };
+}
+
+function eraseHistoryUsage(historyMap) {
+  let entries = 0;
+  let bytes = 0;
+  historyMap.forEach((raw, key) => {
+    bytes += new TextEncoder().encode(JSON.stringify(raw)).byteLength;
+    const parts = parseEraseHistoryKey(key);
+    if (parts) {
+      entries += 1;
+      return;
+    }
+    const legacy = storedData(raw);
+    if (!record(legacy) || legacy.version !== 1 || !Array.isArray(legacy.entries)) {
+      invalid('malformed survey erase history');
+    }
+    entries += legacy.entries.length;
+  });
+  return { entries, bytes };
+}
+
 function canonicalJson(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -160,7 +241,10 @@ function maps(doc) {
 }
 
 export function readSurveyCrdtContentModelVersion(doc) {
-  const value = maps(doc).meta.get(MODEL_KEY);
+  if (!(doc instanceof Y.Doc) || doc.isDestroyed) invalid('live Y.Doc required');
+  if (!doc.share.has(SURVEY_V2_ROOTS.meta)) return ANNOTATION_CONTENT_MODEL_LEGACY;
+  const meta = doc.getMap(SURVEY_V2_ROOTS.meta);
+  const value = meta.get(MODEL_KEY);
   return value === undefined ? ANNOTATION_CONTENT_MODEL_LEGACY : value;
 }
 
@@ -414,6 +498,223 @@ function commitPlan(doc, operations, origin) {
     }
   }, origin);
   return true;
+}
+
+function applyOperations(operations) {
+  for (const operation of operations) {
+    if (own(operation, 'value')) operation.map.set(operation.key, operation.value);
+    else operation.map.delete(operation.key);
+  }
+}
+
+function issuePreparedPlan(doc, payload) {
+  const token = Object.freeze({ kind: 'survey-crdt-v2-plan' });
+  PREPARED_SURVEY_PLANS.set(token, { doc, sealed: false, consumed: false, ...payload });
+  return token;
+}
+
+export function sealPreparedSurveyCrdtV2Plan(doc, token) {
+  const plan = PREPARED_SURVEY_PLANS.get(token);
+  if (!plan || plan.doc !== doc || plan.consumed || plan.sealed) return false;
+  if (!same(materializeSurveyCrdtV2(doc), plan.expectedProjection)) return false;
+  for (const [key, expected] of plan.expectedLifecycle) {
+    if (!same(maps(doc).markerLifecycle.get(key), expected)) return false;
+  }
+  for (const [key, expected] of plan.expectedHistory) {
+    if (!same(maps(doc).eraseHistory.get(key) ?? null, expected)) return false;
+  }
+  plan.sealed = true;
+  return true;
+}
+
+// Apply only a plan sealed synchronously just before the caller's sole Y.Doc
+// transaction. Planning, JSON validation, ID allocation and CAS checks have
+// already finished, so this step cannot accept a foreign or stale plan.
+export function applyPreparedSurveyCrdtV2Plan(doc, token) {
+  const plan = PREPARED_SURVEY_PLANS.get(token);
+  if (!plan || plan.doc !== doc || !plan.sealed || plan.consumed) {
+    mismatch('Survey collaboration plan is foreign, stale, or unsealed.');
+  }
+  plan.consumed = true;
+  applyOperations(plan.operations);
+  return plan.result;
+}
+
+export function prepareSurveyMarkerEraseV2(doc, {
+  mutationId,
+  targets,
+  createId = defaultCreateId,
+} = {}) {
+  requireV2(doc);
+  const normalizedMutationId = identifier(mutationId, 'erase mutation id');
+  if (!Array.isArray(targets) || targets.length === 0) invalid('survey erase targets required');
+  const current = materializeSurveyCrdtV2(doc);
+  const desired = cloneJson(current.surveyMarkers);
+  const store = maps(doc);
+  const seen = new Set();
+  const entries = [];
+  const expectedLifecycle = [];
+  for (const target of targets) {
+    const markerId = identifier(target?.markerId, 'marker id');
+    if (seen.has(markerId)) invalid('duplicate survey erase marker id');
+    seen.add(markerId);
+    const wrappedExpected = {};
+    Object.defineProperty(wrappedExpected, markerId, {
+      value: target?.expectedMarker, enumerable: true, writable: true, configurable: true,
+    });
+    const normalizedExpected = normalizedMarkerProjection(markerProjectionJson(wrappedExpected))[markerId];
+    if (!own(current.surveyMarkers, markerId)
+      || !same(current.surveyMarkers[markerId], normalizedExpected)) {
+      return { status: 'conflict', reason: 'survey-marker-conflict' };
+    }
+    const life = cloneJson(incarnation(store.markerLifecycle.get(markerId)));
+    expectedLifecycle.push([markerId, life]);
+    entries.push({ markerId, marker: cloneJson(current.surveyMarkers[markerId]),
+      incarnationId: life.incarnationId, phase: 'deleted' });
+    delete desired[markerId];
+  }
+  if (readEraseHistory(store.eraseHistory, normalizedMutationId)) {
+    return { status: 'conflict', reason: 'survey-erase-replay' };
+  }
+  const usage = eraseHistoryUsage(store.eraseHistory);
+  const plannedHistoryBytes = entries.reduce((total, entry, index) => total
+    + new TextEncoder().encode(JSON.stringify({ json: encodeStoredJson({
+      version: 2, mutationId: normalizedMutationId, markerId: entry.markerId,
+      index, total: entries.length, marker: entry.marker,
+      incarnationId: entry.incarnationId, phase: entry.phase,
+    }) })).byteLength, 0);
+  if (usage.entries + entries.length > MAX_ERASE_HISTORY_ENTRIES
+    || usage.bytes + plannedHistoryBytes > MAX_ERASE_HISTORY_BYTES) {
+    return { status: 'conflict', reason: 'survey-erase-history-capacity' };
+  }
+  const operations = applyMarkerProjection(doc, current.surveyMarkers, desired, {
+    origin: 'survey-erase-plan', createId,
+  });
+  const expectedHistory = [];
+  entries.forEach((entry, index) => {
+    const key = eraseHistoryKey(normalizedMutationId, entry.markerId);
+    expectedHistory.push([key, null]);
+    planDataSet(operations, store.eraseHistory, key, {
+      version: 2,
+      mutationId: normalizedMutationId,
+      markerId: entry.markerId,
+      index,
+      total: entries.length,
+      marker: entry.marker,
+      incarnationId: entry.incarnationId,
+      phase: entry.phase,
+    });
+  });
+  const nextProjection = freeze(cloneJson({ ...current, surveyMarkers: normalizedMarkerProjection(desired) }));
+  const token = issuePreparedPlan(doc, {
+    mutationId: normalizedMutationId,
+    expectedProjection: current,
+    expectedLifecycle,
+    expectedHistory,
+    operations,
+    result: freeze({
+      surveyMarkers: nextProjection.surveyMarkers,
+      transition: { version: 1, mutationId: normalizedMutationId, markerIds: [...seen] },
+    }),
+  });
+  return { status: 'prepared', token, surveyMarkers: nextProjection.surveyMarkers };
+}
+
+export function prepareSurveyMarkerEraseHistoryV2(doc, transition, direction, {
+  createId = defaultCreateId,
+} = {}) {
+  requireV2(doc);
+  if (direction !== 'undo' && direction !== 'redo') invalid('erase history direction required');
+  const mutationId = identifier(transition?.mutationId, 'erase mutation id');
+  const markerIds = Array.isArray(transition?.markerIds)
+    ? transition.markerIds.map(id => identifier(id, 'marker id')) : [];
+  if (markerIds.length === 0 || new Set(markerIds).size !== markerIds.length) {
+    return { status: 'conflict', reason: 'survey-history-conflict' };
+  }
+  const store = maps(doc);
+  const history = readEraseHistory(store.eraseHistory, mutationId);
+  if (!history) return { status: 'conflict', reason: 'survey-history-missing' };
+  const selectedIds = new Set(markerIds);
+  const selectedEntries = history.entries.filter(entry => selectedIds.has(entry.markerId));
+  if (selectedEntries.length !== markerIds.length
+    || selectedEntries.some(entry => (
+      direction === 'undo' ? entry.phase !== 'deleted' : entry.phase !== 'restored'
+    ))) return { status: 'conflict', reason: 'survey-history-phase' };
+  const current = materializeSurveyCrdtV2(doc);
+  const desired = cloneJson(current.surveyMarkers);
+  const expectedLifecycle = [];
+  for (const entry of selectedEntries) {
+    const life = cloneJson(incarnation(store.markerLifecycle.get(entry.markerId)));
+    expectedLifecycle.push([entry.markerId, life]);
+    if (life.incarnationId !== entry.incarnationId
+      || (direction === 'undo' ? life.state !== DELETED : life.state !== LIVE)) {
+      return { status: 'conflict', reason: 'survey-history-incarnation' };
+    }
+    if (direction === 'undo') {
+      Object.defineProperty(desired, entry.markerId, {
+        value: cloneJson(entry.marker), enumerable: true, writable: true, configurable: true,
+      });
+    }
+    else {
+      if (!own(current.surveyMarkers, entry.markerId)) {
+        return { status: 'conflict', reason: 'survey-history-incarnation' };
+      }
+      if (!same(current.surveyMarkers[entry.markerId], entry.marker)) {
+        return { status: 'conflict', reason: 'survey-history-marker-conflict' };
+      }
+      delete desired[entry.markerId];
+    }
+  }
+  const operations = applyMarkerProjection(doc, current.surveyMarkers, desired, {
+    origin: 'survey-erase-history-plan', createId,
+  });
+  const expectedHistory = selectedEntries.map(entry => [entry.key, cloneJson(entry.raw)]);
+  if (history.version === 1) {
+    const nextHistory = cloneJson(history.data);
+    for (const entry of nextHistory.entries.filter(item => selectedIds.has(item.markerId))) {
+      entry.phase = direction === 'undo' ? 'restored' : 'deleted';
+      if (direction === 'undo') {
+        const lifecycleOp = operations.find(operation => (
+          operation.map === store.markerLifecycle && operation.key === entry.markerId && own(operation, 'value')
+        ));
+        entry.incarnationId = lifecycleOp?.value?.incarnationId;
+      }
+    }
+    planDataSet(operations, store.eraseHistory, mutationId, nextHistory);
+  } else {
+    for (const entry of selectedEntries) {
+      const nextEntry = cloneJson(entry.data);
+      nextEntry.phase = direction === 'undo' ? 'restored' : 'deleted';
+      if (direction === 'undo') {
+        const lifecycleOp = operations.find(operation => (
+          operation.map === store.markerLifecycle && operation.key === entry.markerId && own(operation, 'value')
+        ));
+        nextEntry.incarnationId = lifecycleOp?.value?.incarnationId;
+      }
+      planDataSet(operations, store.eraseHistory, entry.key, nextEntry);
+    }
+  }
+  const nextProjection = freeze(cloneJson({ ...current, surveyMarkers: normalizedMarkerProjection(desired) }));
+  return {
+    status: 'prepared',
+    token: issuePreparedPlan(doc, {
+      mutationId,
+      expectedProjection: current,
+      expectedLifecycle,
+      expectedHistory,
+      operations,
+      result: freeze({ surveyMarkers: nextProjection.surveyMarkers }),
+    }),
+    surveyMarkers: nextProjection.surveyMarkers,
+  };
+}
+
+export function readSurveyMarkerEraseReplayV2(doc, mutationId) {
+  requireV2(doc);
+  const normalizedMutationId = identifier(mutationId, 'erase mutation id');
+  const history = readEraseHistory(maps(doc).eraseHistory, normalizedMutationId);
+  if (!history) return null;
+  return freeze(history.entries.map(entry => entry.markerId));
 }
 
 function applyMarkerProjection(doc, before, desired, { origin, createId }) {

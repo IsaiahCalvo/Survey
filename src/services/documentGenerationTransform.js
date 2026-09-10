@@ -10,7 +10,7 @@ import { gunzipSync } from 'node:zlib';
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
 import { syncByPageToDoc, syncSurveyMarkersToDoc, deletedPdfAnnotationStorageKey } from './annotationDocStore.js';
-import { initializeSurveyCrdtV2 } from './documentSurveyCrdtV2.js';
+import { initializeSurveyCrdtV2, SURVEY_V2_ROOTS } from './documentSurveyCrdtV2.js';
 import { transformPageState, pageNumberAfterOperation } from '../utils/pageAnnotationReindex.js';
 import { calloutToAnnotationObject, deriveCalloutsFromByPage } from '../utils/calloutAnnotationBridge.js';
 import { mapSurveyMarkerRowToLocalAnnotation } from './documentSurveyMarkerMapper.js';
@@ -254,10 +254,7 @@ export async function transformDocumentGenerationSource(input) {
     const newDoc = () => { const doc = createDetachedYDoc(); docs.push(doc); return doc; };
     const apply = (doc, bytes) => { Y.applyUpdate(doc, bytes); };
     const boundedDoc = (doc, contentModelVersion = 1) => { let n = 0, surveyV2Entries = 0;
-      const surveyV2Roots = new Set(['surveyV2Meta', 'surveyMarkerLifecycle', 'surveyMarkerGroups',
-        'surveyChecklistResponses', 'surveySpaceLifecycle', 'surveySpaceGroups',
-        'surveySpacePageLifecycle', 'surveySpacePageGroups', 'surveyRegionLifecycle',
-        'surveyRegionGroups', 'surveyOrders']);
+      const surveyV2Roots = new Set(Object.values(SURVEY_V2_ROOTS));
       for (const [name, root] of doc.share) {
       check(root instanceof Y.Map || root.constructor === Y.AbstractType, 'yjs-root'); check(root._start === null, 'yjs-root');
       const count = [...Y.Map.prototype.keys.call(root)].length;

@@ -17,6 +17,6 @@ test('content model v2 passes its disposable PostgreSQL contract',{skip:process.
  const script=fileURLToPath(new URL('../scripts/test-annotation-content-model-v2-postgres.mjs',import.meta.url));
  const result=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:180000,maxBuffer:4*1024*1024});
  assert.equal(result.status,0,`${result.stdout}\n${result.stderr}\n${result.error?.message||''}`);
- assert.match(result.stdout,/Annotation content model v2 PostgreSQL checks passed: 9/);
+ assert.match(result.stdout,/Annotation content model v2 PostgreSQL checks passed: 10/);
  assert.match(result.stdout,/Disposable local PostgreSQL stopped; exact temporary cluster removed/);
 });

@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import * as Y from 'yjs';
 import { docToByPage, syncByPageToDoc } from '../src/services/annotationDocStore.js';
-import { createDocumentReplacementExecutor } from '../src/services/documentReplacementExecutor.js';
+import { createDocumentReplacementExecutor, __testValidateDocumentReplacementWorkerMessage } from '../src/services/documentReplacementExecutor.js';
+import { initializeSurveyCrdtV2 } from '../src/services/documentSurveyCrdtV2.js';
 
 const id = n => `87100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -21,32 +22,44 @@ const original = await makePdf(3);
 // The one-millisecond case separately checks the worker-start deadline.
 const slowOriginal = await makePdf(1800);
 
-function fixture({ actor = 1, bytes = original, pageCount = 3, operation = { type: 'move', from: 2, to: 1 } } = {}) {
+function fixture({ actor = 1, bytes = original, pageCount = 3, operation = { type: 'move', from: 2, to: 1 },
+  sourceContentModelVersion = 1, targetContentModelVersion } = {}) {
   const actorUserId = id(actor), documentId = id(actor + 10), sourceId = id(actor + 20), operationId = id(actor + 30);
   const doc = new Y.Doc();
   syncByPageToDoc(doc, { 2: { objects: [{ type: 'rect', pageNumber: 2, left: 10, top: 20, width: 30, height: 40,
     data: { id: `mark-${actor}`, pageNumber: 2 }, meta: { authorId: actorUserId } }] } });
   doc.getMap('annoMeta').set('futureFeature', { actor, text: 'Preserved' });
+  if (sourceContentModelVersion === 2) initializeSurveyCrdtV2(doc, { surveyMarkers: {}, spaces: [], createId: () => id(actor + 70) });
   const state = b64(Y.encodeStateAsUpdate(doc)); doc.destroy();
   const wal = '9007199254740993', expires = new Date(Date.now() + 120000).toISOString();
   const descriptor = { bucket_id: 'documents', path: `${actorUserId}/source.pdf`, id: id(actor + 40),
     version: id(actor + 50), byte_length: String(bytes.byteLength) };
-  const payload = { semantic: { version: 1, document_id: documentId, generation_id: null, wal_head: wal,
+  const versioned = sourceContentModelVersion === 2 || targetContentModelVersion === 2;
+  const generationId = sourceContentModelVersion === 2 ? id(actor + 60) : null;
+  const sources = { annotation_snapshot: generationId === null ? { document_id: documentId, at_seq: wal, writer_epoch: '1', encoding_version: 1,
+      snapshot_base64: state } : null, annotation_updates: [], document_annotations: [], doc_yjs_state: null,
+    doc_yjs_updates: [], survey_sessions: [], survey_items: [], generation_snapshot: null,
+    generation_updates: [], generation_baseline: generationId === null ? null : { document_id: documentId,
+      generation_id: generationId, base_seq: wal, baseline_snapshot_base64: state,
+      baseline_encoding_version: 1, content_model_version: sourceContentModelVersion } };
+  const payload = { semantic: { version: versioned ? 2 : 1,
+    ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+    document_id: documentId, generation_id: generationId, wal_head: wal,
     document: { id: documentId, user_id: actorUserId, annotations: {}, page_count: pageCount, current_page: 2,
       content_sha256: 'a'.repeat(64), file_path: descriptor.path, file_size: descriptor.byte_length },
-    sources: { annotation_snapshot: { document_id: documentId, at_seq: wal, writer_epoch: '1', encoding_version: 1,
-      snapshot_base64: state }, annotation_updates: [], document_annotations: [], doc_yjs_state: null,
-      doc_yjs_updates: [], survey_sessions: [], survey_items: [], generation_snapshot: null,
-      generation_updates: [], generation_baseline: null },
+    sources,
     source_object: descriptor, sidecar_objects: [], connector_consumed: { head: [], ops: [] } },
   connector_history: { audit: [{ private: `preserved-${actor}` }] }, wal_history: { legacy: [], generation: [] } };
-  const proof = { version: 1, actor_user_id: actorUserId, document_id: documentId, source_id: sourceId,
-    generation_id: null, source_sql_sha256: 'b'.repeat(64), expires_at: expires, state: 'verified',
+  const proof = { version: versioned ? 2 : 1, ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+    actor_user_id: actorUserId, document_id: documentId, source_id: sourceId,
+    generation_id: generationId, source_sql_sha256: 'b'.repeat(64), expires_at: expires, state: 'verified',
     objects: [{ ...descriptor, kind: 'pdf', content_sha256: hash(bytes) }], verified_at: new Date(Date.now() - 1000).toISOString() };
-  const envelope = { version: 1, actor_user_id: actorUserId, document_id: documentId, source_id: sourceId,
-    generation_id: null, source_sql_sha256: proof.source_sql_sha256, body_sha256: 'c'.repeat(64), wal_head: wal,
+  const envelope = { version: versioned ? 2 : 1, ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+    actor_user_id: actorUserId, document_id: documentId, source_id: sourceId,
+    generation_id: generationId, source_sql_sha256: proof.source_sql_sha256, body_sha256: 'c'.repeat(64), wal_head: wal,
     expires_at: expires, source_bytes: proof, payload };
   return { actorUserId, documentId, sourceId, operationId, operation, envelope,
+    ...(targetContentModelVersion === undefined ? {} : { targetContentModelVersion }),
     objects: [{ id: descriptor.id, version: descriptor.version, bytes: new Uint8Array(bytes) }] };
 }
 
@@ -79,6 +92,52 @@ test('real worker returns exact PDF/Yjs result and preserves source-only fields'
     assert.deepEqual(Object.keys(docToByPage(doc)).map(Number), [1]);
     assert.deepEqual(doc.getMap('annoMeta').get('futureFeature'), { actor: 1, text: 'Preserved' }); doc.destroy();
   });
+});
+
+test('real worker accepts explicit model 1 to 2 and model 2 to 2 plans', async () => {
+  await withExecutor({}, async executor => {
+    for (const sourceContentModelVersion of [1, 2]) {
+      const input=fixture({ actor: 20 + sourceContentModelVersion,
+        sourceContentModelVersion, targetContentModelVersion: 2 });
+      const result = await executor.prepare(input);
+      assert.equal(result.plan.version, 2);assert.equal(result.plan.contentModelVersion, 2);
+      assert.equal(result.plan.source.contentModelVersion, sourceContentModelVersion);
+    }
+  });
+});
+
+test('model target and all versioned source receipts must agree exactly', async () => {
+  await withExecutor({}, async executor => {
+    await assert.rejects(executor.prepare(fixture({ actor: 30, sourceContentModelVersion: 2 })),
+      errorCode('DOCUMENT_GENERATION_REPLACEMENT_INVALID'));
+    for (const mutate of [
+      input => { input.targetContentModelVersion = 3; },
+      input => { input.targetContentModelVersion = null; },
+      input => { input.targetContentModelVersion = false; },
+      input => { input.targetContentModelVersion = '2'; },
+      input => { delete input.envelope.content_model_version; },
+      input => { input.envelope.source_bytes.content_model_version = 2; },
+      input => { input.envelope.payload.semantic.content_model_version = 2; },
+    ]) {
+      const input = fixture({ actor: 31, sourceContentModelVersion: 1, targetContentModelVersion: 2 });mutate(input);
+      await assert.rejects(executor.prepare(input), error => ['DOCUMENT_REPLACEMENT_EXECUTOR_INPUT',
+        'DOCUMENT_REPLACEMENT_EXECUTOR_FAILED','DOCUMENT_GENERATION_REPLACEMENT_INVALID'].includes(error.code));
+    }
+    const smuggled=fixture({actor:32});smuggled.envelope.payload.semantic.content_model_version=2;
+    await assert.rejects(executor.prepare(smuggled),errorCode('DOCUMENT_GENERATION_REPLACEMENT_INVALID'));
+  });
+});
+
+test('model 2 worker echo mismatch is rejected before its result can escape', async()=>{
+ await withExecutor({},async executor=>{
+  const input=fixture({actor:33,targetContentModelVersion:2}),result=await executor.prepare(input);
+  const base={jobId:7,binding:{actorUserId:input.actorUserId,documentId:input.documentId,sourceId:input.sourceId,
+   operationId:input.operationId,generationId:input.envelope.generation_id,walHead:input.envelope.wal_head,targetContentModelVersion:2},result};
+  assert.ok(__testValidateDocumentReplacementWorkerMessage(base,input));
+  assert.equal(__testValidateDocumentReplacementWorkerMessage({...base,binding:{...base.binding,targetContentModelVersion:1}},input),null);
+  const missing=structuredClone(base);delete missing.binding.targetContentModelVersion;
+  assert.equal(__testValidateDocumentReplacementWorkerMessage(missing,input),null);
+ });
 });
 
 test('prepare owns caller bytes and nested data before it returns, including a queued job', async () => {

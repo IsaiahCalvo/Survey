@@ -14,6 +14,14 @@ import {
   MAX_ERASE_DELETE_HISTORY_EFFECT_BYTES,
   MAX_ERASE_DELETE_HISTORY_OBJECTS,
 } from './annotationEraseLimits.js';
+import {
+  applyPreparedSurveyCrdtV2Plan,
+  prepareSurveyMarkerEraseHistoryV2,
+  prepareSurveyMarkerEraseV2,
+  readSurveyCrdtContentModelVersion,
+  readSurveyMarkerEraseReplayV2,
+  sealPreparedSurveyCrdtV2Plan,
+} from '../services/documentSurveyCrdtV2.js';
 
 export const ERASE_OUTBOX_MAP = 'eraseOutbox';
 export const MAX_ACKNOWLEDGED_ERASE_TOMBSTONES = 256;
@@ -77,7 +85,7 @@ function acknowledgedOutboxTombstone(entry, mutationId) {
   };
 }
 
-function pruneAcknowledgedOutboxTombstones(outbox) {
+function pruneAcknowledgedOutboxTombstones(outbox, doc = null) {
   const acknowledged = [...outbox.entries()]
     .filter(([, entry]) => entry?.status === 'acknowledged')
     .sort(([leftId, left], [rightId, right]) => {
@@ -88,7 +96,8 @@ function pruneAcknowledgedOutboxTombstones(outbox) {
     });
   const excess = acknowledged.length - MAX_ACKNOWLEDGED_ERASE_TOMBSTONES;
   for (let index = 0; index < excess; index += 1) {
-    outbox.delete(acknowledged[index][0]);
+    const mutationId = acknowledged[index][0];
+    outbox.delete(mutationId);
   }
 }
 
@@ -309,6 +318,8 @@ export function buildEraseIntent({
   sideEffects = [],
   diagnostics = null,
   presentationRevision = null,
+  surveyMarkerIds = [],
+  surveyMarkerTargets = [],
 }) {
   assertNonEmptyString(mutationId, 'mutationId');
   if (!Number.isInteger(pageNumber) || pageNumber < 1) {
@@ -347,6 +358,12 @@ export function buildEraseIntent({
       }
       return normalized;
     }),
+    ...((surveyMarkerIds || []).length ? {
+      surveyMarkerIds: [...new Set(surveyMarkerIds.map(String))],
+    } : {}),
+    ...((surveyMarkerTargets || []).length ? {
+      surveyMarkerTargets: clone(surveyMarkerTargets),
+    } : {}),
     ...(diagnostics ? { diagnostics: clone(diagnostics) } : {}),
     ...(presentationRevision ? { presentationRevision: String(presentationRevision) } : {}),
   };
@@ -444,6 +461,7 @@ export async function commitEraseIntent({
   permissionContext,
   getDocumentLocked = () => false,
   validateTarget = () => true,
+  validateSurveyTarget = () => true,
   materializePageTarget = null,
   eraserWriterId = null,
   injectFailure,
@@ -472,7 +490,17 @@ export async function commitEraseIntent({
   }
 
   if (outbox.has(intent.mutationId)) {
-    return { status: 'noop', mutationId: intent.mutationId };
+    const requestedSurveyIds = (intent.surveyMarkerTargets || []).map(target => String(target.markerId));
+    const replaySurveyIds = readSurveyCrdtContentModelVersion(doc) === 2
+      ? (readSurveyMarkerEraseReplayV2(doc, intent.mutationId) || []) : [];
+    if (!valuesMatch(requestedSurveyIds, replaySurveyIds)) {
+      return cancelled(intent, 'erase-replay-conflict');
+    }
+    return {
+      status: 'noop', mutationId: intent.mutationId,
+      surveyMarkersCommitted: requestedSurveyIds.length > 0,
+      surveyMarkerIdsCommitted: replaySurveyIds,
+    };
   }
   if (
     permissionContext?.mode !== 'local-only'
@@ -611,6 +639,23 @@ export async function commitEraseIntent({
   }
   finishDomainPlan();
 
+  let surveyPlan = null;
+  if (intent.surveyMarkerTargets?.length) {
+    for (const target of intent.surveyMarkerTargets) {
+      if (!validateSurveyTarget({ target: clone(target), intent })) {
+        return cancelled(intent, 'permission');
+      }
+    }
+    const preparedSurvey = prepareSurveyMarkerEraseV2(doc, {
+      mutationId: intent.mutationId,
+      targets: intent.surveyMarkerTargets,
+    });
+    if (preparedSurvey.status !== 'prepared') {
+      return cancelled(intent, preparedSurvey.reason || 'conflict');
+    }
+    surveyPlan = preparedSurvey;
+  }
+
   const preparedByStorageKey = new Map(
     prepared.map((entry) => [String(entry.target.storageKey), entry]),
   );
@@ -715,7 +760,7 @@ export async function commitEraseIntent({
   if (effects.length > 0 && !initiatingActorId) {
     return cancelled(intent, 'permission-context');
   }
-  const outboxEntry = {
+  const pendingOutboxEntry = {
     mutationId: intent.mutationId,
     actorUserId: initiatingActorId || null,
     status: effects.length === 0 ? 'acknowledged' : 'pending',
@@ -723,6 +768,9 @@ export async function commitEraseIntent({
     effects,
     acknowledgedEffectKeys: [],
   };
+  const outboxEntry = effects.length === 0
+    ? acknowledgedOutboxTombstone(pendingOutboxEntry, intent.mutationId)
+    : pendingOutboxEntry;
   injectFailure?.('plan:outbox');
 
   // Re-check the held-drag lock immediately before the only mutation boundary.
@@ -732,6 +780,9 @@ export async function commitEraseIntent({
   injectFailure?.('before-core-commit');
   if (!counterSeriesMembershipMatches()) {
     return cancelled(intent, 'conflict');
+  }
+  if (surveyPlan && !sealPreparedSurveyCrdtV2Plan(doc, surveyPlan.token)) {
+    return cancelled(intent, 'survey-marker-conflict');
   }
 
   undoManager?.stopCapturing();
@@ -772,7 +823,8 @@ export async function commitEraseIntent({
       }
     }
     outbox.set(intent.mutationId, outboxEntry);
-    pruneAcknowledgedOutboxTombstones(outbox);
+    pruneAcknowledgedOutboxTombstones(outbox, doc);
+    if (surveyPlan) applyPreparedSurveyCrdtV2Plan(doc, surveyPlan.token);
   }, origin);
   undoManager?.stopCapturing();
 
@@ -796,7 +848,14 @@ export async function commitEraseIntent({
           previous: counterNumbering(target.before),
           next: counterNumbering(target.after),
         })),
+      ...(surveyPlan ? { surveyMarkers: surveyPlan.token
+        ? { version: 1, mutationId: intent.mutationId,
+            markerIds: intent.surveyMarkerTargets.map(target => String(target.markerId)) }
+        : null } : {}),
     },
+    surveyMarkersCommitted: Boolean(surveyPlan),
+    surveyMarkerIdsCommitted: surveyPlan
+      ? intent.surveyMarkerTargets.map(target => String(target.markerId)) : [],
   };
 }
 
@@ -839,6 +898,12 @@ export function applyEraseHistoryTransitionOnDoc({
     const desired = direction === 'undo' ? entry.previous : entry.next;
     return { ...entry, stored, current, expected, desired };
   });
+  const preparedSurvey = transition.surveyMarkers
+    ? prepareSurveyMarkerEraseHistoryV2(doc, transition.surveyMarkers, direction)
+    : null;
+  if (preparedSurvey && preparedSurvey.status !== 'prepared') {
+    return { status: 'conflict', reason: preparedSurvey.reason || 'survey-history-conflict' };
+  }
   if (lanePlans.some((entry) => !valuesMatch(entry.current, entry.expected))) {
     return { status: 'conflict', reason: 'lane-conflict' };
   }
@@ -848,7 +913,10 @@ export function applyEraseHistoryTransitionOnDoc({
   ))) {
     return { status: 'conflict', reason: 'counter-conflict' };
   }
-  if (lanePlans.length === 0 && counterPlans.length === 0) {
+  if (preparedSurvey && !sealPreparedSurveyCrdtV2Plan(doc, preparedSurvey.token)) {
+    return { status: 'conflict', reason: 'survey-history-conflict' };
+  }
+  if (lanePlans.length === 0 && counterPlans.length === 0 && !preparedSurvey) {
     return { status: 'noop', mutationId: transition.mutationId || null };
   }
 
@@ -870,6 +938,7 @@ export function applyEraseHistoryTransitionOnDoc({
         ? { ...entry.stored, o: nextObject }
         : nextObject);
     }
+    if (preparedSurvey) applyPreparedSurveyCrdtV2Plan(doc, preparedSurvey.token);
   }, origin);
   return {
     status: 'applied',
@@ -1019,7 +1088,7 @@ export async function drainEraseOutbox({
         const latest = outbox.get(mutationId);
         if (!latest || typeof latest !== 'object') return;
         outbox.set(mutationId, acknowledgedOutboxTombstone(latest, mutationId));
-        pruneAcknowledgedOutboxTombstones(outbox);
+        pruneAcknowledgedOutboxTombstones(outbox, doc);
       }, origin);
       entry = outbox.get(mutationId);
     }
@@ -1084,7 +1153,7 @@ export async function drainEraseOutbox({
               acknowledgedEffectKeys: [...latestKeys],
             },
         );
-        if (allAcknowledged) pruneAcknowledgedOutboxTombstones(outbox);
+        if (allAcknowledged) pruneAcknowledgedOutboxTombstones(outbox, doc);
       }, origin);
       acknowledged += 1;
     }

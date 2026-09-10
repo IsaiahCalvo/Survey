@@ -2180,7 +2180,10 @@ const FabricEraserCanvas = memo(({
     if (containerRef.current && !auditTargets.length) {
       containerRef.current.dataset.eraserAuditStatus = 'not-needed';
     }
-    if (targets.length === 0) {
+    if (targets.length === 0 && (
+      surveyMarkerHitIds.length === 0
+      || typeof onEraseIntentRef.current !== 'function'
+    )) {
       const didEraseTextMarkup = commitLocalTextMarkupErase();
       for (const annotationId of surveyMarkerHitIds) {
         try {
@@ -2282,6 +2285,7 @@ const FabricEraserCanvas = memo(({
         mode,
       },
       targets,
+      surveyMarkerIds: surveyMarkerHitIds,
       diagnostics,
       presentationRevision: expectedRevision,
     });
@@ -2313,7 +2317,11 @@ const FabricEraserCanvas = memo(({
       ) {
         livePreviewCanvasRef.current.dataset.canvasAnnotationRevision = expectedRevision;
       }
+      const committedSurveyMarkerIds = new Set(
+        (commitResult?.surveyMarkerIdsCommitted || []).map(String),
+      );
       for (const annotationId of surveyMarkerHitIds) {
+        if (committedSurveyMarkerIds.has(String(annotationId))) continue;
         try {
           onEraseSurveyMarkerRef.current?.(annotationId);
         } catch (error) {

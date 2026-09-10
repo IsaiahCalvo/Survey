@@ -435,6 +435,135 @@ BEGIN
  EXECUTE definition;
 END $clone_source_receipts$;
 
+-- Private model-aware source-byte lane. It uses the same byte receipts and
+-- locks as v1, but every read and write checks the immutable source model.
+DO $clone_source_bytes$ DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('survey_private.check_document_generation_source_bytes(uuid,uuid)'::regprocedure);
+ definition:=replace(definition,'survey_private.check_document_generation_source_bytes(p_actor uuid, p_source uuid)',
+  'survey_private.check_document_generation_source_bytes_v2(p_actor uuid, p_source uuid, p_content_model_version smallint)');
+ definition:=replace(definition,$old$IF NOT FOUND OR p_actor IS NULL OR r.actor_user_id IS DISTINCT FROM p_actor THEN RAISE EXCEPTION 'Source is not yours' USING ERRCODE='42501';END IF;$old$,
+  $new$IF NOT FOUND OR p_actor IS NULL OR r.actor_user_id IS DISTINCT FROM p_actor THEN RAISE EXCEPTION 'Source is not yours' USING ERRCODE='42501';END IF;
+ IF p_content_model_version IS NULL OR p_content_model_version NOT IN(1,2) THEN RAISE EXCEPTION 'invalid annotation content model' USING ERRCODE='22023';END IF;
+ IF r.content_model_version IS DISTINCT FROM p_content_model_version THEN RAISE EXCEPTION 'annotation content model changed' USING ERRCODE='SG003';END IF;$new$);
+ definition:=replace(definition,$old$result:=jsonb_build_object('version',1,'source_id'$old$,
+  $new$result:=jsonb_build_object('version',2,'content_model_version',p_content_model_version,'source_id'$new$);
+ definition:=replace(definition,'PERFORM survey_private.annotation_generation_scope(r.document_id,r.generation_id,false);',
+  'PERFORM survey_private.annotation_generation_scope_v3(r.document_id,r.generation_id,p_content_model_version,false);');
+ IF position('check_document_generation_source_bytes_v2' IN definition)=0 OR position('annotation_generation_scope_v3' IN definition)=0
+  OR position($needle$'content_model_version',p_content_model_version$needle$ IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected generation source byte check shape' USING ERRCODE='55000';END IF;
+ EXECUTE definition;
+
+ definition:=pg_get_functiondef('public.claim_document_generation_source_bytes(uuid,uuid,uuid)'::regprocedure);
+ definition:=replace(definition,'public.claim_document_generation_source_bytes(p_actor_user_id uuid, p_source_id uuid, p_claim_id uuid)',
+  'public.claim_document_generation_source_bytes_v2(p_actor_user_id uuid, p_source_id uuid, p_claim_id uuid, p_content_model_version smallint)');
+ definition:=replace(definition,'survey_private.check_document_generation_source_bytes(p_actor_user_id,p_source_id)',
+  'survey_private.check_document_generation_source_bytes_v2(p_actor_user_id,p_source_id,p_content_model_version)');
+ IF position('claim_document_generation_source_bytes_v2' IN definition)=0 OR position('check_document_generation_source_bytes_v2' IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected source byte claim shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+
+ definition:=pg_get_functiondef('public.record_document_generation_source_bytes(uuid,uuid,uuid,jsonb)'::regprocedure);
+ definition:=replace(definition,'public.record_document_generation_source_bytes(p_actor_user_id uuid, p_source_id uuid, p_claim_id uuid, p_objects jsonb)',
+  'public.record_document_generation_source_bytes_v2(p_actor_user_id uuid, p_source_id uuid, p_claim_id uuid, p_objects jsonb, p_content_model_version smallint)');
+ definition:=replace(definition,'survey_private.check_document_generation_source_bytes(p_actor_user_id,p_source_id)',
+  'survey_private.check_document_generation_source_bytes_v2(p_actor_user_id,p_source_id,p_content_model_version)');
+ IF position('record_document_generation_source_bytes_v2' IN definition)=0 OR position('check_document_generation_source_bytes_v2' IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected source byte record shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+END $clone_source_bytes$;
+
+CREATE OR REPLACE FUNCTION survey_private.assert_document_generation_source_bytes_v2(
+ p_actor_user_id uuid,p_source_id uuid,p_content_model_version smallint)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path='' AS $$
+DECLARE r jsonb;BEGIN
+ r:=survey_private.check_document_generation_source_bytes_v2(p_actor_user_id,p_source_id,p_content_model_version);
+ IF r->>'state'<>'verified' THEN RAISE EXCEPTION 'Verified complete source required' USING ERRCODE='23514';END IF;
+ RETURN r;
+END $$;
+
+DO $clone_transform_source$ DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('public.read_document_generation_transform_source(uuid,uuid)'::regprocedure);
+ definition:=replace(definition,'public.read_document_generation_transform_source(p_actor_user_id uuid, p_source_id uuid)',
+  'public.read_document_generation_transform_source_v2(p_actor_user_id uuid, p_source_id uuid, p_content_model_version smallint)');
+ definition:=replace(definition,'survey_private.assert_document_generation_source_bytes(p_actor_user_id,p_source_id)',
+  'survey_private.assert_document_generation_source_bytes_v2(p_actor_user_id,p_source_id,p_content_model_version)');
+ definition:=replace(definition,$old$OR semantic->>'wal_head' IS DISTINCT FROM r.wal_head::text$old$,
+  $new$OR semantic->>'wal_head' IS DISTINCT FROM r.wal_head::text
+    OR r.content_model_version IS DISTINCT FROM p_content_model_version
+    OR semantic->>'content_model_version' IS DISTINCT FROM p_content_model_version::text$new$);
+ definition:=replace(definition,$old$RETURN jsonb_build_object('version',1,'source_id'$old$,
+  $new$RETURN jsonb_build_object('version',2,'content_model_version',p_content_model_version,'source_id'$new$);
+ IF position('read_document_generation_transform_source_v2' IN definition)=0
+  OR position('assert_document_generation_source_bytes_v2' IN definition)=0
+  OR position($needle$'content_model_version',p_content_model_version$needle$ IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected transform source shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+END $clone_transform_source$;
+
+-- Upload verification is shared. Dispatch only from the immutable source row;
+-- old model-1 uploads keep their old proof, while model 2 requires v2 proof.
+DO $patch_upload_source$ DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('survey_private.assert_generation_upload_source(survey_private.document_generation_uploads)'::regprocedure);
+ IF position('assert_document_generation_source_bytes_v2' IN definition)=0 THEN
+ definition:=replace(definition,'DECLARE proof jsonb; object jsonb; matches integer;',
+  'DECLARE proof jsonb; object jsonb; matches integer; content_model smallint;');
+ definition:=replace(definition,'proof:=survey_private.assert_document_generation_source_bytes(u.actor_user_id,u.source_id);',
+  $new$SELECT content_model_version INTO content_model FROM survey_private.document_generation_sources WHERE source_id=u.source_id;
+  IF content_model=2 THEN proof:=survey_private.assert_document_generation_source_bytes_v2(u.actor_user_id,u.source_id,2::smallint);
+  ELSE proof:=survey_private.assert_document_generation_source_bytes(u.actor_user_id,u.source_id);END IF;$new$);
+ IF position('content_model smallint' IN definition)=0 OR position('assert_document_generation_source_bytes_v2' IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected upload source assertion shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+ END IF;
+END $patch_upload_source$;
+
+DO $clone_source_archive$ DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('public.begin_document_generation_source_archive(uuid,uuid,uuid)'::regprocedure);
+ definition:=replace(definition,'public.begin_document_generation_source_archive(p_source_id uuid, p_operation_id uuid, p_source_object_id uuid)',
+  'public.begin_document_generation_source_archive_v2(p_source_id uuid, p_operation_id uuid, p_source_object_id uuid, p_content_model_version smallint)');
+ definition:=replace(definition,'survey_private.assert_document_generation_source_bytes(actor,p_source_id)',
+  'survey_private.assert_document_generation_source_bytes_v2(actor,p_source_id,p_content_model_version)');
+ definition:=replace(definition,'RETURN survey_private.document_generation_upload_descriptor(p_operation_id);',
+  $new$RETURN survey_private.document_generation_upload_descriptor(p_operation_id)
+    ||jsonb_build_object('content_model_version',p_content_model_version);$new$);
+ IF position('begin_document_generation_source_archive_v2' IN definition)=0
+  OR position('assert_document_generation_source_bytes_v2' IN definition)=0
+  OR position($needle$'content_model_version',p_content_model_version$needle$ IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected source archive shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+END $clone_source_archive$;
+
+DO $clone_bound_upload$ DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('public.begin_document_generation_upload_v2(uuid,uuid,text,text,bigint)'::regprocedure);
+ definition:=replace(definition,'public.begin_document_generation_upload_v2(p_source_id uuid, p_operation_id uuid, p_purpose text, p_content_sha256 text, p_byte_length bigint)',
+  'public.begin_document_generation_upload_v3(p_source_id uuid, p_operation_id uuid, p_purpose text, p_content_sha256 text, p_byte_length bigint, p_content_model_version smallint)');
+ definition:=replace(definition,'survey_private.assert_document_generation_source_bytes(actor,p_source_id)',
+  'survey_private.assert_document_generation_source_bytes_v2(actor,p_source_id,p_content_model_version)');
+ definition:=replace(definition,'RETURN survey_private.document_generation_upload_descriptor(p_operation_id);',
+  $new$RETURN survey_private.document_generation_upload_descriptor(p_operation_id)
+    ||jsonb_build_object('content_model_version',p_content_model_version);$new$);
+ IF position('begin_document_generation_upload_v3' IN definition)=0
+  OR position('assert_document_generation_source_bytes_v2' IN definition)=0
+  OR position($needle$'content_model_version',p_content_model_version$needle$ IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected source-bound upload shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+END $clone_bound_upload$;
+
+DO $clone_retention$ DECLARE definition text;
+BEGIN
+ definition:=pg_get_functiondef('survey_private.retain_document_generation_bundle(uuid,uuid,uuid,uuid[])'::regprocedure);
+ definition:=replace(definition,'survey_private.retain_document_generation_bundle(p_actor uuid, p_source uuid, p_candidate_operation uuid, p_archive_operations uuid[])',
+  'survey_private.retain_document_generation_bundle_v2(p_actor uuid, p_source uuid, p_candidate_operation uuid, p_archive_operations uuid[], p_content_model_version smallint)');
+ definition:=replace(definition,'frozen:=public.read_document_generation_transform_source(p_actor,p_source);',
+  'frozen:=public.read_document_generation_transform_source_v2(p_actor,p_source,p_content_model_version);');
+ definition:=replace(definition,'fresh:=survey_private.capture_document_generation_source(p_actor,source_row.document_id,source_row.generation_id);',
+  'fresh:=survey_private.capture_document_generation_source_v3(p_actor,source_row.document_id,source_row.generation_id,p_content_model_version);');
+ IF position('retain_document_generation_bundle_v2' IN definition)=0
+  OR position('read_document_generation_transform_source_v2' IN definition)=0
+  OR position('capture_document_generation_source_v3' IN definition)=0 THEN
+  RAISE EXCEPTION 'Unexpected generation retention shape' USING ERRCODE='55000';END IF;EXECUTE definition;
+END $clone_retention$;
+
 -- A model-2 replacement plan is the signed switch. The plan hash already lives
 -- in the durable request and publication rows, so the model is not a loose
 -- publisher argument. The immutable generation row is the lasting truth.
@@ -450,15 +579,18 @@ BEGIN
  definition:=replace(definition,$old$jsonb_build_object('documentId',source_row.document_id,
       'generationId',p_expected_generation,'walHead',p_expected_wal_head::text,'sourceObject',source_object)$old$,
   $new$jsonb_build_object('documentId',source_row.document_id,
-      'generationId',p_expected_generation,'contentModelVersion',coalesce((semantic->>'content_model_version')::smallint,1),
+      'generationId',p_expected_generation,'contentModelVersion',coalesce((semantic->>'content_model_version')::smallint,1::smallint),
       'walHead',p_expected_wal_head::text,'sourceObject',source_object)$new$);
  definition:=replace(definition,$old$current_frontier:=survey_private.annotation_generation_scope(
       source_row.document_id,p_expected_generation,false);$old$,
   $new$current_frontier:=survey_private.annotation_generation_scope_v3(
-      source_row.document_id,p_expected_generation,coalesce((semantic->>'content_model_version')::smallint,1),false);$new$);
+      source_row.document_id,p_expected_generation,coalesce((semantic->>'content_model_version')::smallint,1::smallint),false);$new$);
+ definition:=replace(definition,'source_proof:=survey_private.assert_document_generation_source_bytes(p_actor,p_source);',
+  'source_proof:=survey_private.assert_document_generation_source_bytes_v2(p_actor,p_source,(p_plan->''source''->>''contentModelVersion'')::smallint);');
  IF position('prepare_document_generation_replacement_v2' IN definition)=0
   OR position($needle$p_plan->'contentModelVersion' IS DISTINCT FROM '2'$needle$ IN definition)=0
-  OR position('annotation_generation_scope_v3' IN definition)=0 THEN
+  OR position('annotation_generation_scope_v3' IN definition)=0
+  OR position('assert_document_generation_source_bytes_v2' IN definition)=0 THEN
   RAISE EXCEPTION 'Unexpected replacement preparation shape' USING ERRCODE='55000';END IF;
  EXECUTE definition;
 
@@ -471,10 +603,14 @@ BEGIN
   OR p_plan->'version' IS DISTINCT FROM '2'::jsonb OR p_plan->'contentModelVersion' IS DISTINCT FROM '2'::jsonb$new$);
  definition:=replace(definition,$old$jsonb_build_object('documentId',doc,'generationId',expected_generation,'walHead',frontier::text,'sourceObject',semantic->'source_object')$old$,
   $new$jsonb_build_object('documentId',doc,'generationId',expected_generation,
-   'contentModelVersion',coalesce((semantic->>'content_model_version')::smallint,1),
+   'contentModelVersion',coalesce((semantic->>'content_model_version')::smallint,1::smallint),
    'walHead',frontier::text,'sourceObject',semantic->'source_object')$new$);
+ definition:=replace(definition,'frozen:=public.read_document_generation_transform_source(p_actor,p_source);',
+  'frozen:=public.read_document_generation_transform_source_v2(p_actor,p_source,(p_plan->''source''->>''contentModelVersion'')::smallint);');
  definition:=replace(definition,'fresh:=survey_private.capture_document_generation_source(p_actor,doc,expected_generation);',
-  'fresh:=survey_private.capture_document_generation_source_v3(p_actor,doc,expected_generation,coalesce((semantic->>''content_model_version'')::smallint,1));');
+  'fresh:=survey_private.capture_document_generation_source_v3(p_actor,doc,expected_generation,coalesce((semantic->>''content_model_version'')::smallint,1::smallint));');
+ definition:=replace(definition,'bundle:=survey_private.retain_document_generation_bundle(p_actor,p_source,p_candidate,archives);',
+  'bundle:=survey_private.retain_document_generation_bundle_v2(p_actor,p_source,p_candidate,archives,coalesce((semantic->>''content_model_version'')::smallint,1::smallint));');
  definition:=replace(definition,$old$INSERT INTO survey_private.annotation_generations(document_id,generation_id,base_seq,baseline_snapshot,baseline_encoding_version)
   VALUES(doc,target_generation,frontier,baseline,1);$old$,
   $new$INSERT INTO survey_private.annotation_generations(document_id,generation_id,base_seq,baseline_snapshot,baseline_encoding_version,content_model_version)
@@ -486,7 +622,8 @@ BEGIN
  definition:=replace(definition,$old$||jsonb_build_object('version',1,'wal_head',r.wal_head::text)$old$,
   $new$||jsonb_build_object('version',2,'content_model_version',2,'wal_head',r.wal_head::text)$new$);
  IF position('publish_document_generation_v2' IN definition)=0 OR position('VALUES(doc,target_generation,frontier,baseline,1,2)' IN definition)=0
-  OR position('capture_document_generation_source_v3' IN definition)=0 THEN
+  OR position('capture_document_generation_source_v3' IN definition)=0 OR position('retain_document_generation_bundle_v2' IN definition)=0
+  OR position('read_document_generation_transform_source_v2' IN definition)=0 THEN
   RAISE EXCEPTION 'Unexpected generation publication shape' USING ERRCODE='55000';END IF;
  EXECUTE definition;
 END $clone_replacement$;
@@ -498,10 +635,18 @@ DO $$ DECLARE signature text;BEGIN
   'survey_private.guard_generation_source_content_model()',
   'survey_private.capture_document_generation_source_v3(uuid,uuid,uuid,smallint)',
   'survey_private.document_generation_source_descriptor_v2(uuid,smallint)',
+  'survey_private.check_document_generation_source_bytes_v2(uuid,uuid,smallint)',
+  'survey_private.assert_document_generation_source_bytes_v2(uuid,uuid,smallint)',
+  'survey_private.retain_document_generation_bundle_v2(uuid,uuid,uuid,uuid[],smallint)',
   'survey_private.prepare_document_generation_replacement_v2(uuid,uuid,uuid,uuid[],uuid,bigint,jsonb,jsonb)',
   'survey_private.publish_document_generation_v2(uuid,uuid,uuid,uuid[],jsonb)',
   'public.begin_document_generation_source_v2(uuid,uuid,uuid,uuid,smallint)',
   'public.get_document_generation_source_v2(uuid,uuid,smallint)',
+  'public.claim_document_generation_source_bytes_v2(uuid,uuid,uuid,smallint)',
+  'public.record_document_generation_source_bytes_v2(uuid,uuid,uuid,jsonb,smallint)',
+  'public.read_document_generation_transform_source_v2(uuid,uuid,smallint)',
+  'public.begin_document_generation_source_archive_v2(uuid,uuid,uuid,smallint)',
+  'public.begin_document_generation_upload_v3(uuid,uuid,text,text,bigint,smallint)',
   'public.read_annotation_snapshot_v3(uuid,uuid,smallint)',
   'public.read_annotation_updates_v3(uuid,uuid,smallint,bigint,bigint,integer)',
   'public.read_annotation_writer_sequence_v3(uuid,uuid,smallint,text)',

@@ -45,7 +45,11 @@ test('KAL-436: mode, template, and category transitions do not reset the open PD
   const excelHintEffect = PDF_VIEWER_SOURCE.match(
     /\/\/ Live: a content-free post-commit hint[\s\S]*?\n  \}, \[(.*?)\]\);/,
   )?.[1] || '';
-  assert.equal(excelHintEffect.trim(), 'pdfFile?.id, user?.id, cloudSyncEnabled');
+  assert.equal(excelHintEffect.trim(), 'pdfFile?.id, user?.id, cloudSyncEnabled, checkedBundle');
+  assert.match(
+    PDF_VIEWER_SOURCE,
+    /if \(checkedBundle !== null \|\| !documentId \|\| !user\?\.id \|\| !cloudSyncEnabled\) return undefined;/,
+  );
   assert.match(PDF_VIEWER_SOURCE, /await reconcileExcelSyncRef\.current\?\.\(\)/);
   assert.match(
     PDF_VIEWER_SOURCE,

@@ -8,6 +8,8 @@ import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 import { annotationOutboxRecordKey, createAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
 import { createDetachedYDoc, purgeYDocsByPrefix } from '../src/lib/collab/ydocRegistry.js';
 import { initializeSurveyCrdtV2 } from '../src/services/documentSurveyCrdtV2.js';
+import { buildEraseIntent } from '../src/utils/annotationEraseTransaction.js';
+import { materializeAnnotationGenerationState } from '../src/services/annotationGenerationState.js';
 
 const id = n => `ac000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = id(1), generation = id(2), hex = bytes => `\\x${Buffer.from(bytes).toString('hex')}`;
@@ -69,7 +71,9 @@ async function fixture(t) {
     const doc = createDetachedYDoc(); docs.push(doc);
     const handle = await openAnnotationDoc({ documentId, actorUserId: actor, pdfGenerationId: generation,
       checkedBundle: bundle, supabase: client, outboxStore: store, enableLocal: false,
-      enableRealtime: false, writerId, snapshotRetryDelayMs: 0, doc });
+      enableRealtime: false, writerId, snapshotRetryDelayMs: 0, doc,
+      eraseEffectConsumer: async () => {},
+    });
     handles.push(handle); return handle;
   };
   const read = () => reader.open({ documentId, actorUserId: actor, pdfGenerationId: generation,
@@ -78,7 +82,7 @@ async function fixture(t) {
     for (const store of stores) await store.close(); authoritative.destroy();
     for (const doc of docs) if (!doc.isDestroyed) doc.destroy();
     purgeYDocsByPrefix(`annoflat:${documentId}:`); });
-  return { read, open, rows, calls, setOffline(value) { offline = value; }, async seedLegacyPending() {
+  return { read, open, rows, calls, authoritative, setOffline(value) { offline = value; }, async seedLegacyPending() {
     const store = await createAnnotationOutbox({ indexedDb }); stores.push(store);
     const record = { documentId, actorUserId: actor, pdfGenerationId: generation, writerId: 'old',
       clientSeq: 1, ordinal: 1, incarnation: 0, status: 'pending', update: new Uint8Array([0]) };
@@ -129,6 +133,43 @@ test('model 2 handle writes, journals, reaches WAL, and cold reopens exact surve
     { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
   assert.equal(legacyCalls, 0);
   assert.throws(() => reopened.setMeta('spaces', []), { code: 'ANNOTATION_CONTENT_MODEL_MISMATCH' });
+});
+
+test('model 2 survey erase and undo each reach WAL and survive cold reopen', async t => {
+  const f = await fixture(t), first = await f.open(await f.read(), 'erase-writer');
+  const expectedMarker = { annotationId: 'erase-marker', pageNumber: 1,
+    bounds: { x: 1, y: 2, width: 3, height: 4 }, checklistResponses: {} };
+  first.updateSurveyMarkers(markers => ({ ...markers, 'erase-marker': expectedMarker }));
+  await first.drain();
+  const intent = buildEraseIntent({
+    mutationId: 'erase-wal', pageNumber: 1, renderer: 'svg',
+    gesture: { points: [{ x: 2, y: 3 }], radius: 4, mode: 'whole' },
+    surveyMarkerTargets: [{ markerId: 'erase-marker', expectedMarker }],
+  });
+  const erased = await first.commitEraseIntent(intent, {
+    permissionContext: { mode: 'registered', viewerId: actor, documentOwnerId: actor },
+    validateSurveyTarget: () => true,
+  });
+  assert.equal(erased.status, 'committed');
+  await first.drainEraseOutbox();
+  await first.drain();
+  const [outbox] = [...f.authoritative.getMap('eraseOutbox').values()];
+  assert.equal(outbox.mutationId, 'erase-wal');
+  assert.equal(outbox.status, 'acknowledged');
+  assert.deepEqual(outbox.effects, []);
+  assert.deepEqual(outbox.acknowledgedEffectKeys, []);
+  assert.equal(outbox.effectCount, 0);
+  materializeAnnotationGenerationState(f.authoritative, 2);
+  await first.destroy();
+
+  const afterErase = await f.open(await f.read(), 'erase-reader', { device: new IDBFactory() });
+  assert.equal(afterErase.getSurveyState().surveyMarkers['erase-marker'], undefined);
+  assert.equal(afterErase.applyEraseHistoryTransition(erased.historyTransition, 'undo').status, 'applied');
+  await afterErase.drain();
+  await afterErase.destroy();
+
+  const afterUndo = await f.open(await f.read(), 'undo-reader', { device: new IDBFactory() });
+  assert.deepEqual(afterUndo.getSurveyState().surveyMarkers['erase-marker'], expectedMarker);
 });
 
 test('model 2 envelope cannot issue a bundle for legacy survey roots', async t => {

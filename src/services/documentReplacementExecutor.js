@@ -80,6 +80,9 @@ function captureInput(input) {
   const documentId = ownData(input, 'documentId');
   const sourceId = ownData(input, 'sourceId');
   const operationId = ownData(input, 'operationId');
+  const suppliedTargetModel = Object.hasOwn(input, 'targetContentModelVersion')
+    ? ownData(input, 'targetContentModelVersion') : undefined;
+  const targetContentModelVersion = suppliedTargetModel === undefined ? 1 : suppliedTargetModel;
   const envelopeCapture = captureReplacementJson(ownData(input, 'envelope'), { maxBytes: JSON_LIMIT });
   const operationCapture = captureReplacementJson(ownData(input, 'operation'), { maxBytes: JSON_LIMIT });
   const objects = ownData(input, 'objects');
@@ -89,6 +92,8 @@ function captureInput(input) {
   const objectId = ownData(object, 'id');
   const objectVersion = ownData(object, 'version');
   if (![actorUserId, documentId, sourceId, operationId, objectId, objectVersion].every(validUuid))
+    throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
+  if (targetContentModelVersion !== 1 && targetContentModelVersion !== 2)
     throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
   const view = replacementByteView(ownData(object, 'bytes'));
   const scalarBytes = [actorUserId, documentId, sourceId, operationId, objectId, objectVersion]
@@ -102,6 +107,7 @@ function captureInput(input) {
       documentId,
       sourceId,
       operationId,
+      ...(suppliedTargetModel === undefined ? {} : { targetContentModelVersion }),
       envelope: envelopeCapture.value,
       operation: operationCapture.value,
       objectId,
@@ -122,13 +128,19 @@ function expectedBinding(captured) {
     walHead: plain(envelope) ? envelope.wal_head : undefined,
     operationJson: stableJson(captured.operation),
     sourceObjectJson: plain(semantic) ? stableJson(semantic.source_object) : undefined,
+    sourceContentModelVersion: semantic?.version === 2 ? semantic.content_model_version : 1,
+    targetContentModelVersion: captured.targetContentModelVersion ?? 1,
   };
 }
 
 function validateResult(message, job) {
   if (!exactKeys(message, ['jobId', 'binding', 'result']) || message.jobId !== job.id) return null;
   const binding = message.binding;
-  if (!exactKeys(binding, ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead'])) return null;
+  const targetModel = job.expected.targetContentModelVersion;
+  if (!exactKeys(binding, targetModel === 2
+    ? ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead', 'targetContentModelVersion']
+    : ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead'])
+    || (targetModel === 2 && binding.targetContentModelVersion !== 2)) return null;
   for (const key of ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead'])
     if (binding[key] !== job.expected[key]) return null;
   const result = message.result;
@@ -143,12 +155,18 @@ function validateResult(message, job) {
     || !Number.isSafeInteger(candidate.pageCount) || candidate.pageCount < 1 || candidate.pageCount > PAGE_LIMIT
     || String.fromCharCode(...candidate.bytes.subarray(0, 5)) !== '%PDF-') return null;
   const plan = result.plan;
-  if (!exactKeys(plan, ['version', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy'])
-    || plan.version !== 1 || plan.operationId !== job.expected.operationId
+  if (!exactKeys(plan, targetModel === 2
+    ? ['version', 'contentModelVersion', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy']
+    : ['version', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy'])
+    || plan.version !== targetModel || (targetModel === 2 && plan.contentModelVersion !== 2)
+    || plan.operationId !== job.expected.operationId
     || stableJson(plan.operation) !== job.expected.operationJson) return null;
   const source = plan.source;
-  if (!exactKeys(source, ['documentId', 'generationId', 'walHead', 'sourceObject'])
+  if (!exactKeys(source, targetModel === 2
+    ? ['documentId', 'generationId', 'contentModelVersion', 'walHead', 'sourceObject']
+    : ['documentId', 'generationId', 'walHead', 'sourceObject'])
     || source.documentId !== job.expected.documentId || source.generationId !== job.expected.generationId
+    || (targetModel === 2 && source.contentModelVersion !== job.expected.sourceContentModelVersion)
     || source.walHead !== job.expected.walHead || !validSeq(source.walHead)
     || stableJson(source.sourceObject) !== job.expected.sourceObjectJson) return null;
   const projectionDocument = plain(plan.projection) ? plan.projection.document : undefined;
@@ -159,6 +177,15 @@ function validateResult(message, job) {
     && projectionDocument[key] !== candidate.pageCount) return null;
   freezeTree(plan);
   return Object.freeze({ candidate: Object.freeze(candidate), plan });
+}
+
+// Internal seam for exact worker-message contract tests. Production callers
+// use createDocumentReplacementExecutor; this performs no work or I/O.
+export function __testValidateDocumentReplacementWorkerMessage(message, input) {
+  try {
+    const captured = captureInput(input);
+    return validateResult(message, { id: message?.jobId, expected: expectedBinding(captured.json) });
+  } catch { return null; }
 }
 
 /**
@@ -367,6 +394,8 @@ export function createDocumentReplacementExecutor(options = {}) {
           documentId: captured.json.documentId,
           sourceId: captured.json.sourceId,
           operationId: captured.json.operationId,
+          ...(captured.json.targetContentModelVersion === undefined ? {}
+            : { targetContentModelVersion: captured.json.targetContentModelVersion }),
           envelope: captured.json.envelope,
           operation: captured.json.operation,
           objects: [{ id: captured.json.objectId, version: captured.json.objectVersion, bytes: ownedBytes }],

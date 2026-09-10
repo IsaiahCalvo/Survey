@@ -447,7 +447,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -10538,7 +10538,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       setPageNames(loaded.pageNames);
       setBookmarks(loaded.bookmarks);
       setHasImportedPdfBookmarks(loaded.hasImportedPdfBookmarks);
-      setSpaces(loaded.spaces);
+      setSpacesState(loaded.spaces);
       // Always start in regular mode when opening a PDF; do not restore an active space
       setActiveSpaceId(checkedLocalPageState?.activeSpaceId ?? null);
       setPageTransformations(loaded.pageTransformations);
@@ -18652,6 +18652,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       });
       return;
     }
+    if (checkedBundle !== null) {
+      activeCloudDocumentIdRef.current = documentId;
+      setDocumentSyncEnabled(false);
+      setIsLoadingRemoteAnnotations(false);
+      return undefined;
+    }
     activeCloudDocumentIdRef.current = documentId;
 
     if (syncStructuralAutoDisabledRef.current) {
@@ -18850,7 +18856,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // page-change presence effect immediately below already handles
     // pushing the new page to presence; this effect only needs to run
     // when the document or user changes.
-  }, [getInteractionPerfResumeDelay, handlePresenceFailure, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
+  }, [getInteractionPerfResumeDelay, handlePresenceFailure, isInteractionPerfWindowActive,
+    checkedBundle, pdfFile?.id, user?.id]);
 
   // Subscribe to real-time annotation changes
   useEffect(() => {
@@ -19664,6 +19671,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         origin: mutationId,
         deletedAt: committedAt,
       });
+      row.payload.restoreAction.surveyEraseTransition = {
+        version: 1,
+        mutationId,
+        markerIds: [markerId],
+      };
       const { error } = await recordAndNotifyDocumentHistoryEvent(row);
       if (error) throw error;
       return;
@@ -19821,6 +19833,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // sync status in a permanent error state. Viewers still see legacy
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
+    documentLocked,
+    annotationDocClient,
   });
   surveyV2MutationBridgeRef.current = checkedBundle?.contentModelVersion === 2
     && normalAnnotationHydration.ready === true
@@ -19830,6 +19844,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         updateSpaces: updateSurveySpacesInDoc,
       }
     : null;
+  useEffect(() => {
+    if (checkedBundle === null || !pdfFile?.id) return;
+    const sameDocument = normalAnnotationHydration.documentId === pdfFile.id;
+    setSurveyAnnotationHydration(sameDocument && normalAnnotationHydration.ready === true
+      ? {
+          ready: true,
+          source: 'checked-generation',
+          documentId: pdfFile.id,
+          pdfId: getPDFId(pdfFile),
+          count: Object.keys(surveyMarkersRef.current || {}).length,
+        }
+      : {
+          ...ANNOTATION_HYDRATION_PENDING,
+          source: 'checked-generation-starting',
+          documentId: pdfFile.id,
+          pdfId: getPDFId(pdfFile),
+          preservedCount: Object.keys(surveyMarkersRef.current || {}).length,
+        });
+  }, [checkedBundle, normalAnnotationHydration, pdfFile]);
   checkedReplacementSessionRef.current = checkedBundle === null ? null : {
     checkedBundle,
     capture: generationCaptureAcceptedState,
@@ -20020,20 +20053,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // Reconcile once when a workbook-capable Survey template becomes active,
   // without tearing down the document-scoped live hint channel below.
   useEffect(() => {
-    if (!pdfFile?.id || !user?.id || !cloudSyncEnabled) return;
+    if (checkedBundle !== null || !pdfFile?.id || !user?.id || !cloudSyncEnabled) return;
     if (!selectedTemplate?.supabaseId && !selectedTemplate?.id) return;
     void reconcileExcelSyncRef.current?.();
   }, [
     pdfFile?.id,
     user?.id,
     cloudSyncEnabled,
+    checkedBundle,
     selectedTemplate?.supabaseId,
     selectedTemplate?.id,
   ]);
 
   useEffect(() => {
     const documentId = pdfFile?.id || null;
-    if (!documentId || !user?.id || !cloudSyncEnabled) return undefined;
+    if (checkedBundle !== null || !documentId || !user?.id || !cloudSyncEnabled) return undefined;
     let cancelled = false;
     let backoff = 1000;
     const MAX_BACKOFF = 30000;
@@ -20061,7 +20095,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       cancelled = true;
       try { supabase.removeChannel(channel); } catch { /* */ }
     };
-  }, [pdfFile?.id, user?.id, cloudSyncEnabled]);
+  }, [pdfFile?.id, user?.id, cloudSyncEnabled, checkedBundle]);
 
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
@@ -20070,7 +20104,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // renders so the user knows the surface is alive.
   const documentPresenceList = useDocumentPresenceList({
     documentId: pdfFile?.id || null,
-    enabled: cloudSyncActive
+    enabled: checkedBundle === null && cloudSyncActive
   });
   // Keep the TDZ ref bridge current so handleRequestBulkDelete (declared
   // above) resolves modal author names from this render's roster. Same
@@ -21239,6 +21273,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     const previouslyVisibleAnnotationsByPage = annotationsByPageRef.current || {};
     const previousUndoDepth = undoHistoryRef.current.length;
     const previousRedoDepth = redoHistoryRef.current.length;
+    const hasCheckedHydratedState = checkedBundle !== null
+      && normalAnnotationHydration.ready === true
+      && normalAnnotationHydration.documentId === pdfFile?.id;
 
     // UX 2026-07-17 — wipe undo/redo history ONLY when the document actually
     // changed. This effect's deps include callback identities
@@ -21269,9 +21306,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       localAnnotationRedoRef.current = [];
       setLocalAnnotationHistoryVersion((prev) => prev + 1);
     }
-    annotationsByPageRef.current = {};
-    surveyMarkersRef.current = {};
-    spacesRef.current = isSamePdfReload ? previousSpacesForSamePdf : [];
+    annotationsByPageRef.current = checkedBundle !== null
+      ? previouslyVisibleAnnotationsByPage : {};
+    surveyMarkersRef.current = checkedBundle !== null ? previousSurveyMarkersForSamePdf : {};
+    spacesRef.current = checkedBundle !== null || isSamePdfReload ? previousSpacesForSamePdf : [];
     setPdfjsPageContainers({});
     setPdfjsCommittedPageScales({});
     finishPdfjsInteractionWindow();
@@ -21282,7 +21320,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setBookmarks(checkedLocalPageState?.bookmarks || []);
     setPdfBookmarks([]);
     setHasImportedPdfBookmarks(false);
-    setSpaces(isSamePdfReload ? previousSpacesForSamePdf : []);
+    if (checkedBundle === null) {
+      setSpacesState(isSamePdfReload ? previousSpacesForSamePdf : []);
+    }
     setPageNames(checkedLocalPageState?.pageNames || {});
     setPageTransformations(checkedLocalPageState?.pageTransformations || {});
     if (checkedLocalPageState) {
@@ -21348,7 +21388,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       setItems({});
       setAnnotations({});
       setLocallyDeletedPdfAnnotations([]);
-      setSurveyMarkers({});
+      setSurveyMarkersState({});
       setCheckedPageStructureHydration({ key: null, ready: false });
       setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
@@ -21371,22 +21411,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       setLocallyDeletedPdfAnnotations(managedLocalStateReader ? (data.deletedPdfAnnotations || []) : []);
     }
     const isCloudBackedDoc = !!pdfFile?.id;
-    setSurveyAnnotationHydration(isCloudBackedDoc ? {
+    setSurveyAnnotationHydration(isCloudBackedDoc ? (hasCheckedHydratedState ? {
+      ready: true,
+      documentId: pdfFile.id,
+      pdfId: id,
+      source: 'checked-generation',
+      count: Object.keys(previousSurveyMarkersForSamePdf).length,
+    } : {
       ...ANNOTATION_HYDRATION_PENDING,
       documentId: pdfFile.id,
       pdfId: id,
-      source: 'supabase-highlight-starting',
-    } : ANNOTATION_HYDRATION_READY_LOCAL);
+      source: checkedBundle !== null ? 'checked-generation-starting' : 'supabase-highlight-starting',
+    }) : ANNOTATION_HYDRATION_READY_LOCAL);
     // Cloud-backed survey markers are Supabase-owned. Painting the
     // localStorage snapshot first causes the same visible pop-in/out as
     // normal annotations, so keep them gated until the highlight SELECT
     // below returns.
     const loadedSurveyMarkers = isCloudBackedDoc
-      ? (isSamePdfReload ? previousSurveyMarkersForSamePdf : {})
+      ? (isSamePdfReload || hasCheckedHydratedState ? previousSurveyMarkersForSamePdf : {})
       : managedLocalStateReader
         ? JSON.parse(managedLocalStateReader.getItem(`surveyMarkers_${id}`) || '{}')
         : loadSurveyMarkers(id);
-    setSurveyMarkers(loadedSurveyMarkers);
+    if (checkedBundle === null) setSurveyMarkersState(loadedSurveyMarkers);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
@@ -21475,8 +21521,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
     const nextAnnotationCount = countAnnotationPageObjects(migratedAnnotationsByPage);
     const currentAnnotationCount = countAnnotationPageObjects(previouslyVisibleAnnotationsByPage);
-    let initialAnnotationsByPage = migratedAnnotationsByPage;
-    if (isCloudBackedDoc && nextAnnotationCount === 0 && currentAnnotationCount > 0) {
+    let initialAnnotationsByPage = hasCheckedHydratedState
+      ? previouslyVisibleAnnotationsByPage : migratedAnnotationsByPage;
+    if (!hasCheckedHydratedState
+      && isCloudBackedDoc && nextAnnotationCount === 0 && currentAnnotationCount > 0) {
       // Cloud-backed PDFs can briefly have no local cache while Y.Doc/Supabase
       // hydrates. Do not paint a blank annotation layer during that handoff.
       initialAnnotationsByPage = previouslyVisibleAnnotationsByPage;
@@ -21544,9 +21592,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       }
     }
 
-    setAnnotationsByPage(initialAnnotationsByPage);
-    savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
-    setCallouts(loadedCallouts);
+    if (checkedBundle === null) {
+      setAnnotationsByPage(initialAnnotationsByPage);
+      savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
+      setCallouts(loadedCallouts);
+    }
     setHasUnsavedAnnotations(false); // Reset unsaved flag
     setCheckedPageStructureHydration(checkedLocalPageState && checkedPageStructureScopeKey
       ? { key: checkedPageStructureScopeKey, ready: true }
@@ -25911,6 +25961,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // still missing — it becomes Excel-deletable again only after a successful
     // export. Its tombstone is dropped and, if it was placed, it is redrawn.
     if (restoreAction?.type === 'surveyMarker') {
+      if (restoreAction.surveyEraseTransition) {
+        const restored = applyDurableEraseHistoryTransition(
+          restoreAction.surveyEraseTransition,
+          'undo',
+        );
+        if (!['applied', 'noop'].includes(restored?.status)) {
+          return { ok: false, reason: 'restore-conflict' };
+        }
+        return { ok: true, pageNumber: Number(restoreAction.pageNumber) || null };
+      }
       const result = applySurveyMarkerRestore(
         surveyMarkersRef.current || {},
         restoreAction,
@@ -26125,6 +26185,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     handleRestoreSpace,
     pdfId,
     restoreDurableEraseDeletion,
+    applyDurableEraseHistoryTransition,
     user?.id,
   ]);
 
@@ -28701,14 +28762,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         mutationId: intent?.mutationId || null,
       };
     }
-    // Saved and prompt-only Survey Markers stay on handleDeleteSurveyMarker's
-    // established deletion pipeline. Their checklist/item/Excel dependencies
-    // do not share this Y.Doc, so accepting them here would falsely claim an
-    // atomic commit that a crash could split.
     if ((intent?.targets || []).some((target) => target?.domain === 'survey-marker')) {
       return {
-        status: 'cancelled',
-        reason: 'unsupported-domain',
+        status: 'cancelled', reason: 'unsupported-domain',
         mutationId: intent?.mutationId || null,
       };
     }
@@ -28724,7 +28780,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       userId: user?.id || null,
       includeDeleteHistory: Boolean(pdfFile?.id),
     });
-    const durableIntent = preparedIntent;
+    const requestedSurveyMarkerIds = Array.isArray(intent?.surveyMarkerIds)
+      ? [...new Set(intent.surveyMarkerIds.map(String))] : [];
+    const surveyMarkerTargets = checkedBundle?.contentModelVersion === 2
+      ? requestedSurveyMarkerIds.flatMap((markerId) => {
+          const marker = surveyMarkersRef.current?.[markerId];
+          return marker ? [{ markerId, expectedMarker: structuredClone(marker) }] : [];
+        })
+      : [];
+    if (checkedBundle?.contentModelVersion === 2
+      && surveyMarkerTargets.length !== requestedSurveyMarkerIds.length) {
+      return {
+        status: 'cancelled', reason: 'survey-marker-conflict',
+        mutationId: intent?.mutationId || null,
+      };
+    }
+    const durableIntent = {
+      ...preparedIntent,
+      surveyMarkerIds: requestedSurveyMarkerIds,
+      surveyMarkerTargets,
+      sideEffects: [
+        ...(preparedIntent.sideEffects || []),
+        ...surveyMarkerTargets.flatMap(({ markerId, expectedMarker }) => ([
+          { type: 'trash', targetKey: markerId, payload: { before: structuredClone(expectedMarker) } },
+          { type: 'history', targetKey: markerId, payload: { before: structuredClone(expectedMarker) } },
+        ])),
+      ],
+    };
     const getDocumentLocked = () => (
       typeof document !== 'undefined'
       && document.body?.getAttribute('data-kal49-locked') === 'true'
@@ -28750,6 +28832,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         documentOwnerId: permissionContext.documentOwnerId,
       });
     };
+    const validateSurveyTarget = ({ target }) => {
+      const marker = target?.expectedMarker;
+      return marker?.locked !== true && canCommitSurveyMarkerErase({
+        surveyMarker: marker,
+        viewerId: permissionContext.viewerId,
+        documentOwnerId: permissionContext.documentOwnerId,
+        localDocumentContext: managedLocalEditingContext,
+      });
+    };
     const approval = await requestAtomicEraseApproval(durableIntent);
     if (!approval.approved) {
       return {
@@ -28768,6 +28859,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       permissionContext,
       getDocumentLocked,
       validateTarget,
+      validateSurveyTarget,
       injectFailure: injectedStage
         ? (stage) => {
           if (stage === injectedStage) throw new Error(`injected ${stage}`);
@@ -28784,24 +28876,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         reason: 'authoritative-rollback',
       };
     }
+    const committedSurveyMarkerIds = result.surveyMarkerIdsCommitted || [];
     if (typeof window !== 'undefined' && import.meta.env.DEV) {
       window.__lastEraseTransaction = {
         mutationId: durableIntent?.mutationId || null,
         status: result.status,
         reason: result.reason || null,
-        targetCount: durableIntent?.targets?.length || 0,
+        targetCount: (durableIntent?.targets?.length || 0) + committedSurveyMarkerIds.length,
       };
     }
     if (result.status !== 'committed') return result;
 
+    const committedTargetCount = durableIntent.targets.length + committedSurveyMarkerIds.length;
+
     addHistoryCheckpoint('eraser:gesture', {
       pageNumber: durableIntent.pageNumber,
       mutationId: durableIntent.mutationId,
-      targetCount: durableIntent.targets.length,
+      targetCount: committedTargetCount,
       eraseHistoryTransition: result.historyTransition,
       suppressHistoryRow: Boolean(
         pdfFile?.id
-        && durableIntent.targets.length > 0
+        && committedTargetCount > 0
       ),
     });
 
@@ -28829,8 +28924,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       source: 'eraser:commit',
       action: 'eraser:apply',
       pageNumber: durableIntent.pageNumber,
-      objectDelta: -deletedIds.length,
-      changedObjectsCount: pageTargets.length,
+      objectDelta: -(deletedIds.length + committedSurveyMarkerIds.length),
+      changedObjectsCount: committedTargetCount,
       checkpointPolicy: 'atomic',
     });
     if (typeof window !== 'undefined') {
@@ -28840,10 +28935,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             source: 'eraser:commit',
             action: 'eraser:apply',
             pageNumber: durableIntent.pageNumber,
-            objectDelta: -deletedIds.length,
-            changedCount: pageTargets.length,
+            objectDelta: -(deletedIds.length + committedSurveyMarkerIds.length),
+            changedCount: committedTargetCount,
             changedIds: [...new Set(changedIds)],
-            deletedIds: [...new Set(deletedIds)],
+            deletedIds: [...new Set([...deletedIds, ...committedSurveyMarkerIds])],
           },
         }));
       } catch (_) {}
@@ -28884,6 +28979,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     enqueueUndoToast,
     eraseDocumentOwnerId,
     getHistoryQuarantineGeneration,
+    checkedBundle?.contentModelVersion,
+    managedLocalEditingContext,
     pdfFile?.id,
     requestAtomicEraseApproval,
     restoreHistoryState,
@@ -30374,6 +30471,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   // Cleanup orphaned canvas surveyMarkers - ensures surveyMarkers can only exist if they have a corresponding survey panel item
   useEffect(() => {
+    // Model 2 stores survey markers in their own CRDT root. Its ordinary
+    // annotation map may contain translucent rectangles which are not survey
+    // markers, so the legacy geometry/color heuristic must not prune it.
+    if (checkedBundle?.contentModelVersion === 2) return;
+
     // Build a set of valid surveyMarker bounds from surveyMarkers
     const validSurveyMarkerBounds = new Map();
 
@@ -30470,7 +30572,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
       return hasChanges ? newState : prev;
     });
-  }, [surveyMarkers, newSurveyMarkersByPage, scale]);
+  }, [checkedBundle?.contentModelVersion, surveyMarkers, newSurveyMarkersByPage, scale]);
 
 
   // Space filtering logic - determine which pages should be visible

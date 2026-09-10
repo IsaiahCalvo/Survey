@@ -14,6 +14,7 @@ try {
       operationId: workerData.input.operationId,
       generationId: result.plan.source.generationId,
       walHead: result.plan.source.walHead,
+      ...(workerData.input.targetContentModelVersion === 2 ? { targetContentModelVersion: 2 } : {}),
     },
     result,
   }, [result.candidate.bytes.buffer]);

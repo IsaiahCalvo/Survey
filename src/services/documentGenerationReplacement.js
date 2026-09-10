@@ -39,10 +39,16 @@ export async function prepareDocumentGenerationReplacement(input) {
   try {
     check(object(input));
     const { actorUserId, documentId, sourceId, operationId } = input;
+    const targetContentModelVersion = input.targetContentModelVersion === undefined
+      ? 1 : input.targetContentModelVersion;
     check([actorUserId, documentId, sourceId, operationId].every(validId));
+    check(targetContentModelVersion === 1 || targetContentModelVersion === 2);
     const envelope = copyJson(input.envelope), operation = copyJson(input.operation);
-    check(keys(envelope, 'version,source_id,actor_user_id,document_id,generation_id,source_sql_sha256,body_sha256,wal_head,expires_at,source_bytes,payload'));
-    check(envelope.version === 1 && envelope.actor_user_id === actorUserId && envelope.document_id === documentId
+    const versioned = envelope?.version === 2;
+    check(keys(envelope, versioned
+      ? 'version,content_model_version,source_id,actor_user_id,document_id,generation_id,source_sql_sha256,body_sha256,wal_head,expires_at,source_bytes,payload'
+      : 'version,source_id,actor_user_id,document_id,generation_id,source_sql_sha256,body_sha256,wal_head,expires_at,source_bytes,payload'));
+    check((envelope.version === 1 || envelope.version === 2) && envelope.actor_user_id === actorUserId && envelope.document_id === documentId
       && envelope.source_id === sourceId && (envelope.generation_id === null || validId(envelope.generation_id))
       && validHash(envelope.source_sql_sha256) && validHash(envelope.body_sha256) && seq(envelope.wal_head));
     check(typeof envelope.expires_at === 'string');
@@ -50,11 +56,20 @@ export async function prepareDocumentGenerationReplacement(input) {
     const unexpired = () => check(Number.isFinite(expiry) && life > 0 && Date.now() < expiry && performance.now() - started < life);
     unexpired();
     const proof = envelope.source_bytes, payload = envelope.payload, semantic = payload?.semantic;
-    check(keys(proof, 'version,source_id,actor_user_id,document_id,generation_id,source_sql_sha256,expires_at,state,objects,verified_at'));
-    check(proof.version === 1 && proof.state === 'verified'
+    check(keys(proof, versioned
+      ? 'version,content_model_version,source_id,actor_user_id,document_id,generation_id,source_sql_sha256,expires_at,state,objects,verified_at'
+      : 'version,source_id,actor_user_id,document_id,generation_id,source_sql_sha256,expires_at,state,objects,verified_at'));
+    check(proof.version === envelope.version && proof.state === 'verified'
       && ['source_id','actor_user_id','document_id','generation_id','source_sql_sha256','expires_at'].every(key => proof[key] === envelope[key])
       && typeof proof.verified_at === 'string' && Number.isFinite(Date.parse(proof.verified_at)) && Date.parse(proof.verified_at) < expiry);
-    check(object(semantic) && semantic.version === 1 && semantic.document_id === documentId
+    const sourceContentModelVersion = versioned ? envelope.content_model_version : 1;
+    check((sourceContentModelVersion === 1 || sourceContentModelVersion === 2)
+      && (!versioned || (proof.content_model_version === sourceContentModelVersion
+        && semantic?.content_model_version === sourceContentModelVersion))
+      && (versioned || !Object.hasOwn(semantic || {}, 'content_model_version'))
+      && (targetContentModelVersion !== 2 || versioned)
+      && !(sourceContentModelVersion === 2 && targetContentModelVersion !== 2));
+    check(object(semantic) && semantic.version === envelope.version && semantic.document_id === documentId
       && semantic.generation_id === envelope.generation_id && semantic.wal_head === envelope.wal_head
       && semantic.document?.id === documentId && validId(semantic.document.user_id));
     check(Array.isArray(semantic.sidecar_objects) && semantic.sidecar_objects.length === 0
@@ -94,11 +109,14 @@ export async function prepareDocumentGenerationReplacement(input) {
     const mutation = await mutateLoadedPdfPagesWithIdentity(pdf, operation); unexpired();
     check(mutation.bytes.byteLength > 0 && mutation.bytes.byteLength <= PDF_LIMIT);
     const transformed = await transformDocumentGenerationSource({ sourcePayload: payload, sidecars: [], operationId,
-      operation, pageCount, pageSizes, copiedWidgets: mutation.copiedWidgets });
+      operation, pageCount, pageSizes, copiedWidgets: mutation.copiedWidgets, targetContentModelVersion });
     unexpired();
     const c = transformed.legacyCheckpoint;
     check(transformed.baselineUpdate.byteLength + c.state.byteLength + c.stateVector.byteLength <= SOURCE_LIMIT);
-    const plan = { version: 1, operationId: transformed.operationId, source: transformed.source,
+    check(transformed.version === targetContentModelVersion
+      && (targetContentModelVersion !== 2 || transformed.contentModelVersion === 2));
+    const plan = { version: targetContentModelVersion, ...(targetContentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
+      operationId: transformed.operationId, source: transformed.source,
       operation: transformed.operation, projection: transformed.projection, baseline_base64: b64(transformed.baselineUpdate),
       legacy: { documentId: c.documentId, encodingVersion: c.encodingVersion, throughSeq: c.throughSeq,
         state_base64: b64(c.state), state_vector_base64: b64(c.stateVector) } };

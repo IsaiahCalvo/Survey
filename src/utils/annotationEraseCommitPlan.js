@@ -295,6 +295,8 @@ export function prepareEraseIntentForCommit({
       ...(counterSeriesPreconditions.length > 0 ? { counterSeriesPreconditions } : {}),
     },
     presentationRevision: intent.presentationRevision,
+    surveyMarkerIds: intent.surveyMarkerIds,
+    surveyMarkerTargets: intent.surveyMarkerTargets,
   });
 }
 

@@ -400,6 +400,15 @@ if (import.meta.env.DEV) {
     });
   }
   const testPdf = params.get('testPdf');
+  const documentSurveyModelV2 = params.get('documentSurveyModelV2');
+  if (!devRouteActive && ['1', 'cleanup'].includes(documentSurveyModelV2)) {
+    devRouteActive = true;
+    import('./dev/DocumentSurveyModelV2Harness.jsx').then(({ default: Harness }) => {
+      createRoot(document.getElementById('root')).render(
+        <Harness cleanupOnly={documentSurveyModelV2 === 'cleanup'} />
+      );
+    });
+  }
   if (!devRouteActive && testPdf) {
     devRouteActive = true;
     import('./DevTestRoute').then(({ DevTestRoute }) => {

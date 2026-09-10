@@ -52,9 +52,12 @@ async function mount(t, { docRole = 'owner' } = {}) {
   const makeHandle = args => {
     const doc = new Y.Doc();
     initializeSurveyCrdtV2(doc, { surveyMarkers: { marker: marker() }, spaces: [], createId });
+    syncByPageToDoc(doc, page('seeded'));
     const handle = {
       doc, args, documentId: args.documentId, pdfGenerationId: args.pdfGenerationId,
+      writerId: 'writer',
       contentModelVersion: 2, legacyMarkerWrites: 0, pageWrites: 0, surveyWrites: 0,
+      eraseWrites: 0, historyWrites: 0, restoreWrites: 0,
       getByPage: () => docToByPage(doc),
       getSurveyState: () => materializeSurveyCrdtV2(doc),
       getDeletedPdfAnnotations: () => [],
@@ -63,7 +66,11 @@ async function mount(t, { docRole = 'owner' } = {}) {
       onHistoryQuarantine: callback => { handle.quarantine = callback; return () => {}; },
       onChange: callback => { handle.change = callback; return () => {}; },
       repairStackedInkDuplicates: () => ({ changed: false }),
-      applyByPage: value => { handle.pageWrites += 1; return syncByPageToDoc(doc, value); },
+      applyByPage: value => {
+        const result = syncByPageToDoc(doc, value);
+        if (result.added + result.updated + result.removed > 0) handle.pageWrites += 1;
+        return result;
+      },
       applySurveyMarkers: () => { handle.legacyMarkerWrites += 1; throw new Error('legacy write'); },
       updateSurveyMarkers: updater => {
         handle.surveyWrites += 1;
@@ -78,9 +85,11 @@ async function mount(t, { docRole = 'owner' } = {}) {
       isLocalReceiptCurrent: () => true, revalidateLocalReceipt: async value => value,
       getLocalCloseReceipt: () => null, getMeta: () => undefined, setMeta: () => {},
       applyEraserMutation: () => ({ objects: [] }),
-      commitEraseIntent: async () => ({ status: 'noop', historyQuarantineGeneration: 0 }),
-      applyEraseHistoryTransition: () => ({ status: 'noop' }),
-      restoreEraseDeletion: () => ({ status: 'noop' }), getHistoryQuarantineGeneration: () => 0,
+      commitEraseIntent: async () => { handle.eraseWrites += 1;
+        return { status: 'noop', historyQuarantineGeneration: 0 }; },
+      applyEraseHistoryTransition: () => { handle.historyWrites += 1; return { status: 'noop' }; },
+      restoreEraseDeletion: () => { handle.restoreWrites += 1; return { status: 'noop' }; },
+      getHistoryQuarantineGeneration: () => 0,
     };
     state.handles.push(handle);
     return handle;
@@ -133,6 +142,9 @@ test('model-2 hydration stays read-only, uses latest remote state, and captures 
   const handle = h.state.handles[0];
   assert.equal(handle.legacyMarkerWrites, 0);
   assert.equal(h.state.view.surveyMarkers.marker.note, 'base');
+  assert.equal(handle.getByPage()[1].objects[0].data.id, 'seeded');
+  assert.equal(h.state.view.annotationsByPage[1].objects[0].data.id, 'seeded');
+  assert.equal(handle.pageWrites, 0, 'pre-hydration React state cannot clear the checked baseline');
 
   updateSurveyMarkersV2(handle.doc, current => ({
     ...current, marker: { ...current.marker, note: 'remote' },
@@ -174,6 +186,28 @@ test('viewer, unresolved, and downgraded roles reject before evaluating a survey
   assert.equal(calls, 0);
 });
 
+test('model-2 erase rejects viewer and later role downgrade before the handle writes', async t => {
+  const h = await mount(t, { docRole: 'editor' });
+  const handle = h.state.handles[0];
+  const retained = h.state.latest.commitEraseIntent;
+  await h.render({ docRole: 'viewer' });
+  assert.equal((await retained({ mutationId: 'erase-role' })).reason, 'read-only');
+  assert.equal(handle.eraseWrites, 0);
+});
+
+test('document lock retires model-2 erase, history, and restore before handle writes', async t => {
+  const h = await mount(t, { docRole: 'editor' });
+  const handle = h.state.handles[0];
+  const erase = h.state.latest.commitEraseIntent;
+  const history = h.state.latest.applyEraseHistoryTransition;
+  const restore = h.state.latest.restoreEraseDeletion;
+  await h.render({ documentLocked: true });
+  assert.equal((await erase({ mutationId: 'locked-erase' })).reason, 'document-locked');
+  assert.equal(history({ version: 1, mutationId: 'locked-history' }, 'undo').reason, 'document-locked');
+  assert.equal(restore([{ type: 'surveyMarker' }]).reason, 'document-locked');
+  assert.deepEqual([handle.eraseWrites, handle.historyWrites, handle.restoreWrites], [0, 0, 0]);
+});
+
 for (const change of ['actor', 'document', 'bundle', 'unmount']) {
   test(`${change} retirement rejects a retained model-2 updater before evaluation`, async t => {
     const h = await mount(t);
@@ -189,3 +223,25 @@ for (const change of ['actor', 'document', 'bundle', 'unmount']) {
     assert.equal(calls, 0);
   });
 }
+
+test('client replacement retires callbacks and local receipts before the new open', async t => {
+  const h = await mount(t);
+  const clientA = { id: 'client-a' };
+  const clientB = { id: 'client-b' };
+  await h.render({ annotationDocClient: clientA });
+  const retained = h.state.latest.updateSurveyMarkers;
+  let receipt;
+  await act(async () => {
+    await Promise.resolve();
+    receipt = await h.state.latest.ensureLocalDurability();
+  });
+  assert.equal(h.state.handles.at(-1).args.supabase, clientA);
+  await h.render({ annotationDocClient: clientB });
+  assert.equal(h.state.handles.at(-1).args.supabase, clientB);
+  let calls = 0;
+  assert.throws(() => retained(() => { calls += 1; return {}; }), {
+    code: 'ANNOTATION_LOCAL_NOT_READY',
+  });
+  assert.equal(calls, 0);
+  assert.equal(h.state.latest.isLocalDurabilityCurrent(receipt), false);
+});
