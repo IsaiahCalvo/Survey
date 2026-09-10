@@ -483,6 +483,7 @@ export async function openAnnotationDoc({
     lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
     snapshotTimer: null,   // debounced full-state checkpoint
     repairTimer: null,
+    repairInFlight: false,
     repairRetryAttempt: 0,
     snapshotChain: Promise.resolve(false), // serializes ALL snapshot writes so two
                            // never overlap and clobber each other (debounce vs eager vs destroy)
@@ -2560,12 +2561,16 @@ function clearGapRepairTimer(state) {
 function scheduleGapRepair(state) {
   if (
     state.destroyed
+    || state.deleted
+    || state.closePromise
+    || state.eraseOutboxClosing
     || state.generationBlocked
     || state.capacityError
     || state.aggregateGenerationTransport
     || !state.durabilityGap
     || !state.repairCheckpointUpdate
     || state.repairTimer
+    || state.repairInFlight
   ) return;
   const baseDelay = Math.max(1, Number(state.repairRetryDelayMs) || GAP_REPAIR_RETRY_MS);
   const delayMs = Math.min(
@@ -2575,19 +2580,38 @@ function scheduleGapRepair(state) {
   state.repairRetryAttempt += 1;
   state.repairTimer = setTimeout(async () => {
     state.repairTimer = null;
-    if (state.destroyed || state.capacityError || !state.durabilityGap) return;
+    if (state.destroyed || state.deleted || state.closePromise || state.eraseOutboxClosing
+      || state.capacityError || !state.durabilityGap) return;
     if (state.pendingAppends > 0) {
       scheduleGapRepair(state);
       return;
     }
-    const result = await writeSnapshot(state, captureSnapshotOptions(state)).catch((error) => ({
-      ok: false,
-      permissionDenied: isPermissionDenied(error),
-      containsUnacceptedPrefix: true,
-      error: toSyncError(error),
-    }));
-    await finalizeSnapshotResult(state, result);
-    if (state.durabilityGap && !result?.permissionDenied) scheduleGapRepair(state);
+    state.repairInFlight = true;
+    let result = null;
+    try {
+      try {
+        result = await writeSnapshot(state, captureSnapshotOptions(state));
+      } catch (error) {
+        result = {
+          ok: false,
+          permissionDenied: isPermissionDenied(error),
+          containsUnacceptedPrefix: true,
+          error: toSyncError(error),
+        };
+      }
+      await finalizeSnapshotResult(state, result);
+    } finally {
+      state.repairInFlight = false;
+      if (
+        state.durabilityGap
+        && !result?.permissionDenied
+        && !state.destroyed
+        && !state.deleted
+        && !state.closePromise
+        && !state.eraseOutboxClosing
+        && !state.capacityError
+      ) scheduleGapRepair(state);
+    }
   }, delayMs);
 }
 

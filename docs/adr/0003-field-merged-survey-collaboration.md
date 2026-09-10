@@ -1197,6 +1197,50 @@ input-clone, malformed-state, order-repair and peer-freshness contracts, but the
 original core implementation remains in place. Large-document update cost is
 still a rollout gate; do not claim a shipped speed gain from these trials.
 
+## One background snapshot repair at a time
+
+A controlled failure test found duplicate work in the default sync path. One
+pending edit spent four snapshot requests in its eager fallback. While its next
+four-request background repair was held, replay of the same outbox row could
+arm another repair. The timer was already clear, though its request still ran.
+That extra repair queued behind the snapshot chain and sent the same immutable
+snapshot four more times: twelve requests instead of eight for this interleave.
+
+The repair scheduler now tracks an in-flight repair through result handling,
+not just its timer. When it finishes, it may arm one later repair for the latest
+remaining gap. Closing or deleting a handle prevents that rearm. The existing
+four-attempt eager fallback, immutable checkpoint bytes, snapshot serialization,
+gap generation checks and explicit save behavior remain intact. Aggregate sync
+is unchanged. This is a narrow request-budget fix, not a blanket retry limit.
+
+The retry-budget tests hold the real sync module's snapshot request while the
+same durable outbox record fails replay again. They check identical retry bytes,
+one later repair for the newer gap, successful recovery, an empty queue and a
+cold registry/outbox reopen. Separate held-request cases prove close keeps its
+explicit final checkpoint without rearming a timer, and purge stops requests
+after the already-dispatched one. Timer controls use awaited child tests and
+restore the native clock in `finally`; cleanup closes both outboxes and purges
+the exact synthetic document registry key.
+
+The local browser check used the full viewer, real Yjs and IndexedDB, and the
+synthetic backend. Offline full-stroke erase left one marker and one queued edit;
+Undo restored two markers and left two queued edits. Reconnect and Flush cleared
+the queue. Reopen retained two markers, left x=72, zero local revision and WAL
+head 3. Only expected missing-credential and forced-offline warnings appeared.
+Fixture removal reported `cleaned`. Request-count evidence comes from controlled
+tests, not browser timing or the fixture's successful-write counter. No live
+database, Microsoft connection, app rollout flag or deployment changed; these
+checks do not establish a production bill reduction or live multi-user proof.
+
+Final verification for this repair-budget checkpoint on 2026-09-10: the focused
+durability, close, writer teardown, erase lifecycle and aggregate set passed
+34/34 before and after the source change. The new three-case retry-budget file
+passed all four reported tests, including its parent, in the final independent
+review. `npm test` passed across 716 files with 7,141 tests: 7,045 passed,
+96 skipped, zero failed or cancelled. The Vite build passed with the existing
+large-chunk warning, and the AST-only graph refresh completed. Source and new
+test hashes stayed unchanged throughout the final full-suite run.
+
 ## References
 
 - [Yjs shared types and JSON mutation caveats](https://docs.yjs.dev/getting-started/working-with-shared-types)
