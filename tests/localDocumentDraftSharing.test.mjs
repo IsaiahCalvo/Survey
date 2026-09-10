@@ -45,7 +45,7 @@ function storeFor(t, factory, extra = {}) {
   const store = createLocalDocumentDraftStore({ indexedDB: factory, ...extra }); t.after(() => store.close()); return store;
 }
 
-test('additive v2 upgrade preserves every v1 inline row and tombstone, with no automatic migration', async t => {
+test('additive v3 upgrade preserves every v1 payload while indexing live rows and tombstones', async t => {
   const factory = new IDBFactory(); const sessionId = crypto.randomUUID();
   const writerId = crypto.randomUUID(); const fileId = crypto.randomUUID(); const blob = file();
   const tombstone = { sessionId: crypto.randomUUID(), writerId: crypto.randomUUID(), fileId: crypto.randomUUID(), sequence: 2, discarded: true };
@@ -65,8 +65,8 @@ test('additive v2 upgrade preserves every v1 inline row and tombstone, with no a
   const store = storeFor(t, factory);
   assert.equal((await store.listDrafts()).length, 1);
   const upgraded = await inspect(factory);
-  assert.deepEqual(upgraded.sessions.find(item => item.sessionId === sessionId), row);
-  assert.deepEqual(upgraded.sessions.find(item => item.sessionId === tombstone.sessionId), tombstone);
+  assert.deepEqual(upgraded.sessions.find(item => item.sessionId === sessionId), { ...row, active: 1 });
+  assert.deepEqual(upgraded.sessions.find(item => item.sessionId === tombstone.sessionId), { ...tombstone, active: 0 });
   assert.deepEqual(upgraded.snapshots, [snapshot]);
   assert.deepEqual(upgraded.pdfBytes[0], storedBytes); assert.equal(upgraded.sharedPdfBytes.length, 0);
   const restored = await store.readDraft(sessionId, { expectedSequence: 1 });
@@ -208,7 +208,7 @@ test('shared-payload quota failure and abort after all requests succeed roll bac
           object[method] = (...args) => {
             if (mode === 'quota' && name === 'sharedPdfBytes') throw new DOMException('disk full', 'QuotaExceededError');
             const request = original(...args);
-            if (mode === 'late-abort') request.addEventListener('success', () => { if (++successes === 4) tx.abort(); });
+            if (mode === 'late-abort') request.addEventListener('success', () => { if (++successes === 5) tx.abort(); });
             return request;
           };
         }
@@ -217,7 +217,7 @@ test('shared-payload quota failure and abort after all requests succeed roll bac
     }));
     const writer = store.createWriter(file());
     await assert.rejects(writer.capture(state()), mode === 'quota' ? { name: 'QuotaExceededError' } : { code: 'aborted' });
-    if (mode === 'late-abort') assert.equal(successes, 4);
+    if (mode === 'late-abort') assert.equal(successes, 5);
     assert.ok(Object.values(await inspect(factory)).every(rows => rows.length === 0));
     armed = false;
     const receipt = await writer.capture(state('retry'));
@@ -237,7 +237,7 @@ test('state-only captures neither hash, compare, read nor write PDF payloads', a
   assert.equal(hashes, 1); assert.equal(compares, 0);
   assert.deepEqual(transactions, Array.from({ length: 20 }, () => [['sessions', 'snapshots'], 'readwrite']));
   const before = transactions.length; await store.listDrafts();
-  assert.deepEqual(transactions.slice(before), [[['sessions'], 'readonly']]);
+  assert.deepEqual(transactions.slice(before), [[['sessions', 'draftMeta'], 'readonly']]);
 });
 
 test('missing, changed-incarnation, malformed and unsupported shared references fail closed without repair', async t => {
@@ -320,5 +320,6 @@ test('a blocked v1 upgrade leaves its schema intact and retry upgrades after the
   old.close();
   assert.deepEqual(await store.listDrafts(), []);
   const upgraded = await open(factory);
-  assert.equal(upgraded.version, 2); assert.ok(upgraded.objectStoreNames.contains('sharedPdfBytes')); upgraded.close();
+  assert.equal(upgraded.version, 3); assert.ok(upgraded.objectStoreNames.contains('sharedPdfBytes'));
+  assert.ok(upgraded.objectStoreNames.contains('draftMeta')); upgraded.close();
 });

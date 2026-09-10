@@ -108,7 +108,8 @@ test('public existing-only v2 export succeeds with all writes quota-blocked and 
   assert.equal(await recovered.file.text(), await pdf().text()); assert.deepEqual(recovered.state, state());
   for (const key of ['id', 'localId', 'storageMode', 'filePath', 'user_id']) assert.equal(Object.hasOwn(recovered.file, key), false);
   assert.deepEqual(calls.opens, [[LOCAL_DOCUMENT_DRAFT_DB_NAME]]); assert.equal(calls.closes, 1);
-  assert.deepEqual(calls.transactions, [[['sessions', 'pdfBytes', 'snapshots', 'sharedPdfBytes'], 'readonly'], [['sessions'], 'readonly']]);
+  assert.deepEqual(calls.transactions, [['sessions', 'readonly'],
+    [['sessions', 'pdfBytes', 'snapshots', 'sharedPdfBytes'], 'readonly'], [['sessions'], 'readonly']]);
   assert.deepEqual(await contents(factory), before);
 });
 
@@ -173,10 +174,10 @@ test('read retirement during byte verification rejects instead of returning a st
 });
 
 test('unknown existing versions are rejected without upgrade or source changes', async t => {
-  const factory = new IDBFactory(); const db = await open(factory, 3, db => db.createObjectStore('future-data'));
+  const factory = new IDBFactory(); const db = await open(factory, 4, db => db.createObjectStore('future-data'));
   db.close(); const value = reader(t, factory);
   await assert.rejects(value.readDraft(crypto.randomUUID(), { expectedSequence: 1 }), { code: 'unsupported-format' });
-  assert.deepEqual(await factory.databases(), [{ name: LOCAL_DOCUMENT_DRAFT_DB_NAME, version: 3 }]);
+  assert.deepEqual(await factory.databases(), [{ name: LOCAL_DOCUMENT_DRAFT_DB_NAME, version: 4 }]);
 });
 
 test('database removal during verification cannot recreate storage or return the retired snapshot', async t => {
@@ -194,7 +195,7 @@ test('database removal during verification cannot recreate storage or return the
 });
 
 test('neither snapshot-read nor final-metadata request success permits export before transaction completion', async t => {
-  for (const abortPhase of [1, 2]) {
+  for (const { abortPhase, storeName } of [{ abortPhase: 2, storeName: 'sharedPdfBytes' }, { abortPhase: 3, storeName: 'sessions' }]) {
     const factory = new IDBFactory(); const { receipt } = await seed(t, factory);
     const before = await contents(factory); let phase = 0; let successfulAbortRequest = false;
     const wrapped = { open(...args) {
@@ -208,7 +209,7 @@ test('neither snapshot-read nor final-metadata request success permits export be
             const object = objectStore(name); const get = object.get.bind(object);
             object.get = (...args) => {
               const read = get(...args);
-              if (currentPhase === abortPhase && name === (abortPhase === 1 ? 'sharedPdfBytes' : 'sessions')) {
+              if (currentPhase === abortPhase && name === storeName) {
                 read.addEventListener('success', () => { successfulAbortRequest = true; tx.abort(); });
               }
               return read;
@@ -235,7 +236,7 @@ test('public final receipt check reads only session metadata, opens without vers
   t.after(() => original ? Object.defineProperty(globalThis, 'indexedDB', original) : delete globalThis.indexedDB);
   assert.equal(await verifyExistingLocalDocumentDraftReceipt(metadata), true);
   assert.deepEqual(calls.opens, [[LOCAL_DOCUMENT_DRAFT_DB_NAME]]);
-  assert.deepEqual(calls.transactions, [[['sessions'], 'readonly']]);
+  assert.deepEqual(calls.transactions, [['sessions', 'readonly'], [['sessions'], 'readonly']]);
   assert.equal(calls.closes, 1);
 });
 

@@ -15,6 +15,10 @@ export const MODEL2_FIXTURE_IDS = Object.freeze({
 
 const hex = bytes => `\\x${Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')}`;
 const bytesFromHex = value => Uint8Array.from(value.slice(2).match(/../g) || [], part => parseInt(part, 16));
+const sameBytes = (left, right) => {
+  const a = bytesFromHex(left); const b = bytesFromHex(right);
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+};
 async function sha256(bytes) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -86,7 +90,8 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
       return { data: { ...base, rows: eligible, through_seq: String(through), has_more: false } };
     }
     if (name === 'read_annotation_writer_sequence_v3') return { data: { ...base,
-      client_id: params.p_client_id, client_seq: String(rows.filter(row => row.client_id === params.p_client_id).length) } };
+      client_id: params.p_client_id, client_seq: rows.filter(row => row.client_id === params.p_client_id)
+        .reduce((highest, row) => BigInt(row.client_seq) > highest ? BigInt(row.client_seq) : highest, 0n).toString() } };
     if (name === 'append_annotation_update_v3') {
       let row = rows.find(item => item.client_id === params.p_client_id && item.client_seq === params.p_client_seq);
       if (!row) {
@@ -100,13 +105,22 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
     if (name === 'read_annotation_snapshot_v3') return { data: { ...base, snapshot, wal_head: String(head) } };
     if (name === 'store_annotation_snapshot_v3') {
       snapshotWrites += 1;
-      snapshot = { at_seq: params.p_at_seq, snapshot: params.p_snapshot,
+      const exact = snapshot.at_seq === params.p_at_seq && sameBytes(snapshot.snapshot, params.p_snapshot)
+        && snapshot.encoding_version === params.p_encoding_version
+        && snapshot.writer_id === params.p_writer_id && snapshot.writer_epoch === params.p_writer_epoch;
+      const matches = String(head) === params.p_at_seq
+        && snapshot.at_seq === params.p_expected_at_seq
+        && snapshot.writer_id === params.p_expected_writer_id
+        && snapshot.writer_epoch === params.p_expected_writer_epoch
+        && BigInt(params.p_writer_epoch) > BigInt(snapshot.writer_epoch);
+      const stored = exact || matches;
+      if (matches) snapshot = { at_seq: params.p_at_seq, snapshot: params.p_snapshot,
         encoding_version: params.p_encoding_version, writer_id: params.p_writer_id,
         writer_epoch: params.p_writer_epoch };
-      return { data: { ...base, stored: true, at_seq: params.p_at_seq,
+      return { data: { ...base, stored, at_seq: params.p_at_seq,
         writer_id: params.p_writer_id, writer_epoch: params.p_writer_epoch,
-        snapshot_sha256: await sha256(bytesFromHex(params.p_snapshot)),
-        encoding_version: params.p_encoding_version } };
+        encoding_version: params.p_encoding_version,
+        ...(stored ? { snapshot_sha256: await sha256(bytesFromHex(params.p_snapshot)) } : {}) } };
     }
     throw new Error(`Live service blocked by model 2 fixture: ${name}`);
   }

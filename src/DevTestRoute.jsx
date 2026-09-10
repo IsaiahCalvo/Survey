@@ -9,6 +9,7 @@ import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import App from './AppShell';
 import PageReplacementExpiredHarness from './dev/PageReplacementExpiredHarness.jsx';
 import DocumentEntityCatalogHarness from './dev/DocumentEntityCatalogHarness.jsx';
+import LocalDocumentDraftIndexHarness from './dev/LocalDocumentDraftIndexHarness.jsx';
 import { createLocalDocumentStore } from './services/localDocumentStore.js';
 import { createLocalDocumentStateReader } from './services/localDocumentState.js';
 import { randomUUID } from './utils/randomUUIDPolyfill.js';
@@ -166,6 +167,8 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     .get('documentDeepLinkE2E') === '1';
   const pageReplacementExpiredE2E = new URLSearchParams(window.location.search)
     .get('pageReplacementExpiredE2E') === '1';
+  const localDocumentDraftIndexE2E = new URLSearchParams(window.location.search)
+    .get('localDocumentDraftIndexE2E') === '1';
   const documentEntityCatalogE2E = new URLSearchParams(window.location.search)
     .get('documentEntityCatalogE2E') === '1';
   const documentEntityCatalogViewerE2E = new URLSearchParams(window.location.search)
@@ -239,7 +242,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
     async function loadPdf() {
       try {
-        if (pageReplacementExpiredE2E || documentEntityCatalogE2E) { setStatus('ready'); return; }
+        if (pageReplacementExpiredE2E || documentEntityCatalogE2E || localDocumentDraftIndexE2E) { setStatus('ready'); return; }
         const url = `/debug-fixtures/${encodeURIComponent(pdfName)}`;
         const resp = await fetch(url);
         if (!resp.ok) {
@@ -287,7 +290,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
       }
     };
   }, [pdfName, displayName, documentDeepLinkE2E, documentEntityCatalogE2E,
-    documentOwnedViewerE2E, pageReplacementExpiredE2E]);
+    documentOwnedViewerE2E, localDocumentDraftIndexE2E, pageReplacementExpiredE2E]);
 
   if (status === 'loading') {
     return (
@@ -331,6 +334,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   // status === 'ready'
   if (pageReplacementExpiredE2E) return <PageReplacementExpiredHarness />;
   if (documentEntityCatalogE2E) return <DocumentEntityCatalogHarness />;
+  if (localDocumentDraftIndexE2E) return <LocalDocumentDraftIndexHarness />;
   if (documentOwnedViewerE2E && catalogViewerCleanup) return <main style={{ minHeight: '100vh',
     padding: '32px', color: '#20242b', background: '#f5f5f5',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>

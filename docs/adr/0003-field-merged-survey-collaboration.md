@@ -223,11 +223,87 @@ without local outbox evidence. Releasing the WAL request then enriches the exact
 receipt. This is synthetic-backend proof, not real SQL or live-cloud proof.
 Simulated offline transport retries remain expected warnings.
 
-Snapshot-only accepted records retain their full proof until a WAL sequence can
-be added. If the append never succeeded, current replay does not revisit that
-accepted record, so this retained data has no proven storage bound. Bounded,
-exact append reconciliation remains a rollout gate. Do not silently evict the
-record, downgrade it to pending, or weaken the compacted-identity check.
+Snapshot-only accepted records retain exact evidence even before a WAL sequence
+can be added. If the append never succeeded, current replay does not revisit that
+accepted record, so this retained data has no proven global storage bound.
+
+Local compaction now replaces eligible snapshot-only receipts with a
+strict, versioned proof: exact immutable metadata and ordered dependencies, plus
+SHA-256 and byte length for each of the update and checkpoint byte fields. It
+keeps the accepted checkpoint itself. Newly compacted sequence-known rows keep
+the prior accepted-key-only representation. Snapshot-only rows remain full rows
+unless their raw byte fields exceed the encoded proof and added accepted-key
+cost by a fixed safety margin. This is a conservative local cost estimate, not a
+measurement of the browser's physical disk use. Unknown receipt shapes retain
+their full rows;
+historical accepted keys without proof remain one-way fences. Hashing belongs
+outside the transaction, with the exact current row checked again before atomic
+proof insertion and row deletion. Normal settlement does not hash bytes unless
+it needs to check a late reply against an already compacted proof.
+
+Do not add background WAL replay just to reclaim these local bytes. The append
+SQL allows client-sequence gaps but rejects an older missing sequence once that
+writer has a later accepted sequence. Code `23505` can mean either that stale
+sequence or a different-byte exact-key collision; transport does not preserve
+enough detail to treat it as harmless. Exact snapshot-accepted evidence must
+survive that ambiguity, with an unresolved warning retained across reopen until
+an exact verified success clears it. No accepted row may be downgraded to pending
+or discarded merely because that late reply failed.
+
+This receipt patch passed local tests and independent review. Compact proof
+metadata still grows with edit count, and checkpoint merging still loads the
+accepted state. It is not a global storage bound or a substitute for the capacity
+and history-archive gates above.
+
+The first proof-for-every-model-2-row draft was rejected: a small-row measurement
+produced roughly 99 KB of proof JSON for 100 sequence-known rows, where the prior
+code kept only accepted keys. Removing repeated byte fields does not by itself
+prove a storage improvement. Normal sequence-known compaction and tiny
+snapshot-only rows therefore need separate before/after checks.
+
+The late-conflict test also exposed missing production rules in its synthetic
+backend: snapshot writes need exact-retry handling, the current WAL frontier, an
+exact expected snapshot base and an increasing writer epoch. Writer sequence
+reads must return the maximum accepted client sequence, not a count of rows.
+The fixture now enforces these rules. Do not replace a same-handle
+dependent edit with an independent peer edit to make the test pass. Acceptance
+requires a fresh checked server read and a new local database to recover both
+edits, plus a separate original-database reopen to retain the unresolved warning.
+Repeated runs on pinned source confirmed an intermittent fresh-read failure.
+Review found that snapshot bytes were captured before queueing, but the queued
+write later read the mutable WAL sequence and expected snapshot base. Old bytes
+could therefore be submitted under a newer frontier and pass server CAS. The
+fix now seals bytes, WAL sequence and the complete expected-base tuple together
+when enqueued. Every conflict-refresh retry also seals its refreshed base
+with the rebased bytes. The deterministic queue test waits for the fixture RPC
+to commit, holds delivery of its result, and publicly reads the stored snapshot
+before advancing the next edit. Both that test and the original same-handle
+flow recover both edits through a fresh checked read and a new local database.
+
+Final local verification on 2026-09-10: the full `npm test` run completed with
+6,961 tests (6,865 passed, 96 skipped, zero failed or cancelled) across 696 files.
+`npx vite build` passed with the existing large-chunk warning. The eight receipt
+reconciliation tests passed in ten fresh processes on pinned source; independent
+review repeated those checks. In the in-app browser, an offline Undo survived
+reconnect, flush and reopen with both markers present and no queued edits. The
+exact fixture data was removed afterward. That browser check uses native local
+storage and a synthetic backend, not live SQL or live multi-user service access.
+
+A paired memory-adapter measurement against `af9cc652` used 100 tiny
+sequence-known receipts, three warmups and twelve interleaved samples per
+version. Both versions retained an estimated 14,380 bytes, 100 accepted keys,
+zero proofs and zero full rows. Median settlement-plus-compaction time was
+23.086 ms before and 22.682 ms after, with overlapping ranges. This supports no
+small-row storage regression in that fixture, not a broad speed or browser
+latency claim. For 100 larger snapshot-only receipts, estimated retained bytes
+fell from 1,693,040 to 921,842. These estimates count raw bytes and encoded
+metadata; they do not measure physical IndexedDB disk use.
+
+An older checked bundle can also age while local storage opens. A snapshot-only
+change may keep the same WAL head, while a later WAL delta depends on that newer
+snapshot. WAL-tail catch-up alone cannot repair every such stale bootstrap.
+Keep an explicit fresh-snapshot/open-gap test as remaining work; passing a fresh
+bundle into a reopened handle proves that case only, not arbitrary bundle age.
 
 The database migration defines versioned transport and model checks. Model-2
 source, preparation and publication functions remain private and ungranted.

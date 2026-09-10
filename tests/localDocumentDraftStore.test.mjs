@@ -114,7 +114,8 @@ test('many captures write PDF bytes once and list metadata without reading eithe
   assert.equal(pdfPuts, 1); assert.equal(touches.filter(name => name === 'pdfBytes').length, 1);
   calls.length = 0; touches.length = 0;
   const rows = await store.listDrafts();
-  assert.deepEqual(calls, [[['sessions'], 'readonly']]); assert.deepEqual(touches, ['sessions']);
+  assert.deepEqual(calls, [[['sessions', 'draftMeta'], 'readonly']]);
+  assert.deepEqual(touches, ['sessions', 'draftMeta']);
   assert.equal(rows[0].sequence, 20); assert.equal(Object.hasOwn(rows[0], 'blob'), false); assert.equal(Object.hasOwn(rows[0], 'state'), false);
   store.close();
 });

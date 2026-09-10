@@ -9,6 +9,9 @@ const SESSIONS = 'sessions';
 const BYTES = 'pdfBytes';
 const SNAPSHOTS = 'snapshots';
 const SHARED_BYTES = 'sharedPdfBytes';
+const ACTIVE = 'active';
+const DRAFT_META = 'draftMeta';
+const ACTIVE_COUNT = 'activeCount';
 const legacyStores = [SESSIONS, BYTES, SNAPSHOTS];
 const stores = [...legacyStores, SHARED_BYTES];
 const fingerprintPattern = /^sha256-chunks-v1:[0-9a-f]{64}$/;
@@ -57,7 +60,7 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
       try {
         const storage = indexedDB === undefined ? globalThis.indexedDB : indexedDB;
         if (!storage?.open) throw fail('unavailable', 'Local draft storage is unavailable.');
-        request = existingOnly ? storage.open(dbName) : storage.open(dbName, 2);
+        request = existingOnly ? storage.open(dbName) : storage.open(dbName, 3);
       } catch (error) { finish(error); return; }
       request.onupgradeneeded = event => {
         if (settled || closed) { request.transaction.abort(); return; }
@@ -72,6 +75,30 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
             request.result.createObjectStore(SHARED_BYTES, { keyPath: 'payloadId' });
             request.transaction.objectStore(BYTES).createIndex('payloadId', 'payloadId');
           }
+          if (event.oldVersion < 3) {
+            const sessions = request.transaction.objectStore(SESSIONS);
+            sessions.createIndex(ACTIVE, ACTIVE);
+            const draftMeta = request.result.createObjectStore(DRAFT_META, { keyPath: 'key' });
+            let activeCount = 0;
+            const cursorRequest = sessions.openCursor();
+            cursorRequest.onerror = () => {
+              openFailure = cursorRequest.error || fail('corrupt', 'Local draft metadata could not be indexed. Its data was kept.');
+              request.transaction.abort();
+            };
+            cursorRequest.onsuccess = () => {
+              try {
+                const cursor = cursorRequest.result;
+                if (!cursor) { draftMeta.put({ key: ACTIVE_COUNT, value: activeCount }); return; }
+                const row = validateMetadata(cursor.value, cursor.key);
+                if (!row.discarded) activeCount += 1;
+                cursor.update({ ...row, active: row.discarded ? 0 : 1 });
+                cursor.continue();
+              } catch (error) {
+                openFailure = error;
+                request.transaction.abort();
+              }
+            };
+          }
         }
         catch (error) { request.transaction.abort(); finish(error); }
       };
@@ -80,12 +107,29 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
       request.onsuccess = () => {
         const db = request.result;
         if (settled || closed) { db.close(); finish(fail('closed', 'The local draft store is closed.')); return; }
-        if (existingOnly && db.version !== 1 && db.version !== 2) {
+        if (existingOnly && db.version !== 1 && db.version !== 2 && db.version !== 3) {
           db.close(); finish(fail('unsupported-format', 'This recovery storage version is not supported. Its data was kept.')); return;
         }
-        const requiredStores = existingOnly && db.version === 1 ? legacyStores : stores;
+        const requiredStores = existingOnly && db.version === 1 ? legacyStores
+          : db.version >= 3 ? [...stores, DRAFT_META] : stores;
         if (requiredStores.some(name => !db.objectStoreNames.contains(name))) {
           db.close(); finish(fail('corrupt', 'Local draft storage is incomplete. Its data was kept.')); return;
+        }
+        if (db.version >= 3) {
+          let schema;
+          try {
+            schema = db.transaction(SESSIONS, 'readonly');
+            const sessions = schema.objectStore(SESSIONS);
+            if (!sessions.indexNames.contains(ACTIVE)) throw fail('corrupt', 'Local draft storage is incomplete. Its data was kept.');
+            const index = sessions.index(ACTIVE);
+            if (index.keyPath !== ACTIVE || index.unique || index.multiEntry) {
+              throw fail('corrupt', 'Local draft storage is incomplete. Its data was kept.');
+            }
+          } catch (error) {
+            try { schema?.abort(); } catch { /* already settled */ }
+            db.close(); finish(error); return;
+          }
+          try { schema.abort(); } catch { /* already settled */ }
         }
         connection = db;
         db.onversionchange = () => { db.close(); if (connection === db) connection = null; };
@@ -101,7 +145,8 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
     const db = await database(); active();
     return new Promise((resolve, reject) => {
       let tx;
-      try { tx = db.transaction(existingOnly && db.version === 1 ? names.filter(name => name !== SHARED_BYTES) : names, mode); }
+      try { tx = db.transaction(existingOnly
+        ? names.filter(name => db.objectStoreNames.contains(name)) : names, mode); }
       catch (error) { if (connection === db) connection = null; reject(error); return; }
       let result; let error;
       const abort = cause => { error ||= cause; try { tx.abort(); } catch { /* already settled */ } };
@@ -206,7 +251,9 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
           // than waiting indefinitely for another writer or a last-ref discard.
           const shared = first && fingerprint && attempt < 3 ? await findSharedPayload(blob, fingerprint) : null;
           try {
-            receipt = await transact(first ? (shared ? stores : legacyStores) : [SESSIONS, SNAPSHOTS], 'readwrite', (tx, done, abort) => {
+            receipt = await transact(first
+              ? [...(shared ? stores : legacyStores), DRAFT_META]
+              : [SESSIONS, SNAPSHOTS], 'readwrite', (tx, done, abort) => {
               const metadata = tx.objectStore(SESSIONS); const request = metadata.get(sessionId);
               request.onsuccess = () => {
                 try {
@@ -214,11 +261,13 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
                   if (prior) {
                     validateMetadata(prior, sessionId);
                     if (prior.discarded) throw fail('discarded', 'This draft was discarded. Start a new draft session.');
+                    if (prior.active !== 1) throw fail('corrupt', 'The active draft index is invalid. Its data was kept.');
                     if (prior.writerId !== writerId || prior.fileId !== fileId || prior.sourceLocalId !== base.sourceLocalId
                       || prior.sequence !== committedSequence) throw fail('sequence-conflict', 'The draft changed before this write. Its data was kept.');
                   } else if (!first) throw fail('corrupt', 'The draft metadata is missing. Its remaining data was kept.');
-                  const next = { ...base, sequence: currentSequence, discarded: false, updated_at: new Date().toISOString() };
-                  const commit = () => {
+                  const next = { ...base, sequence: currentSequence, discarded: false,
+                    active: 1, updated_at: new Date().toISOString() };
+                  const commitWrites = () => {
                     if (first) {
                       metadata.add(next);
                       tx.objectStore(BYTES).add(shared
@@ -228,6 +277,22 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
                     } else metadata.put(next);
                     tx.objectStore(SNAPSHOTS).put({ sessionId, writerId, fileId, sequence: currentSequence, state: snapshot });
                     done(Object.freeze({ sessionId, writerId, fileId, sourceLocalId: base.sourceLocalId, sequence: currentSequence }));
+                  };
+                  const commit = () => {
+                    if (!first) { commitWrites(); return; }
+                    const draftMeta = tx.objectStore(DRAFT_META);
+                    const count = draftMeta.get(ACTIVE_COUNT);
+                    count.onsuccess = () => {
+                      try {
+                        const value = count.result;
+                        if (!value || value.key !== ACTIVE_COUNT || !Number.isSafeInteger(value.value)
+                          || value.value < 0 || value.value === Number.MAX_SAFE_INTEGER) {
+                          throw fail('corrupt', 'The active draft count is invalid. Its data was kept.');
+                        }
+                        draftMeta.put({ key: ACTIVE_COUNT, value: value.value + 1 });
+                        commitWrites();
+                      } catch (error) { abort(error); }
+                    };
                   };
                   if (!shared) { commit(); return; }
                   const payloads = tx.objectStore(SHARED_BYTES); const payload = payloads.get(shared.key);
@@ -264,13 +329,57 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
   }
 
   async function listDrafts() {
-    return transact([SESSIONS], 'readonly', (tx, done, abort) => {
-      const rows = []; const request = tx.objectStore(SESSIONS).openCursor();
+    return transact([SESSIONS, DRAFT_META], 'readonly', (tx, done, abort) => {
+      const rows = [];
+      const sessions = tx.objectStore(SESSIONS);
+      const indexed = sessions.indexNames.contains(ACTIVE);
+      if (tx.objectStoreNames.contains(DRAFT_META) && !indexed) {
+        abort(fail('corrupt', 'Local draft storage is incomplete. Its data was kept.'));
+        return;
+      }
+      const activeIndex = indexed ? sessions.index(ACTIVE) : null;
+      if (indexed && (activeIndex.keyPath !== ACTIVE || activeIndex.unique || activeIndex.multiEntry)) {
+        abort(fail('corrupt', 'Local draft storage is incomplete. Its data was kept.'));
+        return;
+      }
+      let cursorFinished = false;
+      let countsFinished = !indexed;
+      let expectedActiveCount; let activeCount;
+      const finish = () => {
+        if (!cursorFinished || !countsFinished) return;
+        if (indexed && activeCount !== expectedActiveCount) {
+          abort(fail('corrupt', 'The draft metadata index is invalid. Its data was kept.'));
+          return;
+        }
+        done(rows);
+      };
+      if (indexed) {
+        const counts = [tx.objectStore(DRAFT_META).get(ACTIVE_COUNT), activeIndex.count(1)];
+        let pending = counts.length;
+        counts.forEach((count, index) => {
+          count.onerror = () => abort(count.error);
+          count.onsuccess = () => {
+            if (index === 0) {
+              const value = count.result;
+              if (!value || value.key !== ACTIVE_COUNT || !Number.isSafeInteger(value.value) || value.value < 0) {
+                abort(fail('corrupt', 'The active draft count is invalid. Its data was kept.'));
+                return;
+              }
+              expectedActiveCount = value.value;
+            } else activeCount = count.result;
+            if (--pending === 0) { countsFinished = true; finish(); }
+          };
+        });
+      }
+      const request = indexed ? activeIndex.openCursor(1) : sessions.openCursor();
       request.onsuccess = () => {
         try {
           const cursor = request.result;
-          if (!cursor) { done(rows); return; }
-          const row = validateMetadata(cursor.value, cursor.key);
+          if (!cursor) { cursorFinished = true; finish(); return; }
+          const row = validateMetadata(cursor.value, indexed ? cursor.primaryKey : cursor.key);
+          if (indexed && (row.discarded || row.active !== 1)) {
+            throw fail('corrupt', 'The draft metadata index is invalid. Its data was kept.');
+          }
           if (!row.discarded) rows.push(metadataOf(row));
           cursor.continue();
         } catch (error) { abort(error); }
@@ -371,38 +480,51 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
 
   async function discardDraft(sessionId, { expectedSequence } = {}) {
     checkSession(sessionId); checkSequence(expectedSequence);
-    const discarded = await transact(stores, 'readwrite', (tx, done, abort) => {
+    const discarded = await transact([...stores, DRAFT_META], 'readwrite', (tx, done, abort) => {
       const metadata = tx.objectStore(SESSIONS); const request = metadata.get(sessionId);
       request.onsuccess = () => {
         try {
           const row = request.result;
           if (!row) throw fail('not-found', 'The requested draft was not found.');
           validateMetadata(row, sessionId);
+          if (row.discarded) throw fail('discarded', 'This draft was already discarded.');
+          if (row.active !== 1) throw fail('corrupt', 'The active draft index is invalid. Its data was kept.');
           if (row.sequence !== expectedSequence) throw fail('sequence-conflict', 'A newer draft exists. Refresh before discarding it.');
           // Retain a tiny tombstone: no delayed writer can recreate this session.
-          metadata.put({ sessionId, writerId: row.writerId, fileId: row.fileId, sequence: row.sequence, discarded: true });
-          const references = tx.objectStore(BYTES); const reference = references.get(sessionId);
-          reference.onsuccess = () => {
+          const draftMeta = tx.objectStore(DRAFT_META); const activeCount = draftMeta.get(ACTIVE_COUNT);
+          activeCount.onsuccess = () => {
             try {
-              const bytes = reference.result;
-              references.delete(sessionId);
-              if (!validReference(bytes)) return;
-              const count = references.index('payloadId').count(bytes.payloadId);
-              count.onsuccess = () => {
+              const value = activeCount.result;
+              if (!value || value.key !== ACTIVE_COUNT || !positive(value.value)) {
+                throw fail('corrupt', 'The active draft count is invalid. Its data was kept.');
+              }
+              draftMeta.put({ key: ACTIVE_COUNT, value: value.value - 1 });
+              metadata.put({ sessionId, writerId: row.writerId, fileId: row.fileId,
+                sequence: row.sequence, discarded: true, active: 0 });
+              const references = tx.objectStore(BYTES); const reference = references.get(sessionId);
+              reference.onsuccess = () => {
                 try {
-                  if (count.result !== 0) return;
-                  const payloads = tx.objectStore(SHARED_BYTES); const payload = payloads.get(bytes.payloadId);
-                  payload.onsuccess = () => {
+                  const bytes = reference.result;
+                  references.delete(sessionId);
+                  if (!validReference(bytes)) return;
+                  const count = references.index('payloadId').count(bytes.payloadId);
+                  count.onsuccess = () => {
                     try {
-                      if (payload.result?.incarnation === bytes.payloadIncarnation) payloads.delete(bytes.payloadId);
+                      if (count.result !== 0) return;
+                      const payloads = tx.objectStore(SHARED_BYTES); const payload = payloads.get(bytes.payloadId);
+                      payload.onsuccess = () => {
+                        try {
+                          if (payload.result?.incarnation === bytes.payloadIncarnation) payloads.delete(bytes.payloadId);
+                        } catch (error) { abort(error); }
+                      };
                     } catch (error) { abort(error); }
                   };
                 } catch (error) { abort(error); }
               };
+              tx.objectStore(SNAPSHOTS).delete(sessionId);
+              done(true);
             } catch (error) { abort(error); }
           };
-          tx.objectStore(SNAPSHOTS).delete(sessionId);
-          done(true);
         } catch (error) { abort(error); }
       };
     });

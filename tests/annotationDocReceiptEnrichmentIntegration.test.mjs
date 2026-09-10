@@ -158,7 +158,8 @@ test('a real handle ignores a stale captured callback after WAL-first receipt co
   const value = { documentId: backend.ids.documentId, actorUserId: backend.ids.actorUserId,
     pdfGenerationId: backend.ids.generationId, contentModelVersion: 2, writerId,
     clientSeq: 1, ordinal: 1, incarnation: 0, editEpoch: 1, status: 'pending',
-    update, checkpointUpdate: update, dependsOn: [], publishAfterAcceptance: false };
+    update, checkpointUpdate: update, dependsOn: [], publishAfterAcceptance: false,
+    historyTag: null };
   const staleCaptured = { ...value, key: annotationOutboxRecordKey(value) };
   await outbox.put(staleCaptured);
   await outbox.settleAccepted({ ...staleCaptured, seq: 1 });

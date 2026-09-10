@@ -107,6 +107,7 @@ const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map(
 const LOCAL_RECEIPT_PURGE_EPOCHS = (globalThis.__annotationLocalReceiptPurgeEpochs__ ??= new Map());
 const ISSUED_LOCAL_RECEIPTS = new WeakMap();
 const ISSUED_ACCEPTED_CAPTURES = new WeakMap();
+const COMPACTED_RECEIPT_WITHOUT_SEQUENCE = Symbol('compacted-receipt-without-sequence');
 
 function historyQuarantineDedupeKey(state, evidenceKeys = []) {
   const normalizedKeys = [...new Set(
@@ -421,6 +422,7 @@ export async function openAnnotationDoc({
     lastHistoryQuarantineEvent: null,
     openHistoryQuarantineEvidenceKeys: new Set(),
     persistedSequenceReceipts: new Map(),
+    unresolvedReceiptConflicts: new Set(),
     syncHealthy: true,     // false once an op append fails until it recovers (BL-24)
     durabilityGap: false,  // a locally-applied update is absent from both WAL and snapshot
     durabilityGapGeneration: 0,
@@ -1555,10 +1557,23 @@ async function settleAcceptedRecord(
     if (Object.hasOwn(record, 'seq')) {
       const incomingSequence = sequence(record.seq);
       const persistedSequence = state.persistedSequenceReceipts.get(record.key);
+      if (persistedSequence === COMPACTED_RECEIPT_WITHOUT_SEQUENCE) {
+        await state.outbox.settleAccepted({ ...record, status: 'accepted', seq: incomingSequence });
+        state.persistedSequenceReceipts.set(record.key, incomingSequence);
+        state.unresolvedReceiptConflicts.delete(record.key);
+        markSyncHealth(state, true);
+        return;
+      }
       if (persistedSequence !== undefined && persistedSequence !== null) {
         if (compareSequence(persistedSequence, incomingSequence) !== 0) {
           throw Object.assign(new Error('A durable annotation receipt sequence cannot change.'),
             { code: 'ANNOTATION_OUTBOX_SCOPE_MISMATCH' });
+        }
+        if (state.unresolvedReceiptConflicts.has(record.key)
+          && typeof state.outbox?.settleAccepted === 'function') {
+          await state.outbox.settleAccepted({ ...record, status: 'accepted', seq: incomingSequence });
+          state.unresolvedReceiptConflicts.delete(record.key);
+          markSyncHealth(state, true);
         }
         return;
       }
@@ -1566,6 +1581,8 @@ async function settleAcceptedRecord(
       if (typeof state.outbox?.settleAccepted === 'function') {
         await state.outbox.settleAccepted({ ...record, status: 'accepted', seq: incomingSequence });
         state.persistedSequenceReceipts.set(record.key, incomingSequence);
+        state.unresolvedReceiptConflicts.delete(record.key);
+        markSyncHealth(state, true);
       }
     }
     return;
@@ -1693,11 +1710,24 @@ async function hydrateCleanAcceptedState(state) {
     state.acceptedReceiptKeys.add(record.key);
     if (Object.hasOwn(record, 'seq')) state.persistedSequenceReceipts.set(record.key, sequence(record.seq));
   }
-  for (const key of clean?.acceptedKeys || []) state.persistedSequenceReceipts.set(key, null);
+  const proofByKey = new Map((clean?.acceptedReceiptProofs || []).map(proof => [proof.key, proof]));
+  for (const key of clean?.acceptedKeys || []) {
+    const proof = proofByKey.get(key);
+    state.persistedSequenceReceipts.set(key, !proof ? null
+      : proof.seq === null ? COMPACTED_RECEIPT_WITHOUT_SEQUENCE : sequence(proof.seq));
+  }
+  for (const conflict of clean?.acceptedReceiptConflicts || []) {
+    state.unresolvedReceiptConflicts.add(conflict.key);
+  }
   for (const update of updates) {
     Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
     Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
     Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  }
+  if (state.unresolvedReceiptConflicts.size > 0) {
+    markSyncHealth(state, false, new Error(
+      'A saved annotation receipt has an unresolved server conflict.',
+    ));
   }
 }
 
@@ -2260,6 +2290,12 @@ function markSyncHealth(state, healthy, error) {
     error = state.lastSyncError || new Error('realtime connection is not ready');
   }
   if (healthy && state.appendRecords?.size > 0) healthy = false;
+  if (healthy && state.unresolvedReceiptConflicts?.size > 0) {
+    healthy = false;
+    error = state.lastSyncError || new Error(
+      'A saved annotation receipt has an unresolved server conflict.',
+    );
+  }
   const changed = state.syncHealthy !== healthy;
   state.syncHealthy = healthy;
   state.lastSyncError = healthy ? null : (error?.message || String(error || 'sync failed'));
@@ -2576,6 +2612,9 @@ async function replayOutbox(state) {
         return;
       }
       if (String(error?.code || '') === '23505') {
+        if (await preserveSnapshotAcceptedCollision(state, record)) {
+          return { status: 'accepted-integrity-warning' };
+        }
         state.permissionRejectedCutoff = state.localMutationOrdinal;
         await quarantineRejectedRecords(
           state,
@@ -2732,6 +2771,7 @@ async function resolveAmbiguousAppends(state) {
       await appendOp(state, record);
     } catch (error) {
       if (String(error?.code || '') === '23505') {
+        if (await preserveSnapshotAcceptedCollision(state, record)) return;
         state.permissionRejectedCutoff = state.localMutationOrdinal;
         await quarantineRejectedRecords(
           state,
@@ -2839,6 +2879,37 @@ function handleSnapshotResult(state, result) {
 }
 
 // Serialize appends so client_seq increments cleanly and ordering is stable.
+async function preserveSnapshotAcceptedCollision(state, record) {
+  if (!record || !state.acceptedReceiptKeys.has(record.key)
+    || typeof state.outbox?.settleAccepted !== 'function') return false;
+  try {
+    // This call does not accept new bytes: it succeeds only when the durable
+    // full row or v1 compact proof matches this exact snapshot-accepted
+    // receipt. Historical key-only checkpoints keep their hard fence.
+    const exact = { ...record, status: 'accepted' };
+    delete exact.seq;
+    const outcome = await state.outbox.settleAccepted(exact, { receiptConflict: true });
+    if (outcome?.receiptVerified === true) {
+      record.status = 'accepted';
+      state.appendRecords.delete(record.key);
+      state.persistedSequenceReceipts.set(record.key, sequence(outcome.seq));
+      state.unresolvedReceiptConflicts.delete(record.key);
+      markSyncHealth(state, true);
+      notifySyncStatus(state);
+      return true;
+    }
+  } catch { return false; }
+  record.status = 'accepted';
+  state.appendRecords.delete(record.key);
+  state.unresolvedReceiptConflicts.add(record.key);
+  const warning = Object.assign(new Error(
+    'The saved snapshot is intact, but the server could not confirm this annotation receipt.',
+  ), { code: 'ANNOTATION_WAL_RECEIPT_AMBIGUOUS' });
+  markSyncHealth(state, false, warning);
+  notifySyncStatus(state);
+  return true;
+}
+
 function enqueueAppend(
   state,
   update,
@@ -2925,6 +2996,7 @@ function enqueueAppend(
         return;
       }
       if (String(err?.code || '') === '23505') {
+        if (await preserveSnapshotAcceptedCollision(state, record)) return;
         state.permissionRejectedCutoff = state.localMutationOrdinal;
         await quarantineRejectedRecords(
           state,
@@ -2964,12 +3036,10 @@ function enqueueAppend(
         });
       }
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
-      const snapshotResult = await writeSnapshot(state, {
-        snapshotUpdate: checkpointUpdate,
-        epoch: editEpoch,
-        repairsGap: true,
-        gapGeneration: state.repairCheckpointGeneration,
-      }).catch(() => false);
+      const snapshotResult = await writeSnapshot(
+        state,
+        captureSnapshotOptions(state),
+      ).catch(() => false);
       if (snapshotResult?.permissionDenied && snapshotResult.containsUnacceptedPrefix) {
         await quarantineDefinitivePermissionDenial(state, snapshotResult.error, {
           additionalKeys: [record.key],
@@ -3148,12 +3218,35 @@ function sameRecoveryRows(left, right) {
   });
 }
 
+function sameAcceptedReceiptProofs(left = [], right = []) {
+  return left.length === right.length && left.every((proof, index) => {
+    const other = right[index];
+    if (!other || !['version', 'key', 'updateSha256', 'updateByteLength',
+      'checkpointUpdateSha256', 'checkpointUpdateByteLength', 'seq']
+      .every(field => proof[field] === other[field])) return false;
+    const metadata = proof.metadata, otherMetadata = other.metadata;
+    return metadata && otherMetadata
+      && ['key', 'scopeKey', 'pdfGenerationId', 'contentModelVersion', 'documentId',
+        'actorUserId', 'incarnation', 'ordinal', 'writerId', 'clientSeq', 'editEpoch',
+        'publishAfterAcceptance', 'status']
+        .every(field => metadata[field] === otherMetadata[field])
+      && sameReceiptKeys(metadata.dependsOn, otherMetadata.dependsOn)
+      && metadata.historyTag?.historyKind === otherMetadata.historyTag?.historyKind
+      && metadata.historyTag?.mutationId === otherMetadata.historyTag?.mutationId;
+  });
+}
+
 function sameRecoveryInputs(left, right) {
   return left.documentId === right.documentId && left.actorUserId === right.actorUserId
     && (left.pdfGenerationId ?? null) === (right.pdfGenerationId ?? null)
     && left.incarnation === right.incarnation
     && bytesEqual(left.checkpointUpdate, right.checkpointUpdate)
     && sameReceiptKeys(left.acceptedKeys, right.acceptedKeys)
+    && sameAcceptedReceiptProofs(left.acceptedReceiptProofs, right.acceptedReceiptProofs)
+    && sameReceiptKeys(
+      (left.acceptedReceiptConflicts || []).map(item => `${item.version}:${item.kind}:${item.key}`),
+      (right.acceptedReceiptConflicts || []).map(item => `${item.version}:${item.kind}:${item.key}`),
+    )
     && sameRecoveryRows(left.accepted, right.accepted)
     && sameRecoveryRows(left.pending, right.pending);
 }
@@ -3363,7 +3456,14 @@ function scheduleSnapshot(state) {
 // which drops those ops on the next reopen (they're skipped by the seq>at_seq
 // tail read). The chain guarantees the last write to land is always the freshest.
 function writeSnapshot(state, options = {}) {
-  state.snapshotChain = state.snapshotChain.then(() => writeSnapshotNow(state, options));
+  const sealed = {
+    ...options,
+    atSeq: state.coveredSeq,
+    expectedAtSeq: state.snapshotBaseAtSeq,
+    expectedWriterId: state.snapshotBaseWriterId,
+    expectedWriterEpoch: state.snapshotBaseWriterEpoch,
+  };
+  state.snapshotChain = state.snapshotChain.then(() => writeSnapshotNow(state, sealed));
   return state.snapshotChain;
 }
 
@@ -3479,6 +3579,10 @@ async function writeSnapshotNow(state, {
   conflictAttempt = 0,
   repairsGap = null,
   gapGeneration = null,
+  atSeq,
+  expectedAtSeq,
+  expectedWriterId,
+  expectedWriterEpoch,
 } = {}) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
   const gapGenerationAtStart = gapGeneration ?? state.durabilityGapGeneration;
@@ -3500,7 +3604,6 @@ async function writeSnapshotNow(state, {
   // observed row, while `coveredSeq` is the highest ordered-read frontier
   // actually folded into this doc. Claiming lastSeq here could make a snapshot
   // skip an unseen delete forever on reopen.
-  const atSeq = state.coveredSeq;
   const epochAtStart = epoch ?? (
     repairsGapAtStart ? state.repairCheckpointEpoch : state.acceptedEditEpoch
   );
@@ -3543,8 +3646,8 @@ async function writeSnapshotNow(state, {
       if (state.generationTransport) {
         accepted = await generationCall(state, 'storeSnapshot', {
           atSeq, snapshot: hex, encodingVersion: SNAPSHOT_ENC_GZIP, writerId: state.writerId,
-          writerEpoch: snapshotGenerationAtStart, expectedAtSeq: state.snapshotBaseAtSeq,
-          expectedWriterId: state.snapshotBaseWriterId, expectedWriterEpoch: state.snapshotBaseWriterEpoch,
+          writerEpoch: snapshotGenerationAtStart, expectedAtSeq,
+          expectedWriterId, expectedWriterEpoch,
         });
         assertStateWritable(state);
       } else if (typeof state.supabase.rpc === 'function') {
@@ -3558,9 +3661,9 @@ async function writeSnapshotNow(state, {
             p_encoding_version: SNAPSHOT_ENC_GZIP,
             p_writer_id: state.writerId,
             p_writer_epoch: snapshotGenerationAtStart,
-            p_expected_at_seq: state.snapshotBaseAtSeq,
-            p_expected_writer_id: state.snapshotBaseWriterId,
-            p_expected_writer_epoch: state.snapshotBaseWriterEpoch,
+            p_expected_at_seq: expectedAtSeq,
+            p_expected_writer_id: expectedWriterId,
+            p_expected_writer_epoch: expectedWriterEpoch,
           }),
           'annotation snapshot write',
         ));
@@ -3582,10 +3685,10 @@ async function writeSnapshotNow(state, {
         const currentSeq = current?.at_seq == null ? null : sequence(current.at_seq);
         const currentEpoch = sequence(current?.writer_epoch ?? 0);
         const matchesLoadedBase = (
-          currentSeq === state.snapshotBaseAtSeq
+          currentSeq === expectedAtSeq
           &&
-          (current?.writer_id ?? null) === state.snapshotBaseWriterId
-          && currentEpoch === state.snapshotBaseWriterEpoch
+          (current?.writer_id ?? null) === expectedWriterId
+          && currentEpoch === expectedWriterEpoch
         );
         if (
           currentSeq != null
@@ -3608,9 +3711,9 @@ async function writeSnapshotNow(state, {
                 encoding_version: SNAPSHOT_ENC_GZIP,
                 writer_id: state.writerId,
                 writer_epoch: snapshotGenerationAtStart,
-                base_at_seq: state.snapshotBaseAtSeq,
-                base_writer_id: state.snapshotBaseWriterId,
-                base_writer_epoch: state.snapshotBaseWriterEpoch,
+                base_at_seq: expectedAtSeq,
+                base_writer_id: expectedWriterId,
+                base_writer_epoch: expectedWriterEpoch,
                 updated_at: new Date().toISOString(),
               }, { onConflict: 'document_id' }),
             'annotation snapshot write',
@@ -3672,6 +3775,10 @@ async function writeSnapshotNow(state, {
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
             gapGeneration: gapGenerationAtStart,
+            atSeq: state.coveredSeq,
+            expectedAtSeq: state.snapshotBaseAtSeq,
+            expectedWriterId: state.snapshotBaseWriterId,
+            expectedWriterEpoch: state.snapshotBaseWriterEpoch,
           });
         } catch (refreshError) {
           return {
@@ -3708,6 +3815,10 @@ async function writeSnapshotNow(state, {
           conflictAttempt: conflictAttempt + 1,
           repairsGap: repairsGapAtStart,
           gapGeneration: gapGenerationAtStart,
+          atSeq: state.coveredSeq,
+          expectedAtSeq: state.snapshotBaseAtSeq,
+          expectedWriterId: state.snapshotBaseWriterId,
+          expectedWriterEpoch: state.snapshotBaseWriterEpoch,
         });
       }
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
@@ -3750,6 +3861,10 @@ async function writeSnapshotNow(state, {
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
             gapGeneration: gapGenerationAtStart,
+            atSeq: state.coveredSeq,
+            expectedAtSeq: state.snapshotBaseAtSeq,
+            expectedWriterId: state.snapshotBaseWriterId,
+            expectedWriterEpoch: state.snapshotBaseWriterEpoch,
           });
         } catch (refreshError) {
           return {

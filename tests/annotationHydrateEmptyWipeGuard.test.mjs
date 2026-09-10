@@ -286,8 +286,11 @@ test('annotationDocSync: change listeners only fire after remote updates actuall
 
 test('annotationDocSync: snapshots claim only a cloud-accepted or explicitly staged prefix', () => {
   // lastSeq may be an out-of-order realtime row. coveredSeq is the proven
-  // contiguous prefix, so tail replay can never skip an unseen delete.
-  assert.match(SYNC_SOURCE, /const atSeq = state\.coveredSeq;/);
+  // contiguous prefix. Seal it and the full CAS base with the bytes before the
+  // write is queued, so delayed work cannot claim a newer mutable frontier.
+  assert.match(SYNC_SOURCE, /const sealed = \{\s*\.\.\.options,\s*atSeq: state\.coveredSeq,\s*expectedAtSeq: state\.snapshotBaseAtSeq,\s*expectedWriterId: state\.snapshotBaseWriterId,\s*expectedWriterEpoch: state\.snapshotBaseWriterEpoch,\s*\};/);
+  assert.match(SYNC_SOURCE, /state\.snapshotChain = state\.snapshotChain\.then\(\(\) => writeSnapshotNow\(state, sealed\)\);/);
+  assert.match(SYNC_SOURCE, /async function writeSnapshotNow\(state, \{[\s\S]*?atSeq,[\s\S]*?expectedAtSeq,[\s\S]*?expectedWriterId,[\s\S]*?expectedWriterEpoch,/);
   assert.match(
     SYNC_SOURCE,
     /const epochAtStart = epoch \?\? \(\s*repairsGapAtStart \? state\.repairCheckpointEpoch : state\.acceptedEditEpoch\s*\);/,

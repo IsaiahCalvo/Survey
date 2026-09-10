@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { normalizeAnnotationSequence } from './annotationSequence.js';
+import { computeContentSha256 } from './contentHash.js';
 
 const DB_NAME = 'survey-annotation-outbox-v2';
 const DB_VERSION = 4;
@@ -11,6 +12,18 @@ const CHECKPOINT_STORE = 'acceptedCheckpoints';
 const INCARNATION_STORE = 'documentIncarnations';
 const REQUEST_TIMEOUT_MS = 10_000;
 const COMPACT_AFTER_DELTAS = 40;
+const ACCEPTED_RECEIPT_PROOF_VERSION = 1;
+const ACCEPTED_RECEIPT_PROOF_MIN_SAVINGS_BYTES = 256;
+const RECEIPT_PROOF_REQUIRED = 'ANNOTATION_ACCEPTED_RECEIPT_PROOF_REQUIRED';
+const GENERATED_RECEIPT_FIELDS = [
+  'key', 'scopeKey', 'pdfGenerationId', 'contentModelVersion', 'documentId',
+  'actorUserId', 'incarnation', 'ordinal', 'writerId', 'clientSeq', 'editEpoch',
+  'publishAfterAcceptance', 'historyTag', 'status', 'dependsOn', 'update',
+  'checkpointUpdate',
+];
+const GENERATED_RECEIPT_METADATA_FIELDS = GENERATED_RECEIPT_FIELDS.filter(
+  key => key !== 'update' && key !== 'checkpointUpdate',
+);
 
 function actorScopeKey(documentId, actorUserId) {
   return `${documentId}\u0000${actorUserId}`;
@@ -27,6 +40,182 @@ function cloneRecord(record) {
     ...(record.checkpointUpdate == null ? {} : { checkpointUpdate: cloneBytes(record.checkpointUpdate) }),
     ...(record.dependsOn == null ? {} : { dependsOn: [...record.dependsOn] }),
   };
+}
+
+function cloneReceiptProof(proof) {
+  return proof && structuredClone(proof);
+}
+
+function sortedReceiptProofs(proofs = []) {
+  return [...proofs].sort((left, right) => String(left.key).localeCompare(String(right.key)))
+    .map(cloneReceiptProof);
+}
+
+function acceptedReceiptProofCandidate(record) {
+  const keys = Object.keys(record || {}).filter(key => key !== 'seq').sort();
+  if (!record || keys.join('|') !== [...GENERATED_RECEIPT_FIELDS].sort().join('|')
+    || !(record.update instanceof Uint8Array)
+    || !(record.checkpointUpdate instanceof Uint8Array)) return null;
+  let metadata = {};
+  for (const key of GENERATED_RECEIPT_METADATA_FIELDS) {
+    Object.defineProperty(metadata, key, {
+      value: record[key], enumerable: true, configurable: true, writable: true,
+    });
+  }
+  try { metadata = structuredClone(metadata); } catch { return null; }
+  const proof = {
+    version: ACCEPTED_RECEIPT_PROOF_VERSION,
+    key: record.key,
+    metadata,
+    updateSha256: '0'.repeat(64),
+    updateByteLength: record.update.length,
+    checkpointUpdateSha256: '0'.repeat(64),
+    checkpointUpdateByteLength: record.checkpointUpdate.length,
+    seq: normalizedAcceptedSequence(record),
+  };
+  try {
+    const checked = checkedReceiptProofs({ scopeKey: record.scopeKey,
+      acceptedKeys: [record.key], acceptedReceiptProofs: [proof] })[0];
+    const encoder = new TextEncoder();
+    const fullBytes = record.update.length + record.checkpointUpdate.length;
+    const proofBytes = encoder.encode(JSON.stringify(checked)).length
+      + encoder.encode(JSON.stringify(record.key)).length;
+    return { metadata, fullBytes, proofBytes };
+  } catch { return null; }
+}
+
+async function acceptedReceiptProof(record) {
+  const candidate = acceptedReceiptProofCandidate(record);
+  if (!candidate) return null;
+  const update = cloneBytes(record.update);
+  const checkpointUpdate = cloneBytes(record.checkpointUpdate);
+  const [updateSha256, checkpointUpdateSha256] = await Promise.all([
+    computeContentSha256(update),
+    computeContentSha256(checkpointUpdate),
+  ]);
+  const proof = {
+    version: ACCEPTED_RECEIPT_PROOF_VERSION,
+    key: record.key,
+    metadata: candidate.metadata,
+    updateSha256,
+    updateByteLength: update.length,
+    checkpointUpdateSha256,
+    checkpointUpdateByteLength: checkpointUpdate.length,
+    seq: normalizedAcceptedSequence(record),
+  };
+  try {
+    return checkedReceiptProofs({ scopeKey: record.scopeKey,
+      acceptedKeys: [record.key], acceptedReceiptProofs: [proof] })[0];
+  } catch { return null; }
+}
+
+function sameReceiptProofBase(left, right) {
+  return left?.version === ACCEPTED_RECEIPT_PROOF_VERSION
+    && right?.version === ACCEPTED_RECEIPT_PROOF_VERSION
+    && ['key', 'updateSha256', 'updateByteLength',
+      'checkpointUpdateSha256', 'checkpointUpdateByteLength']
+      .every(key => left[key] === right[key])
+    && sameReceiptValue(left.metadata, right.metadata);
+}
+
+function receiptProofSequence(proof) {
+  if (proof.seq === null) return null;
+  return normalizedAcceptedSequence({ seq: proof.seq });
+}
+
+function checkedReceiptProofs(checkpoint, expectedScopeKey = checkpoint?.scopeKey) {
+  const proofs = checkpoint?.acceptedReceiptProofs;
+  if (proofs == null) return [];
+  if (!Array.isArray(proofs)) throw scopeError('Accepted annotation receipt proofs are invalid');
+  const acceptedKeys = new Set(checkpoint?.acceptedKeys || []);
+  const seen = new Set();
+  for (const proof of proofs) {
+    const keys = Object.keys(proof || {}).sort().join('|');
+    if (keys !== ['checkpointUpdateByteLength', 'checkpointUpdateSha256', 'key', 'metadata',
+      'seq', 'updateByteLength', 'updateSha256', 'version'].sort().join('|')
+      || proof.version !== ACCEPTED_RECEIPT_PROOF_VERSION
+      || typeof proof.key !== 'string' || !acceptedKeys.has(proof.key) || seen.has(proof.key)
+      || !/^[0-9a-f]{64}$/.test(proof.updateSha256 || '')
+      || !Number.isSafeInteger(proof.updateByteLength) || proof.updateByteLength < 0
+      || !/^[0-9a-f]{64}$/.test(proof.checkpointUpdateSha256 || '')
+      || !Number.isSafeInteger(proof.checkpointUpdateByteLength)
+      || proof.checkpointUpdateByteLength < 0
+      || !proof.metadata || typeof proof.metadata !== 'object' || Array.isArray(proof.metadata)
+      || Object.keys(proof.metadata).sort().join('|') !== [...GENERATED_RECEIPT_METADATA_FIELDS].sort().join('|')
+      || proof.metadata.key !== proof.key
+      || proof.metadata.status !== 'accepted'
+      || proof.metadata.contentModelVersion !== 2
+      || proof.metadata.scopeKey !== expectedScopeKey
+      || proof.metadata.scopeKey !== generationScopeKey(
+        proof.metadata.documentId, proof.metadata.actorUserId, proof.metadata,
+      )
+      || proof.metadata.key !== annotationOutboxRecordKey(proof.metadata)
+      || !Number.isSafeInteger(proof.metadata.incarnation) || proof.metadata.incarnation < 0
+      || !Number.isSafeInteger(proof.metadata.ordinal) || proof.metadata.ordinal < 0
+      || !Number.isSafeInteger(proof.metadata.clientSeq) || proof.metadata.clientSeq <= 0
+      || !Number.isSafeInteger(proof.metadata.editEpoch) || proof.metadata.editEpoch < 0
+      || typeof proof.metadata.writerId !== 'string' || !proof.metadata.writerId
+      || typeof proof.metadata.publishAfterAcceptance !== 'boolean'
+      || !Array.isArray(proof.metadata.dependsOn)
+      || proof.metadata.dependsOn.some(key => typeof key !== 'string'
+        || !key.startsWith(proof.metadata.scopeKey + '\u0000'))
+      || !sameReceiptValue(proof.metadata.dependsOn,
+        [...new Set(proof.metadata.dependsOn)].sort())
+      || !(proof.metadata.historyTag === null || (
+        proof.metadata.historyTag && typeof proof.metadata.historyTag === 'object'
+        && !Array.isArray(proof.metadata.historyTag)
+        && Object.keys(proof.metadata.historyTag).sort().join('|') === 'historyKind|mutationId'
+        && typeof proof.metadata.historyTag.historyKind === 'string'
+        && typeof proof.metadata.historyTag.mutationId === 'string'
+      ))) {
+      throw scopeError('Accepted annotation receipt proofs are invalid');
+    }
+    receiptProofSequence(proof);
+    seen.add(proof.key);
+  }
+  return sortedReceiptProofs(proofs);
+}
+
+function checkedReceiptConflicts(checkpoint, expectedScopeKey = checkpoint?.scopeKey) {
+  const conflicts = checkpoint?.acceptedReceiptConflicts;
+  if (conflicts == null) return [];
+  if (!Array.isArray(conflicts)) throw scopeError('Accepted annotation receipt conflicts are invalid');
+  const seen = new Set();
+  return conflicts.map(conflict => {
+    if (Object.keys(conflict || {}).sort().join('|') !== 'key|kind|version'
+      || conflict.version !== 1 || conflict.kind !== 'ambiguous-23505'
+      || typeof conflict.key !== 'string' || !conflict.key.startsWith(expectedScopeKey + '\u0000')
+      || seen.has(conflict.key)) throw scopeError('Accepted annotation receipt conflicts are invalid');
+    seen.add(conflict.key);
+    return { ...conflict };
+  }).sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function assertConflictEvidence(conflicts, acceptedProofs, acceptedRecords) {
+  const proofByKey = new Map((acceptedProofs || []).map(proof => [proof.key, proof]));
+  const recordByKey = new Map((acceptedRecords || []).map(record => [record.key, record]));
+  if (conflicts.some(conflict => {
+    const proof = proofByKey.get(conflict.key);
+    const record = recordByKey.get(conflict.key);
+    return (!proof && !record)
+      || (proof && receiptProofSequence(proof) !== null)
+      || (record && normalizedAcceptedSequence(record) !== null);
+  })) {
+    throw scopeError('Accepted annotation receipt conflict has no durable evidence');
+  }
+}
+
+function assertOneAcceptedEvidenceForm(acceptedKeys, acceptedRecords) {
+  const compacted = new Set(acceptedKeys || []);
+  if ((acceptedRecords || []).some(record => compacted.has(record.key))) {
+    throw scopeError('Accepted annotation receipt has conflicting durable evidence');
+  }
+}
+
+function sameReceiptProofs(left = [], right = []) {
+  return left.length === right.length && left.every((proof, index) => (
+    sameReceiptValue(proof, right[index])
+  ));
 }
 
 function staleIncarnationError(documentId) {
@@ -349,11 +538,17 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
       const [accepted, pending, quarantined] = await Promise.all(
         [ACCEPTED_STORE, PENDING_STORE, QUARANTINE_STORE].map(name => stores[name].getAll(scopeKey)),
       );
+      const acceptedKeys = [...(checkpoint?.acceptedKeys || [])];
+      const acceptedReceiptProofs = checkedReceiptProofs(checkpoint, scopeKey);
+      const acceptedReceiptConflicts = checkedReceiptConflicts(checkpoint, scopeKey);
+      assertOneAcceptedEvidenceForm(acceptedKeys, accepted);
+      assertConflictEvidence(acceptedReceiptConflicts, acceptedReceiptProofs, accepted);
       return {
         documentId, actorUserId, incarnation: current,
         ...(pdfGeneration(options) == null ? {} : { pdfGenerationId: pdfGeneration(options) }),
         ...(retiredOnly ? { retirement: { ...marker } } : {}),
-        checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
+        checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys,
+        acceptedReceiptProofs, acceptedReceiptConflicts,
         accepted: sortedRecords(accepted), pending: sortedRecords(pending), quarantined: sortedRecords(quarantined),
       };
     });
@@ -453,7 +648,7 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
         }
       });
     },
-    async settleAccepted(record) {
+    async settleAccepted(record, settlement = {}) {
       const acceptedRecord = { ...record, status: 'accepted' };
       if (pdfGeneration(record) != null) {
         const sequence = normalizedAcceptedSequence(record);
@@ -461,13 +656,58 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
         else acceptedRecord.seq = sequence;
       }
       const normalized = normalizedRecord(acceptedRecord);
-      const marker = await run(ALL_STORES, 'readwrite', async stores => {
+      const settle = incomingProof => run(ALL_STORES, 'readwrite', async stores => {
         await assertNoOtherModelEvidence(stores, record.documentId, record.actorUserId, record);
         await incarnation(stores, record.documentId, Number(record.incarnation) || 0);
         const retired = await markerFor(stores, normalized.scopeKey);
         if (pdfGeneration(record) != null || retired) {
           const checkpoint = await stores[CHECKPOINT_STORE].get(normalized.scopeKey);
-          if (checkpoint?.acceptedKeys?.includes(record.key)) throw scopeError('A compacted annotation identity cannot be settled again');
+          if (checkpoint?.acceptedKeys?.includes(record.key)) {
+            const proofs = checkedReceiptProofs(checkpoint);
+            const conflicts = checkedReceiptConflicts(checkpoint);
+            const existingProof = proofs.find(proof => proof.key === record.key);
+            // Historical acceptedKeys intentionally carry no per-receipt proof.
+            // Keep their old one-way fence rather than inferring evidence.
+            if (!existingProof) {
+              throw scopeError('A compacted annotation identity cannot be settled again');
+            }
+            if (!incomingProof) throw Object.assign(new Error('Accepted receipt proof required'), {
+              code: RECEIPT_PROOF_REQUIRED,
+            });
+            if (!sameReceiptProofBase(existingProof, incomingProof)) {
+              throw scopeError('A compacted annotation identity cannot be settled again');
+            }
+            const existingSequence = receiptProofSequence(existingProof);
+            const incomingSequence = receiptProofSequence(incomingProof);
+            if (existingSequence !== null && incomingSequence !== null
+              && existingSequence !== incomingSequence) {
+              throw scopeError('An accepted annotation receipt is immutable');
+            }
+            if (settlement?.receiptConflict === true) {
+              if (incomingSequence !== null) {
+                throw scopeError('A conflict report cannot supply an annotation receipt sequence');
+              }
+              if (existingSequence !== null) {
+                if (conflicts.some(item => item.key === record.key)) {
+                  await stores[CHECKPOINT_STORE].put({ ...checkpoint,
+                    acceptedReceiptConflicts: conflicts.filter(item => item.key !== record.key) });
+                }
+                return { ...(retired ? { retired } : {}), receiptVerified: true, seq: existingSequence };
+              }
+              const acceptedReceiptConflicts = [...conflicts.filter(item => item.key !== record.key),
+                { version: 1, key: record.key, kind: 'ambiguous-23505' }]
+                .sort((left, right) => left.key.localeCompare(right.key));
+              await stores[CHECKPOINT_STORE].put({ ...checkpoint, acceptedReceiptConflicts });
+            } else if (incomingSequence !== null) {
+              const acceptedReceiptProofs = existingSequence === null
+                ? proofs.map(proof => proof.key === record.key
+                  ? { ...proof, seq: incomingSequence } : proof)
+                : proofs;
+              await stores[CHECKPOINT_STORE].put({ ...checkpoint, acceptedReceiptProofs,
+                acceptedReceiptConflicts: conflicts.filter(item => item.key !== record.key) });
+            }
+            return { retired };
+          }
         }
         let known = false, accepted;
         for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
@@ -480,13 +720,42 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
         if (accepted && (pdfGeneration(record) != null || retired)) {
           if (pdfGeneration(record) != null) {
             const resolution = acceptedReceiptResolution(accepted, normalized);
-            if (resolution.enrich) {
-              await stores[ACCEPTED_STORE].put({ ...accepted, seq: resolution.sequence });
+            const existingSequence = normalizedAcceptedSequence(accepted);
+            const incomingSequence = normalizedAcceptedSequence(normalized);
+            const checkpoint = await stores[CHECKPOINT_STORE].get(normalized.scopeKey);
+            const conflicts = checkedReceiptConflicts(checkpoint);
+            if (settlement?.receiptConflict === true) {
+              if (incomingSequence !== null) {
+                throw scopeError('A conflict report cannot supply an annotation receipt sequence');
+              }
+              if (existingSequence !== null) {
+                if (conflicts.some(item => item.key === record.key)) {
+                  await stores[CHECKPOINT_STORE].put({ ...checkpoint,
+                    acceptedReceiptConflicts: conflicts.filter(item => item.key !== record.key) });
+                }
+                return { ...(retired ? { retired } : {}), receiptVerified: true, seq: existingSequence };
+              }
+              const acceptedReceiptConflicts = [...conflicts.filter(item => item.key !== record.key),
+                { version: 1, key: record.key, kind: 'ambiguous-23505' }]
+                .sort((left, right) => left.key.localeCompare(right.key));
+              await stores[CHECKPOINT_STORE].put({ ...(checkpoint || { scopeKey: normalized.scopeKey }),
+                acceptedReceiptConflicts });
+            } else {
+              if (resolution.enrich) {
+                await stores[ACCEPTED_STORE].put({ ...accepted, seq: resolution.sequence });
+              }
+              if (conflicts.some(item => item.key === record.key)) {
+                await stores[CHECKPOINT_STORE].put({ ...checkpoint,
+                  acceptedReceiptConflicts: conflicts.filter(item => item.key !== record.key) });
+              }
             }
           } else if (!sameReceiptValue(accepted, normalized)) {
             throw scopeError('An accepted annotation receipt is immutable');
           }
-          return retired;
+          return { retired };
+        }
+        if (settlement?.receiptConflict === true) {
+          throw scopeError('Only exact accepted evidence can record an ambiguous WAL result');
         }
         if (pdfGeneration(record) != null || retired) {
           if (retired && !known) {
@@ -495,9 +764,20 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
         }
         await stores[ACCEPTED_STORE].put(normalized);
         await stores[PENDING_STORE].delete(normalized.key);
-        return retired;
+        return { retired };
       });
-      if (marker) throw retiredError(marker, { evidenceSaved: true, acceptedEvidenceSaved: true });
+      let outcome;
+      try { outcome = await settle(null); }
+      catch (error) {
+        if (error?.code !== RECEIPT_PROOF_REQUIRED) throw error;
+        const incomingProof = await acceptedReceiptProof(normalized);
+        if (!incomingProof) throw scopeError('A compacted annotation identity cannot be settled again');
+        outcome = await settle(incomingProof);
+      }
+      if (outcome?.retired) {
+        throw retiredError(outcome.retired, { evidenceSaved: true, acceptedEvidenceSaved: true });
+      }
+      return outcome;
     },
     async loadCleanState(documentId, actorUserId, options) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
@@ -505,24 +785,113 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
         await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         await assertOpen(stores, scopeKey);
         const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
-        return { checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
-          records: sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey)) };
+        const records = sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey));
+        const acceptedKeys = [...(checkpoint?.acceptedKeys || [])];
+        const acceptedReceiptProofs = checkedReceiptProofs(checkpoint, scopeKey);
+        const acceptedReceiptConflicts = checkedReceiptConflicts(checkpoint, scopeKey);
+        assertOneAcceptedEvidenceForm(acceptedKeys, records);
+        assertConflictEvidence(acceptedReceiptConflicts, acceptedReceiptProofs, records);
+        return { checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys,
+          acceptedReceiptProofs, acceptedReceiptConflicts, records };
       });
     },
     async compactAccepted(documentId, actorUserId, acceptedSnapshot, force = false, expectedIncarnation = 0, options) {
       const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      if (pdfGeneration(options) != null && contentModel(options) === 2) {
+        const firstPass = await run(ALL_STORES, 'readwrite', async stores => {
+          await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
+          await incarnation(stores, documentId, expectedIncarnation);
+          await assertOpen(stores, scopeKey);
+          const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
+          const records = sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey));
+          const existingProofs = checkedReceiptProofs(checkpoint, scopeKey);
+          const existingConflicts = checkedReceiptConflicts(checkpoint, scopeKey);
+          const sequenceKnown = [];
+          const proofCandidates = [];
+          for (const record of records) {
+            if (normalizedAcceptedSequence(record) !== null) sequenceKnown.push(record);
+            else {
+              const candidate = acceptedReceiptProofCandidate(record);
+              if (candidate && candidate.fullBytes >= candidate.proofBytes
+                + ACCEPTED_RECEIPT_PROOF_MIN_SAVINGS_BYTES) proofCandidates.push(record);
+            }
+          }
+          if (!force && sequenceKnown.length + proofCandidates.length < COMPACT_AFTER_DELTAS) {
+            return { changed: false, proofCandidates: [] };
+          }
+          const updates = [checkpoint?.update, acceptedSnapshot,
+            ...records.map(record => record.update)].filter(Boolean).map(cloneBytes);
+          let changed = false;
+          if (updates.length) {
+            const update = Y.mergeUpdates(updates);
+            const acceptedKeys = [...new Set([
+              ...(checkpoint?.acceptedKeys || []), ...sequenceKnown.map(record => record.key),
+            ])];
+            const sameCheckpoint = checkpoint?.update && sameBytes(checkpoint.update, update)
+              && (checkpoint.acceptedKeys || []).length === acceptedKeys.length
+              && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key);
+            if (sequenceKnown.length || !sameCheckpoint) {
+              await stores[CHECKPOINT_STORE].put({ scopeKey, update, acceptedKeys,
+                acceptedReceiptProofs: existingProofs,
+                acceptedReceiptConflicts: existingConflicts });
+              changed = true;
+            }
+          }
+          for (const record of sequenceKnown) await stores[ACCEPTED_STORE].delete(record.key);
+          return { changed, proofCandidates: proofCandidates.map(cloneRecord) };
+        });
+        const scannedProofs = new Map();
+        for (const record of firstPass.proofCandidates) {
+          const proof = await acceptedReceiptProof(record);
+          if (proof) scannedProofs.set(record.key, proof);
+        }
+        if (!scannedProofs.size) return firstPass.changed;
+        const proofChanged = await run(ALL_STORES, 'readwrite', async stores => {
+          await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
+          await incarnation(stores, documentId, expectedIncarnation);
+          await assertOpen(stores, scopeKey);
+          const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
+          const records = sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey));
+          const existingProofs = checkedReceiptProofs(checkpoint, scopeKey);
+          const existingConflicts = checkedReceiptConflicts(checkpoint, scopeKey);
+          const scannedByKey = new Map(firstPass.proofCandidates.map(record => [record.key, record]));
+          const compactableRecords = records.filter(record => {
+            const scanned = scannedByKey.get(record.key);
+            return scanned && sameReceiptValue(scanned, record)
+              && normalizedAcceptedSequence(record) === null && scannedProofs.has(record.key);
+          });
+          if (!compactableRecords.length) return false;
+          const update = Y.mergeUpdates([checkpoint?.update, acceptedSnapshot,
+            ...records.map(record => record.update)].filter(Boolean).map(cloneBytes));
+          const acceptedKeys = [...new Set([...(checkpoint?.acceptedKeys || []),
+            ...compactableRecords.map(record => record.key)])];
+          const proofByKey = new Map(existingProofs.map(proof => [proof.key, proof]));
+          for (const record of compactableRecords) {
+            const proof = scannedProofs.get(record.key);
+            const existing = proofByKey.get(record.key);
+            if (existing && !sameReceiptValue(existing, proof)) {
+              throw scopeError('An accepted annotation receipt proof cannot change');
+            }
+            proofByKey.set(record.key, proof);
+          }
+          await stores[CHECKPOINT_STORE].put({ scopeKey, update, acceptedKeys,
+            acceptedReceiptProofs: sortedReceiptProofs([...proofByKey.values()]),
+            acceptedReceiptConflicts: existingConflicts });
+          for (const record of compactableRecords) await stores[ACCEPTED_STORE].delete(record.key);
+          return true;
+        });
+        return firstPass.changed || proofChanged;
+      }
       return run(ALL_STORES, 'readwrite', async stores => {
         await assertNoOtherModelEvidence(stores, documentId, actorUserId, options);
         await incarnation(stores, documentId, expectedIncarnation);
         await assertOpen(stores, scopeKey);
         const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
         const records = sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey));
-        // A generated snapshot can prove bytes durable before the exact WAL
-        // append returns. Keep that per-record proof until its positive WAL
-        // sequence arrives; acceptedKeys alone cannot validate a late receipt.
+        const existingProofs = checkedReceiptProofs(checkpoint);
+        const existingConflicts = checkedReceiptConflicts(checkpoint);
         const compactableRecords = pdfGeneration(options) == null
-          ? records
-          : records.filter(record => normalizedAcceptedSequence(record) !== null);
+          ? records : records.filter(record => normalizedAcceptedSequence(record) !== null);
         if (!force && compactableRecords.length < COMPACT_AFTER_DELTAS) return false;
         const updates = [checkpoint?.update, acceptedSnapshot, ...records.map(record => record.update)].filter(Boolean).map(cloneBytes);
         if (updates.length) {
@@ -531,10 +900,14 @@ function buildOutbox({ storageKind, run, close, readFresh }) {
             ...(checkpoint?.acceptedKeys || []),
             ...compactableRecords.map(record => record.key),
           ])];
+          const proofByKey = new Map(existingProofs.map(proof => [proof.key, proof]));
+          const acceptedReceiptProofs = sortedReceiptProofs([...proofByKey.values()]);
           if (!compactableRecords.length && checkpoint?.update && sameBytes(checkpoint.update, update)
             && (checkpoint.acceptedKeys || []).length === acceptedKeys.length
-            && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key)) return false;
-          await stores[CHECKPOINT_STORE].put({ scopeKey, update, acceptedKeys });
+            && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key)
+            && sameReceiptProofs(existingProofs, acceptedReceiptProofs)) return false;
+          await stores[CHECKPOINT_STORE].put({ scopeKey, update, acceptedKeys, acceptedReceiptProofs,
+            acceptedReceiptConflicts: existingConflicts });
         }
         for (const record of compactableRecords) await stores[ACCEPTED_STORE].delete(record.key);
         return true;
