@@ -360,7 +360,6 @@ export async function openAnnotationDoc({
     generationCatchupRequested: false,
     generationRefreshRequested: false,
     generationLastSignal: null,
-    generationBootstrapJoinPending: checkedBootstrap !== null,
     registryKey,
     ownsRegistryDoc,
     supabase,
@@ -596,7 +595,7 @@ export async function openAnnotationDoc({
     }
 
     // --- load snapshot + tail from the cloud ---
-    if (supabase) await loadFromBackend(state, checkedBootstrap);
+    if (supabase) await loadFromBackend(state);
     // The accepted shadow is populated only by backend snapshot/WAL bytes.
     // Never seed it from activeDoc: activeDoc may already contain optimistic
     // IndexedDB state that the backend has never authorized.
@@ -1274,27 +1273,6 @@ async function readGeneratedCheckpoint(state) {
   } finally { candidate.destroy(); }
 }
 
-async function readCheckedGeneratedCheckpoint(state, bootstrap) {
-  const candidate = createDetachedYDoc(`generation-bootstrap:${state.registryKey}:${randomClientId()}`);
-  try {
-    applyGeneratedUpdate(candidate, bootstrap.update);
-    requireCompleteGeneratedState(candidate);
-    // A checked open can wait on local storage before this handle starts.
-    // Confirm the current generation and read the intervening fixed tail before
-    // installing any bytes. Never label a saved bundle permanently current.
-    const receipts = [];
-    const coveredSeq = await readGeneratedTail(state, bootstrap.coveredSeq, null, async (row, update) => {
-      applyGeneratedUpdate(candidate, update);
-      if (appendRecordForCloudRow(state, row, update).record) receipts.push(row);
-    }, bootstrap.update.byteLength);
-    requireCompleteGeneratedState(candidate);
-    const update = encodeSnapshot(candidate);
-    if (update.byteLength > GENERATED_STATE_BYTES) throw generatedStateError('ANNOTATION_GENERATION_LIMIT');
-    return { update, coveredSeq, receipts, baseAtSeq: sequence(bootstrap.baseAtSeq),
-      baseWriterId: bootstrap.baseWriterId, baseWriterEpoch: sequence(bootstrap.baseWriterEpoch) };
-  } finally { candidate.destroy(); }
-}
-
 async function readGeneratedDelta(state) {
   const candidate = createDetachedYDoc(`generation-tail:${state.registryKey}:${randomClientId()}`);
   try {
@@ -1781,12 +1759,14 @@ async function loadPendingOutboxRecords(state) {
   }
 }
 
-async function loadFromBackend(state, checkedBootstrap = null) {
+async function loadFromBackend(state) {
   const { supabase, documentId, doc } = state;
   if (state.generationTransport) {
-    const checkpoint = checkedBootstrap
-      ? await readCheckedGeneratedCheckpoint(state, checkedBootstrap)
-      : await readGeneratedCheckpoint(state);
+    // The checked bundle authorizes the immutable PDF and fixes this handle's
+    // actor, generation and content model. Its annotation bytes can age while
+    // local storage opens, including when a newer snapshot keeps the same WAL
+    // head. Pair a fresh snapshot with the tail fixed to that response.
+    const checkpoint = await readGeneratedCheckpoint(state);
     assertStateWritable(state);
     applyAuthoritativeCloudUpdate(state, checkpoint.update);
     state.lastSeq = maxAnnotationSequence(state.lastSeq, checkpoint.coveredSeq);
@@ -3945,11 +3925,11 @@ function subscribeRealtime(state) {
         const catchupGeneration = ++state.realtimeCatchupGeneration;
         state.realtimePhase = 'catching-up';
         notifySyncStatus(state);
-        // The checked bootstrap already carries a complete accepted prefix and
-        // its checkpoint CAS base. First join only closes the subscribe gap.
-        // Later joins keep the existing checkpoint-refresh recovery path.
-        const refresh = !state.generationBootstrapJoinPending;
-        state.generationBootstrapJoinPending = false;
+        // A snapshot can change without advancing the WAL head. Refresh the
+        // full checked generation on every join, including the first, instead
+        // of treating annotation bytes issued before local storage opened as
+        // permanently current.
+        const refresh = Boolean(state.generationTransport);
         return catchUpTail(state, { refresh }).then(async (caughtUp) => {
           if (state.destroyed || state.generationBlocked || catchupGeneration !== state.realtimeCatchupGeneration) return;
           if (!caughtUp) {

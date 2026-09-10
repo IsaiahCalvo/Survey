@@ -301,9 +301,70 @@ metadata; they do not measure physical IndexedDB disk use.
 
 An older checked bundle can also age while local storage opens. A snapshot-only
 change may keep the same WAL head, while a later WAL delta depends on that newer
-snapshot. WAL-tail catch-up alone cannot repair every such stale bootstrap.
-Keep an explicit fresh-snapshot/open-gap test as remaining work; passing a fresh
-bundle into a reopened handle proves that case only, not arbitrary bundle age.
+snapshot. WAL-tail catch-up alone cannot repair every such stale bootstrap. A
+new public-handle test reproduced the dependent-tail failure on `799ce02c`.
+The source patch removes the stale annotation-bootstrap reader: opening a
+handle reads a fresh, actor-bound snapshot plus a tail fixed to that response's
+WAL head. The checked bundle still fixes document, actor, generation and content
+model and supplies the verified immutable PDF. No PDF acquisition is repeated,
+and a failed fresh annotation read must not fall back to bundle or local bytes.
+Every generated-document `SUBSCRIBED` event, including the initial join, now
+requests a full checkpoint refresh to close the missed-signal interval after
+hydration. Legacy document behavior stays unchanged.
+
+Final verification on 2026-09-10: `npm test` completed across 697 files with
+6,965 tests (6,869 passed, 96 skipped, zero failed or cancelled). The targeted
+stale-open and bootstrap tests passed 16/16, and independent review repeated
+them in five fresh processes. The final production build passed with the
+existing large-chunk warning. Source and core tests remained frozen during the
+full run; the dev-only harness was separately built and browser-tested.
+
+The native-browser test closes the old handle, commits AppShell unmount, purges
+only the fixture document's local state, then reads a checked bundle before
+publishing a newer snapshot at the same WAL head. It reopens that stale bundle,
+without another checked reader call. Two consecutive runs moved the left marker
+from x=72 to x=132 and back to x=72. Both reported the expected position, two
+markers, zero queued edits, zero local revision and WAL head 0 with zero rows;
+snapshot writes increased from 0 to 1 to 2. The first moved position was also
+checked in the rendered viewer. No matching generation/outbox/scope/replay
+errors appeared. Exact fixture data was removed and the tab closed afterward.
+This is native local-storage plus synthetic-backend evidence, not live-cloud,
+live multi-user or cross-device proof.
+
+This is a correctness fix with an explicit network cost, not an egress gain.
+With the current contract, acquisition reads one full annotation snapshot,
+handle hydration reads another, and initial realtime join reads a third. Each
+pass also reads its fixed WAL tail. Without realtime there are two full snapshot
+reads. The descriptor-only confirmation cannot distinguish a newer snapshot at
+the same WAL head. Moving subscription earlier would require a buffered opening
+phase and a proven ready-state contract; it must not make offline opening depend
+on realtime success. The next efficiency step is an access-checked conditional
+snapshot response that proves an exact snapshot identity unchanged before reuse
+of verified accepted bytes. Until that contract is implemented and tested, keep
+the extra annotation traffic explicit and keep rollout gated.
+
+On the reviewed source, a public model-2 fixture measured three handle-open RPCs
+(writer sequence, snapshot, fixed tail) and two additional RPCs on initial join
+(snapshot, fixed tail). Counting UTF-8 JSON response `data` only, the tiny
+fixture used 7,574 bytes at open and 7,386 bytes at join. A snapshot with a
+deterministic 131,072-character pseudo-random base64 field used 201,749 bytes at
+open and 201,554 bytes at join. These figures exclude acquisition, request
+bodies, headers and transport framing and do not measure latency. The handle
+path did not call checked PDF acquisition. Repeated annotation bytes remain a
+measured cost to remove, not a claimed optimization.
+
+The proposed conditional read must compare the exact checkpoint sequence,
+writer identity and epoch, encoding and SHA-256 under the existing shared
+document lock, after actor/generation/model access checks. It returns the same
+atomic WAL head with either a verified unchanged identity or full changed
+snapshot bytes. An unchanged response may reuse only the reader's private
+verified bundle or an installed server-verified accepted prefix, never mutable
+public bytes or optimistic/local-cache state. The snapshot tables do not store
+a digest column, but checked open already computes and verifies a digest; the
+conditional path can reuse that rule without a schema digest migration. Keep
+the new RPC private and default-off until disposable PostgreSQL tests prove
+scope, ACL, snapshot-only changes, fixed-tail races and exact response handling.
+This conditional contract is a proposal, not an implemented saving.
 
 The database migration defines versioned transport and model checks. Model-2
 source, preparation and publication functions remain private and ungranted.

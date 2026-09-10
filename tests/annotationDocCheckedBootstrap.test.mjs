@@ -138,7 +138,7 @@ function pendingRecord(documentId, status = 'pending') {
   record.key = annotationOutboxRecordKey(record); return record;
 }
 
-test('checked reader state reaches the durable handle with only a new-tail read', async t => {
+test('checked reader state reaches the durable handle after an authoritative snapshot refresh and new-tail read', async t => {
   const f = await fixture(t), bundle = await f.read();
   assert.equal(bundle.throughSeq, '5');
   f.add('between-read-and-handle', 'included');
@@ -148,10 +148,12 @@ test('checked reader state reaches the durable handle with only a new-tail read'
   assert.equal(handle.actorUserId, actor); assert.equal(handle.pdfGenerationId, generation);
   assert.equal(f.downloadCount, 1);
   const handleCalls = f.calls.filter(call => call.phase === 'handle');
-  assert.equal(handleCalls.some(call => call.name === 'read_annotation_snapshot_v2'), false,
-    'The handle consumes the checked checkpoint instead of downloading it again');
+  assert.equal(handleCalls.filter(call => call.name === 'read_annotation_snapshot_v2').length, 1);
+  assert.equal(handleCalls.some(call => call.name === 'read_document_generation_open'), false,
+    'The handle refreshes annotations without reacquiring the PDF generation');
   const tails = handleCalls.filter(call => call.name === 'read_annotation_updates_v2');
-  assert.equal(tails.length, 1); assert.equal(tails[0].params.p_after_seq, '5');
+  assert.equal(tails.length, 1); assert.equal(tails[0].params.p_after_seq, '3');
+  assert.equal(tails[0].params.p_through_seq, '6');
   assert.equal((await handle.flushLocalDurability()).pdfGenerationId, generation);
 });
 
@@ -168,23 +170,23 @@ test('first saved checkpoint keeps the checked snapshot CAS base distinct from t
   assert.equal(writes[0].params.p_expected_writer_id, 'checkpoint-writer');
   assert.equal(writes[0].params.p_expected_writer_epoch, '7');
   assert.equal(writes[0].params.p_at_seq, '6');
-  assert.equal(f.calls.some(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2'), false);
+  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 1);
 });
 
-test('first realtime join catches only missing rows while reconnect refreshes checked state', async t => {
+test('first realtime join and reconnect both refresh checked state', async t => {
   const f = await fixture(t), bundle = await f.read(), handle = await f.open(bundle, { enableRealtime: true });
   assert.equal(f.channels.length, 1);
   f.add('join-gap', 'kept');
   await f.channels[0].status('SUBSCRIBED');
   assert.equal(handle.getMeta('join-gap'), 'kept');
-  assert.equal(f.calls.some(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2'), false);
+  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 2);
   assert.deepEqual(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_updates_v2')
-    .map(call => call.params.p_after_seq), ['5', '5']);
+    .map(call => call.params.p_after_seq), ['3', '3']);
   await f.channels[0].status('CHANNEL_ERROR');
   f.add('reconnect-gap', 'kept');
   await f.channels[0].status('SUBSCRIBED');
   assert.equal(handle.getMeta('reconnect-gap'), 'kept');
-  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 1);
+  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 3);
 });
 
 test('wrong actor generation document and forged bundles reject before registry or storage work', async t => {
@@ -214,7 +216,8 @@ test('mutating public reader bytes cannot poison the private accepted bootstrap'
   assert.equal(handle.getMeta('tail-one'), 'accepted');
   assert.equal(handle.getMeta('tail-two'), 'accepted');
   assert.equal(handle.doc.store.pendingStructs, null); assert.equal(handle.doc.store.pendingDs, null);
-  assert.equal(f.calls.some(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2'), false);
+  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 1);
+  assert.equal(f.calls.some(call => call.phase === 'handle' && call.name === 'read_document_generation_open'), false);
 });
 
 for (const alreadyAccepted of [false, true]) test(`checked bootstrap settles the exact ${alreadyAccepted ? 'ambiguous accepted' : 'pending'} operation receipt`, async t => {
@@ -226,10 +229,16 @@ for (const alreadyAccepted of [false, true]) test(`checked bootstrap settles the
   const handle = await f.open(bundle);
   assert.equal(handle.getMeta('recovered-local'), 'must survive');
   const replay = f.calls.slice(before).filter(call => call.name === 'append_annotation_update_v2');
-  assert.equal(replay.length, 1, 'Bundle state alone is not an operation receipt');
-  assert.equal(replay[0].params.p_client_id, record.writerId);
-  assert.equal(replay[0].params.p_client_seq, '1'); assert.equal(replay[0].params.p_data, hex(record.update));
+  assert.equal(replay.length, alreadyAccepted ? 0 : 1,
+    alreadyAccepted ? 'The fresh checked tail proves the exact accepted operation without a duplicate append'
+      : 'A pending operation without a server receipt is replayed once');
+  if (!alreadyAccepted) {
+    assert.equal(replay[0].params.p_client_id, record.writerId);
+    assert.equal(replay[0].params.p_client_seq, '1'); assert.equal(replay[0].params.p_data, hex(record.update));
+  }
   assert.equal(f.rows.filter(row => row.client_id === record.writerId).length, 1, 'Replay does not duplicate an accepted WAL row');
+  const acceptedRow = f.rows.find(row => row.client_id === record.writerId);
+  assert.equal(acceptedRow.client_seq, '1'); assert.equal(acceptedRow.data, hex(record.update));
   assert.deepEqual(await store.list(f.documentId, actor, { pdfGenerationId: generation }), []);
   const clean = await store.loadCleanState(f.documentId, actor, { pdfGenerationId: generation });
   assert.ok(clean.acceptedKeys.includes(record.key) || clean.records.some(item => item.key === record.key));
@@ -255,9 +264,9 @@ test('a newer checkpoint after bundle issuance refreshes CAS without losing the 
   handle.setMeta('local-after-new-checkpoint', 'preserved'); await handle.drain();
   assert.equal(await handle.flushSnapshot(), true);
   const writes = f.calls.filter(call => call.name === 'store_annotation_snapshot_v2');
-  assert.equal(writes.length, 2);
+  assert.equal(writes.length, 1);
   assert.deepEqual(writes.map(call => [call.params.p_expected_at_seq, call.params.p_expected_writer_id,
-    call.params.p_expected_writer_epoch]), [['3', 'checkpoint-writer', '7'], ['6', 'new-checkpoint-writer', '12']]);
+    call.params.p_expected_writer_epoch]), [['6', 'new-checkpoint-writer', '12']]);
   assert.ok(writes.every(call => call.params.p_at_seq === '7'));
   assert.equal(handle.getMeta('local-after-new-checkpoint'), 'preserved');
   assert.equal(handle.getMeta('new-peer-checkpoint'), 'preserved');
@@ -269,11 +278,11 @@ test('failed first-join delta keeps saved state and a later reconnect can recove
   await f.channels[0].status('SUBSCRIBED');
   assert.equal(handle.getMeta('join-recovery'), undefined);
   assert.equal(handle.getMeta('baseline'), 'checked'); assert.equal(handle.getSyncStatus().healthy, false);
-  assert.equal(f.calls.some(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2'), false);
+  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 2);
   await f.channels[0].status('CHANNEL_ERROR'); await f.channels[0].status('SUBSCRIBED');
   assert.equal(handle.getMeta('join-recovery'), 'eventually visible');
   assert.equal(handle.getSyncStatus().healthy, true);
-  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 1);
+  assert.equal(f.calls.filter(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2').length, 3);
 });
 
 test('generation replacement before the bootstrap tail rejects open and preserves queued recovery', async t => {
@@ -285,7 +294,7 @@ test('generation replacement before the bootstrap tail rejects open and preserve
     return result;
   };
   await assert.rejects(f.open(bundle), { code: 'SG002' });
-  assert.ok(f.calls.some(call => call.phase === 'handle' && call.name === 'read_annotation_updates_v2'));
+  assert.ok(f.calls.some(call => call.phase === 'handle' && call.name === 'read_annotation_snapshot_v2'));
   assert.equal(f.calls.some(call => call.name === 'append_annotation_update_v2' || call.name === 'store_annotation_snapshot_v2'), false);
   const recovery = await store.readRetiredScope(f.documentId, actor, 0, { pdfGenerationId: generation });
   assert.equal(recovery.retirement.replacementGenerationId, successor);
