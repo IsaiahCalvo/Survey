@@ -43,6 +43,19 @@
 //     ink-presence check per renderer - the plain-shape defect showed up as an
 //     empty Quartz / Quick Look raster.
 //
+// 2026-09-10 additions (export round 7) - three families the earlier rounds
+// never exercised, all judged against the app's own flattened print:
+//   * MULTI-PIECE INK: an erased stroke (several subpaths in ONE annotation)
+//     and a DASHED stroke run through the app's dash materialiser (one subpath
+//     per dash), each dragged so one piece leaves the page by 3pt, on every
+//     edge. The export guard judged /InkList one array at a time and dropped
+//     the WHOLE stroke;
+//   * CALLOUTS, whose three exported parts carried no /AP at all - Quick Look
+//     showed nothing where the print drew a leader, an arrowhead and a
+//     labelled box. `expectAnnots: 3` pins the three parts;
+//   * TEXT MARKUPS (highlight / underline / strikeout / squiggly), which had
+//     no /AP either.
+//
 // pdf.js 6 renders in Node through @napi-rs/canvas; the repo does not ship it,
 // so point CLOUD_FIDELITY_PDFJS_DIR at a node_modules holding pdfjs-dist +
 // @napi-rs/canvas (a scratch install) to enable the pdf.js raster lane and the
@@ -66,6 +79,7 @@ import {
   transformCloudCommandsToWorld,
 } from '../src/utils/cloudAnnotationGeometry.js';
 import { buildCloudSvgPaint, cloudSvgPaintMarkup } from '../src/utils/cloudSvgPaint.js';
+import { materializeDashedInkPath } from '../src/utils/paperInkEraser.js';
 
 const args = process.argv.slice(2);
 const argValue = (name, fallback) => {
@@ -259,6 +273,246 @@ const plainFrameCases = (frame) => {
   cases.push({ name: 'plain-freetext-boxed', plain: true, object: { id: 'plain-freetext-boxed', type: 'textbox', ...textBox, text: 'Boxed note with a longer line that wraps', fontSize: 11, fill: '#222222', stroke: '#222222', strokeWidth: 1, backgroundColor: 'rgba(244, 211, 93, 0.35)' } });
   cases.push({ name: 'plain-freetext-styled', plain: true, object: { id: 'plain-freetext-styled', type: 'textbox', ...textBox, text: 'Bold italic underlined', fontSize: 13, fill: '#8a1f2f', stroke: 'transparent', strokeWidth: 0, fontWeight: 'bold', fontStyle: 'italic', underline: true } });
   cases.push({ name: 'plain-freetext-tilted', plain: true, sameRendererCentroidPt: TILTED_PLAIN_CENTROID_PT, object: { id: 'plain-freetext-tilted', type: 'textbox', ...textBox, angle: 19, text: 'Tilted note', fontSize: 12, fill: '#222222', stroke: '#222222', strokeWidth: 1 } });
+  return cases;
+};
+
+// ---------------------------------------------------------------------------
+// Composite and multi-piece cases (2026-09-10, export round 7).
+//
+// Three families the earlier rounds never exercised, all judged the way the
+// plain shapes are - the app's /Annots export against the app's own FLATTENED
+// print under the same renderer, plus an ink-presence check per renderer:
+//
+//   1. MULTI-PIECE INK. One pen stroke is routinely many subpaths inside ONE
+//      annotation - the eraser splits a stroke into pieces, and a dashed
+//      stroke materialises into one subpath per dash. The export guard judged
+//      /InkList one array at a time and threw the WHOLE annotation out the
+//      moment any single piece left the page, so dragging an erased or dashed
+//      stroke 3pt past an edge exported zero /Annots while the print drew
+//      every piece still on the paper.
+//   2. CALLOUTS. A composite the app draws as one piece and exports as three
+//      annotations, none of which carried an /AP - so macOS Preview / Quick
+//      Look showed NOTHING where the print drew a leader, an arrowhead and a
+//      labelled box. (`expectAnnots: 3` pins the three parts.)
+//   3. TEXT MARKUPS. Highlight / underline / strikeout / squiggly had no /AP
+//      either: Quick Look showed nothing, and readers that improvise from
+//      /QuadPoints drew a different mark than the app.
+// ---------------------------------------------------------------------------
+
+// A fabric Path built the way the app stores one: the commands carry page
+// coordinates, `left`/`top` are the object's page position and `pathOffset` is
+// the centre of the path's own bounds, so the exporter's affine is the
+// identity and the ink lands exactly where these points say.
+const inkObject = (id, pathData, extra = {}) => {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const command of pathData) {
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const x = Number(command[index]); const y = Number(command[index + 1]);
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+  }
+  return {
+    id,
+    type: 'path',
+    path: pathData,
+    left: minX,
+    top: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    pathOffset: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+    scaleX: 1,
+    scaleY: 1,
+    angle: 0,
+    stroke: STROKE,
+    strokeWidth: 3,
+    fill: null,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    data: { id },
+    ...extra,
+  };
+};
+
+const strokePieces = (pieces) => pieces.flatMap((points) => (
+  points.map((point, index) => [index === 0 ? 'M' : 'L', point.x, point.y])
+));
+
+const compositeFrameCases = (frame) => {
+  const W = frame.width; const H = frame.height;
+  const cases = [];
+
+  // --- 1. multi-piece ink --------------------------------------------------
+  // Two pieces of an erased stroke stay on the page; the third is dragged just
+  // past one edge. Every edge, because the guard failed on all four.
+  const onPage = [
+    [{ x: W * 0.12, y: H * 0.30 }, { x: W * 0.30, y: H * 0.44 }, { x: W * 0.38, y: H * 0.34 }],
+    [{ x: W * 0.46, y: H * 0.40 }, { x: W * 0.62, y: H * 0.52 }],
+  ];
+  const strayPiece = {
+    right: [{ x: W + 3, y: H * 0.5 }, { x: W + 60, y: H * 0.6 }],
+    left: [{ x: -3, y: H * 0.5 }, { x: -60, y: H * 0.6 }],
+    top: [{ x: W * 0.5, y: -3 }, { x: W * 0.6, y: -60 }],
+    bottom: [{ x: W * 0.5, y: H + 3 }, { x: W * 0.6, y: H + 60 }],
+  };
+  for (const edge of ['right', 'left', 'top', 'bottom']) {
+    cases.push({
+      name: `ink-erased-split-offpage-${edge}`,
+      plain: true,
+      expectAnnots: 1,
+      object: inkObject(`ink-split-${edge}`, strokePieces([...onPage, strayPiece[edge]])),
+    });
+  }
+  // Both diagonals at once: two stray pieces off two different edges.
+  cases.push({
+    name: 'ink-erased-split-offpage-two-edges',
+    plain: true,
+    expectAnnots: 1,
+    object: inkObject('ink-split-two-edges', strokePieces([
+      ...onPage, strayPiece.left, strayPiece.bottom,
+    ])),
+  });
+  // A DASHED pen stroke run through the app's own dash materialiser: one
+  // annotation, one /InkList array per painted dash (tens of them), dragged so
+  // the trailing dashes leave the page.
+  const dashedStart = { x: W * 0.08, y: H * 0.72 };
+  const dashedEnd = { x: W * 1.35, y: H * 0.86 };
+  const dashed = materializeDashedInkPath([
+    ['M', dashedStart.x, dashedStart.y],
+    ['L', dashedEnd.x, dashedEnd.y],
+  ], { dashArray: [6, 4], lineCap: 'round' });
+  cases.push({
+    name: 'ink-dashed-offpage-right',
+    plain: true,
+    expectAnnots: 1,
+    object: inkObject('ink-dashed-right', dashed.pathData),
+  });
+  const dashedDown = materializeDashedInkPath([
+    ['M', W * 0.72, H * 0.10],
+    ['L', W * 0.86, H * 1.4],
+  ], { dashArray: [6, 4], lineCap: 'round' });
+  cases.push({
+    name: 'ink-dashed-offpage-bottom',
+    plain: true,
+    expectAnnots: 1,
+    object: inkObject('ink-dashed-bottom', dashedDown.pathData),
+  });
+
+  // --- 2. callouts ---------------------------------------------------------
+  // Normalised 0..1 coordinates, the way the app's callout list stores them.
+  const callout = (id, overrides = {}) => ({
+    id,
+    pageNumber: 1,
+    arrowTip: { x: 0.74, y: 0.26 },
+    knee: { x: 0.54, y: 0.5 },
+    textBoxPosition: { x: 0.08, y: 0.40 },
+    textBoxWidth: 0.36,
+    textBoxHeight: 0.2,
+    text: 'Check this detail',
+    style: {
+      borderColor: STROKE,
+      fontColor: '#1e293b',
+      backgroundColor: '#ffffff',
+      fontSize: 11,
+      lineThickness: 2,
+    },
+    ...overrides,
+  });
+  cases.push({ name: 'callout-solid-triangle', plain: true, expectAnnots: 3, callout: callout('callout-solid') });
+  cases.push({
+    name: 'callout-dashed-open-circle',
+    plain: true,
+    expectAnnots: 3,
+    callout: callout('callout-dashed', {
+      style: {
+        borderColor: '#1c6fd0',
+        fontColor: '#1c6fd0',
+        backgroundColor: 'rgba(28, 111, 208, 0.18)',
+        fontSize: 12,
+        lineThickness: 2.5,
+        lineStyle: 'dashed',
+        arrowheadStyle: 'openCircle',
+        bold: true,
+      },
+    }),
+  });
+  // A callout hugging the page edge: the appearance box for the leader and the
+  // text box both bleed off the paper, which is exactly the case the export's
+  // own geometry guard has to keep.
+  cases.push({
+    name: 'callout-edge-hugging',
+    plain: true,
+    expectAnnots: 3,
+    callout: callout('callout-edge', {
+      arrowTip: { x: 0.96, y: 0.12 },
+      knee: { x: 0.6, y: 0.3 },
+      textBoxPosition: { x: 0, y: 0.62 },
+      textBoxWidth: 0.4,
+      textBoxHeight: 0.22,
+      text: 'Edge note that wraps onto a second line',
+    }),
+  });
+  // The knee INSIDE the text box - calculateCalloutConnection's rescue path,
+  // where line 1 is re-anchored and the knee is moved out of the box.
+  cases.push({
+    name: 'callout-knee-inside-box',
+    plain: true,
+    expectAnnots: 3,
+    callout: callout('callout-knee-in', {
+      knee: { x: 0.2, y: 0.48 },
+      arrowTip: { x: 0.8, y: 0.2 },
+    }),
+  });
+
+  // --- 3. text markups -----------------------------------------------------
+  // Two lines of "selected text", the shape the text-markup tool stores.
+  const quadRows = (rows) => rows.map(([left, top, width, height]) => ({
+    x1: left, y1: top, x2: left + width, y2: top,
+    x3: left, y3: top + height, x4: left + width, y4: top + height,
+  }));
+  const markup = (id, kind, quads, extra = {}) => ({
+    id,
+    type: 'group',
+    left: Math.min(...quads.map((quad) => quad.x1)),
+    top: Math.min(...quads.map((quad) => quad.y1)),
+    width: Math.max(...quads.map((quad) => quad.x2)) - Math.min(...quads.map((quad) => quad.x1)),
+    height: Math.max(...quads.map((quad) => quad.y3)) - Math.min(...quads.map((quad) => quad.y1)),
+    fill: kind === 'highlight' ? '#f4d35e' : STROKE,
+    stroke: kind === 'highlight' ? '#f4d35e' : STROKE,
+    opacity: kind === 'highlight' ? 0.45 : 1,
+    objects: [],
+    data: { type: 'text-markup', markupType: kind, selectedText: 'sample text', quads, ...extra },
+  });
+  const lines = quadRows([
+    [W * 0.12, H * 0.24, W * 0.66, Math.max(9, H * 0.06)],
+    [W * 0.12, H * 0.36, W * 0.44, Math.max(9, H * 0.06)],
+  ]);
+  for (const kind of ['highlight', 'underline', 'strikeout', 'squiggly']) {
+    cases.push({
+      name: `markup-${kind}`,
+      plain: true,
+      expectAnnots: 1,
+      object: markup(`mk-${kind}`, kind, lines),
+    });
+  }
+  // An imported markup carrying the authored /BS width the app round-trips.
+  cases.push({
+    name: 'markup-underline-authored-width',
+    plain: true,
+    expectAnnots: 1,
+    object: markup('mk-underline-w', 'underline', lines, { lineWidth: 2.4, lineWidthSource: 'pdf-border' }),
+  });
+  // A mark flush against the left and bottom edges: its appearance box bleeds
+  // off the page the way an edge-hugging shape's does.
+  cases.push({
+    name: 'markup-highlight-edge',
+    plain: true,
+    expectAnnots: 1,
+    object: markup('mk-highlight-edge', 'highlight', quadRows([
+      [0, H - Math.max(9, H * 0.07), W * 0.5, Math.max(9, H * 0.07)],
+    ])),
+  });
+
   return cases;
 };
 
@@ -462,7 +716,7 @@ const frameCases = (frame) => {
       },
     });
   }
-  if (SHAPES !== 'cloud') cases.push(...plainFrameCases(frame));
+  if (SHAPES !== 'cloud') cases.push(...plainFrameCases(frame), ...compositeFrameCases(frame));
   const selected = SHAPES === 'plain' ? cases.filter((entry) => entry.plain) : cases;
   return ONLY_CASES.length ? selected.filter((entry) => ONLY_CASES.includes(entry.name)) : selected;
 };
@@ -575,20 +829,38 @@ const injectAnnotShift = async (bytes) => {
   return doc.save();
 };
 
-const exportAnnotated = (file, frame, object) => quiet(() => withWindow(async () => injectAnnotShift(await savePDFWithAnnotationsPdfLib(
-  file,
-  { 1: { objects: [object] } },
-  { 1: { width: frame.width, height: frame.height } },
-  null,
-  { returnBytes: true, actionType: 'pdf-export', documentId: 'cloud-fidelity' },
-))));
+// A case carries either one fabric `object` on page 1 or one `callout` (which
+// the app keeps in its own source-of-truth list, not in annotationsByPage) -
+// both writers take the callouts the same way, so the two lanes stay
+// comparable.
+const casePayload = (entry, frame) => ({
+  annotationsByPage: { 1: { objects: entry.object ? [entry.object] : [] } },
+  pageSizes: { 1: { width: frame.width, height: frame.height } },
+  extra: entry.callout ? { callouts: [entry.callout] } : {},
+});
 
-const exportFlattened = (file, frame, object) => quiet(() => withWindow(async () => savePDFWithFlattenedRegularAnnotationsForPrint(
-  file,
-  { 1: { objects: [object] } },
-  { 1: { width: frame.width, height: frame.height } },
-  { returnBytes: true },
-)));
+const exportAnnotated = (file, frame, entry) => quiet(() => withWindow(async () => {
+  const payload = casePayload(entry, frame);
+  return injectAnnotShift(await savePDFWithAnnotationsPdfLib(
+    file,
+    payload.annotationsByPage,
+    payload.pageSizes,
+    null,
+    {
+      returnBytes: true, actionType: 'pdf-export', documentId: 'cloud-fidelity', ...payload.extra,
+    },
+  ));
+}));
+
+const exportFlattened = (file, frame, entry) => quiet(() => withWindow(async () => {
+  const payload = casePayload(entry, frame);
+  return savePDFWithFlattenedRegularAnnotationsForPrint(
+    file,
+    payload.annotationsByPage,
+    payload.pageSizes,
+    { returnBytes: true, ...payload.extra },
+  );
+}));
 
 // The app's on-screen markup for a cloud (svgAnnotationRenderers CloudOutline).
 // A DOM capture is used verbatim: the path, transform and paint the running
@@ -1106,12 +1378,12 @@ for (const frameName of frameNames) {
     let flattenedBytes = null;
     let writerError = null;
     try {
-      annotatedBytes = await exportAnnotated(file, frame, entry.object);
+      annotatedBytes = await exportAnnotated(file, frame, entry);
     } catch (error) {
       writerError = `annotated export threw ${error?.constructor?.name}: ${error?.message}`;
     }
     try {
-      flattenedBytes = await exportFlattened(file, frame, entry.object);
+      flattenedBytes = await exportFlattened(file, frame, entry);
     } catch (error) {
       writerError = `${writerError ? `${writerError}; ` : ''}flattened print threw ${error?.constructor?.name}: ${error?.message}`;
     }
@@ -1149,8 +1421,13 @@ for (const frameName of frameNames) {
       plain: Boolean(entry.plain),
       annotsWritten,
       // A shape the app draws must reach the exported file. Zero here is the
-      // silent data loss both 2026-09-10 defects produced.
-      annotsDropped: annotsWritten === 0,
+      // silent data loss both 2026-09-10 defects produced. A case may also PIN
+      // the count (`expectAnnots`), which is how a callout's three parts are
+      // held: losing one of them is the same silent loss, just partial.
+      expectAnnots: entry.expectAnnots ?? null,
+      annotsDropped: entry.expectAnnots != null
+        ? annotsWritten !== entry.expectAnnots
+        : annotsWritten === 0,
       renderers: {},
       reimport: {},
       ink: {},
@@ -1316,7 +1593,11 @@ lines.push('', '| page | case | annots | writer |', '|---|---|---|---|');
 for (const entry of report) {
   const verdict = entry.writerError
     ? `THREW - ${entry.writerError}`
-    : (entry.annotsDropped ? 'DROPPED - exported zero /Annots' : 'ok');
+    : (entry.annotsDropped
+      ? (entry.expectAnnots != null
+        ? `DROPPED - exported ${entry.annotsWritten} /Annots, expected ${entry.expectAnnots}`
+        : 'DROPPED - exported zero /Annots')
+      : 'ok');
   lines.push(`| ${entry.page} | ${entry.case} | ${entry.annotsWritten} | ${verdict} |`);
 }
 
@@ -1326,6 +1607,6 @@ console.log(`\nreport: ${join(OUT, 'report.md')}`);
 console.log(lines[lines.length - 1]);
 if (writerFailures.length > 0) {
   console.log(`\nWRITER FAILURES (${writerFailures.length}):`);
-  writerFailures.forEach((entry) => console.log(`  ${entry.page}/${entry.case}: ${entry.writerError || 'exported zero /Annots'}`));
+  writerFailures.forEach((entry) => console.log(`  ${entry.page}/${entry.case}: ${entry.writerError || `exported ${entry.annotsWritten} /Annots, expected ${entry.expectAnnots ?? '> 0'}`}`));
 }
 if (failures > 0 || reimportFailures > 0 || inkFailures > 0 || writerFailures.length > 0) process.exit(1);
