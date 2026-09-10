@@ -508,8 +508,9 @@ export function buildCloudRenderPaths(
     outline: built.outline,
     fill: options?.fill === false ? null : buildCloudFillFromRuns(built),
     // Crown apexes (the outer cusps of the scallops) straight from the
-    // engine's lobes - the studio locks polygon vertices to these, and the
-    // selection handles sit on them (cloudAnnotationGeometry.cloudSelectionChrome).
+    // engine's lobes - the studio locks polygon vertices to these; the hit
+    // tests and cloudAnnotationGeometry.cloudSelectionChrome expose them
+    // (the resize grabbers themselves sit on the padded hull frame).
     cusps: collectCloudCusps(built.runs),
   };
 }

@@ -229,63 +229,78 @@ export function cloudOutlineBounds(geometry) {
   return boundsOf(points);
 }
 
-const HANDLE_IDS = ['tl', 'mt', 'tr', 'mr', 'br', 'mb', 'bl', 'ml'];
+/**
+ * Selection chrome proportions, measured on a selected cloud in Drawboard PDF
+ * (2026-09-09, stroke 2 page units): the hover glow is a 5.7-unit (2.85x)
+ * blue stroke at 0.666 opacity hugging the scallops and it stays on while the
+ * cloud is selected; its dashed frame sits past the outer edge of the ink,
+ * with its eight grabbers exactly on the frame corners / edge midpoints. The
+ * app pads the frame by one full stroke width (owner brief) so the 2px dashes
+ * clear the crowns' outer half-stroke at every zoom.
+ */
+export const CLOUD_FRAME_PAD_STROKE_RATIO = 1;
+export const CLOUD_HOVER_GLOW_WIDTH_RATIO = 2.85;
+export const CLOUD_HOVER_GLOW_OPACITY = 0.666;
+
+/** Hover-glow stroke width for a cloud, in page units (scales with zoom like the ink). */
+export function cloudHoverGlowWidth(strokeWidth) {
+  return Math.max(0, num(strokeWidth)) * CLOUD_HOVER_GLOW_WIDTH_RATIO;
+}
 
 /**
- * UX 2026-09-09: selection chrome for a cloud, matching Drawboard PDF - the
- * eight resize handles sit ON the outer scallop cusps nearest the eight box
- * positions (corners + edge midpoints) instead of on the inner rectangle the
- * cloud was built from, and the dashed frame is the outer hull of the humps.
- * The handles are visual anchors only: the resize delta math still runs off
- * the handle id, so dragging 'mr' from a cusp resizes exactly as before.
+ * UX 2026-09-09 (rev 2, Drawboard PDF): selection chrome for a cloud. The
+ * dashed frame is the outer hull of the humps padded by one stroke width (in
+ * page units, so it scales with zoom exactly like the ink) - the dashes clear
+ * the crowns instead of crossing the outer half of their stroke. The eight
+ * resize grabbers sit ON that frame, at its four corners and four edge
+ * midpoints, outside the cloud - never on the inner box the cloud was built
+ * from and never stacked on a shared crown (the earlier nearest-cusp snapping
+ * put rectangle corner handles 18 units inside the frame and doubled up
+ * grabbers whenever fewer than eight crowns existed). The handles are visual
+ * anchors only: the resize delta math still runs off the handle id, so
+ * dragging 'mr' from the frame resizes exactly as before.
  *
  * Everything returned is in the UNROTATED page frame (local + origin); the
  * overlay rotates the whole group about `rotationCenter`, which is the same
  * pivot the cloud itself rotates around, so rotated clouds line up too.
  *
- * @returns {{ frame:{left,top,width,height}, anchors:Object<string,{x,y}>,
- *   rotationCenter:{x,y}, angle:number, cusps:{x,y}[] }|null}
+ * @returns {{ frame:{left,top,width,height}, pad:number,
+ *   anchors:Object<string,{x,y}>, rotationCenter:{x,y}, angle:number,
+ *   cusps:{x,y}[] }|null}
  */
 export function cloudSelectionChrome(obj, geometry = null) {
   const resolved = geometry || (resolveAnnotationCloudSpec(obj) ? resolveCloudAnnotationGeometry(obj) : null);
   if (!resolved) return null;
   const hull = cloudOutlineBounds(resolved);
   if (!hull) return null;
+  const origin = resolved.origin;
+  const pad = Math.max(0, num(resolved.strokeWidth)) * CLOUD_FRAME_PAD_STROKE_RATIO;
+  const frame = {
+    left: hull.left - pad + origin.x,
+    top: hull.top - pad + origin.y,
+    width: hull.width + pad * 2,
+    height: hull.height + pad * 2,
+  };
+  const right = frame.left + frame.width;
+  const bottom = frame.top + frame.height;
+  const midX = frame.left + frame.width / 2;
+  const midY = frame.top + frame.height / 2;
+  const anchors = {
+    tl: { x: frame.left, y: frame.top },
+    mt: { x: midX, y: frame.top },
+    tr: { x: right, y: frame.top },
+    mr: { x: right, y: midY },
+    br: { x: right, y: bottom },
+    mb: { x: midX, y: bottom },
+    bl: { x: frame.left, y: bottom },
+    ml: { x: frame.left, y: midY },
+  };
   const cusps = Array.isArray(resolved.cusps) && resolved.cusps.length > 0
     ? resolved.cusps
     : resolved.points;
-  const origin = resolved.origin;
-  // The eight box positions are taken on the hull so an anchor snaps to the
-  // cusp that visually "is" that corner / edge middle of the cloud.
-  const targets = {
-    tl: { x: hull.left, y: hull.top },
-    mt: { x: hull.left + hull.width / 2, y: hull.top },
-    tr: { x: hull.left + hull.width, y: hull.top },
-    mr: { x: hull.left + hull.width, y: hull.top + hull.height / 2 },
-    br: { x: hull.left + hull.width, y: hull.top + hull.height },
-    mb: { x: hull.left + hull.width / 2, y: hull.top + hull.height },
-    bl: { x: hull.left, y: hull.top + hull.height },
-    ml: { x: hull.left, y: hull.top + hull.height / 2 },
-  };
-  // Each handle claims its own cusp (nearest first, tightest fit wins) so an
-  // open polyline's hollow side cannot stack two grabbers on one peak.
-  const ranked = HANDLE_IDS.map((id) => {
-    const target = targets[id];
-    const order = cusps
-      .map((cusp, index) => ({ index, distance: Math.hypot(cusp.x - target.x, cusp.y - target.y) }))
-      .sort((a, b) => a.distance - b.distance);
-    return { id, order };
-  }).sort((a, b) => (a.order[0]?.distance ?? Infinity) - (b.order[0]?.distance ?? Infinity));
-  const claimed = new Set();
-  const anchors = {};
-  for (const { id, order } of ranked) {
-    const pick = order.find((entry) => !claimed.has(entry.index)) || order[0];
-    const best = pick ? cusps[pick.index] : targets[id];
-    if (pick) claimed.add(pick.index);
-    anchors[id] = { x: best.x + origin.x, y: best.y + origin.y };
-  }
   return {
-    frame: { left: hull.left + origin.x, top: hull.top + origin.y, width: hull.width, height: hull.height },
+    frame,
+    pad,
     anchors,
     rotationCenter: { x: resolved.pivot.x + origin.x, y: resolved.pivot.y + origin.y },
     angle: resolved.angle,
