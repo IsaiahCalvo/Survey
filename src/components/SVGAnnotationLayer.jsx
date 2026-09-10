@@ -45,6 +45,9 @@ import {
   cloudSelectionChrome,
   resolveCloudAnnotationGeometry,
 } from '../utils/cloudAnnotationGeometry.js';
+// UX 2026-09-09: Enter/Escape finish/cancel a click-to-place draft wherever
+// focus sits; only a real typing surface keeps those keys for itself.
+import { isTextEntryTarget } from '../utils/draftKeyboardTarget.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
@@ -1658,16 +1661,20 @@ const SVGAnnotationLayer = memo(({
   // in-progress draft consumes Escape before the viewer's "clear selection"
   // handler sees it — cancelling the shape you are drawing is the more
   // specific intent.
+  //
+  // UX 2026-09-09 (defect 6): this must fire wherever focus sits. `window` in
+  // the capture phase is already the first handler on the page, so the only
+  // thing that could swallow the key was this guard: it used to bail on ANY
+  // <input>, which handed Enter to buttons, checkboxes and the like. Picking
+  // Polygon/Polyline from the shape menu leaves focus on that toolbar button,
+  // and Enter on a focused button is exactly the case that must still finish
+  // the draft (preventDefault also stops the button's own activation click).
+  // Only a real typing surface keeps the key. The toolbar additionally blurs
+  // itself when it arms one of these tools (releaseFocusForDraftTool).
   useEffect(() => {
     if (!polyDraftActive) return undefined;
     const onKeyDown = (e) => {
-      const target = e.target;
-      const isFormField = target && (
-        target.tagName === 'INPUT'
-        || target.tagName === 'TEXTAREA'
-        || target.isContentEditable
-      );
-      if (isFormField) return;
+      if (isTextEntryTarget(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -4300,6 +4307,18 @@ const SVGAnnotationLayer = memo(({
     }
     const renderIdentity = getAnnotationRenderIdentity(obj);
 
+    // UX 2026-09-09 (Drawboard PDF): a CLOUD's scallop glow paints UNDER the
+    // ink. Resolved here, ABOVE the visible render, because the glow is a
+    // 2.85x-wide #4a90e2 stroke at 0.666 opacity — emitted after the ink (as
+    // it was, inside the hit-target group) it covered the user's stroke and a
+    // selected red cloud read blue. Drawboard keeps the cloud's own colour and
+    // shows the highlight only as a rim, which is what an underlay gives.
+    // One resolve serves both the underlay and the hit target below.
+    const cloudRenderGeometry = resolveAnnotationCloudSpec(renderObj)
+      ? resolveCloudAnnotationGeometry(renderObj)
+      : null;
+    const cloudGlowVisible = !!cloudRenderGeometry && (annotationIsHovered || annotationIsSelected);
+
     return (
       <g
         key={`wrapper-${obj.id || i}`}
@@ -4329,6 +4348,25 @@ const SVGAnnotationLayer = memo(({
         }}
         transform={computedTransform}
       >
+        {/* Cloud scallop glow — an UNDERLAY, painted before the ink so the
+            cloud keeps its own colour and the blue only shows as a rim
+            (Drawboard PDF). In page units, so it hugs the crowns at every
+            zoom instead of a fixed pixel band. Stays on while selected. */}
+        {cloudGlowVisible && (
+          <g transform={cloudRenderGeometry.transform} style={{ pointerEvents: 'none' }}>
+            <path
+              d={cloudCommandsToPathData(cloudRenderGeometry.outline)}
+              fill="none"
+              stroke="#4a90e2"
+              strokeOpacity={CLOUD_HOVER_GLOW_OPACITY}
+              strokeWidth={cloudHoverGlowWidth(cloudRenderGeometry.strokeWidth || 1)}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              data-cloud-glow="true"
+              style={{ pointerEvents: 'none' }}
+            />
+          </g>
+        )}
         {/* Actual annotation render — pointerEvents none so clicks pass to hit rect */}
         <g style={{ pointerEvents: 'none' }}>
           {renderElement}
@@ -4672,9 +4710,9 @@ const SVGAnnotationLayer = memo(({
           // page. A filled cloud is also grabbable across its whole scalloped
           // interior (the same region the fill paints); an unfilled one stays
           // edge-only like every other hollow shape.
-          const cloudHitGeometry = resolveAnnotationCloudSpec(renderObj)
-            ? resolveCloudAnnotationGeometry(renderObj)
-            : null;
+          // Resolved once at the top of this annotation's render — the glow
+          // underlay (painted BEFORE the ink) and this hit surface share it.
+          const cloudHitGeometry = cloudRenderGeometry;
           if (cloudHitGeometry) {
             const cloudD = cloudCommandsToPathData(cloudHitGeometry.outline);
             const cloudFillD = cloudHitGeometry.fill && hasVisiblePaint(renderObj.fill)
@@ -4682,26 +4720,8 @@ const SVGAnnotationLayer = memo(({
               : null;
             const sw = cloudHitGeometry.strokeWidth || 1;
             const cloudInteractive = annotationHitTargetsInteractive && isObjectInteractive;
-            // UX 2026-09-09 (Drawboard PDF): the scallop glow stays ON while
-            // the cloud is selected (plain shapes drop theirs on selection);
-            // it is 2.85x the stroke width at 0.666 opacity, in page units so
-            // it hugs the crowns at every zoom instead of a fixed 6px band.
-            const cloudGlowVisible = annotationIsHovered || annotationIsSelected;
             return (
               <g transform={cloudHitGeometry.transform}>
-                {cloudGlowVisible && (
-                  <path
-                    d={cloudD}
-                    fill="none"
-                    stroke="#4a90e2"
-                    strokeOpacity={CLOUD_HOVER_GLOW_OPACITY}
-                    strokeWidth={cloudHoverGlowWidth(sw)}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    data-cloud-glow="true"
-                    style={{ pointerEvents: 'none' }}
-                  />
-                )}
                 {cloudFillD && (
                   <path
                     d={cloudFillD}
@@ -6214,8 +6234,36 @@ const SVGAnnotationLayer = memo(({
             e.stopPropagation();
             handleHandlePointerDown(e, `vertex-${i}`);
           };
+          // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
+          // CLOUD shows its padded dashed frame on single click too, on top of
+          // the vertex dots — without it the selected cloud gave no sign of
+          // how far its crowns actually reach, and the frame only ever
+          // appeared in double-click bbox mode. Vertex dots stay the only
+          // GRABBERS here (resize grabbers belong to bbox mode); the frame is
+          // pure feedback. Plain polygons/polylines pass null and are
+          // unchanged. The frame lives in the unrotated page frame, so it
+          // rotates about the same pivot the cloud itself does.
+          const polyCloudChrome = cloudSelectionChrome(obj);
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+              {polyCloudChrome && (
+                <rect
+                  data-cloud-frame="true"
+                  x={polyCloudChrome.frame.left}
+                  y={polyCloudChrome.frame.top}
+                  width={polyCloudChrome.frame.width}
+                  height={polyCloudChrome.frame.height}
+                  fill="none"
+                  stroke="#4a90e2"
+                  strokeWidth={2}
+                  strokeDasharray="4,4"
+                  vectorEffect="non-scaling-stroke"
+                  transform={polyCloudChrome.angle
+                    ? `rotate(${polyCloudChrome.angle}, ${polyCloudChrome.rotationCenter.x}, ${polyCloudChrome.rotationCenter.y})`
+                    : undefined}
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
               {worldPoints.map((wp, i) => (
                 <g key={`vertex-${i}`}>
                   {vTouchHitR > 0 && (

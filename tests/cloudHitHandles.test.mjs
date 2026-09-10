@@ -117,7 +117,7 @@ const assertDrawboardChrome = (name, obj, kind = name) => {
   assert.ok(chrome, `${name}: cloud chrome resolves`);
   const hull = hullOf(obj);
   const pad = obj.strokeWidth * CLOUD_FRAME_PAD_STROKE_RATIO;
-  assert.equal(chrome.pad, pad, `${name}: frame padding is one stroke width in page units`);
+  assert.equal(chrome.pad, pad, `${name}: frame padding is 1.5 stroke widths (ink outer edge + a full stroke of clear air) in page units`);
   // Frame = outer hull of the humps + one stroke width on every side, so the
   // dashes clear the crowns' outer half-stroke instead of crossing it.
   assert.ok(Math.abs(chrome.frame.left - (hull.left - pad)) < 0.5, `${name}: frame left`);
@@ -155,14 +155,34 @@ for (const [name, obj] of Object.entries(shapes)) {
     }
   });
 
-  test(`${name} cloud: a thicker stroke pushes the frame + grabbers further out by exactly the stroke difference`, () => {
+  test(`${name} cloud: a thicker stroke pushes the frame + grabbers further out by exactly the pad difference`, () => {
     const thin = cloudSelectionChrome({ ...obj, strokeWidth: 1 });
     const thick = cloudSelectionChrome({ ...obj, strokeWidth: 6 });
-    // The crowns themselves do not move with the stroke, so the frame grows
-    // by the pad difference on each side.
-    assert.ok(Math.abs((thin.frame.left - thick.frame.left) - 5) < 0.5, `${name}: frame left grows by 5`);
-    assert.ok(Math.abs((thick.frame.width - thin.frame.width) - 10) < 1, `${name}: frame width grows by 10`);
-    assert.ok(Math.abs((thick.anchors.tl.x - thin.anchors.tl.x) + 5) < 0.5, `${name}: tl handle moves out by 5`);
+    // The crowns' CENTRELINE does not move with the stroke, so the frame grows
+    // by the pad difference on each side. Contract change 2026-09-09: the pad
+    // is measured from the ink's OUTER edge (hull + sw/2) plus a full stroke
+    // width of clear air, i.e. 1.5 stroke widths from the sampled centreline
+    // hull — previously 1.0, which left the 2px dashes kissing the humps at
+    // 100%. The expected deltas are derived from the constant so the numbers
+    // move with the contract instead of pinning the old ratio.
+    const padDelta = (6 - 1) * CLOUD_FRAME_PAD_STROKE_RATIO;
+    assert.ok(Math.abs((thin.frame.left - thick.frame.left) - padDelta) < 0.5, `${name}: frame left grows by ${padDelta}`);
+    assert.ok(Math.abs((thick.frame.width - thin.frame.width) - padDelta * 2) < 1, `${name}: frame width grows by ${padDelta * 2}`);
+    assert.ok(Math.abs((thick.anchors.tl.x - thin.anchors.tl.x) + padDelta) < 0.5, `${name}: tl handle moves out by ${padDelta}`);
+  });
+
+  test(`${name} cloud: the dashed frame clears the PAINTED outer edge of the crowns by a full stroke width`, () => {
+    // Defect 5 (Drawboard parity): cloudOutlineBounds samples the stroke's
+    // centreline, so the painted crown reaches sw/2 past it. The gap between
+    // the frame and the painted edge must be a full stroke width, not sw/2.
+    for (const strokeWidth of [1, 2.5, 6]) {
+      const chrome = cloudSelectionChrome({ ...obj, strokeWidth });
+      const hull = hullOf({ ...obj, strokeWidth });
+      const paintedLeft = hull.left - strokeWidth / 2;
+      const gap = paintedLeft - chrome.frame.left;
+      assert.ok(Math.abs(gap - strokeWidth) < 0.5,
+        `${name}@sw${strokeWidth}: painted edge clears the frame by ${gap.toFixed(3)}, want ${strokeWidth}`);
+    }
   });
 }
 
@@ -268,10 +288,19 @@ test('SVG layer: cloud hover halo + hit target are the crowns; glow stays on whi
   assert.match(layer, /data-shape-hit-target="cloud-fill"/);
   // Drawboard keeps the scallop glow on while the cloud is selected; the
   // shared annotationIsHovered flag alone drops it on selection.
-  assert.match(layer, /const cloudGlowVisible = annotationIsHovered \|\| annotationIsSelected;/);
+  //
+  // Contract change 2026-09-09 (defect 2): the glow moved OUT of the
+  // hit-target group and into an underlay painted BEFORE the ink, so a
+  // selected red cloud stays red with a blue rim instead of reading blue. The
+  // two assertions below were rewritten to the underlay's code shape — the
+  // hover-OR-selected condition and the cloudHoverGlowWidth sizing they were
+  // guarding are both still asserted, they just no longer live next to a
+  // local `sw` inside the hit group. Paint order itself is pinned in
+  // tests/cloudChromeDrawboardParity.test.mjs.
+  assert.match(layer, /const cloudGlowVisible = !!cloudRenderGeometry && \(annotationIsHovered \|\| annotationIsSelected\);/);
   assert.match(layer, /\{cloudGlowVisible && \(/);
   assert.match(layer, /strokeOpacity=\{CLOUD_HOVER_GLOW_OPACITY\}/);
-  assert.match(layer, /strokeWidth=\{cloudHoverGlowWidth\(sw\)\}/);
+  assert.match(layer, /strokeWidth=\{cloudHoverGlowWidth\(cloudRenderGeometry\.strokeWidth \|\| 1\)\}/);
   assert.match(layer, /cloudSelectionChrome\(selectionChromeObj\)/);
   assert.match(layer, /handleAnchors=\{cloudChrome \? cloudChrome\.anchors : null\}/);
   assert.match(layer, /frameRect=\{cloudChrome \? cloudChrome\.frame : null\}/);
