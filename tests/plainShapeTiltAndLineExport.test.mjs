@@ -445,3 +445,35 @@ test('raster: a legacy arrow group prints on the endpoints it exports', {
   assert.ok(Math.abs(print.box.maxX - end.x) < margin, `print ink ends at x ${print.box.maxX.toFixed(2)}, not ${end.x}`);
   assert.ok(Math.abs(print.box.maxY - end.y) < margin, `print ink ends at y ${print.box.maxY.toFixed(2)}, not ${end.y}`);
 });
+
+// ---------------------------------------------------------------------------
+// Why the canvas painter is allowed to stand in for the app's SVG above: the
+// two renderers resolve a line through the SAME helpers, and so does the
+// exporter now. svgAnnotationRenderers.jsx cannot be imported in Node (JSX),
+// so this reads it as text - the same technique the cloud suites use for
+// their source guards.
+// ---------------------------------------------------------------------------
+
+const source = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
+
+test('the SVG renderer, the canvas painter and both PDF writers resolve a line the same way', () => {
+  const svg = source('../src/utils/svgAnnotationRenderers.jsx');
+  const painter = source('../src/utils/annotationCanvasPainter.js');
+  const writer = source('../src/utils/pdfAnnotationsPdfLib.js');
+
+  // Absolute endpoints: one helper, three consumers.
+  for (const [name, text] of [['svg renderer', svg], ['canvas painter', painter], ['pdf writer', writer]]) {
+    assert.match(text, /getLineEndpoints/, `${name} resolves endpoints through getLineEndpoints`);
+  }
+  // Rotation pivot: the curve-inclusive bbox centre. The renderer and the
+  // painter each inline the same computation (they are documented twins); the
+  // writer uses the shared helper.
+  assert.match(svg, /rotate\(\$\{angle\}, \$\{cx\}, \$\{cy\}\)/);
+  assert.match(painter, /applyRotation\(context, angle, cx, cy\)/);
+  assert.match(writer, /const pivot = computeLineBboxCenter\(endpoints, midpoint\);/);
+  // And the writers go through the one resolver, never the raw fields.
+  assert.match(writer, /const \{ x1, y1, x2, y2 \} = resolveLineWorldGeometry\(fabricObj\);/);
+  assert.match(writer, /const \{ x1, y1, x2, y2, midpoint: resolvedMidpoint \} = resolveLineWorldGeometry\(obj\);/);
+  const lineWriter = writer.slice(writer.indexOf('const createLineAnnotation'), writer.indexOf('const createFreeTextAnnotation'));
+  assert.doesNotMatch(lineWriter, /fabricObj\.x1/, 'the /Line writer never reads the raw stored field');
+});
