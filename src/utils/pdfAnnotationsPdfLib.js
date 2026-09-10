@@ -14,7 +14,6 @@ import {
   PDFOperator,
   PDFOperatorNames,
   PDFRef,
-  PDFString,
   LineCapStyle,
   StandardFonts,
   appendBezierCurve,
@@ -37,6 +36,16 @@ import {
   translate as translateOperator,
 } from 'pdf-lib';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
+// Unicode text: /Contents (and friends) as UTF-16BE hex when the text needs it,
+// plus the standard-14 → CJK → emoji glyph fallback chain the flattener draws
+// with. See src/utils/pdfUnicodeText.js for why both exist.
+import {
+  buildTextFontRuns,
+  collectDrawnTextSamples,
+  embedUnicodeFallbackFonts,
+  pdfTextString,
+  widthOfTextRunsAtSize,
+} from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -397,15 +406,15 @@ export function buildPrintableRegularAnnotationPayload({
 
 const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   if (!annotationDict || !options.appAnnotationMetadataJson) return;
-  annotationDict.NM = PDFString.of(options.appAnnotationMetadata?.id || options.name || `survey-app-annotation-${Date.now()}`);
-  annotationDict.Subj = PDFString.of(PDF_APP_ANNOTATION_SUBJECT);
-  annotationDict[PDF_APP_ANNOTATION_METADATA_KEY] = PDFString.of(options.appAnnotationMetadataJson);
+  annotationDict.NM = pdfTextString(options.appAnnotationMetadata?.id || options.name || `survey-app-annotation-${Date.now()}`);
+  annotationDict.Subj = pdfTextString(PDF_APP_ANNOTATION_SUBJECT);
+  annotationDict[PDF_APP_ANNOTATION_METADATA_KEY] = pdfTextString(options.appAnnotationMetadataJson);
 };
 
 const applyAppLayerStateMetadataToPdf = (pdfDoc, payload) => {
   const json = serializePdfAppLayerStateMetadata(payload);
   if (!pdfDoc || !json) return false;
-  pdfDoc.catalog.set(PDFName.of(PDF_APP_LAYER_STATE_KEY), PDFString.of(json));
+  pdfDoc.catalog.set(PDFName.of(PDF_APP_LAYER_STATE_KEY), pdfTextString(json));
   return true;
 };
 
@@ -1562,10 +1571,10 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
     CA: alpha,
     Border: [0, 0, fallbackWidth],
     AP: pdfDoc.context.obj({ N: appearanceRef }),
-    Contents: PDFString.of(''),
+    Contents: pdfTextString(''),
     P: page.ref,
   };
-  if (options.name) annotationDict.NM = PDFString.of(String(options.name));
+  if (options.name) annotationDict.NM = pdfTextString(String(options.name));
   applyAppAnnotationMetadataToDict(annotationDict, options);
   return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
 };
@@ -1861,11 +1870,11 @@ export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options
       C: [color.red, color.green, color.blue],
       Border: [0, 0, strokeWidth],
       AP: pdfDoc.context.obj({ N: appearanceRef }),
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref, // Reference to page
     };
 
-    if (options.name) annotationDict.NM = PDFString.of(String(options.name));
+    if (options.name) annotationDict.NM = pdfTextString(String(options.name));
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2590,7 +2599,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       Rect: [minX, minY, maxX, maxY],
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
 
@@ -2735,15 +2744,15 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       C: [color.red, color.green, color.blue],
       Border: [0, 0, counterAppearance ? 0 : (fabricObj.strokeWidth || 1)],
       ...(counterAppearance ? { AP: counterAppearance } : {}),
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
 
     if (counterMetadataJson) {
-      annotationDict.NM = PDFString.of(counterMetadata?.id || fabricObj.data?.id || fabricObj.id || `counter-${Date.now()}`);
-      annotationDict.Subj = PDFString.of(PDF_COUNTER_SUBJECT);
-      annotationDict.Contents = PDFString.of(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? ''));
-      annotationDict[PDF_COUNTER_METADATA_KEY] = PDFString.of(counterMetadataJson);
+      annotationDict.NM = pdfTextString(counterMetadata?.id || fabricObj.data?.id || fabricObj.id || `counter-${Date.now()}`);
+      annotationDict.Subj = pdfTextString(PDF_COUNTER_SUBJECT);
+      annotationDict.Contents = pdfTextString(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? ''));
+      annotationDict[PDF_COUNTER_METADATA_KEY] = pdfTextString(counterMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
@@ -2883,7 +2892,7 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       CA: alpha,
       Border: [0, 0, strokeWidth],
       AP: pdfDoc.context.obj({ N: appearanceRef }),
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
     if (fillColor) {
@@ -2943,7 +2952,7 @@ const createImportedHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, 
       ].map((value) => PDFNumber.of(value)),
       C: [color.red, color.green, color.blue],
       CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2972,7 +2981,7 @@ const createImportedTextNoteAnnotation = (pdfDoc, page, fabricObj, pageHeight, o
       C: [color.red, color.green, color.blue],
       CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
       Name: PDFName.of(String(fabricObj?.data?.pdfNoteIcon || 'Note')),
-      Contents: PDFString.of(String(fabricObj?.data?.noteText ?? '')),
+      Contents: pdfTextString(String(fabricObj?.data?.noteText ?? '')),
       P: page.ref,
     };
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -3004,7 +3013,7 @@ const createImportedCaretAnnotation = (pdfDoc, page, fabricObj, pageHeight, opti
       Rect: [left, pageHeight - (top + height), left + width, pageHeight - top],
       C: [color.red, color.green, color.blue],
       CA: paintAlpha(fabricObj.stroke, fabricObj.opacity),
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -3111,7 +3120,7 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
       CA: dashedOutline ? 1 : fillAlpha,
       F: 4,
       AP: pdfDoc.context.obj({ N: appearanceRef }),
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
 
@@ -3162,7 +3171,7 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       Vertices: vertices.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
 
@@ -3231,7 +3240,7 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Vertices: vertices.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
     // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
@@ -3306,14 +3315,14 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       L: [x1, pageHeight - y1, x2, pageHeight - y2],
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: PDFString.of(''),
+      Contents: pdfTextString(''),
       P: page.ref,
     };
 
     if (options.calloutMetadataJson) {
-      annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'line'}`);
-      annotationDict.Subj = PDFString.of(PDF_CALLOUT_SUBJECT);
-      annotationDict[PDF_CALLOUT_METADATA_KEY] = PDFString.of(options.calloutMetadataJson);
+      annotationDict.NM = pdfTextString(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'line'}`);
+      annotationDict.Subj = pdfTextString(PDF_CALLOUT_SUBJECT);
+      annotationDict[PDF_CALLOUT_METADATA_KEY] = pdfTextString(options.calloutMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
@@ -3420,17 +3429,17 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Type: 'Annot',
       Subtype: 'FreeText',
       Rect: [minX, minY, maxX, maxY],
-      Contents: PDFString.of(text),
-      DA: PDFString.of(da),
+      Contents: pdfTextString(text),
+      DA: pdfTextString(da),
       ...(background ? { C: [background.red, background.green, background.blue] } : {}),
       Border: [0, 0, 0], // No border for text boxes
       P: page.ref,
     };
 
     if (options.calloutMetadataJson) {
-      annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
-      annotationDict.Subj = PDFString.of(PDF_CALLOUT_SUBJECT);
-      annotationDict[PDF_CALLOUT_METADATA_KEY] = PDFString.of(options.calloutMetadataJson);
+      annotationDict.NM = pdfTextString(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
+      annotationDict.Subj = pdfTextString(PDF_CALLOUT_SUBJECT);
+      annotationDict[PDF_CALLOUT_METADATA_KEY] = pdfTextString(options.calloutMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
       // Plain text box: the flattener's own glyphs, box, underline and
@@ -4916,11 +4925,31 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     }
   }
 
+  // 2026-09-10 (Unicode text): every measurement and every draw below goes
+  // through the fallback CHAIN, not one font. A character Helvetica can encode
+  // is still drawn by Helvetica — an all-Latin box produces the exact same
+  // operators it always did — but a CJK or emoji character now picks up the
+  // embedded fallback instead of throwing `WinAnsi cannot encode …` and losing
+  // the whole annotation. `fonts.unicodeFallbacks` is empty unless this export
+  // actually carries such a character.
+  const fallbacks = Array.isArray(fonts?.unicodeFallbacks) ? fonts.unicodeFallbacks : [];
+  // A character no font in the chain can draw (Cyrillic, Greek, Arabic, Indic —
+  // see src/assets/fonts/README.md) is left out of the drawn run rather than
+  // printed as a tofu box. It still ships verbatim in /Contents, so nothing is
+  // lost from the file; say so once per text box so support can see it.
+  const droppedCodePoints = new Set();
+  const runsOf = (value) => {
+    const { runs, dropped } = buildTextFontRuns(value, font, fallbacks);
+    dropped.forEach((codePoint) => droppedCodePoints.add(codePoint));
+    return runs;
+  };
+  const measure = (value) => widthOfTextRunsAtSize(runsOf(value), fontSize);
+
   const padding = 6;
   const innerWidth = Math.max(1, width - padding * 2);
   const lineHeight = fontSize * (Number(obj?.lineHeight) || 1.16) * 1.13;
   const fits = (value) => {
-    try { return font.widthOfTextAtSize(value, fontSize) <= innerWidth; } catch { return true; }
+    try { return measure(value) <= innerWidth; } catch { return true; }
   };
   const lines = [];
   String(obj?.text || '').split(/\r?\n/).forEach((paragraph) => {
@@ -4948,21 +4977,32 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const wantsLinethrough = obj?.linethrough === true || obj?.strikethrough === true;
 
   visibleLines.forEach((line, index) => {
+    const lineRuns = runsOf(line);
     let lineWidth = innerWidth;
-    try { lineWidth = font.widthOfTextAtSize(line, fontSize); } catch { /* use inner width */ }
+    try { lineWidth = widthOfTextRunsAtSize(lineRuns, fontSize); } catch { /* use inner width */ }
     const textX = obj?.textAlign === 'center'
       ? left + padding + (innerWidth - lineWidth) / 2
       : obj?.textAlign === 'right' ? left + padding + innerWidth - lineWidth : left + padding;
     const appBaseline = top + padding + verticalOffset + fontSize + index * lineHeight;
-    const origin = rotatePoint({ x: textX, y: appBaseline });
-    page.drawText(line, {
-      x: origin.x,
-      y: getPdfY(pageHeight, origin.y),
-      size: fontSize,
-      font,
-      color: fill.color,
-      opacity: fill.opacity * objectOpacity,
-      ...(angle ? { rotate: degrees(pdfAngle) } : {}),
+    // One draw per font run, advanced along the (possibly rotated) baseline.
+    // A single-run line — every all-Latin line — is one drawText exactly as
+    // before.
+    let runAdvance = 0;
+    // An empty line (or one whose every character is outside every font in the
+    // chain) still emits the same empty text object it always did, so a text
+    // box's appearance stream never goes from "present but blank" to absent.
+    (lineRuns.length ? lineRuns : [{ text: '', font }]).forEach((run) => {
+      const origin = rotatePoint({ x: textX + runAdvance, y: appBaseline });
+      page.drawText(run.text, {
+        x: origin.x,
+        y: getPdfY(pageHeight, origin.y),
+        size: fontSize,
+        font: run.font,
+        color: fill.color,
+        opacity: fill.opacity * objectOpacity,
+        ...(angle ? { rotate: degrees(pdfAngle) } : {}),
+      });
+      runAdvance += widthOfTextRunsAtSize([run], fontSize);
     });
     if (!line || (!wantsUnderline && !wantsLinethrough)) return;
     const thickness = Math.max(0.5, fontSize / 14);
@@ -4978,6 +5018,13 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     if (wantsUnderline) drawDecoration(fontSize * 0.12);
     if (wantsLinethrough) drawDecoration(-fontSize * 0.28);
   });
+
+  if (droppedCodePoints.size > 0) {
+    console.warn('[PDFExportText] no embedded font covers these characters; they were left out of the drawn text ' + JSON.stringify({
+      id: obj?.id || obj?.data?.id || null,
+      codePoints: [...droppedCodePoints].map((codePoint) => `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`),
+    }));
+  }
 };
 
 const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
@@ -5601,9 +5648,12 @@ const fieldFlags = (pdfDoc, widget) => {
   return Math.max(0, Math.trunc(readPdfNativeNumber(pdfDoc, value) || 0));
 };
 
-const wrapFieldText = (text, font, size, maxWidth) => {
+// `measureWidth` is a (value) => width closure so the caller can measure with
+// the whole font fallback chain, not just one font — a field holding CJK must
+// wrap on its real width instead of throwing out of the standard font.
+const wrapFieldText = (text, measureWidth, maxWidth) => {
   const fits = (value) => {
-    try { return font.widthOfTextAtSize(value, size) <= maxWidth; } catch { return true; }
+    try { return measureWidth(value) <= maxWidth; } catch { return true; }
   };
   const splitLongWord = (word) => {
     const parts = [];
@@ -5650,6 +5700,13 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
   const diagnostics = { widgetsFlattened: 0, checkboxesFlattened: 0, textFieldsFlattened: 0 };
   const black = rgb(17 / 255, 17 / 255, 17 / 255);
   const white = rgb(1, 1, 1);
+  // A form value typed in Japanese used to throw `WinAnsi cannot encode …`
+  // straight out of this function — which is NOT inside the per-annotation
+  // fence — and killed the entire print. Field text now rides the same font
+  // fallback chain the annotation flattener uses.
+  const fieldRuns = (value) => buildTextFontRuns(
+    value, fonts.regular, Array.isArray(fonts?.unicodeFallbacks) ? fonts.unicodeFallbacks : [],
+  ).runs;
 
   pdfDoc.getPages().forEach((page) => {
     const annots = page.node.lookup(PDFName.of('Annots'));
@@ -5712,22 +5769,28 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
           const innerWidth = Math.max(1, width - 4);
           if (!multiline && !fieldDefaultFontSize(pdfDoc, widget)) {
             try {
-              const textWidth = fonts.regular.widthOfTextAtSize(text, size);
+              const textWidth = widthOfTextRunsAtSize(fieldRuns(text), size);
               if (textWidth > innerWidth) size = Math.max(4, size * innerWidth / textWidth);
-            } catch { /* keep the field-height size for unencodable text */ }
+            } catch { /* keep the field-height size for unmeasurable text */ }
           }
-          const lines = multiline ? wrapFieldText(text, fonts.regular, size, innerWidth) : [text.replace(/[\r\n]+/g, ' ')];
+          const lines = multiline
+            ? wrapFieldText(text, (value) => widthOfTextRunsAtSize(fieldRuns(value), size), innerWidth)
+            : [text.replace(/[\r\n]+/g, ' ')];
           const lineHeight = size * 1.2;
           const maxLines = Math.max(1, Math.floor((height - 4) / lineHeight));
           lines.slice(0, maxLines).forEach((line, lineIndex) => {
-            page.drawText(line, {
-              x: x + 2,
-              y: multiline
-                ? y + height - 2 - size - lineIndex * lineHeight
-                : y + Math.max(1, (height - size) / 2),
-              size,
-              font: fonts.regular,
-              color: black,
+            let advance = 0;
+            fieldRuns(line).forEach((run) => {
+              page.drawText(run.text, {
+                x: x + 2 + advance,
+                y: multiline
+                  ? y + height - 2 - size - lineIndex * lineHeight
+                  : y + Math.max(1, (height - size) / 2),
+                size,
+                font: run.font,
+                color: black,
+              });
+              advance += widthOfTextRunsAtSize([run], size);
             });
           });
         }
@@ -5740,25 +5803,71 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
   return diagnostics;
 };
 
+// Form values are drawn by flattenFormWidgetsForPrint, so their characters
+// count towards which fallback fonts the sheet needs. Read defensively: a
+// malformed AcroForm must not stop the print before it starts.
+const formWidgetTextSamples = (pdfDoc) => {
+  const samples = [];
+  try {
+    pdfDoc.getPages().forEach((page) => {
+      const annots = page.node.lookup(PDFName.of('Annots'));
+      if (!(annots instanceof PDFArray)) return;
+      for (let index = 0; index < annots.size(); index += 1) {
+        const widget = pdfDoc.context.lookupMaybe(annots.get(index), PDFDict);
+        if (!(widget instanceof PDFDict)) continue;
+        if (decodedPdfText(pdfDoc.context.lookup(widget.get(PDFName.of('Subtype')))) !== 'Widget') continue;
+        const value = decodedPdfText(inheritedWidgetValue(pdfDoc, widget, 'V'));
+        if (value) samples.push(value);
+      }
+    });
+  } catch { /* unreadable AcroForm — fall back to no extra fonts */ }
+  return samples;
+};
+
+// Every string the print flattener will draw, so embedFlattenFonts knows which
+// Unicode fallbacks (if any) this sheet needs.
+const printableTextSamples = (payload) => {
+  const items = [];
+  Object.values(payload?.annotationsByPage || {}).forEach((pageData) => {
+    (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => items.push({ object: obj }));
+  });
+  (Array.isArray(payload?.callouts) ? payload.callouts : []).forEach((callout) => items.push({ callout }));
+  return collectDrawnTextSamples(items);
+};
+
 // The font set drawFlattenedText picks from. Shared by the print flattener and
 // the plain-shape /AP builder (a text box's appearance IS the flattener's
 // output), so both draw a bold / italic / Times / Courier run identically.
 // UX 2026-07-17: the oblique variants exist so italic and bold-italic text
 // keeps its on-screen slant (flatten used to force regular Helvetica).
-const embedFlattenFonts = async (pdfDoc) => ({
-  regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
-  bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
-  oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
-  boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
-  timesRegular: await pdfDoc.embedFont(StandardFonts.TimesRoman),
-  timesBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
-  timesItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
-  timesBoldItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
-  courierRegular: await pdfDoc.embedFont(StandardFonts.Courier),
-  courierBold: await pdfDoc.embedFont(StandardFonts.CourierBold),
-  courierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
-  courierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
-});
+//
+// `texts` is every string this export will DRAW. Embedding is async and
+// drawing is not, so the fallback fonts a text box needs have to be resolved
+// up front; passing no texts (or only WinAnsi ones) embeds nothing extra and
+// leaves the output byte-identical to before.
+const embedFlattenFonts = async (pdfDoc, texts = []) => {
+  const fonts = {
+    regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+    bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
+    boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+    timesRegular: await pdfDoc.embedFont(StandardFonts.TimesRoman),
+    timesBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+    timesItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+    timesBoldItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
+    courierRegular: await pdfDoc.embedFont(StandardFonts.Courier),
+    courierBold: await pdfDoc.embedFont(StandardFonts.CourierBold),
+    courierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
+    courierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
+  };
+  fonts.unicodeFallbacks = await embedUnicodeFallbackFonts(pdfDoc, {
+    texts,
+    // Helvetica answers "can the standard-14 draw this?" for the whole set —
+    // all twelve share WinAnsi, so one probe is enough.
+    probeFont: fonts.regular,
+  });
+  return fonts;
+};
 
 export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   pdfFile,
@@ -5771,7 +5880,6 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const screenAnnotationsByPage = options?.screenAnnotationsByPage || annotationsByPage || {};
   const arrayBuffer = await pdfFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const fonts = await embedFlattenFonts(pdfDoc);
   // Rebuild the caller's payload defensively. Survey Markers stay in the same
   // all-visible print set as survey, space, and region shapes.
   const printablePayload = buildPrintableRegularAnnotationPayload({
@@ -5779,6 +5887,18 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     callouts: options?.callouts || [],
     surveyMarkers: options?.surveyMarkers || {},
   });
+  // The payload now comes FIRST because the font set depends on it: a text box
+  // holding CJK or an emoji needs a Unicode fallback embedded before any glyph
+  // is drawn, and embedding is async while drawing is not.
+  const fonts = await embedFlattenFonts(pdfDoc, [
+    ...printableTextSamples(printablePayload),
+    // The app's own field values are written into the AcroForm further down and
+    // then drawn, so they need their glyphs too.
+    ...collectFormFieldValues(annotationsByPage)
+      .map((entry) => (entry?.value == null ? '' : String(entry.value)))
+      .filter(Boolean),
+    ...formWidgetTextSamples(pdfDoc),
+  ]);
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
   // 2026-09-10 — ONE bad annotation must never cost the user the whole print.
@@ -6077,7 +6197,9 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       item?.type !== 'callout'
       && ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
     ));
-    const flattenFonts = exportHasTextAnnotation ? await embedFlattenFonts(pdfDoc) : null;
+    const flattenFonts = exportHasTextAnnotation
+      ? await embedFlattenFonts(pdfDoc, collectDrawnTextSamples(exportPlan.items || []))
+      : null;
 
     const deletedPdfAnnotations = [
       ...new Map(
