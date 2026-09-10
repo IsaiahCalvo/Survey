@@ -331,8 +331,11 @@ export function cloudSelectionChrome(obj, geometry = null) {
 }
 
 
-export const CLOUD_BAND_UNION_BUDGET_MS = 250;
-export const CLOUD_BAND_MAX_PIECES = 1500;
+// Wall-clock budget for the whole capsule union, and the ceiling on how many
+// capsules are worth handing it. Both are overridable per call (options
+// `budgetMs` / `maxPieces`), which is how the fallback paths are tested.
+const CLOUD_BAND_UNION_BUDGET_MS = 250;
+const CLOUD_BAND_MAX_PIECES = 1500;
 // The grid every coordinate handed to the clipper is snapped onto. 1e-4 of a
 // PDF point is ~1/700 of a device pixel at 100% — invisible — and it is what
 // turns "coincident to 12 decimal places" (undefined behaviour for a sweep
