@@ -1241,6 +1241,75 @@ review. `npm test` passed across 716 files with 7,141 tests: 7,045 passed,
 large-chunk warning, and the AST-only graph refresh completed. Source and new
 test hashes stayed unchanged throughout the final full-suite run.
 
+## Explicit aggregate policy at publication
+
+The private v3 preparation, lookup and publication contract binds aggregate
+admission to the replacement intent. Its strict plan has `version: 3`,
+`contentModelVersion: 2` and `aggregateAdmissionVersion: 1`. Preparation stores
+the exact plan hash and a v3-specific request hash in the existing immutable
+replacement journal. No new policy table is needed. Legacy v1/v2 functions and
+their plan formats remain unchanged; a source generation's fence is never an
+instruction to fence its successor.
+
+The separate request hash matters after publication removes the large plan
+body. A cold v3 lookup can still prove the original policy from the immutable
+request identity, validate the publication receipt and check its exact fence.
+It must not label a v2 publication as v3 merely because a later administrative
+action fenced that generation. A retained v3 receipt remains readable after a
+later replacement, subject to the existing current-access rules; lookup does
+not enable or change a fence.
+
+A new v3 publication requires its exact saved plan before changing any document
+state. It takes the existing operation lock and the exclusive document advisory
+lock, publishes the new head, and enables that exact target's fence before the
+transaction can commit. The final binding checks the head, PDF pointer and
+fence. Any failure rolls back all of them together. An old publisher given a
+stripped v2 form of the same saved v3 plan cannot bypass this intent: the existing
+publication-row trigger rejects its different plan hash and rolls back its
+earlier changes. That trigger must be enabled for this migration to load.
+
+This is an additive private database contract, not app activation. The existing
+worker still emits v2 plans. The trusted caller must explicitly create v3 plans
+and use the matching preparation, lookup and publication calls before opting
+into this mode. Client routing, hard worker resource limits, publication/history
+capacity, old-generation recovery and leased live collaboration checks remain
+rollout gates. No live migration, fence insertion, role grant or Microsoft
+connection is authorized by this local work.
+
+The local PostgreSQL harness uses the real PDF/Yjs transform with synthetic
+Storage receipts. It checks a held shared document lock, a valid unprepared
+request, a stripped v2 plan for the same v3 intent, and a fault after fence
+insertion. Failed attempts must leave the PDF pointer, head, generation rows,
+fences, publication receipt and retained preparation unchanged. A held
+publication is observed from another connection before and after commit to
+check that the new head and fence become visible together.
+
+Post-publication checks reject direct append and snapshot writes with `SG005`
+while allowing a valid Yjs no-op through the trusted SQL broker. The following
+replacement reconstructs that state, so malformed bytes cannot stand in for a
+valid update. This proves the SQL write permissions and readable result, not a
+new end-to-end aggregate-handler or live multi-user flow. The existing separate
+aggregate-admission tests remain required. Cold lookup and exact retry after a
+later replacement preserve the original v3 receipt without changing current
+policy. A v2 publication that is fenced later still cannot pass as a v3 intent.
+
+The frozen migration passed independent source review and all 10 disposable
+PostgreSQL test groups. Its opt-in Node wrapper passed 2/2 both for the executor
+and the independent reviewer. These runs also cover migration replay, schema
+drift, private permissions, changed intent and model-1 rejection. The separate
+existing publication wrapper had a stale expected group count of 39; it now
+expects the actual 55 and passed with PostgreSQL enabled. The existing aggregate
+write-fence harness passed all nine checks before this change. All databases
+used here were newly owned local fixtures, stopped and removed after testing.
+
+Final verification on 2026-09-10: `npm test` passed across 717 files with
+7,143 tests (7,046 passed, 97 skipped, zero failed or cancelled), compared with
+the prior 7,141-test baseline. The new local PostgreSQL integration is one of
+the default skips and was explicitly run and passed as noted above. The Vite
+build passed with its existing large-chunk warning. The AST-only graph refresh
+completed, and all four SQL/harness/wrapper hashes stayed frozen during the
+full-suite run. No viewer, sync, application route or Microsoft code changed.
+
 ## References
 
 - [Yjs shared types and JSON mutation caveats](https://docs.yjs.dev/getting-started/working-with-shared-types)
