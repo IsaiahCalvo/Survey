@@ -1,4 +1,5 @@
 import { annotationToLassoGeometry, calloutToLassoGeometry } from './lassoObjectAdapter.js';
+import { boundsOfPoints } from './arrayExtrema.js';
 import { getAnnotationGroupId, getCalloutGroupId } from './annotationGroups.js';
 import { isBlockedFromAreaSelection } from './annotationSelectionEligibility.js';
 
@@ -180,9 +181,11 @@ export function isPointInLasso(point, polygon) {
 }
 
 const polygonBounds = (polygon) => {
-  const xs = polygon.map((point) => point.x);
-  const ys = polygon.map((point) => point.y);
-  return { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) };
+  // Linear, not a spread: a lasso path is one point per pointer sample and a
+  // long drag overflows a spread's argument limit (see arrayExtrema.js).
+  const box = boundsOfPoints(polygon);
+  if (!box) return { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+  return { left: box.minX, right: box.maxX, top: box.minY, bottom: box.maxY };
 };
 
 const boundsContain = (outer, inner) => inner.left >= outer.left - EPSILON

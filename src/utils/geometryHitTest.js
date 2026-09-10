@@ -20,6 +20,7 @@ import { union } from 'martinez-polygon-clipping';
 // it was built from - the same resolver that paints the cloud supplies the
 // geometry so no hit path can disagree with the ink.
 import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
+import { maxOf, minOf } from './arrayExtrema.js';
 import {
   resolveCloudAnnotationGeometry,
   sampleCloudCommands,
@@ -1153,8 +1154,10 @@ export const isPointOnLine = (point, lineObj, tolerance = DEFAULT_TOLERANCE) => 
     probe = unrotatePointAbout(
       point,
       angle,
-      (Math.min(...xs) + Math.max(...xs)) / 2,
-      (Math.min(...ys) + Math.max(...ys)) / 2,
+      // Linear, not a spread: `xs`/`ys` come from the object's own point list,
+      // which is unbounded for ink and polygons (see arrayExtrema.js).
+      (minOf(xs) + maxOf(xs)) / 2,
+      (minOf(ys) + maxOf(ys)) / 2,
     );
   }
 

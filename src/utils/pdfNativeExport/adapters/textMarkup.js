@@ -11,6 +11,7 @@
 // pdfAnnotationsPdfLib.createHighlightAnnotation.
 
 import { PDFName } from 'pdf-lib';
+import { maxOf, minOf } from '../../arrayExtrema.js';
 import {
   hexToRgbTriplet,
   pdfStringOrEmpty,
@@ -174,12 +175,14 @@ function buildTextMarkupDict({
         return [pdfPoint.x, pdfPoint.y];
       }))
     : buildQuadPointsFromBounds(bounds, geometry);
+  // Linear, not a spread: a markup spanning a page of dense text carries one
+  // quad per line and a spread is bounded by the call stack (arrayExtrema.js).
   const quadXs = quadPoints.filter((_, index) => index % 2 === 0);
   const quadYs = quadPoints.filter((_, index) => index % 2 === 1);
-  const minX = Math.min(...quadXs);
-  const minY = Math.min(...quadYs);
-  const maxX = Math.max(...quadXs);
-  const maxY = Math.max(...quadYs);
+  const minX = minOf(quadXs);
+  const minY = minOf(quadYs);
+  const maxX = maxOf(quadXs);
+  const maxY = maxOf(quadYs);
 
   const colorSource = useFill
     ? (getFabricFill(fabricObj) || colorFallback)

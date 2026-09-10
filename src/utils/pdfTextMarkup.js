@@ -1,3 +1,5 @@
+import { maxOf, minOf } from './arrayExtrema.js';
+
 const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact']);
 
 export const TEXT_MARKUP_DEFAULT_PAINT = Object.freeze({
@@ -184,10 +186,12 @@ export function quadBounds(quads) {
   const xs = (quads || []).flatMap((q) => [q.x1, q.x2, q.x3, q.x4]).map(Number).filter(Number.isFinite);
   const ys = (quads || []).flatMap((q) => [q.y1, q.y2, q.y3, q.y4]).map(Number).filter(Number.isFinite);
   if (!xs.length || !ys.length) return null;
-  const left = Math.min(...xs);
-  const top = Math.min(...ys);
-  const right = Math.max(...xs);
-  const bottom = Math.max(...ys);
+  // Linear, not a spread: a markup over a whole page of dense text carries
+  // thousands of quads and a spread is bounded by the call stack (arrayExtrema).
+  const left = minOf(xs);
+  const top = minOf(ys);
+  const right = maxOf(xs);
+  const bottom = maxOf(ys);
   return { left: round(left), top: round(top), width: round(right - left), height: round(bottom - top) };
 }
 

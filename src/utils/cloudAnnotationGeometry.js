@@ -241,7 +241,11 @@ const boundsOf = (points) => {
 export function cloudOutlineBounds(geometry) {
   if (!geometry?.outline) return null;
   const points = [];
-  for (const subpath of sampleCloudCommands(geometry.outline, 6)) points.push(...subpath);
+  // A spread here passes one ARGUMENT per sample; a big cloud's outline blows
+  // the call stack the same way getCloudPathBounds used to (see arrayExtrema).
+  for (const subpath of sampleCloudCommands(geometry.outline, 6)) {
+    for (let index = 0; index < subpath.length; index += 1) points.push(subpath[index]);
+  }
   return boundsOf(points);
 }
 

@@ -1,4 +1,5 @@
 import { createInkPathAffine } from './inkGeometryTransform.js';
+import { boundsOfPoints } from './arrayExtrema.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 import { commandsToPolylines, sweptDiskPolygon } from './paperAnnotationGeometry.js';
 import { buildArrowheadRenderSpec, ARROWHEAD_STYLES } from './lineRenderHelpers.js';
@@ -27,11 +28,11 @@ const rotatePoint = (point, angle, center) => {
 const boundsForOutlines = (outlines) => {
   const points = outlines.flat().filter(finitePoint);
   if (!points.length) return null;
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
+  // Linear, not a spread: ink / polygon point lists are unbounded (arrayExtrema).
+  const box = boundsOfPoints(points);
   return {
-    left: Math.min(...xs), right: Math.max(...xs),
-    top: Math.min(...ys), bottom: Math.max(...ys),
+    left: box.minX, right: box.maxX,
+    top: box.minY, bottom: box.maxY,
   };
 };
 

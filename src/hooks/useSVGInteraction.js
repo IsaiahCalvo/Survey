@@ -21,6 +21,7 @@ import {
   scaleInRotatedFrameAroundMatrix,
 } from '../utils/inkGeometryTransform.js';
 import { deepClone } from '../utils/deepClone.js';
+import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
@@ -2050,8 +2051,9 @@ export function useSVGInteraction({
       const { left, top, angle, scaleX, scaleY, pathOffsetX, pathOffsetY } = ds.originalProps;
       const pxs = ds.originalPoints.map((p) => p.x);
       const pys = ds.originalPoints.map((p) => p.y);
-      const oldRawCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
-      const oldRawCy = (Math.min(...pys) + Math.max(...pys)) / 2;
+      // Linear, not a spread: point lists are unbounded (see arrayExtrema.js).
+      const oldRawCx = (minOf(pxs) + maxOf(pxs)) / 2;
+      const oldRawCy = (minOf(pys) + maxOf(pys)) / 2;
       const oldRotCx = scaleX * (oldRawCx - pathOffsetX);
       const oldRotCy = scaleY * (oldRawCy - pathOffsetY);
       const rad = (angle * Math.PI) / 180;
@@ -2089,8 +2091,8 @@ export function useSVGInteraction({
       // shapes it cancels out the pivot drift.
       const nxs = newPoints.map((p) => p.x);
       const nys = newPoints.map((p) => p.y);
-      const newRawCx = (Math.min(...nxs) + Math.max(...nxs)) / 2;
-      const newRawCy = (Math.min(...nys) + Math.max(...nys)) / 2;
+      const newRawCx = (minOf(nxs) + maxOf(nxs)) / 2;
+      const newRawCy = (minOf(nys) + maxOf(nys)) / 2;
       const newRotCx = scaleX * (newRawCx - pathOffsetX);
       const newRotCy = scaleY * (newRawCy - pathOffsetY);
       const drcX = newRotCx - oldRotCx;

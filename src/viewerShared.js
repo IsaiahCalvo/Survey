@@ -25,6 +25,7 @@
 import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag.js';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation.js';
 import { deepClone } from './utils/deepClone.js';
+import { boundsOfPoints, maxOf, minOf } from './utils/arrayExtrema.js';
 import { normalizeCalloutsForSync } from './utils/calloutSyncPayload.js';
 import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope.js';
 import { ZOOM_MODES } from './utils/zoomController.js';
@@ -169,11 +170,13 @@ const getSelectDeleteOnlyTextMarkupBounds = (obj) => {
       }
     });
     if (xs.length > 0 && ys.length > 0) {
+      // Linear, not a spread: an imported path's coordinate list is unbounded
+      // and a spread over it overflows the call stack (see arrayExtrema.js).
       return {
-        left: Math.min(...xs),
-        top: Math.min(...ys),
-        right: Math.max(...xs),
-        bottom: Math.max(...ys)
+        left: minOf(xs),
+        top: minOf(ys),
+        right: maxOf(xs),
+        bottom: maxOf(ys)
       };
     }
   }
@@ -575,12 +578,8 @@ const getHistoryPathVisualBounds = (path) => {
     }
   });
   if (points.length === 0) return null;
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const maxX = Math.max(...xs);
-  const maxY = Math.max(...ys);
+  // Linear, not a spread: a history path's point list is unbounded (arrayExtrema).
+  const { minX, minY, maxX, maxY } = boundsOfPoints(points);
   return {
     left: minX,
     top: minY,

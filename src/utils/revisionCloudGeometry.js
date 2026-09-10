@@ -587,12 +587,22 @@ function overlapTails(lobes, closed = false) {
     });
 }
 export function bounds(points) {
-    const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
+    // Linear, not `Math.min(...xs)`: exportSvg hands this every lobe control
+    // point of every run, which overflows the call stack on a big cloud (see
+    // src/utils/arrayExtrema.js). Same result, constant stack.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let index = 0; index < points.length; index += 1) {
+        const { x, y } = points[index];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    }
     return {
-        x: Math.min(...xs),
-        y: Math.min(...ys),
-        width: Math.max(...xs) - Math.min(...xs),
-        height: Math.max(...ys) - Math.min(...ys),
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
     };
 }
 function rectangleFit(shape) {

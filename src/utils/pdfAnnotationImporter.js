@@ -67,6 +67,7 @@ import {
   renderPdfStampAppearances,
 } from './pdfStampProxy.js';
 import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
+import { maxOf, minOf } from './arrayExtrema.js';
 export { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 
 const pdfImportDebug = (...args) => {
@@ -1179,10 +1180,12 @@ function extractCalloutTextBoxRectFromAppearance(annotation, viewport, scale = 1
 
       const xs = points.map((point) => point.x);
       const ys = points.map((point) => point.y);
-      const minX = Math.min(...xs);
-      const maxX = Math.max(...xs);
-      const minY = Math.min(...ys);
-      const maxY = Math.max(...ys);
+      // Linear, not a spread: an appearance-stream subpath is unbounded and a
+      // spread over it overflows the call stack (see arrayExtrema.js).
+      const minX = minOf(xs);
+      const maxX = maxOf(xs);
+      const minY = minOf(ys);
+      const maxY = maxOf(ys);
       const width = maxX - minX;
       const height = maxY - minY;
       if (!(width > 0 && height > 0)) return null;
@@ -1223,10 +1226,9 @@ const snapCloudCoordinate = (value) => Math.round(value * 1e6) / 1e6;
 function toRelativeFabricPoints(points) {
   if (!Array.isArray(points) || points.length === 0) return null;
 
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const minX = snapCloudCoordinate(Math.min(...xs));
-  const minY = snapCloudCoordinate(Math.min(...ys));
+  // Linear, not a spread: a re-imported cloud outline is unbounded (arrayExtrema).
+  const minX = snapCloudCoordinate(minOf(points.map((point) => point.x)));
+  const minY = snapCloudCoordinate(minOf(points.map((point) => point.y)));
 
   const relativePoints = points.map((point) => ({
     x: snapCloudCoordinate(point.x - minX),
@@ -3733,10 +3735,11 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     for (const center of inkTapCenters) {
       dotCommands.push(...buildInkDotPathCommands(center.x, center.y, radius));
     }
-    const dotMinX = Math.min(...inkTapCenters.map((c) => c.x)) - radius;
-    const dotMinY = Math.min(...inkTapCenters.map((c) => c.y)) - radius;
-    const dotMaxX = Math.max(...inkTapCenters.map((c) => c.x)) + radius;
-    const dotMaxY = Math.max(...inkTapCenters.map((c) => c.y)) + radius;
+    // Linear, not a spread: an ink annotation's tap dots are unbounded.
+    const dotMinX = minOf(inkTapCenters.map((c) => c.x)) - radius;
+    const dotMinY = minOf(inkTapCenters.map((c) => c.y)) - radius;
+    const dotMaxX = maxOf(inkTapCenters.map((c) => c.x)) + radius;
+    const dotMaxY = maxOf(inkTapCenters.map((c) => c.y)) + radius;
     pathData = translatePathCommands(dotCommands, -dotMinX, -dotMinY);
     importedLeft += dotMinX;
     importedTop += dotMinY;

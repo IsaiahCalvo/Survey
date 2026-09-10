@@ -625,33 +625,49 @@ const cubicAt = (start, c1, c2, end, t) => {
 export function getCloudPathBounds(commands) {
   if (!Array.isArray(commands)) return null;
   let cursor = null;
-  const points = [];
+  // 2026-09-10 — accumulate the extrema as the outline is sampled instead of
+  // building a point array and spreading it into Math.min/Math.max. The
+  // outline is sampled at 100 points per cubic, so a full-sheet ARCH-E rect
+  // cloud at Bump 2 (1,713 cubics) reached 171,300 points and the spread threw
+  // `RangeError: Maximum call stack size exceeded` — which the /Annots writer
+  // caught as a create failure (cloud silently missing from the export) and
+  // the flattened print path did not catch at all (the whole print failed).
+  let seen = false;
+  let minX = Infinity; let minY = Infinity;
+  let maxX = -Infinity; let maxY = -Infinity;
+  const observe = (x, y) => {
+    seen = true;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  };
   for (const command of commands) {
     if (command[0] === 'M') {
       cursor = { x: command[1], y: command[2] };
-      points.push(cursor);
+      observe(cursor.x, cursor.y);
     } else if (command[0] === 'C' && cursor) {
       const end = { x: command[5], y: command[6] };
       for (let step = 1; step <= 100; step += 1) {
         const t = step / 100;
-        points.push({
-          x: cubicAt(cursor.x, command[1], command[3], end.x, t),
-          y: cubicAt(cursor.y, command[2], command[4], end.y, t),
-        });
+        observe(
+          cubicAt(cursor.x, command[1], command[3], end.x, t),
+          cubicAt(cursor.y, command[2], command[4], end.y, t),
+        );
       }
       cursor = end;
     }
   }
-  if (points.length === 0) return null;
+  if (!seen) return null;
   const round = (value) => {
     const rounded = Math.round(value * 1e6) / 1e6;
     return Object.is(rounded, -0) ? 0 : rounded;
   };
   return {
-    minX: round(Math.min(...points.map((point) => point.x))),
-    minY: round(Math.min(...points.map((point) => point.y))),
-    maxX: round(Math.max(...points.map((point) => point.x))),
-    maxY: round(Math.max(...points.map((point) => point.y))),
+    minX: round(minX),
+    minY: round(minY),
+    maxX: round(maxX),
+    maxY: round(maxY),
   };
 }
 

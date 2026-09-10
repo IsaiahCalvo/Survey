@@ -263,11 +263,31 @@ test('a cloud whose scalloped hull spills off the page stays in the export', asy
   assert.ok(rect[2] >= 0 && rect[0] <= PAGE.width && rect[3] >= 0 && rect[1] <= PAGE.height,
     'and its box still overlaps the page');
 
-  // Wild geometry is still rejected: this is a bounded allowance, not an
-  // open door.
-  const wild = { id: 'wild', type: 'line', x1: -9000, y1: 10, x2: 9000, y2: 20, stroke: '#ff0000' };
+  // Wild geometry is still rejected.
+  //
+  // 2026-09-10 (export round 5) — the 'wild' fixture changed, and the reason
+  // matters. It used to be a line from x = -9000 to x = +9000, which is not
+  // off the page: it CROSSES it, and the print flattener draws exactly that,
+  // clipped by the page edge. It only failed the old guard because that guard
+  // also imposed a SIZE limit ("stay within one page dimension of the page"),
+  // and that limit dropped real shapes — a cloud anchored on a Letter page but
+  // 1400pt wide, a 300pt cloud resized 6x on its own handles — recreating the
+  // very print-vs-export disagreement this test exists to prevent. The rule is
+  // now purely about placement: overlap the page and you are exported, viewers
+  // clip the rest.
+  //
+  // The assertion is unchanged and just as strict — the shape must still be
+  // dropped. The fixture now expresses what the comment says: geometry
+  // ENTIRELY off the page, carrying no ink any viewer could ever show.
+  const wild = { id: 'wild', type: 'line', x1: -9000, y1: -9000, x2: -8800, y2: -8900, stroke: '#ff0000' };
   assert.equal((await annotationDicts(await exportAnnotated(wild))).length, 0,
     'a line thousands of points off the page is still dropped');
+
+  // And the other half of the rule, pinned: a line drawn ACROSS the page is
+  // kept, however far past the edges it runs, because the print draws it.
+  const crossing = { id: 'crossing', type: 'line', x1: -9000, y1: 10, x2: 9000, y2: 20, stroke: '#ff0000' };
+  assert.equal((await annotationDicts(await exportAnnotated(crossing))).length, 1,
+    'a line drawn across the page is exported, however far past the edges it runs');
 });
 
 // ---------------------------------------------------------------------------

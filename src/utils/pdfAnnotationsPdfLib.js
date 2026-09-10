@@ -95,6 +95,9 @@ import {
   viewportPointToPdfPoint,
 } from './pdfNativeExport/adapters/textMarkup.js';
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
+// Linear min/max: a spread over a sampled point list overflows the call stack
+// and used to make a big cloud vanish from the export (see arrayExtrema.js).
+import { boundsOfPoints as linearBoundsOfPoints } from './arrayExtrema.js';
 import {
   buildStickyNoteGlyphSpec,
   getCloudPathBounds,
@@ -2086,26 +2089,25 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
     { x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY },
     { x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY },
   ].map(toWorld);
-  const xs = corners.map((point) => point.x);
-  const ys = corners.map((point) => point.y);
+  const cornerBox = linearBoundsOfPoints(corners);
   const rect = [
-    Math.min(...xs),
-    pageHeight - Math.max(...ys),
-    Math.max(...xs),
-    pageHeight - Math.min(...ys),
+    cornerBox.minX,
+    pageHeight - cornerBox.maxY,
+    cornerBox.maxX,
+    pageHeight - cornerBox.minY,
   ];
 
   // /RD: [left, top, right, bottom] inset from the appearance box to the base
   // rectangle / ellipse box, in the local frame.
   let rd = null;
   if (geometry.kind === 'rectangle' || geometry.kind === 'ellipse') {
-    const baseXs = geometry.points.map((point) => point.x);
-    const baseYs = geometry.points.map((point) => point.y);
+    const baseBox = linearBoundsOfPoints(geometry.points)
+      || { minX: box.minX, minY: box.minY, maxX: box.maxX, maxY: box.maxY };
     rd = [
-      Math.min(...baseXs) - box.minX,
-      Math.min(...baseYs) - box.minY,
-      box.maxX - Math.max(...baseXs),
-      box.maxY - Math.max(...baseYs),
+      baseBox.minX - box.minX,
+      baseBox.minY - box.minY,
+      box.maxX - baseBox.maxX,
+      box.maxY - baseBox.maxY,
     ].map((value) => Math.max(0, value));
   }
 
@@ -2237,14 +2239,15 @@ const inflateAppBounds = (bounds, pad) => ({
 });
 
 const boundsOfPoints = (points, pad) => {
-  const xs = points.map((point) => Number(point?.x) || 0);
-  const ys = points.map((point) => Number(point?.y) || 0);
-  if (!xs.length) return null;
+  // Linear, not `Math.min(...xs)`: an ink stroke or a many-vertex polygon can
+  // carry more points than a spread can push onto the call stack.
+  const box = linearBoundsOfPoints(points, { coerce: true });
+  if (!box) return null;
   return {
-    minX: Math.min(...xs) - pad,
-    minY: Math.min(...ys) - pad,
-    maxX: Math.max(...xs) + pad,
-    maxY: Math.max(...ys) + pad,
+    minX: box.minX - pad,
+    minY: box.minY - pad,
+    maxX: box.maxX + pad,
+    maxY: box.maxY + pad,
   };
 };
 
@@ -2915,8 +2918,9 @@ const createImportedCaretAnnotation = (pdfDoc, page, fabricObj, pageHeight, opti
     const left = Number(fabricObj.left) || 0;
     const top = Number(fabricObj.top) || 0;
     const points = Array.isArray(fabricObj.points) ? fabricObj.points : [];
-    const pointsWidth = points.length ? Math.max(...points.map((p) => Number(p?.x) || 0)) : 0;
-    const pointsHeight = points.length ? Math.max(...points.map((p) => Number(p?.y) || 0)) : 0;
+    const pointsBox = linearBoundsOfPoints(points, { coerce: true });
+    const pointsWidth = pointsBox ? pointsBox.maxX : 0;
+    const pointsHeight = pointsBox ? pointsBox.maxY : 0;
     const width = (Number(fabricObj.width) || pointsWidth) * Math.abs(Number(fabricObj.scaleX) || 1);
     const height = (Number(fabricObj.height) || pointsHeight) * Math.abs(Number(fabricObj.scaleY) || 1);
     if (width <= 0 || height <= 0) return null;
@@ -3638,20 +3642,27 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
   // polygon cloud whose corner crosses y = 0, a rectangle dragged half off -
   // and the flattened print draws exactly that, clipped by the page. Dropping
   // it from the /AP export made print and export disagree about whether the
-  // annotation existed at all. So the test is now: the geometry must OVERLAP
-  // the page, and it must stay within one page dimension of it. Wild values
-  // (a line at x = -9000 on a 612pt page, a rect flipped around the origin by
-  // a bad matrix, anything non-finite) still fail both halves.
-  const pageSpill = Math.max(Number(crop.width), Number(crop.height));
+  // annotation existed at all.
+  //
+  // 2026-09-10 (oversize overlap): the first version of that fix ALSO required
+  // the geometry to stay within one page dimension of the page. That is a size
+  // limit dressed up as a placement check, and it dropped shapes the user
+  // really drew: a cloud anchored on a Letter page but 1400pt wide, or a
+  // 300pt cloud resized 6x on its own handles, are both anchored ON the page
+  // and both drawn by the flattened print - yet the export threw them away,
+  // so print and export disagreed again for exactly the reason the first fix
+  // was written to stop.
+  //
+  // CONTRACT: any annotation whose BASE geometry OVERLAPS the page at all is
+  // exported. Viewers clip what runs past the edge; nothing is lost by writing
+  // it. Only geometry that is entirely off the page (a line at x = -9000 on a
+  // 612pt page), non-finite, or degenerate is rejected.
   const spanOverlapsPage = (min, max, low, high) => max >= low && min <= high;
-  const spanNearPage = (min, max, low, high) => min >= low - pageSpill && max <= high + pageSpill;
   const rectOnPage = (values) => {
     if (!Array.isArray(values) || values.length !== 4 || !values.every(Number.isFinite)) return false;
     const [x0, y0, x1, y1] = values;
     return spanOverlapsPage(Math.min(x0, x1), Math.max(x0, x1), bounds.minX, bounds.maxX)
-      && spanOverlapsPage(Math.min(y0, y1), Math.max(y0, y1), bounds.minY, bounds.maxY)
-      && spanNearPage(Math.min(x0, x1), Math.max(x0, x1), bounds.minX, bounds.maxX)
-      && spanNearPage(Math.min(y0, y1), Math.max(y0, y1), bounds.minY, bounds.maxY);
+      && spanOverlapsPage(Math.min(y0, y1), Math.max(y0, y1), bounds.minY, bounds.maxY);
   };
   const rectWithinPage = rectOnPage;
   const rectTouchesPage = rectOnPage;
@@ -3668,9 +3679,7 @@ const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
       minY = Math.min(minY, values[index + 1]); maxY = Math.max(maxY, values[index + 1]);
     }
     return spanOverlapsPage(minX, maxX, bounds.minX, bounds.maxX)
-      && spanOverlapsPage(minY, maxY, bounds.minY, bounds.maxY)
-      && spanNearPage(minX, maxX, bounds.minX, bounds.maxX)
-      && spanNearPage(minY, maxY, bounds.minY, bounds.maxY);
+      && spanOverlapsPage(minY, maxY, bounds.minY, bounds.maxY);
   };
   const rect = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Rect')));
   if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(Number.isFinite)) return false;
@@ -4434,11 +4443,12 @@ const fabricPolygonWorldPoints = (obj) => {
   const scaleY = Number(obj?.scaleY ?? 1) || 1;
   const offsetX = Number(obj?.pathOffset?.x) || 0;
   const offsetY = Number(obj?.pathOffset?.y) || 0;
-  const xs = points.map((point) => Number(point?.x) || 0);
-  const ys = points.map((point) => Number(point?.y) || 0);
+  // Linear bounds: a hand-drawn polygon / ink path can hold more points than a
+  // Math.min spread can take (see arrayExtrema.js).
+  const box = linearBoundsOfPoints(points, { coerce: true });
   const center = {
-    x: scaleX * ((Math.min(...xs) + Math.max(...xs)) / 2 - offsetX),
-    y: scaleY * ((Math.min(...ys) + Math.max(...ys)) / 2 - offsetY),
+    x: scaleX * ((box.minX + box.maxX) / 2 - offsetX),
+    y: scaleY * ((box.minY + box.maxY) / 2 - offsetY),
   };
   return points.map((point) => {
     const local = { x: ((Number(point?.x) || 0) - offsetX) * scaleX, y: ((Number(point?.y) || 0) - offsetY) * scaleY };
@@ -5661,6 +5671,30 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   });
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
+  // 2026-09-10 — ONE bad annotation must never cost the user the whole print.
+  // Until today a throw anywhere in a drawer (getCloudPathBounds blew the call
+  // stack on a full-sheet cloud) escaped this function and printing failed
+  // outright, while the /Annots exporter - which catches per annotation - at
+  // least produced the rest of the file. Every draw below is now fenced: the
+  // shape that threw is skipped with a diagnostic naming it, and every other
+  // annotation still prints.
+  const flattenPrintSkips = [];
+  const drawFlattenedSafely = (label, obj, draw) => {
+    try {
+      return draw();
+    } catch (error) {
+      const skip = {
+        reason: 'flatten-draw-failed',
+        kind: label,
+        id: obj?.id || obj?.data?.id || null,
+        type: obj?.type || obj?.data?.type || null,
+        error: String(error?.message || error),
+      };
+      flattenPrintSkips.push(skip);
+      console.warn('[PDFPrintFlatten] skipped one annotation that failed to draw', skip);
+      return 0;
+    }
+  };
   const stampImages = new Map();
   for (const pageData of Object.values(printablePayload.annotationsByPage || {})) {
     for (const obj of (Array.isArray(pageData?.objects) ? pageData.objects : [])) {
@@ -5738,13 +5772,17 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
           uniformHighlightGroups.get(key).push(obj);
           return;
         }
-        const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts, { x: 0, y: 0 }, stampImages);
+        const drawnCount = drawFlattenedSafely('object', obj, () => drawFlattenedObject(
+          page, obj, pageHeight, fonts, { x: 0, y: 0 }, stampImages,
+        ));
         flattenedPrintAnnotationsAdded += drawnCount;
         trackEditedImportDraw(pageNumber, obj, drawnCount);
       });
       uniformHighlightGroups.forEach((objects) => {
         const printableObjects = objects.filter((obj) => importedObjectAllowsPrint(pdfDoc, pageIndex, obj));
-        const drawnCount = drawUniformHighlightMask(page, printableObjects, pageHeight);
+        const drawnCount = drawFlattenedSafely('uniform-highlight', printableObjects[0], () => (
+          drawUniformHighlightMask(page, printableObjects, pageHeight)
+        ));
         flattenedPrintAnnotationsAdded += drawnCount;
         printableObjects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
       });
@@ -5761,7 +5799,9 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     const calloutObj = calloutToExportObject(callout, pageSize);
     if (calloutObj) withPrintPageTransform(page, pageHeight, () => {
-      flattenedPrintAnnotationsAdded += drawFlattenedCallout(page, calloutObj, pageHeight, fonts);
+      flattenedPrintAnnotationsAdded += drawFlattenedSafely('callout', calloutObj, () => (
+        drawFlattenedCallout(page, calloutObj, pageHeight, fonts)
+      ));
     });
   });
 
@@ -5780,7 +5820,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     withPrintPageTransform(page, pageHeight, () => {
-      flattenedPrintAnnotationsAdded += drawFlattenedObject(page, {
+      flattenedPrintAnnotationsAdded += drawFlattenedSafely('survey-marker', marker, () => drawFlattenedObject(page, {
       type: 'rect',
       left: markerBounds.left,
       top: markerBounds.top,
@@ -5795,7 +5835,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
       opacity: 1,
       angle: Number(marker?.angle) || 0,
       globalCompositeOperation: 'multiply',
-      }, pageHeight, fonts);
+      }, pageHeight, fonts));
     });
   });
 
@@ -5875,6 +5915,10 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     nativeAnnotationsKeptForScreenParity: nativeScreenParityDiagnostics.kept,
     nativeAnnotationsRemovedForScreenParity: nativeScreenParityDiagnostics.removed,
     nativeAnnotationsRemovedByFlags: nativeScreenParityDiagnostics.removedByFlags,
+    // Annotations the flattener could not draw. Non-empty means the print is
+    // missing those shapes and ONLY those shapes — everything else printed.
+    flattenPrintSkipped: flattenPrintSkips.length,
+    flattenPrintSkips,
     printableDiagnostics,
   }));
   return pdfBytes;

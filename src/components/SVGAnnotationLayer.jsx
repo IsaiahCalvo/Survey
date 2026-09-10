@@ -22,6 +22,7 @@
  */
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { deepClone } from '../utils/deepClone.js';
+import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import {
   renderPath,
   renderRect,
@@ -6250,8 +6251,9 @@ const SVGAnnotationLayer = memo(({
           const pPathOffsetY = obj.pathOffset?.y || 0;
           const pxs = obj.points.map((p) => Number(p?.x) || 0);
           const pys = obj.points.map((p) => Number(p?.y) || 0);
-          const pRawCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
-          const pRawCy = (Math.min(...pys) + Math.max(...pys)) / 2;
+          // Linear, not a spread: a polygon's point list is unbounded (arrayExtrema).
+          const pRawCx = (minOf(pxs) + maxOf(pxs)) / 2;
+          const pRawCy = (minOf(pys) + maxOf(pys)) / 2;
           const pRotCenterX = pScaleX * (pRawCx - pPathOffsetX);
           const pRotCenterY = pScaleY * (pRawCy - pPathOffsetY);
           const radP = (pAngle * Math.PI) / 180;

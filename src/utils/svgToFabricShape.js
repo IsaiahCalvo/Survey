@@ -17,6 +17,7 @@
  */
 
 import { getAnnotationBBox } from './svgBoundingBox.js';
+import { maxOf, minOf } from './arrayExtrema.js';
 
 /**
  * @param {object} annotation - Fabric.js JSON annotation OR an SVG callout record
@@ -182,8 +183,9 @@ function getPointsShapeTransformMatrix(annotation) {
   const pathOffsetY = annotation?.pathOffset?.y || 0;
   const xs = points.map((p) => Number(p?.x) || 0);
   const ys = points.map((p) => Number(p?.y) || 0);
-  const rawCenterX = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0;
-  const rawCenterY = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+  // Linear, not a spread: an imported polygon's point list is unbounded.
+  const rawCenterX = xs.length ? (minOf(xs) + maxOf(xs)) / 2 : 0;
+  const rawCenterY = ys.length ? (minOf(ys) + maxOf(ys)) / 2 : 0;
   const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
   const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
 

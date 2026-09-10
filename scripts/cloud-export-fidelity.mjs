@@ -128,6 +128,19 @@ const PAGE_FRAMES = {
   'cropbox-larger-than-mediabox': { mediaBox: [0, 0, 320, 240], cropBox: [-40, -30, 380, 290], rendererPageBoxVaries: true },
   'cropbox-hangs-off-mediabox': { mediaBox: [0, 0, 320, 240], cropBox: [60, 40, 420, 320], rendererPageBoxVaries: true },
   'cropbox-hangs-off-mediabox-rot270': { mediaBox: [0, 0, 320, 240], cropBox: [60, 40, 420, 320], rotate: 270, rendererPageBoxVaries: true },
+  // 2026-09-10 (export round 5) - a REAL large sheet. The cloud engine emits
+  // roughly one cubic per 7pt of path, and getCloudPathBounds sampled 100
+  // points per cubic into a `Math.min(...)` spread, so the call-stack limit
+  // (~125,000 arguments) was reached at about 8,500pt of path: a full-sheet
+  // cloud on ARCH E, or a many-vertex polygon cloud on any large sheet. None
+  // of the small frames above can reach it, so the defect was invisible here.
+  //
+  // `skipRasterLanes`: at --scale 4 this page is 10,000 x 13,480 device pixels
+  // (540MB per raster). The visual lanes are proven on the seventeen frames
+  // above; what this frame proves is the GEOMETRY half - the /Annots writer
+  // and the print flattener both survive the shape and neither drops it.
+  arche: { mediaBox: [0, 0, 2500, 3370], skipRasterLanes: true },
+  'arche-rot90': { mediaBox: [0, 0, 2500, 3370], rotate: 90, skipRasterLanes: true },
 };
 
 // ---------------------------------------------------------------------------
@@ -314,6 +327,108 @@ const frameCases = (frame) => {
       pathOffset: { x: 0, y: 0 }, stroke: STROKE, strokeWidth: 6, fill: FILL, data: { pdfCloudIntensity: 2 },
     },
   });
+  // 2026-09-10 (export round 5) - the two defects an adversarial export
+  // checker found on claude/cloud-round4-integration.
+  //
+  // A. STACK OVERFLOW, silently dropping the cloud. getCloudPathBounds sampled
+  //    the outline at 100 points per cubic and spread the result into
+  //    Math.min / Math.max; past roughly 125,000 arguments V8 throws
+  //    `RangeError: Maximum call stack size exceeded`. The /Annots writer
+  //    caught that as a create failure and dropped the annotation - annots=0
+  //    with the cloud plainly on screen - and the print flattener did not
+  //    catch it at all, so the WHOLE print failed. In a 220-case random sweep
+  //    17% of filled clouds vanished. These are the shapes that get there: a
+  //    many-vertex polygon or polyline cloud, and a full-sheet cloud at a
+  //    small Bump (the crowns get smaller, so there are more of them). They
+  //    only cross the limit on a large sheet, which is why the `arche` frames
+  //    exist.
+  const denseVertices = (count, box) => {
+    const points = [];
+    for (let index = 0; index < count; index += 1) {
+      const theta = (index / count) * Math.PI * 2;
+      points.push({
+        x: grid(box.width / 2 + (box.width / 2) * Math.cos(theta)),
+        y: grid(box.height / 2 + (box.height / 2) * Math.sin(theta)),
+      });
+    }
+    return points;
+  };
+  const denseBox = r(0.06, 0.06, 0.88, 0.88);
+  for (const [count, bump] of [[16, 2], [32, 1], [40, 2]]) {
+    cases.push({
+      name: `dense-polygon-${count}-bump${bump}`, edge: true,
+      object: {
+        id: `dense-poly-${count}-${bump}`, type: 'polygon',
+        left: denseBox.left, top: denseBox.top,
+        points: denseVertices(count, denseBox), pathOffset: { x: 0, y: 0 },
+        stroke: STROKE, strokeWidth: 2.5, fill: FILL,
+        data: { pdfCloudIntensity: bump },
+      },
+    });
+  }
+  cases.push({
+    name: 'dense-polyline-40-bump2', edge: true,
+    object: {
+      id: 'dense-polyline-40', type: 'polyline',
+      left: denseBox.left, top: denseBox.top,
+      points: denseVertices(40, denseBox), pathOffset: { x: 0, y: 0 },
+      stroke: STROKE, strokeWidth: 2.5, fill: 'transparent',
+      data: { pdfCloudIntensity: 2 },
+    },
+  });
+  cases.push({
+    name: 'fullsheet-rect-bump1', edge: true,
+    object: {
+      id: 'fullsheet-rect-bump1', type: 'rect', left: 0, top: 0, width: W, height: H,
+      stroke: STROKE, strokeWidth: 2.5, fill: FILL, data: { pdfCloudIntensity: 1 },
+    },
+  });
+
+  // B. OVERSIZE OVERLAP DROP. exportAnnotationRefHasValidGeometry required the
+  //    geometry to overlap the page AND stay within one page dimension of it -
+  //    a size limit dressed up as a placement check. A cloud anchored ON the
+  //    page but several page widths across, or one resized 6x on its own
+  //    handles, was drawn by the flattened print and thrown out of the export.
+  //    The contract is now: overlap the page at all and you are exported;
+  //    viewers clip the rest.
+  cases.push({
+    name: 'oversize-rect-4x-page-width', edge: true,
+    object: {
+      id: 'oversize-wide', type: 'rect',
+      left: Math.round(W * 0.16), top: Math.round(H * 0.25),
+      width: Math.round(W * 4.4), height: Math.round(H * 0.38),
+      stroke: STROKE, strokeWidth: 2.5, fill: 'transparent',
+      data: { pdfCloudIntensity: 2 },
+    },
+  });
+  cases.push({
+    name: 'oversize-rect-scaled6x', edge: true,
+    object: {
+      id: 'oversize-scaled', type: 'rect',
+      left: Math.round(W * 0.08), top: Math.round(H * 0.08),
+      width: Math.round(W * 0.5), height: Math.round(H * 0.5),
+      scaleX: 6, scaleY: 6,
+      stroke: STROKE, strokeWidth: 2.5, fill: 'transparent',
+      data: { pdfCloudIntensity: 2 },
+    },
+  });
+  cases.push({
+    name: 'oversize-polygon-scaled6x-filled', edge: true,
+    object: {
+      id: 'oversize-poly-scaled', type: 'polygon',
+      left: Math.round(W * 0.1), top: Math.round(H * 0.1),
+      points: [
+        { x: 0, y: 0 },
+        { x: grid(W * 0.5), y: grid(H * 0.06) },
+        { x: grid(W * 0.42), y: grid(H * 0.48) },
+        { x: grid(W * 0.04), y: grid(H * 0.4) },
+      ],
+      pathOffset: { x: 0, y: 0 }, scaleX: 6, scaleY: 6,
+      stroke: STROKE, strokeWidth: 4, fill: FILL,
+      data: { pdfCloudIntensity: 2 },
+    },
+  });
+
   // RESIZED clouds: what the app stores after a resize handle drag - a scale
   // on the committed object. Random (seeded) scales, rounded to 2 decimals the
   // way annotationCommitRounding rounds a real commit, because a raw-float
@@ -922,15 +1037,42 @@ for (const frameName of frameNames) {
     const base = join(frameDir, entry.name);
     const annotatedPdf = `${base}.annotated.pdf`;
     const flattenedPdf = `${base}.flattened.pdf`;
-    const annotatedBytes = await exportAnnotated(file, frame, entry.object);
-    const flattenedBytes = await exportFlattened(file, frame, entry.object);
+    // 2026-09-10 (export round 5): NEITHER writer may throw and the /Annots
+    // writer may not silently drop the shape. Before the stack-overflow fix a
+    // big cloud came out of the exporter as zero annotations and took the
+    // whole print down with it, and nothing in this harness said so - it only
+    // printed `annots=0` and carried on comparing an empty raster.
+    let annotatedBytes = null;
+    let flattenedBytes = null;
+    let writerError = null;
+    try {
+      annotatedBytes = await exportAnnotated(file, frame, entry.object);
+    } catch (error) {
+      writerError = `annotated export threw ${error?.constructor?.name}: ${error?.message}`;
+    }
+    try {
+      flattenedBytes = await exportFlattened(file, frame, entry.object);
+    } catch (error) {
+      writerError = `${writerError ? `${writerError}; ` : ''}flattened print threw ${error?.constructor?.name}: ${error?.message}`;
+    }
+    if (writerError) {
+      const failed = {
+        page: frameName, frame, case: entry.name,
+        edge: Boolean(entry.edge), plain: Boolean(entry.plain),
+        annotsWritten: 0, writerError,
+        renderers: {}, reimport: {}, ink: {},
+      };
+      report.push(failed);
+      console.log(`${entry.name.padEnd(30)} WRITER FAILURE: ${writerError}`);
+      continue;
+    }
     writeFileSync(annotatedPdf, annotatedBytes);
     writeFileSync(flattenedPdf, flattenedBytes);
     // A plain (non-cloud) shape has no CloudOutline markup to rasterise; its
     // reference is the app's own FLATTENED print of the same object under the
     // same renderer (the annotated-vs-flattened family below).
     let appPng = null;
-    if (!entry.plain) {
+    if (!entry.plain && !spec.skipRasterLanes) {
       const svgPath = `${base}.app.svg`;
       appPng = `${base}.app.png`;
       writeFileSync(svgPath, appSvg(entry.object, frame, entry.dom));
@@ -938,13 +1080,17 @@ for (const frameName of frameNames) {
     }
 
     const annotCount = (await PDFDocument.load(annotatedBytes)).getPage(0).node.lookup(PDFName.of('Annots'));
+    const annotsWritten = annotCount instanceof PDFArray ? annotCount.size() : 0;
     const results = {
       page: frameName,
       frame,
       case: entry.name,
       edge: Boolean(entry.edge),
       plain: Boolean(entry.plain),
-      annotsWritten: annotCount instanceof PDFArray ? annotCount.size() : 0,
+      annotsWritten,
+      // A shape the app draws must reach the exported file. Zero here is the
+      // silent data loss both 2026-09-10 defects produced.
+      annotsDropped: annotsWritten === 0,
       renderers: {},
       reimport: {},
       ink: {},
@@ -955,7 +1101,7 @@ for (const frameName of frameNames) {
       ['cairo', rasterCairo],
       ['quartz', (pdf, png) => rasterQuartz(pdf, png, frame)],
     ];
-    for (const [kind, pdfPath] of [['annotated', annotatedPdf], ['flattened', flattenedPdf]]) {
+    for (const [kind, pdfPath] of (spec.skipRasterLanes ? [] : [['annotated', annotatedPdf], ['flattened', flattenedPdf]])) {
       for (const [name, raster] of renderers) {
         const png = `${base}.${kind}.${name}.png`;
         // eslint-disable-next-line no-await-in-loop
@@ -983,7 +1129,7 @@ for (const frameName of frameNames) {
       }
     }
     // The /Annots path against the print path under the same renderer.
-    for (const [name] of renderers) {
+    for (const [name] of (spec.skipRasterLanes ? [] : renderers)) {
       const annotatedPng = `${base}.annotated.${name}.png`;
       const flattenedPng = `${base}.flattened.${name}.png`;
       if (!existsSync(annotatedPng) || !existsSync(flattenedPng)) {
@@ -1089,8 +1235,25 @@ for (const entry of report) {
   }
 }
 
-lines.push('', `${compared - failures}/${compared} renderer comparisons within tolerance; ${reimportCompared - reimportFailures}/${reimportCompared} re-import checks within tolerance; ${inkCompared - inkFailures}/${inkCompared} annotated rasters carry ink.`);
+// Writer survival: neither writer may throw, and the /Annots writer may not
+// drop a shape the app draws. This is the geometry half of the 2026-09-10
+// defects and it is checked on EVERY frame, including the ones too large to
+// rasterise.
+const writerFailures = report.filter((entry) => entry.writerError || entry.annotsDropped);
+lines.push('', '| page | case | annots | writer |', '|---|---|---|---|');
+for (const entry of report) {
+  const verdict = entry.writerError
+    ? `THREW - ${entry.writerError}`
+    : (entry.annotsDropped ? 'DROPPED - exported zero /Annots' : 'ok');
+  lines.push(`| ${entry.page} | ${entry.case} | ${entry.annotsWritten} | ${verdict} |`);
+}
+
+lines.push('', `${report.length - writerFailures.length}/${report.length} cases exported and printed without a throw or a drop; ${compared - failures}/${compared} renderer comparisons within tolerance; ${reimportCompared - reimportFailures}/${reimportCompared} re-import checks within tolerance; ${inkCompared - inkFailures}/${inkCompared} annotated rasters carry ink.`);
 writeFileSync(join(OUT, 'report.md'), `${lines.join('\n')}\n`);
 console.log(`\nreport: ${join(OUT, 'report.md')}`);
 console.log(lines[lines.length - 1]);
-if (failures > 0 || reimportFailures > 0 || inkFailures > 0) process.exit(1);
+if (writerFailures.length > 0) {
+  console.log(`\nWRITER FAILURES (${writerFailures.length}):`);
+  writerFailures.forEach((entry) => console.log(`  ${entry.page}/${entry.case}: ${entry.writerError || 'exported zero /Annots'}`));
+}
+if (failures > 0 || reimportFailures > 0 || inkFailures > 0 || writerFailures.length > 0) process.exit(1);

@@ -67,12 +67,26 @@ const decodedNormalAppearance = (pdf, dict) => {
     : '';
 };
 
+// 2026-09-10 (export round 5) — the 'outside' fixture was changed, and the
+// reason matters. It used to be a line from x = -9000 to x = +9000 across a
+// 240pt page, which is not off the page at all: it CROSSES it, and the print
+// flattener draws exactly that, clipped by the page edge. It only failed the
+// old guard because that guard also imposed a SIZE limit ("stay within one
+// page dimension of the page"), which dropped real shapes the user drew — a
+// cloud anchored on a Letter page but 1400pt wide, a 300pt cloud resized 6x —
+// and made the export disagree with the print about whether the annotation
+// existed at all (see exportAnnotationRefHasValidGeometry, and the
+// page-crossing case pinned in the test directly below).
+//
+// The assertion is unchanged and just as strict: exactly ONE of the four
+// objects survives. The fixture now expresses what the test's own name says —
+// geometry ENTIRELY off the page, which carries no ink any viewer could show.
 test('export skips non-finite, off-page, and zero-length line geometry', async () => {
   const output = await savePDFWithAnnotationsPdfLib(await blankFile(), {
     1: { objects: [
       { id: 'valid', type: 'line', x1: 20, y1: 30, x2: 100, y2: 70, stroke: '#008000' },
       { id: 'zero', type: 'line', x1: 12, y1: 12, x2: 12, y2: 12, stroke: '#ff0000' },
-      { id: 'outside', type: 'line', x1: -9000, y1: 10, x2: 9000, y2: 20, stroke: '#ff0000' },
+      { id: 'outside', type: 'line', x1: -9000, y1: -9000, x2: -8800, y2: -8900, stroke: '#ff0000' },
       { id: 'nan', type: 'line', x1: Number.NaN, y1: 0, x2: 30, y2: 30, stroke: '#ff0000' },
     ] },
   }, PAGE_SIZES, null, { returnBytes: true });
@@ -92,6 +106,26 @@ test('export skips non-finite, off-page, and zero-length line geometry', async (
       assert.ok(values[index + 1] >= 0 && values[index + 1] <= PAGE_HEIGHT);
     }
   }
+});
+
+// The other half of that rule, pinned so it cannot quietly regress: geometry
+// that OVERLAPS the page is exported no matter how far past the edge it runs.
+// The flattened print draws it, so the export has to carry it too — otherwise
+// printing and exporting the same sheet disagree about what is on it.
+test('export keeps line geometry that crosses the page even when it runs far past both edges', async () => {
+  const output = await savePDFWithAnnotationsPdfLib(await blankFile(), {
+    1: { objects: [
+      { id: 'crosses', type: 'line', x1: -9000, y1: 10, x2: 9000, y2: 20, stroke: '#008000' },
+    ] },
+  }, PAGE_SIZES, null, { returnBytes: true });
+
+  const pdf = await PDFDocument.load(output);
+  const dicts = pageAnnotationDicts(pdf);
+  assert.equal(dicts.length, 1, 'a line drawn across the page must survive the export');
+  assert.equal(textValue(dicts[0], 'NM'), 'crosses');
+  const line = numberArray(pdf, dicts[0].get(PDFName.of('L')));
+  assert.equal(line.length, 4);
+  assert.ok(line.every(Number.isFinite), 'the exported /L must still be finite');
 });
 
 test('print-fidelity E2E round-trip state exports no non-finite, outside-page, or zero-length annotation geometry', async () => {
