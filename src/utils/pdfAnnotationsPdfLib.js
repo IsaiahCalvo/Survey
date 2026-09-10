@@ -1909,10 +1909,31 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
   const objectOpacity = Number.isFinite(Number(fabricObj?.opacity))
     ? Math.max(0, Math.min(1, Number(fabricObj.opacity)))
     : 1;
-  const strokeAlpha = hasStroke ? (stroke.opacity ?? 1) * objectOpacity : 1;
-  const fillAlpha = fill ? (fill.opacity ?? 1) * objectOpacity : 1;
+  const strokePaintAlpha = hasStroke ? (stroke.opacity ?? 1) : 1;
+  const fillPaintAlpha = fill ? (fill.opacity ?? 1) : 1;
+  const strokeAlpha = strokePaintAlpha * objectOpacity;
+  const fillAlpha = fillPaintAlpha * objectOpacity;
   const multiply = fabricObj?.globalCompositeOperation === 'multiply';
-  const needsGraphicsState = strokeAlpha < 0.99999 || fillAlpha < 0.99999 || multiply;
+  // UX 2026-09-09 (run-junction opacity parity): the screen puts the object's
+  // opacity on the cloud's SVG <g>, so the crowns composite WITH EACH OTHER
+  // first and the whole group is composited once. Baking the product
+  // strokeOpacity*objectOpacity into one /CA used by every `S` instead makes a
+  // junction covered by two runs land at 1-(1-CA)^2 rather than
+  // (1-(1-strokeOpacity)^2)*objectOpacity — .4375 vs .375 for rgba(...,.5) at
+  // opacity .5, ~13/255 of double-darkening the screen does not have. So when
+  // the object carries an opacity below 1 the paint goes in an ISOLATED
+  // TRANSPARENCY GROUP form (/Group << /S /Transparency /CS /DeviceRGB /I true >>)
+  // at the paint's own alphas, and the object's opacity is a constant-alpha
+  // ExtGState on the single `Do` that draws it — the PDF spelling of <g opacity>
+  // (PDF 32000-1 11.6.6). /CS is DeviceRGB deliberately: pdf.js mis-rasterises
+  // /DeviceGray groups. At opacity 1 the group would be a no-op, so the stream
+  // stays flat and byte-identical to before.
+  const groupsOpacity = objectOpacity < 0.99999;
+  const paintStrokeAlpha = groupsOpacity ? strokePaintAlpha : strokeAlpha;
+  const paintFillAlpha = groupsOpacity ? fillPaintAlpha : fillAlpha;
+  const needsGraphicsState = paintStrokeAlpha < 0.99999
+    || paintFillAlpha < 0.99999
+    || (multiply && !groupsOpacity);
 
   // Appearance box in the local frame: the crowns plus the round caps' half
   // stroke, plus a small anti-aliasing margin so no viewer clips the edge.
@@ -1931,14 +1952,14 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
   const bbox = [0, 0, formWidth, formHeight];
 
   const n = pdfNumberText;
-  const resources = {};
+  const paintResources = {};
   if (needsGraphicsState) {
-    resources.ExtGState = {
+    paintResources.ExtGState = {
       GS0: {
         Type: 'ExtGState',
-        CA: strokeAlpha,
-        ca: fillAlpha,
-        ...(multiply ? { BM: 'Multiply' } : {}),
+        CA: paintStrokeAlpha,
+        ca: paintFillAlpha,
+        ...(multiply && !groupsOpacity ? { BM: 'Multiply' } : {}),
       },
     };
   }
@@ -1977,7 +1998,35 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
   const matrix = angle ? [cos, sin, -sin, cos, 0, 0] : null;
-  const contentText = `${content.join('\n')}\n`;
+  const paintText = `${content.join('\n')}\n`;
+  // At opacity 1 the appearance IS the paint. Below 1 the paint becomes an
+  // isolated transparency group and the appearance is the single `Do` that
+  // composites it at the object's alpha (see groupsOpacity above).
+  let contentText = paintText;
+  let resources = paintResources;
+  if (groupsOpacity) {
+    const groupForm = pdfDoc.context.flateStream(paintText, {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: bbox,
+      Group: { Type: 'Group', S: 'Transparency', CS: 'DeviceRGB', I: true },
+      Resources: paintResources,
+    });
+    const groupRef = pdfDoc.context.register(groupForm);
+    contentText = `q\n/GSO gs\n/CloudGroup Do\nQ\n`;
+    resources = {
+      ExtGState: {
+        GSO: {
+          Type: 'ExtGState',
+          CA: objectOpacity,
+          ca: objectOpacity,
+          ...(multiply ? { BM: 'Multiply' } : {}),
+        },
+      },
+      XObject: { CloudGroup: groupRef },
+    };
+  }
   const form = pdfDoc.context.flateStream(contentText, {
     Type: 'XObject',
     Subtype: 'Form',
