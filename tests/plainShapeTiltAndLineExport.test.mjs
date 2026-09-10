@@ -27,8 +27,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PDFArray, PDFDocument, PDFName } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { PNG } from 'pngjs';
 
 const {
   savePDFWithAnnotationsPdfLib,
@@ -268,12 +273,6 @@ test('a cloud whose scalloped hull spills off the page stays in the export', asy
 // ---------------------------------------------------------------------------
 // Raster lanes: app painter vs the exported /AP vs the flattened print.
 // ---------------------------------------------------------------------------
-
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { PNG } from 'pngjs';
 
 const tmp = mkdtempSync(join(tmpdir(), 'plain-tilt-'));
 const has = (binary) => spawnSync('which', [binary], { encoding: 'utf8' }).status === 0;
