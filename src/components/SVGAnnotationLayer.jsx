@@ -38,7 +38,13 @@ import {
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
 import { CLOUD_HIT_STROKE_WIDTH, resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
-import { cloudCommandsToPathData, cloudSelectionChrome, resolveCloudAnnotationGeometry } from '../utils/cloudAnnotationGeometry.js';
+import {
+  CLOUD_HOVER_GLOW_OPACITY,
+  cloudCommandsToPathData,
+  cloudHoverGlowWidth,
+  cloudSelectionChrome,
+  resolveCloudAnnotationGeometry,
+} from '../utils/cloudAnnotationGeometry.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
@@ -4676,17 +4682,23 @@ const SVGAnnotationLayer = memo(({
               : null;
             const sw = cloudHitGeometry.strokeWidth || 1;
             const cloudInteractive = annotationHitTargetsInteractive && isObjectInteractive;
+            // UX 2026-09-09 (Drawboard PDF): the scallop glow stays ON while
+            // the cloud is selected (plain shapes drop theirs on selection);
+            // it is 2.85x the stroke width at 0.666 opacity, in page units so
+            // it hugs the crowns at every zoom instead of a fixed 6px band.
+            const cloudGlowVisible = annotationIsHovered || annotationIsSelected;
             return (
               <g transform={cloudHitGeometry.transform}>
-                {annotationIsHovered && (
+                {cloudGlowVisible && (
                   <path
                     d={cloudD}
                     fill="none"
                     stroke="#4a90e2"
-                    strokeOpacity={0.4}
-                    strokeWidth={Math.max(6, sw + 4)}
+                    strokeOpacity={CLOUD_HOVER_GLOW_OPACITY}
+                    strokeWidth={cloudHoverGlowWidth(sw)}
                     strokeLinecap="round"
                     strokeLinejoin="round"
+                    data-cloud-glow="true"
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -6340,11 +6352,13 @@ const SVGAnnotationLayer = memo(({
           }
         } catch (_) { /* swallow diag errors */ }
 
-        // UX 2026-09-09: a cloud's grabbers sit on the outer scallop cusps and
-        // its dashed frame is the outer hull of the humps - Drawboard PDF puts
-        // its handles on the peaks, never on the inner box the cloud was drawn
-        // from. Resolved from the live resize preview so the cusps track the
-        // crowns re-fitting during a drag. Non-cloud shapes pass null through.
+        // UX 2026-09-09: a cloud's dashed frame is the outer hull of the humps
+        // padded by one stroke width, and its eight grabbers sit on that
+        // frame's corners and edge midpoints - Drawboard PDF puts its handles
+        // outside the cloud, never on the inner box the cloud was drawn from
+        // and never stacked on a crown. Resolved from the live resize preview
+        // so the frame tracks the crowns re-fitting during a drag. Non-cloud
+        // shapes pass null through.
         const cloudChrome = !isLockedStampProxy && !counterInBboxMode
           ? cloudSelectionChrome(selectionChromeObj)
           : null;
