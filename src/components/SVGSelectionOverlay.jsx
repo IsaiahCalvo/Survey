@@ -75,9 +75,18 @@ const SVGSelectionOverlay = memo(({
   // so handles don't balloon at low zoom or vanish at high zoom.
   const is = Math.sqrt(visualInverseScale);
   const handleMetrics = getSelectionHandleVisualMetrics(visualInverseScale);
+  // The frame the grabbers are actually DRAWN on. For every ordinary shape it
+  // IS the bbox; a revision cloud passes the padded outer hull of its humps
+  // (frameRect), which is a crown depth plus the pad bigger on every side.
+  // UX 2026-09-09 (defect 3): the "do the handles fit?" question has to be
+  // asked about this frame, not about the inner box the cloud was built from.
+  // Measuring the inner box culled the four edge pills off a 45x45 cloud whose
+  // frame is 68.7 wide, and left a 2-point polyline cloud (inner height 0)
+  // showing a single 'br' grabber, while Drawboard shows all eight.
+  const frame = frameRect || { left, top, width, height };
   const handleSpec = getAdaptiveSelectionHandleSpec({
-    bboxWidth: width,
-    bboxHeight: height,
+    bboxWidth: frame.width,
+    bboxHeight: frame.height,
     inverseScale,
     padding,
   });
@@ -100,8 +109,8 @@ const SVGSelectionOverlay = memo(({
   const cy = rotationCenter?.y ?? (top + height / 2);
 
   // Bounding box rect dimensions (with padding). A cloud's frame is the outer
-  // hull of its humps (frameRect), which the caller already sized.
-  const frame = frameRect || { left, top, width, height };
+  // hull of its humps (frameRect), which the caller already sized — resolved
+  // above, next to the handle-fit question it also answers.
   const boxX = frame.left - padding;
   const boxY = frame.top - padding;
   const boxW = frame.width + padding * 2;

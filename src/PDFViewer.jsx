@@ -25,6 +25,9 @@ import {
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
 import { renderPdfPageForExport } from './utils/spacePdfPageRender.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
+// UX 2026-09-09: arming a click-to-place shape tool (polygon / polyline) hands
+// keyboard focus back to the page so Enter finishes the draft, not the button.
+import { releaseFocusForDraftTool } from './utils/draftKeyboardTarget.js';
 import { requireEraseExcelProjectionReady } from './utils/eraseExcelProjection.js';
 import { buildEraseHistoryBeforeSnapshot } from './utils/annotationEraseTransaction.js';
 import {
@@ -33748,6 +33751,16 @@ ${pageBlocks}
                       data-counter-caret-button={isCounter ? 'true' : undefined}
                       onClick={(e) => {
                         setActiveTool(t.id);
+                        // UX 2026-09-09: Polygon and Polyline are click-to-place
+                        // drafts finished with Enter. Leaving keyboard focus on
+                        // this button after arming the tool put Enter in the
+                        // button's lap (and a stray Space would re-click it), so
+                        // hand focus back to the page the moment the tool arms.
+                        // The draft's own window-capture keydown is the belt to
+                        // this brace — both were needed to make Enter reliable.
+                        if (t.id === 'polygon' || t.id === 'polyline') {
+                          releaseFocusForDraftTool(e.currentTarget);
+                        }
                         if (showCaret) {
                           // Stop propagation so the click-outside listener
                           // (which uses mousedown on document) doesn't see

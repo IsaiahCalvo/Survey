@@ -36,6 +36,10 @@ import {
   resolveAnnotationCloudSpec,
 } from '../utils/pdfAnnotationAppearance.js';
 import { cloudPolyEnginePoints } from '../utils/cloudAnnotationGeometry.js';
+// UX 2026-09-09: cloud grabbers are drawn on the padded crown hull, not on the
+// box the resize math writes to, so a cloud resize/rotate must preserve the
+// grab-time pointer offset instead of snapping the edge to the cursor.
+import { resizeGrabOffset, rotationGrabOffsetDeg } from '../utils/offsetPreservingResize.js';
 // UX: 2026-04-20 — Group / Ungroup. Auto-expand-on-click reads each clicked
 // annotation's / callout's groupId and, if present, expands selection to
 // every member of that group on the page. Same helper module powers App's
@@ -2415,12 +2419,21 @@ export function useSVGInteraction({
       let newScaleX = ds.originalProps.scaleX;
       let newScaleY = ds.originalProps.scaleY;
 
+      // UX 2026-09-09: offset-preserving resize. `grabOffset` is the distance
+      // between the pointer at grab time and the edge this formula writes —
+      // zero for a handle drawn on the box itself, the crown-hull overhang for
+      // a cloud grabber drawn on the padded frame. Subtracting it turns the
+      // resize into a pure delta: the dragged edge keeps its grab offset from
+      // the cursor, so a +25 pointer move grows the box by exactly +25 and the
+      // cloud never snaps outward on grab.
+      const grabOffsetDx = ds.resizeGrabOffset?.dx || 0;
+      const grabOffsetDy = ds.resizeGrabOffset?.dy || 0;
       if (affectsX && ds.originalProps.width !== 0) {
-        const signedLocalDx = isLeftHandle ? -ptrDxLocal : ptrDxLocal;
+        const signedLocalDx = (isLeftHandle ? -ptrDxLocal : ptrDxLocal) - grabOffsetDx;
         newScaleX = signedLocalDx / ds.originalProps.width;
       }
       if (affectsY && ds.originalProps.height !== 0) {
-        const signedLocalDy = isTopHandle ? -ptrDyLocal : ptrDyLocal;
+        const signedLocalDy = (isTopHandle ? -ptrDyLocal : ptrDyLocal) - grabOffsetDy;
         newScaleY = signedLocalDy / ds.originalProps.height;
       }
 
@@ -2615,7 +2628,14 @@ export function useSVGInteraction({
       const dx = svgPoint.x - ds.centerX;
       const dy = svgPoint.y - ds.centerY;
       const radians = Math.atan2(dy, dx);
-      let newAngle = normalizeAngle(radians);
+      // UX 2026-09-09: offset-preserving rotation, same contract as the resize
+      // grab offset above. A cloud's rotation handle hangs off the padded
+      // crown frame, whose horizontal midpoint need not sit over the shape's
+      // rotation pivot, so the raw pointer bearing would snap the cloud on
+      // grab. `rotateGrabOffsetDeg` is 0 for every shape whose handle already
+      // sits on its own bbox, leaving their behaviour untouched.
+      let newAngle = normalizeAngle(radians) - (ds.rotateGrabOffsetDeg || 0);
+      newAngle = ((newAngle % 360) + 360) % 360;
 
       // EDIT-11: soft Shift-snap to nearest 45° within 3° threshold (CONTEXT.md locked decision)
       if (e.shiftKey) {
@@ -4695,11 +4715,43 @@ export function useSVGInteraction({
       }
     }
 
+    // UX 2026-09-09 (Drawboard PDF): a revision cloud draws its eight resize
+    // grabbers — and hangs its rotation handle — off the padded crown hull,
+    // several page units outside the box the transform math writes to. Capture
+    // the grab-time pointer offset so the drag is offset-preserving instead of
+    // snapping that box onto the cursor. Every other shape's handles already
+    // sit on their own bbox, so they keep a zero offset and behave as before.
+    const cloudGrabShape = !!resolveAnnotationCloudSpec(obj);
+    const resizeGrabOffsetValue = (cloudGrabShape && mode === 'resize' && svgPoint)
+      ? resizeGrabOffset({
+        handleId,
+        pointerX: svgPoint.x,
+        pointerY: svgPoint.y,
+        anchorX: anchor.x,
+        anchorY: anchor.y,
+        centerX: rotationCx,
+        centerY: rotationCy,
+        angleDeg: obj.angle ?? 0,
+        width: rawWidth,
+        height: rawHeight,
+        scaleX: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleX ?? 1),
+        scaleY: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleY ?? 1),
+      })
+      : null;
+    const rotateGrabOffsetValue = (cloudGrabShape && mode === 'rotate' && svgPoint)
+      ? rotationGrabOffsetDeg({
+        pointerAngleDeg: normalizeAngle(Math.atan2(svgPoint.y - rotationCy, svgPoint.x - rotationCx)),
+        originalAngleDeg: obj.angle ?? 0,
+      })
+      : 0;
+
     dragStateRef.current = {
       active: true,
       mode,
       handleId,
       startSVGPoint: svgPoint,
+      resizeGrabOffset: resizeGrabOffsetValue,
+      rotateGrabOffsetDeg: rotateGrabOffsetValue,
       originalProps: {
         // Imported + points-based + line shapes: use visible-bbox left/top so
         // the resize formula (which produces a new left/top in visible-space)

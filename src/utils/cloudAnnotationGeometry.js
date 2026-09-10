@@ -239,11 +239,17 @@ export function cloudOutlineBounds(geometry) {
  * (2026-09-09, stroke 2 page units): the hover glow is a 5.7-unit (2.85x)
  * blue stroke at 0.666 opacity hugging the scallops and it stays on while the
  * cloud is selected; its dashed frame sits past the outer edge of the ink,
- * with its eight grabbers exactly on the frame corners / edge midpoints. The
- * app pads the frame by one full stroke width (owner brief) so the 2px dashes
- * clear the crowns' outer half-stroke at every zoom.
+ * with its eight grabbers exactly on the frame corners / edge midpoints.
+ *
+ * The pad is measured from the ink's OUTER edge, not from the crown
+ * CENTERLINE. `cloudOutlineBounds` samples the stroke's centreline, so the
+ * painted crown already reaches half a stroke width past that hull; padding by
+ * one stroke width from the centreline left only sw/2 of clear air and the
+ * frame's 2px dashes kissed the humps at 100%. Pad = sw/2 (to the ink's outer
+ * edge) + sw (Drawboard's clear gap) = 1.5 stroke widths, in page units so the
+ * gap scales with zoom exactly like the ink.
  */
-export const CLOUD_FRAME_PAD_STROKE_RATIO = 1;
+export const CLOUD_FRAME_PAD_STROKE_RATIO = 1.5;
 export const CLOUD_HOVER_GLOW_WIDTH_RATIO = 2.85;
 export const CLOUD_HOVER_GLOW_OPACITY = 0.666;
 
