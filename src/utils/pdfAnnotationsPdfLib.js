@@ -37,12 +37,17 @@ import {
 } from 'pdf-lib';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 // Unicode text: /Contents (and friends) as UTF-16BE hex when the text needs it,
-// plus the standard-14 → CJK → emoji glyph fallback chain the flattener draws
-// with. See src/utils/pdfUnicodeText.js for why both exist.
+// plus the standard-14 → per-script → CJK glyph fallback chain the flattener
+// draws with, and the colour-emoji rasteriser. See src/utils/pdfUnicodeText.js
+// for why all three exist.
 import {
   buildTextFontRuns,
   collectDrawnTextSamples,
+  embedEmojiRasters,
   embedUnicodeFallbackFonts,
+  EMOJI_BASELINE_DROP_EM,
+  EMOJI_ADVANCE_EM,
+  fontCoversCodePoint,
   pdfTextString,
   widthOfTextRunsAtSize,
 } from './pdfUnicodeText.js';
@@ -3404,10 +3409,183 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
   }
 };
 
+// ---------------------------------------------------------------------------
+// /DA and /DR for a Unicode /FreeText (2026-09-15).
+//
+// THE BUG CLASS. A /FreeText whose /DA names `/Helv` and whose text is Japanese
+// is mozilla/pdf.js#20117 exactly: the standard-14 Helvetica is WinAnsi, it has
+// no glyph for a single character of the string, and a viewer that regenerates
+// the appearance from /DA draws nothing at all. The app already ships an /AP —
+// which is what every viewer actually paints, and is the fix that matters — but
+// a viewer that decides to REGENERATE (Acrobat after an edit, a form-filling
+// tool, /NeedAppearances set by something downstream) falls back to /DA, and
+// then the font it names has to exist and has to cover the text.
+//
+// WHAT ACROBAT / BLUEBEAM / FOXIT DO, and what this does:
+//   1. the /AP /N form's own /Resources /Font already holds the embedded subset
+//      (pdf-lib puts it there when the flattener draws with it) — unchanged;
+//   2. the annotation gets its OWN /DR naming that same font object under a
+//      stable, collision-proof key, and /DA names that key;
+//   3. the same entry is mirrored into the AcroForm /DR, which is where
+//      PDF 32000-1 §12.5.6.6 says a /FreeText's /DA font shall be found.
+// pdfjs-dist@6.1.200's worker merges exactly those three levels
+// (Dict.merge({dictArray: [localResources, appearanceResources,
+// acroFormResources], mergeSubDicts: true})), so no conforming viewer can fail
+// to resolve the name.
+//
+// /NeedAppearances is deliberately NOT set: it is deprecated in PDF 2.0 and it
+// tells viewers to THROW AWAY the /AP this export worked to get right.
+//
+// An all-Latin text box is untouched — it keeps the `/Helv` (or
+// `/Helvetica-Bold`, …) it has always had, no /DR is written, and no AcroForm
+// is created. This only fires when a fallback font really draws the text.
+// ---------------------------------------------------------------------------
+
+// Prefixed so mirroring into the /DR of a PDF that ALREADY has a form can
+// never shadow one of the host document's own font names.
+const UNICODE_DA_FONT_PREFIX = 'SurveyUni';
+const unicodeDaNamesByDoc = new WeakMap(); // PDFDocument -> Map<PDFRef-tag, name>
+
+/**
+ * The document's AcroForm /DR /Font dictionary, created (along with an empty
+ * AcroForm) when it does not exist yet. An AcroForm carrying `/Fields []` adds
+ * no form UI in any viewer — it is only the resource shelf the spec points
+ * /FreeText /DA at.
+ */
+const acroFormDefaultResourceFonts = (pdfDoc) => {
+  const catalog = pdfDoc.catalog;
+  const acroFormKey = PDFName.of('AcroForm');
+  let acroForm = pdfDoc.context.lookupMaybe(catalog.get(acroFormKey), PDFDict);
+  if (!acroForm) {
+    const ref = pdfDoc.context.register(pdfDoc.context.obj({ Fields: [] }));
+    catalog.set(acroFormKey, ref);
+    acroForm = pdfDoc.context.lookupMaybe(ref, PDFDict);
+  }
+  if (!acroForm) return null;
+  const drKey = PDFName.of('DR');
+  let resources = pdfDoc.context.lookupMaybe(acroForm.get(drKey), PDFDict);
+  if (!resources) {
+    const ref = pdfDoc.context.register(pdfDoc.context.obj({}));
+    acroForm.set(drKey, ref);
+    resources = pdfDoc.context.lookupMaybe(ref, PDFDict);
+  }
+  if (!resources) return null;
+  const fontKey = PDFName.of('Font');
+  let fonts = pdfDoc.context.lookupMaybe(resources.get(fontKey), PDFDict);
+  if (!fonts) {
+    const ref = pdfDoc.context.register(pdfDoc.context.obj({}));
+    resources.set(fontKey, ref);
+    fonts = pdfDoc.context.lookupMaybe(ref, PDFDict);
+  }
+  return fonts;
+};
+
+/**
+ * Give `pdfFont` a stable /DA name for this document and make sure both the
+ * AcroForm /DR and a fresh per-annotation /DR resolve it. Returns the name, or
+ * null when the document will not take one (which leaves /DA as it was).
+ */
+const registerUnicodeDaFont = (pdfDoc, pdfFont) => {
+  const ref = pdfFont?.ref;
+  if (!ref) return null;
+  try {
+    let names = unicodeDaNamesByDoc.get(pdfDoc);
+    if (!names) {
+      names = new Map();
+      unicodeDaNamesByDoc.set(pdfDoc, names);
+    }
+    const tag = String(ref);
+    if (names.has(tag)) return names.get(tag);
+    const fonts = acroFormDefaultResourceFonts(pdfDoc);
+    if (!fonts) return null;
+    // Never overwrite a key the host document already owns.
+    let index = names.size;
+    let name = `${UNICODE_DA_FONT_PREFIX}${index}`;
+    while (fonts.get(PDFName.of(name))) {
+      index += 1;
+      name = `${UNICODE_DA_FONT_PREFIX}${index}`;
+    }
+    fonts.set(PDFName.of(name), ref);
+    names.set(tag, name);
+    return name;
+  } catch (error) {
+    console.warn('Unicode /DA font could not be registered; leaving the standard-14 /DA:', error);
+    return null;
+  }
+};
+
+/**
+ * The single font that COVERS the most of this text box's characters — /DA can
+ * name exactly one, so the honest choice is the one a regenerating viewer could
+ * draw the most of the string with.
+ *
+ * Coverage, not "which font drew it": a line of "Beam — Осмотр" is drawn as
+ * Helvetica + Noto Sans runs, but Noto Sans covers EVERY character of it and
+ * Helvetica covers only half, so /DA should name Noto Sans and a regenerating
+ * viewer loses nothing. A Latin line with one CJK word is the other way round:
+ * Droid Sans Fallback carries no Latin at all, so Helvetica still covers more
+ * and /DA keeps `/Helv`.
+ *
+ * Returns null when the standard font wins — the overwhelmingly common case,
+ * and the one whose output must not change. Ties go to the standard font for
+ * the same reason.
+ */
+const dominantUnicodeFontForText = (fabricObj, fonts) => {
+  const fallbacks = Array.isArray(fonts?.unicodeFallbacks) ? fonts.unicodeFallbacks : [];
+  if (!fallbacks.length) return null;
+  let layout = null;
+  try { layout = layoutFlattenedText(fabricObj, fonts); } catch { return null; }
+  if (!layout?.lines?.length) return null;
+  const characters = [];
+  for (const line of layout.lines) {
+    for (const run of line.runs) {
+      // A rasterised emoji is an image, not a glyph in any font, so it must not
+      // vote for which font /DA names.
+      if (run.emojiImage) continue;
+      characters.push(...run.text);
+    }
+  }
+  if (!characters.length) return null;
+  const covered = (font) => characters.reduce(
+    (total, character) => total + (fontCoversCodePoint(font, character.codePointAt(0)) ? 1 : 0),
+    0,
+  );
+  let best = null;
+  let bestCount = covered(layout.font);
+  for (const record of fallbacks) {
+    const count = covered(record);
+    if (count > bestCount) { best = record.pdfFont; bestCount = count; }
+  }
+  return best;
+};
+
+/**
+ * Point `annotationDict`'s /DA at an embedded Unicode font (and give the
+ * annotation the /DR that resolves it) when a fallback font is what actually
+ * draws this text. Returns true when the /DA was rewritten.
+ */
+const applyUnicodeDaToFreeTextDict = (pdfDoc, annotationDict, fabricObj, fonts, fontSize, colorOperator) => {
+  const pdfFont = dominantUnicodeFontForText(fabricObj, fonts);
+  if (!pdfFont) return false;
+  const name = registerUnicodeDaFont(pdfDoc, pdfFont);
+  if (!name) return false;
+  try {
+    annotationDict.DA = pdfTextString(`${colorOperator} /${name} ${fontSize} Tf`);
+    // The annotation's own resource shelf. pdf-lib writes plain objects here;
+    // the ref is shared with the AcroForm /DR, so this costs one dictionary,
+    // not a second copy of the font.
+    annotationDict.DR = { Font: { [name]: pdfFont.ref } };
+    return true;
+  } catch (error) {
+    console.warn('Unicode /DA could not be applied to the FreeText:', error);
+    return false;
+  }
+};
+
 /**
  * Create FreeText annotation (text box)
  */
-const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+export const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.fill || '#000000');
 
@@ -3441,7 +3619,8 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         : isItalic
           ? 'Helvetica-Oblique'
           : 'Helv';
-    const da = `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg /${daFont} ${fontSize} Tf`;
+    const daColor = `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg`;
+    const da = `${daColor} /${daFont} ${fontSize} Tf`;
 
     // UX 2026-07-17: /C on a FreeText annotation is the BACKGROUND/border
     // color per the PDF spec — NOT the glyph color (that lives in /DA above).
@@ -3483,6 +3662,16 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         });
       }
     }
+
+    // The /AP above is what every viewer paints. This is the belt-and-braces
+    // for the ones that REGENERATE it: when a Unicode fallback font is what
+    // actually draws this text, /DA names that embedded font instead of the
+    // WinAnsi `/Helv` it could not use, and the /DR that resolves the name is
+    // written on the annotation and mirrored into the AcroForm. All-Latin text
+    // is untouched.
+    applyUnicodeDaToFreeTextDict(
+      pdfDoc, annotationDict, fabricObj, options.flattenFonts, fontSize, daColor,
+    );
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
   } catch (e) {
@@ -5092,8 +5281,11 @@ const layoutFlattenedText = (obj, fonts) => {
   // lost from the file; the caller says so once per text box so support can
   // see it.
   const droppedCodePoints = new Set();
+  // The emoji store is keyed by grapheme AND raster size, so the run splitter
+  // needs the size this box draws at to find the right image.
+  const emojiStore = fonts?.emojiRasters || null;
   const runsOf = (value) => {
-    const { runs, dropped } = buildTextFontRuns(value, font, fallbacks);
+    const { runs, dropped } = buildTextFontRuns(value, font, fallbacks, { emojiStore, fontSize });
     dropped.forEach((codePoint) => droppedCodePoints.add(codePoint));
     return runs;
   };
@@ -5212,6 +5404,33 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     // chain) still emits the same empty text object it always did, so a text
     // box's appearance stream never goes from "present but blank" to absent.
     (runs.length ? runs : [{ text: '', font }]).forEach((run) => {
+      // A COLOUR EMOJI is an image XObject, not a glyph: no PDF viewer renders
+      // any OpenType colour table, so this is what Acrobat, Bluebeam and Foxit
+      // do too. The square is one em wide (so the run advance, the wrap and
+      // the /AP /BBox all still agree) and hangs EMOJI_BASELINE_DROP_EM below
+      // the baseline. Its origin is the bottom-left corner, rotated exactly
+      // the way a text run's baseline origin is, so a tilted box stays right.
+      if (run.emojiImage) {
+        const side = fontSize * (run.emojiAdvanceEm || EMOJI_ADVANCE_EM);
+        const corner = rotatePoint({
+          x: textX + runAdvance,
+          y: appBaseline + fontSize * EMOJI_BASELINE_DROP_EM,
+        });
+        try {
+          page.drawImage(run.emojiImage, {
+            x: corner.x,
+            y: getPdfY(pageHeight, corner.y),
+            width: side,
+            height: side,
+            opacity: fill.opacity * objectOpacity,
+            ...(angle ? { rotate: degrees(pdfAngle) } : {}),
+          });
+        } catch (error) {
+          console.warn('[PDFExportText] emoji image could not be drawn:', run.text, error);
+        }
+        runAdvance += side;
+        return;
+      }
       const origin = rotatePoint({ x: textX + runAdvance, y: appBaseline });
       page.drawText(run.text, {
         x: origin.x,
@@ -5471,6 +5690,21 @@ const flattenedTextInkBounds = (obj, fonts) => {
     let inkMaxX = line.textX + line.lineWidth;
     let runAdvance = 0;
     for (const run of line.runs) {
+      // A rasterised emoji's ink IS its square: one em wide, reaching
+      // EMOJI_BASELINE_DROP_EM below the baseline and the rest above it. No
+      // font metric describes it, and measuring it through `run.font` (which
+      // is only carried so the run shape stays uniform) would describe the
+      // wrong thing entirely.
+      if (run.emojiImage) {
+        const side = fontSize * (run.emojiAdvanceEm || EMOJI_ADVANCE_EM);
+        const drop = fontSize * EMOJI_BASELINE_DROP_EM;
+        ascent = Math.max(ascent, side - drop);
+        descent = Math.max(descent, drop);
+        inkMinX = Math.min(inkMinX, line.textX + runAdvance);
+        inkMaxX = Math.max(inkMaxX, line.textX + runAdvance + side);
+        runAdvance += side;
+        continue;
+      }
       try {
         const above = run.font.heightAtSize(fontSize, { descender: false });
         const full = run.font.heightAtSize(fontSize);
@@ -6369,8 +6603,13 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
   // straight out of this function — which is NOT inside the per-annotation
   // fence — and killed the entire print. Field text now rides the same font
   // fallback chain the annotation flattener uses.
-  const fieldRuns = (value) => buildTextFontRuns(
-    value, fonts.regular, Array.isArray(fonts?.unicodeFallbacks) ? fonts.unicodeFallbacks : [],
+  // `size` is passed through because the emoji raster store is keyed by the
+  // drawn size as well as the grapheme.
+  const fieldRuns = (value, size) => buildTextFontRuns(
+    value,
+    fonts.regular,
+    Array.isArray(fonts?.unicodeFallbacks) ? fonts.unicodeFallbacks : [],
+    { emojiStore: fonts?.emojiRasters || null, fontSize: size },
   ).runs;
 
   pdfDoc.getPages().forEach((page) => {
@@ -6434,23 +6673,37 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
           const innerWidth = Math.max(1, width - 4);
           if (!multiline && !fieldDefaultFontSize(pdfDoc, widget)) {
             try {
-              const textWidth = widthOfTextRunsAtSize(fieldRuns(text), size);
+              const textWidth = widthOfTextRunsAtSize(fieldRuns(text, size), size);
               if (textWidth > innerWidth) size = Math.max(4, size * innerWidth / textWidth);
             } catch { /* keep the field-height size for unmeasurable text */ }
           }
           const lines = multiline
-            ? wrapFieldText(text, (value) => widthOfTextRunsAtSize(fieldRuns(value), size), innerWidth)
+            ? wrapFieldText(text, (value) => widthOfTextRunsAtSize(fieldRuns(value, size), size), innerWidth)
             : [text.replace(/[\r\n]+/g, ' ')];
           const lineHeight = size * 1.2;
           const maxLines = Math.max(1, Math.floor((height - 4) / lineHeight));
           lines.slice(0, maxLines).forEach((line, lineIndex) => {
             let advance = 0;
-            fieldRuns(line).forEach((run) => {
+            fieldRuns(line, size).forEach((run) => {
+              const baselineY = multiline
+                ? y + height - 2 - size - lineIndex * lineHeight
+                : y + Math.max(1, (height - size) / 2);
+              if (run.emojiImage) {
+                const side = size * (run.emojiAdvanceEm || EMOJI_ADVANCE_EM);
+                try {
+                  page.drawImage(run.emojiImage, {
+                    x: x + 2 + advance,
+                    y: baselineY - size * EMOJI_BASELINE_DROP_EM,
+                    width: side,
+                    height: side,
+                  });
+                } catch { /* one field emoji, not the whole print */ }
+                advance += side;
+                return;
+              }
               page.drawText(run.text, {
                 x: x + 2 + advance,
-                y: multiline
-                  ? y + height - 2 - size - lineIndex * lineHeight
-                  : y + Math.max(1, (height - size) / 2),
+                y: baselineY,
                 size,
                 font: run.font,
                 color: black,
@@ -6525,14 +6778,34 @@ const embedFlattenFonts = async (pdfDoc, texts = []) => {
     courierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
     courierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
   };
+  // COLOUR EMOJI FIRST, because the answer decides whether the monochrome
+  // emoji font is needed at all. In a browser (web, the Electron renderer,
+  // both Capacitor webviews — every runtime a user actually exports or prints
+  // from) each emoji grapheme is painted with the SYSTEM emoji font and
+  // embedded as a colour PNG, so the 777 KB outline font is never fetched. In
+  // Node (unit tests, the fidelity harnesses) there is no canvas, this returns
+  // null, and the chain falls back to those outlines — which is exactly the
+  // old behaviour, so the harnesses stay deterministic and byte-stable.
+  fonts.emojiRasters = await embedEmojiRasters(pdfDoc, { samples: texts });
   fonts.unicodeFallbacks = await embedUnicodeFallbackFonts(pdfDoc, {
     texts,
     // Helvetica answers "can the standard-14 draw this?" for the whole set —
     // all twelve share WinAnsi, so one probe is enough.
     probeFont: fonts.regular,
+    // Only retire the monochrome emoji font when EVERY emoji this export needs
+    // really rasterised. One canvas refusal and the outlines come back as the
+    // safety net, because the run splitter's fall-through has nothing else.
+    hasEmojiRaster: !!fonts.emojiRasters?.complete,
   });
   return fonts;
 };
+
+/**
+ * The same font set for the PDF-native bake pipeline (pdfNativeExport), which
+ * needs it for the FreeText /AP it now writes. Exported rather than inlined so
+ * there is exactly ONE definition of "the fonts a text box draws with".
+ */
+export const embedFlattenFontsForNativeExport = (pdfDoc, texts = []) => embedFlattenFonts(pdfDoc, texts);
 
 export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   pdfFile,

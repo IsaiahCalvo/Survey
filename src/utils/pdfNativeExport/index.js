@@ -10,6 +10,8 @@
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { resolveAdapter, buildAdapterRegistry } from './adapters/index.js';
 import { sanitizeUnappliedRedactionsForExport } from '../pdfRedactionSafety.js';
+import { embedFlattenFontsForNativeExport } from '../pdfAnnotationsPdfLib.js';
+import { collectDrawnTextSamples } from '../pdfUnicodeText.js';
 
 const adapters = new Map();
 
@@ -85,6 +87,23 @@ export async function bakeAnnotationsIntoPdf(pdfBytes, annotationsByPage, option
   }
 
   const pdfDoc = await PDFDocument.load(pdfBytes);
+  // A text box needs REAL EMBEDDED FONTS before anything can be drawn into its
+  // /AP, and embedding is async while the adapters are not — so it happens once
+  // here, up front, and only when this bake actually carries text. The set is
+  // the same one the print flattener uses, so a Japanese note, a Cyrillic label
+  // or a colour emoji comes out of the native pipeline exactly as it comes out
+  // of the print.
+  const textSamples = collectDrawnTextSamples(
+    Object.values(annotationsByPage)
+      .flatMap((pageData) => (Array.isArray(pageData?.objects) ? pageData.objects : []))
+      .map((object) => ({ object })),
+  );
+  const fonts = textSamples.length
+    ? await embedFlattenFontsForNativeExport(pdfDoc, textSamples).catch((error) => {
+      console.warn('Native export could not embed text fonts; text boxes ship without an appearance:', error);
+      return null;
+    })
+    : null;
   const audit = {
     totalConsidered: 0,
     written: 0,
@@ -125,7 +144,7 @@ export async function bakeAnnotationsIntoPdf(pdfBytes, annotationsByPage, option
 
       let ref;
       try {
-        ref = adapter(obj, { pdfDoc, page, pageHeight });
+        ref = adapter(obj, { pdfDoc, page, pageHeight, fonts });
       } catch (err) {
         recordDrop(obj?.id || null, `adapter-threw:${err?.message || 'unknown'}`);
         continue;

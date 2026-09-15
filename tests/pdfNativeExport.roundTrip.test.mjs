@@ -37,6 +37,13 @@ async function readAnnots(bytes) {
       inkList: dict.get(PDFName.of('InkList'))?.asArray?.()?.map((list) => list.asArray().map((n) => (typeof n.value === 'function' ? n.value() : Number(n)))) || null,
       quadPoints: dict.get(PDFName.of('QuadPoints'))?.asArray?.()?.map((n) => (typeof n.value === 'function' ? n.value() : Number(n))) || null,
       contents: dict.get(PDFName.of('Contents'))?.decodeText?.() || null,
+      // /RD is the inset from /Rect back to the shape the user drew, which a
+      // subtype whose geometry lives in /Rect needs once it ships an /AP: the
+      // appearance /BBox has to hold the ink (glyph overhang, half a stroke),
+      // /Rect has to equal that box, and /RD carries the difference. The app's
+      // own importer reads it (convertFreeTextToFabricTextbox).
+      rd: dict.get(PDFName.of('RD'))?.asArray?.()?.map((n) => (typeof n.value === 'function' ? n.value() : Number(n))) || null,
+      hasAppearance: !!dict.get(PDFName.of('AP')),
     });
   });
   return out;
@@ -81,15 +88,35 @@ test('Line round-trips L array within tolerance', async () => {
   assert.ok(Math.abs((PAGE_H - ly2) - original.y2) < TOL);
 });
 
-test('FreeText round-trips text content and Y-flip', async () => {
+test('FreeText round-trips text content and Y-flip, and ships an appearance', async () => {
   const original = { id: 'ft', type: 'textbox', left: 30, top: 40, width: 80, height: 18, text: 'Round-trip', fill: '#1e293b', fontSize: 14 };
   const bytes = await bakeAnnotationsIntoPdf(await makeBlankPdf(), { 1: { objects: [original] } });
   const [annot] = await readAnnots(bytes);
   assert.equal(annot.subtype, 'FreeText');
   assert.equal(annot.contents, 'Round-trip');
-  const bounds = rectToAppBounds(annot.rect, PAGE_H);
-  assert.ok(Math.abs(bounds.left - original.left) < TOL);
-  assert.ok(Math.abs(bounds.top - original.top) < TOL);
+  // 2026-09-15: the bake pipeline now writes the text box through the app's own
+  // /FreeText writer, so it carries the /AP every viewer actually paints. It
+  // used to ship a bare dict whose /DA named the WinAnsi `/Helv`, which macOS
+  // Quick Look drew as nothing and every PDFium viewer drew as nothing while
+  // still extracting the text. The /AP's /BBox has to hold the glyph ink, so
+  // /Rect is that padded box and /RD is the inset back to the box the user
+  // drew — the same convention /Square, the cloud writer and the importer all
+  // already use. Reading /Rect WITHOUT /RD would now measure the appearance
+  // frame, not the text box, which is why this insets first.
+  assert.ok(annot.hasAppearance, 'a FreeText must ship the /AP that viewers paint');
+  assert.ok(annot.rd, 'a padded /Rect must record its inset in /RD');
+  const [rdLeft, rdTop, rdRight, rdBottom] = annot.rd;
+  const padded = rectToAppBounds(annot.rect, PAGE_H);
+  const bounds = {
+    left: padded.left + rdLeft,
+    top: padded.top + rdTop,
+    width: padded.width - rdLeft - rdRight,
+    height: padded.height - rdTop - rdBottom,
+  };
+  assert.ok(Math.abs(bounds.left - original.left) < TOL, `left ${bounds.left}`);
+  assert.ok(Math.abs(bounds.top - original.top) < TOL, `top ${bounds.top}`);
+  assert.ok(Math.abs(bounds.width - original.width) < TOL, `width ${bounds.width}`);
+  assert.ok(Math.abs(bounds.height - original.height) < TOL, `height ${bounds.height}`);
 });
 
 test('Polygon round-trips Y-flipped vertices', async () => {
