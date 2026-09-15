@@ -18,6 +18,7 @@ import {
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
+import { startDocumentHistoryReplay } from '../services/documentHistoryReplay.js';
 
 export const AuthContext = createContext({});
 
@@ -188,6 +189,10 @@ export const AuthProvider = ({ children }) => {
   // We only swap `user` when its identity actually changes; the JWT itself
   // lives on `session`, which we keep fresh below.
   const userRef = useRef(null);
+  const replaySessionRef = useRef(session);
+  const replayLoadingRef = useRef(loading);
+  replaySessionRef.current = session;
+  replayLoadingRef.current = loading;
 
   // Returns true when the incoming auth user differs from the one already in
   // state in any way a consumer keys on (id / email / user_metadata). A pure
@@ -480,6 +485,27 @@ export const AuthProvider = ({ children }) => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Pending account history is device-durable, but cloud replay belongs only
+  // to the account whose session is current. Key this effect by actor ID, not
+  // the session object: TOKEN_REFRESHED for the same account must not restart
+  // a replay already in flight.
+  useEffect(() => {
+    const actorUserId = user?.id;
+    if (loading || !actorUserId || session?.user?.id !== actorUserId) return undefined;
+    let active = true;
+    const stop = startDocumentHistoryReplay({
+      actorUserId,
+      isCurrent: () => active
+        && replayLoadingRef.current === false
+        && userRef.current?.id === actorUserId
+        && replaySessionRef.current?.user?.id === actorUserId,
+    });
+    return () => {
+      active = false;
+      stop();
+    };
+  }, [loading, session?.user?.id, user?.id]);
 
   // 2026-04-26 — Tell the Electron main process whether to enable
   // developer mode (Reload + Toggle DevTools menu items, Cmd+R / Cmd+Shift+I

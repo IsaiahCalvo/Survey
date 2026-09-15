@@ -10,6 +10,7 @@
  */
 import { supabase } from '../supabaseClient.js';
 import { getDocumentHistoryStore } from './documentHistoryStore.js';
+import { replayDocumentHistoryRow } from './documentHistoryReplay.js';
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
@@ -307,7 +308,8 @@ const localDefault = () => {
 };
 
 export function createDocumentHistoryService({ cloud = supabase, localStore = localDefault(),
-  legacyStorage = safeLegacyStorage() } = {}) {
+  legacyStorage = safeLegacyStorage(), isActorCurrent = () => true,
+  lockManager = globalThis.navigator?.locks } = {}) {
   const localReadErrors = new Map();
   const localReadFailed = error => Object.assign(new Error('Document history could not be read from local storage.'),
     { code: 'DOCUMENT_HISTORY_LOCAL_READ_FAILED', cause: error });
@@ -328,31 +330,33 @@ export function createDocumentHistoryService({ cloud = supabase, localStore = lo
     try { onAdmitted?.(); } catch { /* persistence succeeded; live UI owns callback errors */ }
     const pending = { data: null, error: null, local: { state: 'pending' } };
     if (scopeKey.startsWith('guest:') || !cloud) return pending;
-    const { id: _localId, __local: _localOnly, __syncState: _syncState, ...dbRow } = row;
-    let query = cloud.from('document_history_events')
-      .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true });
-    if (typeof query?.select === 'function') query = query.select(CLOUD_FIELDS);
-    let response;
-    try { response = await query; }
-    catch (error) {
-      console.error('[DocumentHistory] record failed:', error);
-      return { data: null, error, local: { state: 'pending' } };
+    const actorUserId = scopeKey.slice('account:'.length);
+    let replay;
+    try {
+      replay = await replayDocumentHistoryRow({ actorUserId,
+        isCurrent: () => isActorCurrent(actorUserId) === true, cloud, localStore,
+        item: { row: admission.row, token: admission.token }, lockManager });
+    } catch {
+      replay = { status: 'transient', code: 'DATABASE_MUTATION_FAILED' };
     }
-    const { data, error } = response;
-    if (error) {
-      if (isMissingHistoryTableError(error)) {
-        if (!warnedMissingTable) {
-          warnedMissingTable = true;
-          console.warn('[DocumentHistory] document_history_events table is not available yet; local activity history remains pending.');
-        }
-        return pending;
-      }
-      console.error('[DocumentHistory] record failed:', error);
-      return { data: null, error, local: { state: 'pending' } };
+    if (replay.status === 'confirmed') return { data: null, error: null, local: { state: 'confirmed' } };
+    if (replay.status === 'locked') {
+      try { await localStore.setScopeError?.(scopeKey, 'DOCUMENT_HISTORY_SAFE_LOCK_UNAVAILABLE'); } catch { /* row stays pending */ }
+    } else if (replay.status === 'transient' || replay.status === 'permanent') {
+      try {
+        await localStore.deferPending?.(admission.token, { errorCode: replay.code,
+          retryAt: replay.status === 'transient' ? Date.now() + 1000 : null,
+          permanent: replay.status === 'permanent' });
+      } catch { /* row stays pending even when retry metadata cannot be saved */ }
     }
-    const returned = Array.isArray(data) ? data[0] : data;
-    const confirmed = returned ? await localStore.confirm(admission.token, returned) : false;
-    return { data: null, error: null, local: { state: confirmed ? 'confirmed' : 'pending' } };
+    if (replay.code === '42P01' && !warnedMissingTable) {
+      warnedMissingTable = true;
+      console.warn('[DocumentHistory] document_history_events table is not available yet; local activity history remains pending.');
+    }
+    const error = Object.assign(new Error('Document history is saved locally and waiting to sync.'), {
+      code: replay.code || 'DOCUMENT_HISTORY_CLOUD_PENDING',
+    });
+    return { data: null, error, local: { state: 'pending' } };
   }
   async function list(documentId, { limit = HISTORY_EVENT_LIMIT, actorUserId, guestScopeId } = {}) {
     const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));

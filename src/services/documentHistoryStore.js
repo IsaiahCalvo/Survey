@@ -3,12 +3,13 @@ import { computeContentSha256 } from './contentHash.js';
 // This final scoped schema uses a fresh database. The earlier in-flight draft
 // stays untouched; it was never a supported migration source.
 const DB_NAME = 'survey-document-history-v2-scoped';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ROWS = 'rows';
 const META = 'meta';
 const EVICTION = 'eviction';
 const SCOPE_DOCUMENT = 'scopeDocument';
 const SCOPE_DOCUMENT_TIME = 'scopeDocumentTime';
+const SCOPE_SYNC_SAVED = 'scopeSyncSaved';
 const SAVED_AT = 'savedAt';
 const GLOBAL_META_KEY = 'global';
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -38,6 +39,28 @@ export function canonicalDocumentHistoryRow(row) {
 const encodeBytes = value => new TextEncoder().encode(stable(value)).byteLength;
 const digestRow = async row => computeContentSha256(new TextEncoder().encode(stable(row)));
 const rowKey = (scopeKey, documentId, clientEventId) => [scopeKey, documentId, clientEventId];
+const replayToken = row => ({ scopeKey: row.scopeKey, documentId: row.documentId,
+  clientEventId: row.clientEventId, revision: row.revision, rowDigest: row.rowDigest });
+const exactToken = (row, token) => Boolean(row && token
+  && row.scopeKey === token.scopeKey && row.documentId === token.documentId
+  && row.clientEventId === token.clientEventId && row.revision === token.revision
+  && row.rowDigest === token.rowDigest);
+const isAccountScope = scopeKey => typeof scopeKey === 'string'
+  && scopeKey.startsWith('account:') && scopeKey.length > 'account:'.length;
+const encodeReplayCursor = key => `v1:${JSON.stringify(key)}`;
+const decodeReplayCursor = cursor => {
+  if (cursor == null) return null;
+  if (typeof cursor !== 'string' || !cursor.startsWith('v1:')) {
+    throw fail('DOCUMENT_HISTORY_STORE_INVALID', 'The history replay cursor is invalid.');
+  }
+  try {
+    const key = JSON.parse(cursor.slice(3));
+    if (!Array.isArray(key) || key.length !== 5 || key[1] !== 'pending') throw new Error('invalid');
+    return key;
+  } catch {
+    throw fail('DOCUMENT_HISTORY_STORE_INVALID', 'The history replay cursor is invalid.');
+  }
+};
 const scopeMetaKey = scopeKey => `scope:${scopeKey}`;
 const emptyGlobal = () => ({ key: GLOBAL_META_KEY, protectedBytes: 0, confirmedBytes: 0 });
 const emptyScope = scopeKey => ({ key: scopeMetaKey(scopeKey), scopeKey, pendingCount: 0,
@@ -119,6 +142,10 @@ export function createDocumentHistoryStore({ indexedDB = globalThis.indexedDB, d
         if (!rows.indexNames.contains(SCOPE_DOCUMENT_TIME)) {
           rows.createIndex(SCOPE_DOCUMENT_TIME, ['scopeKey', 'documentId', 'occurredAt', 'savedAt']);
         }
+        if (!rows.indexNames.contains(SCOPE_SYNC_SAVED)) {
+          rows.createIndex(SCOPE_SYNC_SAVED,
+            ['scopeKey', 'syncState', 'savedAt', 'documentId', 'clientEventId']);
+        }
         if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'key' });
         if (!db.objectStoreNames.contains(EVICTION)) {
           const eviction = db.createObjectStore(EVICTION, { keyPath: ['scopeKey', 'documentId', 'clientEventId'] });
@@ -128,7 +155,10 @@ export function createDocumentHistoryStore({ indexedDB = globalThis.indexedDB, d
       request.onsuccess = () => {
         const db = request.result;
         if (closed) { db.close(); finish(fail('DOCUMENT_HISTORY_STORE_CLOSED', 'Local history storage is closed.')); return; }
-        db.onversionchange = () => db.close();
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
         finish(null, db);
       };
     }).catch(error => { dbPromise = null; throw error; });
@@ -181,16 +211,24 @@ export function createDocumentHistoryStore({ indexedDB = globalThis.indexedDB, d
     }
   };
   const nextSavedAt = () => Date.now() * 1000 + (++writeClock % 1000);
+  const measureSaved = saved => {
+    let bytes = saved.bytes || 0;
+    for (let i = 0; i < 3; i += 1) {
+      const measured = { ...saved, bytes };
+      const evictionBytes = saved.syncState === 'confirmed' ? encodeBytes({ scopeKey: saved.scopeKey,
+        documentId: saved.documentId, clientEventId: saved.clientEventId,
+        savedAt: saved.savedAt, bytes }) : 0;
+      bytes = encodeBytes(measured) + evictionBytes;
+    }
+    return bytes;
+  };
   const makeSaved = ({ scopeKey, canonical, rowDigest, revision, syncState }) => {
     const saved = { version: 2, scopeKey, documentId: canonical.document_id,
       clientEventId: canonical.client_event_id, revision, rowDigest, syncState,
-      occurredAt: canonical.occurred_at || '', savedAt: nextSavedAt(), bytes: 0, row: canonical };
+      occurredAt: canonical.occurred_at || '', savedAt: nextSavedAt(), bytes: 0, row: canonical,
+      ...(syncState === 'pending' ? { attemptCount: 0 } : {}) };
     // Count the full row envelope and, for evictable rows, its compact eviction entry.
-    for (let i = 0; i < 3; i += 1) {
-      const evictionBytes = syncState === 'confirmed' ? encodeBytes({ scopeKey, documentId: saved.documentId,
-        clientEventId: saved.clientEventId, savedAt: saved.savedAt, bytes: saved.bytes }) : 0;
-      saved.bytes = encodeBytes(saved) + evictionBytes;
-    }
+    saved.bytes = measureSaved(saved);
     return saved;
   };
   const evictionRecord = row => ({ scopeKey: row.scopeKey, documentId: row.documentId,
@@ -266,8 +304,22 @@ export function createDocumentHistoryStore({ indexedDB = globalThis.indexedDB, d
           requestValue(ports.rows.get(key)), loadCounters(ports.meta, scopeKey),
         ]);
         if (prior?.rowDigest === rowDigest) {
-          return { token: { scopeKey, documentId: prior.documentId, clientEventId: prior.clientEventId,
-            revision: prior.revision, rowDigest }, row: prior.row, created: false };
+          if (prior.syncState === 'pending' && prior.permanent !== true
+            && (prior.retryAt != null || prior.lastReplayErrorCode != null || (prior.attemptCount || 0) > 0)) {
+            const reset = { ...prior, attemptCount: 0 };
+            delete reset.retryAt;
+            delete reset.permanent;
+            delete reset.lastReplayErrorCode;
+            reset.bytes = measureSaved(reset);
+            const delta = reset.bytes - prior.bytes;
+            counters.global.protectedBytes += delta;
+            counters.scope.protectedBytes += delta;
+            ports.rows.put(reset);
+            ports.meta.put(counters.global);
+            ports.meta.put(counters.scope);
+            return { token: replayToken(reset), row: reset.row, created: false };
+          }
+          return { token: replayToken(prior), row: prior.row, created: false };
         }
         if (prior) {
           if (counters.scope.lastErrorCode !== 'DOCUMENT_HISTORY_EVENT_CONFLICT') {
@@ -296,12 +348,119 @@ export function createDocumentHistoryStore({ indexedDB = globalThis.indexedDB, d
         ports.meta.put(counters.global);
         ports.meta.put(counters.scope);
         ports.changedScopes.add(scopeKey);
-        return { token: { scopeKey, documentId: saved.documentId, clientEventId: saved.clientEventId,
-          revision: saved.revision, rowDigest }, row: saved.row, created: true };
+        return { token: replayToken(saved), row: saved.row, created: true };
       });
       if (outcome?.failure) throw fail(outcome.failure, outcome.failure === 'DOCUMENT_HISTORY_EVENT_CONFLICT'
         ? 'A different history event already uses this event id.' : 'Local protected history is full.');
       return outcome;
+    },
+
+    async listPending(scopeKey, { limit = 25, cursor = null, now = Date.now(), includePermanent = false } = {}) {
+      if (!isAccountScope(scopeKey)) return { items: [], nextCursor: null, nextRetryAt: null };
+      const safeLimit = Math.max(1, Math.min(100, Number(limit) || 25));
+      const replayNow = Number(now);
+      if (!Number.isFinite(replayNow) || replayNow < 0 || typeof includePermanent !== 'boolean') {
+        throw fail('DOCUMENT_HISTORY_STORE_INVALID', 'The history replay time is invalid.');
+      }
+      const cursorKey = decodeReplayCursor(cursor);
+      if (cursorKey && cursorKey[0] !== scopeKey) {
+        throw fail('DOCUMENT_HISTORY_STORE_INVALID', 'The history replay cursor is invalid.');
+      }
+      const db = await open();
+      const tx = db.transaction(ROWS, 'readonly');
+      const done = transactionDone(tx, timeoutMs);
+      const lower = cursorKey || [scopeKey, 'pending', 0, '', ''];
+      const upper = [scopeKey, 'pending', Number.MAX_SAFE_INTEGER, '\uffff', '\uffff'];
+      const range = KeyRange.bound(lower, upper, cursorKey != null, false);
+      const request = tx.objectStore(ROWS).index(SCOPE_SYNC_SAVED).openCursor(range, 'next');
+      const items = [];
+      let scanned = 0;
+      let lastKey = null;
+      let nextRetryAt = null;
+      request.onsuccess = () => {
+        const pendingCursor = request.result;
+        if (!pendingCursor || scanned >= safeLimit) return;
+        const saved = pendingCursor.value;
+        scanned += 1;
+        lastKey = pendingCursor.key;
+        if (saved.permanent === true && includePermanent) {
+          items.push({ row: structuredClone(saved.row), token: replayToken(saved),
+            attemptCount: Number(saved.attemptCount) || 0 });
+        } else if (saved.permanent !== true) {
+          const retryAt = Number(saved.retryAt || 0);
+          if (retryAt <= replayNow) {
+            items.push({ row: structuredClone(saved.row), token: replayToken(saved),
+              attemptCount: Number(saved.attemptCount) || 0 });
+          } else {
+            nextRetryAt = nextRetryAt == null ? retryAt : Math.min(nextRetryAt, retryAt);
+          }
+        }
+        if (scanned < safeLimit) pendingCursor.continue();
+      };
+      await done;
+      return { items, nextCursor: scanned === safeLimit && lastKey ? encodeReplayCursor(lastKey) : null,
+        nextRetryAt };
+    },
+
+    async getPending(token, { includePermanent = false } = {}) {
+      if (!isAccountScope(token?.scopeKey)) return null;
+      if (typeof includePermanent !== 'boolean') {
+        throw fail('DOCUMENT_HISTORY_STORE_INVALID', 'The history replay read is invalid.');
+      }
+      const db = await open();
+      const tx = db.transaction(ROWS, 'readonly');
+      const done = transactionDone(tx, timeoutMs);
+      const current = await requestValue(tx.objectStore(ROWS).get(
+        rowKey(token.scopeKey, token.documentId, token.clientEventId),
+      ));
+      await done;
+      if (!exactToken(current, token) || current.syncState !== 'pending'
+        || (current.permanent === true && !includePermanent)) return null;
+      return { row: structuredClone(current.row), token: replayToken(current),
+        attemptCount: Number(current.attemptCount) || 0 };
+    },
+
+    async deferPending(token, { errorCode, retryAt = null, permanent = false } = {}) {
+      if (!isAccountScope(token?.scopeKey) || typeof errorCode !== 'string' || !errorCode
+        || typeof permanent !== 'boolean'
+        || (retryAt != null && (!Number.isFinite(Number(retryAt)) || Number(retryAt) < 0))) {
+        throw fail('DOCUMENT_HISTORY_STORE_INVALID', 'The history replay deferral is invalid.');
+      }
+      return write(async ports => {
+        const key = rowKey(token.scopeKey, token.documentId, token.clientEventId);
+        const [current, counters] = await Promise.all([
+          requestValue(ports.rows.get(key)), loadCounters(ports.meta, token.scopeKey),
+        ]);
+        if (!exactToken(current, token) || current.syncState !== 'pending') return 'stale';
+        const next = { ...current, lastReplayErrorCode: errorCode,
+          permanent, ...(permanent ? {} : { retryAt: Number(retryAt || 0),
+            attemptCount: (Number(current.attemptCount) || 0) + 1 }) };
+        if (permanent) delete next.retryAt;
+        next.bytes = measureSaved(next);
+        const delta = next.bytes - current.bytes;
+        if (counters.global.protectedBytes + delta > protectedLimitBytes) {
+          throw fail('DOCUMENT_HISTORY_PROTECTED_CAP_EXCEEDED', 'Local protected history is full.');
+        }
+        counters.global.protectedBytes += delta;
+        counters.scope.protectedBytes += delta;
+        ports.rows.put(next);
+        ports.meta.put(counters.global);
+        ports.meta.put(counters.scope);
+        return 'updated';
+      });
+    },
+
+    async setScopeError(scopeKey, errorCode) {
+      if (!isAccountScope(scopeKey)
+        || (errorCode !== null && (typeof errorCode !== 'string' || !errorCode))) return false;
+      return write(async ports => {
+        const scope = await requestValue(ports.meta.get(scopeMetaKey(scopeKey))) || emptyScope(scopeKey);
+        if (scope.lastErrorCode === errorCode) return false;
+        scope.lastErrorCode = errorCode;
+        ports.meta.put(scope);
+        ports.changedScopes.add(scopeKey);
+        return true;
+      });
     },
 
     async confirm(token, cloudRow) {
@@ -313,7 +472,7 @@ export function createDocumentHistoryStore({ indexedDB = globalThis.indexedDB, d
         const [current, counters] = await Promise.all([
           requestValue(ports.rows.get(key)), loadCounters(ports.meta, token.scopeKey),
         ]);
-        if (!current || current.revision !== token.revision || current.rowDigest !== token.rowDigest
+        if (!exactToken(current, token)
           || cloudDigest !== token.rowDigest) return false;
         if (current.syncState === 'confirmed') return true;
         removeFromCounters(counters.global, counters.scope, current);

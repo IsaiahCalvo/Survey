@@ -5662,8 +5662,9 @@ as complete because a prerequisite has tests.
   reductions, local library/save/recovery work and this History integration.
   Preserve the stated test scope in each earlier checkpoint; historical tests
   do not establish current deployed behavior.
-- **Required local follow-ups:** legacy History recovery, actor-bound immediate
-  history writes and reconnect replay, private preference storage/migration.
+- **Required local follow-ups:** legacy History recovery and private preference
+  storage/migration. Actor-bound immediate writes and reconnect replay are
+  locally implemented and have passed final local regression.
 - **Required integration/rollout checks:** reconcile the existing disabled
   catalog, generation replacement and aggregate-sync paths; migration ordering,
   old-client compatibility, recovery/restore and multi-user permission tests
@@ -5676,6 +5677,35 @@ as complete because a prerequisite has tests.
 - **Not required without new evidence:** a VM migration, speculative indexes,
   unrelated refactors, or another full competitor research pass. They must not
   keep this goal running by themselves.
+
+### History reconnect checkpoint — 2026-09-14
+
+The local reconnect implementation has passed final local regression. An
+independent 78/78 focused run passes. Account-bound replay pins writes to the
+current account token and shares the browser Web Lock: a newly accepted row uses
+one request, while a duplicate takes an exact readback before confirmation.
+Pending rows use durable bounded retry; account changes remain isolated; guest
+History sends no cloud work.
+
+Browser proof used real IndexedDB and Web Locks with a fake cloud only. Pending
+history survived reload; two tabs made one successful upsert and zero readbacks;
+switching to B or signing out made no requests. The explicit permanent-recovery
+path also passes its composed test.
+
+Keep legacy History recovery UI and the private-preference split open. Catalog
+rollout, old-client compatibility, multi-user permission/recovery gates, and
+live quota, request, and latency measurements remain open. The frozen build
+passes. `npm test` exits 0: 7,231 tests across 722 test files, 7,134 passed,
+97 skipped, none failed or cancelled. This is not a deployment or quota claim.
+Microsoft remains deferred.
+
+Frozen run logs: `/tmp/survey-history-replay-frozen-full-20260914.log`,
+`/tmp/survey-history-replay-frozen-build-20260914.log`, and the independent
+`/tmp/replacement-review-history-reconnect-final-freeze.log`. The browser's
+`frozen-proof` case confirms pending survival on reload and one successful
+upsert across two tabs with no readback. Error logs were empty. Its transport
+and identities were synthetic; no real Supabase accounts or Microsoft calls
+were used.
 
 ## Sources
 

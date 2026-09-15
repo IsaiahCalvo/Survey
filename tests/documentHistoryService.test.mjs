@@ -290,20 +290,35 @@ const historyRow = (id = 'event-1', changes = {}) => ({ document_id: 'doc-cloud'
   occurred_at: '2026-09-14T12:00:00.000Z', ...changes });
 const makeStore = options => createDocumentHistoryStore({ indexedDB: new IDBFactory(),
   IDBKeyRange, dbName: `history-service-${Math.random()}`, BroadcastChannel: null, ...options });
-function cloudAdapter({ write = { data: [], error: null }, read = { data: [], error: null }, onUpsert } = {}) {
+const immediateLock = { request(_name, _options, callback) { return callback(); } };
+const queryResult = value => {
+  const query = {
+    setHeader() { return query; }, abortSignal() { return query; }, retry() { return query; },
+    then(resolve, reject) { return Promise.resolve().then(() => typeof value === 'function' ? value() : value).then(resolve, reject); },
+  };
+  return query;
+};
+function cloudAdapter({ write = { data: [], error: null }, read = { data: [], error: null }, onUpsert,
+  actorUserId = 'actor-a' } = {}) {
   const calls = [];
-  const cloud = { from(table) {
+  const subscription = { unsubscribe() {} };
+  const cloud = { auth: {
+    getSession: async () => ({ data: { session: { user: { id: actorUserId }, access_token: `token-${actorUserId}` } }, error: null }),
+    onAuthStateChange: () => ({ data: { subscription } }),
+  }, from(table) {
     calls.push(['from', table]);
     return {
       upsert(value, options) {
         calls.push(['upsert', value, options]); onUpsert?.(value);
-        return { select: async fields => { calls.push(['upsert.select', fields]); return write; } };
+        return { select: fields => { calls.push(['upsert.select', fields]); return queryResult(write); } };
       },
       select(fields) {
         calls.push(['select', fields]);
         const chain = { eq(...args) { calls.push(['eq', ...args]); return chain; },
           order(...args) { calls.push(['order', ...args]); return chain; },
-          limit(...args) { calls.push(['limit', ...args]); return Promise.resolve(read); } };
+          limit(...args) { calls.push(['limit', ...args]); return queryResult(read); },
+          setHeader() { return chain; }, abortSignal() { return chain; }, retry() { return chain; },
+          then(resolve, reject) { return Promise.resolve(read).then(resolve, reject); } };
         return chain;
       },
     };
@@ -320,22 +335,65 @@ test('record admits locally before cloud and only exact returned content confirm
   } };
   const adapter = cloudAdapter({ write: { data: [{ ...row, id: 'server-id',
     created_at: '2026-09-14T12:00:00+00:00', occurred_at: '2026-09-14T12:00:00+00:00' }], error: null },
+  read: { data: [{ ...row, id: 'server-id', created_at: '2026-09-14T12:00:00+00:00',
+    occurred_at: '2026-09-14T12:00:00+00:00' }], error: null },
   onUpsert: () => equal(admitted, true) });
-  const service = createDocumentHistoryService({ cloud: adapter.cloud, localStore: localPort });
+  const service = createDocumentHistoryService({ cloud: adapter.cloud, localStore: localPort, lockManager: immediateLock });
   try {
     const result = await service.recordDocumentHistoryEvent(row);
     equal(result.local.state, 'confirmed');
+    equal(adapter.calls.filter(call => call[0] === 'upsert').length, 1);
+    equal(adapter.calls.filter(call => call[0] === 'limit').length, 0,
+      'a returned exact new row confirms without a second request');
     equal((await localStore.list('account:actor-a', row.document_id))[0].__syncState, 'confirmed');
   } finally { localStore.close(); }
 });
 
 test('duplicate cloud success without an exact returned row stays pending', async () => {
   const localStore = makeStore();
-  const service = createDocumentHistoryService({ cloud: cloudAdapter().cloud, localStore });
+  const adapter = cloudAdapter();
+  const service = createDocumentHistoryService({ cloud: adapter.cloud, localStore, lockManager: immediateLock });
   try {
     const result = await service.recordDocumentHistoryEvent(historyRow());
     equal(result.local.state, 'pending');
+    equal(adapter.calls.filter(call => call[0] === 'upsert').length, 1);
+    equal(adapter.calls.filter(call => call[0] === 'limit').length, 1,
+      'an ignored duplicate needs one exact readback request');
     equal((await localStore.list('account:actor-a', 'doc-cloud'))[0].__syncState, 'pending');
+  } finally { localStore.close(); }
+});
+
+test('actor change after local admission aborts before upload and keeps the exact admitted row pending', async () => {
+  const localStore = makeStore();
+  let currentActor = 'actor-a';
+  const localPort = { ...localStore, async admitPending(...args) {
+    const admitted = await localStore.admitPending(...args);
+    currentActor = 'actor-b';
+    return admitted;
+  } };
+  const adapter = cloudAdapter();
+  const service = createDocumentHistoryService({ cloud: adapter.cloud, localStore: localPort,
+    lockManager: immediateLock, isActorCurrent: actor => actor === currentActor });
+  try {
+    const result = await service.recordDocumentHistoryEvent(historyRow('actor-switch'));
+    equal(result.local.state, 'pending');
+    equal(result.error.code, 'DATABASE_MUTATION_SCOPE_CHANGED');
+    equal(adapter.calls.some(call => call[0] === 'upsert'), false);
+    equal((await localStore.list('account:actor-a', 'doc-cloud'))[0].client_event_id, 'actor-switch');
+  } finally { localStore.close(); }
+});
+
+test('immediate writes fail closed without Web Locks and expose scoped status', async () => {
+  const localStore = makeStore();
+  const adapter = cloudAdapter();
+  const service = createDocumentHistoryService({ cloud: adapter.cloud, localStore, lockManager: null });
+  try {
+    const result = await service.recordDocumentHistoryEvent(historyRow('no-lock'));
+    equal(result.local.state, 'pending');
+    equal(result.error.code, 'DOCUMENT_HISTORY_SAFE_LOCK_UNAVAILABLE');
+    equal((await service.getDocumentHistoryStorageStatus({ actorUserId: 'actor-a' })).errorCode,
+      'DOCUMENT_HISTORY_SAFE_LOCK_UNAVAILABLE');
+    equal(adapter.calls.some(call => call[0] === 'upsert'), false);
   } finally { localStore.close(); }
 });
 
@@ -444,11 +502,11 @@ test('transport-only read failures expose the scoped sole copy without weakening
 test('rejected cloud writes return an error while the local row remains pending', async () => {
   const localStore = makeStore();
   const networkError = new TypeError('fetch failed');
-  const cloud = { from() { return { upsert() { return { select: () => Promise.reject(networkError) }; } }; } };
-  const service = createDocumentHistoryService({ cloud, localStore });
+  const cloud = cloudAdapter({ write: () => Promise.reject(networkError) }).cloud;
+  const service = createDocumentHistoryService({ cloud, localStore, lockManager: immediateLock });
   try {
     const result = await service.recordDocumentHistoryEvent(historyRow('write-offline'));
-    equal(result.error, networkError);
+    equal(result.error.code, 'DATABASE_MUTATION_FAILED');
     equal(result.local.state, 'pending');
     equal((await localStore.list('account:actor-a', 'doc-cloud'))[0].client_event_id, 'write-offline');
   } finally { localStore.close(); }
@@ -493,8 +551,9 @@ test('a late cloud acknowledgement stays bound to the account captured by its re
   const rowA = historyRow('late-a', { user_id: 'actor-a' });
   let release;
   const delayed = new Promise(resolve => { release = resolve; });
-  const cloud = { from() { return { upsert() { return { select: () => delayed }; } }; } };
-  const service = createDocumentHistoryService({ cloud, localStore });
+  const cloud = cloudAdapter({ write: delayed, read: { data: [{ ...rowA, id: 'server-a',
+    occurred_at: '2026-09-14T12:00:00+00:00' }], error: null }, actorUserId: 'viewer-a' }).cloud;
+  const service = createDocumentHistoryService({ cloud, localStore, lockManager: immediateLock });
   try {
     const late = service.recordDocumentHistoryEvent(rowA, { actorUserId: 'viewer-a' });
     await service.recordDocumentHistoryEvent(historyRow('guest-now', { user_id: null }),
