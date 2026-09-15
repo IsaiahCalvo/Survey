@@ -1,5 +1,6 @@
 import {
   validateDocumentDefinitionRevisionPreview,
+  validateDocumentDefinitionRevisionReviewV2,
   validateDocumentDefinitionRevisionReceipt,
 } from './documentDefinitionRevisionClient.js';
 
@@ -182,12 +183,24 @@ export function createDocumentDefinitionRevisionCache({ indexedDB,
   const reviewValue = async (value, actorUserId, documentId) => {
     check(exact(value, ['status', 'version', 'actorUserId', 'documentId',
       'currentReceipt', 'wire', 'expectedArchivedSemanticIds'])
-      && value.status === 'reviewed' && value.version === 1
+      && value.status === 'reviewed' && [1, 2].includes(value.version)
       && value.actorUserId === actorUserId && value.documentId === documentId
       && uuid(actorUserId) && uuid(documentId));
-    const currentReceipt = await validateDocumentDefinitionRevisionReceipt(
-      value.currentReceipt, documentId);
+    if (value.version === 2) {
+      try {
+        return structuredClone(await validateDocumentDefinitionRevisionReviewV2(
+          value, documentId));
+      } catch (error) {
+        if (error?.code?.startsWith?.('DOCUMENT_DEFINITION_REVISION_')) {
+          throw fail('DOCUMENT_DEFINITION_REVISION_CACHE_INVALID',
+            'The saved document definition review does not match its current revision.');
+        }
+        throw error;
+      }
+    }
+    const currentReceipt = await validateDocumentDefinitionRevisionReceipt(value.currentReceipt, documentId);
     const wire = validateDocumentDefinitionRevisionPreview(value.wire, documentId);
+    check(wire.status === 'preview');
     const expectedArchivedSemanticIds = combinedArchives(
       currentReceipt.archivedSemanticIds, wire.review.archivedSemanticIds);
     check(wire.current.definitionRevision === currentReceipt.definitionRevision
@@ -195,7 +208,7 @@ export function createDocumentDefinitionRevisionCache({ indexedDB,
       && stable(value.expectedArchivedSemanticIds) === stable(expectedArchivedSemanticIds),
     'DOCUMENT_DEFINITION_REVISION_CACHE_INVALID',
     'The saved document definition review does not match its current revision.');
-    return structuredClone({ status:'reviewed', version:1, actorUserId, documentId,
+    return structuredClone({ status:'reviewed', version:value.version, actorUserId, documentId,
       currentReceipt, wire, expectedArchivedSemanticIds });
   };
 

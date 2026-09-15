@@ -310,6 +310,7 @@ const EMPTY_ENTITY_CHOICES = Object.freeze([]);
 
 const SurveySpacesRail = ({
   activeSpaceId,
+  activeTool,
   addCategoryAsNewTemplate,
   addCategoryToCurrentTemplate,
   annotationsByPage,
@@ -325,6 +326,9 @@ const SurveySpacesRail = ({
   documentSurveyTemplate,
   documentSyncEnabled,
   documentEntityChoices,
+  availableSurveyModules: documentAvailableSurveyModules,
+  availableEntityChoices: documentAvailableEntityChoices,
+  isDefinitionIdAvailable = () => true,
   expandedCategories,
   expandedSurveyMarkers,
   exportMenuRef,
@@ -443,9 +447,12 @@ const SurveySpacesRail = ({
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
-  const availableEntityChoices = documentEntityChoices === undefined
-    ? (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES)
-    : (Array.isArray(documentEntityChoices) ? documentEntityChoices : EMPTY_ENTITY_CHOICES);
+  const availableEntityChoices = documentAvailableEntityChoices === undefined
+    ? (documentEntityChoices === undefined
+      ? (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES)
+      : (Array.isArray(documentEntityChoices) ? documentEntityChoices : EMPTY_ENTITY_CHOICES))
+    : (Array.isArray(documentAvailableEntityChoices)
+      ? documentAvailableEntityChoices : EMPTY_ENTITY_CHOICES);
   const fallbackEntityChoiceScope = useMemo(() => Object.freeze({
     actorUserId: user?.id || null, file: pdfFile,
   }), [pdfFile, user?.id]);
@@ -524,8 +531,15 @@ const SurveySpacesRail = ({
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = documentSurveyTemplate === undefined && Array.isArray(surveyTemplates)
     ? surveyTemplates : [];
-  const surveyModuleOptions = effectiveSurveyTemplate
+  const canonicalSurveyModules = effectiveSurveyTemplate
     ? ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || []) : [];
+  const surveyModuleOptions = canonicalSurveyModules;
+  const availableSurveyModuleIds = useMemo(() => new Set(
+    documentAvailableSurveyModules === undefined
+      ? canonicalSurveyModules.map(module => module.id)
+      : (Array.isArray(documentAvailableSurveyModules)
+        ? documentAvailableSurveyModules.map(module => module.id) : [])),
+  [canonicalSurveyModules, documentAvailableSurveyModules]);
   const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
   const canSelectPreviousModule = selectedModuleIndex > 0;
@@ -573,7 +587,7 @@ const SurveySpacesRail = ({
     ? { ...surveyMarkers[mobileDetailMarkerId], id: mobileDetailMarkerId }
     : null;
   const mobileDetailModule = mobileDetailMarker
-    ? (surveyModuleOptions.find((module) => module.id === mobileDetailMarker.moduleId) || null)
+    ? (canonicalSurveyModules.find((module) => module.id === mobileDetailMarker.moduleId) || null)
     : null;
   const mobileDetailCategory = mobileDetailModule
     ? ((mobileDetailModule.categories || []).find((category) => category.id === mobileDetailMarker.categoryId) || null)
@@ -611,7 +625,8 @@ const SurveySpacesRail = ({
     setSelectedModuleId(moduleId);
     setSelectedCategoryId(null);
     setActiveCategoryDropdown('survey');
-    setActiveTool('survey-marker');
+    if (availableSurveyModuleIds.has(moduleId)) setActiveTool('survey-marker');
+    else if (activeTool === 'survey-marker') setActiveTool('pan');
     setCopyModeActive(false);
     setCopiedItemSelection({});
     if (categorySelectModeActive) {
@@ -766,8 +781,9 @@ const SurveySpacesRail = ({
   const legacyDisplayEntitiesMap = useMemo(() => new Map(
     (documentSurveyTemplate === undefined
       ? (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES)
-      : availableEntityChoices).map((entity) => [entity.id, entity]),
-  ), [availableEntityChoices, documentSurveyTemplate, selectedTemplate?.entities]);
+      : (Array.isArray(documentEntityChoices)
+        ? documentEntityChoices : EMPTY_ENTITY_CHOICES)).map((entity) => [entity.id, entity]),
+  ), [documentEntityChoices, documentSurveyTemplate, selectedTemplate?.entities]);
 
   // O(1) item-by-name+type lookup for the per-marker render loop below.
   // Replaces repeated O(|items|) Object.values(items).find(name && itemType)
@@ -841,6 +857,9 @@ const SurveySpacesRail = ({
   // clears; a stale nonempty id must keep its assignment-time snapshot.
   const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId) => {
     if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return false;
+    if (entityId !== '' && (!isDefinitionIdAvailable('module', markerModuleId)
+      || !isDefinitionIdAvailable('category', category?.id)
+      || !isDefinitionIdAvailable('entity', entityId))) return false;
     const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const clear = entityId === '';
     const entity = clear ? null : availableEntityChoices.find(candidate => candidate.id === entityId);
@@ -895,8 +914,14 @@ const SurveySpacesRail = ({
   // auto-"Complete"-entity behavior when every active item is Y or N/A.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
     if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return false;
+    const existingResponses = surveyMarkers[annotationId]?.checklistResponses;
+    if (!Object.prototype.hasOwnProperty.call(existingResponses || {}, checklistItemId)
+      && !isDefinitionIdAvailable('checklistItem', checklistItemId)) return false;
     setSurveyMarkers(prev => {
       if (!entityChoiceScopeIsCurrent() || !surveyDefinitionScopeIsCurrent()) return prev;
+      const liveResponses = prev[annotationId]?.checklistResponses;
+      if (!Object.prototype.hasOwnProperty.call(liveResponses || {}, checklistItemId)
+        && !isDefinitionIdAvailable('checklistItem', checklistItemId)) return prev;
       const updated = {
         ...prev,
         [annotationId]: {
@@ -941,7 +966,10 @@ const SurveySpacesRail = ({
             e.name.toLowerCase().includes('complete')
           );
 
-          if (completeEntity) {
+          if (completeEntity
+            && isDefinitionIdAvailable('module', markerModuleId)
+            && isDefinitionIdAvailable('category', category?.id)
+            && isDefinitionIdAvailable('entity', completeEntity.id)) {
             const entityColor = normalizeSurveyMarkerColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
             // Update item's module-specific data with Complete entity status
             if (matchingItem) {
@@ -1758,6 +1786,7 @@ const SurveySpacesRail = ({
                           >
                             {surveyModuleOptions.map(module => {
                               const isActive = module.id === selectedModuleId;
+                              const isRetired = !availableSurveyModuleIds.has(module.id);
                               return (
                                 <button
                                   key={module.id}
@@ -1789,7 +1818,7 @@ const SurveySpacesRail = ({
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap'
                                   }}>
-                                    {module.name}
+                                    {module.name}{isRetired ? ' · Retired' : ''}
                                   </span>
                                   {isActive && <Icon name="check" size={12} />}
                                 </button>
@@ -3197,6 +3226,8 @@ const SurveySpacesRail = ({
                                                   // In copy mode, don't change category selection or hide panel
                                                   return;
                                                 }
+                                                if (!isDefinitionIdAvailable('module', selectedModuleId)
+                                                  || !isDefinitionIdAvailable('category', category.id)) return;
 
                                                 // Set selected category
                                                 setSelectedCategoryId(category.id);

@@ -2,7 +2,10 @@ import { runActorBoundDatabaseMutation } from './actorBoundDatabaseMutation.js';
 import { createDocumentDefinitionRevisionClient,
   DocumentDefinitionRevisionClientError } from './documentDefinitionRevisionClient.js';
 
-const WRITE_RPC = 'apply_reviewed_document_definition_revision';
+const WRITE_RPCS = new Set([
+  'apply_reviewed_document_definition_revision',
+  'apply_reviewed_document_definition_revision_v2',
+]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const subscriptionError = (code, message) => new DocumentDefinitionRevisionClientError(code, message);
@@ -16,7 +19,7 @@ export function createDocumentDefinitionRevisionAppClient({ client, enabled = fa
       try {
         return await runActorBoundDatabaseMutation({ client, actorUserId, signal,
           isCurrent: () => isCurrent({ actorUserId, documentId }) === true },
-        ({ request }) => request(() => client.rpc(name, args), { write: name === WRITE_RPC }));
+        ({ request }) => request(() => client.rpc(name, args), { write: WRITE_RPCS.has(name) }));
       } catch (error) {
         if (error?.code === 'DATABASE_MUTATION_SCOPE_CHANGED') {
           throw new DocumentDefinitionRevisionClientError(

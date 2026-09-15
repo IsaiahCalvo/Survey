@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { randomUUID } from '../utils/randomUUIDPolyfill.js';
 import { getDocumentDefinitionRevisionCache } from '../services/documentDefinitionRevisionCache.js';
+import { projectDocumentDefinitionForNewUse } from '../services/documentDefinitionRetirement.js';
 
 const EMPTY = Object.freeze([]);
 const alwaysCurrent = () => true;
@@ -113,7 +114,8 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
       live: true, request: 0, controller: null, currentReceipt: null,
       initialReadController: null, refreshController: null, subscriptionController: null, readEpoch: 0,
       initialReadPending: false, refreshDirty: false, refreshPending: false, flushRefresh: null,
-      browserOffline: false, review: null, busy: false, receipts: new Map() };
+      browserOffline: false, online: false, recoveryBlocked: false, refreshing: false,
+      projection: null, projectionReceipt: null, review: null, busy: false, receipts: new Map() };
   }
   const scope = scopeRef.current;
   const store = useMemo(() => {
@@ -134,6 +136,9 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     if (!current()) return;
     if (Object.hasOwn(next, 'currentReceipt')) scope.currentReceipt = next.currentReceipt;
     if (Object.hasOwn(next, 'review')) scope.review = next.review;
+    for (const key of ['online', 'recoveryBlocked', 'refreshing']) {
+      if (Object.hasOwn(next, key)) scope[key] = next[key];
+    }
     setView(old => ({ ...(old.scope === scope ? old : blank), ...next, scope }));
   }, [blank, current, scope]);
   const remember = useCallback(receipt => {
@@ -399,6 +404,7 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
   const requestReview = useCallback(async (selection = template) => {
     requireOwner();
     if (!selection || scope.busy) throw fail('Choose a template and retry.');
+    const version = selection?.version === 2 ? 2 : 1;
     const token = ++scope.request;
     const controller = new AbortController();
     scope.controller = controller;
@@ -413,19 +419,26 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
         && (Array.isArray(surveyTemplate.modules) || Array.isArray(surveyTemplate.spaces));
       const hasEntities = Boolean(entityTemplate)
         && (Array.isArray(entityTemplate.entities) || Array.isArray(entityTemplate.config?.entities));
-      if (!hasSurvey && !hasEntities) throw fail('Choose a survey or entity template and retry.');
+      if (version === 1 && !hasSurvey && !hasEntities) {
+        throw fail('Choose a survey or entity template and retry.');
+      }
       const archives = [
         ...archivedSemanticIds(surveyTemplate).filter(value => value.kind !== 'entity'),
         ...archivedSemanticIds(entityTemplate).filter(value => value.kind === 'entity'),
       ];
-      const review = await client.preview({ documentId,
-        surveyTemplateId: hasSurvey
-          ? templateId(surveyTemplate) : shown.currentReceipt.surveyDefinition.source.templateId,
-        entityTemplateId: hasEntities
-          ? templateId(entityTemplate) : shown.currentReceipt.entityCatalog.source.templateId,
+      const review = await client.preview({ ...(version === 2 ? { version:2 } : {}), documentId,
+        surveyTemplateId: hasSurvey ? templateId(surveyTemplate)
+          : (version === 2 ? null : shown.currentReceipt.surveyDefinition.source.templateId),
+        entityTemplateId: hasEntities ? templateId(entityTemplate)
+          : (version === 2 ? null : shown.currentReceipt.entityCatalog.source.templateId),
         archivedSemanticIds: archives,
+        ...(version === 2 ? { retiredSemanticRoots:selection.retiredSemanticRoots || [] } : {}),
         operationId: createOperationId(), signal: controller.signal });
       if (!current() || token !== scope.request) throw fail('The document or account changed.');
+      if (review?.status === 'retirement-required' && review.version === 2) {
+        update({ busy:false, error:'' });
+        return review;
+      }
       await store.putCurrentReceipt(actorUserId, documentId, review.currentReceipt);
       if (!current() || token !== scope.request) throw fail('The document or account changed.');
       remember(review.currentReceipt);
@@ -547,6 +560,16 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
   }, [actorUserId, client, current, documentId, remember, scope, store]);
 
   const accepted = shown.known && shown.currentReceipt?.status === 'accepted';
+  const projection = useMemo(() => projectDocumentDefinitionForNewUse(
+    accepted ? shown.currentReceipt : null), [accepted, shown.currentReceipt]);
+  scope.projection = projection;
+  scope.projectionReceipt = accepted ? shown.currentReceipt : null;
+  const isAvailable = useCallback((kind, id) => Boolean(current() && scope.enabled
+    && scope.online === true && scope.recoveryBlocked !== true && scope.refreshing !== true
+    && !scope.browserOffline && !scope.initialReadPending && !scope.refreshDirty
+    && !scope.refreshPending && !scope.busy && scope.projectionReceipt === scope.currentReceipt
+    && scope.projection?.isAvailable(kind, id)),
+  [current, scope]);
   return useMemo(() => Object.freeze({
     mode: !enabled ? 'disabled' : (accepted ? 'accepted' : 'unknown'),
     currentReceipt: accepted ? shown.currentReceipt : null,
@@ -554,6 +577,9 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     entityCatalog: accepted ? shown.currentReceipt.entityCatalog : null,
     entities: accepted ? shown.currentReceipt.entityCatalog.entities : EMPTY,
     modules: accepted ? shown.currentReceipt.surveyDefinition.modules : EMPTY,
+    availableEntities: accepted ? projection.entities : EMPTY,
+    availableModules: accepted ? projection.modules : EMPTY,
+    isAvailable,
     review: shown.review, busy: shown.busy, error: shown.error,
     canReview: accepted && owner && shown.online === true && shown.recoveryBlocked !== true
       && shown.refreshing !== true,
@@ -562,7 +588,7 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     online: shown.online === true, recoveryBlocked: shown.recoveryBlocked === true,
     requestReview, applyReview,
     cancelReview, getCachedRevision, loadRevision,
-  }), [accepted, applyReview, cancelReview, enabled, getCachedRevision, loadRevision,
-    owner, requestReview, shown.busy, shown.currentReceipt, shown.error, shown.online,
+  }), [accepted, applyReview, cancelReview, enabled, getCachedRevision, isAvailable, loadRevision,
+    owner, projection.entities, projection.modules, requestReview, shown.busy, shown.currentReceipt, shown.error, shown.online,
     shown.recoveryBlocked, shown.refreshing, shown.review]);
 }

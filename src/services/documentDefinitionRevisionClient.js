@@ -55,6 +55,43 @@ function copySemanticIds(values) {
   return Object.freeze(copied);
 }
 
+function copyRetirementEntry(value) {
+  check(exact(value, ['kind', 'id', 'parentId', 'label']) && KINDS.has(value.kind)
+    && typeof value.id === 'string' && value.id.length >= 1 && value.id.length <= 128
+    && (value.parentId === null || (typeof value.parentId === 'string'
+      && value.parentId.length >= 1 && value.parentId.length <= 128))
+    && typeof value.label === 'string' && value.label.length <= 1024,
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement proof is invalid.');
+  return Object.freeze({ kind:value.kind, id:value.id, parentId:value.parentId, label:value.label });
+}
+
+function copyRetirementRoots(values) {
+  check(Array.isArray(values) && values.length <= 10304,
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement proof is invalid.');
+  const roots = values.map(value => {
+    check(exact(value, ['kind', 'id', 'parentId', 'label', 'subtree'])
+      && Array.isArray(value.subtree) && value.subtree.length >= 1
+      && value.subtree.length <= 10304,
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement proof is invalid.');
+    const root = copyRetirementEntry({ kind:value.kind, id:value.id,
+      parentId:value.parentId, label:value.label });
+    const subtree = Object.freeze(value.subtree.map(copyRetirementEntry));
+    check(root.kind === subtree[0].kind && root.id === subtree[0].id
+      && root.parentId === subtree[0].parentId && root.label === subtree[0].label,
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement proof is invalid.');
+    return Object.freeze({ ...root, subtree });
+  });
+  const keys = roots.map(value => semanticIdKey(value));
+  check(new Set(keys).size === keys.length,
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement proof is invalid.');
+  return Object.freeze(roots);
+}
+
 function copySnapshot(value, documentId) {
   check(exact(value, ['surveyDefinition', 'entityCatalog'])
     && exact(value.surveyDefinition, ['source', 'modules'])
@@ -99,6 +136,57 @@ export function validateDocumentDefinitionRevisionPreview(value, documentId = nu
     review: Object.freeze({ operationId:value.review.operationId,
       requestSha256:value.review.requestSha256,
       archivedSemanticIds:copySemanticIds(value.review.archivedSemanticIds) }),
+  });
+}
+
+export function validateDocumentDefinitionRevisionPreviewV2(value, documentId = null) {
+  check(plain(value) && value.version === 2 && uuid(value.documentId)
+    && (!documentId || value.documentId === documentId)
+    && exact(value.current, ['definitionRevision', 'definitionDigest'])
+    && revisionNumber(value.current.definitionRevision) && sha(value.current.definitionDigest)
+    && exact(value.sourceModes, ['survey', 'entity'])
+    && ['keep', 'replace'].includes(value.sourceModes.survey)
+    && ['keep', 'replace'].includes(value.sourceModes.entity),
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement proof is invalid.');
+  const current = Object.freeze({ definitionRevision:value.current.definitionRevision,
+    definitionDigest:value.current.definitionDigest });
+  const sourceModes = Object.freeze({ ...value.sourceModes });
+  if (value.status === 'retirement-required') {
+    check(exact(value, ['status', 'version', 'documentId', 'current', 'sourceModes',
+      'removedRoots', 'autoRetainedRoots', 'review']) && value.review === null,
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement proof is invalid.');
+    return Object.freeze({ status:'retirement-required', version:2,
+      documentId:value.documentId, current, sourceModes,
+      removedRoots:copyRetirementRoots(value.removedRoots),
+      autoRetainedRoots:copyRetirementRoots(value.autoRetainedRoots), review:null });
+  }
+  check(value.status === 'preview'
+    && exact(value, ['status', 'version', 'documentId', 'current', 'sourceModes',
+      'surveyDefinition', 'entityCatalog', 'retirement', 'review'])
+    && exact(value.retirement, ['requestedRoots', 'retiredSemanticIds',
+      'autoRetainedRoots', 'archivedSemanticIds'])
+    && exact(value.review, ['operationId', 'requestSha256', 'archivedSemanticIds',
+      'retiredSemanticRoots'])
+    && uuid(value.review.operationId) && sha(value.review.requestSha256),
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement proof is invalid.');
+  const snapshot = copySnapshot({ surveyDefinition:value.surveyDefinition,
+    entityCatalog:value.entityCatalog }, value.documentId);
+  return Object.freeze({ status:'preview', version:2, documentId:value.documentId,
+    current, sourceModes, surveyDefinition:snapshot.surveyDefinition,
+    entityCatalog:snapshot.entityCatalog,
+    retirement:Object.freeze({
+      requestedRoots:copySemanticIds(value.retirement.requestedRoots),
+      retiredSemanticIds:copySemanticIds(value.retirement.retiredSemanticIds),
+      autoRetainedRoots:copyRetirementRoots(value.retirement.autoRetainedRoots),
+      archivedSemanticIds:copySemanticIds(value.retirement.archivedSemanticIds),
+    }),
+    review:Object.freeze({ operationId:value.review.operationId,
+      requestSha256:value.review.requestSha256,
+      archivedSemanticIds:copySemanticIds(value.review.archivedSemanticIds),
+      retiredSemanticRoots:copySemanticIds(value.review.retiredSemanticRoots) }),
   });
 }
 
@@ -166,6 +254,79 @@ const combinedArchives = (current, added) => {
   const values = new Map([...current, ...added].map(value => [semanticIdKey(value), value]));
   return Object.freeze([...values.values()]);
 };
+const retirementRootIds = roots => roots.map(value => ({ kind:value.kind, id:value.id }));
+const retirementSubtreeIds = roots => roots.flatMap(value => value.subtree
+  .map(entry => ({ kind:entry.kind, id:entry.id })));
+const semanticParentMap = snapshot => {
+  const values = new Map();
+  for (const module of snapshot.surveyDefinition.modules) {
+    values.set(semanticIdKey({ kind:'module', id:module.id }), null);
+    for (const category of module.categories) {
+      values.set(semanticIdKey({ kind:'category', id:category.id }), module.id);
+      for (const item of category.checklist) {
+        values.set(semanticIdKey({ kind:'checklistItem', id:item.id }), category.id);
+      }
+    }
+  }
+  for (const entity of snapshot.entityCatalog.entities) {
+    values.set(semanticIdKey({ kind:'entity', id:entity.id }), null);
+  }
+  return values;
+};
+const assertRetainedSemantics = (currentReceipt, wire) => {
+  const before = semanticParentMap(currentReceipt);
+  const after = semanticParentMap(wire);
+  for (const [key, parentId] of before) check(after.has(key) && after.get(key) === parentId,
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement candidate changed a historical identity.');
+};
+
+export async function validateDocumentDefinitionRevisionReviewV2(value, documentId = null,
+  cryptoImpl = globalThis.crypto) {
+  check(exact(value, ['status', 'version', 'actorUserId', 'documentId',
+    'currentReceipt', 'wire', 'expectedArchivedSemanticIds'])
+    && value.status === 'reviewed' && value.version === 2
+    && uuid(value.actorUserId) && uuid(value.documentId)
+    && (!documentId || value.documentId === documentId),
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement review is invalid.');
+  const currentReceipt = await validateDocumentDefinitionRevisionReceipt(
+    value.currentReceipt, value.documentId, cryptoImpl);
+  const wire = validateDocumentDefinitionRevisionPreviewV2(value.wire, value.documentId);
+  check(wire.status === 'preview'
+    && currentReceipt.definitionRevision === wire.current.definitionRevision
+    && currentReceipt.definitionDigest === wire.current.definitionDigest
+    && (wire.sourceModes.survey !== 'keep'
+      || same(wire.surveyDefinition, currentReceipt.surveyDefinition))
+    && (wire.sourceModes.entity !== 'keep'
+      || same(wire.entityCatalog, currentReceipt.entityCatalog))
+    && same(wire.retirement.requestedRoots, wire.review.retiredSemanticRoots),
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement review changed.');
+  assertRetainedSemantics(currentReceipt, wire);
+  const before = semanticParentMap(currentReceipt);
+  const after = semanticParentMap(wire);
+  check(wire.review.archivedSemanticIds.every(value => before.has(semanticIdKey(value))
+      && after.has(semanticIdKey(value)))
+    && wire.retirement.archivedSemanticIds.every(value => after.has(semanticIdKey(value))),
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement archive set changed.');
+  const retiredKeys = new Set(wire.retirement.retiredSemanticIds.map(semanticIdKey));
+  check(wire.retirement.requestedRoots.every(value => retiredKeys.has(semanticIdKey(value))),
+    'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+    'The document definition retirement closure changed.');
+  const autoIds = retirementSubtreeIds(wire.retirement.autoRetainedRoots);
+  const expectedArchives = combinedArchives(combinedArchives(
+    combinedArchives(currentReceipt.archivedSemanticIds, wire.review.archivedSemanticIds),
+    wire.retirement.retiredSemanticIds), autoIds);
+  check(sameSemanticIdSet(wire.retirement.archivedSemanticIds, expectedArchives)
+    && sameSemanticIdSet(copySemanticIds(value.expectedArchivedSemanticIds), expectedArchives),
+  'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+  'The document definition retirement archive set changed.');
+  return Object.freeze({ status:'reviewed', version:2, actorUserId:value.actorUserId,
+    documentId:value.documentId, currentReceipt, wire,
+    expectedArchivedSemanticIds:wire.retirement.archivedSemanticIds });
+}
 
 function boundedRpc(rpc, name, args, signal, timeoutMs, beforeDispatch) {
   return new Promise((resolve, reject) => {
@@ -274,11 +435,55 @@ export function createDocumentDefinitionRevisionClient({
       'The historical document definition changed.');
       return receipt;
     },
-    async preview({ documentId, surveyTemplateId, entityTemplateId,
-      archivedSemanticIds = [], operationId, signal } = {}) {
+    async preview({ version = 1, documentId, surveyTemplateId, entityTemplateId,
+      archivedSemanticIds = [], retiredSemanticRoots = [], operationId, signal } = {}) {
       const actorUserId = start(documentId, signal);
-      check(uuid(surveyTemplateId) && uuid(entityTemplateId) && uuid(operationId));
+      check([1, 2].includes(version) && uuid(operationId));
       const archives = copySemanticIds(archivedSemanticIds);
+      if (version === 2) {
+        check((surveyTemplateId === null || uuid(surveyTemplateId))
+          && (entityTemplateId === null || uuid(entityTemplateId)));
+        const retirementRoots = copySemanticIds(retiredSemanticRoots);
+        const currentReceipt = await read({ actorUserId, documentId,
+          definitionRevision:null, signal });
+        const wire = validateDocumentDefinitionRevisionPreviewV2(
+          await call(actorUserId, documentId,
+            'preview_document_definition_revision_upgrade_v2', {
+              p_document_id:documentId,
+              p_survey_template_id:surveyTemplateId,
+              p_entity_template_id:entityTemplateId,
+              p_archived_semantic_ids:archives,
+              p_retired_semantic_roots:retirementRoots,
+              p_operation_id:operationId,
+            }, signal), documentId);
+        const expectedModes = { survey:surveyTemplateId === null ? 'keep' : 'replace',
+          entity:entityTemplateId === null ? 'keep' : 'replace' };
+        check(wire.current.definitionRevision === currentReceipt.definitionRevision
+          && wire.current.definitionDigest === currentReceipt.definitionDigest
+          && same(wire.sourceModes, expectedModes),
+        'DOCUMENT_DEFINITION_REVISION_CONFLICT',
+        'The document definition changed. Review it again.');
+        if (wire.status === 'retirement-required') return wire;
+        check((surveyTemplateId === null
+          ? same(wire.surveyDefinition, currentReceipt.surveyDefinition)
+          : wire.surveyDefinition.source.templateId === surveyTemplateId)
+          && (entityTemplateId === null
+            ? same(wire.entityCatalog, currentReceipt.entityCatalog)
+            : wire.entityCatalog.source.templateId === entityTemplateId)
+          && wire.review.operationId === operationId
+          && same(wire.review.archivedSemanticIds, archives)
+          && same(wire.review.retiredSemanticRoots, retirementRoots)
+          && same(wire.retirement.requestedRoots, retirementRoots),
+        'DOCUMENT_DEFINITION_REVISION_CONFLICT',
+        'The document definition changed. Review it again.');
+        return validateDocumentDefinitionRevisionReviewV2({ status:'reviewed', version:2,
+          actorUserId, documentId,
+          currentReceipt, wire,
+          expectedArchivedSemanticIds:wire.retirement.archivedSemanticIds },
+        documentId, cryptoImpl);
+      }
+      check(uuid(surveyTemplateId) && uuid(entityTemplateId)
+        && retiredSemanticRoots.length === 0);
       const currentReceipt = await read({ actorUserId, documentId,
         definitionRevision:null, signal });
       const wire = validateDocumentDefinitionRevisionPreview(await call(actorUserId, documentId,
@@ -309,6 +514,49 @@ export function createDocumentDefinitionRevisionClient({
       });
     },
     async apply({ review, signal } = {}) {
+      if (review?.version === 2) {
+        const actorUserId = getActorUserId();
+        check(actorUserId === review?.actorUserId,
+          'DOCUMENT_DEFINITION_REVISION_STALE', 'The document or account changed.');
+        current(actorUserId, review?.documentId, signal);
+        const ownedReview = await validateDocumentDefinitionRevisionReviewV2(
+          review, review.documentId, cryptoImpl);
+        current(actorUserId, ownedReview.documentId, signal);
+        const wire = ownedReview.wire;
+        const surveyReplace = wire.sourceModes.survey === 'replace';
+        const entityReplace = wire.sourceModes.entity === 'replace';
+        const receipt = await validateDocumentDefinitionRevisionReceipt(await call(actorUserId,
+          ownedReview.documentId, 'apply_reviewed_document_definition_revision_v2', {
+            p_document_id:ownedReview.documentId,
+            p_expected_current_revision:wire.current.definitionRevision,
+            p_expected_current_digest:wire.current.definitionDigest,
+            p_survey_template_id:surveyReplace ? wire.surveyDefinition.source.templateId : null,
+            p_expected_survey_template_updated_at:surveyReplace
+              ? wire.surveyDefinition.source.templateUpdatedAt : null,
+            p_expected_survey_structure_sha256:surveyReplace
+              ? wire.surveyDefinition.source.structureSha256 : null,
+            p_entity_template_id:entityReplace ? wire.entityCatalog.source.templateId : null,
+            p_expected_entity_template_updated_at:entityReplace
+              ? wire.entityCatalog.source.templateUpdatedAt : null,
+            p_expected_entity_entities_sha256:entityReplace
+              ? wire.entityCatalog.source.entitiesSha256 : null,
+            p_archived_semantic_ids:wire.review.archivedSemanticIds,
+            p_retired_semantic_roots:wire.review.retiredSemanticRoots,
+            p_operation_id:wire.review.operationId,
+            p_request_sha256:wire.review.requestSha256,
+          }, signal), ownedReview.documentId);
+        check(receipt.definitionRevision === wire.current.definitionRevision + 1
+          && same(receipt.surveyDefinition, wire.surveyDefinition)
+          && same(receipt.entityCatalog, wire.entityCatalog)
+          && sameSemanticIdSet(receipt.archivedSemanticIds,
+            wire.retirement.archivedSemanticIds)
+          && receipt.review.operationId === wire.review.operationId
+          && receipt.review.requestSha256 === wire.review.requestSha256,
+        'DOCUMENT_DEFINITION_REVISION_INTEGRITY',
+        'The applied document definition does not match its review.');
+        current(actorUserId, ownedReview.documentId, signal);
+        return receipt;
+      }
       check(exact(review, ['status', 'version', 'actorUserId', 'documentId',
         'currentReceipt', 'wire', 'expectedArchivedSemanticIds'])
         && review.status === 'reviewed' && review.version === 1

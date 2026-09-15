@@ -7,7 +7,28 @@ sections describe their dated checkpoint, not an instruction to repeat completed
 work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
-Newest verified local batch: live definition refresh. The real app subscription
+Current verified local batch: document-definition retirement V2. Source is frozen
+after browser acceptance. Retired definitions keep their original labels and
+subtrees for existing records and browsing, while new assignments use the active
+projection. Private source templates remain private. Local PostgreSQL passed
+7/7 cases; the 8,000-item no-change preview improved from exceeding 20 seconds
+to 2,055 ms (apply 2,140 ms). These are local single-run fixture timings, not
+hosted savings or results for every retirement shape.
+
+The final build and graph update passed. The in-app browser proved explicit
+retirement consent, an already-open collaborator refresh, retired-record browsing,
+and active-only entity choices using synthetic local auth/data. Two browser/caller
+defects were fixed before source freeze. No hosted collaboration claim is made.
+The final full suite completed with exit 0: 7,540 tests, 7,442 passed, 98 skipped,
+zero failures or cancellations across 774 files. Output:
+`/tmp/survey-retirement-final-full-v3-20260915.log`. The final build and graph
+logs are `/tmp/survey-retirement-final-build-v3-20260915.log` and
+`/tmp/survey-retirement-final-graph-20260915.log`. Earlier interrupted retirement
+runs are not passes. Do not reopen this batch without a named new defect.
+Flags remain off. Hosted rollout, real multi-user/native verification and usage
+measurements are not established by these local checks; Microsoft remains deferred.
+
+Previous verified local batch: live definition refresh. The real app subscription
 uses exact-document notifications only as hints; the hook re-reads and verifies
 the definition, coalesces bursts and fences refresh/recovery/account races.
 The follow-on SQL migration touches only the exact document after an accepted
@@ -116,6 +137,115 @@ do not treat them as current instructions to redo completed integration.
 
 The detailed evidence and limitations for each checkpoint follow below.
 
+### Retirement follow-up after 40e40dab2 — implementation in progress
+
+The remaining retirement change belongs to the document revision, not private
+template deletion. V1 public RPC contracts and existing durable reviews remain
+compatible; a new migration may delegate V1 bodies to a shared private core. The
+new V2 preview/apply contract will let a null source selection keep the exact
+accepted side instead of rereading a later mutable template. A changed side
+still pins its raw source timestamp/hash and the current document head.
+
+The server must discover missing active roots, require explicit approval, retain
+the exact old subtree at its old parent and archive the full closure. Already
+archived omissions stay retained. ID reuse/reparenting, partial approval and
+unselected removals reject. Candidate bounds must hold after composition.
+Review inputs remain separate from computed cumulative archives so durable
+retry hashes use the exact approved inputs. Accepted receipts retain their
+existing immutable content-digest shape; no new fields are injected into
+canonical module/category/entity nodes.
+
+Retained labels must remain available to old annotations/history. New-use
+controls must reject retired identities; persisting archive IDs alone is not
+sufficient UI behavior. SQL and client/review work have separate ownership.
+No migration, UI, performance or end-to-end success is claimed for this batch
+until its tests and running-app checks pass. No private template writes,
+production enablement or Microsoft testing are authorized by this plan.
+
+Accountability checkpoint: the first SQL draft is incomplete and its two tests
+fail (missing publisher/wrappers and missing disposable-PG runner). It must not
+be applied. The client checkpoint passes 11/11 focused tests, but cache, hook and
+UI integration remain incomplete. Root review found two further gaps: SQL
+choice validation must reject absent keys despite SQL NULL semantics, and the
+new-use projection must respect embedded checklist `archived: true` while
+preserving metadata on active entries. Both require regression tests before
+this batch can pass review. No full-suite or browser pass is claimed for these
+uncommitted retirement changes.
+
+The projection follow-up now passes its six tests: embedded retirement is
+blocked, active checklist metadata survives, and duplicate IDs/unknown typed
+archive references fail closed. Root reran these with the V1/V2 client tests:
+17/17 passed, zero skips, exit 0. This verifies the pure helper and client only;
+it does not establish hook/UI integration or SQL completion.
+
+V2 cache recovery then passed a combined 39/39 focused tests with the projection,
+client and existing cache/app-client checks (zero skips, exit 0). Review still
+found a missing negative case: changing both the stored expected archive set
+and its wire counterpart must not bypass comparison with the base receipt.
+Keep-side content also needs the same pre-write validation after cold recovery
+as during initial preview. These follow-up checks remain open; passing the
+39 tests is not a complete cache-integrity claim.
+
+The shared V2 review validator now closes those recovery gaps before storage or
+RPC. Root's combined rerun passed 42/42, zero skips, exit 0. The first disposable
+PostgreSQL wrapper also passed 2/2, but root rejected that as acceptance: its
+retirement test incorrectly expected the old module to disappear from canonical
+storage. Approved roots must retain their exact old subtrees, and V1 must still
+reject removal of already-archived IDs. These SQL regression fixes remain open;
+the first passing PG run is not evidence that the retirement contract is met.
+
+The corrected PG runner now asserts exact retained module/entity content and
+checks real SQL output with the JS preview/review/receipt validators. Root reran
+its wrapper: 2/2 passed, zero skips, exit 0. V1 checks cover a successful publish
+plus archived-removal and reparent rejection, not full parity of every prior
+case. A representative large-definition timing check remains open because the
+candidate loops repeatedly expand semantic nodes while apply holds row locks.
+Root's mounted hook/review/refresh suite passed 47/47 after updating the V2
+keep-source expectation. Viewer/rail integration, the pre-render predicate
+guard, full final tests/build and browser acceptance still remain open.
+
+The large-definition baseline confirmed the candidate-scan bottleneck: V2
+preview with 1,000 checklist items took 1,953 ms; 8,000 items exceeded the local
+psql harness's 20-second limit. The six functional cases passed before that
+timeout, but the complete run failed. A per-call semantic index is now in work;
+no performance improvement is claimed until the same cases are remeasured.
+
+Root independently reran the indexed implementation: 7/7 PG cases passed,
+cleanup complete, exit 0. The same no-change source preview measured 126 ms at
+1,000 items (baseline 1,953 ms) and 2,055 ms at 8,000 (baseline exceeded 20 s).
+Apply measured 127 ms and 2,140 ms respectively. These are local single-run
+figures for this fixture, not production latency, quota savings or all retirement
+shapes. The per-call indexes do not add persistent tables or source writes.
+
+The first full-suite run was deliberately stopped with exit 143 after review
+confirmed a retained disabled-flow callback could bypass the later enabled
+guard; it is not a passing result. The corrected wrapper checks captured
+actor/document/file/generation scope and reads the current flag/predicate.
+Its focused checks passed 13/13; the final build exited 0. A new full-suite run
+is in progress in `/tmp/survey-retirement-final-full-v2-20260915.log`.
+The synthetic browser fixture initially failed to import `src/main.jsx`; browser
+acceptance remains unproven while that fixture startup error is investigated.
+
+The fixture startup fault was a shared Vite optimizer cache; an isolated temp
+cache fixed it. In-app owner consent/preview/apply then succeeded, and the
+already-open collaborator advanced to revision 2 with reads 2→3 and one wake.
+Browser follow-up exposed an app gap: active-only navigation and selection
+reset made retained old-module markers inaccessible. The second full-suite run
+was deliberately stopped at exit 143 for that confirmed defect (not a timing
+failure); no log writers remained. Canonical browse navigation with a retired
+label and no creation-tool arming is being fixed. Browser old-work acceptance
+will precede the next full-suite run to avoid another premature final gate.
+
+The browse fix is frozen with 31/31 focused checks. In-app browser acceptance
+now shows the retired module in canonical navigation, the existing marker name,
+old category/entity/checklist labels, and a new-assignment menu containing only
+None and the active entity. The collaborator had already advanced on one wake
+without reload; later HMR reads are not part of that one-read measurement.
+No relevant collaborator console errors were present. The synthetic annotation
+transport still cannot prove hosted multi-user sync; its loading badge is not
+an acceptance signal. Final build v3 exited 0. Full suite v3 is now running in
+`/tmp/survey-retirement-final-full-v3-20260915.log`; no pass is claimed yet.
+
 ### Bounded closeout check after c54dffad8
 
 Current-source review found no remaining local integration blocker in the
@@ -132,10 +262,10 @@ Definition closeout findings:
   a definition revision. The verified refresh preserves pending work, fences
   old callbacks and handles reconnect without trusting event payloads as data.
   No repeated full-read polling was added.
-- Verify the retirement path for modules/categories/entities. The revision
-  format supports archival, but the template editor deletes these IDs while
-  only checklist items expose archive controls. Confirm whether the existing
-  upgrade review covers this before changing private template behavior.
+- Open: document-owned retirement for modules/categories/entities. The gap is
+  confirmed: V1 rejects removed IDs, and archive membership alone does not guard
+  new-use controls. The V2 work above addresses this without changing private
+  template deletion. Do not repeat the discovery audit as a new task.
 
 These replace vague instructions to continue optimizing. Default-off feature
 enablement is a release gate, not an unimplemented feature or authorization

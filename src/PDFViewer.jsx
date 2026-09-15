@@ -70,6 +70,10 @@ import {
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
 import { openExternalDestination } from './utils/accountPlatform.js';
+
+export const canWriteImportedChecklistResponse = (responses, checklistItemId, isAvailable) =>
+  Object.prototype.hasOwnProperty.call(responses || {}, checklistItemId)
+  || isAvailable('checklistItem', checklistItemId);
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -4760,6 +4764,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     active: isActive === true,
     template: selectedTemplate, client: documentDefinitionRevisionClient,
     cache: documentDefinitionRevisionCache, isCurrent: isDefinitionRevisionScopeCurrent });
+  const definitionAvailabilityScope = useMemo(() => Object.freeze({
+    actorUserId:user?.id || null, documentId:pdfFile?.id || null,
+    generationId:checkedBundle?.pdfGenerationId || null, file:pdfFile,
+  }), [checkedBundle?.pdfGenerationId, pdfFile, user?.id]);
+  const definitionAvailabilityRef = useRef(null);
+  definitionAvailabilityRef.current = { enabled:definitionRevisionFlowEnabled,
+    isAvailable:definitionRevisions.isAvailable };
+  const isDefinitionIdAvailable = useCallback((kind, id) => {
+    if (!isDefinitionRevisionScopeCurrent(definitionAvailabilityScope)) return false;
+    const live = definitionAvailabilityRef.current;
+    return live?.enabled !== true || live.isAvailable(kind, id);
+  }, [definitionAvailabilityScope, isDefinitionRevisionScopeCurrent]);
+  const availableDocumentSurveyModules = definitionRevisionFlowEnabled
+    ? definitionRevisions.availableModules : null;
+  const availableDocumentEntityChoices = definitionRevisionFlowEnabled
+    ? definitionRevisions.availableEntities : null;
   const definitionSourceAuthorizationRef = useRef(null);
   definitionSourceAuthorizationRef.current = { enabled: definitionRevisionFlowEnabled,
     owner: definitionRevisionOwner, canReview: definitionRevisions.canReview,
@@ -4887,6 +4907,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   effectiveDocumentLockedRef.current = effectiveDocumentLocked;
   const annotationInputTool = resolveDocumentDefinitionReadOnlyTool(activeTool, effectiveDocumentLocked);
   const documentEntityChoices = entityCatalog.entities;
+  const documentEntityNewChoices = definitionRevisionFlowEnabled
+    ? definitionRevisions.availableEntities : documentEntityChoices;
   const pendingManagedSurveyDefinition = pendingManagedSurveyDefinitionRef.current?.file === pdfFile
     && pendingManagedSurveyDefinitionRef.current?.localId === pdfFile?.localId
     ? pendingManagedSurveyDefinitionRef.current : null;
@@ -4934,12 +4956,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   useEffect(() => {
     if (surveyDefinition.mode !== 'accepted') return;
-    const modules = effectiveSurveyTemplate?.modules || [];
-    if (modules.length === 0) return;
-    if (!modules.some(module => module.id === selectedModuleId)) {
-      setSelectedModuleId(modules[0].id);
+    const canonicalModules = effectiveSurveyTemplate?.modules || [];
+    const availableModules = definitionRevisionFlowEnabled
+      ? definitionRevisions.availableModules : (effectiveSurveyTemplate?.modules || []);
+    if (canonicalModules.some(module => module.id === selectedModuleId)) {
+      if (definitionRevisionFlowEnabled && activeTool === 'survey-marker'
+        && !availableModules.some(module => module.id === selectedModuleId)) setActiveTool('pan');
+      return;
     }
-  }, [effectiveSurveyTemplate, selectedModuleId, surveyDefinition.mode]);
+    const fallbackModule = availableModules[0] || canonicalModules[0] || null;
+    if (selectedModuleId !== (fallbackModule?.id || null)) {
+      setSelectedModuleId(fallbackModule?.id || null);
+    }
+    if (fallbackModule && definitionRevisionFlowEnabled && activeTool === 'survey-marker'
+      && !availableModules.some(module => module.id === fallbackModule.id)) {
+      setActiveTool('pan');
+    }
+  }, [activeTool, definitionRevisionFlowEnabled, definitionRevisions.availableModules,
+    effectiveSurveyTemplate, selectedModuleId, surveyDefinition.mode]);
   useEffect(() => {
     pdfjsSelectedModuleIdRef.current = selectedModuleId;
   }, [selectedModuleId]);
@@ -16472,6 +16506,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (!ann.checklistResponses) ann.checklistResponses = {};
 
           Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            if (!canWriteImportedChecklistResponse(
+              ann.checklistResponses, checklistId, isDefinitionIdAvailable)) return;
             const value = row[colIndex];
             const currentVal = ann.checklistResponses[checklistId]?.selection;
 
@@ -16488,9 +16524,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
             if (entityNameFromExcel && entityNameFromExcel !== ann.entityName && mayWriteField('entity')) {
-              const entities = documentEntityChoices;
+              const entities = documentEntityNewChoices;
               const entity = entities.find(e => e.name === entityNameFromExcel);
-              if (entity) {
+              if (entity && isDefinitionIdAvailable('entity', entity.id)) {
                 ann.entityId = entity.id;
                 ann.entityName = entity.name;
                 ann.entityColor = entity.color;
@@ -16535,11 +16571,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             identityPersisted = true;
           }
         } else {
+          if (!isDefinitionIdAvailable('module', matchedModuleId)
+            || !isDefinitionIdAvailable('category', matchedCategory.id)) return;
           // Create new surveyMarker for new row
           const newSurveyMarkerId = `surveyMarker-${crypto.randomUUID()}`;
 
           const checklistResponses = {};
           Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
+            if (!isDefinitionIdAvailable('checklistItem', checklistId)) return;
             const value = row[colIndex];
             if (value !== undefined && value !== '') {
               checklistResponses[checklistId] = {
@@ -16555,9 +16594,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
             if (entityNameFromExcel) {
-              const entities = documentEntityChoices;
+              const entities = documentEntityNewChoices;
               const entity = entities.find(e => e.name === entityNameFromExcel);
-              if (entity) {
+              if (entity && isDefinitionIdAvailable('entity', entity.id)) {
                 entityId = entity.id;
                 entityName = entity.name;
                 entityColor = entity.color;
@@ -16918,7 +16957,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         : 'Sync complete! No changes found.';
       showToast(reviewNote, 'info');
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage,
+    markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync,
+    documentEntityNewChoices, isDefinitionIdAvailable]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
@@ -24897,33 +24938,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   }, [commitZoomInput]);
 
   const mobileSurveyModules = useMemo(
-    () => effectiveSurveyTemplate?.modules || effectiveSurveyTemplate?.spaces || [],
-    [effectiveSurveyTemplate]
+    () => definitionRevisionFlowEnabled ? definitionRevisions.availableModules
+      : (effectiveSurveyTemplate?.modules || effectiveSurveyTemplate?.spaces || []),
+    [definitionRevisionFlowEnabled, definitionRevisions.availableModules, effectiveSurveyTemplate]
   );
   const mobileSurveyCategories = useMemo(
     () => mobileSurveyModules.find((module) => module.id === selectedModuleId)?.categories || [],
     [mobileSurveyModules, selectedModuleId]
   );
   const mobileSurveyEntities = useMemo(
-    () => documentEntityChoices,
-    [documentEntityChoices]
+    () => documentEntityNewChoices,
+    [documentEntityNewChoices]
   );
   const handleMobileSurveyModuleSelect = useCallback((moduleId) => {
+    if (moduleId && !isDefinitionIdAvailable('module', moduleId)) return;
     setSelectedModuleId(moduleId || null);
     setSelectedCategoryId(null);
     setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
-  }, [setActiveToolLogged]);
+  }, [isDefinitionIdAvailable, setActiveToolLogged]);
   const handleMobileSurveyCategorySelect = useCallback((categoryId) => {
+    if (categoryId && !isDefinitionIdAvailable('category', categoryId)) return;
     setSelectedCategoryId(categoryId || null);
     setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
-  }, [setActiveToolLogged]);
+  }, [isDefinitionIdAvailable, setActiveToolLogged]);
   const handleMobileSurveyEntitySelect = useCallback((entityId) => {
+    if (entityId && !isDefinitionIdAvailable('entity', entityId)) return;
     setMobileSurveyEntityId(entityId || null);
     setSelectedCategoryId(null);
     setActiveToolLogged('survey-marker');
-  }, [setActiveToolLogged]);
+  }, [isDefinitionIdAvailable, setActiveToolLogged]);
 
   useEffect(() => {
     if (!mobileSurveyEntityId) return;
@@ -29725,29 +29770,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // Handle surveyMarker creation from annotation tool
   const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
     if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
+    const locatingPendingMarker = Boolean(pendingLocationItem);
+    if (!locatingPendingMarker) {
+      if (selectedModuleId && !isDefinitionIdAvailable('module', selectedModuleId)) return;
+      if (selectedCategoryId && !isDefinitionIdAvailable('category', selectedCategoryId)) return;
+      if (mobileSurveyEntityId && !isDefinitionIdAvailable('entity', mobileSurveyEntityId)) return;
+    }
     // Decision 10 (KAL-90): generate the marker id up-front so the pre-creation
     // checkpoint can stamp it — the History panel needs annotation_id on the
     // "created a survey marker" row to spotlight the mark on click. The locate
     // branch reuses the pending item's id; the standard branch uses this one.
     const newMarkerId = pendingLocationItem?.id || `surveyMarker-${crypto.randomUUID()}`;
-    // Checkpoint history before creation
-    addHistoryCheckpoint('highlight:create', {
-      pageNumber,
-      hasPendingLocationItem: Boolean(pendingLocationItem),
-      selectedCategoryId: selectedCategoryId || null,
-      annotationId: newMarkerId
-    });
-
-
     // Only handle if survey mode is active
     if (!showSurveyPanel || !effectiveSurveyTemplate) {
       return;
     }
 
     // If no module is selected, try to default to the first one
-    let effectiveModuleId = selectedModuleId;
+    let effectiveModuleId = pendingLocationItem?.moduleId
+      || pendingLocationItem?.spaceId || selectedModuleId;
     if (!effectiveModuleId) {
-      const modules = effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces || [];
+      const modules = definitionRevisionFlowEnabled
+        ? definitionRevisions.availableModules
+        : (effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces || []);
       if (modules.length > 0) {
         effectiveModuleId = modules[0].id;
         setSelectedModuleId(effectiveModuleId);
@@ -29755,6 +29800,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         return;
       }
     }
+    if (!locatingPendingMarker
+      && !isDefinitionIdAvailable('module', effectiveModuleId)) return;
+
+    // Checkpoint only after the live definition guard accepts the final module.
+    addHistoryCheckpoint('highlight:create', {
+      pageNumber,
+      hasPendingLocationItem: locatingPendingMarker,
+      selectedCategoryId: selectedCategoryId || null,
+      annotationId: newMarkerId
+    });
 
     const pageRegionId = getPageSurveyRegionId(pageNumber);
 
@@ -29801,7 +29856,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
       // Check if Entity needs to be assigned (only if not already set from Excel)
       const hasEntity = pendingLocationItem.entityId || pendingLocationItem.entityColor;
-      const entities = documentEntityChoices;
+      const entities = documentEntityNewChoices;
 
       if (!hasEntity && entities.length > 0) {
         if (mobileMode) {
@@ -29836,7 +29891,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // Unique ID for this surveyMarker (generated up-front for the checkpoint stamp)
     const annotationId = newMarkerId;
     const moduleName = getModuleName(effectiveSurveyTemplate, effectiveModuleId);
-    const mobileSelectedEntity = documentEntityChoices.find(
+    const mobileSelectedEntity = documentEntityNewChoices.find(
       (entity) => entity.id === mobileSurveyEntityId
     ) || null;
     const mobileSelectedEntityColor = mobileSelectedEntity
@@ -29885,7 +29940,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // If a category is already selected, show Entity dialog first
     if (selectedCategoryId) {
       // Check if template has Entities
-      const entities = documentEntityChoices;
+      const entities = documentEntityNewChoices;
       if (mobileMode) {
         // UX (mobile demo parity): commit instantly with the default name and
         // open the marker detail sheet (demo App.tsx:1155) — the desktop
@@ -29971,7 +30026,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         });
       }
     }
-  }, [addHistoryCheckpoint, effectiveDocumentLocked, selectedModuleId, effectiveSurveyTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
+  }, [addHistoryCheckpoint, effectiveDocumentLocked, selectedModuleId, effectiveSurveyTemplate,
+    selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem,
+    activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview,
+    mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba,
+    DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker,
+    requestRightRailExpand, isDefinitionIdAvailable, definitionRevisionFlowEnabled,
+    definitionRevisions.availableModules, documentEntityNewChoices]);
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -32587,6 +32648,7 @@ ${pageBlocks}
     if (!isActive || typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
       activeSpaceId,
+      activeTool,
       // Create Category modal plumbing (survey rail plus button). The modal's
       // other data needs (existingTemplateNames, templateId, document id)
       // already ride the existing surveyTemplates/selectedTemplate/pdfFile keys.
@@ -32602,6 +32664,9 @@ ${pageBlocks}
       deleteCategory: handleDeleteSurveyCategoryDefinition,
       documentEntityChoiceScope,
       documentEntityChoices,
+      availableSurveyModules: availableDocumentSurveyModules,
+      availableEntityChoices: availableDocumentEntityChoices,
+      isDefinitionIdAvailable,
       documentSurveyDefinitionScope,
       documentSurveyTemplate,
       documentSyncEnabled,
@@ -32734,6 +32799,7 @@ ${pageBlocks}
     isActive,
     onRightRailApiChange,
     activeSpaceId,
+    activeTool,
     handleAddCategoryAsNewTemplate,
     handleAddCategoryToCurrentTemplate,
     annotationsByPage,
@@ -32746,6 +32812,9 @@ ${pageBlocks}
     handleDeleteSurveyCategoryDefinition,
     documentEntityChoiceScope,
     documentEntityChoices,
+    availableDocumentSurveyModules,
+    availableDocumentEntityChoices,
+    isDefinitionIdAvailable,
     documentSurveyDefinitionScope,
     documentSurveyTemplate,
     documentSyncEnabled,
@@ -33042,6 +33111,7 @@ ${pageBlocks}
         onConfirm={() => surveyDefinition.confirmAdoption().catch(() => {})}
         onCancel={surveyDefinition.cancelAdoption} />
       <DocumentDefinitionRevisionReview
+        scopeKey={`${user?.id || ''}:${pdfFile?.id || ''}`}
         available={definitionRevisionFlowEnabled && definitionRevisions.canReview
           && (templates.length > 0 || (typeof onRefetchTemplates === 'function'
             && typeof onTemplatesChange === 'function'))}
@@ -33053,7 +33123,7 @@ ${pageBlocks}
         busy={definitionRevisions.busy}
         error={definitionRevisions.error || definitionSourcesError}
         onLoadSources={() => loadDefinitionRevisionSources().catch(() => {})}
-        onRequest={(selection) => definitionRevisions.requestReview(selection).catch(() => {})}
+        onRequest={(selection) => definitionRevisions.requestReview(selection)}
         onApply={() => definitionRevisions.applyReview().catch(() => {})}
         onCancel={() => definitionRevisions.cancelReview().catch(() => {})}
         onConfirmHistorical={confirmDefinitionHistoryRestore}
@@ -36896,7 +36966,10 @@ ${pageBlocks}
                   </p>
 
                   {(() => {
-                    const module = ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
+                    const module = (definitionRevisionFlowEnabled
+                      ? definitionRevisions.availableModules
+                      : ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || []))
+                      .find(m => m.id === selectedModuleId);
                     if (!module || !module.categories || module.categories.length === 0) {
                       return (
                         <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
@@ -36912,6 +36985,8 @@ ${pageBlocks}
                             key={category.id}
                             onClick={() => {
                               if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
+                              if (!isDefinitionIdAvailable('module', selectedModuleId)
+                                || !isDefinitionIdAvailable('category', category.id)) return;
                               if (mobileMode) {
                                 // UX (mobile demo parity): once categorized on mobile,
                                 // commit with the default name and open the marker
@@ -36922,7 +36997,7 @@ ${pageBlocks}
                                 return;
                               }
                               // Check if template has Entities
-                              const entities = documentEntityChoices;
+                              const entities = documentEntityNewChoices;
                               if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {
                                 setPendingSurveyMarkerName({
                                   surveyMarker: pendingSurveyMarker,
@@ -36987,7 +37062,7 @@ ${pageBlocks}
         {/* Entity Selection Dialog */}
         {
           !effectiveDocumentLocked && pendingEntitySelection && effectiveSurveyTemplate && selectedModuleId && (() => {
-            const entities = documentEntityChoices;
+            const entities = documentEntityNewChoices;
 
             return (
               <>
@@ -37088,6 +37163,9 @@ ${pageBlocks}
                           key={entity.id}
                           onClick={() => {
                             if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
+                            if (!isDefinitionIdAvailable('module', selectedModuleId)
+                              || !isDefinitionIdAvailable('category', pendingEntitySelection.categoryId)
+                              || !isDefinitionIdAvailable('entity', entity.id)) return;
                             // Apply entity color and proceed to name prompt
                             // Use the entity's saved opacity for surveyMarkers
                             const entityColor = normalizeSurveyMarkerColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);

@@ -506,12 +506,20 @@ test('owner picker sends a same-source refresh through the real hook and keeps t
   const refreshedTemplate = { id: TEMPLATE_ID, name: 'Updated private source',
     modules: [{ id: 'module', name: 'Updated survey labels', categories: [] }] };
   let previewArgs = null;
-  const review = Object.freeze({ status: 'reviewed', version: 1, actorUserId: ACTOR_A,
+  const review = Object.freeze({ status: 'reviewed', version: 2, actorUserId: ACTOR_A,
     documentId: DOCUMENT_ID, currentReceipt: current,
-    wire: Object.freeze({ surveyDefinition: current.surveyDefinition,
+    wire: Object.freeze({ status: 'preview', version: 2, documentId: DOCUMENT_ID,
+      current: Object.freeze({ definitionRevision: current.definitionRevision,
+        definitionDigest: current.definitionDigest }),
+      sourceModes: Object.freeze({ survey: 'replace', entity: 'keep' }),
+      surveyDefinition: Object.freeze({ source: current.surveyDefinition.source,
+        modules: Object.freeze(refreshedTemplate.modules) }),
       entityCatalog: current.entityCatalog,
+      retirement: Object.freeze({ requestedRoots: Object.freeze([]),
+        retiredSemanticIds: Object.freeze([]), autoRetainedRoots: Object.freeze([]),
+        archivedSemanticIds: Object.freeze([]) }),
       review: Object.freeze({ operationId: OPERATION_ID, requestSha256: 'a'.repeat(64),
-        archivedSemanticIds: Object.freeze([]) }) }),
+        archivedSemanticIds: Object.freeze([]), retiredSemanticRoots: Object.freeze([]) }) }),
     expectedArchivedSemanticIds: Object.freeze([]) });
   const cache = { getIntent: async () => null, getCurrentReceipt: async () => null,
     putCurrentReceipt: async (_actor, _document, value) => value,
@@ -541,8 +549,10 @@ test('owner picker sends a same-source refresh through the real hook and keeps t
   assert.equal(button.disabled, false, 'an explicit same-source selection can review newer server content');
   await act(async () => button.click());
   await waitFor(() => previewArgs !== null);
+  assert.equal(previewArgs.version, 2);
   assert.equal(previewArgs.surveyTemplateId, TEMPLATE_ID);
-  assert.equal(previewArgs.entityTemplateId, TEMPLATE_ID);
+  assert.equal(previewArgs.entityTemplateId, null, 'null proves the accepted entity side is kept');
+  assert.deepEqual(previewArgs.retiredSemanticRoots, []);
   assert.equal(latest.review, review);
 });
 
