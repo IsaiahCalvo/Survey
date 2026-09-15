@@ -472,6 +472,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const pdfjsPagePdfEverReadyRef = useRef(new Set());
   const lastViewStateEmittedRef = useRef(null);
   const lastAppliedInitialViewStateRef = useRef(null);
+  const pdfjsViewStateRestoreRef = useRef(null);
+  const checkedViewStateRenderIdentityRef = useRef(null);
+  checkedViewStateRenderIdentityRef.current = checkedBundle
+    ? { checkedBundle, pdfFile }
+    : null;
   const pdfjsNavigateResetTimerRef = useRef(null);
   const pdfjsWheelZoomRafRef = useRef(null);
   const pdfjsWheelZoomDeltaRef = useRef(0);
@@ -1176,6 +1181,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   useEffect(() => {
     pendingRendererRestoreRef.current = null;
+    return () => {
+      const pending = pdfjsViewStateRestoreRef.current;
+      if (pending) pdfjsViewerRef.current?.cancelViewStateRestore?.(pending.requestId);
+      if (pdfjsViewStateRestoreRef.current === pending) pdfjsViewStateRestoreRef.current = null;
+    };
   }, [tabId]);
 
   useEffect(() => {
@@ -5610,16 +5620,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     const normalized = normalizeViewState(initialViewState);
     if (!normalized) return;
 
+    // Checked state waits for the owned renderer's exact metadata/scale/layout
+    // commit. The timer below remains only for the legacy/local renderer.
+    if (checkedBundle && usePdfjsRenderer) return;
+
     if (
       areViewStatesEqual(normalized, lastAppliedInitialViewStateRef.current) ||
-      areViewStatesEqual(normalized, lastViewStateEmittedRef.current)
+      (!checkedBundle && areViewStatesEqual(normalized, lastViewStateEmittedRef.current))
     ) {
       lastAppliedInitialViewStateRef.current = normalized;
       return;
     }
 
     skipNextViewStateEmitRef.current = true;
-    lastAppliedInitialViewStateRef.current = normalized;
+    if (!checkedBundle) lastAppliedInitialViewStateRef.current = normalized;
 
     // Small delay to ensure content is rendered.
     const timer = setTimeout(() => {
@@ -5629,7 +5643,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       lastViewStateEmittedRef.current = normalized;
     }, 100);
     return () => clearTimeout(timer);
-  }, [areViewStatesEqual, initialViewState, normalizeViewState, pdfDoc, usePdfjsRenderer]); // Run when PDF doc/viewer container is ready
+  }, [areViewStatesEqual, checkedBundle, initialViewState, normalizeViewState, pdfDoc,
+    pdfjsPageContainers, usePdfjsRenderer]); // Run when PDF doc/viewer container is ready
 
   // Emit view state changes
   useEffect(() => {
@@ -5637,6 +5652,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
     const emitViewState = () => {
       if (!containerRef.current) return;
+      if (checkedBundle && usePdfjsRenderer && pdfjsViewStateRestoreRef.current) return;
+      if (checkedBundle && usePdfjsRenderer) {
+        const pageHost = pdfjsViewerRef.current?.getPageContainer?.(pageNum)
+          || containerRef.current.querySelector?.(
+            `.survey-pdfjs-page-div[data-page-number="${pageNum}"]`,
+          );
+        const containerRect = containerRef.current.getBoundingClientRect?.();
+        const pageRect = pageHost?.getBoundingClientRect?.();
+        if (!(containerRect && pageRect
+          && pageRect.bottom > containerRect.top && pageRect.top < containerRect.bottom
+          && pageRect.right > containerRect.left && pageRect.left < containerRect.right)) return;
+      }
 
       const nextViewState = normalizeViewState({
         pageNum,
@@ -5674,14 +5701,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     const container = containerRef.current;
     container.addEventListener('scroll', debouncedHandleScroll);
 
-    // Also emit on page/zoom changes immediately
+    // Pdfjs reports page/zoom before its intersection observer confirms that
+    // page in the real scroll host. Checked state waits for that proof; the
+    // later scroll event retries this same capture after the host settles.
     emitViewState();
 
     return () => {
       container.removeEventListener('scroll', debouncedHandleScroll);
       clearTimeout(timeoutId);
     };
-  }, [areViewStatesEqual, normalizeViewState, onViewStateChange, pageNum, scale, usePdfjsRenderer, zoomMode, scrollMode, tabId]);
+  }, [areViewStatesEqual, checkedBundle, normalizeViewState, onViewStateChange, pageNum, scale,
+    usePdfjsRenderer, zoomMode, scrollMode, tabId]);
 
   const detachPdfjsInteractionListeners = useCallback(() => {
     const existing = pdfjsInteractionListenersRef.current;
@@ -6118,6 +6148,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   // Memoize document unload handler to prevent re-renders
   const handleDocumentUnload = useCallback(() => {
+    const pendingViewRestore = pdfjsViewStateRestoreRef.current;
+    if (pendingViewRestore) {
+      pdfjsViewerRef.current?.cancelViewStateRestore?.(pendingViewRestore.requestId);
+      if (pdfjsViewStateRestoreRef.current === pendingViewRestore) {
+        pdfjsViewStateRestoreRef.current = null;
+      }
+    }
     pdfjsDocumentReadyRef.current = false;
     pendingManualZoomBeforeLoadRef.current = null;
     pageContainersRef.current = {};
@@ -7154,9 +7191,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       payload?.currentPageNumber ?? viewer?.getCurrentPage?.() ?? 1,
       resolvedPageCount || Number.POSITIVE_INFINITY
     ) || 1;
-    const restoreSnapshot = pendingRendererRestoreRef.current?.targetMode === 'continuous'
+    const pendingRestoreSnapshot = pendingRendererRestoreRef.current?.targetMode === 'continuous'
       ? pendingRendererRestoreRef.current
       : null;
+    const restoreSnapshot = pendingRestoreSnapshot || normalizeViewState(initialViewState);
     const restoredScale = hasPendingManualZoom
       ? clampScale(pendingManualScale)
       : (restoreSnapshot ? clampScale(restoreSnapshot.scale) : nextScale);
@@ -7174,7 +7212,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     scaleRef.current = restoredScale;
     setScale(restoredScale);
     setManualZoomScale(restoredScale);
-    const restoredZoomMode = isFreshOpen ? ZOOM_MODES.FIT_PAGE : ZOOM_MODES.MANUAL;
+    const restoredZoomMode = isFreshOpen
+      ? ZOOM_MODES.FIT_PAGE
+      : (restoreSnapshot?.zoomMode || ZOOM_MODES.MANUAL);
     zoomModeRef.current = restoredZoomMode;
     setZoomMode(restoredZoomMode);
     setRenderedPages(new Set());
@@ -7240,31 +7280,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setIsPageInputDirty(false);
 
     if (restoreSnapshot) {
-      const applyPdfjsRestore = () => {
-        const activeViewer = pdfjsViewerRef.current || viewer;
-        if (!activeViewer) return;
-        const zoomPercent = restoredScale * 100;
-        pdfjsZoomSourceRef.current = restoreSnapshot.zoomMode || ZOOM_MODES.MANUAL;
-        if (activeViewer?.magnificationModule?.zoomTo) {
-          try {
-            activeViewer.magnificationModule.zoomTo(zoomPercent);
-          } catch (error) {
-            console.warn('Unable to apply Pdfjs zoom restore:', error);
-          }
-        }
-        if (activeViewer?.goToPage) {
-          activeViewer.goToPage(restoredPage);
-        } else if (activeViewer?.navigationModule?.goToPage) {
-          activeViewer.navigationModule.goToPage(restoredPage);
-        }
-        setPageNum(restoredPage);
-        setPageInputValue(String(restoredPage));
+      const activeViewer = pdfjsViewerRef.current || viewer;
+      const token = {};
+      const renderIdentity = checkedViewStateRenderIdentityRef.current;
+      pdfjsZoomSourceRef.current = restoreSnapshot.zoomMode || ZOOM_MODES.MANUAL;
+      const requestId = activeViewer?.queueViewStateRestore?.({
+        pageNum: restoredPage,
+        scale: restoredScale,
+        scrollLeft: restoreSnapshot.scrollLeft,
+        scrollTop: restoreSnapshot.scrollTop,
+      }, (committed) => {
+        if (pdfjsViewStateRestoreRef.current?.token !== token) return;
+        const currentIdentity = checkedViewStateRenderIdentityRef.current;
+        if (!renderIdentity || currentIdentity?.checkedBundle !== renderIdentity.checkedBundle
+          || currentIdentity?.pdfFile !== renderIdentity.pdfFile) return;
+        pdfjsViewStateRestoreRef.current = null;
+        const committedState = normalizeViewState({
+          ...restoreSnapshot,
+          pageNum: committed.pageNum,
+          scale: committed.scale,
+          scrollLeft: committed.scrollLeft,
+          scrollTop: committed.scrollTop,
+        });
+        if (!committedState) return;
+        lastAppliedInitialViewStateRef.current = committedState;
+        lastViewStateEmittedRef.current = committedState;
+        skipNextViewStateEmitRef.current = false;
+        setPageNum(committedState.pageNum);
+        setPageInputValue(String(committedState.pageNum));
         setIsPageInputDirty(false);
-      };
-
-      applyPdfjsRestore();
-      setTimeout(applyPdfjsRestore, 120);
-      pendingRendererRestoreRef.current = null;
+      });
+      if (requestId != null) {
+        pdfjsViewStateRestoreRef.current = { token, requestId };
+        pendingRendererRestoreRef.current = null;
+      }
     }
 
     if (hasPendingManualZoom) {
@@ -7287,7 +7336,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
     bindPdfjsViewerRefs();
     queuePdfjsPageContainerRefresh();
-  }, [bindPdfjsViewerRefs, queuePdfjsPageContainerRefresh, reconcilePdfjsScaleFromRenderedPage]);
+  }, [bindPdfjsViewerRefs, initialViewState, normalizeViewState, queuePdfjsPageContainerRefresh,
+    reconcilePdfjsScaleFromRenderedPage]);
 
   const handlePdfjsDocumentLoadFailed = useCallback((args) => {
     // UX: Phase 15 UAT-3 (2026-04-18) — Pdfjs's event args serialise

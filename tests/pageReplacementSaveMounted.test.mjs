@@ -1232,7 +1232,9 @@ function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGen
   const oldBundle = { pdfGenerationId: generationId };
   const targetBundle = { pdfGenerationId: targetGeneration };
   const oldFile = { id: documentId, pdfGenerationId: generationId, name: 'checked.pdf' };
-  const state = { tabs: [{ id: 'tab-a', actorUserId: actorA, file: oldFile, checkedBundle: oldBundle }],
+  const state = { tabs: [{ id: 'tab-a', actorUserId: actorA, file: oldFile, checkedBundle: oldBundle,
+    viewState: { pageNum: 2, scale: 1.25, zoomMode: 'manual', scrollMode: 'continuous',
+      scrollLeft: 0, scrollTop: 400 } }],
     selected: oldFile, latest: localPageState(), retires: [], requests: 0 };
   const closeViewRef = { current: { tabs: state.tabs, activeTabId: 'tab-a' } };
   const client = createDocumentPageReplacementClient({
@@ -1256,6 +1258,10 @@ function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGen
     pageReplacementClientRef: { current: { scope, mount, client } },
     closeViewRef,
     checkedPageStructureStorage: storage,
+    checkedDocumentViewStateStorage: storage,
+    readCheckedDocumentViewState: () => null,
+    handleViewStateChange: () => {},
+    showToast: () => {},
     readLocalCheckedPageStructure: ({ actorUserId, documentId: received, generationId: receivedGeneration }) =>
       readCheckedPageStructure({ storage, actorUserId, documentId: received, generationId: receivedGeneration }),
     saveCheckedPageStructure,
@@ -1298,6 +1304,7 @@ test('actual AppShell install re-captures a late old-generation private edit and
   assert.equal(h.state.tabs.length, 1);
   assert.equal(h.state.tabs[0].id, 'tab-a');
   assert.equal(h.state.tabs[0].checkedBundle, h.targetBundle);
+  assert.equal(h.state.tabs[0].viewState, null);
   assert.equal(h.state.selected, h.state.tabs[0].file);
   assert.equal(readCheckedPageStructure({ storage: h.storage, actorUserId: actorA,
     documentId, generationId }).pageNames[1], 'Edited while server published');

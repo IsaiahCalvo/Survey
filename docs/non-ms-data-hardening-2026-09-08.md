@@ -5954,3 +5954,54 @@ quota result is included. Generation publication/adoption, old-client fences,
 mutable-sidecar integration/recovery, authorized hosted multi-user proof, and live
 quota/latency measurements remain separate known work; this is not completion of
 the whole data-layer goal.
+
+## 2026-09-15 — Private checked-document view and layout-ready restore
+
+Checked documents now retain page, zoom mode/scale and scroll position on this
+device under an exact actor/document/PDF-generation key. This is private view
+state, not shared document content or a replacement for legacy sidecar data.
+The strict, bounded versioned record has no key scan, legacy fallback or cloud
+write. Corrupt records remain intact; read failures cannot let startup defaults
+overwrite a saved record. Quota failures retain the prior record and report a
+failed save while keeping the current view usable. A later view change retries.
+Readback failure never rolls back over a peer tab's newer write.
+
+AppShell binds callbacks and checked tabs to the current sign-in scope, exact
+file and checked bundle. Account changes retire the old renderer without deleting
+its tab data. Returning to the same account does not revive an old sign-in scope:
+the old tab directs the user to reopen from Home for fresh checked acquisition.
+Generation replacement and late callbacks cannot write through the new scope.
+
+PdfjsViewerContainer now owns a queued restore. It waits for real page metadata,
+committed scale, container dimensions and scroll bounds, applies the saved offset,
+then acknowledges the actual view. A newer request or source epoch cancels an old
+request. PDFViewer suppresses intermediate view writes until the current restore
+is acknowledged; stale file/bundle acknowledgements cannot unlock a newer request.
+This replaces the checked route's timed restore, not SVG zoom ownership.
+
+In-app browser with a synthetic backend at 127.0.0.1:5185, desktop 1280x720:
+the previous cold-reopen defect moved page 2 from top 77px to 524.5px despite the
+same saved offset. The new queue restores page 2 to 77px at 125% with offset 1030.
+Post-restore navigation and zoom saved page 3 at 150%; cold reopen restored its
+offset within the record's one-pixel rounding. Storage-full injection preserved
+the prior record, showed a save warning, and allowed retry. A/B account checks
+kept private views separate; A-to-B-to-A required fresh acquisition before editing
+and saving resumed. This is synthetic actor testing, not live multi-user proof.
+The fixture blocked analytics requests. A transient development hot-reload error
+from an intermediate removed ref predates the final source and did not recur on
+the final full reload.
+
+Focused implementation checks: 216/216. Independent final store/route review:
+22/22, no remaining concrete blocker in the assigned paths. Final `npm test`:
+7,319 total, 7,222 passed, 97 skipped, zero failed/cancelled, exit 0. Vite build
+passed with the existing chunk-size warning. Final-source browser reopen also
+retained fit-page mode. This is local verification, not a hosted release receipt.
+Focused log: `/tmp/checked-document-view-state-renderer-focused-20260915.log`;
+full log: `/tmp/survey-checked-view-final-r4-full-20260915.log`;
+build log: `/tmp/survey-checked-view-final-r4-build-20260915.log`.
+
+No push, hosted migration, flag change, real-account test or Microsoft test is
+included. Mutable legacy sidecar publication/recovery, generation adoption,
+old-client rollout fences, hosted collaboration proof and live quota/latency
+measurement remain open as recorded above. This change does not retire sidecars
+or claim the whole data-layer goal is complete.

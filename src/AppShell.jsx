@@ -42,10 +42,12 @@ import { createDocumentEntityCatalogClient } from './services/documentEntityCata
 import { createDocumentSurveyDefinitionClient } from './services/documentSurveyDefinition.js';
 import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
   transformCheckedPageStructure } from './services/checkedPageStructure.js';
+import { readCheckedDocumentViewState, writeCheckedDocumentViewState } from './services/checkedDocumentViewStateStore.js';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
+import { areViewStatesEqual, normalizeViewState } from './utils/viewState.js';
 import { createPortal, flushSync } from 'react-dom';
 import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
@@ -126,6 +128,7 @@ if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STA
 
 export default function App({ devPreviewReturnTab = null, documentReplacementTransport = null,
   documentReplacementIntentStore = null, checkedPageStructureStorage = null,
+  checkedDocumentViewStateStorage = null,
   checkedPageReplacementEnabled = CHECKED_PAGE_REPLACEMENT_ENABLED,
   documentEntityCatalogEnabled = DOCUMENT_ENTITY_CATALOG_ENABLED,
   documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
@@ -846,6 +849,17 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   }
   const documentOpenScope = documentOpenScopeRef.current;
   useEffect(() => { setPageReplacementRecoveryByTab({}); }, [documentOpenScope]);
+  const priorDocumentOpenScopeRef = useRef(documentOpenScope);
+  useLayoutEffect(() => {
+    const previous = priorDocumentOpenScopeRef.current;
+    priorDocumentOpenScopeRef.current = documentOpenScope;
+    if (previous === documentOpenScope) return;
+    const active = closeViewRef.current?.tabs?.find(tab => tab.id === closeViewRef.current?.activeTabId);
+    if (!active?.checkedBundle || active.actorUserId === documentOpenScope.actorUserId) return;
+    setActiveTabId(HOME_TAB_ID);
+    setSelectedPDF(null);
+    setCurrentView('dashboard');
+  }, [documentOpenScope]);
   const documentOpenMountRef = useRef(null);
   useLayoutEffect(() => {
     const mount = {};
@@ -948,7 +962,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     if (!documents.some((entry) => String(entry?.id) === String(doc.id))) return false;
     const existingTab = closeViewRef.current?.tabs?.find((tab) => (
       tab.actorUserId === documentOpenScope.actorUserId && (tab.checkedBundle
-        ? String(tab.file?.id) === String(doc.id)
+        ? tab.documentOpenScope === documentOpenScope
+          && String(tab.file?.id) === String(doc.id)
         : isSameDocumentTab(tab, doc))
     ));
     if (!existingTab || existingTab.file.__pdfLoadFailed === true
@@ -992,15 +1007,18 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     const currentTabs = closeViewRef.current?.tabs || tabs;
     const checkedOpenTab = checkedBundle === null && file.id ? currentTabs.find(tab => (
       tab.checkedBundle && tab.actorUserId === documentOpenScope.actorUserId
+      && tab.documentOpenScope === documentOpenScope
       && String(tab.file?.id) === String(file.id)
     )) : null;
     const failedCheckedOpenTab = checkedBundle !== null && file.id ? currentTabs.find(tab => (
       tab.checkedBundle && tab.actorUserId === documentOpenScope.actorUserId
+      && tab.documentOpenScope === documentOpenScope
       && String(tab.file?.id) === String(file.id)
       && (tab.file.__pdfLoadFailed === true || tab.file.__rewrittenForParse === true)
     )) : null;
     const existingTab = failedCheckedOpenTab || checkedOpenTab || currentTabs.find(tab => (
       (!file.id || tab.actorUserId === documentOpenScope.actorUserId)
+      && (!tab.checkedBundle || tab.documentOpenScope === documentOpenScope)
       && isSameDocumentTab(tab, file, filePath, checkedBundle)
     ));
 
@@ -1036,6 +1054,24 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     // Mark this PDF as being opened
     openingPdfsRef.current.add(pdfKey);
 
+    let checkedViewState = null;
+    let checkedViewStatePersistenceError = null;
+    if (checkedBundle !== null) {
+      try {
+        checkedViewState = readCheckedDocumentViewState({
+          storage: checkedDocumentViewStateStorage || globalThis.localStorage,
+          actorUserId: documentOpenScope.actorUserId,
+          documentId: file.id,
+          pdfGenerationId: checkedBundle.pdfGenerationId,
+        });
+      } catch (error) {
+        checkedViewStatePersistenceError = error?.code || 'CHECKED_DOCUMENT_VIEW_STATE_READ_FAILED';
+        showToast('Your saved page view could not be read. The saved entry was kept.', 'error');
+      }
+    }
+
+    const checkedViewMount = checkedBundle === null ? null : documentOpenMountRef.current;
+
     // Create new tab
     const newTab = {
       id: generateTabId(),
@@ -1043,9 +1079,15 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
       file: file,
       filePath: filePath, // Store file path in tab
       actorUserId: documentOpenScope.actorUserId,
+      documentOpenScope,
       checkedBundle,
       isHome: false,
-      viewState: null // Initialize view state
+      viewState: checkedViewState,
+      viewStatePersistenceError: checkedViewStatePersistenceError,
+      viewStateChangeHandler: checkedBundle === null ? null : (nextViewState, targetTabId) => (
+        handleViewStateChange(nextViewState, targetTabId, file, checkedBundle,
+          checkedViewMount)
+      ),
     };
 
     setTabs(prev => [...prev, newTab]);
@@ -1344,6 +1386,10 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   const handleTabClick = (tabId) => {
     const tab = tabs.find(t => t.id === tabId);
     if (tab) {
+      if (tab.checkedBundle && tab.documentOpenScope !== documentOpenScope) {
+        showToast('Reopen this document from Home to verify its current version for this sign-in.', 'error');
+        return;
+      }
       // Exit selection mode when switching tabs
       if (dashboardRef.current?.exitSelectionMode) {
         dashboardRef.current.exitSelectionMode();
@@ -1363,44 +1409,51 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     }
   };
 
-  const handleViewStateChange = useCallback((viewState, targetTabId) => {
-    setTabs(prev => {
-      let changed = false;
-      const floatEqual = (left, right) => Math.abs(Number(left) - Number(right)) < 0.0001;
-      const nextTabs = prev.map(tab => {
-        // Use targetTabId if provided, otherwise fallback to activeTabId (or checking against tab.id)
-        // If targetTabId is provided, we only update that specific tab.
-        const isTarget = targetTabId ? tab.id === targetTabId : tab.id === activeTabId;
-
-        if (!isTarget) {
-          return tab;
-        }
-
-        const previousViewState = tab.viewState;
-        if (!previousViewState) {
-          changed = true;
-          return { ...tab, viewState };
-        }
-
-        const unchanged =
-          Number(previousViewState.pageNum) === Number(viewState.pageNum) &&
-          floatEqual(previousViewState.scale, viewState.scale) &&
-          String(previousViewState.zoomMode) === String(viewState.zoomMode) &&
-          String(coerceScrollMode(previousViewState.scrollMode)) === String(coerceScrollMode(viewState.scrollMode)) &&
-          Number(previousViewState.scrollLeft) === Number(viewState.scrollLeft) &&
-          Number(previousViewState.scrollTop) === Number(viewState.scrollTop);
-
-        if (unchanged) {
-          return tab;
-        }
-
-        changed = true;
-        return { ...tab, viewState };
-      });
-
-      return changed ? nextTabs : prev;
-    });
-  }, [activeTabId]);
+  const handleViewStateChange = useCallback((viewState, targetTabId, expectedFile = null,
+    expectedCheckedBundle = null, expectedMount = null) => {
+    const targetId = targetTabId || closeViewRef.current?.activeTabId || activeTabId;
+    const requested = closeViewRef.current?.tabs?.find(tab => tab.id === targetId);
+    if (!requested || (expectedCheckedBundle !== null && (requested.file !== expectedFile
+      || requested.checkedBundle !== expectedCheckedBundle
+      || requested.actorUserId !== documentOpenScope.actorUserId
+      || documentOpenScopeRef.current !== documentOpenScope
+      || expectedMount === null || documentOpenMountRef.current !== expectedMount))) return;
+    const normalized = normalizeViewState(viewState);
+    if (!normalized) return;
+    if (expectedCheckedBundle !== null
+      && requested.viewStatePersistenceError === 'CHECKED_DOCUMENT_VIEW_STATE_READ_FAILED') return;
+    const changed = !areViewStatesEqual(requested.viewState, normalized);
+    if (changed) {
+      setTabs(previous => previous.map(tab => tab.id === targetId
+        && tab.file === requested.file && tab.checkedBundle === requested.checkedBundle
+        && tab.actorUserId === requested.actorUserId
+        ? { ...tab, viewState: normalized } : tab));
+    }
+    if (expectedCheckedBundle === null || (!changed && !requested.viewStatePersistenceError)) return;
+    try {
+      writeCheckedDocumentViewState({
+        storage: checkedDocumentViewStateStorage || globalThis.localStorage,
+        actorUserId: requested.actorUserId,
+        documentId: requested.file.id,
+        pdfGenerationId: expectedCheckedBundle.pdfGenerationId,
+      }, normalized);
+      if (requested.viewStatePersistenceError) {
+        setTabs(previous => previous.map(tab => tab.id === targetId
+          && tab.file === expectedFile && tab.checkedBundle === expectedCheckedBundle
+          && tab.actorUserId === requested.actorUserId
+          ? { ...tab, viewStatePersistenceError: null } : tab));
+      }
+    } catch (error) {
+      const code = error?.code || 'CHECKED_DOCUMENT_VIEW_STATE_WRITE_FAILED';
+      setTabs(previous => previous.map(tab => tab.id === targetId
+        && tab.file === expectedFile && tab.checkedBundle === expectedCheckedBundle
+        && tab.actorUserId === requested.actorUserId
+        ? { ...tab, viewStatePersistenceError: code } : tab));
+      if (!requested.viewStatePersistenceError) {
+        showToast('Your page view is still open, but it could not be saved on this device. Change the page or zoom to retry.', 'error');
+      }
+    }
+  }, [activeTabId, checkedDocumentViewStateStorage, documentOpenScope]);
 
   // Memoized callback to track unsaved annotations - uses targetTabId to find the correct tab
   const handleUnsavedAnnotationsChange = useCallback((hasUnsaved, targetTabId) => {
@@ -1605,10 +1658,28 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
           documentId, generationId: checkedBundle.pdfGenerationId, state: nextLocalState });
         const prepared = prepareCheckedDocumentOpen(checkedBundle, scope.actorUserId);
         prepared.file._checkedPageStructure = nextLocalState;
+        let nextViewState = null;
+        let nextViewStatePersistenceError = null;
+        try {
+          nextViewState = readCheckedDocumentViewState({
+            storage: checkedDocumentViewStateStorage || globalThis.localStorage,
+            actorUserId: scope.actorUserId,
+            documentId,
+            pdfGenerationId: checkedBundle.pdfGenerationId,
+          });
+        } catch (error) {
+          nextViewStatePersistenceError = error?.code || 'CHECKED_DOCUMENT_VIEW_STATE_READ_FAILED';
+          showToast('Your saved page view could not be read. The saved entry was kept.', 'error');
+        }
         flushSync(() => {
           setTabs(previous => previous.map(tab => tab.id === targetTabId
             && tab.file === expectedSourceFile && tab.checkedBundle === expectedCheckedBundle
-            ? { ...tab, file: prepared.file, filePath: null, checkedBundle } : tab));
+            ? { ...tab, file: prepared.file, filePath: null, checkedBundle,
+              viewState: nextViewState,
+              viewStatePersistenceError: nextViewStatePersistenceError,
+              viewStateChangeHandler: (viewState, viewStateTabId) => handleViewStateChange(
+                viewState, viewStateTabId, prepared.file, checkedBundle, mount,
+              ) } : tab));
           setSelectedPDF(previous => closeViewRef.current.activeTabId === targetTabId
             && previous === expectedSourceFile ? prepared.file : previous);
         });
@@ -1637,7 +1708,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
       throw new Error('The previous page change was recovered. This click did not start a new change.');
     }
     return current();
-  }, [checkedPageStructureStorage, documentOpenScope]);
+  }, [checkedDocumentViewStateStorage, checkedPageStructureStorage, documentOpenScope,
+    handleViewStateChange]);
 
   const handleClearExpiredPageReplacement = useCallback(async recovery => {
     const scope = documentOpenScope, mount = documentOpenMountRef.current;
@@ -3506,6 +3578,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
             />
             {tabs.map(tab => {
               if (tab.isHome) return null;
+              if (tab.checkedBundle && tab.documentOpenScope !== documentOpenScope) return null;
 
               const isVisible = tab.id === activeTabId && currentView === 'viewer';
               const tabViewState = tab.viewState;
@@ -3584,7 +3657,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       onRegisterQuitSave={registerQuitSave}
                       onRequestCreateTemplate={handleCreateTemplateRequest}
                       initialViewState={tabViewState}
-                      onViewStateChange={handleViewStateChange}
+                      onViewStateChange={tab.viewStateChangeHandler || handleViewStateChange}
                       templates={appTemplates}
                       onTemplatesChange={handleTemplatesChange}
                       onRefetchTemplates={refetchTemplates}

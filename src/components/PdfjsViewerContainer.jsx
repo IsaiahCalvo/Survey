@@ -78,6 +78,18 @@ const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
 
+export function resolvePdfjsPageAtViewport({ scrollTop, clientHeight, padTop, tops, dims, scale, gap }) {
+  if (!Array.isArray(tops) || !Array.isArray(dims) || tops.length === 0) return null;
+  const mid = scrollTop + clientHeight / 2 - padTop;
+  let page = 1;
+  for (let index = 0; index < tops.length; index += 1) {
+    if (mid >= tops[index]
+      && mid < tops[index] + dims[index].h * scale + gap * scale) return index + 1;
+    if (mid >= tops[index]) page = index + 1;
+  }
+  return page;
+}
+
 function postNativePdfDiagnostic(event, detail = {}) {
   trackSurveyAnalyticsEvent(`survey_pdf_${String(event || 'diagnostic').replaceAll('-', '_')}`, detail);
   try {
@@ -984,6 +996,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const thumbCacheRef = useRef(new Map());
   const pageContainerMapRef = useRef({});
   const lastEmittedMapRef = useRef({});
+  const measuredPageNumbersRef = useRef(new Set());
+  const documentLoadEpochRef = useRef(0);
+  const pendingViewStateRestoreRef = useRef(null);
+  const viewStateRestoreSeqRef = useRef(0);
+  const [viewStateRestoreRevision, setViewStateRestoreRevision] = useState(0);
 
   const cb = useRef({});
   cb.current = {
@@ -1072,6 +1089,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- load document --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
+    const documentLoadEpoch = documentLoadEpochRef.current + 1;
+    documentLoadEpochRef.current = documentLoadEpoch;
+    pendingViewStateRestoreRef.current = null;
+    measuredPageNumbersRef.current = new Set();
     const loadStartedAt = performance.now();
     const externalPdf = isPdfDocumentProxy(activeSource) ? activeSource : null;
     const params = buildGetDocumentParams(activeSource, activePassword);
@@ -1099,6 +1120,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const firstViewport = firstPage.getViewport({ scale: 1 });
         const firstSize = { w: firstViewport.width, h: firstViewport.height };
         const sizes = Array.from({ length: pdf.numPages }, () => ({ ...firstSize }));
+        measuredPageNumbersRef.current.add(1);
         setPageSizes(sizes.slice());
 
         const el = scrollerRef.current;
@@ -1135,7 +1157,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             return { pageNumber, size: { w: vp.width, h: vp.height } };
           }));
           if (cancelled) return;
-          batch.forEach(({ pageNumber, size }) => { sizes[pageNumber - 1] = size; });
+          batch.forEach(({ pageNumber, size }) => {
+            sizes[pageNumber - 1] = size;
+            measuredPageNumbersRef.current.add(pageNumber);
+          });
           setPageSizes(sizes.slice());
         }
 
@@ -1156,6 +1181,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
     return () => {
       cancelled = true;
+      if (documentLoadEpochRef.current === documentLoadEpoch) {
+        documentLoadEpochRef.current += 1;
+        pendingViewStateRestoreRef.current = null;
+      }
       try { task?.destroy?.(); } catch { /* noop */ }
       const prev = pdfRef.current;
       pdfRef.current = null;
@@ -1219,19 +1248,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     const tops = topsRef.current;
     const dims = dimsPtRef.current;
-    if (!el || !tops.length) return;
+    if (!el || !tops.length) return null;
     // tops are in raw content space; padTop (the centering margin) shifts the
     // painted pages down by that much relative to the scroll origin.
     const padTop = padTopRef.current;
-    const mid = el.scrollTop + el.clientHeight / 2 - padTop;
-    let page = 1;
     const metrics = layoutMetricsRef.current;
-    // Gap is zoom-proportional (see layout memo), so page-band detection uses the
-    // scaled gap too — keeps the current-page boundary aligned with the real layout.
-    for (let i = 0; i < tops.length; i += 1) {
-      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + metrics.gap * scaleRef.current) { page = i + 1; break; }
-      if (mid >= tops[i]) page = i + 1;
-    }
+    const page = resolvePdfjsPageAtViewport({
+      scrollTop: el.scrollTop,
+      clientHeight: el.clientHeight,
+      padTop,
+      tops,
+      dims,
+      scale: scaleRef.current,
+      gap: metrics.gap,
+    });
+    if (!page) return null;
     clampHorizontalScrollForPage(page - 1);
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
@@ -1243,6 +1274,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         raw: { scrollTop: el.scrollTop },
       });
     }
+    return page;
   }, [clampHorizontalScrollForPage]);
 
   // ---- which pages are mounted ---------------------------------------------
@@ -2289,6 +2321,86 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return true;
   }, [getPageHorizontalScrollMax]);
 
+  const queueViewStateRestore = useCallback((target, onCommitted) => {
+    const pageNum = Number(target?.pageNum);
+    const targetScale = Number(target?.scale);
+    const scrollLeft = Number(target?.scrollLeft);
+    const scrollTop = Number(target?.scrollTop);
+    if (!Number.isSafeInteger(pageNum) || pageNum < 1
+      || !Number.isFinite(targetScale) || targetScale <= 0
+      || !Number.isFinite(scrollLeft) || scrollLeft < 0
+      || !Number.isFinite(scrollTop) || scrollTop < 0) return null;
+    const requestId = viewStateRestoreSeqRef.current + 1;
+    viewStateRestoreSeqRef.current = requestId;
+    pendingViewStateRestoreRef.current = {
+      requestId,
+      documentLoadEpoch: documentLoadEpochRef.current,
+      target: { pageNum, scale: targetScale, scrollLeft, scrollTop },
+      onCommitted: typeof onCommitted === 'function' ? onCommitted : null,
+    };
+    pendingAnchorRef.current = null;
+    setLiveZoom(1);
+    liveZoomRef.current = 1;
+    setScale(targetScale);
+    setViewStateRestoreRevision((revision) => revision + 1);
+    return requestId;
+  }, []);
+
+  const cancelViewStateRestore = useCallback((requestId) => {
+    const pending = pendingViewStateRestoreRef.current;
+    if (!pending || (requestId != null && pending.requestId !== requestId)) return false;
+    pendingViewStateRestoreRef.current = null;
+    return true;
+  }, []);
+
+  // A saved viewport is only meaningful after this renderer owns the exact
+  // target scale and the real page metadata that determines every preceding
+  // page offset. Applying it from onDocumentLoaded races those layout commits.
+  useLayoutEffect(() => {
+    const pending = pendingViewStateRestoreRef.current;
+    const el = scrollerRef.current;
+    const content = contentRef.current;
+    if (!pending || !el || !content) return;
+    if (pending.documentLoadEpoch !== documentLoadEpochRef.current) {
+      pendingViewStateRestoreRef.current = null;
+      return;
+    }
+    const { target } = pending;
+    const targetIndex = target.pageNum - 1;
+    if (target.pageNum > numPages || targetIndex >= layout.dims.length) return;
+    if (Math.abs(scale - target.scale) > 1e-4) return;
+    if (el.clientWidth <= 0 || el.clientHeight <= 0 || el.scrollHeight <= 0) return;
+    for (let page = 1; page <= target.pageNum; page += 1) {
+      if (!measuredPageNumbersRef.current.has(page)) return;
+    }
+    const targetBottom = layout.padTop + layout.tops[targetIndex]
+      + layout.dims[targetIndex].h * scale;
+    if (el.scrollHeight + 1 < Math.min(layout.padTop + layout.totalH, targetBottom)) return;
+
+    const maxLeft = getPageHorizontalScrollMax(targetIndex, scale);
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    el.scrollLeft = Math.min(Math.max(0, target.scrollLeft), maxLeft);
+    el.scrollTop = Math.min(Math.max(0, target.scrollTop), maxTop);
+    let resolvedPage = detectCurrentPage();
+    if (resolvedPage !== target.pageNum) {
+      if (!goToPage(target.pageNum)) return;
+      resolvedPage = detectCurrentPage();
+    }
+    if (resolvedPage !== target.pageNum) return;
+
+    pendingViewStateRestoreRef.current = null;
+    recomputeWindow();
+    try {
+      pending.onCommitted?.({
+        pageNum: resolvedPage,
+        scale,
+        scrollLeft: el.scrollLeft,
+        scrollTop: el.scrollTop,
+      });
+    } catch { /* caller lifecycle guards own stale acknowledgements */ }
+  }, [detectCurrentPage, getPageHorizontalScrollMax, goToPage, layout, numPages,
+    pageSizes, recomputeWindow, scale, viewStateRestoreRevision]);
+
   // ---- onZoomChanged (settle only — scale changes only on commit) ----------
   useLayoutEffect(() => {
     if (prevScaleRef.current == null) { prevScaleRef.current = scale; return; }
@@ -2369,6 +2481,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       goToBookmarkSource: () => false, // Stage 4 — caller falls back to goToPage
       resolveBookmarkPageFromSource: () => null,
       navigationModule: { goToPage },
+      queueViewStateRestore,
+      cancelViewStateRestore,
       // state getters (method + property forms)
       getPageCount: () => numPagesRef.current || 0,
       getCurrentPage: () => currentPageRef.current || 1,
@@ -2443,7 +2557,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       selectFormField: () => false,
       getFormFieldCollection: () => [],
     };
-  }, [goToPage, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
+  }, [goToPage, queueViewStateRestore, cancelViewStateRestore, zoomToScale,
+    applyAnchoredScale, getThumbnailDataUrl]);
 
   const loading = pageSizes.length === 0;
   const nativePinchE2E = import.meta.env.DEV

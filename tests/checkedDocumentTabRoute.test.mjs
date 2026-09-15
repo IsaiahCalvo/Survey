@@ -44,6 +44,7 @@ function extract(source, name, end, ports) {
 }
 function handlerHarness(initial = []) {
   const scope = { actorUserId: actor }, ref = { current: scope }, opening = { current: new Set() };
+  const mountRef = { current: {} };
   const state = { tabs: initial, selected: null, active: null, view: null, loading: false };
   const closeViewRef = { current: { tabs: state.tabs } };
   const changes = [], timers = [];
@@ -51,9 +52,12 @@ function handlerHarness(initial = []) {
   const set = name => value => { changes.push(name); state[name] = typeof value === 'function' ? value(state[name]) : value; };
   const ports = () => { closeViewRef.current = { tabs: state.tabs }; return ({ tabs: state.tabs, selectedPDF: state.selected, documentOpenScope: scope, documentOpenScopeRef: ref,
     useCallback: callback => callback,
+    documentOpenMountRef: mountRef,
     closeViewRef,
     openingPdfsRef: opening, prepareCheckedDocumentOpen, getDocumentOpenKey, isSameDocumentTab,
     checkedPageStructureStorage: null,
+    checkedDocumentViewStateStorage: null, readCheckedDocumentViewState: () => null,
+    showToast: () => {},
     readLocalCheckedPageStructure: () => ({ items: {}, annotations: {}, pageNames: {}, bookmarks: [],
       pageTransformations: {}, activeSpaceId: null, regionOverlayDisabled: {} }),
     setTabs: set('tabs'), setSelectedPDF: set('selected'), setActiveTabId: set('active'), setCurrentView: set('view'), setIsLoading: set('loading'),

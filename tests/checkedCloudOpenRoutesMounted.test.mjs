@@ -68,10 +68,13 @@ function shellHarness({ enabled = true, actorUserId = actor, scopeObject, tabs =
   const set = key => value => { state[key] = typeof value === 'function' ? value(state[key]) : value; };
   const base = () => { closeViewRef.current = { tabs: state.tabs }; return ({ tabs: state.tabs, selectedPDF: state.selected, documents,
     documentOpenScope: scope, documentOpenScopeRef: ref, openingPdfsRef,
+    documentOpenMountRef: mounted,
     closeViewRef,
     getDocumentOpenKey, isSameDocumentTab,
     prepareCheckedDocumentOpen: prepareChecked || prepareCheckedDocumentOpen,
     checkedPageStructureStorage: null,
+    checkedDocumentViewStateStorage: null, readCheckedDocumentViewState: () => null,
+    showToast: () => {},
     readLocalCheckedPageStructure: () => ({ items: {}, annotations: {}, pageNames: {}, bookmarks: [],
       pageTransformations: {}, activeSpaceId: null, regionOverlayDisabled: {} }),
     generateTabId: () => `tab-${state.tabs.length + 1}`, setTabs: set('tabs'),
@@ -201,8 +204,11 @@ test('flag-off pre-migration cloud row uses legacy storage without a mode RPC', 
 test('healthy legacy and checked tabs activate with zero network even from stale catalog rows', async () => {
   for (const checked of [false, true]) {
     const file = Object.assign(new File(['unsaved local work'], 'open.pdf'), { id: documentId });
-    const tab = { id: 'existing', actorUserId: actor, file, checkedBundle: checked ? { marker: 'kept' } : null };
-    const h = shellHarness({ tabs: [tab], documents: [row({ name: 'stale-list-name.pdf', file_path: 'stale/path.pdf' })] });
+    const scope = { actorUserId: actor };
+    const tab = { id: 'existing', actorUserId: actor, documentOpenScope: scope,
+      file, checkedBundle: checked ? { marker: 'kept' } : null };
+    const h = shellHarness({ tabs: [tab], scopeObject: scope,
+      documents: [row({ name: 'stale-list-name.pdf', file_path: 'stale/path.pdf' })] });
     await h.open(row({ name: 'stale-list-name.pdf', file_path: 'stale/path.pdf' }));
     assert.equal(h.state.tabs[0], tab); assert.equal(h.state.selected, file);
     assert.equal(await file.text(), 'unsaved local work');
