@@ -220,6 +220,40 @@ test('floating history requires both an open drawer and an active document', asy
   assert.equal(calls.history.length, 3);
 });
 
+test('an explicit missing scope does not turn an auth-null cloud document into guest history', async (t) => {
+  const { calls, intervals } = await mountPanel(t, {
+    isActive: true,
+    user: null,
+    historyScope: null,
+  });
+  assert.equal(calls.history.length, 0);
+  assert.equal(calls.status.length, 0);
+  assert.equal(calls.subscribe.length, 0);
+  assert.equal(calls.revisions.length, 0);
+  assert.equal(calls.owner.length, 0);
+  assert.equal(intervals.size, 0);
+});
+
+test('valid to null to valid history identity stays hook-safe and never falls into guest scope', async (t) => {
+  const { calls, render, renderBeforePassiveEffects } = await mountPanel(t, {
+    isActive: true,
+    user: { id: 'actor-a' },
+    historyScope: { actorUserId: 'actor-a' },
+  }, {
+    async listDocumentHistoryEvents(id) {
+      return [{ client_event_id: `row-${id}`, summary: `Row for ${id}`,
+        occurred_at: '2026-09-14T12:00:00Z', payload: {} }];
+    },
+  });
+  assert.match(document.body.textContent, /Row for doc-a/);
+  renderBeforePassiveEffects({ documentId: null, historyScope: null });
+  assert.equal(document.querySelector('[data-testid="kal48-revisions-panel"]'), null);
+  assert.doesNotMatch(document.body.textContent, /Row for doc-a/);
+  await render({ documentId: 'doc-b', historyScope: { actorUserId: 'actor-a' } });
+  assert.match(document.body.textContent, /Row for doc-b/);
+  assert.equal(calls.history.some(({ options }) => options.guestScopeId === 'device-local'), false);
+});
+
 test('signed actor scopes local reads while cloud collaborator rows remain visible', async (t) => {
   const collaborator = {
     id: 'cloud-row', client_event_id: 'cloud-row', user_id: 'other-user', summary: 'A teammate edited a mark',
@@ -232,6 +266,44 @@ test('signed actor scopes local reads while cloud collaborator rows remain visib
   assert.deepEqual(calls.subscribe, [{ actorUserId: 'actor-a' }]);
   assert.equal(calls.owner.length, 1);
   assert.match(document.body.textContent, /A teammate edited a mark/);
+});
+
+test('explicit device scope wins for a signed-in managed-local document and keeps activity restore', async (t) => {
+  const restored = [];
+  const localDeleted = {
+    client_event_id: 'local-delete', user_id: 'actor-a', event_type: 'annotation_deleted',
+    summary: 'Deleted local mark', occurred_at: '2026-09-14T12:00:00.000Z', page_number: 1,
+    payload: { restoreAction: { type: 'fabric:create', pageNumber: 1, annotation: { id: 'mark-a' } } },
+  };
+  const { calls, click } = await mountPanel(t, {
+    isActive: true,
+    user: { id: 'actor-a' },
+    historyScope: { guestScopeId: 'device-local' },
+    onRestoreHistoryActivity(event) {
+      restored.push(event.client_event_id);
+      return { ok: true, pageNumber: 1 };
+    },
+  }, {
+    async listRevisions() { throw new Error('device scope must not read cloud revisions'); },
+    async listDocumentHistoryEvents() { return [localDeleted]; },
+    async getDocumentHistoryStorageStatus() {
+      return { available: true, pendingCount: 2, protectedBytes: 1, confirmedCacheBytes: 0,
+        legacyUnscopedAvailable: false, errorCode: null };
+    },
+  });
+  assert.deepEqual(calls.history, [{
+    id: 'doc-a', options: { limit: 200, guestScopeId: 'device-local' },
+  }]);
+  assert.deepEqual(calls.status, [{ guestScopeId: 'device-local' }]);
+  assert.deepEqual(calls.subscribe, [{ guestScopeId: 'device-local' }]);
+  assert.equal(calls.revisions.length, 0);
+  assert.equal(calls.owner.length, 0);
+  assert.equal(document.querySelector('[data-testid="kal48-save-revision"]'), null);
+  assert.match(document.body.textContent, /Across your documents, 2 local history items are stored only on this device/);
+  assert.match(document.body.textContent, /Deleted local activity can still be restored above/);
+  assert.ok(document.querySelector('[data-testid="document-history-restore-local-delete"]'));
+  await click('[data-testid="document-history-restore-local-delete"]');
+  assert.deepEqual(restored, ['local-delete']);
 });
 
 test('document, actor, and hide changes reject late history results', async (t) => {
@@ -263,7 +335,7 @@ test('a scope change clears the prior account row in the layout commit', async (
   }, {
     async listRevisions() { return [revision]; },
     async listDocumentHistoryEvents(id) {
-      if (id === 'doc-b') return new Promise(() => {});
+      if (id === 'local-b') return new Promise(() => {});
       return [{ id: 'account-a', client_event_id: 'account-a', user_id: 'actor-a',
         summary: 'Account A private row', occurred_at: '2026-09-14T12:00:00Z', payload: {} }];
     },
@@ -271,7 +343,11 @@ test('a scope change clears the prior account row in the layout commit', async (
   assert.match(document.body.textContent, /Account A private row/);
   assert.ok(document.querySelector('[data-testid="kal48-save-revision"]'));
   assert.ok(document.querySelector('[data-testid="kal48-restore-v1"]'));
-  renderBeforePassiveEffects({ documentId: 'doc-b', user: null });
+  renderBeforePassiveEffects({
+    documentId: 'local-b',
+    user: { id: 'actor-a' },
+    historyScope: { guestScopeId: 'device-local' },
+  });
   assert.doesNotMatch(document.body.textContent, /Account A private row/,
     'old scope is gone before passive effects run');
   assert.equal(document.querySelector('[data-testid="kal48-save-revision"]'), null,

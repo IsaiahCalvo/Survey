@@ -1517,6 +1517,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
   const userInitial = presenceUsers[0]?.initials || 'U';
   const presenceCount = Math.max(presenceUsers.length, 1);
+  const usesLegacyHistoryContract = leftRailApi?.historyDocumentId === undefined
+    && leftRailApi?.historyScope === undefined;
+  const hasValidHistoryScope = leftRailApi?.historyScope?.guestScopeId === 'device-local'
+    || (typeof leftRailApi?.historyScope?.actorUserId === 'string'
+      && leftRailApi.historyScope.actorUserId.length > 0);
+  const historyAvailable = usesLegacyHistoryContract
+    ? Boolean(leftRailApi?.documentId)
+    : Boolean(leftRailApi?.historyDocumentId && hasValidHistoryScope);
 
   useEffect(() => {
     onAuxPanelStateChange?.(presenceOpen ? 'users' : null);
@@ -1794,7 +1802,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <RailButton
               icon="history"
               label="Version history"
-              disabled={!leftRailApi?.documentId}
+              disabled={!historyAvailable}
               onClick={() => {
                 setPresenceOpen(false);
                 setMoreOpen(false);

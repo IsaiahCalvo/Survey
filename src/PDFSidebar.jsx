@@ -139,6 +139,8 @@ const PDFSidebar = React.forwardRef(({
   currentUserEmail = null,
   currentUserDisplayName = null,
   documentId = null,
+  historyDocumentId = undefined,
+  historyScope = undefined,
   user = null,
   onRestoreHistoryActivity = null,
   onCascadeRestoreRegion = null,
@@ -146,6 +148,16 @@ const PDFSidebar = React.forwardRef(({
   mobileMode = false,
   onPanelStateChange = null,
 }, ref) => {
+  // Old cloud callers supplied neither explicit History prop. New callers
+  // must provide both a stable identity and a valid scope; auth loss therefore
+  // hides the entry instead of opening an inert or wrongly scoped panel.
+  const usesLegacyHistoryContract = historyDocumentId === undefined && historyScope === undefined;
+  const hasValidHistoryScope = historyScope?.guestScopeId === 'device-local'
+    || (typeof historyScope?.actorUserId === 'string' && historyScope.actorUserId.length > 0);
+  const resolvedHistoryDocumentId = usesLegacyHistoryContract ? documentId : historyDocumentId;
+  const historyAvailable = Boolean(
+    resolvedHistoryDocumentId && (usesLegacyHistoryContract || hasValidHistoryScope),
+  );
   const [isCollapsed, setIsCollapsed] = useState(true);
   // 2026-04-29: publish the live sidebar width as a CSS variable so the
   // StorageFailureBanner overlay can anchor inside the PDF area without
@@ -166,6 +178,12 @@ const PDFSidebar = React.forwardRef(({
   // first measurement lands; the predicted formula is the fallback.
   const [mobileSpacesContentHeight, setMobileSpacesContentHeight] = useState(null);
   const onToggleCollapseRef = React.useRef(onToggleCollapse);
+
+  React.useEffect(() => {
+    if (historyAvailable || activeTab !== 'history') return;
+    setActiveTab('pages');
+    setIsCollapsed(true);
+  }, [activeTab, historyAvailable]);
 
   React.useEffect(() => {
     onToggleCollapseRef.current = onToggleCollapse;
@@ -595,8 +613,9 @@ const PDFSidebar = React.forwardRef(({
             {/* Version History Panel */}
             <div style={{ display: activeTab === 'history' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <RevisionsPanel
-                documentId={documentId}
+                documentId={historyAvailable ? resolvedHistoryDocumentId : null}
                 user={user}
+                historyScope={usesLegacyHistoryContract ? undefined : historyScope}
                 embedded
                 mobileMode={mobileMode}
                 isActive={activeTab === 'history' && !isCollapsed}
@@ -703,7 +722,7 @@ const PDFSidebar = React.forwardRef(({
           on screen for every page — the previous top-toolbar location
           scrolled off with the PDF area on page change.
           Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
-      {cloudSyncEnabled && !mobileMode && (
+      {!mobileMode && (cloudSyncEnabled || historyAvailable) && (
         <div style={{
           borderTop: '1px solid #2a3140',
           padding: isCollapsed ? '10px 6px' : '12px',
@@ -713,22 +732,26 @@ const PDFSidebar = React.forwardRef(({
           gap: '10px',
           background: '#12151c'
         }}>
-          <SyncStatusChip
-            status={cloudSyncStatus}
-            queueSize={cloudSyncQueueSize}
-            enabled
-            compact={isCollapsed}
-            onRetry={cloudSyncOnRetry}
-          />
-          {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
-          <PresenceAvatars
-            presence={presence}
-            currentUserId={currentUserId}
-            currentUserEmail={currentUserEmail}
-            currentUserDisplayName={currentUserDisplayName}
-            enabled
-            compact={isCollapsed}
-          />
+          {cloudSyncEnabled && (
+            <SyncStatusChip
+              status={cloudSyncStatus}
+              queueSize={cloudSyncQueueSize}
+              enabled
+              compact={isCollapsed}
+              onRetry={cloudSyncOnRetry}
+            />
+          )}
+          {historyAvailable && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
+          {cloudSyncEnabled && (
+            <PresenceAvatars
+              presence={presence}
+              currentUserId={currentUserId}
+              currentUserEmail={currentUserEmail}
+              currentUserDisplayName={currentUserDisplayName}
+              enabled
+              compact={isCollapsed}
+            />
+          )}
         </div>
       )}
     </div>

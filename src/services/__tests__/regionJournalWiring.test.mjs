@@ -45,8 +45,8 @@ test('region journaling lives at COMMIT time inside handleRegionComplete', () =>
   assert.match(body, /buildRegionDeleteHistoryRow\(/, 'commit-time row builder call missing');
   assert.match(
     body,
-    /recordAndNotifyDocumentHistoryEvent\(/,
-    'commit-time journaling must use the record+notify wrapper (records AND live-updates the panel)',
+    /recordScopedHistoryEvent\(/,
+    'commit-time journaling must use the scoped record+notify wrapper',
   );
   // Journaling must be INSIDE the removedRegionIds guard (only fires when
   // regions were actually removed by this commit).
@@ -116,8 +116,8 @@ test('handleSpaceDelete journals a space_deleted row with a restore record', () 
   assert.match(body, /buildSpaceDeleteHistoryRow\(/, 'space row builder call missing');
   assert.match(
     body,
-    /recordAndNotifyDocumentHistoryEvent\(/,
-    'space delete must use the record+notify wrapper',
+    /recordScopedHistoryEvent\(/,
+    'space delete must use the scoped record+notify wrapper',
   );
 });
 
@@ -173,20 +173,22 @@ test('standard annotation restore guard treats page 0 as a valid page (== null, 
   );
 });
 
-test('direct trash writes route through recordAndNotifyDocumentHistoryEvent', () => {
+test('direct trash writes route through the admitted scoped record-and-notify wrapper', () => {
   // History-audit P2: every direct (non-debug-pipeline) history write must use
   // the wrapper so the panel live-updates without waiting for the 10s poll.
-  // The ONLY remaining bare recordDocumentHistoryEvent call site in PDFViewer
-  // is the debug pipeline (pushHistoryDebugEvent), which has its own dispatch.
+  // The debug pipeline must use the same admitted path. It cannot emit a live
+  // event before the scoped store commits the row.
   const bareCalls = pdfViewerSrc.match(/[^A-Za-z]recordDocumentHistoryEvent\(/g) || [];
   assert.equal(
     bareCalls.length,
-    1,
-    `expected exactly 1 bare recordDocumentHistoryEvent call (the debug pipeline), found ${bareCalls.length}`,
+    0,
+    `expected no bare recordDocumentHistoryEvent calls, found ${bareCalls.length}`,
   );
   const wrapped = pdfViewerSrc.match(/recordAndNotifyDocumentHistoryEvent\(/g) || [];
-  assert.ok(wrapped.length >= 5,
-    'space/region/callout/single-annotation/bulk/survey-marker sites must use the wrapper');
+  assert.equal(wrapped.length, 1, 'only the scoped wrapper may call the service wrapper');
+  const scoped = pdfViewerSrc.match(/recordScopedHistoryEvent\(/g) || [];
+  assert.ok(scoped.length >= 10,
+    'space/region/callout/single-annotation/bulk/survey-marker/debug sites must use the scoped wrapper');
 });
 
 test('declaration order: handleRestoreSpace is declared before handleRestoreHistoryActivity', () => {
@@ -245,8 +247,8 @@ test('handleSpaceRemovePage journals restorable region_deleted rows (sidebar tra
   assert.match(body, /buildRegionDeleteHistoryRow\(/, 'sidebar region delete must journal region_deleted rows');
   assert.match(
     body,
-    /recordAndNotifyDocumentHistoryEvent\(/,
-    'sidebar region delete must use the record+notify wrapper (live panel update)',
+    /recordScopedHistoryEvent\(/,
+    'sidebar region delete must use the scoped record+notify wrapper',
   );
 });
 

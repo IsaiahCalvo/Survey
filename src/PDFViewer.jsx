@@ -134,7 +134,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
-import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { buildHistoryEventRowFromDebugEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   canDelete,
@@ -10876,6 +10876,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     return true;
   }, [pdfId]);
 
+  const managedLocalEditingContext = useMemo(
+    // false means a managed file failed validation: renderer boot fallbacks
+    // must not turn that denial into guest edit authority.
+    () => createManagedLocalEditingContext(pdfFile) ?? (pdfFile?.storageMode === 'local' ? false : null),
+    [pdfFile],
+  );
+  const historyDocumentId = managedLocalEditingContext
+    ? managedLocalEditingContext.localId
+    : (pdfFile?.storageMode === 'local' ? null : (pdfFile?.id || null));
+  const historyScope = useMemo(() => {
+    if (pdfFile?.storageMode === 'local' && historyDocumentId) return { guestScopeId: 'device-local' };
+    return user?.id && pdfFile?.storageMode !== 'local' ? { actorUserId: user.id } : null;
+  }, [historyDocumentId, pdfFile?.storageMode, user?.id]);
+  const recordScopedHistoryEvent = useCallback((row) => {
+    if (!historyDocumentId || !historyScope
+      || String(row?.document_id || '') !== String(historyDocumentId)) {
+      return Promise.resolve({ data: null, error: new Error('History scope is unavailable.') });
+    }
+    return recordAndNotifyDocumentHistoryEvent(row, historyScope);
+  }, [historyDocumentId, historyScope]);
+
   // Drop tombstones past the 30-day retention window when a document opens.
   useEffect(() => {
     if (!pdfId) return;
@@ -10893,8 +10914,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // `deletedList` is [{ id, marker }]; one event per marker keeps each restore
   // payload tiny. Best-effort — never blocks the delete.
   const recordSurveyMarkerDeleteHistory = useCallback((deletedList, origin = 'app') => {
-    const documentId = pdfFile?.id;
-    if (!documentId || !Array.isArray(deletedList) || deletedList.length === 0) return;
+    const documentId = historyDocumentId;
+    if (!documentId || !historyScope || !Array.isArray(deletedList) || deletedList.length === 0) return;
     const actorName = user?.email || user?.user_metadata?.full_name || 'Someone';
     const deletedAt = new Date().toISOString();
     deletedList.forEach(({ id, marker }) => {
@@ -10903,12 +10924,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         const row = buildSurveyMarkerDeleteHistoryRow({
           markerId: id, marker, documentId, userId: user?.id || null, actorName, origin, deletedAt,
         });
-        void recordAndNotifyDocumentHistoryEvent(row);
+        void recordScopedHistoryEvent(row);
       } catch (histErr) {
         console.warn('Failed to record Survey Marker delete history:', histErr);
       }
     });
-  }, [pdfFile?.id, user?.id, user?.email]);
+  }, [historyDocumentId, historyScope, recordScopedHistoryEvent, user?.id, user?.email]);
 
   const excelBaselinePairRef = useRef(null);
   useEffect(() => {
@@ -10989,28 +11010,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 	      }
 	    }
 
-    if (pdfFile?.id && user?.id) {
+    if (historyDocumentId && historyScope) {
       const historyRow = buildHistoryEventRowFromDebugEvent(event, {
-        documentId: pdfFile.id,
+        documentId: historyDocumentId,
         user,
       });
       if (historyRow) {
-        try {
-          window.dispatchEvent(new CustomEvent('document-history:event-recorded', {
-            detail: {
-              documentId: pdfFile.id,
-              row: historyRow,
-            },
-          }));
-        } catch (_err) {
-          // History refresh is best-effort; persistence still runs below.
-        }
-        void recordDocumentHistoryEvent(historyRow);
+        void recordScopedHistoryEvent(historyRow);
       }
     }
 
 	    return event;
-	  }, [pdfFile?.id, user]);
+	  }, [historyDocumentId, historyScope, recordScopedHistoryEvent, user]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -11572,13 +11583,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       viewerId: user?.id,
     });
   }, [pdfFile?.id, pdfFile?.user_id, pdfFile?.storageMode, user?.id]);
-
-  const managedLocalEditingContext = useMemo(
-    // false means a managed file failed validation: renderer boot fallbacks
-    // must not turn that denial into guest edit authority.
-    () => createManagedLocalEditingContext(pdfFile) ?? (pdfFile?.storageMode === 'local' ? false : null),
-    [pdfFile],
-  );
 
   // Registered documents must never manufacture delete authority from the
   // current viewer. Local-only files use their own explicit fallback lane.
@@ -13686,11 +13690,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // restore when it no longer exists. Whole-page entries with no drawn
     // regions have no restorable region object and are not journaled.
     {
-      const documentId = pdfFile?.id || null;
+      const documentId = historyDocumentId;
       const spaceForJournal = (spacesRef.current || []).find((s) => s.id === spaceId);
       const pageForJournal = spaceForJournal?.assignedPages?.find((p) => p.pageId === pageId);
       const regionsForJournal = Array.isArray(pageForJournal?.regions) ? pageForJournal.regions : [];
-      if (documentId && regionsForJournal.length > 0) {
+      if (documentId && historyScope && regionsForJournal.length > 0) {
         const deletedAt = new Date().toISOString();
         const actorName = user?.user_metadata?.full_name
           || user?.user_metadata?.name
@@ -13708,7 +13712,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             actorName,
             deletedAt,
           });
-          if (trashRow) void recordAndNotifyDocumentHistoryEvent(trashRow);
+          if (trashRow) void recordScopedHistoryEvent(trashRow);
         }
       }
     }
@@ -13736,7 +13740,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [activeSpaceId, cascadeDeleteScopedAppState, historyDocumentId, historyScope, recordScopedHistoryEvent, requireSpaceManagement, user]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
@@ -19395,8 +19399,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       // deleted. snapshotObjects already contains the pre-delete Fabric objects.
       // We need fabric:delete-shaped actions to produce the restoreActions.
       const emitBulkTrashRows = () => {
-        const documentId = pdfFile?.id || null;
-        if (!documentId || !Array.isArray(snapshotObjects) || snapshotObjects.length === 0) return;
+        const documentId = historyDocumentId;
+        if (!documentId || !historyScope || !Array.isArray(snapshotObjects) || snapshotObjects.length === 0) return;
         const candidateSet = new Set(Array.isArray(candidateIds) ? candidateIds : []);
         const deletedObjects = snapshotObjects.filter((obj) => {
           const id = obj?.data?.id || obj?.id || null;
@@ -19445,7 +19449,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             actorName,
             deletedAt,
           });
-          if (singleRow) void recordAndNotifyDocumentHistoryEvent(singleRow);
+          if (singleRow) void recordScopedHistoryEvent(singleRow);
           return;
         }
         const rows = buildBulkAnnotationDeleteHistoryRows({
@@ -19457,7 +19461,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           deletedAt,
         });
         for (const row of rows) {
-          void recordAndNotifyDocumentHistoryEvent(row);
+          void recordScopedHistoryEvent(row);
         }
       };
 
@@ -19526,7 +19530,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       pendingDeleteRunnerRef.current = wrappedRunDelete;
       setPendingDeletePlan(plan);
     },
-    [annotationsByPage, user, documentOwnerId, managedLocalEditingContext, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
+    [annotationsByPage, user, documentOwnerId, managedLocalEditingContext, enqueueUndoToast, historyDocumentId, historyScope, recordScopedHistoryEvent, registerBulkJournaledAnnotationIds],
   );
   // R2.2 Slice 4: keep the TDZ ref bridge current so handleDeleteSelectedCallouts
   // (declared ~7k lines above) always routes through this render's bulk-delete
@@ -19612,7 +19616,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
 
     if (effect.type === 'annotation-delete-history') {
-      if (!pdfFile?.id) return;
+      if (!historyDocumentId || !historyScope) return;
       const objectRestoreActions = buildAnnotationEraseDeleteHistoryRestoreActions(effect);
       if (objectRestoreActions.length === 0) {
         throw new Error('atomic erase history payload is empty');
@@ -19626,7 +19630,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         objectRestoreActions,
         totalCount: objectRestoreActions.length,
         mutationId,
-        documentId: pdfFile.id,
+        documentId: historyDocumentId,
         userId: effectActorUserId,
         actorName,
         deletedAt: committedAt,
@@ -19636,7 +19640,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           ?? objectRestoreActions.length,
       });
       if (!row) throw new Error('atomic erase history row could not be built');
-      const { error } = await recordAndNotifyDocumentHistoryEvent(row);
+      const { error } = await recordScopedHistoryEvent(row);
       if (error) throw error;
       return;
     }
@@ -19661,13 +19665,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
 
     if (effect.type === 'history') {
-      if (!pdfFile?.id) return;
+      if (!historyDocumentId || !historyScope) return;
       if (!marker) throw new Error(`erase history payload missing for ${markerId}`);
       const actorName = user?.email || user?.user_metadata?.full_name || 'Someone';
       const row = buildSurveyMarkerDeleteHistoryRow({
         markerId,
         marker,
-        documentId: pdfFile.id,
+        documentId: historyDocumentId,
         userId: effectActorUserId,
         actorName,
         origin: mutationId,
@@ -19678,7 +19682,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         mutationId,
         markerIds: [markerId],
       };
-      const { error } = await recordAndNotifyDocumentHistoryEvent(row);
+      const { error } = await recordScopedHistoryEvent(row);
       if (error) throw error;
       return;
     }
@@ -19721,7 +19725,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
 
     throw new Error(`unsupported erase outbox effect: ${effect.type}`);
-  }, [documentSyncEnabled, pdfFile?.id, pdfId, user]);
+  }, [documentSyncEnabled, historyDocumentId, historyScope, pdfFile?.id, pdfId, recordScopedHistoryEvent, user]);
 
   const handledAnnotationHistoryQuarantineKeysRef = useRef(new Set());
   const handleAnnotationHistoryQuarantine = useCallback((event) => {
@@ -20321,9 +20325,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // KAL-313: emit a space_deleted history row so the region cascade restore
     // path (resolveRegionRestoreCascade) can find the space's restore record
     // when a user later tries to restore an orphaned region.
-    const documentId = pdfFile?.id || null;
+    const documentId = historyDocumentId;
     const spaceToDelete = (spacesRef.current || []).find((s) => s.id === id);
-    if (spaceToDelete && documentId) {
+    if (spaceToDelete && documentId && historyScope) {
       const actorName =
         user?.user_metadata?.full_name
         || user?.user_metadata?.name
@@ -20337,7 +20341,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         actorName,
         deletedAt: new Date().toISOString(),
       });
-      if (spaceTrashRow) void recordAndNotifyDocumentHistoryEvent(spaceTrashRow);
+      if (spaceTrashRow) void recordScopedHistoryEvent(spaceTrashRow);
     }
 
     cascadeDeleteScopedAppState({
@@ -20351,7 +20355,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, historyDocumentId, historyScope, recordScopedHistoryEvent, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
@@ -21175,8 +21179,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       // KAL-313: emit commit-time trash rows for regions that were actually removed.
       // Journaling is deferred to here (not RST delete-key press) so that Cancel
       // produces no journal rows — only a confirmed Confirm reaches this path.
-      const documentId = pdfFile?.id || null;
-      if (documentId) {
+      const documentId = historyDocumentId;
+      if (documentId && historyScope) {
         const activeSpace = (spacesRef.current || []).find((s) => s.id === activeSpaceId);
         const spaceName = activeSpace?.name || null;
         const actorName =
@@ -21199,7 +21203,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             actorName,
             deletedAt,
           });
-          if (trashRow) void recordAndNotifyDocumentHistoryEvent(trashRow);
+          if (trashRow) void recordScopedHistoryEvent(trashRow);
         }
       }
     }
@@ -21232,7 +21236,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setSelectedSpaceId(activeSpaceId);
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, historyDocumentId, historyScope, recordScopedHistoryEvent, requireSpaceManagement, user]);
 
   // KAL-313 (2026-06-11): region trash journaling moved INTO handleRegionComplete
   // above — commit time, gated on the removedRegionIds diff. The old
@@ -25246,8 +25250,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // History panel can offer Restore for 30 days (multi-device, cross-user).
     // Skipped when the bulk-delete path already journaled this id (F2 dedupe).
     if (scopedAction.type === 'fabric:delete' && !journaledByBulkPath) {
-      const documentId = pdfFile?.id || null;
-      if (documentId) {
+      const documentId = historyDocumentId;
+      if (documentId && historyScope) {
         const deletedAt = actionWithMeta.__historyMeta.createdAt;
         const actorName = user?.user_metadata?.full_name
           || user?.user_metadata?.name
@@ -25262,12 +25266,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           deletedAt,
         });
         if (trashRow) {
-          void recordAndNotifyDocumentHistoryEvent(trashRow);
+          void recordScopedHistoryEvent(trashRow);
         }
       }
     }
     return true;
-  }, [documentOwnerId, managedLocalEditingContext, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
+  }, [documentOwnerId, managedLocalEditingContext, pushHistoryDebugEvent, user, historyDocumentId, historyScope, recordScopedHistoryEvent, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
@@ -26073,12 +26077,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       if (eraseLaneRestoreActions.length > 0) {
         const result = restoreDurableEraseDeletion(eraseLaneRestoreActions, {
           validateTarget: ({ annotation }) => Boolean(
-            user?.id
-            && eraseDocumentOwnerId
-            && canModify({
+            canModify({
               annotation,
-              viewerId: user.id,
+              viewerId: user?.id ?? null,
               documentOwnerId: eraseDocumentOwnerId,
+              localDocumentContext: managedLocalEditingContext,
             }),
           ),
         });
@@ -26144,12 +26147,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     if (restoreAction.eraseDeleteLane) {
       const result = restoreDurableEraseDeletion([restoreAction], {
         validateTarget: ({ annotation }) => Boolean(
-          user?.id
-          && eraseDocumentOwnerId
-          && canModify({
+          canModify({
             annotation,
-            viewerId: user.id,
+            viewerId: user?.id ?? null,
             documentOwnerId: eraseDocumentOwnerId,
+            localDocumentContext: managedLocalEditingContext,
           }),
         ),
       });
@@ -26185,6 +26187,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     handleSaveAnnotations,
     handleSpaceUpdate,
     handleRestoreSpace,
+    managedLocalEditingContext,
     pdfId,
     restoreDurableEraseDeletion,
     applyDurableEraseHistoryTransition,
@@ -27236,7 +27239,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       });
       pushLocalAnnotationHistoryAction(scopedDocumentAction);
 
-      if (pdfFile?.id) {
+      if (historyDocumentId && historyScope) {
         const deletedAt = new Date().toISOString();
         const actorName = user?.user_metadata?.full_name
           || user?.user_metadata?.name
@@ -27262,12 +27265,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         const rows = buildBulkAnnotationDeleteHistoryRows({
           objectRestoreActions,
           totalCount: removedCount,
-          documentId: pdfFile.id,
+          documentId: historyDocumentId,
           userId: user?.id || null,
           actorName,
           deletedAt,
         });
-        rows.forEach((row) => { void recordAndNotifyDocumentHistoryEvent(row); });
+        rows.forEach((row) => { void recordScopedHistoryEvent(row); });
       }
 
       if (selectedToolbarAnnotationRef.current?.annotation?.data?.seriesId === seriesId) {
@@ -27308,9 +27311,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     documentOwnerId,
     managedLocalEditingContext,
     handleSaveAnnotations,
-    pdfFile?.id,
+    historyDocumentId,
+    historyScope,
     pushLocalAnnotationHistoryAction,
     registerBulkJournaledAnnotationIds,
+    recordScopedHistoryEvent,
     user?.email,
     user?.id,
     user?.user_metadata,
@@ -31876,6 +31881,8 @@ ${pageBlocks}
       currentUserDisplayName: user?.user_metadata?.full_name || null,
       onToggleCollapse: handleLeftRailToggleCollapse,
       documentId: currentDocumentId,
+      historyDocumentId,
+      historyScope,
       user,
       onRestoreHistoryActivity: handleRestoreHistoryActivity,
       onCascadeRestoreRegion: handleCascadeRestoreRegion,
@@ -31972,6 +31979,8 @@ ${pageBlocks}
     cloudSyncForceFlush,
     documentPresenceList,
     currentDocumentId,
+    historyDocumentId,
+    historyScope,
     user,
     handleLeftRailToggleCollapse,
     handleRestoreHistoryActivity,

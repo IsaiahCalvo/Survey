@@ -158,6 +158,7 @@ function historyStorageMessage(status, isGuest) {
 export default function RevisionsPanel({
   documentId,
   user,
+  historyScope: requestedHistoryScope,
   embedded = false,
   // UX 2026-07-12 — mobileMode restyles the timeline rows to the demo's mobile
   // version-history rows (min-height 50, radius 8, 9px green dot, bolder title;
@@ -196,25 +197,42 @@ export default function RevisionsPanel({
   const refreshTimeoutRef = useRef(null);
   const spotlightFrameRef = useRef(null);
   const activeSpotlightRef = useRef(null);
-  // Embedded panels stay mounted while hidden. Only the visible History
-  // panel needs list reads, event refreshes, or the polling fallback.
-  const shouldLoadHistory = isActive && (embedded || open);
-  const actorUserId = user?.id || null;
+  const fallbackActorUserId = user?.id || null;
+  const hasExplicitHistoryScope = requestedHistoryScope !== undefined;
+  const requestedGuestScopeId = requestedHistoryScope?.guestScopeId === 'device-local'
+    ? 'device-local'
+    : null;
+  const requestedActorUserId = typeof requestedHistoryScope?.actorUserId === 'string'
+    && requestedHistoryScope.actorUserId === fallbackActorUserId
+    ? requestedHistoryScope.actorUserId
+    : null;
+  // Explicit device scope wins even for a signed-in user. Callers that have
+  // not moved to the explicit contract keep the prior user-derived behavior.
+  const actorUserId = requestedGuestScopeId
+    ? null
+    : (requestedActorUserId || (!hasExplicitHistoryScope ? fallbackActorUserId : null));
+  const guestScopeId = requestedGuestScopeId
+    || (!hasExplicitHistoryScope && !fallbackActorUserId ? 'device-local' : null);
   const historyScope = useMemo(
-    () => (actorUserId ? { actorUserId } : { guestScopeId: 'device-local' }),
-    [actorUserId],
+    () => (guestScopeId ? { guestScopeId } : (actorUserId ? { actorUserId } : null)),
+    [actorUserId, guestScopeId],
   );
+  const isGuestHistoryScope = guestScopeId === 'device-local';
+  // Embedded panels stay mounted while hidden. Only the visible History
+  // panel with a valid scope needs list reads, event refreshes, or polling.
+  const shouldLoadHistory = Boolean(historyScope) && isActive && (embedded || open);
   const scopeRef = useRef(null);
   const lifecycleRef = useRef({ key: null, generation: 0, mounted: true });
   const requestEpochRef = useRef(0);
-  const lifecycleKey = `${documentId || ''}\u0000${actorUserId || ''}\u0000${shouldLoadHistory ? '1' : '0'}`;
+  const historyScopeKey = guestScopeId ? `guest:${guestScopeId}` : `actor:${actorUserId || ''}`;
+  const lifecycleKey = `${documentId || ''}\u0000${historyScopeKey}\u0000${shouldLoadHistory ? '1' : '0'}`;
   if (lifecycleRef.current.key !== lifecycleKey) {
     lifecycleRef.current.key = lifecycleKey;
     lifecycleRef.current.generation += 1;
   }
   scopeRef.current = {
     documentId,
-    actorUserId,
+    historyScopeKey,
     shouldLoadHistory,
     generation: lifecycleRef.current.generation,
   };
@@ -225,7 +243,7 @@ export default function RevisionsPanel({
       scope?.shouldLoadHistory
       && current?.shouldLoadHistory
       && current.documentId === scope.documentId
-      && current.actorUserId === scope.actorUserId
+      && current.historyScopeKey === scope.historyScopeKey
       && current.generation === scope.generation
       && lifecycleRef.current.mounted
     );
@@ -259,9 +277,9 @@ export default function RevisionsPanel({
           setIsOwner(false);
           return;
         }
-        const creatorOwner = data.user_id === user.id && !data.project_id;
-        const projectOwner = data?.projects?.user_id === user.id;
-        setIsOwner(Boolean(creatorOwner || projectOwner || data.user_id === user.id));
+        const creatorOwner = data.user_id === actorUserId && !data.project_id;
+        const projectOwner = data?.projects?.user_id === actorUserId;
+        setIsOwner(Boolean(creatorOwner || projectOwner || data.user_id === actorUserId));
       } catch (_error) {
         if (cancelled || !isCurrentScope(scope)) return;
         setIsOwner(false);
@@ -287,7 +305,7 @@ export default function RevisionsPanel({
     setSelectedEventId(null);
     setSelectedEventDetail(null);
     setCascadePending(null);
-  }, [actorUserId, documentId, shouldLoadHistory]);
+  }, [documentId, historyScopeKey, shouldLoadHistory]);
 
   // Load list when drawer opens, when embedded in the left rail, or after a mutation.
   const refresh = useCallback(async (options = {}) => {
@@ -903,8 +921,6 @@ export default function RevisionsPanel({
     }
   }, [cascadePending, onCascadeRestoreRegion, refresh, isCurrentScope]);
 
-  if (!documentId) return null;
-
   const timelineItems = useMemo(() => {
     const items = [
       ...revisions.map((rev) => ({
@@ -925,6 +941,8 @@ export default function RevisionsPanel({
     items.sort((a, b) => b._ms - a._ms);
     return items;
   }, [revisions, historyEvents]);
+
+  if (!documentId) return null;
 
   const panel = (
     <div
@@ -978,9 +996,9 @@ export default function RevisionsPanel({
       </div>
 
       <div className={mobileMode ? 'mobile-revisions-panel' : undefined} style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-        {historyStorageMessage(historyStorageStatus, !actorUserId) && (
+        {historyStorageMessage(historyStorageStatus, isGuestHistoryScope) && (
           <div data-testid="document-history-storage-status" style={{ padding: 10, color: '#d8c28a', fontSize: 11 }}>
-            {historyStorageMessage(historyStorageStatus, !actorUserId)}
+            {historyStorageMessage(historyStorageStatus, isGuestHistoryScope)}
           </div>
         )}
         {historyStorageStatus?.legacyUnscopedAvailable && (
@@ -1229,7 +1247,9 @@ export default function RevisionsPanel({
         )}
         {!isOwner && (
           <div style={{ fontSize: 11, color: '#8d96a6' }}>
-            Only the document owner can save or restore versions.
+            {isGuestHistoryScope
+              ? 'Named versions are available for cloud document owners. Deleted local activity can still be restored above.'
+              : 'Only the document owner can save or restore named versions.'}
           </div>
         )}
       </div>

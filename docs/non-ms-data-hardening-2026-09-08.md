@@ -5610,6 +5610,73 @@ is authorized by these local checks. Keep accepted catalogs, pending writes and
 recovery records when rolling back; never return an adopted document to an
 incompatible legacy writer.
 
+## Managed-local History integration — 2026-09-14
+
+Managed local files now use their validated stable local ID for History and an
+explicit device-local scope, even while signed in. Cloud document identity is
+unchanged. All eleven viewer history writes use one scoped writer; notifications
+follow durable admission. Invalid local files and cloud files without an account
+fail closed. The desktop and mobile History entries use this separate contract;
+local files do not show cloud presence, sync controls or named-version actions.
+Guest erase restore uses the existing local editing capability and still checks
+locks. Cloud author/owner checks remain intact. The server Excel sync ID remains
+`pdfFile.id`; a regression test guards that boundary without calling Microsoft.
+
+Independent review found and resolved five draft issues: an unintended Excel ID
+change, a missed space-delete writer, unstable scope memo dependencies, enabled
+History with a null account scope, and a conditional-hook failure on null IDs.
+The final independent focused run passes 110/110 with no skipped tests, recorded
+in `/tmp/managed-local-history-independent-focused.log`. The production build
+passes, with the existing chunk-size warning, in
+`/tmp/survey-managed-history-build-20260914.log`.
+
+The real in-app browser at `http://127.0.0.1:5221/` imported the synthetic
+`clickable-link-test.pdf` through the normal guest local-file picker. A rectangle
+was drawn, selected, deleted, restored using History, saved with Cmd+S, closed
+through the document tab, and reopened from the local library. The restored
+rectangle and six history rows remained. The page had no application console
+errors or framework overlay; only the expected missing-Supabase-config warning.
+This verifies the normal local viewer, not only a standalone panel harness.
+Signed-user device scoping and mobile entry controls have mounted-test evidence,
+not real-auth or real-device evidence. No live Microsoft call was made.
+
+The final full `npm test` run exits 0: 7,209 tests across 716 files, 7,112 passed,
+97 skipped, zero failures and zero cancellations. The log is
+`/tmp/survey-managed-history-full-20260914.log`. The four runtime source hashes
+match the independent review and browser-tested source after the complete run.
+Skipped tests are not verified. No push, deployment or live database change is
+part of this checkpoint.
+The final AST-only `graphify update .` exits 0; its log is
+`/tmp/survey-managed-history-graph-20260914.log`. Generated graph files are not
+part of the code commit.
+
+### Delivery control after the elapsed-time review
+
+Do not open another broad optimization audit while closing this checkpoint.
+The four History/preferences follow-ups above were not the complete release
+backlog. The full objective remains intact. Existing required work must be
+reconciled against current code and evidence, not silently dropped or treated
+as complete because a prerequisite has tests.
+
+- **Implemented locally, with evidence:** the earlier per-flow request-count
+  reductions, local library/save/recovery work and this History integration.
+  Preserve the stated test scope in each earlier checkpoint; historical tests
+  do not establish current deployed behavior.
+- **Required local follow-ups:** legacy History recovery, actor-bound immediate
+  history writes and reconnect replay, private preference storage/migration.
+- **Required integration/rollout checks:** reconcile the existing disabled
+  catalog, generation replacement and aggregate-sync paths; migration ordering,
+  old-client compatibility, recovery/restore and multi-user permission tests
+  remain gates wherever earlier sections lack final evidence. Do not enable
+  them simply because their individual contracts pass local tests.
+- **Required outcome measurement:** live quota/egress and representative
+  request/latency measurements after an authorized rollout. A local commit or
+  clean Gmail search is not proof of lower Supabase usage.
+- **Deferred by the user:** Microsoft 365 trials and live workbook round trips.
+- **Not required without new evidence:** a VM migration, speculative indexes,
+  unrelated refactors, or another full competitor research pass. They must not
+  keep this goal running by themselves.
+
 ## Sources
 
 - [PostgreSQL string escape rules](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)
