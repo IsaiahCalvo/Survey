@@ -40,6 +40,50 @@ For signed-in local flows, put auto-login secrets in `.env.local` (see `AGENTS.m
 - Node built-in test runner + Playwright (`debug/`) for e2e
 - electron-builder + electron-updater for desktop installers
 
+## Mobile (iOS)
+
+Capacitor wraps the same Vite bundle as the desktop app. Two runners build,
+install, and launch it — one for the Simulator, one for a real phone:
+
+```bash
+npm run mobile:ios:sim                  # Simulator, embedded bundle
+npm run mobile:ios:sim -- --dev-server  # Simulator, live Vite reload
+
+npm run mobile:ios:device                 # Paired iPhone, embedded bundle
+npm run mobile:ios:device -- --dev-server # Paired iPhone, live Vite reload
+npm run mobile:ios:device -- --help       # All flags and env overrides
+```
+
+`mobile:ios:device` (`scripts/run-ios-device.mjs`) builds `dist`, runs
+`npx cap sync ios`, builds the Debug app for the device, then installs and
+launches it with `xcrun devicectl`. In bundled mode it verifies the
+`release.json` commit inside the built `.app` matches the worktree HEAD, so the
+phone can never quietly run stale code. There is no `devicectl device
+screenshot`, so unlike the Simulator runner it cannot capture a painted frame —
+confirm the UI on the phone.
+
+`--dev-server` makes the phone load a Vite server running on this Mac, so edits
+hot-reload on the device. The URL defaults to this Mac's Tailscale MagicDNS host
+(when Tailscale is up) or its `en0` LAN IP on port 5177; `localhost` is rejected
+because the phone cannot reach the Mac's loopback. Start Vite with
+`npm run dev -- --host` first, and keep it running. The live URL is written only
+into a disposable copy of `ios/` — the checked-in Capacitor config stays
+production-safe.
+
+**First-time device setup (one time per Mac / per phone):**
+
+1. Sign in to Xcode: **Xcode → Settings… (Cmd+,) → Accounts → "+" → Apple ID**.
+   Without an account, automatic signing fails with `No Accounts` and no
+   provisioning profile can be created.
+2. On the iPhone: **Settings → Privacy & Security → Developer Mode → On**
+   (the phone reboots), and after the first install
+   **Settings → General → VPN & Device Management → tap the developer entry → Trust**.
+3. The App target signs automatically against the personal team
+   (`DEVELOPMENT_TEAM` in `ios/App/App.xcodeproj`). Personal-team builds expire
+   after 7 days — re-run the command to refresh. The store bundle id
+   `com.kalvoe.survey` must not change; if a free team cannot register it, pass a
+   dev-only id to xcodebuild instead of editing the project.
+
 ## Project Layout
 
 ```
