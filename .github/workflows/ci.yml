@@ -1,14 +1,36 @@
-name: CI
+name: Build and tests
 
 # 2026-05-28 — Build + test gate. Before this, a broken change could land on
 # main with a green checkmark because nothing ran the build or the full test
 # suite. This is the guardrail that makes parallel work safe: a bad cross-edit
 # now shows up as a red X instead of being discovered by hand later.
+#
+# 2026-09-15 — Renamed from "CI" to "Build and tests" so the failure email
+# subject ("Run failed: Build and tests — …") says what actually broke in
+# words. `run-name` below gives every run a plain-English title, and the final
+# step writes a plain-English summary onto the run page. The deploy gate keys
+# off this workflow's NAME (deploy-production.yml `workflow_run`), and
+# scripts/release-integrity.mjs now asserts those two stay paired, so a future
+# rename cannot silently switch production deploys off.
+#
+# 2026-09-15 — Dependabot's weekly dependency bumps skip the five wall-clock
+# timing suites (SKIP_TIMING_SUITES below). Those budgets are the only
+# assertions here that can go red from runner load rather than from a real
+# defect — that is exactly what happened on 2026-09-07, run 34094848036 — and a
+# routine version bump cannot regress them. Everything else still runs on a
+# bump, including the license check, so nothing real is hidden; the timing
+# suites run in full on every human push and pull request, and again on main
+# the moment a bump is merged.
 
 on:
   push:
     branches: [main]
   pull_request:
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('Build and tests — PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title)
+      || format('Build and tests — main: {0}', github.sha) }}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,8 +38,15 @@ concurrency:
 
 jobs:
   build-and-test:
+    name: Build the app and run its tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # Dependency bumps opened by the Dependabot bot run the lighter,
+      # fully deterministic pass. Everything else runs the whole suite.
+      # A human re-run of a bot PR flips github.actor back to the person, so
+      # re-running a bump by hand gives you the full suite on demand.
+      IS_DEPENDENCY_BUMP: ${{ github.actor == 'dependabot[bot]' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -40,11 +69,20 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: Check dependency licenses
+        # Only on dependency bumps: the standalone "License check" workflow
+        # skips bot PRs so a bump cannot produce two separate red X's (and two
+        # separate emails) for one problem. Same script, same allowlist.
+        if: github.actor == 'dependabot[bot]'
+        run: npm run check:licenses
+
       - name: Type-check Supabase functions
         run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
 
       - name: Run tests
         run: npm test
+        env:
+          SKIP_TIMING_SUITES: ${{ github.actor == 'dependabot[bot]' && '1' || '' }}
 
       - name: Build web bundle
         run: npm run build
@@ -53,3 +91,41 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
+
+      - name: Explain this run in plain English
+        # Runs even when an earlier step failed, so the run page (linked from
+        # every failure email) opens on a readable explanation rather than on
+        # raw logs.
+        if: always()
+        run: |
+          {
+            echo "## What this check does"
+            echo
+            echo "It downloads the app's building blocks, checks the server code,"
+            echo "runs the automated tests, and builds the app the way the website"
+            echo "and the desktop app are built. If this is green, the change is"
+            echo "safe to ship."
+            echo
+            if [ "${IS_DEPENDENCY_BUMP}" = "true" ]; then
+              echo "**This run was a routine dependency update opened by a robot.**"
+              echo "It ran everything except five speed-measurement tests, which a"
+              echo "version bump cannot affect and which occasionally go red just"
+              echo "because the shared machine was busy. Those five run in full the"
+              echo "moment the update is merged."
+            else
+              echo "**This run was a change made by a person, so everything ran,**"
+              echo "**including the five speed-measurement tests.**"
+            fi
+            echo
+            echo "### Result: ${{ job.status }}"
+            echo
+            if [ "${{ job.status }}" != "success" ]; then
+              echo "Something above went red. Open the step marked with a red X —"
+              echo "its name says which part broke: installing, checking the server"
+              echo "code, the tests, or the build."
+              echo
+              echo "If the failing test mentions a time budget in milliseconds,"
+              echo "re-run this check before investigating: those few tests measure"
+              echo "speed and can fail simply because the shared machine was busy."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

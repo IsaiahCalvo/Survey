@@ -172,7 +172,6 @@ export function assertStaticReleaseContract(root = process.cwd()) {
 
   const deployWorkflow = readFileSync(join(root, '.github', 'workflows', 'deploy-production.yml'), 'utf8');
   assert.match(deployWorkflow, /workflow_run:/);
-  assert.match(deployWorkflow, /workflows:\s*\[CI\]/);
   assertOrdered(deployWorkflow, [
     'supabase db push --linked --yes',
     'supabase functions deploy --project-ref',
@@ -189,6 +188,25 @@ export function assertStaticReleaseContract(root = process.cwd()) {
 
   const ciWorkflow = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.match(ciWorkflow, /node scripts\/release-integrity\.mjs --static/);
+
+  // 2026-09-15 — this used to be a hard-coded `assert.match(deployWorkflow,
+  // /workflows:\s*\[CI\]/)`. The production deploy is triggered by
+  // `workflow_run` on the CI workflow's DISPLAY NAME, not its filename, so
+  // renaming ci.yml's `name:` without editing deploy-production.yml would stop
+  // every production deploy silently — no red X anywhere. Asserting the pairing
+  // instead of the literal string is strictly stronger: it still fails if the
+  // deploy trigger drifts, and it now also fails on the rename that a literal
+  // check would have sailed straight past.
+  const ciWorkflowName = /^name:[ \t]*(.+?)[ \t]*$/m.exec(ciWorkflow)?.[1];
+  assert.ok(ciWorkflowName, 'ci.yml must declare a workflow name');
+  const quotedCiName = ciWorkflowName.replace(/^['"]|['"]$/g, '');
+  const escapedCiName = quotedCiName.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(
+    deployWorkflow,
+    new RegExp(`workflows:\\s*\\[\\s*['"]?${escapedCiName}['"]?\\s*\\]`),
+    `deploy-production.yml must trigger on the CI workflow named "${quotedCiName}" — `
+      + 'workflow_run matches the display name, so these two must be renamed together',
+  );
 
   const desktopReleaseWorkflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.match(

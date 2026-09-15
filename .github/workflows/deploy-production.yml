@@ -2,7 +2,12 @@ name: Deploy production
 
 on:
   workflow_run:
-    workflows: [CI]
+    # 2026-09-15 — this must stay character-for-character equal to the `name:`
+    # in .github/workflows/ci.yml; `workflow_run` matches on the workflow's
+    # display name, not its filename, so a rename that misses this line would
+    # silently stop every production deploy. scripts/release-integrity.mjs
+    # asserts the two are still paired, and that check runs in CI.
+    workflows: ["Build and tests"]
     types: [completed]
   workflow_dispatch:
 
