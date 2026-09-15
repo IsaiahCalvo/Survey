@@ -106,9 +106,14 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     || prior.documentId !== documentId || prior.generationId !== generationId
     || prior.enabled !== enabled || prior.active !== active) {
     prior?.controller?.abort();
+    prior?.initialReadController?.abort();
+    prior?.refreshController?.abort();
+    prior?.subscriptionController?.abort();
     scopeRef.current = { file, actorUserId, documentId, generationId, enabled, active,
       live: true, request: 0, controller: null, currentReceipt: null,
-      review: null, busy: false, receipts: new Map() };
+      initialReadController: null, refreshController: null, subscriptionController: null, readEpoch: 0,
+      initialReadPending: false, refreshDirty: false, refreshPending: false, flushRefresh: null,
+      browserOffline: false, review: null, busy: false, receipts: new Map() };
   }
   const scope = scopeRef.current;
   const store = useMemo(() => {
@@ -118,7 +123,8 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     catch { return null; }
   }, [cache, enabled]);
   const blank = useMemo(() => ({ scope, currentReceipt: null, review: null,
-    busy: false, error: '', known: !enabled, online: false, recoveryBlocked: false }), [enabled, scope]);
+    busy: false, refreshing: false, error: '', known: !enabled,
+    online: false, recoveryBlocked: false }), [enabled, scope]);
   const [view, setView] = useState(blank);
   const shown = view.scope === scope ? view : blank;
   const current = useCallback(() => scopeRef.current === scope && scope.live
@@ -139,13 +145,18 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     scope.live = true;
     if (!enabled || !active) return () => { scope.live = false; };
     const token = ++scope.request;
+    const readEpoch = ++scope.readEpoch;
     const controller = new AbortController();
     scope.controller = controller;
-    const effectCurrent = () => current() && token === scope.request;
+    const effectCurrent = () => current() && token === scope.request
+      && readEpoch === scope.readEpoch;
     if (!actorUserId || !documentId || !generationId || !client || !store) {
       update({ known: false, error: 'Shared document definitions are not available.' });
       return () => { controller.abort(); scope.live = false; };
     }
+    scope.initialReadController = controller;
+    scope.initialReadPending = true;
+    update({ refreshing: true });
     void (async () => {
       let cached = null;
       try {
@@ -207,9 +218,19 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
             recoveryBlocked: true, error: errorText(error) });
         }
       }
-    })();
+    })().finally(() => {
+      if (scope.initialReadController !== controller) return;
+      scope.initialReadController = null;
+      scope.initialReadPending = false;
+      if (scope.refreshDirty) scope.flushRefresh?.();
+      else update({ refreshing: false });
+    });
     return () => {
       if (scope.controller === controller) scope.controller = null;
+      if (scope.initialReadController === controller) {
+        scope.initialReadController = null;
+        scope.initialReadPending = false;
+      }
       if (token === scope.request) scope.request++;
       controller.abort();
       scope.live = false;
@@ -217,16 +238,163 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
   }, [active, actorUserId, blank, client, current, documentId, enabled, generationId,
     owner, remember, scope, store, update]);
 
+  useEffect(() => {
+    if (!enabled || !active || !actorUserId || !documentId || !generationId
+      || !client || !store) return undefined;
+    const generation = scope.readEpoch;
+    const subscriptionController = new AbortController();
+    scope.subscriptionController = subscriptionController;
+    let disposed = false;
+    let queued = false;
+    let pending = false;
+    let disposeSubscription = () => {};
+    let refreshController = null;
+    const scopeCurrent = () => !disposed && !subscriptionController.signal.aborted
+      && current() && scope.readEpoch >= generation;
+
+    const schedule = () => {
+      if (!scopeCurrent() || scope.browserOffline || queued || pending
+        || scope.busy || scope.initialReadPending
+        || !scope.refreshDirty) return;
+      queued = true;
+      Promise.resolve().then(() => {
+        queued = false;
+        if (!scopeCurrent() || scope.browserOffline || pending
+          || scope.busy || scope.initialReadPending
+          || !scope.refreshDirty) return;
+        scope.refreshDirty = false;
+        pending = true;
+        const readGeneration = ++scope.readEpoch;
+        refreshController = new AbortController();
+        scope.refreshController = refreshController;
+        void (async () => {
+          let cached = scope.currentReceipt;
+          try {
+            const [intent, savedCurrent] = await Promise.all([
+              store.getIntent(actorUserId, documentId),
+              store.getCurrentReceipt(actorUserId, documentId),
+            ]);
+            cached ||= savedCurrent;
+            const receipt = await client.readCurrent({ documentId,
+              signal: refreshController.signal });
+            if (!scopeCurrent() || readGeneration !== scope.readEpoch) return;
+            await store.putCurrentReceipt(actorUserId, documentId, receipt);
+            if (!scopeCurrent() || readGeneration !== scope.readEpoch) return;
+            remember(receipt);
+
+            let nextIntent = intent;
+            let nextReview = scope.review;
+            if (nextIntent && sameOperation(receipt, nextIntent)) {
+              await store.finishIntent(actorUserId, documentId, nextIntent.revision,
+                nextIntent.operationId, nextIntent.requestSha256);
+              nextIntent = null;
+              nextReview = null;
+            } else if (nextReview
+              && !sameDefinitionRevisionReference(nextReview.currentReceipt, receipt)) {
+              if (nextIntent?.phase === 'pending'
+                && nextIntent.operationId === nextReview.wire?.review?.operationId) {
+                await store.cancelIntent(actorUserId, documentId, nextIntent.revision,
+                  nextIntent.operationId);
+                nextIntent = null;
+              }
+              nextReview = nextIntent?.phase === 'dispatched' ? nextReview : null;
+            }
+            if (!scopeCurrent() || readGeneration !== scope.readEpoch) return;
+            update({ currentReceipt: receipt, review: nextReview, known: true,
+              online: true, refreshing: scope.refreshDirty,
+              recoveryBlocked: nextIntent?.phase === 'dispatched',
+              error: nextIntent?.phase === 'dispatched'
+                ? 'A saved definition update needs an online retry before editing can continue.' : '' });
+          } catch (error) {
+            if (!scopeCurrent() || readGeneration !== scope.readEpoch) return;
+            const mayShowBlockedCache = cached && [
+              'DOCUMENT_DEFINITION_REVISION_UNAVAILABLE',
+              'DOCUMENT_DEFINITION_REVISION_CACHE_FULL',
+              'DOCUMENT_DEFINITION_REVISION_CACHE_UNAVAILABLE',
+            ].includes(error?.code);
+            if (mayShowBlockedCache) remember(cached);
+            update({ currentReceipt: mayShowBlockedCache ? cached : null,
+              known: Boolean(mayShowBlockedCache),
+              online: false, refreshing: scope.refreshDirty, recoveryBlocked: true,
+              error: mayShowBlockedCache
+                ? 'Showing the last verified definition while offline. Editing is paused.'
+                : errorText(error) });
+          } finally {
+            if (scope.refreshController === refreshController) scope.refreshController = null;
+            refreshController = null;
+            pending = false;
+            if (scopeCurrent() && scope.refreshDirty) schedule();
+            else scope.refreshPending = false;
+          }
+        })();
+      });
+    };
+    const invalidate = () => {
+      if (!scopeCurrent()) return;
+      if (scope.browserOffline) return;
+      scope.refreshDirty = true;
+      scope.refreshPending = true;
+      update({ refreshing: true });
+      schedule();
+    };
+    const offline = () => {
+      if (!scopeCurrent()) return;
+      scope.browserOffline = true;
+      scope.readEpoch++;
+      scope.refreshDirty = false;
+      scope.refreshPending = false;
+      refreshController?.abort();
+      update({ online: false, refreshing: false, recoveryBlocked: true,
+        error: 'Showing the last verified definition while offline. Editing is paused.' });
+    };
+    const online = () => {
+      if (!scopeCurrent()) return;
+      scope.browserOffline = false;
+      invalidate();
+    };
+    scope.flushRefresh = schedule;
+    const onVisible = () => {
+      if (globalThis.document?.hidden !== true) invalidate();
+    };
+    globalThis.window?.addEventListener?.('offline', offline);
+    globalThis.window?.addEventListener?.('online', online);
+    globalThis.window?.addEventListener?.('focus', invalidate);
+    globalThis.document?.addEventListener?.('visibilitychange', onVisible);
+    if (typeof client.subscribeCurrent === 'function') {
+      try {
+        disposeSubscription = client.subscribeCurrent({ documentId,
+          signal: subscriptionController.signal, onInvalidate: invalidate }) || (() => {});
+      } catch { /* focus, online, and the initial authoritative read remain available */ }
+    }
+    return () => {
+      disposed = true;
+      scope.readEpoch++;
+      subscriptionController.abort();
+      refreshController?.abort();
+      try { disposeSubscription(); } catch { /* best-effort teardown */ }
+      globalThis.window?.removeEventListener?.('offline', offline);
+      globalThis.window?.removeEventListener?.('online', online);
+      globalThis.window?.removeEventListener?.('focus', invalidate);
+      globalThis.document?.removeEventListener?.('visibilitychange', onVisible);
+      if (scope.subscriptionController === subscriptionController) scope.subscriptionController = null;
+      if (scope.refreshController === refreshController) scope.refreshController = null;
+      if (scope.flushRefresh === schedule) scope.flushRefresh = null;
+      scope.refreshPending = false;
+    };
+  }, [active, actorUserId, client, current, documentId, enabled, generationId,
+    remember, scope, store, update]);
+
   const requireOwner = useCallback(() => {
     if (!current() || !scope.enabled) throw fail('The document or account changed.');
     if (!owner) throw fail('Only the document owner can change its shared definition.');
     if (!shown.currentReceipt) throw fail('The shared document definition is not ready.');
-    if (shown.online !== true || shown.recoveryBlocked === true) {
+    if (shown.online !== true || shown.recoveryBlocked === true || shown.refreshing === true
+      || scope.browserOffline || scope.initialReadPending || scope.refreshDirty || scope.refreshPending) {
       throw fail('Finish the saved definition check before editing or applying another update.');
     }
     if (!client || !store) throw fail('Shared document definitions are not available.');
   }, [client, current, owner, scope, shown.currentReceipt, shown.online,
-    shown.recoveryBlocked, store]);
+    shown.recoveryBlocked, shown.refreshing, store]);
 
   const requestReview = useCallback(async (selection = template) => {
     requireOwner();
@@ -272,6 +440,7 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
       if (token === scope.request) {
         scope.busy = false;
         if (scope.controller === controller) scope.controller = null;
+        scope.flushRefresh?.();
       }
     }
   }, [actorUserId, client, createOperationId, current, documentId, remember,
@@ -317,7 +486,9 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
         dispatched.operationId, dispatched.requestSha256);
       if (!current() || token !== scope.request) throw fail('The document or account changed.');
       update({ currentReceipt: actualCurrent, review: null, busy: false, known: true,
-        online: true, recoveryBlocked: false, error: '' });
+        online: !scope.browserOffline, recoveryBlocked: scope.browserOffline,
+        error: scope.browserOffline
+          ? 'Showing the last verified definition while offline. Editing is paused.' : '' });
       return actualCurrent;
     } catch (error) {
       if (current() && token === scope.request) update({ busy: false,
@@ -330,6 +501,7 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
       if (token === scope.request) {
         scope.busy = false;
         if (scope.controller === controller) scope.controller = null;
+        scope.flushRefresh?.();
       }
     }
   }, [actorUserId, client, current, documentId, remember, requireOwner,
@@ -383,12 +555,14 @@ export function useDocumentDefinitionRevisions({ enabled = false, file, checkedB
     entities: accepted ? shown.currentReceipt.entityCatalog.entities : EMPTY,
     modules: accepted ? shown.currentReceipt.surveyDefinition.modules : EMPTY,
     review: shown.review, busy: shown.busy, error: shown.error,
-    canReview: accepted && owner && shown.online === true && shown.recoveryBlocked !== true,
-    mutationsBlocked: enabled && (!accepted || shown.online !== true || shown.recoveryBlocked === true),
+    canReview: accepted && owner && shown.online === true && shown.recoveryBlocked !== true
+      && shown.refreshing !== true,
+    mutationsBlocked: enabled && (!accepted || shown.online !== true
+      || shown.recoveryBlocked === true || shown.refreshing === true),
     online: shown.online === true, recoveryBlocked: shown.recoveryBlocked === true,
     requestReview, applyReview,
     cancelReview, getCachedRevision, loadRevision,
   }), [accepted, applyReview, cancelReview, enabled, getCachedRevision, loadRevision,
     owner, requestReview, shown.busy, shown.currentReceipt, shown.error, shown.online,
-    shown.recoveryBlocked, shown.review]);
+    shown.recoveryBlocked, shown.refreshing, shown.review]);
 }

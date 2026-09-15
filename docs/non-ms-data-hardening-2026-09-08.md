@@ -7,7 +7,35 @@ sections describe their dated checkpoint, not an instruction to repeat completed
 work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
-Newest local batch: disabled Node replacement route, restricted service brokers,
+Newest verified local batch: live definition refresh. The real app subscription
+uses exact-document notifications only as hints; the hook re-reads and verifies
+the definition, coalesces bursts and fences refresh/recovery/account races.
+The follow-on SQL migration touches only the exact document after an accepted
+head change, with no new public table or grants. Browser owner apply changed
+the already-open collaborator's visible labels with one extra collaborator read.
+All flags remain off; no hosted or native multi-user proof is claimed.
+
+Full baseline suite: 7,506 total, 7,408 passed, 98 skipped, zero failures or
+cancellations. That run began before the final two hook timing fixes. Final
+focused verification on the revised source passed 61/61 (including those timing
+cases and disposable PostgreSQL), and the final build/index/diff checks passed.
+Logs: `/tmp/survey-definition-refresh-full-20260915.log`,
+`/tmp/survey-definition-refresh-focused-final-20260915.log`,
+`/tmp/survey-definition-refresh-build-final-20260915.log`, and
+`/tmp/survey-definition-refresh-graph-final-20260915.log`.
+
+Previous committed local batch: `c54dffad8e8e74b94d4d8593afb1b5c879c4fae4`,
+checked replacement AppShell/PDFViewer wiring, same-origin development route,
+and fixed-host transport selection for recognized packaged native scopes.
+The full run passed 7,387 tests with 98 skipped, zero failures/cancellations
+(7,485 total); focused checks passed 76/76. Build and graph update passed.
+The in-app browser proved page duplication, exact definition binding, lost-reply
+retry without duplicate publication, and five-page reopen. Native-host selection
+has unit coverage only. See the final dated checkpoint for scope and limitations.
+The post-commit Gmail check at 12:32:16 UTC found no new matching service alerts.
+
+Previous local batch: `c41102052c59c3a974ea17b3296412ce61ebf2a1`,
+disabled Node replacement route, restricted service brokers,
 and durable V5 client receipts. Final verification passed 7,372 tests with 98
 skipped, zero failures and zero cancellations (7,470 total). The focused run
 passed 130/130; Vite build, code-index update and diff checks passed. Logs use
@@ -30,14 +58,15 @@ not a Vercel deployment build or proof of hosted runtime/memory limits. The
 installed CLI is 59.12.0; upgrade it before hosted validation, not during this
 local batch. No packages or cloud settings were changed.
 
-Still required: normal AppShell/PDFViewer V5 caller wiring; an actual same-origin
-dev route; a pinned transport for packaged Electron/Capacitor; hosted package,
-resource, schema/client rollout and leased multi-user checks. All new runtime
+Local caller/dev-route/native-transport selection gaps above are closed by
+`c54dffad8`; do not reopen them based on older entries. Still required: hosted
+package/resource validation, schema/client rollout and leased multi-user checks.
+All new runtime
 flags remain off. Cold offline cloud-file copies remain a separate access-policy
 choice; Microsoft testing is deferred. No quota or production latency reduction
 is claimed from local tests.
 
-Latest committed backend checkpoint: `edcb648b01d16838590d7756c094e4b26143e931`
+Earlier committed database checkpoint: `edcb648b01d16838590d7756c094e4b26143e931`
 (checked publication bound to the accepted definition revision). Its final run
 passed 7,352 tests with 98 skipped and zero failures; 36 focused checks included
 real disposable PostgreSQL publication, replay, rollback and lock-order proof.
@@ -45,7 +74,7 @@ The Vite build and code-index update passed. The post-commit Gmail check at
 11:28:54 UTC found no new matching service alerts. This is local proof, not
 deployment or measured quota savings.
 
-Latest committed app checkpoint: `523ebba8bc51c7f225f211839a52f2a77e0526a6`
+Earlier committed definition-app checkpoint: `523ebba8bc51c7f225f211839a52f2a77e0526a6`
 (reviewed definition updates, local receipts, history review and offline edit
 guards). Its final full run passed 7,343 tests with 98 skipped and zero failures;
 build, code-index update and the scoped synthetic-browser checks passed.
@@ -76,18 +105,62 @@ do not treat them as current instructions to redo completed integration.
   owner controls; the browser checks do not replace hosted access-rule tests.
 - New V5 publication binding is locally implemented and tested below; activation
   must select this contract explicitly and must not fall back to V4.
-- Known remaining work: provide a supported checked replacement server entry
-  and app caller; and resolve cold offline checked-PDF access/reopen policy.
-  The repo already has a Vercel Node API host; no new provider is needed for
-  the local route implementation. The current bounded batch covers a disabled
-  route, service-only public database brokers and a V5 client/transport.
-  Cold offline cloud-file copies remain a separate, undecided access policy.
-  Existing service or injected-caller tests do not close those requirements.
+- Completed locally: checked replacement server entry, service-only public
+  database brokers, default app caller and V5 retry transport. The real app
+  browser proof used synthetic local services, not hosted services.
+- Deferred policy: cold offline cloud-file copies. No implementation or access
+  policy was silently selected; local-file offline support is a separate path.
 - Hosted gates remain: schema/client rollout, real leased multi-user/offline/
   revocation checks, and measured production quota/latency results. Microsoft
   365 trials and live Microsoft testing remain deferred.
 
 The detailed evidence and limitations for each checkpoint follow below.
+
+### Bounded closeout check after c54dffad8
+
+Current-source review found no remaining local integration blocker in the
+assigned aggregate caller, local durability and checked replacement paths.
+A fresh focused run passed 99/99 with no skips across checkedDataAppWiring,
+useAnnotationDocAggregateMounted, annotationDocSyncAggregateIntegration,
+annotationLocalDurabilityReceipt, useAnnotationCheckedGenerationMounted and
+documentPageReplacementCallerWiring. This is scoped proof, not a claim that
+every possible optimization is exhausted.
+
+Definition closeout findings:
+
+- Closed locally: already-open collaborator refresh after another user publishes
+  a definition revision. The verified refresh preserves pending work, fences
+  old callbacks and handles reconnect without trusting event payloads as data.
+  No repeated full-read polling was added.
+- Verify the retirement path for modules/categories/entities. The revision
+  format supports archival, but the template editor deletes these IDs while
+  only checklist items expose archive controls. Confirm whether the existing
+  upgrade review covers this before changing private template behavior.
+
+These replace vague instructions to continue optimizing. Default-off feature
+enablement is a release gate, not an unimplemented feature or authorization
+to enable it. No new production cost claim is made.
+
+The new two-client mounted test reproduced the missing subscription/convergence
+(0/2 before hook changes) and now passes. Initial subscription/SQL checks passed
+10/10. Final focused checks passed 61/61, including initial recovery/join ordering,
+mid-read notifications, forbidden/integrity failures, synchronous stale callbacks,
+offline during apply, and old-client read completion. See the full-versus-focused
+run distinction above; no claim of a full rerun on the last timing edits is made.
+
+In-app browser proof at 127.0.0.1:5207 used real AppShell/PDFViewer, the real app
+revision client and the real refresh hook with synthetic local RPC/SSE boundaries.
+Owner A and collaborator B opened the same checked document. The owner reviewed
+four label changes and applied once; B's visible survey/module/category changed
+from OLD to UPDATED without reload/reopen. B's current-definition reads rose from
+2 to 3; totals were A=5/B=3, one preview, one apply, one broadcast, two channels,
+zero channel closes/reopens. B had no owner review controls. Both pages rendered
+without framework overlays; screenshots show the old/new labels. The earlier
+fixture download-intercept error was fixed in temp files only; subsequent console
+warnings were blocked analytics. The collaborator's annotation sync badge was
+loading before and after this test, so annotation-sync completion is not proved
+by this fixture. This closes only live definition refresh, not hosted multi-user,
+native, retirement composition, deployment or production quota measurement.
 
 Current publication check at `523ebba8`: the generic replacement handler uses
 `prepare_document_generation_replacement_v4` / `publish_document_generation_v4`;
