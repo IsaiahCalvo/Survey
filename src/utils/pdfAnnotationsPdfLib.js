@@ -6629,12 +6629,15 @@ const wrapFieldText = (text, measureWidth, maxWidth) => {
   const splitLongWord = (word) => {
     const parts = [];
     let part = '';
-    for (const character of word) {
-      if (part && !fits(part + character)) {
+    // Grapheme clusters, not code points — breaking a word mid-cluster loses
+    // the emoji exactly the way the annotation-text wrapper used to (see the
+    // cluster note in layoutFlattenedText).
+    for (const cluster of segmentGraphemes(word)) {
+      if (part && !fits(part + cluster)) {
         parts.push(part);
-        part = character;
+        part = cluster;
       } else {
-        part += character;
+        part += cluster;
       }
     }
     if (part) parts.push(part);

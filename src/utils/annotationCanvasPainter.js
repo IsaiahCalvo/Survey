@@ -21,6 +21,7 @@
  * free of React/fabric/DOM side effects.
  */
 import { calculateCalloutConnection } from './calloutGeometry.js';
+import { segmentGraphemes } from './textGraphemes.js';
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import {
   ARROWHEAD_STYLES,
@@ -889,6 +890,35 @@ export function cssFirstBaseline(context, cssFontShorthand, lineHeightPx) {
   return offset;
 }
 
+// break-all wrap, walked by GRAPHEME CLUSTER.
+//
+// 2026-09-15 (emoji changed shape mid-zoom): both wrappers here used to walk
+// `for (const character of paragraph)`, which iterates CODE POINTS. A skin
+// tone, a keycap, a flag or a ZWJ sequence is several code points, so the break
+// could land INSIDE one emoji and paint the halves as separate glyphs on two
+// lines. The SVG twin wraps with CSS `word-break: break-all`, and CSS breaks
+// between typographic character units — it can never split a cluster. Since
+// this painter IS the visible annotation surface for the zoom/scroll proxy
+// window (LightweightAnnotationOverlay mounts with visible={suspendFullSvgForProxy}),
+// the disagreement showed up as emoji mangling themselves the moment a zoom
+// gesture started and healing again when the SVG came back. Same splitter as
+// the PDF export wrapper (src/utils/textGraphemes.js).
+function wrapByGraphemeBreakAll(context, paragraph, innerWidth) {
+  const lines = [];
+  let line = '';
+  for (const cluster of segmentGraphemes(paragraph)) {
+    const candidate = line + cluster;
+    if (line && context.measureText(candidate).width > innerWidth) {
+      lines.push(line);
+      line = cluster;
+    } else {
+      line = candidate;
+    }
+  }
+  lines.push(line);
+  return lines;
+}
+
 // Twin of renderText (svgAnnotationRenderers.jsx:964-1168): break-all wrap at
 // the padded inner width, Fabric's ×1.13 line step, half-leading vertical
 // centering per line box, decorations, alignment, background + border rects,
@@ -972,21 +1002,11 @@ function drawText(context, object) {
   const innerDisplayHeight = innerHeight + descenderBuffer;
   context.font = fontShorthand;
 
-  // break-all wrap — per-character breaks, mirroring the foreignObject CSS.
+  // break-all wrap — cluster-by-cluster breaks, mirroring the foreignObject CSS.
   const lines = [];
   text.split(/\r?\n/).forEach((paragraph) => {
     if (!paragraph) { lines.push(''); return; }
-    let line = '';
-    for (const character of paragraph) {
-      const candidate = line + character;
-      if (line && context.measureText(candidate).width > innerWidth) {
-        lines.push(line);
-        line = character;
-      } else {
-        line = candidate;
-      }
-    }
-    lines.push(line);
+    lines.push(...wrapByGraphemeBreakAll(context, paragraph, innerWidth));
   });
 
   const lineHeightPx = fontSize * (toNumber(object.lineHeight, 1.16) || 1.16) * 1.13;
@@ -1432,17 +1452,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
         lines.push('');
         return;
       }
-      let line = '';
-      for (const character of paragraph) {
-        const candidate = line + character;
-        if (line && context.measureText(candidate).width > maxTextWidth) {
-          lines.push(line);
-          line = character;
-        } else {
-          line = candidate;
-        }
-      }
-      lines.push(line);
+      lines.push(...wrapByGraphemeBreakAll(context, paragraph, maxTextWidth));
     });
     const lineHeightPx = fontSize * (toNumber(callout.style?.lineHeight, 1) || 1) * 1.13;
     const availableHeight = boxHeightWithDescenders;
