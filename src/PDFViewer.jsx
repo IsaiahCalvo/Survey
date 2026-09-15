@@ -224,6 +224,7 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
@@ -3777,6 +3778,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!start) return;
       if (activeTool !== 'pan') return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
+      // UX 2026-09-15 — a click on a live form field fills the field and does
+      // NOTHING else: no annotation selection, no switch to Select. Without
+      // this the quick-click hit test would still find an annotation that
+      // merely overlaps the widget box and yank the user out of Pan mid-typing.
+      // (Reference behaviour: Drawboard PDF — "it does not select a widget
+      // annotation, it does not show handles, it does not change tool".)
+      if (isLiveFormWidgetTarget(e.target)) return;
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
@@ -3975,6 +3983,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const e = latestEvent;
       latestEvent = null;
       if (!e) return;
+      // UX 2026-09-15 — over a live form field the control owns the affordance:
+      // its own caret / checkbox cursor, no annotation glow and no `pointer`
+      // override, matching the click rule above (a widget click never selects).
+      if (isLiveFormWidgetTarget(e.target)) {
+        if (lastKey !== '') {
+          lastKey = '';
+          setPendingSvgHover((prev) => (prev == null ? prev : null));
+        }
+        if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
+        return;
+      }
       const hit = resolveAnnotationAt(e);
       // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
       // glow under the pan tool (same affordance the Select tool shows).
@@ -32207,7 +32226,19 @@ ${pageBlocks}
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
                               scale={layerScale}
-                              interactive={activeTool === 'pan' || activeTool === 'select'}
+                              /* UX 2026-09-15 — form fields are live in Pan and in EVERY
+                                 Select-family mode (Rectangle, Lasso and Text Select all
+                                 land here as 'select' / 'text-select'). Reference
+                                 behaviour: Drawboard PDF, where one click toggles a
+                                 checkbox or focuses a text field under both Pan and
+                                 Select, with no tool change and no selection chrome —
+                                 widgets are document content, not markup. Text Select was
+                                 the gap: the mode arms PDF text, and a form field is not
+                                 text, so leaving widgets dead there made the field
+                                 unfillable for no reason. Creation tools (pen, shape,
+                                 text, counter, eraser) stay excluded so a stroke started
+                                 over a field is not eaten by the control. */
+                              interactive={activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select'}
                               persistedValues={pageFormFieldValues}
                               onFieldChange={(payload) => handlePdfjsFormFieldChange(pageNumber, payload)}
                               onFieldBlur={(payload) => handlePdfjsFormFieldBlur(pageNumber, payload)}

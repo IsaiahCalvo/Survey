@@ -48,6 +48,7 @@ import {
 } from '../utils/pdfZoomMath';
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
+import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1877,6 +1878,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,
       // click, and change sequence entirely on desktop.
       if (isEditableTarget(event.target)
+        || isLiveFormWidgetTarget(event.target)
         || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2006,6 +2008,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const isNativeInteractionTarget = (target) => {
       const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
       if (isEditableTarget(nativeTarget)) return true;
+      // A tap that lands in a widget's own box but beside its control (the
+      // section's padding, or the pointer-events:none chrome SVG) must still
+      // reach the control's section instead of being preventDefault()ed into a
+      // pan. isEditableTarget only sees the <input>/<select>/<textarea> itself.
+      if (isLiveFormWidgetTarget(nativeTarget)) return true;
       if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
       return interactionModeRef.current === 'TextSelection'
         && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer, [data-shape-kind^="text-markup-"]'));
