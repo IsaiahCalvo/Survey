@@ -1876,8 +1876,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // Pan owns blank document space, never native controls layered over it.
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,
       // click, and change sequence entirely on desktop.
+      // UX 2026-09-15 (Drawboard parity): AcroForm widgets stay fully live under
+      // Pan — a click toggles a checkbox / focuses a text field, and a drag on a
+      // widget does NOT pan. isEditableTarget only inspects the DIRECT target,
+      // so a click that lands on the <section> wrapper's padding rather than on
+      // its <input> used to be swallowed by the pan preventDefault.
+      // `[data-pan-interactive="true"]` is the general seam: stamp it on
+      // anything that must eat the gesture instead of panning. It is NOT on
+      // annotation carriers — Drawboard pans from an unselected annotation, so
+      // that drag has to keep reaching this scroller.
       if (isEditableTarget(event.target)
-        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')) return;
+        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')
+        || event.target?.closest?.('[data-pan-interactive="true"], .pdfjsFormLayer[data-interactive="true"] section')) return;
       event.preventDefault();
       event.stopPropagation();
       // A new grab always beats an in-flight glide.
@@ -2007,6 +2017,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
       if (isEditableTarget(nativeTarget)) return true;
       if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
+      // Mobile mirror of the desktop pan bail-out above: a tap on a live form
+      // widget must not be preventDefault()ed at touchstart or the field never
+      // focuses and the checkbox never toggles.
+      if (nativeTarget?.closest?.('[data-pan-interactive="true"], .pdfjsFormLayer[data-interactive="true"] section')) return true;
       return interactionModeRef.current === 'TextSelection'
         && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer, [data-shape-kind^="text-markup-"]'));
     };

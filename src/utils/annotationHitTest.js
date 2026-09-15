@@ -4,8 +4,12 @@
  *
  * Given a native mouse/pointer event, walks the event path + elementsFromPoint
  * + (pan-mode fallback) per-page bounding-rect check to resolve the
- * user-intent target. Returns { pageNumber, annotationIndex, calloutId, kind }
- * where kind is 'page' | 'callout' | 'counter' | 'annotation'.
+ * user-intent target. Returns
+ * { pageNumber, annotationIndex, calloutId, kind, groupIndices, editEntryKind }
+ * where kind is 'page' | 'callout' | 'counter' | 'annotation' | 'group' and
+ * editEntryKind is the edit-entry hit layer's label for the resolved carrier
+ * ('text' | 'counter' | 'line' | 'poly' | 'callout', or null when nothing under
+ * the cursor opens an editor).
  *
  * Pan-mode fallback: the SVG annotation layer is pointer-events:none in pan
  * mode so elementsFromPoint can't see it. We manually hit-test the SVG
@@ -30,6 +34,14 @@ export function resolveAnnotationAt(e) {
   // element. Saving the actual hit element keeps subsequent
   // page-bounds checks aimed at the page the user clicked on.
   let matchedPageDiv = null;
+  // UX 2026-09-15 (Drawboard parity — Pan is a selection mode): the edit-entry
+  // hit layer stamps `data-edit-entry-kind` on every editor-bearing carrier
+  // ('text' | 'counter' | 'line' | 'poly' | 'callout') in Pan AND in every
+  // Select mode. Surfacing it here means a pan-mode double-tap can route to the
+  // right editor with ONE hit-test and no second copy of the type→editor
+  // switch (src/utils/annotationEditRoute.js owns that mapping). null means
+  // "nothing here opens an editor" — e.g. a pen stroke or a plain rectangle.
+  let editEntryKind = null;
   // UX: Phase 19 follow-up — when the click lands on empty space inside
   // the outer dashed bounding box of a multi-selection, resolve it as
   // a 'group' kind so the right-click menu can batch cut/copy/delete/
@@ -67,6 +79,10 @@ export function resolveAnnotationAt(e) {
     }
     if (!isCounter) {
       if (el.getAttribute('data-counter-overlay') != null) isCounter = true;
+    }
+    if (editEntryKind == null) {
+      const ek = el.getAttribute('data-edit-entry-kind');
+      if (ek) editEntryKind = ek;
     }
   };
 
@@ -197,6 +213,10 @@ export function resolveAnnotationAt(e) {
     if (!el) return;
     const carrier = el.closest?.('[data-annotation-index], [data-callout-id], [data-counter-overlay]') || el;
     readFrom(carrier);
+    // The callout's edit-entry label lives on the wrap <g> ABOVE the
+    // [data-callout-id] subtree (it has to cover both the visible chrome and
+    // the hit-target overlay), so the carrier alone can miss it.
+    if (editEntryKind == null) readFrom(el.closest?.('[data-edit-entry-kind]'));
   };
 
   // Imported links have no painted SVG path. Their transparent HTML region
@@ -297,5 +317,5 @@ export function resolveAnnotationAt(e) {
   else if (annotationIndex != null) kind = 'annotation';
   else if (groupIndices && groupIndices.length >= 2) kind = 'group';
 
-  return { pageNumber, annotationIndex, calloutId, kind, groupIndices };
+  return { pageNumber, annotationIndex, calloutId, kind, groupIndices, editEntryKind };
 }

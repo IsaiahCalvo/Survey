@@ -224,6 +224,7 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
@@ -32207,7 +32208,12 @@ ${pageBlocks}
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
                               scale={layerScale}
-                              interactive={activeTool === 'pan' || activeTool === 'select'}
+                              // UX 2026-09-15 (Drawboard parity): AcroForm widgets are live
+                              // in Pan AND in every Select mode — a click toggles a checkbox
+                              // / focuses a text field with no tool change and no selection
+                              // chrome. Lasso and rectangle Select both report activeTool
+                              // 'select'; 'text-select' was the remaining gap.
+                              interactive={activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select'}
                               persistedValues={pageFormFieldValues}
                               onFieldChange={(payload) => handlePdfjsFormFieldChange(pageNumber, payload)}
                               onFieldBlur={(payload) => handlePdfjsFormFieldBlur(pageNumber, payload)}
@@ -32739,25 +32745,17 @@ ${pageBlocks}
                                     //   - text / textbox / i-text → text edit mode
                                     //     (cursor input), unchanged.
                                     //   - callout → callout edit mode, unchanged.
-                                    const isCounter = annotationData?.data?.type === 'counter';
-                                    if (annotationType === 'path') {
-                                      appDebug(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    if (!isCounter && (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle')) {
-                                      appDebug(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    let editType;
-                                    if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
-                                      editType = 'text';
-                                    } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
-                                      editType = 'bbox';
-                                    } else {
-                                      // KAL-125 / CD-6: unknown type (e.g. stamp/image) — explicit
-                                      // no-op. The old else→'callout' fallthrough could accidentally
-                                      // mount the orphaned callout canvas for any unrecognized type.
-                                      appDebug(`[App p${pageNumber}] edit SKIPPED — unhandled type=${annotationType}, idx=${annotationIndex}`);
+                                    // Single source of truth for the type→editor mapping:
+                                    // src/utils/annotationEditRoute.js. Pan-mode edit entry
+                                    // (Drawboard parity — double-click opens the same editor
+                                    // from Pan as from Select) calls the SAME helper, so the
+                                    // two entry points can never drift. The rules it encodes
+                                    // are unchanged: path → no-op; plain rect/circle/ellipse/
+                                    // triangle → no-op; counter/line/polygon/polyline → bbox;
+                                    // text/textbox/i-text → text; unknown → no-op.
+                                    const editType = resolveEditTypeForAnnotation(annotationData);
+                                    if (!editType) {
+                                      appDebug(`[App p${pageNumber}] edit SKIPPED — no editor for type=${annotationType}, idx=${annotationIndex}`);
                                       return;
                                     }
                                     appDebug(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
@@ -32770,6 +32768,14 @@ ${pageBlocks}
                                     });
                                   }}
                                   activeTool={activeTool}
+                                  // UX 2026-09-15 (Drawboard parity — Pan is a selection
+                                  // mode): mount the edit-entry HIT LAYER under Pan.
+                                  // Deliberately NOT folded into `svgInteractive` above:
+                                  // that flag arms the wrapper's stopPropagation + cursor
+                                  // and would kill pan drags started over the page. This
+                                  // one only stamps data attributes inside the layer, so
+                                  // Pan keeps owning every drag.
+                                  panEditEntryEnabled={activeTool === 'pan'}
                                   selectionMode={selectionMode}
                                   lassoTouchOperation={lassoTouchOperation}
                                   lassoTouchMode={lassoTouchMode}
