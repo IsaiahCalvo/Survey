@@ -6,6 +6,7 @@ import {
   commandsToPolygonSet,
   normalizeMultiPolygon,
 } from '../src/utils/paperAnnotationGeometry.js';
+import { perfBudgetMs } from '../scripts/ci-perf-tests.mjs';
 
 const fixtures = {
   quadratic: {
@@ -477,8 +478,12 @@ test('multi-cubic first erase stays inside the interaction release budget', {
   const elapsed = performance.now() - started;
 
   assert.equal(result.didChange, true);
+  // Single-sample on purpose: this measures the FIRST erase, JIT warm-up
+  // included, because that is what the user feels on pointer release. Best-of-N
+  // would measure a different thing. perfBudgetMs() only relaxes it inside the
+  // non-blocking CI perf lane.
   assert.ok(
-    elapsed < 750,
-    `first erase took ${elapsed.toFixed(1)}ms`,
+    elapsed < perfBudgetMs(750),
+    `first erase took ${elapsed.toFixed(1)}ms, budget ${perfBudgetMs(750)}ms`,
   );
 });

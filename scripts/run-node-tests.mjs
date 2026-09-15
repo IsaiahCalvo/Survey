@@ -3,6 +3,8 @@ import { dirname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { TIMING_SENSITIVE_TEST_FILES } from './timing-sensitive-tests.mjs';
 
+import { CI_PERF_TEST_FILES } from './ci-perf-tests.mjs';
+
 async function collectTestFiles(root, shouldInclude) {
   const entries = await readdir(root, { withFileTypes: true });
   const files = [];
@@ -37,14 +39,46 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-// These suites contain real wall-clock performance budgets or multi-second
-// transport timing assertions. Run them alone after the main suite. The list
-// lives in its own module so the CI performance job can import exactly the
-// same paths (see scripts/timing-sensitive-tests.mjs).
+// The suites that must never share a machine with other tests. The list lives
+// in its own module (scripts/timing-sensitive-tests.mjs) so every CI job can
+// import exactly the same paths: the shards exclude precisely this set, so no
+// file is ever run twice or silently dropped.
+//
+// The list splits in two, and the split is what decides blocking vs not:
+//
+//   * CI_PERF_TEST_FILES (scripts/ci-perf-tests.mjs) — the three files that
+//     assert real wall-clock or CPU budgets. They run ONLY under `--only-perf`,
+//     in the non-blocking `perf` job. `npm test` skips them: a timing reading
+//     taken on a loaded runner must never be able to veto a merge or a deploy.
+//
+//   * the rest — annotationDocConcurrency (99 CRDT convergence tests) and
+//     svgPathTransformFidelity (no timing assertion at all). Slow correctness
+//     gates, not budgets, so they keep their teeth: they stay BLOCKING and run
+//     alone, one process at a time, under `--only-timing-sensitive`.
+const perfSet = new Set(CI_PERF_TEST_FILES);
+const timingSensitiveSet = new Set(TIMING_SENSITIVE_TEST_FILES);
+
+// A perf file dropped out of the timing-sensitive list would fall into a shard
+// and carry its wall-clock budget onto a loaded, parallel runner — the exact
+// failure both lists exist to prevent. Fail loudly rather than drift.
+const perfOutsideTimingList = CI_PERF_TEST_FILES
+  .filter((file) => !timingSensitiveSet.has(file));
+if (perfOutsideTimingList.length > 0) {
+  console.error(
+    'CI_PERF_TEST_FILES must be a subset of TIMING_SENSITIVE_TEST_FILES; '
+    + `missing from the timing-sensitive list: ${perfOutsideTimingList.join(', ')}`,
+  );
+  process.exit(1);
+}
+
 const isolatedTestFiles = TIMING_SENSITIVE_TEST_FILES
-  .filter((file) => testFiles.includes(file));
+  .filter((file) => testFiles.includes(file) && !perfSet.has(file));
+const perfTestFiles = TIMING_SENSITIVE_TEST_FILES
+  .filter((file) => testFiles.includes(file) && perfSet.has(file));
 const isolatedSet = new Set(isolatedTestFiles);
-const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
+const mainTestFiles = testFiles.filter(
+  (file) => !isolatedSet.has(file) && !perfSet.has(file),
+);
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -54,14 +88,24 @@ const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
 //   --shard=N/M                run only bin N (1-based) of an M-way split of
 //                              the MAIN pass. Timing-sensitive files are never
 //                              in a shard.
-//   --only-timing-sensitive    run only the timing-sensitive files, alone and
-//                              sequentially (the CI performance job).
+//   --only-timing-sensitive    run only the BLOCKING timing-sensitive files,
+//                              alone and sequentially (the CI `timing-suites`
+//                              job). Never includes the perf-budget files.
+//   --only-perf                run only the wall-clock/CPU budget files, alone
+//                              and sequentially (the non-blocking CI `perf`
+//                              job). Unlike every other mode this does NOT stop
+//                              at the first failure: the lane is a report, and
+//                              a report that stops after the first slow file
+//                              hides the other two.
 //   --list                     print the selected files, one per line, and
 //                              exit without running anything. Used to prove
-//                              the shards partition the suite.
+//                              the shards plus the two isolated jobs partition
+//                              the suite exactly.
 // ---------------------------------------------------------------------------
 function parseArgs(argv) {
-  const options = { shard: null, onlyTimingSensitive: false, list: false };
+  const options = {
+    shard: null, onlyTimingSensitive: false, onlyPerf: false, list: false,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -69,6 +113,10 @@ function parseArgs(argv) {
 
     if (arg === '--only-timing-sensitive') {
       options.onlyTimingSensitive = true;
+      continue;
+    }
+    if (arg === '--only-perf') {
+      options.onlyPerf = true;
       continue;
     }
     if (arg === '--list') {
@@ -99,8 +147,13 @@ function parseArgs(argv) {
     options.shard = { index: shardIndex, count: shardCount };
   }
 
-  if (options.shard && options.onlyTimingSensitive) {
-    console.error('--shard and --only-timing-sensitive are mutually exclusive.');
+  const exclusive = [
+    options.shard ? '--shard' : null,
+    options.onlyTimingSensitive ? '--only-timing-sensitive' : null,
+    options.onlyPerf ? '--only-perf' : null,
+  ].filter(Boolean);
+  if (exclusive.length > 1) {
+    console.error(`${exclusive.join(', ')} are mutually exclusive.`);
     process.exit(1);
   }
 
@@ -167,6 +220,11 @@ const options = parseArgs(process.argv.slice(2));
 
 let selectedMainFiles = mainTestFiles;
 let selectedIsolatedFiles = isolatedTestFiles;
+let selectedPerfFiles = [];
+// Every mode but the perf lane stops at the first failure: one broken file
+// makes the rest of a correctness run meaningless. The perf lane is a report,
+// so it runs all three files and names every one that was over budget.
+let stopOnFirstFailure = true;
 let selectionLabel = 'full suite';
 
 if (options.shard) {
@@ -178,17 +236,37 @@ if (options.shard) {
     + `~${bins[index - 1].load.toFixed(1)}s estimated)`;
 } else if (options.onlyTimingSensitive) {
   selectedMainFiles = [];
-  selectionLabel = `timing-sensitive suites only (${selectedIsolatedFiles.length} files)`;
+  selectionLabel = `blocking timing-sensitive suites only `
+    + `(${selectedIsolatedFiles.length} files)`;
+} else if (options.onlyPerf) {
+  // A rename or deletion that quietly emptied the perf lane would look green
+  // forever. Fail loudly instead.
+  const missing = CI_PERF_TEST_FILES.filter((file) => !testFiles.includes(file));
+  if (missing.length > 0) {
+    console.error(`Missing perf test files: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  selectedMainFiles = [];
+  selectedIsolatedFiles = [];
+  selectedPerfFiles = perfTestFiles;
+  stopOnFirstFailure = false;
+  selectionLabel = `performance budget suites only (${selectedPerfFiles.length} files)`;
 }
 
 if (options.list) {
-  for (const file of [...selectedMainFiles, ...selectedIsolatedFiles]) {
+  for (const file of [
+    ...selectedMainFiles, ...selectedIsolatedFiles, ...selectedPerfFiles,
+  ]) {
     console.log(file);
   }
   process.exit(0);
 }
 
-if (selectedMainFiles.length === 0 && selectedIsolatedFiles.length === 0) {
+if (
+  selectedMainFiles.length === 0
+  && selectedIsolatedFiles.length === 0
+  && selectedPerfFiles.length === 0
+) {
   console.error(`No test files selected for ${selectionLabel}.`);
   process.exit(1);
 }
@@ -241,4 +319,20 @@ for (const file of selectedIsolatedFiles) {
   if (exitCode !== 0) break;
   exitCode = await runTestFile(file, `isolated timing suite: ${file}`);
 }
+
+if (selectedPerfFiles.length > 0) {
+  const overBudget = [];
+  for (const file of selectedPerfFiles) {
+    const code = await runTestFile(file, `perf budget suite: ${file}`);
+    if (code !== 0) overBudget.push(file);
+    if (code !== 0 && stopOnFirstFailure) break;
+  }
+  if (overBudget.length > 0) {
+    console.error(`\n[perf] over budget: ${overBudget.join(', ')}`);
+    exitCode = 1;
+  } else {
+    console.log(`\n[perf] all ${selectedPerfFiles.length} budget suites passed.`);
+  }
+}
+
 process.exit(exitCode);

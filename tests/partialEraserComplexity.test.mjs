@@ -11,22 +11,28 @@ import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import {
   runComplexityScenario,
 } from '../debug/benchmarks/partial-eraser-complexity-child.mjs';
+import { perfBudgetMs } from '../scripts/ci-perf-tests.mjs';
 
 const CHILD_PATH = new URL(
   '../debug/benchmarks/partial-eraser-complexity-child.mjs',
   import.meta.url,
 );
 
+// Only the four millisecond budgets below go through perfBudgetMs(); it is a
+// no-op outside the non-blocking CI perf lane. The memory, vertex, component
+// and byte budgets are host-independent readings of what the eraser actually
+// retains and emits, so they are never scaled -- they keep full strength
+// everywhere, including in the lane.
 const INTERACTIVE_BUDGET = Object.freeze({
-  p95CommitWorkMs: 75,
+  p95CommitWorkMs: perfBudgetMs(75),
   // The paired work reading rejects slow eraser work without failing when a
   // loaded test host suspends the isolated child mid-commit.
-  maxCommitWorkMs: 250,
-  p95CommitCpuMs: 75,
+  maxCommitWorkMs: perfBudgetMs(250),
+  p95CommitCpuMs: perfBudgetMs(75),
   // p95 guards sustained CPU cost. A single hosted-runner GC can charge
   // multiple worker threads to process.cpuUsage(), so keep only catastrophic
   // outliers above the user-visible 250 ms wall-time ceiling from passing.
-  maxCommitCpuMs: 500,
+  maxCommitCpuMs: perfBudgetMs(500),
   // Memory is guarded by two readings that depend on what the eraser does
   // rather than on the host it runs on.
   //

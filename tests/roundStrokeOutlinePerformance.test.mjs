@@ -10,6 +10,7 @@ import {
   styledStrokeCommandsToPolygonSet,
   sweptDiskPolygon,
 } from '../src/utils/paperAnnotationGeometry.js';
+import { perfBudgetMs, perfTimingSamples } from '../scripts/ci-perf-tests.mjs';
 
 const signedArea = (ring) => {
   let twiceArea = 0;
@@ -99,7 +100,10 @@ const scaleCommands = (commands, scale) => commands.map((command) => [
 // measured 2-3x inside budget when re-run alone. The budgets are unchanged;
 // the per-test `timeout` values are harness guards sized for the extra
 // samples, not performance assertions.
-const TIMING_SAMPLES = 5;
+// perfTimingSamples() raises this to 7 inside the non-blocking CI perf lane.
+// More samples cannot weaken the assertion -- load only ever ADDS time, so a
+// larger N drives the minimum closer to our own cost from above.
+const TIMING_SAMPLES = perfTimingSamples(5);
 const bestOf = (run, samples = TIMING_SAMPLES) => {
   run();
   let result;
@@ -140,8 +144,9 @@ test('tiny high-resolution cubic produces a bounded round outline without scale 
   const vertices = vertexCount(outline);
 
   assert.ok(
-    bestMs < 250,
-    `round outline took ${bestMs.toFixed(1)}ms at best (samples ${readings}ms)`,
+    bestMs < perfBudgetMs(250),
+    `round outline took ${bestMs.toFixed(1)}ms at best, budget ${perfBudgetMs(250)}ms `
+    + `(samples ${readings}ms)`,
   );
   assert.ok(
     vertices <= flattened.length * 4 + 80,
@@ -422,8 +427,9 @@ test('huge proportional round strokes stay inside the release-time budget', {
     assert.equal(result.deletedIds.length, 0);
     assert.equal(result.pageAnnotations.objects[0].polygons.length, 2);
     assert.ok(
-      bestMs < 500,
-      `scale ${scale} pointer release took ${bestMs.toFixed(1)}ms at best (samples ${readings}ms)`,
+      bestMs < perfBudgetMs(500),
+      `scale ${scale} pointer release took ${bestMs.toFixed(1)}ms at best, `
+      + `budget ${perfBudgetMs(500)}ms (samples ${readings}ms)`,
     );
   }
 });
@@ -504,8 +510,9 @@ test('bridge cleanup is bounded when a huge eraser crosses ultra-thin ink', {
     assert.equal(result.deletedIds.length, 0);
     assert.equal(result.pageAnnotations.objects[0].polygons.length, 2);
     assert.ok(
-      bestMs < 250,
-      `width ${strokeWidth} cleanup took ${bestMs.toFixed(1)}ms at best (samples ${readings}ms)`,
+      bestMs < perfBudgetMs(250),
+      `width ${strokeWidth} cleanup took ${bestMs.toFixed(1)}ms at best, `
+      + `budget ${perfBudgetMs(250)}ms (samples ${readings}ms)`,
     );
   }
 });
