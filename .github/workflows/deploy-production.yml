@@ -24,9 +24,21 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
+# 2026-09-15 — the `production-deploy` concurrency group used to sit HERE, at
+# workflow level, and it was cancelling real deploys.
+#
+# This workflow fires on every completion of "Build and tests", and the vast
+# majority of those are pull-request runs whose deploy job the `if:` below
+# skips. A workflow-level group is entered by the RUN, before any job condition
+# is evaluated, so every one of those skipped runs still joined the queue — and
+# GitHub cancels a previously pending run when a newer one queues. A genuine
+# main deploy sitting pending behind an in-flight one was therefore cancelled
+# the moment the next bot pull request finished its CI, silently and with no red
+# X: runs 34921705229 and 34921689758 on 2026-09-15 were exactly that.
+#
+# The group now lives on the deploy job, under its `if:`, so only runs that are
+# actually going to deploy ever enter it. cancel-in-progress stays false — a
+# deploy in flight is never interrupted.
 
 jobs:
   deploy:
@@ -37,6 +49,11 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'main')
+    # Job-level on purpose — see the note above `jobs:`. A skipped run must
+    # never enter this group, or it cancels a pending real deploy.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
