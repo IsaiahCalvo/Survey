@@ -53,3 +53,45 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
+
+  # 2026-09-15 - The performance lane. Informational ONLY.
+  #
+  # `continue-on-error: true` means a red job here does NOT fail the workflow,
+  # so it cannot block a merge and cannot stop deploy-production (which gates on
+  # the CI run's conclusion). That is the entire point: run 34094848036 failed
+  # main on "round outline took 341.6ms" against a 250ms budget - twice, on the
+  # original run and the rerun - and held a production deploy behind a timing
+  # reading taken on a busy 2-core runner, not behind a regression.
+  #
+  # These suites are NOT deleted and NOT skipped. They run on every CI run, in
+  # parallel with build-and-test, so they add no wall-clock time to the gate.
+  # CI_PERF_LANE=1 raises the best-of sample count and applies a 2x slack factor
+  # to the millisecond budgets (scripts/ci-perf-tests.mjs) so the lane reds on
+  # genuine slowdowns rather than on runner weather. The unscaled budgets still
+  # apply to `npm run test:perf` locally.
+  #
+  # If this job goes red: re-run it alone first (load-sensitive by nature), and
+  # only then go looking for the regression.
+  perf:
+    name: Performance budgets (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Run performance budget suites
+        run: npm run test:perf
+        env:
+          CI_PERF_LANE: '1'
+          NODE_OPTIONS: --max-old-space-size=8192

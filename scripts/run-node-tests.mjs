@@ -2,6 +2,8 @@ import { readdir } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 
+import { CI_PERF_TEST_FILES } from './ci-perf-tests.mjs';
+
 async function collectTestFiles(root, shouldInclude) {
   const entries = await readdir(root, { withFileTypes: true });
   const files = [];
@@ -36,17 +38,54 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-// These suites contain real wall-clock performance budgets or multi-second
-// transport timing assertions. Run them alone after the main suite.
+// `--only-perf` runs ONLY the wall-clock/CPU budget suites (the non-blocking
+// `perf` job in ci.yml). Every other invocation, `npm test` included, skips
+// them: a timing reading on a loaded runner must never be able to veto a merge
+// or a deploy. See scripts/ci-perf-tests.mjs for the full reasoning and for why
+// each file is or is not on that list.
+const onlyPerf = process.argv.slice(2).includes('--only-perf');
+const perfSet = new Set(CI_PERF_TEST_FILES);
+const perfTestFiles = testFiles.filter((file) => perfSet.has(file));
+
+if (onlyPerf) {
+  if (perfTestFiles.length !== CI_PERF_TEST_FILES.length) {
+    // A rename or deletion that quietly emptied the perf lane would look green
+    // forever. Fail loudly instead.
+    const missing = CI_PERF_TEST_FILES.filter((file) => !testFiles.includes(file));
+    console.error(`Missing perf test files: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  // No early exit here. The blocking suite stops at the first failure because
+  // one broken file makes the rest meaningless; the perf lane is a report, and
+  // a report that stops after the first slow file hides the other two.
+  const overBudget = [];
+  for (const file of perfTestFiles) {
+    const code = await runTestFile(file, `perf budget suite: ${file}`);
+    if (code !== 0) overBudget.push(file);
+  }
+  if (overBudget.length === 0) {
+    console.log(`\n[perf] all ${perfTestFiles.length} budget suites passed.`);
+    process.exit(0);
+  }
+  console.error(`\n[perf] over budget: ${overBudget.join(', ')}`);
+  process.exit(1);
+}
+
+// These suites contain multi-second transport timing assertions. Run them
+// alone after the main suite. They stay BLOCKING: annotationDocConcurrency is
+// 99 CRDT convergence tests and svgPathTransformFidelity has no timing
+// assertion at all -- both are correctness gates that happen to be slow, not
+// performance budgets. The three files that really did assert wall-clock or CPU
+// budgets moved to CI_PERF_TEST_FILES; the perfSet guard below keeps them out
+// even if one is ever re-added here by mistake.
 const isolatedTestFiles = [
   'tests/annotationDocConcurrency.test.mjs',
-  'tests/partialEraseCurveLocality.test.mjs',
-  'tests/partialEraserComplexity.test.mjs',
-  'tests/roundStrokeOutlinePerformance.test.mjs',
   'tests/svgPathTransformFidelity.test.mjs',
-].filter((file) => testFiles.includes(file));
+].filter((file) => testFiles.includes(file) && !perfSet.has(file));
 const isolatedSet = new Set(isolatedTestFiles);
-const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
+const mainTestFiles = testFiles.filter(
+  (file) => !isolatedSet.has(file) && !perfSet.has(file),
+);
 
 function runTestFile(file, label, timeoutMs = 120_000) {
   console.log(`\n[tests] ${label}`);
