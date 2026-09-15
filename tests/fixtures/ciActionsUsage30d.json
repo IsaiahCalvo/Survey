@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "Measured 2026-09-15 against Kal-Voe/Survey (private repo, GitHub Free plan) with",
+    "`gh api repos/Kal-Voe/Survey/actions/runs --paginate` plus, per run,",
+    "`repos/.../actions/runs/{id}/jobs`. Billed minutes are computed the way GitHub",
+    "bills them: per JOB, ceil(wall seconds / 60), minimum 1.",
+    "",
+    "The /timing endpoint answers billable.UBUNTU.total_ms = 0 on this account, so job",
+    "start/complete timestamps are the source. Independently cross-checked with",
+    "`gh run list --workflow=ci.yml -L 1000` (116 CI runs in the window).",
+    "",
+    "Window: 2026-08-17T07:35:09Z .. 2026-09-15T17:32:10Z (the last 30 days)."
+  ],
+  "windowDays": 30,
+  "measuredAt": "2026-09-15",
+  "ci": {
+    "runs": 116,
+    "billedMinutes": 517,
+    "byActor": {
+      "human_push": { "runs": 74, "billedMinutes": 334 },
+      "human_pull_request": { "runs": 27, "billedMinutes": 108 },
+      "dependabot_pull_request": { "runs": 15, "billedMinutes": 75 }
+    },
+    "fullRunBilledMinutes": 8,
+    "fullRunStepSeconds": {
+      "_source": "run 35001119537, job 104489465391 - the reference full green run",
+      "setUpJob": 2, "checkout": 5, "setupNode": 5, "setupDeno": 4,
+      "releaseIntegrity": 1, "npmInstall": 15, "denoCheck": 5,
+      "npmTest": 381, "viteBuild": 4
+    }
+  },
+  "otherWorkflows": {
+    "Deploy production": { "runs": 124, "billedMinutes": 255 },
+    "License Gate": { "runs": 28, "billedMinutes": 28 },
+    "Toggle auth CAPTCHA": { "runs": 9, "billedMinutes": 9 },
+    "Dependabot Updates": { "runs": 22, "billedMinutes": 35 },
+    "TMP eraser memory probe": { "runs": 2, "billedMinutes": 16 }
+  },
+  "mainHistory": {
+    "_comment": "git log --first-parent main --since=2026-08-16; a commit 'skippable' when every path it touches matches ci.yml's paths-ignore (root-level *.md, or graphify-out/**).",
+    "firstParentCommits": 189,
+    "commitsWithFiles": 155,
+    "skippableUnderPathsIgnore": 1
+  },
+  "freeAllowanceMinutesPerMonth": 2000
+}
