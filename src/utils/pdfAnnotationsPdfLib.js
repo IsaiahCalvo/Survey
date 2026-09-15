@@ -49,6 +49,7 @@ import {
   EMOJI_ADVANCE_EM,
   fontCoversCodePoint,
   pdfTextString,
+  segmentGraphemes,
   widthOfTextRunsAtSize,
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
@@ -5284,12 +5285,21 @@ const layoutFlattenedText = (obj, fonts) => {
   // The emoji store is keyed by grapheme AND raster size, so the run splitter
   // needs the size this box draws at to find the right image.
   const emojiStore = fonts?.emojiRasters || null;
-  const runsOf = (value) => {
-    const { runs, dropped } = buildTextFontRuns(value, font, fallbacks, { emojiStore, fontSize });
+  const splitRuns = (value) => buildTextFontRuns(value, font, fallbacks, { emojiStore, fontSize });
+  // 2026-09-15 (false "left out of the drawn text" warning): measuring is a
+  // THROWAWAY PROBE. The wrapper asks about candidate lines it may never keep,
+  // including the ones it is asking about precisely in order to reject them.
+  // Feeding those probes into `droppedCodePoints` reported characters as
+  // uncovered by every font when the export went on to draw them perfectly —
+  // every multi-code-point emoji warned, because a cluster PREFIX is what a
+  // probe measures. Only the runs that are actually DRAWN report now, and they
+  // are built exactly once, per kept line, at the bottom of this function.
+  const measure = (value) => widthOfTextRunsAtSize(splitRuns(value).runs, fontSize);
+  const runsOfDrawnLine = (value) => {
+    const { runs, dropped } = splitRuns(value);
     dropped.forEach((codePoint) => droppedCodePoints.add(codePoint));
     return runs;
   };
-  const measure = (value) => widthOfTextRunsAtSize(runsOf(value), fontSize);
 
   const padding = 6;
   const innerWidth = Math.max(1, width - padding * 2);
@@ -5297,19 +5307,81 @@ const layoutFlattenedText = (obj, fonts) => {
   const fits = (value) => {
     try { return measure(value) <= innerWidth; } catch { return true; }
   };
+
+  // 2026-09-15 (a multi-code-point emoji on a wrap boundary vanished): the wrap
+  // walks GRAPHEME CLUSTERS, never code points. `buildTextFontRuns` splits by
+  // cluster and looks each emoji cluster up in the raster store by its EXACT
+  // string, so a cluster prefix — one regional indicator of 🇯🇵, the base of a
+  // 👷🏽‍♀️ ZWJ sequence — has no raster, and the monochrome emoji font is
+  // deliberately not embedded once the colour rasteriser has run, so there was
+  // nothing to fall through to either: the prefix measured as ZERO width, the
+  // break was noticed only on the cluster's LAST code point, and the wrapper
+  // then started the new line with that code point alone while the rest of the
+  // cluster stayed stranded on the line before. Neither half had a raster, so
+  // neither half drew: ten 🇯🇵 in a 120pt box painted six, and for regional
+  // indicators the misalignment cascaded through every later flag. A cluster is
+  // indivisible here now, so there is no prefix left to lose.
+  const appendByCluster = (out, startLine, clusters) => {
+    let line = startLine;
+    for (const cluster of clusters) {
+      if (line && !fits(line + cluster)) {
+        out.push(line);
+        line = cluster;
+      } else {
+        line += cluster;
+      }
+    }
+    return line;
+  };
+
+  // UX: `splitByGrapheme` is fabric's own wrap switch, and every serialized
+  // Textbox carries it (fabric's `Textbox.toObject` always emits it). Every
+  // text object this app creates sets it TRUE — PageAnnotationLayer,
+  // textEditCommit, calloutAnnotationBridge and calloutEditAdapter all do — and
+  // fabric's own `_wrapLine` then breaks between grapheme clusters with no
+  // regard for spaces. Matching that is the whole point: an exported line break
+  // lands where the user watched it land on the canvas, and CJK and Thai, which
+  // have no spaces to break at, keep the only wrap they can have. An object
+  // that asks for fabric's OTHER mode gets fabric's word wrap instead: break at
+  // the space before the word that overflows, and inside a word only when that
+  // one word is wider than the box.
+  const wrapsByWord = obj?.splitByGrapheme === false;
+  const wrapParagraphByWord = (out, clusters) => {
+    // Words, and the space runs between them, with every cluster intact.
+    const tokens = [];
+    clusters.forEach((cluster) => {
+      const space = cluster === ' ' || cluster === '\t';
+      const last = tokens[tokens.length - 1];
+      if (last && last.space === space) last.clusters.push(cluster);
+      else tokens.push({ space, clusters: [cluster] });
+    });
+    let line = '';
+    tokens.forEach((token) => {
+      const text = token.clusters.join('');
+      // A run of spaces never forces a break of its own: it rides on the line
+      // it ends and is trimmed off if a break happens right after it, which is
+      // what every text engine does with a trailing space.
+      if (token.space) { line += text; return; }
+      if (fits(line + text)) { line += text; return; }
+      if (/\S/.test(line)) {
+        out.push(line.replace(/[ \t]+$/, ''));
+        line = '';
+      }
+      // A word wider than the whole box still has to go somewhere: break inside
+      // it cluster by cluster, exactly the way grapheme wrapping would.
+      line = appendByCluster(out, line, token.clusters);
+    });
+    return line;
+  };
+
   const lines = [];
   String(obj?.text || '').split(/\r?\n/).forEach((paragraph) => {
     if (!paragraph) { lines.push(''); return; }
-    let line = '';
-    for (const character of paragraph) {
-      if (line && !fits(line + character)) {
-        lines.push(line);
-        line = character;
-      } else {
-        line += character;
-      }
-    }
-    lines.push(line);
+    const clusters = segmentGraphemes(paragraph);
+    const tail = wrapsByWord
+      ? wrapParagraphByWord(lines, clusters)
+      : appendByCluster(lines, '', clusters);
+    lines.push(tail);
   });
   const maxLines = Math.max(1, Math.floor((height - padding * 2 + fontSize * 0.35) / lineHeight));
   const visibleLines = lines.slice(0, maxLines);
@@ -5336,7 +5408,7 @@ const layoutFlattenedText = (obj, fonts) => {
     wantsUnderline: obj?.underline === true,
     wantsLinethrough: obj?.linethrough === true || obj?.strikethrough === true,
     lines: visibleLines.map((text, index) => {
-      const runs = runsOf(text);
+      const runs = runsOfDrawnLine(text);
       let lineWidth = innerWidth;
       try { lineWidth = widthOfTextRunsAtSize(runs, fontSize); } catch { /* use inner width */ }
       const textX = obj?.textAlign === 'center'
