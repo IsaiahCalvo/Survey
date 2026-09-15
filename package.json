@@ -45,6 +45,7 @@
     "mobile:ios:device": "node scripts/run-ios-device.mjs",
     "test:mobile-pinch-native": "node scripts/test-ios-native-pinch.mjs",
     "test:mobile-zoomout-native": "MOBILE_PINCH_FIXTURE=se011.pdf MOBILE_PINCH_ONLY=AppNativePinchUITests/NativePinchUITests/testSlowZoomOutFromDeepScaleDoesNotTerminateWebContentProcess node scripts/test-ios-native-pinch.mjs",
+    "mobile:phone": "node scripts/publish-phone-update.mjs",
     "mobile:android": "npx cap open android"
   },
   "dependencies": {
