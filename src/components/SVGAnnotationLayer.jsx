@@ -546,6 +546,36 @@ const SVGAnnotationLayer = memo(({
   // form control, so hand it down (focus a text field, toggle a checkbox).
   // Moved => it was a selection gesture and the widget is not involved.
   const formWidgetClickRef = useRef(null);
+  // UX 2026-09-15 — and no native text selection may start under that press.
+  //
+  // Measured: a marquee begun inside a text field's box took the field's own
+  // value as its selection anchor and then smeared blue highlight across every
+  // annotation it swept past. The marquee itself worked — this was junk left
+  // on top of it. The same marquee begun one pixel outside the box does
+  // nothing of the sort, which is the tell: the browser anchors a selection at
+  // the nearest selectable text, and inside the box that is the widget's value.
+  //
+  // Intended UX (reference: Drawboard PDF): a rubber band is a rubber band
+  // wherever it starts, and nothing highlights as text. Selecting a widget's
+  // text by dragging is not on offer here in any case — this overlay paints
+  // above the widget layer, so the control never sees the press at all.
+  //
+  // Armed only while such a press is pending, released on up / cancel /
+  // unmount, so ordinary text selection everywhere else is untouched.
+  const formWidgetSelectionGuardRef = useRef(null);
+  const releaseFormWidgetSelectionGuard = useCallback(() => {
+    const block = formWidgetSelectionGuardRef.current;
+    if (!block) return;
+    formWidgetSelectionGuardRef.current = null;
+    if (typeof document !== 'undefined') document.removeEventListener('selectstart', block, true);
+  }, []);
+  const armFormWidgetSelectionGuard = useCallback(() => {
+    if (formWidgetSelectionGuardRef.current || typeof document === 'undefined') return;
+    const block = (event) => { event.preventDefault(); };
+    formWidgetSelectionGuardRef.current = block;
+    document.addEventListener('selectstart', block, true);
+  }, []);
+  useEffect(() => releaseFormWidgetSelectionGuard, [releaseFormWidgetSelectionGuard]);
   const surveyMarkerClickRef = useRef({ annotationId: null, time: 0 });
   const [selectedSurveyMarkerId, setSelectedSurveyMarkerId] = useState(null);
   const [hoveredSurveyMarkerId, setHoveredSurveyMarkerId] = useState(null);
@@ -5305,6 +5335,7 @@ const SVGAnnotationLayer = memo(({
           // hit target claimed it, the user clicked their own markup and the
           // markup wins — that is the whole point of painting it on top.
           formWidgetClickRef.current = null;
+          releaseFormWidgetSelectionGuard();
           if (e.button === 0 && e.target === svgRef.current) {
             const widget = liveFormWidgetAtPoint(e.clientX, e.clientY);
             if (widget) {
@@ -5315,6 +5346,7 @@ const SVGAnnotationLayer = memo(({
                 slop: e.pointerType === 'touch' ? 12 : 4,
                 widget,
               };
+              armFormWidgetSelectionGuard();
             }
           }
           if (shouldIgnoreLassoPointer?.(e.pointerId, e.pointerType)) {
@@ -5439,6 +5471,7 @@ const SVGAnnotationLayer = memo(({
         // first; a gesture that travelled is never handed down.
         const pendingWidget = formWidgetClickRef.current;
         formWidgetClickRef.current = null;
+        releaseFormWidgetSelectionGuard();
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, true)) return;
         handlePointerUp(e);
         if (pendingWidget && pendingWidget.pointerId === e.pointerId
@@ -5448,6 +5481,7 @@ const SVGAnnotationLayer = memo(({
       } : undefined}
       onPointerCancel={isInteractive ? (e) => {
         formWidgetClickRef.current = null;
+        releaseFormWidgetSelectionGuard();
         cancelLasso?.(e.pointerId);
         handlePointerCancel(e);
         if (surveyMarkerDragRef.current) {

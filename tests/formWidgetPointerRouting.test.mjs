@@ -73,6 +73,49 @@ test('the annotation overlay hands a stationary press down to the widget under i
   assert.match(layerSource, /Math\.hypot\(e\.clientX - pendingWidget\.x[\s\S]{0,200}forwardClickToFormWidget\(pendingWidget\.widget\)/);
 });
 
+test('a marquee that starts inside a field does not drag-select the field text', () => {
+  // MEASURED LIVE 2026-09-15 on prog-07-form-fields.pdf, Rectangle Select:
+  // a rubber band begun inside the multiline 'notes' box selected the two
+  // annotations it swept, correctly — and ALSO left blue text highlight strewn
+  // across them ("OVER FIELD / EDIT ME / LOW CALLOUT"). The identical drag
+  // begun one pixel outside the box left none. The browser anchors a selection
+  // at the nearest selectable text and inside the box that is the field's own
+  // value, so the anchor formed there and extended through the SVG text.
+  //
+  // Reference behaviour (Drawboard PDF): a rubber band is a rubber band
+  // wherever it starts, and nothing highlights as text. Dragging out a widget's
+  // text is not on offer here regardless — the overlay paints above the widget
+  // layer, so the control never receives the press.
+  const layerSource = readFileSync(
+    new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8',
+  );
+  // The guard is armed with the pending press, in the same branch.
+  assert.match(
+    layerSource,
+    /liveFormWidgetAtPoint\(e\.clientX, e\.clientY\)[\s\S]{0,400}armFormWidgetSelectionGuard\(\)/,
+    'arm the selectstart guard where the widget press is recorded',
+  );
+  // It cancels selectstart rather than the pointerdown: cancelling pointerdown
+  // would suppress the compatibility mouse events the rest of the viewer reads.
+  assert.match(
+    layerSource,
+    /addEventListener\('selectstart', block, true\)/,
+    'the guard must cancel selectstart, in the capture phase',
+  );
+  assert.doesNotMatch(
+    layerSource.match(/const armFormWidgetSelectionGuard[\s\S]{0,400}?\}, \[\]\);/)?.[0] ?? '',
+    /pointerdown/,
+    'never arm this by cancelling pointerdown',
+  );
+  // And it is released on every way the gesture can end, plus unmount, so
+  // ordinary text selection everywhere else is untouched.
+  for (const ending of [
+    /onPointerUp=\{isInteractive[\s\S]{0,400}?releaseFormWidgetSelectionGuard\(\)/,
+    /onPointerCancel=\{isInteractive[\s\S]{0,200}?releaseFormWidgetSelectionGuard\(\)/,
+    /useEffect\(\(\) => releaseFormWidgetSelectionGuard, \[releaseFormWidgetSelectionGuard\]\)/,
+  ]) assert.match(layerSource, ending, `the guard must be released: ${ending}`);
+});
+
 test('the z-index is not tool-dependent — a widget never swaps above and below markup', () => {
   const root = formLayerSource.slice(formLayerSource.indexOf('className="pdfjsFormLayer annotationLayer"'));
   const style = root.slice(root.indexOf('style='), root.indexOf('/>'));
