@@ -11901,15 +11901,49 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // opening the editor, which is what the contract asks for.
   useEffect(() => {
     const tracker = createDoubleTapTracker();
-    let downAt = null;
+    // MULTI-TOUCH SAFETY (2026-09-15) — one down record PER POINTER, plus a hard
+    // bail once a second finger is down.
+    //
+    // A single shared slot was measured as a bug, not a theory: two fingers that
+    // start within the 12px touch slop — the natural beginning of a pinch-out —
+    // overwrote each other, the anchored finger's lift was measured against the
+    // OTHER finger's start, and the pinch was filed in the tracker as a tap. The
+    // user's next ordinary single tap then paired with that phantom and opened
+    // an editor nobody asked for.
+    //
+    // Intended UX: a pinch is a zoom and nothing else. It never leaves anything
+    // behind for the next tap to pair with, whatever the fingers do or in which
+    // order they lift.
+    const downPointers = new Map();
+    let multiTouchGesture = false;
     const onDown = (event) => {
       if (event.button != null && event.button !== 0) return;
-      downAt = { x: event.clientX, y: event.clientY };
+      downPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (downPointers.size > 1) {
+        // A second finger arrived: this gesture is a pinch (or a stray palm),
+        // so abandon every tap candidate AND the pending first tap. Sticky
+        // until every finger is up, so the LAST finger's lift cannot sneak
+        // through as a tap either.
+        multiTouchGesture = true;
+        downPointers.clear();
+        tracker.reset();
+      }
     };
-    const onCancel = () => { downAt = null; tracker.reset(); };
+    const onCancel = (event) => {
+      if (event && event.pointerId != null) downPointers.delete(event.pointerId);
+      else downPointers.clear();
+      if (downPointers.size === 0) multiTouchGesture = false;
+      tracker.reset();
+    };
     const onUp = (event) => {
-      const start = downAt;
-      downAt = null;
+      const start = downPointers.get(event.pointerId);
+      downPointers.delete(event.pointerId);
+      if (downPointers.size === 0 && multiTouchGesture) {
+        multiTouchGesture = false;
+        tracker.reset();
+        return;
+      }
+      if (multiTouchGesture) { tracker.reset(); return; }
       if (!start) return;
       const tool = activeToolRef.current;
       // Creation tools own their own gestures; only the read/select family
