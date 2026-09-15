@@ -1462,6 +1462,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     );
     const newScale = Math.min(maxScale, Math.max(minimumScale, targetScale));
     if (Math.abs(newScale - oldScale) < 1e-4) return;
+    // A zoom ends an in-flight pan coast, exactly as a wheel/trackpad scroll
+    // does. This path re-anchors scrollLeft/scrollTop under the cursor right
+    // after the scale change, and a coast still writing scroll offsets every
+    // frame would fight that restore and slide the page off its anchor. The
+    // runner's cancel() is a no-op when nothing is coasting, so a held
+    // space-pan keeps its interaction state untouched. (Ref, not the
+    // cancelPanInertia callback, which is declared further down this
+    // component — naming it in this dependency array would read it in its TDZ.)
+    panMomentumRef.current?.cancel('zoom');
     // Stage 3: imperative zoom (toolbar/keyboard/fit) commits instantly — signal
     // gesture-start here so Canvas tools flush before the host re-layouts. (Wheel
     // gestures already signalled on their first frame; an extra signal is harmless.)

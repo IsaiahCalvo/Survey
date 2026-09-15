@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import {
   PAN_MOMENTUM_DEFAULTS,
@@ -281,4 +282,25 @@ test('the coast survives a missing scroll surface without throwing', () => {
   runner.start(0, -1.5);
   surface.pump();
   assert.equal(runner.isRunning(), false, 'a surface that never moves settles immediately');
+});
+
+// Integration guard (pan glide x zoom). Neither feature branch could see this
+// seam on its own: the desktop coast and the imperative zoom path only became
+// concurrent when they landed together. applyAnchoredScale re-anchors
+// scrollLeft/scrollTop under the cursor after a scale change, so a coast still
+// writing scroll offsets every frame would drag the page off that anchor.
+test('the imperative zoom path ends an in-flight coast before it re-anchors scroll', async () => {
+  const source = await readFile(
+    new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url),
+    'utf8',
+  );
+  const body = source.slice(source.indexOf('const applyAnchoredScale = useCallback('));
+  const cancelAt = body.indexOf("panMomentumRef.current?.cancel(");
+  assert.ok(cancelAt > 0, 'applyAnchoredScale cancels the pan momentum runner');
+  const anchorAt = body.indexOf('const cX = el.scrollLeft + cursorX;');
+  assert.ok(anchorAt > 0, 'applyAnchoredScale still anchors on the cursor');
+  assert.ok(cancelAt < anchorAt, 'the coast is cancelled before the scroll anchor is read');
+  // A wheel/trackpad scroll takes the page back too, so the browser's own
+  // scrolling never fights a coast.
+  assert.match(source, /addEventListener\('wheel', onWheelStopGlide/);
 });
