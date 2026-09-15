@@ -110,3 +110,38 @@ test('one definition of "this pointer belongs to a form control" survived the me
   );
   assert.match(containerSource, /\[data-pan-interactive="true"\]/);
 });
+
+// ---------------------------------------------------------------------------
+// 4. Both edit entries keep the tool the gesture started in
+// ---------------------------------------------------------------------------
+
+test('an editor opened from EITHER entry puts Pan back after the quick-click', () => {
+  // Drawboard parity: a double-click in Pan opens the editor and leaves Pan
+  // armed. Our Pan single-click auto-arms Select, so the first of the two
+  // clicks flips the tool and the edit entry has to flip it back.
+  //
+  // The dblclick slice did that inside its pointer recogniser only. The
+  // hit-layer slice separately armed the SVG layer's NATIVE onDoubleClick under
+  // Pan — a second entry, with no restore. Reproduced live on 2026-09-15: the
+  // first double-click after a fresh load took the native route and stranded
+  // the user in Rectangle Select. The restore now lives in the one dispatcher
+  // both entries call.
+  assert.match(viewerSource, /const noteEditEntryOpened = \(\) => \{[\s\S]{0,700}queueMicrotask\(\(\) => setActiveTool\('pan'\)\);/);
+  // called on BOTH branches of the dispatcher — callout and plain annotation
+  assert.equal((viewerSource.match(/\n\s*noteEditEntryOpened\(\);/g) || []).length, 2);
+  assert.match(viewerSource, /handleRequestCalloutEditMode\(annotationIndex, pageNumber, \{ caretAnchor \}\);\s*\n\s*noteEditEntryOpened\(\);/);
+});
+
+test('the Pan quick-click cannot re-arm Select behind an editor that just opened', () => {
+  // The quick-click listener re-subscribes on every tool change, so whether it
+  // runs before or after the edit entry flips run to run — and when it runs
+  // after, it is still holding a stale `activeTool === 'pan'` closure.
+  const effect = viewerSource.slice(
+    viewerSource.indexOf('const QUICK_CLICK_PX = 4;'),
+    viewerSource.indexOf("window.addEventListener('pointerdown', onDown, true);"),
+  );
+  assert.match(effect, /Date\.now\(\) - editEntryOpenedAtRef\.current < PAN_EDIT_ENTRY_RESTORE_MS\) return;/);
+  // and it records when it auto-armed Select, so the dispatcher knows this is
+  // the same gesture — on the callout branch as well as the annotation one
+  assert.equal((effect.match(/panQuickClickAutoSelectAtRef\.current = Date\.now\(\);/g) || []).length, 2);
+});

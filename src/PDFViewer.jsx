@@ -431,6 +431,12 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
+// UX 2026-09-15 (integration) — how long after a Pan tap auto-armed Select an
+// edit entry still counts as the SAME gesture and puts Pan back. Long enough to
+// cover the double-tap window (350ms) plus the render between the two clicks;
+// short enough that a later, deliberate tool change stands.
+const PAN_EDIT_ENTRY_RESTORE_MS = 600;
+
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
@@ -3365,6 +3371,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // ref so the edit dispatcher can reject a duplicate entry for the same target
   // synchronously — React state lands a render too late for that.
   const openEditTargetRef = useRef(null);
+  // UX 2026-09-15 (integration) — the two edit entries and the Pan quick-click
+  // have to agree on who owns the armed tool during a double-click. Drawboard
+  // PDF keeps the tool the gesture STARTED in: a double-click in Pan opens the
+  // editor and leaves Pan armed. Our Pan single-click auto-arms Select (the
+  // quick-click effect below), so the first of the two clicks flips the tool
+  // and the editor entry has to flip it back. These two timestamps are how:
+  //   panQuickClickAutoSelectAtRef — when a Pan tap last auto-armed Select
+  //   editEntryOpenedAtRef         — when an editor last opened
+  // Ordering-proof on purpose: the quick-click listener re-subscribes on every
+  // tool change, so whether it runs before or after the edit entry flips run to
+  // run (verified live 2026-09-15: the first double-click after a fresh load
+  // took the other order and stranded the user in Select).
+  const panQuickClickAutoSelectAtRef = useRef(0);
+  const editEntryOpenedAtRef = useRef(0);
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
   // UX 2026-05-01 — runaway-pin guard. A single counter-tool click was
   // somehow firing the pointerdown handler dozens of times in the same
@@ -3783,6 +3803,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       downAt = null;
       if (!start) return;
       if (activeTool !== 'pan') return;
+      // The second click of a double-click must not re-arm Select behind the
+      // editor that just opened. This handler re-subscribes on every tool
+      // change, so it can still be holding a stale `activeTool === 'pan'`
+      // closure when that second click lands.
+      if (Date.now() - editEntryOpenedAtRef.current < PAN_EDIT_ENTRY_RESTORE_MS) return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
       // UX 2026-09-15 — a click on a live form field fills the field and does
       // NOTHING else: no annotation selection, no switch to Select. Without
@@ -3801,12 +3826,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // tool-switch to Select as the plain-annotation branch so followup
       // drags / edits work naturally.
       if (hit.kind === 'callout' && hit.calloutId) {
+        panQuickClickAutoSelectAtRef.current = Date.now();
         activateSelectFamilyMode('rectangle');
         setSelectedCalloutIds(new Set([hit.calloutId]));
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      panQuickClickAutoSelectAtRef.current = Date.now();
       activateSelectFamilyMode('rectangle');
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
@@ -11792,9 +11819,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       && openEdit.annotationIndex === annotationIndex) {
       return false;
     }
+    // Drawboard parity — the tool the gesture STARTED in is the tool that stays
+    // armed. INTEGRATION 2026-09-15: this used to live only in the double-tap
+    // recogniser, so an editor opened through the SVG layer's NATIVE dblclick
+    // (armed under Pan by the hit-layer slice) left the user stranded in
+    // Select. Both entries land here, so the restore lives here.
+    const noteEditEntryOpened = () => {
+      editEntryOpenedAtRef.current = Date.now();
+      if (Date.now() - panQuickClickAutoSelectAtRef.current >= PAN_EDIT_ENTRY_RESTORE_MS) return;
+      panQuickClickAutoSelectAtRef.current = 0;
+      // In a microtask, not inline: this runs inside a pointer/dblclick
+      // handler, and the quick-click effect may still re-run for the same
+      // gesture. A microtask is after every listener for this event.
+      queueMicrotask(() => setActiveTool('pan'));
+    };
     if (annotationType === 'callout') {
       openEditTargetRef.current = { pageNumber, annotationIndex };
       handleRequestCalloutEditMode(annotationIndex, pageNumber, { caretAnchor });
+      noteEditEntryOpened();
       return true;
     }
     const pageJSON = annotationsByPageRef.current?.[pageNumber]
@@ -11819,6 +11861,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       data: annotationData,
       caretAnchor: route.editType === 'text' ? caretAnchor : null,
     });
+    noteEditEntryOpened();
     return true;
   }, [handleRequestCalloutEditMode]);
 
