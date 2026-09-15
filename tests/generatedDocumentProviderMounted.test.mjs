@@ -512,6 +512,7 @@ test('actual viewer undo callback still selects local annotation history with th
     applyLocalAnnotationHistoryAction: inverse => { annotations = applyAnnotationHistoryAction(annotations, inverse); return true; },
     setLocalAnnotationHistoryVersion: update => { version = update(version); },
     yjsDoc: h.value.ydoc, yjsUndoManager: h.value.undoManager, yjsUndoCtx: h.value.undoCtx,
+    effectiveDocumentLockedRef: { current: false },
     userUndo: () => assert.fail('Generated provider cannot route through legacy undo'),
   };
   // Execute the production callback body, not a copied selection expression.

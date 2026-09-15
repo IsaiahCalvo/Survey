@@ -508,7 +508,8 @@ function quitHarness({ dirty = true, locked = false, cloud = false, save = async
   const snapshot = {};
   const savedRef = { current: { 1: { objects: [{ id: 'deleted' }] } } };
   const scope = {
-    pdfId: 'local', pdfFile: cloud ? { id: 'cloud-document' } : {}, tabId: 'inactive-tab', documentLocked: locked,
+    pdfId: 'local', pdfFile: cloud ? { id: 'cloud-document' } : {}, tabId: 'inactive-tab',
+    effectiveDocumentLocked: locked,
     isManagedLocalDocument,
     hasUnsavedAnnotations: dirty, annotationsByPageRef: { current: snapshot },
     getQuitSaveBlockReason: options => { state.gates.push(options); return reason; }, getQuitSaveRevision: () => state.revision,
@@ -644,7 +645,8 @@ test('receipt invalidation during the legacy write cannot acknowledge quit', asy
   let finish;
   const q = quitHarness({ cloud: true, save: () => new Promise(resolve => { finish = resolve; }) });
   const pending = q.quit();
-  while (!finish) await Promise.resolve();
+  for (let attempts = 0; !finish && attempts < 20; attempts += 1) await Promise.resolve();
+  assert.equal(typeof finish, 'function', 'the legacy write starts before its receipt is invalidated');
   q.state.proofCurrent = false;
   finish(true);
   assert.equal((await pending).saved, false);

@@ -19,8 +19,15 @@ import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from './hooks/us
 import { useManagedLocalDraftTracking } from './hooks/useManagedLocalDraftTracking.js';
 import { useDocumentEntityCatalog } from './hooks/useDocumentEntityCatalog.js';
 import { useDocumentSurveyDefinition } from './hooks/useDocumentSurveyDefinition.js';
+import { canCommitDocumentDefinitionMutation, getDefinitionHistoryReference,
+  isDocumentDefinitionSourceLoadCurrent,
+  loadDocumentDefinitionRevisionSources, needsDefinitionHistoryReview,
+  resolveDocumentDefinitionReadOnlyTool,
+  sameDefinitionRevisionReference, stampDefinitionHistoryReference,
+  useDocumentDefinitionRevisions } from './hooks/useDocumentDefinitionRevisions.js';
 import DocumentEntityCatalogAdoptionNotice from './components/DocumentEntityCatalogAdoptionNotice.jsx';
 import DocumentSurveyDefinitionAdoptionNotice from './components/DocumentSurveyDefinitionAdoptionNotice.jsx';
+import DocumentDefinitionRevisionReview from './components/DocumentDefinitionRevisionReview.jsx';
 import DocumentFirstGenerationAdoptionNotice from './components/DocumentFirstGenerationAdoptionNotice.jsx';
 import DocumentLegacyAdoptionArchiveModal from './components/DocumentLegacyAdoptionArchiveModal.jsx';
 import { useDocumentFirstGenerationAdoption } from './hooks/useDocumentFirstGenerationAdoption.js';
@@ -453,7 +460,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, annotationGenerationAggregateEnabled = false, createAnnotationGenerationAggregateRequest = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRecoverLegacySidecar = null, documentFirstGenerationAdoptionEnabled = false, onFirstGenerationAdoption = null, firstGenerationAdoptionScope = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, annotationGenerationAggregateEnabled = false, createAnnotationGenerationAggregateRequest = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRecoverLegacySidecar = null, documentFirstGenerationAdoptionEnabled = false, onFirstGenerationAdoption = null, firstGenerationAdoptionScope = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, documentDefinitionRevisionsEnabled = false, documentDefinitionRevisionClient = null, documentDefinitionRevisionCache = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -4690,13 +4697,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     return live?.active === true && live.actorUserId === scope.actorUserId && live.documentId === scope.documentId
       && live.localId === scope.localId;
   }, []);
-  const entityCatalog = useDocumentEntityCatalog({ enabled: documentEntityCatalogEnabled,
+  const definitionRevisionFlowEnabled = documentDefinitionRevisionsEnabled === true
+    && checkedBundle !== null && !isManagedLocalDocument(pdfFile);
+  const baseEntityCatalog = useDocumentEntityCatalog({
+    enabled: documentEntityCatalogEnabled && !definitionRevisionFlowEnabled,
     file: pdfFile, actorUserId: user?.id || null, template: selectedTemplate,
     cloudClient: documentEntityCatalogClient, adoptionStore: documentEntityAdoptionStore,
     readManagedLocal: readManagedEntityCatalog, persistManagedLocal: persistManagedEntityCatalog,
     isCurrent: isEntityCatalogScopeCurrent,
   });
-  const documentEntityChoices = entityCatalog.entities;
   const readManagedSurveyDefinition = useCallback(file => {
     if (!isManagedLocalDocument(file)) return null;
     const raw = createLocalDocumentStateReader(file).getItem(`surveyDefinition_${file.localId}`);
@@ -4726,7 +4735,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       && live.actorUserId === candidate.actorUserId && live.documentId === candidate.documentId
       && live.generationId === candidate.generationId && live.localId === candidate.localId;
   }, []);
-  const surveyDefinition = useDocumentSurveyDefinition({ enabled: documentSurveyDefinitionEnabled,
+  const baseSurveyDefinition = useDocumentSurveyDefinition({
+    enabled: documentSurveyDefinitionEnabled && !definitionRevisionFlowEnabled,
     file: pdfFile, actorUserId: user?.id || null, template: selectedTemplate,
     cloudClient: documentSurveyDefinitionClient,
     adoptionStore: documentSurveyDefinitionAdoptionStore,
@@ -4734,6 +4744,120 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     persistManagedLocal: persistManagedSurveyDefinition,
     isCurrent: isSurveyDefinitionScopeCurrent,
   });
+  const definitionRevisionOwner = Boolean(pdfFile?.id && pdfFile?.user_id === user?.id);
+  const definitionRevisionScopeRef = useRef(null);
+  definitionRevisionScopeRef.current = { active: isActive === true,
+    actorUserId: user?.id || null, documentId: pdfFile?.id || null,
+    generationId: checkedBundle?.pdfGenerationId || null, file: pdfFile };
+  const isDefinitionRevisionScopeCurrent = useCallback(candidate => {
+    const live = definitionRevisionScopeRef.current;
+    return live?.active === true && live.file === candidate.file
+      && live.actorUserId === candidate.actorUserId && live.documentId === candidate.documentId
+      && live.generationId === candidate.generationId;
+  }, []);
+  const definitionRevisions = useDocumentDefinitionRevisions({ enabled: definitionRevisionFlowEnabled,
+    file: pdfFile, checkedBundle, actorUserId: user?.id || null, owner: definitionRevisionOwner,
+    active: isActive === true,
+    template: selectedTemplate, client: documentDefinitionRevisionClient,
+    cache: documentDefinitionRevisionCache, isCurrent: isDefinitionRevisionScopeCurrent });
+  const definitionSourceAuthorizationRef = useRef(null);
+  definitionSourceAuthorizationRef.current = { enabled: definitionRevisionFlowEnabled,
+    owner: definitionRevisionOwner, canReview: definitionRevisions.canReview,
+    load: onRefetchTemplates, publish: onTemplatesChange };
+  const [definitionSourcesLoading, setDefinitionSourcesLoading] = useState(false);
+  const [definitionSourcesError, setDefinitionSourcesError] = useState('');
+  useEffect(() => {
+    setDefinitionSourcesLoading(false);
+    setDefinitionSourcesError('');
+  }, [pdfFile, checkedBundle?.pdfGenerationId, user?.id]);
+  const loadDefinitionRevisionSources = useCallback(async () => {
+    const captured = definitionRevisionScopeRef.current;
+    const capturedAuthorization = definitionSourceAuthorizationRef.current;
+    const current = () => isDocumentDefinitionSourceLoadCurrent(
+      isDefinitionRevisionScopeCurrent(captured),
+      definitionSourceAuthorizationRef.current, capturedAuthorization,
+    );
+    if (!current() || typeof capturedAuthorization.load !== 'function'
+      || typeof capturedAuthorization.publish !== 'function') {
+      throw new Error('Template sources are not available.');
+    }
+    setDefinitionSourcesLoading(true);
+    setDefinitionSourcesError('');
+    try {
+      return await loadDocumentDefinitionRevisionSources({ load: capturedAuthorization.load,
+        isCurrent: current, publish: capturedAuthorization.publish });
+    } catch (error) {
+      if (current()) {
+        setDefinitionSourcesError(error?.message || 'Template sources could not be loaded.');
+      }
+      throw error;
+    } finally {
+      if (current()) setDefinitionSourcesLoading(false);
+    }
+  }, [definitionRevisionFlowEnabled, definitionRevisionOwner, definitionRevisions.canReview,
+    isDefinitionRevisionScopeCurrent, onRefetchTemplates, onTemplatesChange]);
+  const currentDefinitionRevisionReference = useMemo(() => definitionRevisions.currentReceipt
+    ? Object.freeze({ version: 1, documentId: definitionRevisions.currentReceipt.documentId,
+      definitionRevision: definitionRevisions.currentReceipt.definitionRevision,
+      definitionDigest: definitionRevisions.currentReceipt.definitionDigest })
+    : null, [definitionRevisions.currentReceipt]);
+  const currentDefinitionRevisionReferenceRef = useRef(currentDefinitionRevisionReference);
+  currentDefinitionRevisionReferenceRef.current = currentDefinitionRevisionReference;
+  const definitionHistoryRestoreApprovalRef = useRef(null);
+  const definitionHistoryLoadRef = useRef(null);
+  const [definitionHistoryReview, setDefinitionHistoryReview] = useState(null);
+  useEffect(() => {
+    definitionHistoryRestoreApprovalRef.current = null;
+    definitionHistoryLoadRef.current = null;
+    setDefinitionHistoryReview(null);
+  }, [pdfFile, checkedBundle?.pdfGenerationId, user?.id]);
+  const revisionSurveyDefinition = useMemo(() => definitionRevisions.mode === 'accepted'
+    ? Object.freeze({ status: 'accepted', version: 1, documentId: pdfFile.id,
+      definitionRevision: definitionRevisions.currentReceipt.definitionRevision,
+      source: definitionRevisions.surveyDefinition.source,
+      seed: definitionRevisions.currentReceipt.review.operationId ? Object.freeze({
+        operationId: definitionRevisions.currentReceipt.review.operationId,
+        requestSha256: definitionRevisions.currentReceipt.review.requestSha256,
+      }) : null,
+      modules: definitionRevisions.modules })
+    : null, [definitionRevisions.currentReceipt, definitionRevisions.mode,
+      definitionRevisions.modules, definitionRevisions.surveyDefinition, pdfFile.id]);
+  const revisionEntityCatalog = useMemo(() => definitionRevisions.mode === 'accepted'
+    ? Object.freeze({ status: 'accepted', version: 1, documentId: pdfFile.id,
+      catalogRevision: definitionRevisions.currentReceipt.definitionRevision,
+      source: definitionRevisions.entityCatalog.source,
+      seed: definitionRevisions.currentReceipt.review.operationId ? Object.freeze({
+        operationId: definitionRevisions.currentReceipt.review.operationId,
+        requestSha256: definitionRevisions.currentReceipt.review.requestSha256,
+      }) : null,
+      entities: definitionRevisions.entities })
+    : null, [definitionRevisions.currentReceipt, definitionRevisions.entities,
+      definitionRevisions.entityCatalog, definitionRevisions.mode, pdfFile.id]);
+  const entityCatalog = useMemo(() => definitionRevisionFlowEnabled
+    ? Object.freeze({ mode: revisionEntityCatalog ? 'accepted' : 'unknown',
+      catalog: revisionEntityCatalog, entities: revisionEntityCatalog?.entities || [],
+      review: null, busy: definitionRevisions.busy, error: definitionRevisions.error,
+      requestAdoption: baseEntityCatalog.requestAdoption,
+      confirmAdoption: baseEntityCatalog.confirmAdoption,
+      cancelAdoption: baseEntityCatalog.cancelAdoption })
+    : baseEntityCatalog, [baseEntityCatalog, definitionRevisionFlowEnabled,
+      definitionRevisions.busy, definitionRevisions.error, revisionEntityCatalog]);
+  const surveyDefinition = useMemo(() => definitionRevisionFlowEnabled
+    ? Object.freeze({ mode: revisionSurveyDefinition ? 'accepted' : 'unknown',
+      definition: revisionSurveyDefinition, modules: revisionSurveyDefinition?.modules || [],
+      review: null, busy: definitionRevisions.busy, error: definitionRevisions.error,
+      requestAdoption: baseSurveyDefinition.requestAdoption,
+      confirmAdoption: baseSurveyDefinition.confirmAdoption,
+      cancelAdoption: baseSurveyDefinition.cancelAdoption })
+    : baseSurveyDefinition, [baseSurveyDefinition, definitionRevisionFlowEnabled,
+      definitionRevisions.busy, definitionRevisions.error, revisionSurveyDefinition]);
+  const definitionRevisionMutationBlocked = definitionRevisionFlowEnabled
+    && definitionRevisions.mutationsBlocked;
+  const effectiveDocumentLocked = documentLocked || definitionRevisionMutationBlocked;
+  const effectiveDocumentLockedRef = useRef(effectiveDocumentLocked);
+  effectiveDocumentLockedRef.current = effectiveDocumentLocked;
+  const annotationInputTool = resolveDocumentDefinitionReadOnlyTool(activeTool, effectiveDocumentLocked);
+  const documentEntityChoices = entityCatalog.entities;
   const pendingManagedSurveyDefinition = pendingManagedSurveyDefinitionRef.current?.file === pdfFile
     && pendingManagedSurveyDefinitionRef.current?.localId === pdfFile?.localId
     ? pendingManagedSurveyDefinitionRef.current : null;
@@ -4762,7 +4886,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     surveyDefinition.mode, tabId, user?.id]);
   const documentSurveyDefinitionScopeRef = useRef(documentSurveyDefinitionScope);
   documentSurveyDefinitionScopeRef.current = documentSurveyDefinitionScope;
-  const mayReviewSurveyDefinition = documentSurveyDefinitionEnabled
+  const mayReviewSurveyDefinition = !definitionRevisionFlowEnabled && documentSurveyDefinitionEnabled
     && entityCatalog.mode === 'accepted' && surveyDefinition.mode === 'legacy'
     && Boolean(selectedTemplate) && (isManagedLocalDocument(pdfFile)
       || (pdfFile?.id && pdfFile?.user_id === user?.id));
@@ -5613,14 +5737,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setActiveCategoryDropdown('survey');
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
-    const mayAdopt = documentEntityCatalogEnabled && (isManagedLocalDocument(pdfFile)
+    const mayAdopt = !definitionRevisionFlowEnabled && documentEntityCatalogEnabled && (isManagedLocalDocument(pdfFile)
       || (pdfFile?.id && pdfFile?.user_id === user?.id));
     if (mayAdopt && entityCatalog.mode === 'legacy') {
       void entityCatalog.requestAdoption(template).catch(error => {
         showToast(error?.message || 'The entity list could not be reviewed.', 'error');
       });
     }
-  }, [documentEntityCatalogEnabled, entityCatalog, pdfFile, user?.id]);
+  }, [definitionRevisionFlowEnabled, documentEntityCatalogEnabled, entityCatalog, pdfFile, user?.id]);
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
@@ -10713,7 +10837,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const eraserInterruptionPolicy = resolveEraserInterruptionPolicy({
     accessRevoked: yjsAccessRevoked || devAccessRevoked,
     docRole: yjsDocRole,
-    documentLocked,
+    documentLocked: effectiveDocumentLocked,
   });
   // Updated during render so an eraser child removed in this same commit can
   // still read the new authorization truth from its unmount cleanup.
@@ -10777,6 +10901,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
+  const guardedUndoToast = useMemo(() => undoToast ? {
+    ...undoToast,
+    onUndo: () => {
+      if (effectiveDocumentLockedRef.current) return;
+      undoToast.onUndo?.();
+    },
+  } : null, [undoToast]);
+  const dismissGuardedUndoToast = useCallback(() => {
+    if (!effectiveDocumentLockedRef.current) dismissUndoToast();
+  }, [dismissUndoToast]);
   const resetPageStructureHistory = useCallback(() => {
     // Page-addressed undo entries cannot be applied to a different page order.
     // This runs only after the new bytes/state have passed persistence.
@@ -11267,6 +11401,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // post-render effect and could lag a synchronous restore).
     callouts: deepClone(deriveCalloutsFromByPage(annotationsByPageRef.current || {})),
     pendingSurveyMarkerUi: capturePendingSurveyMarkerUi(pendingSurveyMarkerUiRef.current),
+    ...(currentDefinitionRevisionReferenceRef.current ? {
+      definitionReference: deepClone(currentDefinitionRevisionReferenceRef.current),
+    } : {}),
   }), []);
 
   const getAnnotationPageHistorySnapshot = useCallback((pageNumber) => {
@@ -11283,7 +11420,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       spaces: spacesRef.current || [],
       // R2.2 Slice 2: derived from the same annotationsState read above (see
       // getHistorySnapshot for why this no longer reads calloutsRef).
-      callouts: deriveCalloutsFromByPage(annotationsState)
+      callouts: deriveCalloutsFromByPage(annotationsState),
+      ...(currentDefinitionRevisionReferenceRef.current ? {
+        definitionReference: deepClone(currentDefinitionRevisionReferenceRef.current),
+      } : {}),
     };
   }, []);
 
@@ -12297,6 +12437,56 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
   }, [annotationsByPageRef, materializeFabricAnnotationFromYMap, pushHistoryDebugEvent, setCalloutsIfPersistedChanged, yjsDoc]);
 
+  const requestDefinitionHistoryRestore = useCallback((targetState, direction, lane = 'legacy') => {
+    const targetReference = getDefinitionHistoryReference(targetState);
+    const currentReference = currentDefinitionRevisionReferenceRef.current;
+    if (!definitionRevisionFlowEnabled
+      || !needsDefinitionHistoryReview(targetState, currentReference)) return true;
+    const live = definitionRevisionScopeRef.current;
+    const head = lane === 'yjs'
+      ? (direction === 'undo' ? yjsUndoManager?.undoStack?.at?.(-1) : yjsUndoManager?.redoStack?.at?.(-1))
+      : (direction === 'undo' ? undoHistoryRef.current.at(-1) : redoHistoryRef.current[0]);
+    const approval = definitionHistoryRestoreApprovalRef.current;
+    if (approval?.targetState === targetState && approval.direction === direction
+      && approval.lane === lane && head === targetState && approval.file === live?.file
+      && approval.actorUserId === live?.actorUserId
+      && approval.documentId === live?.documentId
+      && approval.generationId === live?.generationId
+      && sameDefinitionRevisionReference(approval.currentReference, currentReference)) {
+      definitionHistoryRestoreApprovalRef.current = null;
+      return true;
+    }
+    definitionHistoryRestoreApprovalRef.current = null;
+    const scope = { file: live?.file, actorUserId: live?.actorUserId,
+      documentId: live?.documentId, generationId: live?.generationId,
+      currentReference, targetState, direction, lane };
+    const showReview = historicalReceipt => {
+      const now = definitionRevisionScopeRef.current;
+      const currentHead = lane === 'yjs'
+        ? (direction === 'undo' ? yjsUndoManager?.undoStack?.at?.(-1) : yjsUndoManager?.redoStack?.at?.(-1))
+        : (direction === 'undo' ? undoHistoryRef.current.at(-1) : redoHistoryRef.current[0]);
+      if (definitionHistoryLoadRef.current !== scope || currentHead !== targetState
+        || now?.active !== true || now.file !== scope.file
+        || now.actorUserId !== scope.actorUserId || now.documentId !== scope.documentId
+        || now.generationId !== scope.generationId
+        || !sameDefinitionRevisionReference(
+          currentDefinitionRevisionReferenceRef.current, scope.currentReference)) return;
+      definitionHistoryLoadRef.current = null;
+      setDefinitionHistoryReview({ ...scope, historicalReceipt,
+        currentReceipt: definitionRevisions.currentReceipt });
+    };
+    const cached = definitionRevisions.getCachedRevision(targetReference);
+    definitionHistoryLoadRef.current = scope;
+    if (cached) showReview(cached);
+    else void definitionRevisions.loadRevision(targetReference).then(showReview).catch(() => {
+      if (definitionHistoryLoadRef.current !== scope) return;
+      definitionHistoryLoadRef.current = null;
+      showToast('The old document definition could not be verified. Nothing was restored.', 'error');
+    });
+    return false;
+  }, [definitionRevisionFlowEnabled, definitionRevisions.currentReceipt,
+    definitionRevisions.getCachedRevision, definitionRevisions.loadRevision, yjsUndoManager]);
+
   // Undo function — Phase 29 narrow waiver (Plan 29-04).
   //
   // Routes through the per-user Y.UndoManager (Plan 29-03) instead of the legacy
@@ -12329,6 +12519,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // session. During that brief window (and when CRDT is off) Cmd+Z is a no-op,
   // matching the empty-stack-silent contract.
   const handleUndo = useCallback(() => {
+    if (effectiveDocumentLockedRef.current) return;
     if (deferUntilEraseCommitsFinish(handleUndo)) return;
     recordAnnotationUndoRedo('undo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
@@ -12500,6 +12691,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           }
         }
 
+        if (!requestDefinitionHistoryRestore(stateToRestore, 'undo')) return;
         const currentState = getHistorySnapshot();
         const eraseTargets = legacyUndoMeta?.context?.eraseTargets;
         const shouldScopeErase = Array.isArray(eraseTargets) && eraseTargets.length > 0;
@@ -12573,7 +12765,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       yMapAnnotationsSize,
     });
     if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
-    const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.undoStack?.[yjsUndoManager.undoStack.length - 1]);
+    const yjsUndoStackItem = yjsUndoManager.undoStack?.[yjsUndoManager.undoStack.length - 1];
+    if (!requestDefinitionHistoryRestore(yjsUndoStackItem, 'undo', 'yjs')) return;
+    const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoStackItem);
     userUndo(yjsDoc, yjsUndoManager, yjsUndoCtx);
     refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'undo');
 	    pushHistoryDebugEvent('yjs_undo_after', {
@@ -12583,7 +12777,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
       yMapAnnotationsSize: (() => { try { return yjsDoc?.getMap?.('annotations')?.size ?? null; } catch (_e) { return null; } })(),
     });
-	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldUndoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
+	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, requestDefinitionHistoryRestore, restoreHistoryState, shouldUndoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
   // Redo function — Phase 29 narrow waiver (Plan 29-04).
   //
@@ -12597,6 +12791,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   //
   // Null-shape guard mirrors handleUndo above.
   const handleRedo = useCallback(() => {
+    if (effectiveDocumentLockedRef.current) return;
     if (deferUntilEraseCommitsFinish(handleRedo)) return;
     recordAnnotationUndoRedo('redo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
@@ -12766,6 +12961,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         }
       }
 
+      if (!requestDefinitionHistoryRestore(legacyRedoState, 'redo')) return;
       const currentState = getHistorySnapshot();
       const eraseTargets = legacyRedoMeta?.context?.eraseTargets;
       const shouldScopeErase = Array.isArray(eraseTargets) && eraseTargets.length > 0;
@@ -12822,7 +13018,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
     });
     if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
-    const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.redoStack?.[yjsUndoManager.redoStack.length - 1]);
+    const yjsRedoStackItem = yjsUndoManager.redoStack?.[yjsUndoManager.redoStack.length - 1];
+    if (!requestDefinitionHistoryRestore(yjsRedoStackItem, 'redo', 'yjs')) return;
+    const yjsHistoryTarget = getYjsHistoryTarget(yjsRedoStackItem);
     userRedo(yjsDoc, yjsUndoManager, yjsUndoCtx);
     refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'redo');
 	    pushHistoryDebugEvent('yjs_redo_after', {
@@ -12831,13 +13029,42 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
     });
-	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldRedoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
+	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, requestDefinitionHistoryRestore, restoreHistoryState, shouldRedoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
   // Refs for undo/redo to avoid stale closures in keyboard shortcut handler
   const handleUndoRef = useRef(handleUndo);
   const handleRedoRef = useRef(handleRedo);
   useEffect(() => { handleUndoRef.current = handleUndo; }, [handleUndo]);
   useEffect(() => { handleRedoRef.current = handleRedo; }, [handleRedo]);
+  const cancelDefinitionHistoryRestore = useCallback(() => {
+    definitionHistoryRestoreApprovalRef.current = null;
+    definitionHistoryLoadRef.current = null;
+    setDefinitionHistoryReview(null);
+  }, []);
+  const confirmDefinitionHistoryRestore = useCallback(() => {
+    const review = definitionHistoryReview;
+    if (!review) return;
+    const live = definitionRevisionScopeRef.current;
+    const currentHead = review.lane === 'yjs'
+      ? (review.direction === 'undo'
+        ? yjsUndoManager?.undoStack?.at?.(-1) : yjsUndoManager?.redoStack?.at?.(-1))
+      : (review.direction === 'undo' ? undoHistoryRef.current.at(-1) : redoHistoryRef.current[0]);
+    if (live?.active !== true || currentHead !== review.targetState
+      || live.file !== review.file || live.actorUserId !== review.actorUserId
+      || live.documentId !== review.documentId || live.generationId !== review.generationId
+      || !sameDefinitionRevisionReference(
+        currentDefinitionRevisionReferenceRef.current, review.currentReference)) {
+      cancelDefinitionHistoryRestore();
+      showToast('The document changed while the old definition was open. Nothing was restored.', 'error');
+      return;
+    }
+    definitionHistoryRestoreApprovalRef.current = review;
+    setDefinitionHistoryReview(null);
+    queueMicrotask(() => {
+      if (review.direction === 'undo') handleUndoRef.current?.();
+      else handleRedoRef.current?.();
+    });
+  }, [cancelDefinitionHistoryRestore, definitionHistoryReview, yjsUndoManager]);
 
   // UX 2026-05-13: top-toolbar publish effect lives further down, past where
   // canUndo / canRedo are declared. Those are plain const expressions evaluated
@@ -12864,6 +13091,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   useEffect(() => {
     if (!yjsUndoManager) return undefined;
     const onStackAdded = ({ stackItem, type, origin }) => {
+      stampDefinitionHistoryReference(stackItem, currentDefinitionRevisionReferenceRef.current);
 	      const meta = mapYjsMeta(stackItem?.meta);
 	      pushHistoryDebugEvent('yjs_history_added', {
 	        historySource: 'Yjs/CRDT history',
@@ -19924,7 +20152,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // sync status in a permanent error state. Viewers still see legacy
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
-    documentLocked,
+    documentLocked: effectiveDocumentLocked,
     annotationDocClient,
     aggregateRequest: annotationGenerationAggregateRequest,
   });
@@ -22786,11 +23014,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       return 'Finish drawing or editing and switch to Pan, then close again. The app was kept open.';
     }
     if (toolPreferencesSaveError) return toolPreferencesSaveError;
-    if (!documentLocked && pdfFile?.id && (pendingSurveyMarkerSyncRef.current
+    if (!effectiveDocumentLocked && pdfFile?.id && (pendingSurveyMarkerSyncRef.current
       || (requireLocalReceipt && !isAnnotationLocalReceiptCurrent(quitAnnotationReceiptRef.current)))) {
       return 'The local document copy could not be verified. Keep it open and retry Save.';
     }
-    if (!documentLocked && !isManagedLocalDocument(pdfFile) && !verifyLegacyQuitBackups({
+    if (!effectiveDocumentLocked && !isManagedLocalDocument(pdfFile) && !verifyLegacyQuitBackups({
       storage: localStorage, pdfId, cloudBacked: !!pdfFile?.id, items, annotations,
       surveyMarkers: surveyMarkersRef.current, callouts, pageNames, bookmarks,
       spaces: spacesRef.current, activeSpaceId, pageTransformations,
@@ -22805,7 +23033,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     const revision = getQuitSaveRevision();
     // A locked tab must remain a zero-write path. Only an already-clean tab
     // can acknowledge; pre-lock unsaved work needs an explicit user decision.
-    if (documentLocked) return hasUnsavedAnnotations
+    if (effectiveDocumentLocked) return hasUnsavedAnnotations
       ? { saved: false, reason: 'This locked document still has unsaved changes. Keep it open and resolve them before closing.' }
       : { saved: true, revision };
     try {
@@ -22844,7 +23072,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // Stop pending close writes; already committed bytes cannot be undone.
     for (const controller of quitCloseChecksRef.current) controller.abort();
     quitCloseChecksRef.current.clear();
-  }, [documentLocked, yjsLocalCloseSession, yjsLocalCloseRequired]);
+  }, [effectiveDocumentLocked, yjsLocalCloseSession, yjsLocalCloseRequired]);
   const runQuitCloseCheck = async (run, options = {}) => {
     const controller = new AbortController();
     const cancel = () => controller.abort();
@@ -22866,16 +23094,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       if (!yjsLocalCloseRequired) return null;
       const session = yjsLocalCloseSession;
       if (!session) throw new Error('The local collaboration store is still loading. Keep this document open and retry.');
-      const readOnly = documentLocked;
+      const readOnly = effectiveDocumentLocked;
       const receipt = await runQuitCloseCheck(closeOptions => session.prepareLocalClose({ ...closeOptions, readOnly }), options);
       return { session, receipt, readOnly };
     },
     isCloseCurrent: proof => !yjsLocalCloseRequired ? proof === null
-      : !!proof && proof.session === yjsLocalCloseSession && proof.readOnly === documentLocked
+      : !!proof && proof.session === yjsLocalCloseSession && proof.readOnly === effectiveDocumentLocked
         && proof.session.isLocalCloseReceiptCurrent(proof.receipt),
     validateClose: async (proof, options) => {
       if (!yjsLocalCloseRequired) return proof === null;
-      if (!proof || proof.session !== yjsLocalCloseSession || proof.readOnly !== documentLocked) return false;
+      if (!proof || proof.session !== yjsLocalCloseSession || proof.readOnly !== effectiveDocumentLocked) return false;
       return runQuitCloseCheck(closeOptions => proof.session.validateLocalCloseReceipt(proof.receipt, closeOptions), options);
     },
     getRevision: () => getQuitSaveBlockReason() ? null : getQuitSaveRevision() };
@@ -29366,6 +29594,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // modal chain unchanged. Reuses the exact store writes of the desktop name
   // prompt's save path so sync sees identical operations.
   const commitMobileSurveyMarker = useCallback((surveyMarker, categoryId) => {
+    if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
     if (!effectiveSurveyTemplate || !surveyMarker?.id || !categoryId) return;
     const moduleId = surveyMarker.moduleId || selectedModuleId;
     const categoryName = getCategoryName(effectiveSurveyTemplate, moduleId, categoryId);
@@ -29461,10 +29690,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setExpandedSurveyMarkers({ [surveyMarker.id]: true });
     setShowSurveyPanel(true);
     requestRightRailExpand();
-  }, [effectiveSurveyTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand]);
+  }, [effectiveDocumentLocked, effectiveSurveyTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand]);
 
   // Handle surveyMarker creation from annotation tool
   const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
+    if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
     // Decision 10 (KAL-90): generate the marker id up-front so the pre-creation
     // checkpoint can stamp it — the History panel needs annotation_id on the
     // "created a survey marker" row to spotlight the mark on click. The locate
@@ -29711,7 +29941,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, effectiveSurveyTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
+  }, [addHistoryCheckpoint, effectiveDocumentLocked, selectedModuleId, effectiveSurveyTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -30671,6 +30901,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   useEffect(() => {
     const handleNativeTextMarkupDelete = (event) => {
+      if (effectiveDocumentLockedRef.current) return;
       if (activeTool !== 'select' && !NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) return;
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       const tagName = event.target?.tagName?.toLowerCase?.();
@@ -32780,6 +33011,24 @@ ${pageBlocks}
         onRequest={() => surveyDefinition.requestAdoption(selectedTemplate).catch(() => {})}
         onConfirm={() => surveyDefinition.confirmAdoption().catch(() => {})}
         onCancel={surveyDefinition.cancelAdoption} />
+      <DocumentDefinitionRevisionReview
+        available={definitionRevisionFlowEnabled && definitionRevisions.canReview
+          && (templates.length > 0 || (typeof onRefetchTemplates === 'function'
+            && typeof onTemplatesChange === 'function'))}
+        review={definitionRevisions.review}
+        historicalReview={definitionHistoryReview}
+        currentReceipt={definitionRevisions.currentReceipt}
+        templates={templates}
+        sourcesLoading={definitionSourcesLoading}
+        busy={definitionRevisions.busy}
+        error={definitionRevisions.error || definitionSourcesError}
+        onLoadSources={() => loadDefinitionRevisionSources().catch(() => {})}
+        onRequest={(selection) => definitionRevisions.requestReview(selection).catch(() => {})}
+        onApply={() => definitionRevisions.applyReview().catch(() => {})}
+        onCancel={() => definitionRevisions.cancelReview().catch(() => {})}
+        onConfirmHistorical={confirmDefinitionHistoryRestore}
+        onCancelHistorical={cancelDefinitionHistoryRestore}
+      />
       <DocumentFirstGenerationAdoptionNotice
         available={firstGenerationAdoption.available}
         review={firstGenerationAdoption.review}
@@ -33610,7 +33859,7 @@ ${pageBlocks}
                                 height={resolvedPageSize.height}
                                 scale={layerScale}
                                 canvasTopPadding={0}
-                                tool={activeTool === 'eraser' ? 'pan' : activeTool}
+                                tool={annotationInputTool === 'eraser' ? 'pan' : annotationInputTool}
                                 strokeColor={strokeColor}
                                 strokeWidth={Number(strokeWidth) || 3}
                                 arrowheadStyle={arrowheadStyle}
@@ -34122,7 +34371,7 @@ ${pageBlocks}
                                       data: annotationData,
                                     });
                                   }}
-                                  activeTool={activeTool}
+                                  activeTool={annotationInputTool}
                                   selectionMode={selectionMode}
                                   lassoTouchOperation={lassoTouchOperation}
                                   lassoTouchMode={lassoTouchMode}
@@ -36493,10 +36742,11 @@ ${pageBlocks}
 
         {/* Category Selection Modal (after highlighting) */}
         {
-          pendingSurveyMarker && effectiveSurveyTemplate && selectedModuleId && (
+          !effectiveDocumentLocked && pendingSurveyMarker && effectiveSurveyTemplate && selectedModuleId && (
             <>
               <div
                 onClick={() => {
+                  if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                   // Remove the pending surveyMarker from the canvas
                   const surveyMarkerToRemove = pendingSurveyMarker;
                   setNewSurveyMarkersByPage(prev => {
@@ -36573,6 +36823,7 @@ ${pageBlocks}
                     </h3>
                     <button
                       onClick={() => {
+                        if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                         // Remove the pending surveyMarker from the canvas
                         const surveyMarkerToRemove = pendingSurveyMarker;
                         setNewSurveyMarkersByPage(prev => {
@@ -36630,6 +36881,7 @@ ${pageBlocks}
                           <button
                             key={category.id}
                             onClick={() => {
+                              if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                               if (mobileMode) {
                                 // UX (mobile demo parity): once categorized on mobile,
                                 // commit with the default name and open the marker
@@ -36704,13 +36956,14 @@ ${pageBlocks}
 
         {/* Entity Selection Dialog */}
         {
-          pendingEntitySelection && effectiveSurveyTemplate && selectedModuleId && (() => {
+          !effectiveDocumentLocked && pendingEntitySelection && effectiveSurveyTemplate && selectedModuleId && (() => {
             const entities = documentEntityChoices;
 
             return (
               <>
                 <div
                   onClick={() => {
+                    if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                     // Cancel - proceed without entity selection
                     setPendingSurveyMarkerName({
                       surveyMarker: pendingEntitySelection.surveyMarker,
@@ -36765,6 +37018,7 @@ ${pageBlocks}
                       </h3>
                       <button
                         onClick={() => {
+                          if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                           // Cancel - proceed without entity selection
                           setPendingSurveyMarkerName({
                             surveyMarker: pendingEntitySelection.surveyMarker,
@@ -36803,6 +37057,7 @@ ${pageBlocks}
                         <button
                           key={entity.id}
                           onClick={() => {
+                            if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                             // Apply entity color and proceed to name prompt
                             // Use the entity's saved opacity for surveyMarkers
                             const entityColor = normalizeSurveyMarkerColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
@@ -36897,7 +37152,7 @@ ${pageBlocks}
 
         {/* Name Prompt Modal (after categorizing surveyMarker) */}
         {
-          pendingSurveyMarkerName && effectiveSurveyTemplate && selectedModuleId && (() => {
+          !effectiveDocumentLocked && pendingSurveyMarkerName && effectiveSurveyTemplate && selectedModuleId && (() => {
             const module = ((effectiveSurveyTemplate.modules || effectiveSurveyTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
             const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
             const categoryName = category?.name?.trim() || 'Untitled Category';
@@ -36908,6 +37163,7 @@ ${pageBlocks}
               <>
                 <div
                   onClick={() => {
+                    if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                     // Cancel - save with default name
                     // Compute color first so it can be saved with surveyMarkerData
                     const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
@@ -36994,6 +37250,7 @@ ${pageBlocks}
                       </h3>
                       <button
                         onClick={() => {
+                          if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                           // Cancel - save with default name
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
@@ -37136,6 +37393,7 @@ ${pageBlocks}
                       onChange={(e) => setSurveyMarkerNameInput(e.target.value)}
                       onFocus={(e) => { if (surveyMarkerNameInput === null) e.target.select(); }}
                       onKeyDown={(e) => {
+                        if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                         if (e.key === 'Enter') {
                           const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
                           // Compute color first so it can be saved with surveyMarkerData
@@ -37236,6 +37494,7 @@ ${pageBlocks}
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                       <button
                         onClick={() => {
+                          if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                           // Cancel - save with default name
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
@@ -37370,6 +37629,7 @@ ${pageBlocks}
                       </button>
                       <button
                         onClick={() => {
+                          if (!canCommitDocumentDefinitionMutation(effectiveDocumentLockedRef.current)) return;
                           const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
@@ -39310,6 +39570,7 @@ ${pageBlocks}
           cancel?.();
         }}
         onConfirm={() => {
+          if (effectiveDocumentLockedRef.current) return;
           const runner = pendingDeleteRunnerRef.current;
           setPendingDeletePlan(null);
           pendingDeleteRunnerRef.current = null;
@@ -39365,7 +39626,8 @@ ${pageBlocks}
         />,
         document.getElementById('chrome-sub-toolbar-host'),
       )}
-      <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />
+      <UndoToast toast={effectiveDocumentLocked ? null : guardedUndoToast}
+        onDismiss={dismissGuardedUndoToast} />
 
       {/* Renderer toggle badge (hidden dev tool — Ctrl+Shift+V to toggle, ?renderer=canvas to force) */}
     </>

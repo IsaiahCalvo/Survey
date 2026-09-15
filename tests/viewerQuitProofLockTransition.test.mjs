@@ -9,7 +9,7 @@ const source = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'u
 const start = source.indexOf('  const quitCloseChecksRef =');
 const end = source.indexOf('\n  useEffect(() => {\n    if (!onRegisterQuitSave', start);
 assert.ok(start > 0 && end > start);
-const viewerProofHook = new Function('useRef', 'useLayoutEffect', 'documentLocked', 'yjsLocalCloseRequired',
+const viewerProofHook = new Function('useRef', 'useLayoutEffect', 'effectiveDocumentLocked', 'yjsLocalCloseRequired',
   'yjsLocalCloseSession', 'quitSaveHandlerRef', 'saveLocalBeforeQuit', 'getQuitSaveBlockReason', 'getQuitSaveRevision',
   `${source.slice(start, end)}\nreturn quitSaveHandlerRef.current;`);
 

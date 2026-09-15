@@ -204,7 +204,7 @@ test('actual native quit rejects a late save acknowledgement when only native de
   const pendingWrite = new Promise(resolve => { release = resolve; });
   const scope = { ...fields, annotationsByPageRef: { current: fields.annotationsByPage },
     surveyMarkersRef: { current: fields.surveyMarkers }, spacesRef: { current: fields.spaces },
-    user: null, entities: [], documentLocked: false, hasUnsavedAnnotations: true,
+    user: null, entities: [], effectiveDocumentLocked: false, hasUnsavedAnnotations: true,
     getQuitSaveBlockReason: () => null, isManagedLocalDocument,
     persistManagedLocalSnapshot: () => pendingWrite,
     quitSaveHandlerRef: { current: null },

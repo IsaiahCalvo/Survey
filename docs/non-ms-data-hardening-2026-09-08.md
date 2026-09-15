@@ -170,6 +170,127 @@ independent cache review passed. Log:
 primitive; its owner-review, offline fallback and history integration are still
 under test, with the feature off by default and no hosted changes.
 
+### Definition app integration — browser gate open, 2026-09-15
+
+The focused integration set passed 55/55, but the actual in-app browser found
+a failure after the first checked-version install: the survey panel says
+`Document survey structure unavailable`, with zero definition reads/cache gets
+and a fresh React maximum-update-depth warning. This is not accepted or committed
+as a completed app flow. The implementation worker is checking the post-install
+provider scope and render identities before a new full-suite run.
+
+The reproducible case uses the frozen fake backend at
+`http://127.0.0.1:5187/?freshAdoption=3&aggregateQa=1&definitionQa=1`, document
+`b0400000-0000-4000-8000-000000000011`, after the real UI's review/create flow.
+Port 5187 isolates this run from port 5186, whose crashed tab lost its fake
+server session while origin-wide saved edits remained. No saved data was cleared.
+No real cloud requests, hosted SQL, or Microsoft tests are part of this run.
+
+The first loop patch stopped state writes in the disabled hook and the focused
+set passed 56/56, but a same-tab reload still failed. Temporary DOM diagnostics
+then proved the checked bundle, generation, actor, active flag, client, cache,
+and hook scope checks all pass. The hook reaches its enabled effect, yet cache
+gets and RPC reads remain zero, with a fresh maximum-depth warning at
+09:57:17 UTC. The checked-generation gate is not the cause and must not be
+removed as a workaround. Enabled-effect/render identity tracing remains open.
+
+The zero-read failure was traced to the temporary test wrapper, not the checked
+scope gate: its Proxy replaced a non-configurable method on the frozen cache
+object. Accessing `getIntent` raised the exact JavaScript Proxy-invariant
+TypeError before the audit counter ran. A separate plain facade fixed the test
+wrapper without changing stored data or weakening product guards. The speculative
+dormant-base-hook product change was removed. The same saved document now makes
+two cache intent reads and two definition RPC reads, and the real survey panel
+renders `OLD shared survey` and `OLD shared survey category`. The owner review
+entry, cross-revision undo, and final regression gates remain open.
+
+The first full integration test run failed its 120-second per-file timeout in
+`localAnnotationSaveDurability.test.mjs`; it is not a passing regression run.
+The extracted save harness omitted the new `effectiveDocumentLocked` binding,
+so its save promise rejected before an unbounded microtask wait could finish.
+The test owner is correcting the binding and bounding that wait. The concurrent
+Vite build passed (`/tmp/survey-definition-integration-build-20260915.log`).
+Full-suite log: `/tmp/survey-definition-integration-full-tests-20260915.log`.
+
+The test harness fix passed 39/39 in isolation. The final focused definition set
+passed 58/58 after adding visible, paged old/new label changes and explicit
+same-source refresh. The owner browser gate remains open: `canReview:true`, but
+`templatesLength:0`. Root traced this to AppShell's normal empty `appTemplates`
+state and `useTemplates({ autoLoad: false })`; only a separate view's callback
+fills the list. An explicit owner load action is required; serving a fake table
+row alone does not prove the normal UI can reach review. No automatic private
+template promotion or collaborator template fetch is authorized by this fix.
+
+The explicit owner source-load path now reaches the real template query and
+the source selectors. In-app browser acceptance passed review/cancel (head 1,
+zero applies, one cancelled intent), then reviewed apply (head 2, one apply,
+one finished intent). All four old/new labels are visible. A model-2 survey
+marker created under revision 1 stays present with revision-2 labels. Undo
+opens the four-label historical review; cancel leaves count 1 and the history
+buttons unchanged. Confirmed undo changes count to 0; redo restores count 1.
+The server definition stays at head 2 with exactly one apply throughout.
+Actor B opens the same marker and updated labels, has no owner controls, and
+has no private template sources in the viewer.
+
+Offline reopening is not yet accepted: the fixture's offline switch produces
+`DOCUMENT_OPEN_PROTOCOL` before the definition hook mounts. The fixture owner
+is checking the simulated transport response before any product change. The
+new final full-suite run continues in
+`/tmp/survey-definition-integration-final-verified-tests-20260915.log`; earlier
+runs failed extracted test harnesses missing `effectiveDocumentLocked` and
+must not be reported as green. The affected extraction harness set now passes
+60/60 without weakening its lock assertions.
+
+Offline definition-cache reading now passes on an already-mounted checked tab:
+after transport loss and Home/tab reactivation, actor B sees cached revision-2
+labels, `online:false`, and the message `Editing is paused`. However the actual
+edit gate fails: selecting the category and dragging a second rectangle opens
+the Entity dialog and enables Undo. The integration remains uncommitted while
+the marker creation path and related edit guards are corrected. A passing
+full suite does not close this browser-found defect. The earlier Home/offline
+open failure is separately confirmed as checked acquisition having no offline
+PDF fallback, not a malformed test receipt.
+
+The post-authorization-race full run finished with exit 0:
+`/tmp/survey-definition-integration-auth-final-tests-20260915.log` contains
+7,437 tests across 753 summaries: 7,339 passed, 98 skipped, zero failures or
+cancellations. Its matching Vite build and graph update also exited 0.
+This is the baseline before the offline edit-guard fix, not acceptance of that
+fix. Read-only review confirmed that marker creation checkpoints history before
+checking the lock, and that mobile and already-open marker dialogs also need
+commit guards. The next batch must preserve pending work while blocking these
+mutations, then pass focused tests and the actual offline browser path.
+
+The final-source paused-tab browser check now blocks the original marker drag:
+no Entity or Name dialog opens. Toolbar Undo and Cmd-Z leave category count 1
+and Redo disabled; a Rectangle drag produces no rendered shape. The synthetic
+server remains at definition head 2 / one apply and aggregate sequence 4 /
+four posts. This proves those paused input paths, not cold offline reopening.
+Pending-dialog recovery across reconnect is not claimed from this run: source
+hot reloads interrupted the earlier pending-dialog attempt. A new extracted
+real-handler test covers live-lock changes separately (3/3; combined focused
+set 22/22), rather than relying only on source-order assertions.
+
+The next full run exited 1 at `generatedDocumentProviderMounted.test.mjs`:
+its extracted Undo callback lacked the newly required live-lock ref. The worker
+is checking the affected extraction harness bindings before the final rerun.
+Log: `/tmp/survey-definition-integration-lock-final-tests-20260915.log`.
+The matching build and graph update exited 0, but a subsequent 13-call-site
+change from captured lock values to the live ref requires fresh final checks.
+No passing full-suite claim applies to that later source yet.
+
+Final frozen-source verification now passes. Full `npm test` exited 0 with
+7,441 tests across 754 files: 7,343 passed, 98 skipped, zero failures or
+cancellations (`/tmp/survey-definition-integration-live-ref-full-tests-20260915.log`).
+The final Vite build and graph update exited 0. The affected extracted-handler
+harness set passed 75/75 after supplying the new live-lock ref; runtime guards
+were not weakened. The normal in-app collaborator view reconnects with
+`online:true`, no revision error, category count 1, definition head 2 and the
+same four aggregate posts. Paused marker/rectangle/undo checks are described
+above; this does not prove cold offline PDF opening or live hosted access rules.
+The integration stays off by default. No hosted schema change, deployment,
+Microsoft test, or measured Supabase cost reduction is part of this checkpoint.
+
 ## Scope and status
 
 Local work starts at `49ee7b6a` (draft PR #803), on

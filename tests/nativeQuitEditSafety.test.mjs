@@ -61,15 +61,16 @@ function viewerGate(overrides = {}) {
   const start = source.indexOf('const getQuitSaveBlockReason = ');
   const end = source.indexOf('\n  const saveLocalBeforeQuit', start);
   const block = source.slice(start + 'const getQuitSaveBlockReason = '.length, end).replace(/;\s*$/, '');
+  const { documentLocked, ...rest } = overrides;
   const scope = { editingAnnotation: null, richTextEditor: null, showRegionSelection: false, pendingSurveyMarker: null,
     managedLocalPageMutationRef: { current: false }, managedLocalSaveTracking: { ready: true },
     textToolDragRef: { current: null }, counterDragRef: { current: null }, activeTool: 'pan', deferUntilEraseCommitsFinish,
-    toolPreferencesSaveError: null, pdfFile: {}, documentLocked: true,
+    toolPreferencesSaveError: null, pdfFile: {}, effectiveDocumentLocked: documentLocked ?? true,
     pendingSurveyMarkerSyncRef: { current: false }, quitAnnotationReceiptRef: { current: { locallyDurable: true } },
     isAnnotationLocalReceiptCurrent: receipt => receipt?.locallyDurable === true,
     isManagedLocalDocument, verifyLegacyQuitBackups: () => true, localStorage: {}, pdfId: 'local', items: [], annotations: [],
     surveyMarkersRef: { current: {} }, callouts: [], pageNames: {}, bookmarks: [], spacesRef: { current: [] },
-    activeSpaceId: null, pageTransformations: {}, ...overrides };
+    activeSpaceId: null, pageTransformations: {}, ...rest };
   return new Function(...Object.keys(scope), `return (${block});`)(...Object.values(scope));
 }
 

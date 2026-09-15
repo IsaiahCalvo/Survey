@@ -46,6 +46,7 @@ import { createDocumentFirstGenerationAdoptionClient } from './services/document
 import { createDocumentFirstGenerationAdoptionIntentStore } from './services/documentFirstGenerationAdoptionIntentStore.js';
 import { createDocumentEntityCatalogClient } from './services/documentEntityCatalog.js';
 import { createDocumentSurveyDefinitionClient } from './services/documentSurveyDefinition.js';
+import { createDocumentDefinitionRevisionAppClient } from './services/documentDefinitionRevisionAppClient.js';
 import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
   transformCheckedPageStructure } from './services/checkedPageStructure.js';
 import { readCheckedDocumentViewState, writeCheckedDocumentViewState } from './services/checkedDocumentViewStateStore.js';
@@ -142,6 +143,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
   documentSurveyDefinitionEnabled = false,
   documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null,
+  documentDefinitionRevisionsEnabled = false,
+  documentDefinitionRevisionClient = null, documentDefinitionRevisionCache = null,
   documentFirstGenerationAdoptionEnabled = false,
   documentFirstGenerationAdoptionTransport = null,
   documentFirstGenerationAdoptionIntentStore = null,
@@ -812,6 +815,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   const { register: registerQuitSave, prepareTabClose, confirmedRef: nativeExitConfirmedRef } = useNativeQuitSave(tabs);
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
   const closeViewRef = useRef(null);
+  const definitionRevisionCheckedScopeRef = useRef(null);
   closeViewRef.current = { tabs, activeTabId };
   useLayoutEffect(() => registerPreloadRecoveryGuard(
     // Even a clean dirty-bit can hide debounced form/page work or cloud writes.
@@ -854,6 +858,26 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
 
   // Authentication state
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const definitionRevisionActorRef = useRef(user?.id || null);
+  definitionRevisionActorRef.current = user?.id || null;
+  const isDefinitionRevisionAppScopeCurrent = useCallback(({ actorUserId, documentId }) => {
+    const live = closeViewRef.current;
+    const active = live?.tabs?.find(tab => tab.id === live.activeTabId);
+    return definitionRevisionActorRef.current === actorUserId
+      && active?.file?.id === documentId
+      && definitionRevisionCheckedScopeRef.current?.tabId === active?.id
+      && definitionRevisionCheckedScopeRef.current?.documentId === documentId
+      && definitionRevisionCheckedScopeRef.current?.checkedBundle != null;
+  }, []);
+  const resolvedDocumentDefinitionRevisionClient = useMemo(() => {
+    if (documentDefinitionRevisionClient) return documentDefinitionRevisionClient;
+    if (!documentDefinitionRevisionsEnabled) return null;
+    return createDocumentDefinitionRevisionAppClient({ client: supabase, enabled: true,
+      getActorUserId: () => definitionRevisionActorRef.current,
+      isCurrent: isDefinitionRevisionAppScopeCurrent,
+    });
+  }, [documentDefinitionRevisionClient, documentDefinitionRevisionsEnabled,
+    isDefinitionRevisionAppScopeCurrent]);
   const documentOpenScopeRef = useRef(null);
   if (documentOpenScopeRef.current?.actorUserId !== (user?.id || null)) {
     documentOpenScopeRef.current = { actorUserId: user?.id || null };
@@ -3765,7 +3789,11 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                     currentActorUserId={user?.id || null} isActive={isVisible}
                     client={annotationDocClient || undefined}
                     closeDocument={() => handleTabClose(tab.id)}>
-                    {({ checkedBundle, onGenerationSession }) => <>
+                    {({ checkedBundle, onGenerationSession }) => {
+                      if (isVisible) definitionRevisionCheckedScopeRef.current = {
+                        tabId: tab.id, documentId: tab.file?.id || null, checkedBundle,
+                      };
+                      return <>
                     <PageReplacementRecoveryNotice
                       recovery={visibleRecovery}
                       onClear={handleClearExpiredPageReplacement}
@@ -3820,6 +3848,9 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       onFirstGenerationAdoption={documentFirstGenerationAdoptionEnabled
                         ? handleFirstGenerationAdoption : null}
                       firstGenerationAdoptionScope={tab.documentOpenScope}
+                      documentDefinitionRevisionsEnabled={documentDefinitionRevisionsEnabled}
+                      documentDefinitionRevisionClient={resolvedDocumentDefinitionRevisionClient}
+                      documentDefinitionRevisionCache={documentDefinitionRevisionCache}
                       onRecoverLegacySidecar={(input) => handleRecoverLegacySidecar({ ...input,
                         tabId:tab.id,file:tab.file,checkedBundle:tab.checkedBundle,
                         scope:tab.documentOpenScope })}
@@ -3852,7 +3883,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       saveManagedLocalState={localDocumentStateWriter || undefined}
                     />
                     </Suspense>
-                    </>}
+                    </>;
+                    }}
                   </DocumentTabProvider>
                 </div>
               );
