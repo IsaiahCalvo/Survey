@@ -523,7 +523,14 @@ const VIEWPORT_SCROLLBAR_SIZE = 12;
 const VIEWPORT_SCROLLBAR_FADE_MS = 200;
 const VIEWPORT_SCROLLBAR_HOLD_MS = 700;
 
-function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
+// `onScrollbarGrab` stops any in-flight pan glide. These rails live OUTSIDE the
+// scroller, so the scroller's own pointer/wheel listeners never see them: a
+// thumb drag or a rail wheel would otherwise write scrollTop every pointermove
+// while a coast wrote it every frame, and the two would fight each other.
+function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onScrollbarGrab }) {
+  const scrollbarGrabRef = useRef(onScrollbarGrab);
+  scrollbarGrabRef.current = onScrollbarGrab;
+  const takeScrollerFromGlide = useCallback(() => { scrollbarGrabRef.current?.(); }, []);
   const [visible, setVisible] = useState(false);
   const [painted, setPainted] = useState(false);
   const visibleRef = useRef(false);
@@ -600,6 +607,8 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     if (!scrollerNode) return;
     event.preventDefault();
     event.stopPropagation();
+    // The rail sits outside the scroller, so its onWheelStopGlide never fires.
+    takeScrollerFromGlide();
     if (event.ctrlKey || event.metaKey) {
       scrollerNode.dispatchEvent(new WheelEvent('wheel', {
         deltaX: event.deltaX,
@@ -627,7 +636,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     scrollerNode.scrollTop += deltaY;
     showThenFade();
     requestFrame();
-  }, [requestFrame, scrollerRef, showThenFade]);
+  }, [requestFrame, scrollerRef, showThenFade, takeScrollerFromGlide]);
 
   // Hover can hold a rail already shown by scroll/zoom; hidden rails never
   // wake just because a page tool moves near the viewport edge.
@@ -771,6 +780,9 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   const startDrag = (axis, metrics) => (event) => {
     event.preventDefault();
     event.stopPropagation();
+    // Grabbing the thumb beats an in-flight glide, exactly like grabbing the
+    // page itself does - the hand on the shuttle is the one steering.
+    takeScrollerFromGlide();
     const pointer = axis === 'horizontal' ? event.clientX : event.clientY;
     dragRef.current = {
       axis,
@@ -818,6 +830,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
         ref={verticalRailRef}
         aria-label="Viewport vertical scroll bar"
         onTransitionEnd={finishFade}
+        onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('vertical')}
         onPointerMove={() => hoverRail('vertical')}
         onPointerLeave={() => {
@@ -846,6 +859,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
         ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
         onTransitionEnd={finishFade}
+        onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('horizontal')}
         onPointerMove={() => hoverRail('horizontal')}
         onPointerLeave={() => {
@@ -1755,12 +1769,25 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return panMomentumRef.current;
   }, []);
 
+  // Stopping a glide must never invent a PAN_END. When a coast was actually
+  // running, cancel() -> onSettle -> restorePanInteraction() already re-derives
+  // the state from the live space/pointer refs. When nothing was coasting there
+  // is no glide to end, so we only re-derive the same way: a wheel tick while
+  // Space is held must leave pan armed instead of firing a spurious PAN_END and
+  // re-rendering every overlay.
+  // @returns {boolean} true when a running coast was actually interrupted.
   const cancelPanInertia = useCallback((endInteraction = true) => {
     const runner = panMomentumRef.current;
     const wasRunning = Boolean(runner?.isRunning());
     runner?.cancel();
-    if (endInteraction && !wasRunning) setPanInteraction(false);
-  }, [setPanInteraction]);
+    if (endInteraction && !wasRunning) restorePanInteraction();
+    return wasRunning;
+  }, [restorePanInteraction]);
+
+  // UX: driving the viewport scrollbars takes the surface from a coast. Passing
+  // false because grabbing the shuttle is not a pan end - a held Space stays
+  // armed, so letting go of the thumb leaves the page pannable.
+  const stopGlideForScrollbar = useCallback(() => { cancelPanInertia(false); }, [cancelPanInertia]);
 
   // Release a pan drag while still moving and the page keeps gliding, decaying
   // to rest on the same curve mobile has always used. Bounds are respected by
@@ -2294,13 +2321,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
+    // UX: Previous/Next page, the page-number field, a sidebar thumbnail, a
+    // bookmark jump and a search hit all land here. A coast still writing
+    // scrollTop every frame would drag the page straight back off the target,
+    // so the glide always loses to a deliberate navigation. Passing false keeps
+    // a held Space / live drag armed: navigating is not a pan end.
+    cancelPanInertia(false);
     const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
     // tops are raw-content-space; padTop shifts the painted page down by that much.
     // (When padTop > 0 the whole doc fits and maxTop clamps this to 0 anyway.)
     el.scrollTop = Math.max(0, padTopRef.current + tops[i] - layoutMetricsRef.current.padTop);
     el.scrollLeft = Math.min(el.scrollLeft, getPageHorizontalScrollMax(i, scaleRef.current));
     return true;
-  }, [getPageHorizontalScrollMax]);
+  }, [cancelPanInertia, getPageHorizontalScrollMax]);
 
   // ---- onZoomChanged (settle only — scale changes only on commit) ----------
   useLayoutEffect(() => {
@@ -2728,6 +2761,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       scrollerRef={scrollerRef}
       previewMetrics={scrollbarPreviewMetrics}
       disabled={isMobileSurface}
+      onScrollbarGrab={stopGlideForScrollbar}
     />
     </>
   );

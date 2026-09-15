@@ -30,9 +30,15 @@ export const PAN_MOMENTUM_DEFAULTS = Object.freeze({
   emaKeep: 0.7,
   // A scroll write that moves the surface less than this hit a bound.
   stallEpsilonPx: 0.1,
-  // A pointer parked for longer than this before release is a hold, not a
-  // flick, so it must not glide (this is what keeps a plain click still).
+  // A pointer parked for this long before release is a pure hold, not a flick,
+  // so it must not glide at all (this is what keeps a plain click still).
+  // Shorter pauses taper continuously toward it - see releaseIdleScale().
   releaseIdleMs: 140,
+  // Between two coast frames the scroll offset may only have moved by the
+  // amount the runner itself wrote. Anything larger is somebody ELSE writing
+  // scroll (page nav, a scrollbar thumb drag, a search hit, a fit change), and
+  // the coast must yield to it instead of dragging the page back off target.
+  externalScrollEpsilonPx: 1.5,
 });
 
 function withDefaults(config) {
@@ -54,6 +60,27 @@ export function clampFrameDelta(dtMs, config) {
   const dt = Number(dtMs);
   if (!Number.isFinite(dt)) return cfg.minFrameMs;
   return Math.min(cfg.maxFrameMs, Math.max(cfg.minFrameMs, dt));
+}
+
+/**
+ * How much of the tracked velocity survives a pointer that paused for `idleMs`
+ * before lifting. Continuous, never binary: a 60ms hesitation must shorten the
+ * glide, not preserve it whole, and a 140ms park must kill it outright.
+ *
+ * Two factors, each modelling one real thing:
+ *  - exponential friction on the SAME time constant as the coast: the page
+ *    would already have been slowing down during those milliseconds;
+ *  - a linear intent ramp to zero at `releaseIdleMs`: the longer a finger sits
+ *    still, the more the gesture is a hold and the less it is a flick.
+ * Their product is 1 at 0ms, falls monotonically, and is exactly 0 from
+ * `releaseIdleMs` onward - no cliff anywhere in between.
+ */
+export function releaseIdleScale(idleMs, config) {
+  const cfg = withDefaults(config);
+  const idle = Number(idleMs);
+  if (!Number.isFinite(idle) || idle <= 0) return 1;
+  if (idle >= cfg.releaseIdleMs) return 0;
+  return decayFactor(idle, cfg.decayTauMs) * (1 - (idle / cfg.releaseIdleMs));
 }
 
 /** True when a release is fast enough to be treated as a flick. */
@@ -142,7 +169,10 @@ export function createPanVelocityTracker(config) {
       const gesture = state;
       reset();
       // A pointer that sat still before lifting is a hold or a plain click.
-      if (at - gesture.lastTime > cfg.releaseIdleMs) return { vx: 0, vy: 0 };
+      // The taper is continuous: a brief hesitation shortens the glide in
+      // proportion to how long the finger was parked.
+      const idleScale = releaseIdleScale(at - gesture.lastTime, cfg);
+      if (idleScale <= 0) return { vx: 0, vy: 0 };
 
       const samples = gesture.samples || [];
       const first = samples[0];
@@ -159,8 +189,8 @@ export function createPanVelocityTracker(config) {
       const gestureVy = (gesture.lastY - gesture.startY) / gestureDt;
 
       return {
-        vx: pickDominantVelocity([gesture.velocityX, sampleVx, gestureVx]),
-        vy: pickDominantVelocity([gesture.velocityY, sampleVy, gestureVy]),
+        vx: pickDominantVelocity([gesture.velocityX, sampleVx, gestureVx]) * idleScale,
+        vy: pickDominantVelocity([gesture.velocityY, sampleVy, gestureVy]) * idleScale,
       };
     },
   };
@@ -189,12 +219,16 @@ export function createPanMomentumRunner({
   let vx = 0;
   let vy = 0;
   let last = 0;
+  // Where the surface stood after the runner's own last write. Used to notice
+  // that somebody else moved the scroller between frames.
+  let written = null;
 
   const stop = (reason) => {
     if (handle) cancelFrame(handle);
     handle = 0;
     vx = 0;
     vy = 0;
+    written = null;
     onSettle?.(reason);
   };
 
@@ -203,8 +237,18 @@ export function createPanMomentumRunner({
     const dt = clampFrameDelta((Number(frameTime) || now()) - last, cfg);
     last = Number(frameTime) || now();
     const before = getScroll();
+    // A programmatic jump (page nav, thumbnail, bookmark, search hit, a
+    // scrollbar thumb drag, a fit change) owns the surface: the coast yields on
+    // the very next frame so it can never drag the page back off that target.
+    if (written
+      && (Math.abs(before.left - written.left) > cfg.externalScrollEpsilonPx
+        || Math.abs(before.top - written.top) > cfg.externalScrollEpsilonPx)) {
+      stop('external-scroll');
+      return;
+    }
     scrollBy(-vx * dt, -vy * dt);
     const after = getScroll();
+    written = { left: after.left, top: after.top };
     if (Math.abs(after.left - before.left) < cfg.stallEpsilonPx) vx = 0;
     if (Math.abs(after.top - before.top) < cfg.stallEpsilonPx) vy = 0;
     const decay = decayFactor(dt, cfg.decayTauMs);
@@ -226,6 +270,7 @@ export function createPanMomentumRunner({
       handle = 0;
       vx = Number(releaseVx) || 0;
       vy = Number(releaseVy) || 0;
+      written = null;
       if (!shouldStartPanMomentum(vx, vy, cfg)) {
         vx = 0;
         vy = 0;
