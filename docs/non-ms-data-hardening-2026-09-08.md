@@ -151,6 +151,25 @@ No hosted service or user account was used. The hook, durable cache, review UI,
 history restore coupling and publication integration remain separate work;
 this service alone does not enable owner upgrades in the running app.
 
+### Durable definition cache — 2026-09-15
+
+The new IndexedDB cache stores verified receipts by actor/document/revision/
+digest. Its separate monotonic current pointer updates atomically with the
+receipt, so reading an old revision cannot change the cached current head.
+Exact-key reads avoid loading all history. Receipts are immutable and are not
+evicted or deleted by this service. Quota failures retain prior data.
+
+Reviewed operation intents persist the full validated proof before dispatch.
+Pending cancellation and dispatched completion use exact revision/operation
+checks; retries preserve server archive order. Receipt and intent size limits
+bound individual reads and writes. The cache does not grant document access.
+
+Verification: 19/19 cache-and-client tests passed, including the 11 cache cases;
+independent cache review passed. Log:
+`/tmp/survey-definition-cache-final-tests-20260915.log`. This is a local storage
+primitive; its owner-review, offline fallback and history integration are still
+under test, with the feature off by default and no hosted changes.
+
 ## Scope and status
 
 Local work starts at `49ee7b6a` (draft PR #803), on
