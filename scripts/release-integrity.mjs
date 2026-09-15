@@ -208,6 +208,39 @@ export function assertStaticReleaseContract(root = process.cwd()) {
       + 'workflow_run matches the display name, so these two must be renamed together',
   );
 
+  // 2026-09-15 — dependabot-auto-merge.yml is the SECOND workflow_run consumer
+  // of the CI workflow's display name, and it was not covered. A rename that
+  // missed it would silently stop every dependency bump from being merged, and
+  // with nothing red anywhere there would be no signal at all. Same pairing
+  // assertion, same reason.
+  const autoMergeWorkflow = readFileSync(
+    join(root, '.github', 'workflows', 'dependabot-auto-merge.yml'), 'utf8',
+  );
+  assert.match(
+    autoMergeWorkflow,
+    new RegExp(`workflows:\\s*\\[\\s*['"]?${escapedCiName}['"]?\\s*\\]`),
+    `dependabot-auto-merge.yml must trigger on the CI workflow named "${quotedCiName}" — `
+      + 'workflow_run matches the display name, so these two must be renamed together',
+  );
+
+  // The auto-merge re-runs CI on main with `gh workflow run` after it merges,
+  // because a push made with GITHUB_TOKEN creates no workflow run. That only
+  // works while ci.yml accepts a manual dispatch; drop the trigger and every
+  // auto-merged bump stops being tested on main and stops deploying, silently.
+  assert.match(
+    autoMergeWorkflow,
+    /gh workflow run ci\.yml/,
+    'dependabot-auto-merge.yml must start CI on main after a merge — a push made '
+      + 'with GITHUB_TOKEN creates no workflow run of its own',
+  );
+  assert.match(
+    ciWorkflow,
+    /^ {2}workflow_dispatch:/m,
+    'ci.yml must keep its workflow_dispatch trigger — dependabot-auto-merge.yml '
+      + 'dispatches it after a merge, and that is the only way the merge commit '
+      + 'gets tested on main and reaches production',
+  );
+
   const desktopReleaseWorkflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.match(
     desktopReleaseWorkflow,
