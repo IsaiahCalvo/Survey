@@ -4,31 +4,64 @@ name: CI
 # main with a green checkmark because nothing ran the build or the full test
 # suite. This is the guardrail that makes parallel work safe: a bad cross-edit
 # now shows up as a red X instead of being discovered by hand later.
+#
+# 2026-09-15 — Split into parallel jobs. The old single job ran everything in
+# series and took a median of 380s, of which 333s was `npm test` alone on a
+# multi-core runner that sat 78% idle. The suite is top-heavy (479 of 512 files
+# finish in under a second), so it now runs as four balanced shards in
+# parallel, alongside the build. The five wall-clock-budget suites are NOT in
+# any shard: they still run alone, one process at a time, in `timing-suites`,
+# because neighbouring load is what has historically tripped their budgets.
+#
+# Every job is required. `ci-gate` is the single aggregate that must be green,
+# and the Deploy production workflow keys off this workflow's conclusion.
 
 on:
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: '24'
+  DENO_VERSION: v2.7.5
+
 jobs:
-  build-and-test:
+  # Static contract + type-check + the web bundle. Runs in parallel with the
+  # tests; on the runner the whole job is ~45s, of which vite is ~3s.
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
+          # Restores ~/.npm so `npm install` below resolves from cache.
           cache: npm
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.7.5
+          deno-version: ${{ env.DENO_VERSION }}
+
+      # Deno re-downloads every remote import on a cold runner. Keyed on the
+      # function sources so a new import busts it and an unchanged tree reuses
+      # the whole module graph.
+      - name: Cache Deno modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/deno
+          key: deno-${{ runner.os }}-${{ env.DENO_VERSION }}-${{ hashFiles('supabase/functions/deno.json', 'supabase/functions/**/*.ts') }}
+          restore-keys: |
+            deno-${{ runner.os }}-${{ env.DENO_VERSION }}-
 
       - name: Verify release contract
         run: node scripts/release-integrity.mjs --static
@@ -40,11 +73,20 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
 
+      # Vite's on-disk cache (dependency pre-bundling + transform results).
+      # The bundle build is only ~3s today so this is insurance rather than a
+      # big win, but it costs ~1s and keeps the build fast if the config ever
+      # grows a heavier pre-bundle step.
+      - name: Cache Vite build artifacts
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('package-lock.json', 'vite.config.js') }}
+          restore-keys: |
+            vite-${{ runner.os }}-
+
       - name: Type-check Supabase functions
         run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
-
-      - name: Run tests
-        run: npm test
 
       - name: Build web bundle
         run: npm run build
@@ -53,3 +95,95 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
+
+  # The bulk of the suite, split four ways. `--shard=N/M` is a deterministic
+  # longest-processing-time partition of every non-timing-sensitive file:
+  # stable ordering, every file in exactly one shard, nothing dropped. Four is
+  # the useful maximum — the single heaviest file (partialEraserSequentialStress,
+  # ~59s on CI) is the floor for any shard, so a fifth shard buys nothing.
+  #
+  # Files still run one process at a time INSIDE a shard. The parallelism is
+  # across runners, so each machine carries roughly today's load.
+  test:
+    name: Tests (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Report every failing shard, not just the first one to go red.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Run test shard ${{ matrix.shard }} of ${{ strategy.job-total }}
+        run: node scripts/run-node-tests.mjs --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # The wall-clock-budget suites, alone on their own runner, one process at a
+  # time. The exact file list is TIMING_SENSITIVE_TEST_FILES in
+  # scripts/timing-sensitive-tests.mjs — the shards above exclude precisely
+  # that list, so changing it moves files between jobs and never duplicates or
+  # drops them.
+  #
+  # NOTE: this job is owned by the performance-CI work (retry policy, isolated
+  # runner sizing, best-of-N budgets). It is a blocking gate here because it
+  # was blocking before the split. If it is ever given `continue-on-error`,
+  # `needs.timing-suites.result` below reports success regardless, so the gate
+  # would have to move to an explicit output instead.
+  timing-suites:
+    name: Timing-sensitive suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Run timing-sensitive suites in isolation
+        run: node scripts/run-node-tests.mjs --only-timing-sensitive
+
+  # One required status for branch protection and the Deploy production
+  # gate. `if: always()` makes it run even when something upstream failed, so
+  # it can turn "cancelled" and "skipped" into an explicit red instead of a
+  # silently-green workflow.
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [build, test, timing-suites]
+    steps:
+      - name: Require every CI job to have succeeded
+        shell: bash
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          TIMING_RESULT: ${{ needs.timing-suites.result }}
+        run: |
+          echo "build=$BUILD_RESULT test=$TEST_RESULT timing-suites=$TIMING_RESULT"
+          failed=0
+          for result in "$BUILD_RESULT" "$TEST_RESULT" "$TIMING_RESULT"; do
+            if [ "$result" != "success" ]; then failed=1; fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::CI is not green — see the failing job above." >&2
+            exit 1
+          fi
+          echo "All CI jobs succeeded."
