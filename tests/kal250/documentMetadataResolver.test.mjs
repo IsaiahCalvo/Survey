@@ -1,7 +1,7 @@
 // KAL-250 / DB-sync — shared per-open documents-row resolver.
 //
 // Opening a document used to read the same documents row ~6 times (lock state,
-// tool preferences, cutover seal x2, owner id, fast-open watermark). The
+// cutover seal x2, owner id, and fast-open watermark). The
 // resolver collapses those into ONE select via a short-TTL, single-flight cache.
 // These tests model the Supabase builder contract with a fake client that counts
 // selects, and lock in the cache behavior the consolidation depends on.
@@ -20,7 +20,6 @@ const ROW = {
   locked_at: '2026-06-03T10:00:00.000Z',
   locked_by: 'owner-1',
   locked_label: 'Editing',
-  tool_preferences: { pen: { color: '#f00' } },
   cutover_completed_at: '2026-06-03T09:00:00.000Z',
   annotations_changed_at: '2026-06-03T11:00:00.000Z'
 };
@@ -29,22 +28,23 @@ const ROW = {
 // -> { data, error }. Counts select() invocations = actual DB round-trips.
 function makeClient({ row = ROW, error = null } = {}) {
   let selectCount = 0;
+  let selectedColumns = null;
   const builder = {
-    select() { selectCount++; return builder; },
+    select(columns) { selectCount++; selectedColumns = columns; return builder; },
     eq() { return builder; },
     maybeSingle() { return Promise.resolve({ data: error ? null : row, error }); }
   };
-  return { client: { from() { return builder; } }, selects: () => selectCount };
+  return { client: { from() { return builder; } }, selects: () => selectCount, selectedColumns: () => selectedColumns };
 }
 
 test('one resolve issues exactly one select and maps to camelCase', async () => {
   __resetDocumentMetadataCacheForTests();
-  const { client, selects } = makeClient();
+  const { client, selects, selectedColumns } = makeClient();
   const meta = await resolveDocumentMetadata('doc1', { supabase: client });
   assert.equal(selects(), 1);
   assert.equal(meta.userId, 'owner-1');
   assert.equal(meta.lockedLabel, 'Editing');
-  assert.equal(meta.toolPreferences.pen.color, '#f00');
+  assert.doesNotMatch(selectedColumns(), /tool_preferences/, 'shared document metadata must not carry private tool settings');
   assert.equal(meta.cutoverCompletedAt, '2026-06-03T09:00:00.000Z');
   assert.equal(meta.annotationsChangedAt, '2026-06-03T11:00:00.000Z');
 });
@@ -108,7 +108,7 @@ test('absent columns map to null', async () => {
   assert.equal(meta.userId, 'u');
   assert.equal(meta.cutoverCompletedAt, 'ts');
   assert.equal(meta.lockedAt, null);
-  assert.equal(meta.toolPreferences, null);
+  assert.equal(Object.hasOwn(meta, 'toolPreferences'), false);
   assert.equal(meta.annotationsChangedAt, null);
 });
 

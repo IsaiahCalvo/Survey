@@ -1,9 +1,9 @@
 // src/services/documentMetadataResolver.js
 // KAL-250 / DB-sync — one shared per-open read of the documents row.
 //
-// Opening a document used to read the SAME documents row up to six times, each
-// selecting one or two columns: lock state (documentLockService), tool
-// preferences (useDatabase), the cutover seal (crdtBackfill + the hydrate hook),
+// Opening a document used to read the SAME documents row up to five times, each
+// selecting one or two columns: lock state (documentLockService), the cutover
+// seal (crdtBackfill + the hydrate hook),
 // the owner id (YDocProvider cleanup audit), and the fast-open watermark
 // (annotationCloudSync). Those reads fire SEQUENTIALLY across the open lifecycle
 // (lock banner mount -> tool prefs -> backfill -> hydrate -> cleanup audit), so
@@ -27,7 +27,7 @@ import { supabase as defaultClient } from '../supabaseClient.js';
 
 const TTL_MS = 5000;
 const META_COLUMNS =
-  'user_id, locked_at, locked_by, locked_label, tool_preferences, cutover_completed_at, annotations_changed_at';
+  'user_id, locked_at, locked_by, locked_label, cutover_completed_at, annotations_changed_at';
 
 const MAX_CACHE_ENTRIES = 128;
 const cache = new Map(); // client/document key -> { clientId, documentId, value, expiresAt }
@@ -73,7 +73,6 @@ function nullMetadata() {
     lockedAt: null,
     lockedBy: null,
     lockedLabel: null,
-    toolPreferences: null,
     cutoverCompletedAt: null,
     annotationsChangedAt: null,
   };
@@ -86,7 +85,7 @@ function nullMetadata() {
  * @param {string|null|undefined} documentId
  * @param {{ supabase?: object }} [opts] - optional client (crdtBackfill passes
  *   the client it was handed via args rather than the singleton).
- * @returns {Promise<{ userId, lockedAt, lockedBy, lockedLabel, toolPreferences, cutoverCompletedAt, annotationsChangedAt }>}
+ * @returns {Promise<{ userId, lockedAt, lockedBy, lockedLabel, cutoverCompletedAt, annotationsChangedAt }>}
  */
 export async function resolveDocumentMetadata(documentId, { supabase: client = defaultClient } = {}) {
   if (!documentId || !client) return nullMetadata();
@@ -118,7 +117,6 @@ export async function resolveDocumentMetadata(documentId, { supabase: client = d
       lockedAt: data.locked_at ?? null,
       lockedBy: data.locked_by ?? null,
       lockedLabel: data.locked_label ?? null,
-      toolPreferences: data.tool_preferences ?? null,
       cutoverCompletedAt: data.cutover_completed_at ?? null,
       annotationsChangedAt: data.annotations_changed_at ?? null,
     };

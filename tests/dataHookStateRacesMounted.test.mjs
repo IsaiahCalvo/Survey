@@ -21,7 +21,7 @@ const hookSource = [
 ].join('\n');
 let sequence = 0;
 
-async function mount(t, hookName, { deferredReads = false, args = [], tablesForUser } = {}) {
+async function mount(t, hookName, { deferredReads = false, deferredPreferenceReads = false, args = [], tablesForUser } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://example.test' });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -33,6 +33,7 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     listeners: new Set(), reads: [], metadataReads: [], writes: [], invalidations: [],
     timers: new Map(), timerId: 0, readError: null, writeError: null, queryLog: [],
     sessionReads: [], writeReplies: [], authListeners: new Set(),
+    deferPreferenceReads: deferredPreferenceReads,
   };
   state.tables = tablesForUser?.(state.user.id);
   state.supabase = {
@@ -117,6 +118,41 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     const subscribeLibraryChange = (listener) => { state.listeners.add(listener); return () => state.listeners.delete(listener); };
     const resolveDocumentMetadata = (id) => new Promise((resolve) => state.metadataReads.push({ id, resolve }));
     const invalidateDocumentMetadata = (id) => state.invalidations.push(id);
+    const resolveDocumentToolPreferenceScope = ({ actorUserId, documentId, supabaseDocId }) => !documentId ? null
+      : supabaseDocId ? (actorUserId ? { kind: 'account-cloud', actorUserId, documentId, supabaseDocId } : null)
+        : actorUserId ? { kind: 'account-local', actorUserId, documentId, supabaseDocId: null }
+          : { kind: 'device-local', deviceScopeId: 'device-local', documentId, supabaseDocId: null };
+    const documentToolPreferenceScopeKey = (scope) => scope ? JSON.stringify(scope) : null;
+    const preferenceRecords = new Map();
+    const documentToolPreferences = {
+      snapshot(scope) { return preferenceRecords.get(documentToolPreferenceScopeKey(scope)) || { preferences: null, revision: 0, pending: false, errorCode: null }; },
+      admit(scope, preferences) {
+        const value = { preferences, revision: 0, pending: scope.kind === 'account-cloud', errorCode: null };
+        preferenceRecords.set(documentToolPreferenceScopeKey(scope), value);
+        return { snapshot: value, draft: value.pending ? {} : null };
+      },
+      flush(scope, options) {
+        state.preferenceFlushes ||= []; state.preferenceFlushes.push({ scope, signal: options?.signal });
+        if (state.preferenceFlushError) {
+          const current = this.snapshot(scope);
+          preferenceRecords.set(documentToolPreferenceScopeKey(scope), { ...current, conflict: true });
+          return Promise.reject(state.preferenceFlushError);
+        }
+        return Promise.resolve(this.snapshot(scope));
+      },
+      refresh(scope) {
+        const fallback = this.snapshot(scope);
+        if (!state.deferPreferenceReads) return Promise.resolve(fallback);
+        return new Promise(resolve => { (state.preferenceReads ||= []).push({ scope, resolve }); });
+      },
+      subscribe() { return () => {}; },
+      resolveConflict(scope, choice) {
+        const current = this.snapshot(scope);
+        const next = { ...current, conflict: false, pending: choice === 'keep' };
+        preferenceRecords.set(documentToolPreferenceScopeKey(scope), next);
+        return next;
+      },
+    };
     const setTimeout = (callback) => { const id = ++state.timerId; state.timers.set(id, () => { state.timers.delete(id); return callback(); }); return id; };
     const clearTimeout = (id) => state.timers.delete(id);
     ${hookSource}
@@ -210,218 +246,86 @@ test('connected service refetch uses latest request, not last response', async (
   assert.deepEqual(Object.keys(h.latest().services), ['google']);
 });
 
-test('tool preferences ignore responses for a previously open document', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  await h.render(['b', 'cloud-b']);
-  await act(async () => h.state.metadataReads[1].resolve({ toolPreferences: { pen: { strokeColor: 'blue' } } }));
-  await act(async () => h.state.metadataReads[0].resolve({ toolPreferences: { pen: { strokeColor: 'red' } } }));
-  assert.equal(h.latest().getToolPreference('pen').strokeColor, 'blue');
-  assert.equal(JSON.parse(localStorage.getItem('toolPrefs_b')).pen.strokeColor, 'blue');
-  assert.equal(localStorage.getItem('toolPrefs_a'), null, 'stale cloud response must not overwrite local storage');
+
+test('tool preferences hide the prior account on the first switched render and ignore its delayed read', async (t) => {
+  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'], deferredPreferenceReads: true });
+  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'red' }));
+  h.state.user = { id: 'other-user' };
+  await h.render();
+  assert.equal(h.latest().getToolPreference('pen').strokeColor, '#ff0000');
+  h.state.user = { id: 'third-user' };
+  await h.render();
+  await act(async () => h.state.preferenceReads.at(-2).resolve({ preferences: { pen: { strokeColor: 'blue' } }, errorCode: null }));
+  assert.equal(h.latest().getToolPreference('pen').strokeColor, '#ff0000');
+  await act(async () => h.state.preferenceReads.at(-1).resolve({ preferences: { pen: { strokeColor: 'green' } }, errorCode: null }));
+  assert.equal(h.latest().getToolPreference('pen').strokeColor, 'green');
 });
 
-test('local tool edit beats earlier cloud fetch and successful save invalidates metadata', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
+test('tool preferences ignore a delayed read for a previously open document', async (t) => {
+  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'], deferredPreferenceReads: true });
+  await h.render(['b', 'cloud-b']);
+  await act(async () => h.state.preferenceReads[1].resolve({ preferences: { pen: { strokeColor: 'blue' } }, errorCode: null }));
+  await act(async () => h.state.preferenceReads[0].resolve({ preferences: { pen: { strokeColor: 'red' } }, errorCode: null }));
+  assert.equal(h.latest().getToolPreference('pen').strokeColor, 'blue');
+});
+
+test('local edit beats an earlier cloud read and schedules one scoped flush', async (t) => {
+  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'], deferredPreferenceReads: true });
   await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-  await act(async () => h.state.metadataReads[0].resolve({ toolPreferences: { pen: { strokeColor: 'red' } } }));
+  await act(async () => h.state.preferenceReads[0].resolve({ preferences: { pen: { strokeColor: 'red' } }, errorCode: null }));
   assert.equal(h.latest().getToolPreference('pen').strokeColor, 'green');
-  assert.equal(h.latest().loading, false);
   await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
-  assert.deepEqual(h.state.invalidations, ['cloud-a']);
-  assert.equal(h.state.writes[0].data.tool_preferences.pen.strokeColor, 'green');
+  assert.equal(h.state.preferenceFlushes.length, 1);
+  assert.equal(h.state.preferenceFlushes[0].scope.supabaseDocId, 'cloud-a');
 });
 
 for (const change of ['account', 'document', 'close']) {
-  test(`tool preference debounce stops after ${change} change while keeping the local draft`, async (t) => {
+  test(`tool preference debounce stops after ${change} change`, async (t) => {
     const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
     await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
     const queued = [...h.state.timers.values()];
-    if (change === 'account') {
-      h.state.user = { id: 'other-actor' };
-      await h.render();
-    } else if (change === 'document') {
-      await h.render(['b', 'cloud-b']);
-    } else {
-      await h.unmount();
-    }
-    assert.equal(h.state.timers.size, 0, 'cleanup cancels the old timer');
+    if (change === 'account') { h.state.user = { id: 'other-actor' }; await h.render(); }
+    else if (change === 'document') await h.render(['b', 'cloud-b']);
+    else await h.unmount();
+    assert.equal(h.state.timers.size, 0);
     await act(async () => { for (const callback of queued) await callback(); });
-    assert.deepEqual(h.state.writes, [], 'an already-queued callback must also fail closed');
-    assert.equal(JSON.parse(localStorage.getItem('toolPrefs_a')).pen.strokeColor, 'green');
+    assert.deepEqual(h.state.preferenceFlushes || [], []);
   });
 }
 
-test('tool preferences recheck scope after a delayed session read', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  h.state.deferSession = true;
+test('signed managed-local preferences stay actor scoped and never schedule cloud work', async (t) => {
+  const h = await mount(t, 'useDocumentToolPreferences', { args: ['local-a', null] });
   await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-  let saving;
-  await act(async () => { saving = [...h.state.timers.values()][0](); });
-  assert.equal(h.state.sessionReads.length, 1);
-  h.state.user = { id: 'other-actor' };
-  await h.render();
-  await act(async () => {
-    const pending = h.state.sessionReads[0];
-    pending.resolve(pending.result);
-    await saving;
-  });
-  assert.deepEqual(h.state.writes, []);
-  assert.equal(JSON.parse(localStorage.getItem('toolPrefs_a')).pen.strokeColor, 'green');
-});
-
-test('tool preferences do not send through a different or missing authenticated actor', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  for (const actor of [{ id: 'different-session' }, null]) {
-    h.state.authUser = actor;
-    await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-    await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
-    assert.deepEqual(h.state.writes, []);
-  }
-});
-
-test('rapid tool edits send only the latest snapshot using its actor token on that request', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  await act(async () => {
-    h.latest().updateToolPreference('pen', { strokeColor: 'red' });
-    h.latest().updateToolPreference('pen', { strokeColor: 'green' });
-    h.latest().updateToolPreference('pen', { strokeWidth: 7 });
-  });
-  assert.equal(h.state.timers.size, 1);
-  await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
-  assert.equal(h.state.writes.length, 1);
-  assert.equal(h.state.writes[0].data.tool_preferences.pen.strokeColor, 'green');
-  assert.equal(h.state.writes[0].data.tool_preferences.pen.strokeWidth, 7);
-  assert.equal(h.state.writes[0].headers.Authorization, `Bearer token-${h.state.user.id}`);
-});
-
-test('new tool preference writes wait for an older in-flight write before sending', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  h.state.deferWrites = true;
-  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-  let first, second;
-  await act(async () => { first = [...h.state.timers.values()][0](); });
-  assert.equal(h.state.writes.length, 1);
-  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'blue' }));
-  const draftKey = `toolPrefsPending_${JSON.stringify([h.state.user.id, 'a', 'cloud-a'])}`;
-  const newerDraft = localStorage.getItem(draftKey);
-  await act(async () => { second = [...h.state.timers.values()][0](); });
-  assert.equal(h.state.writes.length, 1, 'a slower old response must not race the new snapshot');
-  await act(async () => {
-    h.state.writeReplies.shift()({ data: { id: 'cloud-a' }, error: null });
-    await first;
-  });
-  assert.equal(h.state.writes.length, 2);
-  assert.equal(h.state.writes[1].data.tool_preferences.pen.strokeColor, 'blue');
-  assert.equal(localStorage.getItem(draftKey), newerDraft, 'the old receipt cannot delete the newer draft');
-  await act(async () => {
-    h.state.writeReplies.shift()({ data: { id: 'cloud-a' }, error: null });
-    await second;
-  });
-  assert.equal(localStorage.getItem(draftKey), null);
-});
-
-for (const change of ['close', 'document']) {
-  test(`pending tool draft survives ${change} and old cloud metadata, then retries on the same actor`, async (t) => {
-    const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-    await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-    const key = `toolPrefsPending_${JSON.stringify([h.state.user.id, 'a', 'cloud-a'])}`;
-    assert.ok(localStorage.getItem(key), 'write the pending draft before the debounce runs');
-    if (change === 'close') {
-      await h.remount();
-    } else {
-      await h.render(['b', 'cloud-b']);
-      await h.render(['a', 'cloud-a']);
-    }
-    await act(async () => {
-      for (const read of h.state.metadataReads) read.resolve({ toolPreferences: { pen: { strokeColor: 'red' } } });
-    });
-    assert.equal(h.latest().getToolPreference('pen').strokeColor, 'green');
-    await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
-    assert.equal(h.state.writes.length, 1);
-    assert.equal(h.state.writes[0].data.tool_preferences.pen.strokeColor, 'green');
-    assert.equal(localStorage.getItem(key), null, 'only the accepted draft is cleared');
-  });
-}
-
-for (const failure of ['error', 'zero rows']) {
-  test(`tool preference ${failure} response keeps the pending draft for a later retry`, async (t) => {
-    const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-    h.state.writeError = failure === 'error' ? new Error('offline') : null;
-    h.state.zeroWrite = failure === 'zero rows';
-    await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-    const key = `toolPrefsPending_${JSON.stringify([h.state.user.id, 'a', 'cloud-a'])}`;
-    const draft = localStorage.getItem(key);
-    await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
-    assert.equal(localStorage.getItem(key), draft);
-    assert.ok(h.latest().saveError);
-    h.state.writeError = null;
-    h.state.zeroWrite = false;
-    await h.remount();
-    await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
-    assert.equal(localStorage.getItem(key), null);
-  });
-}
-
-test('failed pending-draft storage retains a newer edit in memory and reports it is not durable', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-  const key = `toolPrefsPending_${JSON.stringify([h.state.user.id, 'a', 'cloud-a'])}`;
-  const olderDraft = localStorage.getItem(key);
-  const prototype = Object.getPrototypeOf(localStorage);
-  const original = prototype.setItem;
-  prototype.setItem = function (name, value) {
-    if (name === key) throw new Error('storage full');
-    return original.call(this, name, value);
-  };
-  t.after(() => { prototype.setItem = original; });
-  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'blue' }));
-  assert.equal(h.latest().saveError, 'storage full');
-  assert.equal(localStorage.getItem(key), olderDraft);
+  assert.equal(h.latest().getToolPreference('pen').strokeColor, 'green');
   assert.equal(h.state.timers.size, 0);
-  await act(async () => h.latest().refetch());
-  assert.equal(h.latest().getToolPreference('pen').strokeColor, 'blue');
-  assert.equal(h.state.writes.length, 0);
+  assert.deepEqual(h.state.preferenceFlushes || [], []);
 });
 
-test('tool writes stay ordered across close and remount while an old request is in flight', async (t) => {
+test('tool preference scope cleanup aborts its queued lock or network work', async (t) => {
   const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  h.state.deferWrites = true;
   await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-  let first, second;
-  await act(async () => { first = [...h.state.timers.values()][0](); });
-  assert.equal(h.state.writes.length, 1);
-  await h.remount();
+  await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
+  const oldSignal = h.state.preferenceFlushes[0].signal;
+  assert.equal(oldSignal.aborted, false);
+  await h.render(['b', 'cloud-b']);
+  assert.equal(oldSignal.aborted, true);
+});
+
+test('a rejected flush publishes its conflict marker and both real hook actions resolve it', async (t) => {
+  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
+  h.state.preferenceFlushError = Object.assign(new Error('Choose which defaults to use.'), { code: '40001' });
+  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
+  await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
+  assert.equal(h.latest().preferenceConflict, true);
+  await act(async () => h.latest().useSavedToolPreferences());
+  assert.equal(h.latest().preferenceConflict, false);
+  h.state.preferenceFlushError = null;
   await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'blue' }));
-  await act(async () => { second = [...h.state.timers.values()][0](); });
-  assert.equal(h.state.writes.length, 1);
-  await act(async () => {
-    h.state.writeReplies.shift()({ data: { id: 'cloud-a' }, error: null });
-    await first;
-  });
-  assert.equal(h.state.writes.length, 2);
-  assert.equal(h.state.writes[1].data.tool_preferences.pen.strokeColor, 'blue');
-  await act(async () => {
-    h.state.writeReplies.shift()({ data: { id: 'cloud-a' }, error: null });
-    await second;
-  });
-});
-
-test('a queued tool write ignores a newer persisted revision from another view', async (t) => {
-  const h = await mount(t, 'useDocumentToolPreferences', { args: ['a', 'cloud-a'] });
-  h.state.deferSession = true;
-  await act(async () => h.latest().updateToolPreference('pen', { strokeColor: 'green' }));
-  let saving;
-  await act(async () => { saving = [...h.state.timers.values()][0](); });
-  const key = `toolPrefsPending_${JSON.stringify([h.state.user.id, 'a', 'cloud-a'])}`;
-  const replacement = JSON.stringify({ version: 1, revision: 'other-view', preferences: { pen: { strokeColor: 'blue' } } });
-  localStorage.setItem(key, replacement);
-  await act(async () => {
-    const pending = h.state.sessionReads[0];
-    pending.resolve(pending.result);
-    await saving;
-  });
-  assert.equal(h.state.writes.length, 0);
-  assert.equal(localStorage.getItem(key), replacement);
+  h.state.preferenceFlushError = Object.assign(new Error('Choose which defaults to use.'), { code: '40001' });
+  await act(async () => { for (const callback of h.state.timers.values()) await callback(); });
+  assert.equal(h.latest().preferenceConflict, true);
+  await act(async () => h.latest().keepShownToolPreferences());
+  assert.equal(h.latest().preferenceConflict, false);
 });
 
 for (const [hook, table, memberColumn] of [

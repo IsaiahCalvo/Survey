@@ -14,14 +14,12 @@ import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
 import { createLibraryReadReconciler } from './libraryMutationState.js';
 import { createLibraryMutationRunner } from './libraryMutationRunner.js';
-import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange } from './libraryChangeBus.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { cleanupDocumentStorage } from '../services/documentStorageCleanup.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
-import { randomUUID } from '../utils/randomUUIDPolyfill.js';
-import { queueToolPreferenceWrite } from './toolPreferenceWriteQueue.js';
+import { documentToolPreferences, documentToolPreferenceScopeKey, resolveDocumentToolPreferenceScope } from '../services/documentToolPreferences.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -1061,88 +1059,65 @@ const DEFAULT_TOOL_PREFERENCES = {
 
 /**
  * Hook for managing per-document, per-tool preferences
- * Stores preferences in localStorage keyed by document ID
- * Optionally syncs to Supabase if user is authenticated and document exists in DB
+ * Stores preferences under an account/document or guest/document scope.
+ * Cloud documents sync through actor-bound private preference RPCs.
  */
 export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => {
   const { user } = useAuth();
-  const preferenceScope = JSON.stringify([user?.id ?? null, documentId, supabaseDocId]);
-  const preferenceScopeRef = useRef(preferenceScope);
+  const preferenceScopeKey = JSON.stringify([user?.id ?? null, documentId ?? null, supabaseDocId ?? null]);
+  const scopeRef = useRef(null);
+  if (scopeRef.current?.inputKey !== preferenceScopeKey) {
+    scopeRef.current = {
+      inputKey: preferenceScopeKey,
+      value: resolveDocumentToolPreferenceScope({ actorUserId: user?.id, documentId, supabaseDocId }),
+    };
+  }
+  const preferenceScope = scopeRef.current.value;
+  const scopedKey = documentToolPreferenceScopeKey(preferenceScope);
+  const preferenceScopeRef = useRef(scopedKey);
   const preferenceRequestRef = useRef(0);
-  const preferenceSaveRef = useRef({ timer: null, generation: 0, activeScope: null, drafts: new Map() });
-  const pendingDraftKey = `toolPrefsPending_${preferenceScope}`;
-  const readPendingDraft = () => {
-    const memory = preferenceSaveRef.current.drafts.get(preferenceScope);
-    if (memory && !memory.durable) return memory;
-    const raw = localStorage.getItem(pendingDraftKey);
-    if (!raw) return null;
-    const record = JSON.parse(raw);
-    if (record.version !== 1 || typeof record.revision !== 'string' || !record.preferences
-      || typeof record.preferences !== 'object' || Array.isArray(record.preferences)) {
-      throw new Error('The pending tool settings could not be read. They were kept for recovery.');
-    }
-    return { raw, preferences: record.preferences, durable: true };
-  };
-  preferenceScopeRef.current = preferenceScope;
-  const [toolPreferences, setToolPreferences] = useState(() => {
-    // Initialize from localStorage if available
-    if (documentId) {
-      try {
-        const draft = readPendingDraft();
-        if (draft) return draft.preferences;
-        const saved = localStorage.getItem(`toolPrefs_${documentId}`);
-        if (saved) {
-          return JSON.parse(saved);
-        }
-      } catch (e) {
-        console.error('Error loading tool preferences from localStorage:', e);
-      }
-    }
-    return { ...DEFAULT_TOOL_PREFERENCES };
-  });
+  const preferenceSaveRef = useRef({ timer: null, generation: 0, activeScopeKey: null, controller: null });
+  preferenceScopeRef.current = scopedKey;
+  const initialSnapshot = documentToolPreferences.snapshot(preferenceScope);
+  const [preferenceState, setPreferenceState] = useState(() => ({
+    scopeKey: scopedKey,
+    preferences: initialSnapshot.preferences || { ...DEFAULT_TOOL_PREFERENCES },
+    conflict: initialSnapshot.conflict === true,
+  }));
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
-  const schedulePendingDraft = (draft) => {
+  const publishSnapshot = (snapshot) => {
+    setPreferenceState({
+      scopeKey: scopedKey,
+      preferences: snapshot?.preferences
+        ? { ...DEFAULT_TOOL_PREFERENCES, ...snapshot.preferences }
+        : { ...DEFAULT_TOOL_PREFERENCES },
+      conflict: snapshot?.conflict === true,
+    });
+  };
+
+  const schedulePendingDraft = () => {
     const pending = preferenceSaveRef.current;
-    if (!draft.durable || !supabaseDocId || !user || !isSupabaseAvailable()) return;
+    if (preferenceScope?.kind !== 'account-cloud' || !isSupabaseAvailable()) return;
     const saveGeneration = ++pending.generation;
-    const isCurrentSave = () => pending.activeScope === preferenceScope
-      && preferenceScopeRef.current === preferenceScope && pending.generation === saveGeneration;
+    const isCurrentSave = () => pending.activeScopeKey === scopedKey
+      && preferenceScopeRef.current === scopedKey && pending.generation === saveGeneration;
     clearTimeout(pending.timer);
     pending.timer = setTimeout(() => {
       if (!isCurrentSave()) return;
       pending.timer = null;
-      return queueToolPreferenceWrite(supabase, user.id, supabaseDocId, async () => {
+      return documentToolPreferences.flush(preferenceScope, {
+        isCurrent: isCurrentSave,
+        signal: pending.controller?.signal,
+      }).then(snapshot => {
         if (!isCurrentSave()) return;
-        try {
-          const { data, error: sessionError } = await supabase.auth.getSession();
-          if (!isCurrentSave()) return;
-          if (sessionError) throw sessionError;
-          const session = data?.session;
-          if (session?.user?.id !== user.id || !session?.access_token) return;
-          // Another mounted view may have saved a newer pending revision while
-          // this job waited for a write slot or session refresh.
-          if (localStorage.getItem(pendingDraftKey) !== draft.raw) return;
-          const { data: saved, error } = await supabase
-            .from('documents')
-            .update({ tool_preferences: draft.preferences })
-            .eq('id', supabaseDocId)
-            .select('id')
-            .setHeader('Authorization', `Bearer ${session.access_token}`)
-            .maybeSingle();
-          if (error) throw error;
-          if (saved?.id !== supabaseDocId) throw new Error('Tool settings were not accepted. The pending draft was kept.');
-          invalidateDocumentMetadata(supabaseDocId);
-          if (pending.activeScope === preferenceScope && preferenceScopeRef.current === preferenceScope) {
-            preferenceRequestRef.current += 1;
-          }
-          // An old receipt must not clear a newer local edit, even after close.
-          if (localStorage.getItem(pendingDraftKey) === draft.raw) localStorage.removeItem(pendingDraftKey);
-          if (pending.drafts.get(preferenceScope)?.raw === draft.raw) pending.drafts.delete(preferenceScope);
-          if (isCurrentSave()) setSaveError(null);
-        } catch (err) {
-          if (isCurrentSave()) setSaveError(err.message || 'Tool settings could not sync. The pending draft was kept.');
+        publishSnapshot(snapshot);
+        setSaveError(snapshot.error?.message || (snapshot.errorCode ? 'Tool settings could not sync. The draft was kept.' : null));
+      }, err => {
+        if (isCurrentSave()) {
+          publishSnapshot(documentToolPreferences.snapshot(preferenceScope));
+          setSaveError(err.message || 'Tool settings could not sync. The draft was kept.');
         }
       });
     }, 500);
@@ -1150,86 +1125,64 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
 
   useEffect(() => {
     const pending = preferenceSaveRef.current;
-    pending.activeScope = preferenceScope;
+    pending.controller?.abort();
+    pending.controller = new AbortController();
+    pending.activeScopeKey = scopedKey;
     return () => {
-      pending.activeScope = null;
+      pending.activeScopeKey = null;
       pending.generation += 1;
       clearTimeout(pending.timer);
       pending.timer = null;
+      pending.controller?.abort();
+      pending.controller = null;
     };
-  }, [preferenceScope]);
+  }, [scopedKey]);
 
   // Load preferences when documentId changes
   useEffect(() => {
     preferenceRequestRef.current += 1;
     setLoading(false);
     setSaveError(null);
-    if (!documentId) {
-      setToolPreferences({ ...DEFAULT_TOOL_PREFERENCES });
+    if (!preferenceScope) {
+      setPreferenceState({ scopeKey: scopedKey, preferences: { ...DEFAULT_TOOL_PREFERENCES }, conflict: false });
       return;
     }
-
-    // Load from localStorage first
-    try {
-      const draft = readPendingDraft();
-      if (draft) {
-        setToolPreferences(draft.preferences);
-        if (draft.durable) schedulePendingDraft(draft);
-        else setSaveError('Tool settings are not saved on this device. Keep this document open and try again.');
-        return () => { preferenceRequestRef.current += 1; };
-      }
-      const saved = localStorage.getItem(`toolPrefs_${documentId}`);
-      if (saved) {
-        setToolPreferences(JSON.parse(saved));
-      } else {
-        setToolPreferences({ ...DEFAULT_TOOL_PREFERENCES });
-      }
-    } catch (e) {
-      console.error('Error loading tool preferences:', e);
-      setSaveError(e.message || 'Tool settings could not be read.');
-      return () => { preferenceRequestRef.current += 1; };
-    }
-
-    // If we have a Supabase document ID and user, fetch from DB
-    if (supabaseDocId && user && isSupabaseAvailable()) {
-      fetchFromSupabase();
-    }
-    return () => { preferenceRequestRef.current += 1; };
-  }, [preferenceScope]);
+    publishSnapshot(documentToolPreferences.snapshot(preferenceScope));
+    if (preferenceScope.kind === 'account-cloud' && isSupabaseAvailable()) void fetchFromSupabase().catch(() => undefined);
+    const unsubscribe = documentToolPreferences.subscribe(preferenceScope, () => {
+      if (preferenceScopeRef.current !== scopedKey) return;
+      publishSnapshot(documentToolPreferences.snapshot(preferenceScope));
+      if (preferenceScope.kind === 'account-cloud' && isSupabaseAvailable()) void fetchFromSupabase().catch(() => undefined);
+    });
+    return () => {
+      preferenceRequestRef.current += 1;
+      unsubscribe();
+    };
+  }, [scopedKey]);
 
   const fetchFromSupabase = async () => {
-    if (!supabaseDocId || !user || !isSupabaseAvailable()) return;
+    if (preferenceScope?.kind !== 'account-cloud' || !isSupabaseAvailable()) return documentToolPreferences.snapshot(preferenceScope);
     const requestId = ++preferenceRequestRef.current;
     const isCurrentRequest = () => isScopedRequestCurrent({
       requestId,
       latestRequestId: preferenceRequestRef.current,
-      requestScopeKey: preferenceScope,
+      requestScopeKey: scopedKey,
       currentScopeKey: preferenceScopeRef.current,
     });
 
     try {
       setLoading(true);
-      const draft = readPendingDraft();
-      if (draft) {
-        setToolPreferences(draft.preferences);
-        schedulePendingDraft(draft);
-        return;
-      }
-      const meta = await resolveDocumentMetadata(supabaseDocId);
+      const result = await documentToolPreferences.refresh(preferenceScope, {
+        isCurrent: isCurrentRequest,
+        signal: preferenceSaveRef.current.controller?.signal,
+      });
       if (!isCurrentRequest()) return;
-      if (readPendingDraft()) return;
-
-      if (meta.toolPreferences) {
-        // Merge with defaults to ensure all tools have preferences
-        const merged = { ...DEFAULT_TOOL_PREFERENCES, ...meta.toolPreferences };
-        setToolPreferences(merged);
-        // Also save to localStorage for offline access
-        if (documentId) {
-          localStorage.setItem(`toolPrefs_${documentId}`, JSON.stringify(merged));
-        }
-      }
+      publishSnapshot(result);
+      setSaveError(result.error?.message || (result.errorCode ? 'Tool settings could not sync. The draft was kept.' : null));
+      return result;
     } catch (err) {
-      console.error('Error fetching tool preferences:', err);
+      if (isCurrentRequest()) setSaveError(err.message || 'Tool settings could not be read.');
+      throw err;
     } finally {
       if (isCurrentRequest()) setLoading(false);
     }
@@ -1238,53 +1191,59 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
   // Update preferences for a specific tool
   const updateToolPreference = useCallback((toolId, updates) => {
     const pending = preferenceSaveRef.current;
-    if (pending.activeScope !== preferenceScope || preferenceScopeRef.current !== preferenceScope) return;
+    if (!preferenceScope || pending.activeScopeKey !== scopedKey || preferenceScopeRef.current !== scopedKey) return;
     pending.generation += 1;
     clearTimeout(pending.timer);
     pending.timer = null;
     // A read begun before this local edit must not overwrite it when it lands.
     preferenceRequestRef.current += 1;
     setLoading(false);
-    setToolPreferences(prev => {
+    setPreferenceState(prevState => {
+      const prev = prevState.scopeKey === scopedKey ? prevState.preferences : { ...DEFAULT_TOOL_PREFERENCES };
       const currentToolPrefs = prev[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
       const newPrefs = {
         ...prev,
         [toolId]: { ...currentToolPrefs, ...updates }
       };
 
-      // Persist the actor/document-scoped pending revision BEFORE the debounce.
-      // A failed write stays in memory, but is never labelled durable or synced.
-      let draft = null;
-      if (supabaseDocId && user) {
-        const raw = JSON.stringify({ version: 1, revision: randomUUID(), preferences: newPrefs });
-        draft = { raw, preferences: newPrefs, durable: false };
-        pending.drafts.set(preferenceScope, draft);
-        try {
-          localStorage.setItem(pendingDraftKey, raw);
-          if (localStorage.getItem(pendingDraftKey) !== raw) throw new Error('Tool settings could not be verified on this device.');
-          draft.durable = true;
-          setSaveError(null);
-        } catch (err) {
-          setSaveError(err.message || 'Tool settings are not saved on this device. Keep this document open and try again.');
-        }
+      try {
+        const admission = documentToolPreferences.admit(preferenceScope, newPrefs, { basePreferences: prev });
+        setSaveError(null);
+        schedulePendingDraft();
+        return { scopeKey: scopedKey, preferences: admission.snapshot.preferences };
+      } catch (err) {
+        setSaveError(err.message || 'Tool settings are not saved on this device.');
+        if (err.code === 'DOCUMENT_TOOL_PREFERENCES_CONFLICT_ACTION_REQUIRED') return prevState;
       }
-
-      // Save to localStorage
-      if (documentId) {
-        try {
-          localStorage.setItem(`toolPrefs_${documentId}`, JSON.stringify(newPrefs));
-        } catch (e) {
-          console.error('Error saving tool preferences to localStorage:', e);
-          if (!draft?.durable) setSaveError(e.message || 'Tool settings are not saved on this device.');
-        }
-      }
-
-      // Debounced save to Supabase
-      if (draft?.durable) schedulePendingDraft(draft);
-
-      return newPrefs;
+      return { scopeKey: scopedKey, preferences: newPrefs };
     });
-  }, [documentId, supabaseDocId, user, preferenceScope]);
+  }, [scopedKey]);
+
+  const toolPreferences = preferenceState.scopeKey === scopedKey
+    ? preferenceState.preferences : { ...DEFAULT_TOOL_PREFERENCES };
+  const preferenceConflict = preferenceState.scopeKey === scopedKey && preferenceState.conflict === true;
+
+  const keepShownToolPreferences = useCallback(() => {
+    if (!preferenceConflict) return;
+    try {
+      const snapshot = documentToolPreferences.resolveConflict(preferenceScope, 'keep');
+      publishSnapshot(snapshot);
+      setSaveError('Keeping the defaults shown here may replace defaults changed in another window.');
+      schedulePendingDraft();
+    } catch (err) {
+      setSaveError(err.message || 'The tool settings choice could not be saved.');
+    }
+  }, [scopedKey, preferenceConflict]);
+
+  const useSavedToolPreferences = useCallback(() => {
+    if (!preferenceConflict) return;
+    try {
+      publishSnapshot(documentToolPreferences.resolveConflict(preferenceScope, 'saved'));
+      setSaveError(null);
+    } catch (err) {
+      setSaveError(err.message || 'The tool settings choice could not be saved.');
+    }
+  }, [scopedKey, preferenceConflict]);
 
   // Get preferences for a specific tool (with defaults)
   const getToolPreference = useCallback((toolId) => {
@@ -1297,6 +1256,9 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
     getToolPreference,
     loading,
     saveError,
+    preferenceConflict,
+    keepShownToolPreferences,
+    useSavedToolPreferences,
     refetch: fetchFromSupabase,
   };
 };

@@ -5662,9 +5662,10 @@ as complete because a prerequisite has tests.
   reductions, local library/save/recovery work and this History integration.
   Preserve the stated test scope in each earlier checkpoint; historical tests
   do not establish current deployed behavior.
-- **Required local follow-ups:** legacy History recovery and private preference
-  storage/migration. Actor-bound immediate writes and reconnect replay are
-  locally implemented and have passed final local regression.
+- **Required local follow-ups:** legacy History recovery. Private preference
+  storage/migration, actor-bound immediate writes and reconnect replay are
+  locally implemented and have passed final local regression. Their live
+  rollout gates remain separate.
 - **Required integration/rollout checks:** reconcile the existing disabled
   catalog, generation replacement and aggregate-sync paths; migration ordering,
   old-client compatibility, recovery/restore and multi-user permission tests
@@ -5706,6 +5707,59 @@ Frozen run logs: `/tmp/survey-history-replay-frozen-full-20260914.log`,
 upsert across two tabs with no readback. Error logs were empty. Its transport
 and identities were synthetic; no real Supabase accounts or Microsoft calls
 were used.
+
+### Private tool defaults checkpoint — 2026-09-14
+
+Shared semantic entity definitions remain unchanged. Private defaults cover the
+existing 16 tools and five optional style fields. Each cloud row belongs to one
+actor and one cloud document, holds only the current receipt rather than a
+growing receipt history, and validates to 32 KiB. RPC-only grants, revocation
+checks, and compare-and-swap protect that row.
+
+Ambiguous legacy raw settings remain unchanged and receive no automatic account
+assignment. Only a verified actor-scoped pending draft can take the create-only
+recovery path. Local and guest documents do no cloud work. Per-tab durable
+drafts are bounded; an overlapping write needs an explicit choice to keep shown
+defaults or use saved defaults. The high-risk `PDFViewer` wiring is kept to that
+small conflict notice and its hook callbacks.
+
+Private defaults now use a scoped read separate from document metadata and no
+longer fetch or write the shared `documents.tool_preferences` field. This does
+not claim lower net request cost: live request and quota measurements remain
+open. SQL passes 10/10 disposable PostgreSQL cases and 2/2 wrapper cases; the
+module passes 23/23. Independent combined review passes 77/77. The frozen full
+suite exits 0: 7,250 tests across 725 test files, 7,153 passed, 97 skipped, and
+none failed or cancelled. The build and code-index update exit 0. The frozen
+hook hash `6016f837` also passed a separate 21/21 mounted/UI recheck. This is
+not a deployment or quota claim.
+
+Browser checks used the in-app browser at desktop size. On the real local app
+at port 5221, the existing synthetic `clickable-link-test.pdf` retained a pen
+width change from 7 to 9 after reload and reopen. A fresh app tab had no console
+errors and rendered the file and toolbar. Earlier development-tab hook-order
+errors came from pre-freeze hot updates and did not recur on that clean load.
+
+At port 5183, the real preference hook/module used real browser storage and
+Web Locks with synthetic accounts and a fake RPC backend matching the SQL
+receipt/error contract. Checks proved separate A/B defaults, two-tab draft
+convergence, offline draft survival through reload and reconnect, and both
+explicit conflict choices after a simulated second-device save. Keep-shown
+retained the local blue/7 style after reload; use-saved adopted green/5 and
+cleared the pending/conflict state. Guest local editing left fake request
+counts unchanged. The final clean conflict page had no console warnings or
+errors and showed the choice before resolving it. These are not live Supabase,
+real-auth collaboration, Microsoft, or mobile-device proofs.
+
+Keep legacy History recovery, private-default rollout, old-client compatibility,
+multi-user permission/recovery, and live measurement gates open. Microsoft
+remains deferred.
+
+Logs: `/tmp/private-document-tool-preferences-focused-20260914.log` and
+`/tmp/document-tool-preferences-module-focused-20260914.log`. The completed full
+suite and build logs are `/tmp/survey-private-prefs-frozen-full-20260914.log`
+and `/tmp/survey-private-prefs-frozen-build-20260914.log`. The index log is
+`/tmp/survey-private-prefs-frozen-graph-20260914.log`; generated graph files
+remain outside the code commit.
 
 ## Sources
 
