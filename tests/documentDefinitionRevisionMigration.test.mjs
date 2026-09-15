@@ -42,5 +42,5 @@ test('definition revision migration passes disposable PostgreSQL behavior cases'
   const script = fileURLToPath(new URL('../scripts/test-document-definition-revision-postgres.mjs', import.meta.url));
   const result = spawnSync(process.execPath, [script], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /document definition revisions: 9\/9 passed; cleanup complete/);
+  assert.match(result.stdout, /document definition revisions: 10\/10 passed; cleanup complete/);
 });

@@ -8,6 +8,8 @@ import {
   captureReviewedDocumentDefinitionSnapshot,
   createDocumentDefinitionRevisionHistory,
 } from '../src/services/documentDefinitionRevisionHistory.js';
+import { createDocumentDefinitionRevisionClient }
+  from '../src/services/documentDefinitionRevisionClient.js';
 
 assert.equal(process.argv.length, 2, 'This local fixture accepts no arguments');
 const entityMigration = fileURLToPath(new URL(
@@ -175,6 +177,49 @@ await withDisposablePostgres(async ({ sql, scalar, asRole, errorState, applyMigr
   const apply = (actor, options, required = true) => {
     const raw = asRole(actor, applySql(options), 'authenticated', required);
     return required ? JSON.parse(raw.stdout) : raw;
+  };
+  const localRevisionRpc = actor => async (name, args) => {
+    const exact = keys => assert.deepEqual(Object.keys(args || {}).sort(), [...keys].sort(),
+      `unexpected ${name} RPC arguments`);
+    let statement;
+    switch (name) {
+      case 'read_document_definition_revision':
+        exact(['p_document_id', 'p_definition_revision']);
+        statement = `SELECT public.read_document_definition_revision(
+          ${quote(args.p_document_id)},${args.p_definition_revision == null
+            ? 'NULL' : quote(args.p_definition_revision)})`;
+        break;
+      case 'preview_document_definition_revision_upgrade':
+        exact(['p_document_id', 'p_survey_template_id', 'p_entity_template_id',
+          'p_archived_semantic_ids', 'p_operation_id']);
+        statement = `SELECT public.preview_document_definition_revision_upgrade(
+          ${quote(args.p_document_id)},${quote(args.p_survey_template_id)},
+          ${quote(args.p_entity_template_id)},${quote(JSON.stringify(args.p_archived_semantic_ids))}::jsonb,
+          ${quote(args.p_operation_id)})`;
+        break;
+      case 'apply_reviewed_document_definition_revision':
+        exact(['p_document_id', 'p_expected_current_revision', 'p_expected_current_digest',
+          'p_survey_template_id', 'p_expected_survey_template_updated_at',
+          'p_expected_survey_structure_sha256', 'p_entity_template_id',
+          'p_expected_entity_template_updated_at', 'p_expected_entity_entities_sha256',
+          'p_archived_semantic_ids', 'p_operation_id', 'p_request_sha256']);
+        statement = `SELECT public.apply_reviewed_document_definition_revision(
+          ${quote(args.p_document_id)},${quote(args.p_expected_current_revision)},
+          ${quote(args.p_expected_current_digest)},${quote(args.p_survey_template_id)},
+          ${quote(args.p_expected_survey_template_updated_at)}::timestamptz,
+          ${quote(args.p_expected_survey_structure_sha256)},${quote(args.p_entity_template_id)},
+          ${quote(args.p_expected_entity_template_updated_at)}::timestamptz,
+          ${quote(args.p_expected_entity_entities_sha256)},
+          ${quote(JSON.stringify(args.p_archived_semantic_ids))}::jsonb,
+          ${quote(args.p_operation_id)},${quote(args.p_request_sha256)})`;
+        break;
+      default:
+        throw new Error(`unexpected document definition revision RPC: ${name}`);
+    }
+    const result = asRole(actor, statement, 'authenticated', false);
+    if (result.status === 0) return { data: JSON.parse(result.stdout), error: null };
+    const code = result.stderr.match(/\b([0-9]{2}[0-9A-Z]{3})\b/)?.[1] || 'LOCAL_PG_ERROR';
+    return { data: null, error: { code, message: result.stderr } };
   };
   const reviewedApply = (documentId, reviewed) => {
     const archives = reviewed.review.archivedSemanticIds;
@@ -428,6 +473,78 @@ await withDisposablePostgres(async ({ sql, scalar, asRole, errorState, applyMigr
         'UPDATE survey_private.document_definition_revision_heads SET current_revision=1',
         role, false), '42501');
     }
+  });
+
+  await check('real revision client composes current, preview, apply, history, retry, and scope errors', async () => {
+    const archiveEntities = [
+      { ...entities()[0], id: 'entity-Z', name: 'Zed' },
+      { ...entities()[0], id: 'entity-a!', name: 'Aye' },
+    ];
+    const archiveIds = [
+      { kind: 'entity', id: 'entity-a!' },
+      { kind: 'entity', id: 'entity-Z' },
+    ];
+    const documentId = createDocument(70), base = createTemplate(70, {
+      entityValues: archiveEntities,
+    });
+    adoptBase(documentId, base, 70);
+    let scopeCurrent = true;
+    const client = createDocumentDefinitionRevisionClient({
+      enabled: true,
+      rpc: localRevisionRpc(owner),
+      getActorUserId: () => owner,
+      isCurrent: ({ actorUserId, documentId: scopedDocumentId }) => scopeCurrent
+        && actorUserId === owner && scopedDocumentId === documentId,
+    });
+    const initial = await client.readCurrent({ documentId });
+    assert.equal(initial.definitionRevision, 1);
+    const next = createTemplate(71, {
+      surveyModules: modules([item('check-door', 'Client reviewed')]),
+      entityValues: [
+        { ...archiveEntities[0], name: 'Zed revised' },
+        { ...archiveEntities[1], name: 'Aye revised' },
+      ],
+    });
+    const review = await client.preview({ documentId, surveyTemplateId: next,
+      entityTemplateId: next, archivedSemanticIds: archiveIds, operationId: id(800) });
+    assert.equal(review.currentReceipt.definitionDigest, initial.definitionDigest);
+    const accepted = await client.apply({ review });
+    assert.equal(accepted.definitionRevision, 2);
+    assert.deepEqual(accepted.archivedSemanticIds, [
+      { kind: 'entity', id: 'entity-Z' },
+      { kind: 'entity', id: 'entity-a!' },
+    ], 'the real SQL receipt uses database byte ordering, not locale sorting');
+    const old = await client.readRevision({ documentId, definitionRevision: 1,
+      expectedDigest: initial.definitionDigest });
+    assert.equal(old.definitionRevision, 1);
+
+    const later = createTemplate(72, {
+      surveyModules: modules([item('check-door', 'Client later')]),
+      entityValues: [
+        { ...archiveEntities[0], name: 'Zed later' },
+        { ...archiveEntities[1], name: 'Aye later' },
+      ],
+    });
+    const laterReview = await client.preview({ documentId, surveyTemplateId: later,
+      entityTemplateId: later, archivedSemanticIds: [], operationId: id(801) });
+    assert.equal((await client.apply({ review: laterReview })).definitionRevision, 3);
+    assert.deepEqual(await client.apply({ review }), accepted,
+      'the client must preserve the exact old server receipt on late retry');
+
+    scopeCurrent = false;
+    await assert.rejects(client.readCurrent({ documentId }), {
+      code: 'DOCUMENT_DEFINITION_REVISION_STALE',
+    });
+    const forbidden = createDocumentDefinitionRevisionClient({
+      enabled: true,
+      rpc: localRevisionRpc(viewer),
+      getActorUserId: () => viewer,
+      isCurrent: ({ actorUserId, documentId: scopedDocumentId }) => actorUserId === viewer
+        && scopedDocumentId === documentId,
+    });
+    await assert.rejects(forbidden.readCurrent({ documentId }), {
+      code: 'DOCUMENT_DEFINITION_REVISION_FORBIDDEN',
+    });
   });
 }, { name: 'document-definition-revision' });
 

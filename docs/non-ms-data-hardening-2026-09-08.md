@@ -8,8 +8,9 @@ work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
 Latest committed app checkpoint: `3c31d8c838092bdffc94733ddaa0206492aae6f0`
-(aggregate save wiring), following adoption install fix
-`a704cbbdfbae930294d4032a51373a367a3aacab`.
+(aggregate save wiring), followed by checked baseline fix
+`657aaa4644a8e749a988c23dee05b97e69c49bf1`. Definition storage foundation:
+`5ecc0c81173077bc7555186f272787190753590c`.
 The adoption full run passed 7,276 tests with 98 skipped and zero failures; the
 later install fix passed its 14 focused tests, independent review, build and
 clean synthetic-backend browser flow. The subsequent combined 40-test check
@@ -100,6 +101,17 @@ These are storage and history-reference primitives, not a completed user flow:
 client transport, owner review UI, history callers, and checked shared
 publication binding still need wiring and verification.
 
+Revision-history integration rule: the live editable document uses one shared
+current definition for all collaborators. A read-only historical view resolves
+the exact old revision/digest for old labels and values. Undo must not silently
+replace the live palette or mutate the shared definition head. A cross-revision
+content restore retains stable IDs and source revision/digest, with explicit
+review that the live result uses current shared labels. Referenced old revisions
+need verified actor/document-scoped durable local storage for offline use, not
+only an in-memory map; store each revision once and do not evict a revision still
+referenced by retained history. Owner upgrade activation remains gated on this
+coupling. These are integration requirements, not completed functionality.
+
 ### Checked annotation saved baseline — 2026-09-15
 
 Checked-generation hydration previously left the saved annotation baseline
@@ -120,6 +132,24 @@ without a legacy append/snapshot write. No real account or hosted write ran.
 Logs: `/tmp/survey-checked-baseline-final-tests-20260915.log`,
 `/tmp/survey-checked-baseline-final-build-20260915.log`, and
 `/tmp/survey-checked-baseline-final-graph-20260915.log`.
+
+### Definition revision client — 2026-09-15
+
+The new client calls the actual current/read-old/preview/apply RPCs and validates
+the returned immutable content digest. Preview proof binds the original request
+order; archive membership comparison is linear and does not impose a browser
+locale order on a valid PostgreSQL response. Scope checks run after asynchronous
+digest verification and immediately before dispatch. A same-tick abort or actor
+change sends no request; a stalled RPC has a bounded abort/deadline path.
+
+Client/history focused tests: 16/16 passed. A composed client-to-disposable-PG
+test now runs actual current read, preview, apply, old revision read, exact retry
+after a later head, scope drift, and viewer write denial. All 10/10 PostgreSQL
+cases and 2/2 migration tests passed. The archive test reproduces distinct SQL
+ordering with mixed-case/punctuation IDs. Independent final client review passed.
+No hosted service or user account was used. The hook, durable cache, review UI,
+history restore coupling and publication integration remain separate work;
+this service alone does not enable owner upgrades in the running app.
 
 ## Scope and status
 
