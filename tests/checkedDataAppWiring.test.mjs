@@ -61,14 +61,15 @@ async function until(predicate, message) {
   assert.fail(message);
 }
 
-test('aggregate gate stays off by default while page replacement remains injection-only', () => {
+test('aggregate stays off and page replacement uses the guarded route resolver', () => {
   assert.match(shellSource, /VITE_SURVEY_ANNOTATION_GENERATION_AGGREGATE === 'mode-v1'/);
   assert.match(shellSource, /annotationGenerationAggregateEnabled = ANNOTATION_GENERATION_AGGREGATE_ENABLED/);
   assert.match(viewerSource, /annotationGenerationAggregateEnabled = false/);
   assert.doesNotMatch(shellSource, /createDocumentPageReplacementTransport/);
-  assert.doesNotMatch(shellSource, /resolvedDocumentReplacementTransport/);
-  assert.match(shellSource, /transport: documentReplacementTransport/);
-  assert.match(shellSource, /typeof documentReplacementTransport !== 'function'/);
+  assert.match(shellSource, /resolveDocumentPageReplacementTransport/);
+  assert.match(shellSource, /transport: resolvedDocumentReplacementTransport/);
+  assert.match(shellSource, /typeof resolvedDocumentReplacementTransport !== 'function'/);
+  assert.match(shellSource, /documentDefinitionRevisionsEnabled !== true/);
   assert.match(viewerSource, /aggregateRequest: annotationGenerationAggregateRequest/);
 });
 

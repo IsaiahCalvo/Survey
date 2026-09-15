@@ -107,10 +107,29 @@ test('transport is pinned to the existing app origin and one fixed route', async
   });
   assert.equal(calls[0][1].credentials, 'omit');
   assert.equal(calls[0][1].redirect, 'error');
+  const trusted = createDocumentPageReplacementTransport({ target: 'trusted-app-host',
+    fetch: async (url, options) => { calls.push([url, options]); return Response.json({}); } });
+  await trusted({ body: { document_id: documentId }, accessToken: 'token', signal });
+  assert.equal(calls[1][0], 'https://surveytool.app/api/document-replacement');
   for (const forbidden of [
     { endpoint: 'https://evil.example' }, { appOrigin: 'https://evil.example' },
     { supabaseUrl: 'https://evil.example', publicKey: 'key' },
+    { target: 'https://evil.example/api/document-replacement' },
+    { target: 'trusted-app-host', endpoint: 'https://evil.example' },
   ]) assert.throws(() => createDocumentPageReplacementTransport({
     ...forbidden, fetch: async () => Response.json({}),
   }), { code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE' });
+});
+
+test('transport rejects inherited and coercible target names before fetch', () => {
+  let fetches = 0;
+  const fetch = async () => { fetches += 1; return Response.json({}); };
+  for (const target of [
+    'toString', 'constructor', '__proto__',
+    null, false, 0,
+    ['trusted-app-host'],
+    { toString: () => 'trusted-app-host' },
+  ]) assert.throws(() => createDocumentPageReplacementTransport({ fetch, target }),
+    { code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE' });
+  assert.equal(fetches, 0);
 });

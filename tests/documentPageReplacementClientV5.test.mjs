@@ -19,6 +19,10 @@ const input = changes => ({ documentId, currentGenerationId: sourceGenerationId,
   revalidateCapture: async () => true, persistSourceLocalState: async () => {},
   retireGeneration: async () => {}, install: async () => true, ...changes });
 
+const modelOneInput = changes => input({ contentModelVersion:1,
+  captureAccepted:async () => ({ version:1,actorUserId,documentId,
+    pdfGenerationId:sourceGenerationId,coveredSeq:11,contentModelVersion:1 }),...changes });
+
 function receipt(body, changes = {}) {
   return { version: 5, content_model_version: 2, aggregate_admission_version: 1,
     offered_archive_operation_ids: [...body.archive_operation_ids],
@@ -76,6 +80,27 @@ test('V5 retry persists and sends the first exact definition tuple after head dr
   assert.deepEqual(retryBody, firstBody, 'saved tuple wins over the now-current head');
   assert.equal(result.publication.definition_revision, '7');
   assert.equal(result.publication.definition_digest, definitionDigest);
+});
+
+test('definition-bound model-1 source publishes and resumes as a V5 model-2 target', async t => {
+  const indexedDB = new IDBFactory();
+  const firstStore = createDocumentPageReplacementIntentStore({ indexedDB });
+  t.after(() => firstStore.close());
+  let firstBody;
+  await assert.rejects(client(firstStore, async ({ body }) => {
+    firstBody = structuredClone(body); throw new Error('reply lost');
+  }).replace(modelOneInput()), { code:'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED' });
+  assert.equal(firstBody.definition_revision, '7');
+  assert.equal(firstBody.definition_digest, definitionDigest);
+  firstStore.close();
+
+  const resumedStore = createDocumentPageReplacementIntentStore({ indexedDB });
+  t.after(() => resumedStore.close());
+  const result = await client(resumedStore, async ({ body }) =>
+    Response.json({ replacement:receipt(body) })).resume(modelOneInput());
+  assert.equal(result.publication.version, 5);
+  assert.equal(result.publication.content_model_version, 2);
+  assert.equal(result.checkedBundle.contentModelVersion, 2);
 });
 
 test('intent reserve captures the validated definition pair before its IDB callback', async t => {

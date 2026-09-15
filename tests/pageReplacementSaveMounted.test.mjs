@@ -92,13 +92,16 @@ const deferred = () => {
 };
 
 function publication(body, changes = {}) {
+  const v5 = Object.hasOwn(body, 'definition_revision');
   const v4 = body.archive_operation_ids.length === 2 || changes.version === 4;
   return {
-    version: v4 ? 4 : 1,
+    version: v5 ? 5 : v4 ? 4 : 1,
     ...(v4 ? { content_model_version:2,aggregate_admission_version:1,
       offered_archive_operation_ids:[...body.archive_operation_ids],
       used_archive_operation_ids:[body.archive_operation_ids[0]],
       legacy_sidecar_migration:null } : {}),
+    ...(v5 ? { definition_revision:body.definition_revision,
+      definition_digest:body.definition_digest } : {}),
     state: 'published',
     document_id: body.document_id,
     source_id: body.source_id,
@@ -1361,13 +1364,15 @@ function memoryStorage({ failGeneration = null } = {}) {
   };
 }
 
-function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGeneration = null } = {}) {
+function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGeneration = null,
+  contentModelVersion = null } = {}) {
   const store = createDocumentPageReplacementIntentStore({ indexedDB: new IDBFactory() });
   t.after(() => store.close());
   const storage = memoryStorage({ failGeneration });
   const scope = { actorUserId: actorA };
   const mount = {};
-  const oldBundle = { pdfGenerationId: generationId };
+  const oldBundle = { pdfGenerationId: generationId,
+    ...(contentModelVersion === null ? {} : { contentModelVersion }) };
   const targetBundle = { pdfGenerationId: targetGeneration,contentModelVersion:2 };
   const oldFile = { id: documentId, pdfGenerationId: generationId, name: 'checked.pdf' };
   const state = { tabs: [{ id: 'tab-a', actorUserId: actorA, file: oldFile, checkedBundle: oldBundle,
@@ -1382,6 +1387,7 @@ function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGen
     isCurrent: ({ actorUserId, documentId: received }) => actorUserId === actorA && received === documentId,
     transport: async ({ body }) => {
       state.requests++;
+      state.sentBody = structuredClone(body);
       return new Response(JSON.stringify({ replacement: publication(body) }));
     },
     reacquire: async () => {
@@ -1450,6 +1456,15 @@ test('actual AppShell install re-captures a late old-generation private edit and
     documentId, generationId: nextGenerationId }).pageNames,
   { 1: 'Edited while server published', 2: 'Edited while server published' });
   assert.equal(await h.store.get(actorA, documentId), null);
+});
+
+test('actual AppShell adapter forwards a model-1 source with its accepted definition tuple to V5', async t => {
+  const h = checkedInstallHarness(t);
+  await h.handle({ ...h.input,definitionRevision:'7',definitionDigest:'d'.repeat(64) },
+    'tab-a',h.oldFile,h.oldBundle);
+  assert.equal(h.state.sentBody.definition_revision, '7');
+  assert.equal(h.state.sentBody.definition_digest, 'd'.repeat(64));
+  assert.equal(h.state.requests, 1);
 });
 
 test('actual AppShell target metadata quota failure keeps published intent and old tab', async t => {

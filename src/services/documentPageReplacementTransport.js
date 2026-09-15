@@ -1,4 +1,8 @@
 const TOKEN = /^[^\s\u0000-\u001f\u007f]{1,16384}$/;
+const ENDPOINTS = Object.freeze({
+  'same-origin': '/api/document-replacement',
+  'trusted-app-host': 'https://surveytool.app/api/document-replacement',
+});
 
 const failure = () => Object.assign(
   new Error('Checked page changes are not available. Your page change was kept.'),
@@ -23,11 +27,15 @@ function exactDataObject(value, keys) {
  * client owns actor, document, intent and receipt checks. This adapter owns the
  * trusted endpoint and sends no cookies, retry or alternate request. */
 export function createDocumentPageReplacementTransport(options = {}) {
-  const captured = exactDataObject(options, Object.hasOwn(options, 'fetch') ? ['fetch'] : []);
+  const optionKeys = plain(options) ? Reflect.ownKeys(options) : [];
+  const captured = optionKeys.every(key => key === 'fetch' || key === 'target')
+    ? exactDataObject(options, optionKeys.sort()) : null;
   check(captured);
   const fetcher = captured.fetch ?? globalThis.fetch;
   check(typeof fetcher === 'function');
-  const endpoint = '/api/document-replacement';
+  const target = Object.hasOwn(captured, 'target') ? captured.target : 'same-origin';
+  check(typeof target === 'string' && Object.hasOwn(ENDPOINTS, target));
+  const endpoint = ENDPOINTS[target];
 
   return async function documentPageReplacementTransport(rawCall) {
     const call = exactDataObject(rawCall, ['accessToken', 'body', 'signal']);

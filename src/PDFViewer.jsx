@@ -4803,6 +4803,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     : null, [definitionRevisions.currentReceipt]);
   const currentDefinitionRevisionReferenceRef = useRef(currentDefinitionRevisionReference);
   currentDefinitionRevisionReferenceRef.current = currentDefinitionRevisionReference;
+  const replaceCheckedPagesWithDefinition = useCallback(async (input) => {
+    if (typeof onReplaceCheckedPages !== 'function') {
+      throw new Error('Checked page changes are not available. Your page change was kept.');
+    }
+    if (!definitionRevisionFlowEnabled) return onReplaceCheckedPages(input);
+    const reference = currentDefinitionRevisionReferenceRef.current;
+    const current = () => {
+      const live = definitionRevisionScopeRef.current;
+      return live?.active === true && live.file === pdfFile
+        && live.actorUserId === user?.id && live.documentId === pdfFile?.id
+        && live.generationId === checkedBundle?.pdfGenerationId
+        && sameDefinitionRevisionReference(
+          currentDefinitionRevisionReferenceRef.current, reference);
+    };
+    if (!current() || reference?.documentId !== pdfFile?.id
+      || typeof input?.revalidateCapture !== 'function') {
+      throw new Error('The accepted document definition is not ready. Your page change was kept.');
+    }
+    const revalidateCapture = input.revalidateCapture;
+    return onReplaceCheckedPages({ ...input,
+      definitionRevision:String(reference.definitionRevision),
+      definitionDigest:reference.definitionDigest,
+      revalidateCapture:async capture => {
+        let valid = false;
+        try { valid = await revalidateCapture(capture) === true; } catch { return false; }
+        return valid && current();
+      },
+    });
+  }, [checkedBundle, definitionRevisionFlowEnabled, onReplaceCheckedPages, pdfFile, user?.id]);
   const definitionHistoryRestoreApprovalRef = useRef(null);
   const definitionHistoryLoadRef = useRef(null);
   const [definitionHistoryReview, setDefinitionHistoryReview] = useState(null);
@@ -13344,7 +13373,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     actorUserId: user?.id || null,
     onUpdatePDFFile: persistPageMutationFile,
     checkedDocument: checkedBundle !== null,
-    onReplaceCheckedPages,
+    onReplaceCheckedPages: typeof onReplaceCheckedPages === 'function'
+      ? replaceCheckedPagesWithDefinition : null,
     captureAcceptedState,
     revalidateAcceptedState,
     retirePdfGeneration,

@@ -6728,3 +6728,50 @@ the corrected fixture now passes the real acquisition reader before and after
 publication. Neither fix relaxes retired-data or account guards.
 This closes the local adoption browser gate, not hosted activation, live
 collaboration, quota measurement, or the remaining app-transport/definition work.
+
+### 2026-09-15 checked page replacement app checkpoint
+
+The default app caller now resolves the checked replacement transport with both
+flags off by default. Web and explicit-port local development use the same-origin
+route; recognized packaged Electron/Capacitor scopes use the fixed existing app
+host. Unknown scopes fail closed. Caller-supplied URLs are not accepted. Explicit
+injected transports remain supported. Packaged native behavior has unit coverage,
+not device or hosted end-to-end proof.
+
+The viewer passes the exact accepted definition revision and digest for each new
+operation and checks actor/document/generation/reference again after asynchronous
+capture validation. Recovery retains the original durable operation tuple. The
+client permits both supported source content models; verified V5 output stays
+model 2. A bounded Vite middleware now exercises the real Node API handler with
+disabled defaults, JSON size/deadline limits and no-store responses.
+
+Frozen-source verification: npm test exited 0 with 7,485 total, 7,387 passed,
+98 skipped, zero failed/cancelled. The focused caller/platform/transport/Vite
+suite passed 76/76. Vite build and graphify update exited 0. Logs are
+`/tmp/survey-replacement-app-{full,focused-root,build,graph}-20260915.log`.
+
+In-app browser acceptance used the real AppShell/PDFViewer, default HTTP caller,
+real Node handler and real PDF worker against isolated synthetic local services.
+The backend-bound document b0400000-0000-4000-8000-000000000001 retained its older
+fixture label, "Fixture legacy 3-page PDF", but opened as checked model 2.
+Duplicating page 2 published and installed four pages. A second duplicate lost
+its reply after publication: the viewer kept four pages, the server had five.
+Retry reused source 895fb062-7c73-4cf3-aa3d-f14eb00538aa and candidate
+48b9e0db-90ed-4232-aafc-45949456860e, installed five pages, and held totals at
+two worker runs/two publications across three requests (one replay).
+All requests/receipts retained definition revision "1" and digest
+a9a124b2acd7876cad0653be2a7896cb222744c8a09208f967726cf791392ff6.
+This proves the tested local flow, not real multi-user, hosted, or native behavior.
+After a full browser reload the published PDF reopened with five pages. Visual
+inspection confirmed the rendered PDF and app controls, without a framework
+error overlay. Console errors during the test were the expected unbound-row
+definition refusal and pending-operation refusal after the simulated lost reply.
+Temporary fixture bootstrap errors were fixed without relaxing product guards.
+The unbound second fixture row correctly refused a definition-less page edit.
+
+No push, deployment, hosted migration, Microsoft trial or live Microsoft test ran.
+There is no measured Supabase cost reduction from this disabled checkpoint.
+Remaining work must target named integration/rollout gaps, not repeat broad
+audits: live role-separated collaboration/recovery, old-client compatibility,
+hosted migration ordering/runtime validation, and measured request/egress/latency.
+The owner-only cold-offline cloud-copy policy remains deferred.

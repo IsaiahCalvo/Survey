@@ -38,6 +38,8 @@ import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
 import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
+import { resolveDocumentPageReplacementTransport }
+  from './services/documentPageReplacementPlatform.js';
 import { createAnnotationGenerationAggregateAppRequest } from './services/annotationGenerationAggregateAppRequest.js';
 import { createDocumentLegacyAdoptionArchiveRecovery,
   createDocumentLegacySidecarRecovery } from './services/documentLegacySidecarRecovery.js';
@@ -946,6 +948,15 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     };
   }
   const pageReplacementClientRef = useRef(null);
+  const resolvedDocumentReplacementTransport = useMemo(() => {
+    if (checkedPageReplacementEnabled !== true) return null;
+    if (typeof documentReplacementTransport !== 'function'
+      && documentDefinitionRevisionsEnabled !== true) return null;
+    return resolveDocumentPageReplacementTransport({
+      injectedTransport:documentReplacementTransport,window:globalThis.window,
+    });
+  }, [checkedPageReplacementEnabled, documentDefinitionRevisionsEnabled,
+    documentReplacementTransport]);
   const handleRecoverLegacySidecar = useCallback(async ({ tabId, file, checkedBundle,
     scope, signal, action = 'download', kind = 'sidecar', adoptionOperationId = null }) => {
     const actorUserId = scope?.actorUserId;
@@ -996,11 +1007,11 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   useEffect(() => {
     pageReplacementClientRef.current = null;
     if (!CHECKED_DOCUMENT_OPEN_ENABLED || checkedPageReplacementEnabled !== true || !documentOpenScope.actorUserId
-      || typeof documentReplacementTransport !== 'function') return undefined;
+      || typeof resolvedDocumentReplacementTransport !== 'function') return undefined;
     const scope = documentOpenScope, mount = documentOpenMountRef.current;
     const client = createDocumentPageReplacementClient({
       store: pageReplacementStoreRef.current.store,
-      transport: documentReplacementTransport,
+      transport: resolvedDocumentReplacementTransport,
       getActorUserId: () => documentOpenScopeRef.current === scope ? scope.actorUserId : null,
       isCurrent: ({ actorUserId }) => mount !== null && documentOpenMountRef.current === mount
         && documentOpenScopeRef.current === scope && actorUserId === scope.actorUserId,
@@ -1018,7 +1029,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     const entry = { scope, mount, client };
     pageReplacementClientRef.current = entry;
     return () => { if (pageReplacementClientRef.current === entry) pageReplacementClientRef.current = null; };
-  }, [checkedPageReplacementEnabled, documentOpenScope, documentReplacementTransport]);
+  }, [checkedPageReplacementEnabled, documentOpenScope, resolvedDocumentReplacementTransport]);
   const firstGenerationAdoptionStoreRef = useRef(null);
   if (!firstGenerationAdoptionStoreRef.current
     || firstGenerationAdoptionStoreRef.current.supplied !== documentFirstGenerationAdoptionIntentStore) {
@@ -1800,6 +1811,11 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
       retireGeneration: input.retireGeneration,
       currentGenerationId: expectedCheckedBundle.pdfGenerationId,
       contentModelVersion: expectedCheckedBundle.contentModelVersion ?? 1,
+      ...((Object.hasOwn(input, 'definitionRevision')
+        || Object.hasOwn(input, 'definitionDigest')) ? {
+          definitionRevision:input.definitionRevision,
+          definitionDigest:input.definitionDigest,
+        } : {}),
       signal: input.signal,
       persistSourceLocalState: async ({ generationId, localPageState }) => {
         if (!current()) throw new Error('The checked document changed.');
@@ -3839,7 +3855,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       onPageDrop={handlePageDrop}
                       onUpdatePDFFile={(newFile) => handleUpdatePDFFile(newFile, tab.id, tab.file)}
                       onReplaceCheckedPages={checkedPageReplacementEnabled === true
-                        && typeof documentReplacementTransport === 'function'
+                        && typeof resolvedDocumentReplacementTransport === 'function'
                         ? (input) => handleReplaceCheckedPages(
                             input, tab.id, tab.file, tab.checkedBundle,
                           )

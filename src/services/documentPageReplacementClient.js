@@ -31,7 +31,7 @@ const definitionRevision = value => typeof value === 'string'
 function captureDefinitionBinding(value, contentModelVersion) {
   const present = Object.hasOwn(value ?? {}, 'definitionRevision')
     || Object.hasOwn(value ?? {}, 'definitionDigest');
-  check(!present || (contentModelVersion === 2
+  check(!present || ([1, 2].includes(contentModelVersion)
     && definitionRevision(value.definitionRevision)
     && typeof value.definitionDigest === 'string' && SHA.test(value.definitionDigest)));
   return present ? Object.freeze({ definitionRevision:value.definitionRevision,

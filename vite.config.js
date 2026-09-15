@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveViteConfigEnv } from './viteEnvConfig.mjs';
 import { browserOfflineAssetsPlugin } from './scripts/browserOfflineAssets.mjs';
+import { documentReplacementVitePlugin } from './scripts/documentReplacementVitePlugin.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -278,6 +279,11 @@ export default defineConfig(({ mode }) => {
   const devAuthBootstrapToken = devAuthRelay.enabled
     ? randomBytes(24).toString('hex')
     : '';
+  const documentReplacementEnvironment = {
+    ...env,
+    SUPABASE_URL: env.SUPABASE_URL || env.VITE_SUPABASE_URL,
+    SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY,
+  };
   // Keep a short source identity in every bundle. Development also includes
   // the server start time so Expo Go users can distinguish tunnel restarts.
   let gitHash = 'no-git';
@@ -297,6 +303,7 @@ export default defineConfig(({ mode }) => {
       debugFixturesPlugin(),
       spikeLogSavePlugin(),
       devAuthBootstrapPlugin(env, devAuthBootstrapToken, devAuthRelay),
+      documentReplacementVitePlugin({ environment: documentReplacementEnvironment }),
       browserOfflineAssetsPlugin(),
     ],
     server: {
