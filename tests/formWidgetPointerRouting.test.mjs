@@ -36,19 +36,41 @@ const containerSource = readFileSync(new URL('../src/components/PdfjsViewerConta
 
 // --- the layer wins the hit test -------------------------------------------
 
-test('the widget layer sits above the SVG annotation wrapper, at one fixed z', () => {
-  // The wrapper this has to clear. If this number ever moves, the widget layer
-  // has to move with it or every Select-mode widget click dies again in silence.
+// ASSERTION DELIBERATELY REVERSED 2026-09-15, same day it was written.
+// It originally demanded z > 100 — "the widget layer must clear the annotation
+// wrapper". That was the wrong contract and it shipped a regression: at 101 the
+// widget layer painted OVER the per-page SVG overlay, so every annotation drawn
+// across a form field went invisible and unclickable, and a marquee started
+// inside a field's box turned into native text selection (six adversarial
+// verifiers, prog-07-form-fields.pdf). Paint order and hit test are separate
+// questions: markup always paints on top, and the widget wins the CLICK by
+// pointer routing instead (SVGAnnotationLayer hands a press that never moved
+// down to the control). tests/formLayerAnnotationStacking.test.mjs guards the
+// paint order; this guards the same number from the other side.
+test('the widget layer paints under the SVG annotation wrapper, at one fixed z', () => {
+  // The wrapper it has to stay under. If this number ever moves, the widget
+  // layer has to move with it or markup starts disappearing over fields again.
   assert.match(viewerSource, /pointerEvents: 'none',\s*\n\s*zIndex: 100,/,
     'the SVG annotation wrapper is expected at zIndex 100');
   const declared = formLayerSource.match(/const FORM_LAYER_Z_INDEX = (\d+);/);
   assert.ok(declared, 'the widget layer z-index must be a named constant, not a literal in the JSX');
   const z = Number(declared[1]);
-  assert.ok(z > 100, `the widget layer must clear the annotation wrapper, got ${z}`);
-  // ...and stay under the creation overlays (Text tool + Counter, zIndex 102),
-  // which legitimately own the whole page while they are armed.
-  assert.ok(z < 102, `the widget layer must stay under the creation overlays, got ${z}`);
+  assert.ok(z < 100, `the widget layer must stay under the annotation wrapper, got ${z}`);
   assert.match(formLayerSource, /style=\{\{ position: 'absolute', inset: 0, zIndex: FORM_LAYER_Z_INDEX \}\}/);
+});
+
+test('the annotation overlay hands a stationary press down to the widget under it', () => {
+  const layerSource = readFileSync(
+    new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8',
+  );
+  // Routing, not stacking, is what makes a widget click work under Select.
+  assert.match(layerSource, /import \{ forwardClickToFormWidget, liveFormWidgetAtPoint \}/);
+  // Only a press on the SVG root itself: a press on an annotation hit target is
+  // the user clicking their own markup, and markup wins.
+  assert.match(layerSource, /e\.target === svgRef\.current[\s\S]{0,200}liveFormWidgetAtPoint\(e\.clientX, e\.clientY\)/);
+  // ...and only a press that never travelled: a drag is a marquee or a lasso,
+  // which must still work when it starts inside a field's box.
+  assert.match(layerSource, /Math\.hypot\(e\.clientX - pendingWidget\.x[\s\S]{0,200}forwardClickToFormWidget\(pendingWidget\.widget\)/);
 });
 
 test('the z-index is not tool-dependent — a widget never swaps above and below markup', () => {

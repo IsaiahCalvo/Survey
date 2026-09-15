@@ -28,37 +28,36 @@ import { getPdfWidgetVisualStyle } from '../utils/pdfAnnotationImporter.js';
  * committed scale, exactly like the page canvas.
  */
 
-/* STACKING CONTRACT (2026-09-15) — THE WIDGET LAYER SITS ABOVE THE ANNOTATION
-   OVERLAY, IN EVERY TOOL.
+/* STACKING CONTRACT (2026-09-15, corrected) — THE WIDGET LAYER PAINTS UNDER THE
+   ANNOTATION OVERLAY, IN EVERY TOOL. PAINT ORDER AND HIT TEST ARE SEPARATE
+   QUESTIONS AND ARE ANSWERED SEPARATELY.
 
-   Intended UX (owner: form fields must be fillable without hunting for a mode,
-   matched against Drawboard PDF, where a single click toggles a checkbox or
-   focuses a text field in BOTH Pan and Select and no tool change happens):
-   a form widget is live document content, so a click on one must reach the
-   control whatever tool is armed.
+   Intended UX (owner; reference behaviour Drawboard PDF):
+     - A form field is fillable without hunting for a mode: one click toggles a
+       checkbox or focuses a text field in Pan AND in every Select-family mode,
+       with no tool change and no selection chrome.
+     - The user's own markup is ALWAYS on top. A pen stroke, a text box or a
+       shape drawn across a field stays fully visible and stays selectable —
+       markup is what the user made, a widget is document content underneath it.
 
-   Why a z-index and not a pointer-events dance: the SVG annotation overlay
-   wrapper sits at zIndex 100 in the same stacking context as this layer, and
-   under every Select-family tool its <svg> root is `pointer-events: auto`
-   across the WHOLE page (that root is what marquee-selects blank pixels). At
-   the old zIndex 12 that root swallowed every widget click — measured live on
-   prog-07-form-fields.pdf: elementsFromPoint over a checkbox returned the svg
-   root first and the <input> second. SVG has no per-region pointer punch-through,
-   so the only way for the control to win the hit test is to be above it.
+   Those two do not fight, because paint order is z-index and the hit test is
+   pointer routing. This layer therefore sits at 12, BELOW the per-page SVG
+   annotation overlay wrapper (zIndex 100 in PDFViewer.jsx, same stacking
+   context), and the overlay hands a click back down instead:
+   SVGAnnotationLayer's root pointerdown remembers a press that landed on blank
+   SVG space over a live widget (utils/formWidgetPointerTargets.js), and on
+   pointerup, if the gesture never moved, it forwards focus/toggle to the
+   control. A gesture that DID move is a marquee or lasso and is left alone, so
+   a rubber band started inside a field's box still selects.
 
-   Raising is safe because THIS ROOT IS `pointer-events: none` and only its
-   `section` children are `auto` (and only while `interactive`): blank page
-   pixels still fall through to the SVG root, so marquee/lasso select, pan-drag
-   and native text selection are untouched. Verified live: a blank-pixel probe
-   in Select still resolves to the svg root, not to this layer.
-
-   It stays BELOW 102 (the Text-tool and Counter creation overlays) and ties
-   with TextEditOverlay's 101, which renders later in the tree and therefore
-   still paints over a widget while a text annotation is being edited.
+   DO NOT "fix" a swallowed widget click by raising this number again. Briefly
+   trying 101 (above the overlay) made every annotation drawn over a field
+   invisible and unclickable and turned a marquee started inside a field into
+   native text selection — guarded now by tests/formLayerAnnotationStacking.test.mjs.
 
    The number is fixed, never tool-dependent: a widget that swapped above and
    below markup as the armed tool changed would read as a rendering bug. */
-const FORM_LAYER_Z_INDEX = 101;
+const FORM_LAYER_Z_INDEX = 12;
 
 const LINK_SERVICE_STUB = {
   externalLinkTarget: null, externalLinkRel: null, externalLinkEnabled: false,

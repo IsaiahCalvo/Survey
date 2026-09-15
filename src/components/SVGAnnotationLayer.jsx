@@ -132,6 +132,7 @@ import {
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
+import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -532,6 +533,19 @@ const SVGAnnotationLayer = memo(({
   const annotationsRef = useRef(annotations);
   const renderedAnnotationEntriesRef = useRef([]);
   const surveyMarkerDragRef = useRef(null);
+  // UX 2026-09-15 — a press that landed on blank SVG space with a LIVE PDF form
+  // widget underneath. The widget layer paints under this overlay (markup is
+  // always on top of document content — see PdfjsFormLayer's stacking
+  // contract), so under a Select-family tool the overlay is what the browser
+  // hit-tests and the control would never see the click.
+  //
+  // We do not bail on pointerdown, because the same press is also how a marquee
+  // or lasso starts, and Drawboard lets you start a rubber band anywhere —
+  // including inside a field's box. So: remember the press, let the normal
+  // gesture run, and at pointerup decide. Never moved => it was a click on a
+  // form control, so hand it down (focus a text field, toggle a checkbox).
+  // Moved => it was a selection gesture and the widget is not involved.
+  const formWidgetClickRef = useRef(null);
   const surveyMarkerClickRef = useRef({ annotationId: null, time: 0 });
   const [selectedSurveyMarkerId, setSelectedSurveyMarkerId] = useState(null);
   const [hoveredSurveyMarkerId, setHoveredSurveyMarkerId] = useState(null);
@@ -5286,6 +5300,23 @@ const SVGAnnotationLayer = memo(({
       preserveAspectRatio="none"
       onPointerDown={(e) => {
         if (isInteractive) {
+          // Form-widget click hand-down, step 1 of 2 (see formWidgetClickRef).
+          // Only a press on the SVG ROOT itself qualifies: if any annotation
+          // hit target claimed it, the user clicked their own markup and the
+          // markup wins — that is the whole point of painting it on top.
+          formWidgetClickRef.current = null;
+          if (e.button === 0 && e.target === svgRef.current) {
+            const widget = liveFormWidgetAtPoint(e.clientX, e.clientY);
+            if (widget) {
+              formWidgetClickRef.current = {
+                pointerId: e.pointerId,
+                x: e.clientX,
+                y: e.clientY,
+                slop: e.pointerType === 'touch' ? 12 : 4,
+                widget,
+              };
+            }
+          }
           if (shouldIgnoreLassoPointer?.(e.pointerId, e.pointerType)) {
             e.stopPropagation();
             e.preventDefault();
@@ -5403,10 +5434,20 @@ const SVGAnnotationLayer = memo(({
         handlePointerMove(e);
       } : undefined}
       onPointerUp={isInteractive ? (e) => {
+        // Form-widget click hand-down, step 2 of 2. Runs after the normal
+        // gesture has ended so a marquee/lasso still commits its selection
+        // first; a gesture that travelled is never handed down.
+        const pendingWidget = formWidgetClickRef.current;
+        formWidgetClickRef.current = null;
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, true)) return;
         handlePointerUp(e);
+        if (pendingWidget && pendingWidget.pointerId === e.pointerId
+          && Math.hypot(e.clientX - pendingWidget.x, e.clientY - pendingWidget.y) <= pendingWidget.slop) {
+          forwardClickToFormWidget(pendingWidget.widget);
+        }
       } : undefined}
       onPointerCancel={isInteractive ? (e) => {
+        formWidgetClickRef.current = null;
         cancelLasso?.(e.pointerId);
         handlePointerCancel(e);
         if (surveyMarkerDragRef.current) {
