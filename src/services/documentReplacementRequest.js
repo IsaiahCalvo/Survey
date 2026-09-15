@@ -12,6 +12,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const SEQ = /^(0|[1-9][0-9]{0,18})$/;
 const MAX_SEQ = 9223372036854775807n;
+const DEFINITION_REVISION = /^[1-9][0-9]{0,15}$/;
+const MAX_DEFINITION_REVISION = 9007199254740991n;
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_SOURCE_BYTES = 256 * 1024 * 1024;
 const MAX_PRIVATE_JSON_BYTES = 64 * 1024 * 1024;
@@ -70,6 +72,10 @@ function publicIntent(intent) {
     source_id: intent.sourceId,
     candidate_operation_id: intent.candidateOperationId,
     archive_operation_ids: Object.freeze([...intent.archiveOperationIds]),
+    ...(intent.definitionRevision ? {
+      definition_revision: intent.definitionRevision,
+      definition_digest: intent.definitionDigest,
+    } : {}),
   });
 }
 
@@ -114,7 +120,8 @@ function operation(value) {
   return value;
 }
 
-async function readBody(request, signal, run, track, allowTwoArchives = false) {
+async function readBody(request, signal, run, track, { allowTwoArchives = false,
+  definitionBinding = false } = {}) {
   const reader = request.body?.getReader();
   check(reader, 'invalid_request');
   const chunks = [];
@@ -142,14 +149,20 @@ async function readBody(request, signal, run, track, allowTwoArchives = false) {
   try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
   catch { throw fail('invalid_request'); }
   check(exactKeys(value, ['document_id', 'generation_id', 'wal_head', 'operation', 'source_id',
-    'candidate_operation_id', 'archive_operation_ids']), 'invalid_request');
+    'candidate_operation_id', 'archive_operation_ids',
+    ...(definitionBinding ? ['definition_revision', 'definition_digest'] : [])]), 'invalid_request');
   check(uuid(value.document_id) && (value.generation_id === null || uuid(value.generation_id))
     && seq(value.wal_head) && uuid(value.source_id) && uuid(value.candidate_operation_id)
     && Array.isArray(value.archive_operation_ids)
     && (value.archive_operation_ids.length === 1 || (allowTwoArchives && value.archive_operation_ids.length === 2))
     && value.archive_operation_ids.every(uuid)
     && new Set(value.archive_operation_ids).size === value.archive_operation_ids.length
-    && !value.archive_operation_ids.includes(value.candidate_operation_id), 'invalid_request');
+    && !value.archive_operation_ids.includes(value.candidate_operation_id)
+    && (!definitionBinding || (typeof value.definition_revision === 'string'
+      && DEFINITION_REVISION.test(value.definition_revision)
+      && BigInt(value.definition_revision) <= MAX_DEFINITION_REVISION
+      && typeof value.definition_digest === 'string'
+      && SHA.test(value.definition_digest))), 'invalid_request');
   return Object.freeze({
     documentId: value.document_id,
     generationId: value.generation_id,
@@ -158,6 +171,8 @@ async function readBody(request, signal, run, track, allowTwoArchives = false) {
     sourceId: value.source_id,
     candidateOperationId: value.candidate_operation_id,
     archiveOperationIds: Object.freeze([...value.archive_operation_ids]),
+    ...(definitionBinding ? { definitionRevision: value.definition_revision,
+      definitionDigest: value.definition_digest } : {}),
   });
 }
 
@@ -170,17 +185,25 @@ function rpcParams(intent) {
     p_expected_generation: intent.generationId,
     p_expected_wal_head: intent.walHead,
     p_operation: intent.operation,
+    ...(intent.definitionRevision ? {
+      p_expected_definition_revision: intent.definitionRevision,
+      p_expected_definition_digest: intent.definitionDigest,
+    } : {}),
   };
 }
 
 function publication(value, intent, policy = null) {
   const sidecar = policy?.legacySidecarArchiveVersion === 1;
+  const definition = policy?.definitionBindingVersion === 1;
   check(exactKeys(value, ['version', ...(policy ? ['content_model_version', 'aggregate_admission_version'] : []),
     ...(sidecar ? ['offered_archive_operation_ids', 'used_archive_operation_ids', 'legacy_sidecar_migration'] : []),
+    ...(definition ? ['definition_revision', 'definition_digest'] : []),
     'operation_id', 'document_id', 'actor_user_id', 'source_id',
     'generation_id', 'previous_generation_id', 'plan_sha256', 'wal_head', 'published_at']));
-  check(value.version === (sidecar ? 4 : policy ? 3 : 1)
+  check(value.version === (definition ? 5 : sidecar ? 4 : policy ? 3 : 1)
     && (!policy || (value.content_model_version === 2 && value.aggregate_admission_version === 1))
+    && (!definition || (value.definition_revision === intent.definitionRevision
+      && value.definition_digest === intent.definitionDigest))
     && value.operation_id === intent.candidateOperationId
     && value.document_id === intent.documentId && value.actor_user_id === intent.actorUserId
     && value.source_id === intent.sourceId && uuid(value.generation_id)
@@ -198,13 +221,15 @@ function publication(value, intent, policy = null) {
         && value.legacy_sidecar_migration.version === 1 && value.legacy_sidecar_migration.state === 'archived'
         && uuid(value.legacy_sidecar_migration.source_generation_id))));
   return Object.freeze({
-    version: sidecar ? 4 : policy ? 3 : 1,
+    version: definition ? 5 : sidecar ? 4 : policy ? 3 : 1,
     ...(policy ? { content_model_version: 2, aggregate_admission_version: 1 } : {}),
     state: 'published',
     document_id: intent.documentId,
     source_id: intent.sourceId,
     candidate_operation_id: intent.candidateOperationId,
     archive_operation_ids: Object.freeze([...intent.archiveOperationIds]),
+    ...(definition ? { definition_revision: intent.definitionRevision,
+      definition_digest: intent.definitionDigest } : {}),
     ...(sidecar ? { offered_archive_operation_ids: Object.freeze([...value.offered_archive_operation_ids]),
       used_archive_operation_ids: Object.freeze([...value.used_archive_operation_ids]),
       legacy_sidecar_migration: value.legacy_sidecar_migration === null ? null
@@ -238,13 +263,17 @@ function planBinding(value, intent, policy = null) {
 
 function journal(value, intent, policy = null) {
   const sidecar = policy?.legacySidecarArchiveVersion === 1;
+  const definition = policy?.definitionBindingVersion === 1;
   check(exactKeys(value, ['version', ...(policy ? ['aggregate_admission_version'] : []),
+    ...(definition ? ['definition_revision', 'definition_digest'] : []),
     'state', 'actor_user_id', 'document_id', 'source_id',
     'candidate_operation_id', ...(sidecar ? ['offered_archive_operation_ids', 'used_archive_operation_ids'] : ['archive_operation_ids']),
     'expected_generation_id', 'expected_wal_head',
     'prepared_at', 'expires_at', 'plan', 'publication']));
-  check(value.version === (sidecar ? 4 : policy ? 3 : 1)
+  check(value.version === (definition ? 5 : sidecar ? 4 : policy ? 3 : 1)
     && (!policy || value.aggregate_admission_version === 1)
+    && (!definition || (value.definition_revision === intent.definitionRevision
+      && value.definition_digest === intent.definitionDigest))
     && ['missing', 'untracked', 'prepared', 'published', 'expired'].includes(value.state));
   if (value.actor_user_id !== intent.actorUserId || value.source_id !== intent.sourceId
     || value.candidate_operation_id !== intent.candidateOperationId
@@ -273,7 +302,8 @@ function journal(value, intent, policy = null) {
 function expiredTerminal(value, intent, policy = null) {
   check(value.state === 'expired' && value.document_id === intent.documentId);
   return Object.freeze({
-    version: policy?.legacySidecarArchiveVersion === 1 ? 4 : policy ? 3 : 1,
+    version: policy?.definitionBindingVersion === 1 ? 5
+      : policy?.legacySidecarArchiveVersion === 1 ? 4 : policy ? 3 : 1,
     ...(policy ? { aggregate_admission_version: 1 } : {}),
     state: 'expired',
     actor_user_id: intent.actorUserId,
@@ -281,6 +311,10 @@ function expiredTerminal(value, intent, policy = null) {
     source_id: intent.sourceId,
     candidate_operation_id: intent.candidateOperationId,
     archive_operation_ids: Object.freeze([...intent.archiveOperationIds]),
+    ...(policy?.definitionBindingVersion === 1 ? {
+      definition_revision: intent.definitionRevision,
+      definition_digest: intent.definitionDigest,
+    } : {}),
     ...(policy?.legacySidecarArchiveVersion === 1 ? {
       offered_archive_operation_ids: Object.freeze([...intent.archiveOperationIds]),
       used_archive_operation_ids: value.used_archive_operation_ids === null ? null
@@ -442,7 +476,7 @@ export function createDocumentReplacementRequestHandler(options = {}) {
   check(plain(options), 'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
   check(Object.keys(options).every(key => ['enabled', 'getUser', 'serviceClients', 'privateRpc',
     'putSignedUpload', 'executor', 'timeoutMs', 'maxConcurrent', 'aggregateAdmissionVersion',
-    'sourceContentModelVersion', 'legacySidecarArchiveVersion'].includes(key)),
+    'sourceContentModelVersion', 'legacySidecarArchiveVersion', 'definitionBindingVersion'].includes(key)),
   'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
   const hasAggregatePolicy = Object.hasOwn(options, 'aggregateAdmissionVersion');
   const hasSourceModel = Object.hasOwn(options, 'sourceContentModelVersion');
@@ -451,8 +485,10 @@ export function createDocumentReplacementRequestHandler(options = {}) {
   const aggregateAdmissionVersion = hasAggregatePolicy ? options.aggregateAdmissionVersion : null;
   const sourceContentModelVersion = hasSourceModel ? options.sourceContentModelVersion : null;
   const legacySidecarArchiveVersion = options.legacySidecarArchiveVersion ?? null;
+  const definitionBindingVersion = options.definitionBindingVersion ?? null;
   const policy = hasAggregatePolicy ? Object.freeze({ aggregateAdmissionVersion, sourceContentModelVersion,
-    ...(legacySidecarArchiveVersion === 1 ? { legacySidecarArchiveVersion: 1 } : {}) }) : null;
+    ...(legacySidecarArchiveVersion === 1 ? { legacySidecarArchiveVersion: 1 } : {}),
+    ...(definitionBindingVersion === 1 ? { definitionBindingVersion: 1 } : {}) }) : null;
   check(typeof enabled === 'boolean' && typeof getUser === 'function' && plain(serviceClients)
     && plain(serviceClients.source) && plain(serviceClients.sourceBytes) && plain(serviceClients.upload)
     && typeof privateRpc === 'function' && typeof putSignedUpload === 'function'
@@ -465,6 +501,8 @@ export function createDocumentReplacementRequestHandler(options = {}) {
   'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
   check(legacySidecarArchiveVersion === null || (legacySidecarArchiveVersion === 1 && hasAggregatePolicy),
     'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
+  check(definitionBindingVersion === null || (definitionBindingVersion === 1
+    && legacySidecarArchiveVersion === 1 && hasAggregatePolicy), 'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
   const functions = (value, keys) => keys.every(key => typeof value[key] === 'function');
   check(functions(serviceClients.source, ['begin', 'get', 'cancel'])
     && functions(serviceClients.sourceBytes, ['get', 'claim', 'openStream', 'record', 'release'])
@@ -514,8 +552,10 @@ export function createDocumentReplacementRequestHandler(options = {}) {
         });
       };
       const call = operationToRun => wait(job.track(operationToRun));
-      intent = await readBody(request, controller.signal, call, operationToRun => job.track(operationToRun),
-        legacySidecarArchiveVersion === 1);
+      intent = await readBody(request, controller.signal, call, operationToRun => job.track(operationToRun), {
+        allowTwoArchives: legacySidecarArchiveVersion === 1,
+        definitionBinding: definitionBindingVersion === 1,
+      });
       const actor = (await call(() => getUser(token, controller.signal)))?.id;
       check(uuid(actor), 'unauthorized');
       intent = Object.freeze({ ...intent, actorUserId: actor });
@@ -544,13 +584,19 @@ export function createDocumentReplacementRequestHandler(options = {}) {
         if (result.error) throw new ConfirmedFailure(result.error.code ?? 'invalid_receipt');
         return captureReplacementJson(result.data, { maxBytes: MAX_PRIVATE_JSON_BYTES }).value;
       };
-      const readReplacementRpc = policy?.legacySidecarArchiveVersion === 1
+      const readReplacementRpc = policy?.definitionBindingVersion === 1
+        ? 'read_document_generation_replacement_v5'
+        : policy?.legacySidecarArchiveVersion === 1
         ? 'read_document_generation_replacement_v4'
         : policy ? 'read_document_generation_replacement_v3' : 'read_document_generation_replacement';
-      const prepareReplacementRpc = policy?.legacySidecarArchiveVersion === 1
+      const prepareReplacementRpc = policy?.definitionBindingVersion === 1
+        ? 'prepare_document_generation_replacement_v5'
+        : policy?.legacySidecarArchiveVersion === 1
         ? 'prepare_document_generation_replacement_v4'
         : policy ? 'prepare_document_generation_replacement_v3' : 'prepare_document_generation_replacement';
-      const publishReplacementRpc = policy?.legacySidecarArchiveVersion === 1
+      const publishReplacementRpc = policy?.definitionBindingVersion === 1
+        ? 'publish_document_generation_v5'
+        : policy?.legacySidecarArchiveVersion === 1
         ? 'publish_document_generation_v4'
         : policy ? 'publish_document_generation_v3' : 'publish_document_generation';
       const publish = async privatePlan => publication(await rpc(publishReplacementRpc, {
@@ -559,9 +605,16 @@ export function createDocumentReplacementRequestHandler(options = {}) {
         p_candidate: intent.candidateOperationId,
         p_archives: [...intent.archiveOperationIds],
         p_plan: privatePlan,
+        ...(policy?.definitionBindingVersion === 1 ? {
+          p_expected_definition_revision: intent.definitionRevision,
+          p_expected_definition_digest: intent.definitionDigest,
+        } : {}),
       }, true), intent, policy);
 
-      const first = journal(await rpc(readReplacementRpc, rpcParams(intent)), intent, policy);
+      const first = journal(await rpc(readReplacementRpc, {
+        ...rpcParams(intent),
+        ...(policy?.definitionBindingVersion === 1 ? { p_document: intent.documentId } : {}),
+      }), intent, policy);
       if (first.state === 'published') return response(200, { replacement: publication(first.publication, intent, policy) });
       if (first.state === 'prepared') return response(200, { replacement: await publish(planBinding(first.plan, intent, policy)) });
       if (first.state === 'expired') {

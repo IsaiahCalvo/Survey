@@ -7,15 +7,17 @@ sections describe their dated checkpoint, not an instruction to repeat completed
 work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
-Latest committed app checkpoint: `3c31d8c838092bdffc94733ddaa0206492aae6f0`
-(aggregate save wiring), followed by checked baseline fix
-`657aaa4644a8e749a988c23dee05b97e69c49bf1`. Definition storage foundation:
-`5ecc0c81173077bc7555186f272787190753590c`.
-The adoption full run passed 7,276 tests with 98 skipped and zero failures; the
-later install fix passed its 14 focused tests, independent review, build and
-clean synthetic-backend browser flow. The subsequent combined 40-test check
-also covers the new, not-yet-wired aggregate request factory. These later
-changes are not claimed to be covered by the earlier full run or deployed.
+Latest committed app checkpoint: `523ebba8bc51c7f225f211839a52f2a77e0526a6`
+(reviewed definition updates, local receipts, history review and offline edit
+guards). Its final full run passed 7,343 tests with 98 skipped and zero failures;
+build, code-index update and the scoped synthetic-browser checks passed.
+The post-commit Gmail check at 10:54:42 UTC found no new matching service alerts.
+Earlier completed checkpoints include aggregate app wiring `3c31d8c8`, checked
+saved-baseline fix `657aaa464`, definition storage `5ecc0c811`, scoped revision
+client `831811a4`, and durable receipt/intent cache `a365526d3`.
+These features remain off by default and are not deployed. Earlier dated
+paragraphs below retain the failures and open questions from their own stage;
+do not treat them as current instructions to redo completed integration.
 
 - Recent completed local work: device-local history/restore, account-scoped
   reconnect replay, private recoverable tool settings, explicit legacy History
@@ -30,15 +32,87 @@ changes are not claimed to be covered by the earlier full run or deployed.
   byte-identical PDF retention, private archive recovery, and checked install.
   The clean browser flow records one preview, confirm and publish; a post-install
   legacy-scope regression is fixed with account-change safety coverage.
-- Known remaining local work: a supported checked replacement server entry
-  and app caller wiring, and
-  accepted-definition history/upgrades/shared publication. Existing
-  service or injected-caller tests do not close those integration requirements.
+- Completed locally: owner-reviewed shared definition updates, private source
+  selection, exact historical label review, scoped receipt caching, and paused
+  edit guards. The synthetic collaborator view reads the shared revision without
+  owner controls; the browser checks do not replace hosted access-rule tests.
+- New V5 publication binding is locally implemented and tested below; activation
+  must select this contract explicitly and must not fall back to V4.
+- Known remaining work: provide a supported checked replacement server entry
+  and app caller; and resolve cold offline checked-PDF access/reopen policy.
+  Existing service or injected-caller tests do not close those requirements.
 - Hosted gates remain: schema/client rollout, real leased multi-user/offline/
   revocation checks, and measured production quota/latency results. Microsoft
   365 trials and live Microsoft testing remain deferred.
 
 The detailed evidence and limitations for each checkpoint follow below.
+
+Current publication check at `523ebba8`: the generic replacement handler uses
+`prepare_document_generation_replacement_v4` / `publish_document_generation_v4`;
+v4 checks archive policy and delegates atomic generation publication to v3.
+Those publication plans/receipts do not bind the accepted combined definition
+revision/digest or lock its current head. First-generation adoption has a
+separate reviewed-definition check and is not evidence that this generic path
+is covered. A versioned contract and transaction-level concurrency/replay tests
+are required before that gap can close; no runtime change has been made yet.
+
+The scoped V5 contract is now agreed for the next local-only batch:
+`definitionBindingVersion: 1` requires aggregate version 1, source model 1 or 2,
+and legacy-sidecar archive version 1. Requests add an exact canonical decimal
+`definition_revision` and lowercase SHA-256 `definition_digest`; V5 read,
+prepare and publish RPCs receive both expected values. The V4 plan stays
+unchanged, so the new immutable binding must independently reject changed
+definition inputs on operation reuse. V5 journals/receipts carry the exact
+tuple; the bound handler must never fall back to V4. Existing policies and
+wire shapes stay unchanged. This paragraph records the intended test contract,
+not implemented or passing behavior.
+
+V5 handler implementation now passes 32 focused tests, independently rerun by
+root (`/tmp/survey-definition-v5-handler-root-20260915.log`). It checks exact
+revision/digest types before auth, both model-1 and model-2 cold paths, tuple
+mismatches, stale responses and no legacy fallback. These use controlled RPC
+responses. The SQL draft is not accepted: review found receipt-shape, full-plan
+replay, lock-order and durable generation-binding gaps. Real disposable-Postgres
+publication and concurrent-update tests are being assembled to validate the
+fixes through the existing V4/V3 functions, not substitute publisher stubs.
+
+The actual cold-path trace found an additional V5 defect: the first journal read
+runs before source creation, so it cannot derive the document from a source row.
+V5 read now takes the validated `p_document` explicitly and checks upload
+authority before the definition head; existing bindings must match that document.
+V5 prepare/publish and older RPC signatures stay unchanged. The updated handler
+passes 32 focused tests (`/tmp/survey-v5-cold-read-handler-20260915.log`); the real
+Postgres test must run cold read before source creation, not skip straight to
+prepared state. Full publication/concurrency acceptance remains open.
+
+The real disposable-Postgres test now reaches V5 through the unchanged V4/V3
+publisher. Cold read, missing-head/no-orphan, both source models, late exact
+replay, changed-tuple rejection, stale-head rejection and prepare rollback pass.
+It exposed and drove a fix for comparing the stored V3 plan digest to V4 input:
+V5 now delegates full V4 plan validation to the existing publisher. Schema tests
+also prove direct/nested binding deletes reject while exact document cascade
+cleanup succeeds; a document-leading binding index was added.
+The first two-session race test passed but review found its overlap and final
+state assertions too weak. A test-only correction must force overlapping held
+transactions and join the final publication to its exact generation/definition
+binding before concurrency acceptance is claimed. SQL and handler are frozen
+while this last test is strengthened.
+
+Final V5 verification passes on frozen source. The strengthened race test holds
+a successful publication transaction open, proves the real definition-apply
+session waits, then commits publication before apply. Its final query joins
+operation/document/generation and exact old revision/digest, checks the annotation
+generation head, and requires the definition head to advance by one. Independent
+review confirmed those checks replace the earlier loose assertion.
+
+Root's focused run passed 36/36, including disposable Postgres, with zero skips
+(`/tmp/survey-definition-v5-root-focused-20260915.log`). Full `npm test` exited 0:
+7,450 tests across 756 files, 7,352 passed, 98 skipped, zero failures/cancellations
+(`/tmp/survey-definition-v5-final-full-20260915.log`). Final Vite build, graph
+update and diff check passed. These prove the local versioned SQL/request
+contract, not an enabled app route: replacement still needs an approved Node
+host and explicit V5 caller wiring. No hosted migration, deployment, Microsoft
+testing, live collaboration proof or production quota savings is claimed.
 
 ### Aggregate app caller closure — 2026-09-15
 

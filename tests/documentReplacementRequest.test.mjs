@@ -12,6 +12,8 @@ const id = n => `96100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = id(1), documentId = id(2), sourceId = id(3), candidateId = id(4), archiveId = id(5);
 const sourceObjectId = id(6), sourceObjectVersion = id(7), generationId = id(8), publishedGenerationId = id(9);
 const walHead = '9007199254740993';
+const definitionRevision = '2';
+const definitionDigest = 'e'.repeat(64);
 const operation = Object.freeze({ type: 'move', from: 2, to: 1 });
 const body = Object.freeze({ document_id: documentId, generation_id: null, wal_head: walHead,
   operation, source_id: sourceId, candidate_operation_id: candidateId, archive_operation_ids: [archiveId] });
@@ -216,6 +218,24 @@ const aggregatePlan = (sourceContentModelVersion = 1) => ({ version: 3, contentM
 const aggregateJournal = (state, changes = {}) => ({ ...journal(state), version: 3,
   aggregate_admission_version: 1,
   publication: state === 'published' ? aggregatePublication : null, ...changes });
+const definitionBody = Object.freeze({ ...body, generation_id: generationId,
+  definition_revision: definitionRevision, definition_digest: definitionDigest });
+const definitionPlan = (sourceContentModelVersion = 2) => ({ ...aggregatePlan(sourceContentModelVersion),
+  version: 4, legacySidecarArchive: null,
+  source: { ...aggregatePlan(sourceContentModelVersion).source, generationId } });
+const definitionPublication = Object.freeze({ ...aggregatePublication, version: 5,
+  previous_generation_id: generationId, offered_archive_operation_ids: [archiveId],
+  used_archive_operation_ids: [archiveId], legacy_sidecar_migration: null,
+  definition_revision: definitionRevision, definition_digest: definitionDigest });
+const definitionJournal = (state, changes = {}) => {
+  const { archive_operation_ids: _archives, ...base } = journal(state);
+  return { ...base, version: 5, aggregate_admission_version: 1,
+    document_id: state === 'missing' ? null : documentId,
+    expected_generation_id: generationId, offered_archive_operation_ids: [archiveId],
+    used_archive_operation_ids: state === 'missing' || state === 'untracked' ? null : [archiveId],
+    definition_revision: definitionRevision, definition_digest: definitionDigest,
+    publication: state === 'published' ? definitionPublication : null, ...changes };
+};
 
 const rpcResult = data => ({ data, error: null });
 function harness({ rpc, getUser, clients, executor, putSignedUpload, ...options } = {}) {
@@ -244,6 +264,10 @@ function harness({ rpc, getUser, clients, executor, putSignedUpload, ...options 
 const rpcNames = h => h.calls.filter(call => call.name === 'privateRpc').map(call => call.args[0]);
 const expectedReadParams = { p_actor: actor, p_source: sourceId, p_candidate: candidateId,
   p_archives: [archiveId], p_expected_generation: null, p_expected_wal_head: walHead, p_operation: operation };
+const expectedDefinitionParams = { ...expectedReadParams, p_expected_generation: generationId,
+  p_expected_definition_revision: definitionRevision,
+  p_expected_definition_digest: definitionDigest };
+const expectedDefinitionReadParams = { ...expectedDefinitionParams, p_document: documentId };
 const assertSafe = value => {
   const text = JSON.stringify(value);
   for (const secret of ['private-plan', 'private-token', 'signed-secret', 'source/body.pdf', 'baseline_base64'])
@@ -349,12 +373,120 @@ test('aggregate prepared replay validates source policy before the only v3 publi
   assert.deepEqual(rpcNames(mismatch), ['read_document_generation_replacement_v3']);
 });
 
+test('definition-bound published replay returns the exact tuple through V5 only', async () => {
+  const h = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 2,
+    legacySidecarArchiveVersion: 1, definitionBindingVersion: 1,
+    rpc: async (name, params) => {
+      assert.equal(name, 'read_document_generation_replacement_v5');
+      assert.deepEqual(params, expectedDefinitionReadParams);
+      return rpcResult(definitionJournal('published'));
+    } });
+  const result = await h.run(definitionBody);
+  assert.equal(result.status, 200, JSON.stringify(result.value));
+  assert.deepEqual(result.value.replacement, {
+    version: 5, content_model_version: 2, aggregate_admission_version: 1,
+    state: 'published', document_id: documentId, source_id: sourceId,
+    candidate_operation_id: candidateId, archive_operation_ids: [archiveId],
+    definition_revision: definitionRevision, definition_digest: definitionDigest,
+    offered_archive_operation_ids: [archiveId], used_archive_operation_ids: [archiveId],
+    legacy_sidecar_migration: null, previous_generation_id: generationId,
+    generation_id: publishedGenerationId, wal_head: walHead,
+    published_at: publication.published_at,
+  });
+  assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v5']);
+  assertSafe(result.value);
+});
+
+test('definition-bound prepared replay publishes the stored V4 plan through V5 only', async () => {
+  const plan = definitionPlan(2);
+  const h = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 2,
+    legacySidecarArchiveVersion: 1, definitionBindingVersion: 1,
+    rpc: async (name, params) => {
+      if (name === 'read_document_generation_replacement_v5') {
+        assert.deepEqual(params, expectedDefinitionReadParams);
+        return rpcResult(definitionJournal('prepared', { plan }));
+      }
+      assert.equal(name, 'publish_document_generation_v5');
+      assert.deepEqual(params, { p_actor: actor, p_source: sourceId, p_candidate: candidateId,
+        p_archives: [archiveId], p_plan: plan,
+        p_expected_definition_revision: definitionRevision,
+        p_expected_definition_digest: definitionDigest });
+      return rpcResult(definitionPublication);
+    } });
+  const result = await h.run(definitionBody);
+  assert.equal(result.status, 200, JSON.stringify(result.value));
+  assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v5',
+    'publish_document_generation_v5']);
+});
+
+test('definition binding rejects malformed or changed tuples without legacy fallback', async () => {
+  const bound = patch => harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 2,
+    legacySidecarArchiveVersion: 1, definitionBindingVersion: 1, ...patch });
+  for (const input of [
+    body,
+    { ...definitionBody, definition_revision: 2 },
+    { ...definitionBody, definition_revision: '02' },
+    { ...definitionBody, definition_revision: '0' },
+    { ...definitionBody, definition_revision: '9007199254740992' },
+    { ...definitionBody, definition_digest: 'E'.repeat(64) },
+    { ...definitionBody, definition_digest: ['e'.repeat(64)] },
+    { ...definitionBody, definition_digest: { value: 'e'.repeat(64) } },
+    { ...definitionBody, definition_digest: null },
+    { ...definitionBody, definition_digest: 1 },
+  ]) {
+    const h = bound();
+    const result = await h.run(input);
+    assert.equal(result.status, 400, JSON.stringify(result.value));
+    assert.deepEqual(rpcNames(h), []);
+    assert.equal(h.calls.some(call => call.name === 'getUser'), false);
+  }
+
+  for (const changed of [
+    { definition_revision: '3' },
+    { definition_digest: 'f'.repeat(64) },
+    { publication: { ...definitionPublication, definition_revision: '3' } },
+    { publication: { ...definitionPublication, definition_digest: 'f'.repeat(64) } },
+  ]) {
+    const h = bound({ rpc: async name => {
+      assert.equal(name, 'read_document_generation_replacement_v5');
+      return rpcResult(definitionJournal('published', changed));
+    } });
+    const result = await h.run(definitionBody);
+    assert.equal(result.status, 502, JSON.stringify(result.value));
+    assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v5']);
+  }
+
+  for (const code of ['40001', '23505']) {
+    const conflict = bound({ rpc: async name => {
+      assert.equal(name, 'read_document_generation_replacement_v5');
+      return { data: null, error: { code } };
+    } });
+    assert.equal((await conflict.run(definitionBody)).status, 409);
+    assert.deepEqual(rpcNames(conflict), ['read_document_generation_replacement_v5']);
+  }
+
+  const otherDocumentId = id(12);
+  const crossDocument = bound({ rpc: async (name, params) => {
+    assert.equal(name, 'read_document_generation_replacement_v5');
+    assert.deepEqual(params, { ...expectedDefinitionReadParams, p_document: otherDocumentId });
+    return { data: null, error: { code: '23505' } };
+  } });
+  const crossDocumentResult = await crossDocument.run({ ...definitionBody, document_id: otherDocumentId });
+  assert.equal(crossDocumentResult.status, 409);
+  assert.equal(crossDocumentResult.value.error.code, 'replacement_conflict');
+  assert.deepEqual(rpcNames(crossDocument), ['read_document_generation_replacement_v5']);
+});
+
 test('aggregate policy and receipts fail closed without legacy lookup or publish fallback', async () => {
   for (const patch of [
     { aggregateAdmissionVersion: 1 },
     { sourceContentModelVersion: 1 },
     { aggregateAdmissionVersion: 2, sourceContentModelVersion: 1 },
     { aggregateAdmissionVersion: 1, sourceContentModelVersion: 3 },
+    { definitionBindingVersion: 1 },
+    { aggregateAdmissionVersion: 1, sourceContentModelVersion: 1, definitionBindingVersion: 1 },
+    { aggregateAdmissionVersion: 1, sourceContentModelVersion: 1,
+      legacySidecarArchiveVersion: 1, definitionBindingVersion: 2 },
   ]) assert.throws(() => harness(patch), { code: 'DOCUMENT_REPLACEMENT_REQUEST_INPUT' });
 
   for (const stored of [
@@ -604,6 +736,59 @@ for (const sourceContentModelVersion of [1, 2]) test(`aggregate missing journal 
       'sourceBytes.recordV2', 'upload.beginArchiveV2', 'upload.beginV3']) assert.ok(called.includes(name), name);
     for (const name of ['source.begin', 'sourceBytes.get', 'sourceBytes.claim',
       'sourceBytes.record', 'upload.beginArchive', 'upload.beginV2']) assert.equal(called.includes(name), false, name);
+  } finally { await executor.close(); }
+});
+
+for (const sourceContentModelVersion of [1, 2]) test(`definition-bound missing journal composes checked model ${sourceContentModelVersion} through V5 only`, async () => {
+  const fixture = await realSourceFixture({ sourceContentModelVersion, checked: true, versioned: true });
+  const boundary = realClients(fixture);
+  const executor = createDocumentReplacementExecutor({ timeoutMs: 120_000 });
+  let savedPlan;
+  const h = harness({ clients: boundary.clients, putSignedUpload: boundary.putSignedUpload, executor,
+    aggregateAdmissionVersion: 1, sourceContentModelVersion, legacySidecarArchiveVersion: 1,
+    definitionBindingVersion: 1,
+    rpc: async (name, params) => {
+      if (name === 'read_document_generation_replacement_v5') {
+        assert.deepEqual(params, expectedDefinitionReadParams);
+        return rpcResult(definitionJournal('missing'));
+      }
+      if (name === 'read_document_generation_transform_source_v2') {
+        assert.deepEqual(params, { p_actor_user_id: actor, p_source_id: sourceId,
+          p_content_model_version: sourceContentModelVersion });
+        return rpcResult(fixture.envelope);
+      }
+      if (name === 'prepare_document_generation_replacement_v5') {
+        assert.deepEqual(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'p_plan')),
+          expectedDefinitionParams);
+        savedPlan = structuredClone(params.p_plan);
+        assert.deepEqual(Object.keys(savedPlan).sort(), ['version', 'contentModelVersion',
+          'aggregateAdmissionVersion', 'legacySidecarArchive', 'operationId', 'source',
+          'operation', 'projection', 'baseline_base64', 'legacy'].sort());
+        assert.equal(savedPlan.version, 4);
+        assert.equal(savedPlan.contentModelVersion, 2);
+        assert.equal(savedPlan.aggregateAdmissionVersion, 1);
+        assert.equal(savedPlan.legacySidecarArchive, null);
+        assert.equal(savedPlan.source.contentModelVersion, sourceContentModelVersion);
+        return rpcResult(definitionJournal('prepared', { plan: savedPlan }));
+      }
+      if (name === 'publish_document_generation_v5') {
+        assert.deepEqual(params, { p_actor: actor, p_source: sourceId, p_candidate: candidateId,
+          p_archives: [archiveId], p_plan: savedPlan,
+          p_expected_definition_revision: definitionRevision,
+          p_expected_definition_digest: definitionDigest });
+        return rpcResult(definitionPublication);
+      }
+      assert.fail(`unexpected RPC ${name}`);
+    } });
+  try {
+    const result = await h.run(definitionBody);
+    assert.equal(result.status, 200, JSON.stringify(result.value));
+    assert.equal(result.value.replacement.definition_revision, definitionRevision);
+    assert.equal(result.value.replacement.definition_digest, definitionDigest);
+    assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v5',
+      'read_document_generation_transform_source_v2',
+      'prepare_document_generation_replacement_v5', 'publish_document_generation_v5']);
+    assert.equal(rpcNames(h).some(name => /_v[34]$/.test(name)), false);
   } finally { await executor.close(); }
 });
 
