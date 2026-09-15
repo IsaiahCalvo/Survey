@@ -7,6 +7,44 @@ sections describe their dated checkpoint, not an instruction to repeat completed
 work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
+Newest local batch: disabled Node replacement route, restricted service brokers,
+and durable V5 client receipts. Final verification passed 7,372 tests with 98
+skipped, zero failures and zero cancellations (7,470 total). The focused run
+passed 130/130; Vite build, code-index update and diff checks passed. Logs use
+`/tmp/survey-replacement-route-final-*-20260915.log`.
+
+The route verifies the bearer actor, resolves the exact historical source model,
+admits one request before file download, streams storage reads, cancels failed
+streams and bounds the whole request. A late timed-out auth result cannot alter
+the next request's actor. New intents persist the original definition tuple;
+cold retry never replaces it with the current head. PostgreSQL broker tests
+prove grants and exact routing with stub delegated functions; the separate real
+V5 runtime test proves publication, replay and concurrency. The cold Node test
+uses controlled service responses and the real PDF worker, not hosted services.
+
+Local dependency tracing included the worker and dependencies with zero warnings.
+A disposable copy of the traced files, copied dependencies and its internal
+`@survey/shared` workspace link passed route import and real worker execution on
+Node 26.5.1. The copy was removed; no source or user data was deleted. This is
+not a Vercel deployment build or proof of hosted runtime/memory limits. The
+installed CLI is 59.12.0; upgrade it before hosted validation, not during this
+local batch. No packages or cloud settings were changed.
+
+Still required: normal AppShell/PDFViewer V5 caller wiring; an actual same-origin
+dev route; a pinned transport for packaged Electron/Capacitor; hosted package,
+resource, schema/client rollout and leased multi-user checks. All new runtime
+flags remain off. Cold offline cloud-file copies remain a separate access-policy
+choice; Microsoft testing is deferred. No quota or production latency reduction
+is claimed from local tests.
+
+Latest committed backend checkpoint: `edcb648b01d16838590d7756c094e4b26143e931`
+(checked publication bound to the accepted definition revision). Its final run
+passed 7,352 tests with 98 skipped and zero failures; 36 focused checks included
+real disposable PostgreSQL publication, replay, rollback and lock-order proof.
+The Vite build and code-index update passed. The post-commit Gmail check at
+11:28:54 UTC found no new matching service alerts. This is local proof, not
+deployment or measured quota savings.
+
 Latest committed app checkpoint: `523ebba8bc51c7f225f211839a52f2a77e0526a6`
 (reviewed definition updates, local receipts, history review and offline edit
 guards). Its final full run passed 7,343 tests with 98 skipped and zero failures;
@@ -40,6 +78,10 @@ do not treat them as current instructions to redo completed integration.
   must select this contract explicitly and must not fall back to V4.
 - Known remaining work: provide a supported checked replacement server entry
   and app caller; and resolve cold offline checked-PDF access/reopen policy.
+  The repo already has a Vercel Node API host; no new provider is needed for
+  the local route implementation. The current bounded batch covers a disabled
+  route, service-only public database brokers and a V5 client/transport.
+  Cold offline cloud-file copies remain a separate, undecided access policy.
   Existing service or injected-caller tests do not close those requirements.
 - Hosted gates remain: schema/client rollout, real leased multi-user/offline/
   revocation checks, and measured production quota/latency results. Microsoft

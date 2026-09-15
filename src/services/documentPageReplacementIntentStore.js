@@ -6,6 +6,9 @@ export const DOCUMENT_PAGE_REPLACEMENT_DB_NAME = 'survey-document-page-replaceme
 const STORE = 'intents';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SEQ = /^(0|[1-9][0-9]{0,18})$/;
+const DEFINITION_REVISION = /^[1-9][0-9]{0,15}$/;
+const SHA = /^[0-9a-f]{64}$/;
+const MAX_DEFINITION_REVISION = 9007199254740991n;
 const PHASES = new Set(['pending', 'dispatched', 'published', 'expired']);
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const check = (value, code = 'DOCUMENT_PAGE_REPLACEMENT_STORE_INVALID') => {
@@ -19,6 +22,8 @@ const exact = (value, keys) => object(value)
 const uuid = value => typeof value === 'string' && UUID.test(value);
 const seq = value => typeof value === 'string' && SEQ.test(value)
   && BigInt(value) <= 9223372036854775807n;
+const definitionRevision = value => typeof value === 'string'
+  && DEFINITION_REVISION.test(value) && BigInt(value) <= MAX_DEFINITION_REVISION;
 const stable = value => value && typeof value === 'object'
   ? (Array.isArray(value)
       ? `[${value.map(stable).join(',')}]`
@@ -42,20 +47,27 @@ function operation(value) {
 }
 
 function published(value, body) {
+  const v5 = value?.version === 5;
   const v4 = value?.version === 4;
-  check(body.archive_operation_ids.length === 1 || v4);
-  check(exact(value, ['version', ...(v4
+  const checked = v4 || v5;
+  const definition = Object.hasOwn(body, 'definition_revision');
+  check(body.archive_operation_ids.length === 1 || checked);
+  check(exact(value, ['version', ...(checked
     ? ['content_model_version', 'aggregate_admission_version', 'offered_archive_operation_ids',
       'used_archive_operation_ids', 'legacy_sidecar_migration'] : []),
+  ...(v5 ? ['definition_revision', 'definition_digest'] : []),
   'state', 'document_id', 'source_id', 'candidate_operation_id', 'archive_operation_ids',
   'previous_generation_id', 'generation_id', 'wal_head', 'published_at']));
-  check(value.version === (v4 ? 4 : 1) && value.state === 'published' && value.document_id === body.document_id
+  check(value.version === (v5 ? 5 : v4 ? 4 : 1) && v5 === definition
+    && (!v5 || (value.definition_revision === body.definition_revision
+      && value.definition_digest === body.definition_digest))
+    && value.state === 'published' && value.document_id === body.document_id
     && value.source_id === body.source_id && value.candidate_operation_id === body.candidate_operation_id
     && stable(value.archive_operation_ids) === stable(body.archive_operation_ids)
     && value.previous_generation_id === body.generation_id && uuid(value.generation_id)
     && value.generation_id !== value.previous_generation_id && value.wal_head === body.wal_head
     && typeof value.published_at === 'string' && Number.isFinite(Date.parse(value.published_at)));
-  if (v4) check(value.content_model_version === 2 && value.aggregate_admission_version === 1
+  if (checked) check(value.content_model_version === 2 && value.aggregate_admission_version === 1
     && stable(value.offered_archive_operation_ids) === stable(body.archive_operation_ids)
     && Array.isArray(value.used_archive_operation_ids)
     && [1, 2].includes(value.used_archive_operation_ids.length)
@@ -70,14 +82,21 @@ function published(value, body) {
 }
 
 function terminal(value, body, actorUserId) {
+  const v5 = value?.version === 5;
   const v4 = value?.version === 4;
-  check(body.archive_operation_ids.length === 1 || v4);
-  check(exact(value, ['version', ...(v4 ? ['aggregate_admission_version',
+  const checked = v4 || v5;
+  const definition = Object.hasOwn(body, 'definition_revision');
+  check(body.archive_operation_ids.length === 1 || checked);
+  check(exact(value, ['version', ...(checked ? ['aggregate_admission_version',
     'offered_archive_operation_ids', 'used_archive_operation_ids'] : []),
+  ...(v5 ? ['definition_revision', 'definition_digest'] : []),
   'state', 'actor_user_id', 'document_id', 'source_id',
     'candidate_operation_id', 'archive_operation_ids', 'expected_generation_id',
     'expected_wal_head', 'operation', 'prepared_at', 'expires_at']));
-  check(value.version === (v4 ? 4 : 1) && value.state === 'expired' && value.actor_user_id === actorUserId
+  check(value.version === (v5 ? 5 : v4 ? 4 : 1) && v5 === definition
+    && (!v5 || (value.definition_revision === body.definition_revision
+      && value.definition_digest === body.definition_digest))
+    && value.state === 'expired' && value.actor_user_id === actorUserId
     && value.document_id === body.document_id && value.source_id === body.source_id
     && value.candidate_operation_id === body.candidate_operation_id
     && stable(value.archive_operation_ids) === stable(body.archive_operation_ids)
@@ -86,7 +105,7 @@ function terminal(value, body, actorUserId) {
     && stable(operation(value.operation)) === stable(body.operation)
     && typeof value.prepared_at === 'string' && Number.isFinite(Date.parse(value.prepared_at))
     && typeof value.expires_at === 'string' && Number.isFinite(Date.parse(value.expires_at)));
-  if (v4) check(value.aggregate_admission_version === 1
+  if (checked) check(value.aggregate_admission_version === 1
     && stable(value.offered_archive_operation_ids) === stable(body.archive_operation_ids)
     && (value.used_archive_operation_ids === null
       || (Array.isArray(value.used_archive_operation_ids)
@@ -101,16 +120,22 @@ function validate(row, actorUserId, documentId) {
   if (object(row) && !Object.hasOwn(row, 'terminal')) row = { ...row, terminal: null };
   check(exact(row, ['version', 'revision', 'actorUserId', 'documentId', 'phase', 'body',
     'localPageState', 'publication', 'terminal', 'createdAt', 'updatedAt']));
-  check(row.version === 1 && Number.isSafeInteger(row.revision) && row.revision > 0
+  check([1, 2].includes(row.version) && Number.isSafeInteger(row.revision) && row.revision > 0
     && row.actorUserId === actorUserId && row.documentId === documentId
     && uuid(actorUserId) && uuid(documentId) && PHASES.has(row.phase));
   const body = row.body;
+  const definition = object(body) && (Object.hasOwn(body, 'definition_revision')
+    || Object.hasOwn(body, 'definition_digest'));
+  check(row.version === (definition ? 2 : 1));
   check(exact(body, ['document_id', 'generation_id', 'wal_head', 'operation', 'source_id',
-    'candidate_operation_id', 'archive_operation_ids'])
+    'candidate_operation_id', 'archive_operation_ids',
+    ...(definition ? ['definition_revision', 'definition_digest'] : [])])
     && body.document_id === documentId && uuid(body.generation_id) && seq(body.wal_head)
     && uuid(body.source_id) && uuid(body.candidate_operation_id)
     && Array.isArray(body.archive_operation_ids) && [1, 2].includes(body.archive_operation_ids.length)
     && body.archive_operation_ids.every(uuid)
+    && (!definition || (definitionRevision(body.definition_revision)
+      && typeof body.definition_digest === 'string' && SHA.test(body.definition_digest)))
     && new Set([body.source_id, body.candidate_operation_id, ...body.archive_operation_ids]).size
       === 2 + body.archive_operation_ids.length);
   operation(body.operation);
@@ -188,9 +213,17 @@ export function createDocumentPageReplacementIntentStore({ indexedDB,
   }
   return {
     async reserve(actorUserId, documentId, input) {
+      const definition = Object.hasOwn(input ?? {}, 'definitionRevision')
+        || Object.hasOwn(input ?? {}, 'definitionDigest');
       check(uuid(actorUserId) && uuid(documentId)
-        && exact(input, ['operation', 'generationId', 'walHead', 'localPageState'])
-        && uuid(input.generationId) && seq(input.walHead));
+        && exact(input, ['operation', 'generationId', 'walHead', 'localPageState',
+          ...(definition ? ['definitionRevision', 'definitionDigest'] : [])])
+        && uuid(input.generationId) && seq(input.walHead)
+        && (!definition || (definitionRevision(input.definitionRevision)
+          && typeof input.definitionDigest === 'string' && SHA.test(input.definitionDigest))));
+      const capturedDefinition = definition ? Object.freeze({
+        definitionRevision:input.definitionRevision, definitionDigest:input.definitionDigest,
+      }) : null;
       const capturedOperation = operation(input.operation);
       return transact('readwrite', (store, done, abort) => {
         const request = store.get([actorUserId, documentId]);
@@ -205,12 +238,16 @@ export function createDocumentPageReplacementIntentStore({ indexedDB,
               done({ row: current, created: false }); return;
             }
             const now = new Date().toISOString();
-            const row = validate({ version: 1, revision: 1, actorUserId, documentId,
+            const row = validate({ version: definition ? 2 : 1, revision: 1, actorUserId, documentId,
               phase: 'pending', publication: null, terminal: null, createdAt: now, updatedAt: now,
               localPageState: captureCheckedPageStructure(input.localPageState),
               body: { document_id: documentId, generation_id: input.generationId,
                 wal_head: input.walHead, operation: capturedOperation,
                 source_id: randomUUID(), candidate_operation_id: randomUUID(),
+                ...(capturedDefinition ? {
+                  definition_revision: capturedDefinition.definitionRevision,
+                  definition_digest: capturedDefinition.definitionDigest,
+                } : {}),
                 // New intents offer one ordered archive id for the PDF and one
                 // for the optional fixed legacy sidecar. The server consumes
                 // the verified-object-count prefix. Version-1 rows with one id

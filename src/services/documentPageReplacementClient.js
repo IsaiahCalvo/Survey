@@ -2,6 +2,9 @@ import { captureCheckedPageStructure } from './checkedPageStructure.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SEQ = /^(0|[1-9][0-9]{0,18})$/;
+const DEFINITION_REVISION = /^[1-9][0-9]{0,15}$/;
+const SHA = /^[0-9a-f]{64}$/;
+const MAX_DEFINITION_REVISION = 9007199254740991n;
 const MAX_RESPONSE_BYTES = 16 * 1024;
 const safeCodes = new Set(['DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED',
   'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE', 'DOCUMENT_PAGE_REPLACEMENT_STALE',
@@ -22,6 +25,18 @@ const exact = (value, fields) => object(value)
 const uuid = value => typeof value === 'string' && UUID.test(value);
 const seq = value => typeof value === 'string' && SEQ.test(value)
   && BigInt(value) <= 9223372036854775807n;
+const definitionRevision = value => typeof value === 'string'
+  && DEFINITION_REVISION.test(value) && BigInt(value) <= MAX_DEFINITION_REVISION;
+
+function captureDefinitionBinding(value, contentModelVersion) {
+  const present = Object.hasOwn(value ?? {}, 'definitionRevision')
+    || Object.hasOwn(value ?? {}, 'definitionDigest');
+  check(!present || (contentModelVersion === 2
+    && definitionRevision(value.definitionRevision)
+    && typeof value.definitionDigest === 'string' && SHA.test(value.definitionDigest)));
+  return present ? Object.freeze({ definitionRevision:value.definitionRevision,
+    definitionDigest:value.definitionDigest }) : null;
+}
 
 function captureOperation(value) {
   check(object(value));
@@ -58,20 +73,27 @@ function validateCapture(value, actorUserId, documentId, expectedContentModelVer
 }
 
 function publication(value, body) {
+  const v5 = value?.version === 5;
   const v4 = value?.version === 4;
-  check(body.archive_operation_ids.length === 1 || v4);
-  check(exact(value, ['version', ...(v4
+  const checked = v4 || v5;
+  const definition = Object.hasOwn(body, 'definition_revision');
+  check(body.archive_operation_ids.length === 1 || checked);
+  check(exact(value, ['version', ...(checked
     ? ['content_model_version', 'aggregate_admission_version', 'offered_archive_operation_ids',
       'used_archive_operation_ids', 'legacy_sidecar_migration'] : []),
+  ...(v5 ? ['definition_revision', 'definition_digest'] : []),
   'state', 'document_id', 'source_id', 'candidate_operation_id', 'archive_operation_ids',
   'previous_generation_id', 'generation_id', 'wal_head', 'published_at']));
-  check(value.version === (v4 ? 4 : 1) && value.state === 'published' && value.document_id === body.document_id
+  check(value.version === (v5 ? 5 : v4 ? 4 : 1) && v5 === definition
+    && (!v5 || (value.definition_revision === body.definition_revision
+      && value.definition_digest === body.definition_digest))
+    && value.state === 'published' && value.document_id === body.document_id
     && value.source_id === body.source_id && value.candidate_operation_id === body.candidate_operation_id
     && JSON.stringify(value.archive_operation_ids) === JSON.stringify(body.archive_operation_ids)
     && value.previous_generation_id === body.generation_id && uuid(value.generation_id)
     && value.generation_id !== body.generation_id && value.wal_head === body.wal_head
     && typeof value.published_at === 'string' && Number.isFinite(Date.parse(value.published_at)));
-  if (v4) check(value.content_model_version === 2 && value.aggregate_admission_version === 1
+  if (checked) check(value.content_model_version === 2 && value.aggregate_admission_version === 1
     && JSON.stringify(value.offered_archive_operation_ids) === JSON.stringify(body.archive_operation_ids)
     && Array.isArray(value.used_archive_operation_ids)
     && [1, 2].includes(value.used_archive_operation_ids.length)
@@ -86,14 +108,21 @@ function publication(value, body) {
 }
 
 function terminal(value, body, actorUserId) {
+  const v5 = value?.version === 5;
   const v4 = value?.version === 4;
-  check(body.archive_operation_ids.length === 1 || v4);
-  check(exact(value, ['version', ...(v4 ? ['aggregate_admission_version',
+  const checked = v4 || v5;
+  const definition = Object.hasOwn(body, 'definition_revision');
+  check(body.archive_operation_ids.length === 1 || checked);
+  check(exact(value, ['version', ...(checked ? ['aggregate_admission_version',
     'offered_archive_operation_ids', 'used_archive_operation_ids'] : []),
+  ...(v5 ? ['definition_revision', 'definition_digest'] : []),
   'state', 'actor_user_id', 'document_id', 'source_id',
     'candidate_operation_id', 'archive_operation_ids', 'expected_generation_id',
     'expected_wal_head', 'operation', 'prepared_at', 'expires_at']));
-  check(value.version === (v4 ? 4 : 1) && value.state === 'expired' && value.actor_user_id === actorUserId
+  check(value.version === (v5 ? 5 : v4 ? 4 : 1) && v5 === definition
+    && (!v5 || (value.definition_revision === body.definition_revision
+      && value.definition_digest === body.definition_digest))
+    && value.state === 'expired' && value.actor_user_id === actorUserId
     && value.document_id === body.document_id && value.source_id === body.source_id
     && value.candidate_operation_id === body.candidate_operation_id
     && JSON.stringify(value.archive_operation_ids) === JSON.stringify(body.archive_operation_ids)
@@ -102,7 +131,7 @@ function terminal(value, body, actorUserId) {
     && JSON.stringify(captureOperation(value.operation)) === JSON.stringify(body.operation)
     && typeof value.prepared_at === 'string' && Number.isFinite(Date.parse(value.prepared_at))
     && typeof value.expires_at === 'string' && Number.isFinite(Date.parse(value.expires_at)));
-  if (v4) check(value.aggregate_admission_version === 1
+  if (checked) check(value.aggregate_admission_version === 1
     && JSON.stringify(value.offered_archive_operation_ids) === JSON.stringify(body.archive_operation_ids)
     && (value.used_archive_operation_ids === null
       || (Array.isArray(value.used_archive_operation_ids)
@@ -203,7 +232,7 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
   };
   async function run({ documentId, operation, captureAccepted, revalidateCapture,
     retireGeneration, install, persistSourceLocalState, currentGenerationId, localPageState,
-    contentModelVersion = 1, resumeOnly = false, signal } = {}) {
+    contentModelVersion = 1, definitionBinding = null, resumeOnly = false, signal } = {}) {
     const actorUserId = getActorUserId();
     check(uuid(actorUserId) && uuid(documentId) && uuid(currentGenerationId)
       && [1, 2].includes(contentModelVersion)
@@ -221,7 +250,8 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
       current(actorUserId, documentId);
       const frontier = validateCapture(capture, actorUserId, documentId, contentModelVersion);
       const reserved = await store.reserve(actorUserId, documentId, { operation,
-        generationId: frontier.generationId, walHead: frontier.walHead, localPageState });
+        generationId: frontier.generationId, walHead: frontier.walHead, localPageState,
+        ...(definitionBinding ?? {}) });
       row = reserved.row;
       recoveredPrior = !reserved.created;
       current(actorUserId, documentId);
@@ -312,7 +342,7 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
       && opened.documentId === documentId && opened.checkedBundle
       && uuid(opened.checkedBundle.pdfGenerationId)
       && (opened.checkedBundle.contentModelVersion ?? 1)
-        === (row.publication.version === 4 ? 2 : 1)
+        === ([4, 5].includes(row.publication.version) ? 2 : 1)
       && opened.checkedBundle.pdfGenerationId !== row.body.generation_id,
     'DOCUMENT_PAGE_REPLACEMENT_STALE');
     if (currentGenerationId === row.body.generation_id) {
@@ -338,7 +368,9 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
       const key = `${actorUserId}:${documentId}`;
       if (pending.has(key)) throw fail('DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
       let captured;
-      try { captured = { ...input, operation: captureOperation(input.operation),
+      try { captured = { ...input,
+        definitionBinding: captureDefinitionBinding(input, input?.contentModelVersion ?? 1),
+        operation: captureOperation(input.operation),
         localPageState: captureCheckedPageStructure(input.localPageState) }; }
       catch { throw fail('DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE'); }
       const task = run(captured).catch(error => { throw safeCodes.has(error?.code) ? error : fail('DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE'); })
@@ -350,6 +382,8 @@ export function createDocumentPageReplacementClient({ store, transport, reacquir
       const actorUserId = getActorUserId(), documentId = input?.documentId;
       check(uuid(actorUserId) && uuid(documentId)
         && [1, 2].includes(input?.contentModelVersion ?? 1));
+      try { captureDefinitionBinding(input, input?.contentModelVersion ?? 1); }
+      catch { throw fail('DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE'); }
       const key = `${actorUserId}:${documentId}`;
       if (pending.has(key)) return pending.get(key);
       const task = run({ ...input, resumeOnly: true }).catch(error => {
