@@ -140,8 +140,31 @@ test('the Pan quick-click cannot re-arm Select behind an editor that just opened
     viewerSource.indexOf('const QUICK_CLICK_PX = 4;'),
     viewerSource.indexOf("window.addEventListener('pointerdown', onDown, true);"),
   );
-  assert.match(effect, /Date\.now\(\) - editEntryOpenedAtRef\.current < PAN_EDIT_ENTRY_RESTORE_MS\) return;/);
+  // MECHANISM CHANGED 2026-09-15, same day it was written: this asserted a
+  // 600ms timer (`Date.now() - editEntryOpenedAtRef.current < ...`). The timer
+  // also swallowed the NEXT tap — dismiss the editor, tap another annotation
+  // straight away, and nothing was selected. It is a latch now: raised when an
+  // editor opens, dropped on the first press after that editor has closed.
+  assert.match(effect, /if \(panQuickClickSuppressedRef\.current\) return;/);
   // and it records when it auto-armed Select, so the dispatcher knows this is
   // the same gesture — on the callout branch as well as the annotation one
   assert.equal((effect.match(/panQuickClickAutoSelectAtRef\.current = Date\.now\(\);/g) || []).length, 2);
+});
+
+test('the quick-click starts answering again the moment the editor is gone', () => {
+  // No dead zone after a dismiss. The latch is dropped by the press itself,
+  // gated on the editor really being unmounted (openEditTargetRef mirrors it,
+  // callouts included) — never on a clock, which is what stranded the user.
+  const effect = viewerSource.slice(
+    viewerSource.indexOf('const QUICK_CLICK_PX = 4;'),
+    viewerSource.indexOf("window.addEventListener('pointerdown', onDown, true);"),
+  );
+  assert.match(
+    effect,
+    /panQuickClickSuppressedRef\.current && !openEditTargetRef\.current[\s\S]{0,120}panQuickClickSuppressedRef\.current = false;/,
+  );
+  assert.doesNotMatch(effect, /PAN_EDIT_ENTRY_RESTORE_MS/,
+    'a time window must never gate the quick-click again');
+  // The editor entry is what raises it, on both branches of the dispatcher.
+  assert.match(viewerSource, /panQuickClickSuppressedRef\.current = true;/);
 });

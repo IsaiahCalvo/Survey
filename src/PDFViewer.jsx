@@ -435,6 +435,11 @@ function readWorkbookRegistration(workbook) {
 // edit entry still counts as the SAME gesture and puts Pan back. Long enough to
 // cover the double-tap window (350ms) plus the render between the two clicks;
 // short enough that a later, deliberate tool change stands.
+//
+// This window is ONLY used backwards, to recognise the gesture that is still in
+// flight. It is deliberately NOT used to suppress the Pan quick-click: a fixed
+// timer there meant that dismissing an editor and tapping another annotation
+// inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
 const PAN_EDIT_ENTRY_RESTORE_MS = 600;
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
@@ -3378,13 +3383,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // quick-click effect below), so the first of the two clicks flips the tool
   // and the editor entry has to flip it back. These two timestamps are how:
   //   panQuickClickAutoSelectAtRef — when a Pan tap last auto-armed Select
-  //   editEntryOpenedAtRef         — when an editor last opened
   // Ordering-proof on purpose: the quick-click listener re-subscribes on every
   // tool change, so whether it runs before or after the edit entry flips run to
   // run (verified live 2026-09-15: the first double-click after a fresh load
   // took the other order and stranded the user in Select).
   const panQuickClickAutoSelectAtRef = useRef(0);
-  const editEntryOpenedAtRef = useRef(0);
+  // UX 2026-09-15 (fix) — the Pan quick-click has to ignore exactly ONE thing:
+  // the click that opened an editor must not also re-arm Select behind it. It
+  // used to do that with a 600ms timer, which also swallowed the NEXT tap: the
+  // user dismissed the editor, tapped a different annotation straight away, and
+  // nothing was selected.
+  //
+  // Intended UX (reference: Drawboard PDF): as soon as the editor is gone the
+  // page answers taps again, immediately — no dead zone. So this is a latch,
+  // not a clock: it is raised when an editor opens and dropped on the first
+  // press after that editor has closed. The gesture that opened the editor, and
+  // the gesture that dismisses it, are the only two it eats.
+  const panQuickClickSuppressedRef = useRef(false);
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
   // UX 2026-05-01 — runaway-pin guard. A single counter-tool click was
   // somehow firing the pointerdown handler dozens of times in the same
@@ -3796,6 +3811,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let downAt = null;
     const onDown = (e) => {
       if (e.button !== 0) return; // left button only
+      // Drop the edit-entry latch on the first press taken after the editor has
+      // actually closed, so the very next tap selects again (no fixed dead
+      // zone). openEditTargetRef mirrors the mounted editor, callouts included.
+      if (panQuickClickSuppressedRef.current && !openEditTargetRef.current) {
+        panQuickClickSuppressedRef.current = false;
+      }
       downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
     };
     const onUp = (e) => {
@@ -3806,8 +3827,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // The second click of a double-click must not re-arm Select behind the
       // editor that just opened. This handler re-subscribes on every tool
       // change, so it can still be holding a stale `activeTool === 'pan'`
-      // closure when that second click lands.
-      if (Date.now() - editEntryOpenedAtRef.current < PAN_EDIT_ENTRY_RESTORE_MS) return;
+      // closure when that second click lands. The latch is dropped by onDown
+      // above on the first press after the editor closes — never on a timer.
+      if (panQuickClickSuppressedRef.current) return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
       // UX 2026-09-15 — a click on a live form field fills the field and does
       // NOTHING else: no annotation selection, no switch to Select. Without
@@ -11825,7 +11847,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // (armed under Pan by the hit-layer slice) left the user stranded in
     // Select. Both entries land here, so the restore lives here.
     const noteEditEntryOpened = () => {
-      editEntryOpenedAtRef.current = Date.now();
+      panQuickClickSuppressedRef.current = true;
       if (Date.now() - panQuickClickAutoSelectAtRef.current >= PAN_EDIT_ENTRY_RESTORE_MS) return;
       panQuickClickAutoSelectAtRef.current = 0;
       // In a microtask, not inline: this runs inside a pointer/dblclick
