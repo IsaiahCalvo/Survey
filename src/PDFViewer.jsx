@@ -21783,6 +21783,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
   // Track unsaved annotation changes
   const savedAnnotationsByPageRef = useRef({});
+  const checkedAnnotationBaselineScopeRef = useRef(null);
   const managedLocalSnapshot = useMemo(() => isManagedLocalDocument(pdfFile) && pdfId === pdfFile.localId
     && entityCatalog.mode !== 'unknown' && !entityCatalog.busy
     && surveyDefinition.mode !== 'unknown' && !surveyDefinition.busy
@@ -21811,6 +21812,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     ready: managedLocalSaveTracking.ready, dirty: managedLocalSaveTracking.dirty,
     onError: (error, file) => showToast(`Could not keep a recovery snapshot for ${file.name}. Use Save and keep the file open. ${error?.message || ''}`, 'error'),
   });
+
+  // Seed the local-save baseline from one clean checked-generation hydration.
+  useEffect(() => {
+    if (checkedBundle === null) {
+      checkedAnnotationBaselineScopeRef.current = null;
+      return;
+    }
+    const actorUserId = user?.id || null;
+    const documentId = pdfFile?.id || null;
+    const pdfGenerationId = checkedBundle?.pdfGenerationId || null;
+    if (!actorUserId || !documentId || !pdfGenerationId
+      || normalAnnotationHydration.ready !== true
+      || normalAnnotationHydration.source !== 'checked-generation'
+      || normalAnnotationHydration.documentId !== documentId
+      || normalAnnotationHydration.pdfGenerationId !== pdfGenerationId) return;
+
+    const prior = checkedAnnotationBaselineScopeRef.current;
+    if (prior?.actorUserId === actorUserId && prior.documentId === documentId
+      && prior.pdfGenerationId === pdfGenerationId) return;
+    checkedAnnotationBaselineScopeRef.current = { actorUserId, documentId, pdfGenerationId };
+
+    const queueSize = Math.max(0, Number(cloudSyncQueueSize) || 0);
+    if (queueSize > 0 || cloudSyncStatus?.healthy === false || cloudSyncStatus?.stage === 'error') return;
+    savedAnnotationsByPageRef.current = annotationsByPage;
+  }, [annotationsByPage, checkedBundle, cloudSyncQueueSize, cloudSyncStatus,
+    normalAnnotationHydration, pdfFile?.id, user?.id]);
 
   // Mark annotations as dirty when they change
   useEffect(() => {

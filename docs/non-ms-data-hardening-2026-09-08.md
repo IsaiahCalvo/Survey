@@ -60,8 +60,8 @@ sequence 1, and survived full reload and reopen through the checked reader.
 The rendered rectangle and cumulative counters were verified in the in-app
 browser: one POST, zero legacy append/snapshot writes, no extra write on reopen,
 and the cloud badge said up to date. This uses a synthetic backend, not hosted
-multi-user proof. The tab still displays an unsaved marker; its existing versus
-regressed status semantics are a separate open check, not silently called clean.
+multi-user proof. The preexisting false unsaved marker found during this check
+is fixed in the checked baseline checkpoint below.
 
 Final verification on frozen aggregate app source: 84 focused tests passed;
 full npm test exited 0 with 7,396 total, 7,298 passed, 98 skipped, zero failures
@@ -99,6 +99,27 @@ passed, including the final numeric setting fix. No hosted migration was run.
 These are storage and history-reference primitives, not a completed user flow:
 client transport, owner review UI, history callers, and checked shared
 publication binding still need wiring and verification.
+
+### Checked annotation saved baseline — 2026-09-15
+
+Checked-generation hydration previously left the saved annotation baseline
+empty, so an already-saved annotation set marked the tab unsaved. PDFViewer now
+seeds that baseline once for an exact actor/document/generation from clean
+checked hydration. A queued or failed first hydration consumes the opportunity
+without clearing dirty state; queue drain, remote updates and reconnect cannot
+reset the baseline over subsequent edits.
+
+The mounted regression first failed on the actual dirty result (`true` instead
+of `false`), then passed. The focused suite passed 49 tests. The full npm test
+run exited 0: 7,399 total, 7,301 passed, 98 skipped, zero failures/cancellations.
+Build, graph refresh and independent review passed. In-app browser: existing
+rectangles reopened with a clean tab; a new rectangle showed unsaved changes,
+remained dirty through cloud acknowledgment, and received aggregate sequence 2
+without a legacy append/snapshot write. No real account or hosted write ran.
+
+Logs: `/tmp/survey-checked-baseline-final-tests-20260915.log`,
+`/tmp/survey-checked-baseline-final-build-20260915.log`, and
+`/tmp/survey-checked-baseline-final-graph-20260915.log`.
 
 ## Scope and status
 
