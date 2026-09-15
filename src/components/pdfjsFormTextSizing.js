@@ -45,17 +45,36 @@ export function getPdfjsFormTextSizing(widget) {
  * what lets the caller measure in PAGE UNITS instead of at whatever zoom the
  * field happened to mount at.
  *
- * ZOOM CONTRACT (2026-09-15): the answer is always a PAGE-UNIT size — the caller
- * applies it as `calc(Npx * var(--total-scale-factor))` — and it is re-derived
- * from the same starting size on every zoom, so it is a function of the current
- * scale alone and never of which zooms the reader passed through. The previous
- * loop ran ONCE inside a requestAnimationFrame at mount, so whichever zoom the
- * field mounted at fixed the answer forever: the notes field in
- * prog-07-form-fields.pdf overflowed its box by 10 CSS px at fit-page (the last
- * line clipped) while fitting exactly at 150%. A single size cannot serve every
- * zoom, because the browser re-wraps the value at each scale and glyph advances
- * at 17px and at 58px are not exact multiples — the same line ends flush with
- * the box at one zoom and spills to a second line at another.
+ * ZOOM CONTRACT (2026-09-15, rewritten the same day — ZOOM-INVARIANT)
+ * -------------------------------------------------------------------
+ * The answer is a PAGE-UNIT size that DOES NOT DEPEND ON THE ZOOM AT ALL. The
+ * same size, the same wrap and the same line breaks at 24% as at 447%.
+ *
+ * How that is possible: the caller lays the control out at its page-unit size
+ * (`width: <pageW>px; height: <pageH>px; font-size: <pageUnits>px`) and maps it
+ * onto the page with ONE uniform `transform: scale(--scale-factor)`. A CSS
+ * transform is applied after layout, so the browser wraps the value exactly
+ * once, in page units, and the zoom only rasterises the result. `measure()`
+ * therefore reports page units — `scrollHeight` / `clientHeight` are layout
+ * values, which transforms never touch — and the loop below is a pure function
+ * of the widget's page box and its text.
+ *
+ * What this replaced, and why the replacement is not merely tidier:
+ *   - v1 ran the loop ONCE inside a requestAnimationFrame at mount, so whichever
+ *     zoom the field mounted at fixed the answer forever (the notes field in
+ *     prog-07-form-fields.pdf overflowed its box by 10 CSS px at fit-page — the
+ *     last line clipped — while fitting exactly at 150%).
+ *   - v2 re-ran it on every scale change, which fixed the clipping but only
+ *     after a frame (measured: the value overflowed for up to 1.5 s after a zoom
+ *     step before the second refit landed) and still let the BROWSER choose the
+ *     wrap at each scale: glyph advances at 17px and at 58px are not exact
+ *     multiples, so the same line ended flush with the box at one zoom and
+ *     spilled to a second line at another, and the settled page-unit size drifted
+ *     ±3% across the ladder (16.5 here, 17 there).
+ *   - v3 (this one) takes the zoom out of the layout instead of chasing it. There
+ *     is no per-zoom refit to be late, because there is nothing per-zoom to do:
+ *     `multilineFitSignature` is what the answer depends on, and the scale is not
+ *     in it.
  *
  * @param {object} options
  * @param {(fontSize: number) => ({ scrollHeight: number, clientHeight: number } | null)} options.measure
@@ -83,4 +102,27 @@ export function fitMultilineFontSize({
     fontSize = Math.round((fontSize - step) * 10) / 10;
   }
   return Math.max(fontSize, minFontSize);
+}
+
+/**
+ * Everything the fit above is allowed to depend on — the widget's PAGE box, its
+ * starting page-unit size, and the text being laid out.
+ *
+ * The zoom is deliberately not an input. The caller keeps the last signature and
+ * skips the work when it is unchanged, which means a zoom step does exactly
+ * nothing to a multiline field: no re-measure, no re-wrap, no frame of overflow
+ * while a refit lands. A widget whose page box really did change (a page swap, a
+ * rotation, a re-render) produces a new signature and re-fits synchronously.
+ *
+ * Passing a scale in here would reintroduce the whole defect class, so it has
+ * no parameter for one.
+ */
+export function multilineFitSignature({ pageWidth, pageHeight, startFontSize, value } = {}) {
+  const round = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n) * 1000) / 1000 : 0);
+  return [
+    round(pageWidth),
+    round(pageHeight),
+    round(startFontSize),
+    String(value ?? ''),
+  ].join('|');
 }

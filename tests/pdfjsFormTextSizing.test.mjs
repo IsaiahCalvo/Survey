@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fitMultilineFontSize, getPdfjsFormTextSizing } from '../src/components/pdfjsFormTextSizing.js';
+import { fitMultilineFontSize, getPdfjsFormTextSizing, multilineFitSignature } from '../src/components/pdfjsFormTextSizing.js';
 
 test('multiline widget keeps a non-zero DA font size and fits its own line boxes', () => {
   const sizing = getPdfjsFormTextSizing({
@@ -126,4 +126,49 @@ test('multiline fit is a pure function of the current measurement, not of call h
   assert.equal(second, 14);
   assert.equal(afterAnotherBox, 17);
   assert.equal(third, 14);
+});
+
+// --- multilineFitSignature (2026-09-15 zoom lock, round 2) --------------------
+// The fit is now ZOOM-INVARIANT, not merely re-derived per zoom: the control is
+// laid out at its page box and scaled by a transform, so the browser wraps the
+// value once and `measure` always reports page units. The signature states what
+// the answer is allowed to depend on, and the caller skips the work when it is
+// unchanged — which is what makes a zoom step cost nothing and leaves no window
+// where the value overflows its box waiting for a refit.
+
+test('the fit signature is the page box, the starting size and the text — nothing else', () => {
+  const base = { pageWidth: 231, pageHeight: 75, startFontSize: 17, value: 'a\nb' };
+  const signature = multilineFitSignature(base);
+
+  assert.equal(multilineFitSignature({ ...base }), signature, 'same inputs, same signature');
+  assert.notEqual(multilineFitSignature({ ...base, pageWidth: 232 }), signature);
+  assert.notEqual(multilineFitSignature({ ...base, pageHeight: 76 }), signature);
+  assert.notEqual(multilineFitSignature({ ...base, startFontSize: 16.5 }), signature);
+  assert.notEqual(multilineFitSignature({ ...base, value: 'a\nb\nc' }), signature);
+  // A caller that tried to feed the zoom in gets the same answer anyway: there
+  // is no parameter for it, which is the point.
+  assert.equal(multilineFitSignature({ ...base, scale: 3.58 }), signature);
+});
+
+test('the fit signature survives the float noise a measured page box carries', () => {
+  // The page box is derived from pdf.js's own percentage, so it can arrive as
+  // 230.99999999999997 at one zoom and 231 at the next. Rounding to 1/1000 of a
+  // page unit keeps that from re-fitting (and re-wrapping) for nothing, while
+  // still catching a real page-box change.
+  assert.equal(
+    multilineFitSignature({ pageWidth: 230.99999999999997, pageHeight: 75, startFontSize: 17, value: 'x' }),
+    multilineFitSignature({ pageWidth: 231, pageHeight: 75, startFontSize: 17, value: 'x' }),
+  );
+  assert.notEqual(
+    multilineFitSignature({ pageWidth: 231.01, pageHeight: 75, startFontSize: 17, value: 'x' }),
+    multilineFitSignature({ pageWidth: 231, pageHeight: 75, startFontSize: 17, value: 'x' }),
+  );
+});
+
+test('the fit signature treats an empty and a missing value alike', () => {
+  assert.equal(
+    multilineFitSignature({ pageWidth: 10, pageHeight: 10, startFontSize: 9 }),
+    multilineFitSignature({ pageWidth: 10, pageHeight: 10, startFontSize: 9, value: '' }),
+  );
+  assert.equal(typeof multilineFitSignature(), 'string', 'never throws on a half-built target');
 });
