@@ -24,6 +24,11 @@ export function createDocumentFirstGenerationAdoptionClient({ store, transport,
     check(valid && getActorUserId() === actorUserId,
       'DOCUMENT_FIRST_GENERATION_ADOPTION_STALE', 'The document or account changed.');
   };
+  const actorCurrent = actorUserId => {
+    let valid = false;
+    try { valid = getActorUserId() === actorUserId; } catch { /* fail closed */ }
+    check(valid, 'DOCUMENT_FIRST_GENERATION_ADOPTION_STALE', 'The document or account changed.');
+  };
   const expected = (row) => ({ actorUserId: row.actorUserId, documentId: row.documentId,
     adoptionOperationId: row.ids.adoptionOperationId, sourceId: row.ids.sourceId,
     candidateOperationId: row.ids.candidateOperationId,
@@ -84,7 +89,10 @@ export function createDocumentFirstGenerationAdoptionClient({ store, transport,
     'DOCUMENT_FIRST_GENERATION_ADOPTION_STALE');
     check(await install({ opened, publication: row.receipt }) === true,
       'DOCUMENT_FIRST_GENERATION_ADOPTION_STALE');
-    current(row.actorUserId, row.documentId);
+    // A true install replaces the exact legacy tab with this checked bundle, so
+    // the old legacy-scope guard must now fail. Keep the actor fence through the
+    // handoff; finish still matches the old document, revision and operation ID.
+    actorCurrent(row.actorUserId);
     await store.finish(row.actorUserId, row.documentId, row.revision,
       row.ids.adoptionOperationId);
     return Object.freeze({ publication: row.receipt, opened });

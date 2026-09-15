@@ -124,6 +124,33 @@ test('review sends no local capture as authority and confirm persists consent be
   assert.equal(await store.get(actor, documentId), null);
 });
 
+test('an actor change during the checked install keeps the exact published intent', async t => {
+  const store = createDocumentFirstGenerationAdoptionIntentStore({ indexedDB: new IDBFactory() });
+  t.after(() => store.close());
+  let row = (await store.reserve(actor, documentId, ids)).row;
+  row = await store.putReview(actor, documentId, row.revision, base());
+  row = await store.markConsent(actor, documentId, row.revision, sha('a'));
+  row = await store.putConfirmed(actor, documentId, row.revision, base('confirmed'));
+  row = await store.putPublished(actor, documentId, row.revision, base('published'));
+  let actorNow = actor;
+  const client = createDocumentFirstGenerationAdoptionClient({ store,
+    transport: async () => assert.fail('a published retry does not call transport'),
+    getActorUserId: () => actorNow, getAccessToken: async () => 'token',
+    isCurrent: ({ actorUserId, documentId: currentDocumentId }) => actorUserId === actorNow
+      && currentDocumentId === documentId,
+    reacquire: async () => ({ mode: 'checked', actorUserId: actor, documentId,
+      checkedBundle: { pdfGenerationId: id(9), contentModelVersion: 2,
+        pdf: { ...row.receipt.pdf }, legacy_sidecar_migration: row.receipt.legacy_sidecar_migration } }),
+  });
+  await assert.rejects(client.resume({ documentId, retireGeneration: async () => {},
+    install: async () => { actorNow = id(20); return true; } }), {
+    code: 'DOCUMENT_FIRST_GENERATION_ADOPTION_STALE',
+  });
+  const retained = await store.get(actor, documentId);
+  assert.equal(retained.phase, 'published');
+  assert.equal(retained.ids.adoptionOperationId, ids.adoptionOperationId);
+});
+
 test('dirty capture and actor change preserve durable raw intent and do not publish', async t => {
   const store = createDocumentFirstGenerationAdoptionIntentStore({ indexedDB: new IDBFactory() });
   t.after(() => store.close());

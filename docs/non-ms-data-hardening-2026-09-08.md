@@ -6294,3 +6294,59 @@ This new test was added after the 7,374-test full run and is reported separately
 A clean, uninterrupted browser review-to-checked-install flow remains to close
 before this checkpoint is called complete. No hosted activation or measured
 Supabase savings is claimed.
+
+Local code checkpoint `9dca221e54b4e5c555602f25d0350f710fa36773` now records
+the disabled adoption implementation and the open browser gate above. The
+post-commit Gmail search ran 70 seconds after the commit and found no new
+matching GitHub, Vercel, Supabase or Resend alerts. No push or deployment ran.
+The final code-index refresh exited 0 (29,732 nodes, 49,274 edges); generated
+index files, renderer logs and the local node_modules symlink were excluded.
+The fresh browser case uses a separate synthetic document and intent store.
+Its catalog, legacy open, owner role, hydration and review now pass. Confirmation
+currently shows the retry notice before a confirm request is sent; the exact
+review is retained for diagnosis. This is not yet a passed uninterrupted upgrade.
+
+Handoff scope check: do not reduce the remaining local work to this browser gate.
+Accepted-definition history/upgrades and full shared survey publication remain
+open (the local acceptance/read work is only a subset). Disabled aggregate-sync
+and generation-replacement callers also need their existing local integration
+gaps reconciled; the catalog caller checkpoint closes only the catalog sub-gap.
+These are existing requirements, not a new optimization audit. Hosted migration
+ordering, old-client compatibility, role-separated recovery/permission checks,
+and measured quota/request/latency outcomes remain separate activation gates.
+Microsoft trials and live workbook testing remain deferred by the user.
+
+The frozen fresh browser case (`freshAdoption=2`, synthetic document ending
+`0010`) resolves the earlier ambiguous timing: the durable trace records review
+revision 2, consent revision 3, then `confirm` and `publish`, followed by
+`DOCUMENT_FIRST_GENERATION_ADOPTION_STALE` in the client's resume path. The fake
+server is published while the viewer remains in its legacy annotation scope.
+No reload or fixture edit occurred during that run. Thus the open browser gate
+is now a concrete post-publication transition failure, not a missing confirm
+request. A mounted regression must distinguish mode/lifecycle invalidation,
+client replacement on rerender, and intent-revision races before any fix.
+
+The post-install scope regression is now fixed locally. The mounted real-client
+test first failed in `settlePublished` after a successful install retired its
+legacy scope. Pre-install checks remain unchanged; after a verified install,
+the client checks the actor and finishes only the exact saved revision and
+operation. The hook accepts only the expected checked/published same-actor,
+same-document result. An account switch during install still rejects and keeps
+the published intent. Independent review passes. The two adoption suites pass
+14/14; the combined adoption and new aggregate-request suites pass 40/40.
+The Vite build exits 0 (`/tmp/survey-adoption-install-fix-build-20260915.log`).
+
+Clean in-app browser acceptance now passes with frozen source and fixture:
+`freshAdoption=3`, synthetic document ending `0011`, operation
+`17c69ea3-afa9-401f-94f3-ad653b8e49e6`. One review and one confirmation produced
+exactly `preview, confirm, publish`, then checked generation ending `0101`
+hydrated with owner role and `legacy:false`. The review dialog closed, no retry
+notice remained, all exposed hydration/acquisition/reader errors were null,
+and page navigation advanced to page 2 with the up-to-date sync indicator.
+There was no reload or fixture edit during this flow. The earlier published
+document ending `0010` also reopens as checked. A separate temporary-fixture
+bug had forced all fresh documents to legacy mode even after publication;
+the corrected fixture now passes the real acquisition reader before and after
+publication. Neither fix relaxes retired-data or account guards.
+This closes the local adoption browser gate, not hosted activation, live
+collaboration, quota measurement, or the remaining app-transport/definition work.

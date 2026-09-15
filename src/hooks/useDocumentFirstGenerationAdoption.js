@@ -3,6 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 const blankFor = scope => ({ scope, review: null, busy: false, error: '', blocked: false,
   retryPending: false });
 const message = problem => problem?.message || 'The document upgrade was kept for retry.';
+const installedFor = (result, actorUserId, documentId) => result?.publication?.state === 'published'
+  && result?.opened?.mode === 'checked' && result.opened.actorUserId === actorUserId
+  && result.opened.documentId === documentId;
 
 /** UI state only. The deep client module owns durable intent, exact receipts,
  * consent ordering, publication recovery, and checked installation. */
@@ -98,7 +101,12 @@ export function useDocumentFirstGenerationAdoption({ enabled = false, actorUserI
         ? await client.resume({ documentId, signal: controller.signal, retireGeneration, install })
         : await client.confirm({ documentId, reviewSha256: review.review_sha256,
           signal: controller.signal, retireGeneration, install });
-      if (!current() || token !== scope.request) throw new Error('The document or account changed.');
+      // The exact checked install retires this hook's legacy scope by design.
+      // All other late results still fail the old actor/document request guard.
+      if (!current() || token !== scope.request) {
+        if (installedFor(result, actorUserId, documentId)) return result;
+        throw new Error('The document or account changed.');
+      }
       update({ review: null, blocked: false, retryPending: false, error: '' });
       return result;
     } catch (problem) {
