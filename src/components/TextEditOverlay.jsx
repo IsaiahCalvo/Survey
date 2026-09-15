@@ -409,7 +409,9 @@ export default function TextEditOverlay({
       forceRender((n) => n + 1);
       // Style changes reflow the text — re-measure + rebroadcast after paint.
       requestAnimationFrame(() => { broadcastLiveBounds(); publishBridge(); });
-      editableRef.current?.focus();
+      // preventScroll: a bold/italic/size click must not scroll the page away
+      // from the box being styled.
+      editableRef.current?.focus({ preventScroll: true });
     };
     const api = {
       toggleBold: () => applyStyle('fontWeight', styleRef.current.fontWeight === 'bold' ? 'normal' : 'bold'),
@@ -553,7 +555,18 @@ export default function TextEditOverlay({
     let caretFrame = 0;
     if (el) {
       el.textContent = isNewText ? '' : String(annotationData?.text ?? '');
-      el.focus();
+      // preventScroll — 2026-09-15. Focusing a contentEditable makes the browser
+      // reveal it, and the editor mounts before its final on-page box is
+      // applied, so the reveal was computed against the wrong rectangle: a
+      // double-click on a callout near the bottom of a page at ~195% jumped the
+      // viewer ~430px and scrolled the callout the user had just aimed at clean
+      // off the screen.
+      //
+      // Intended UX: opening an editor never moves the page. You double-clicked
+      // something you could see; it stays where it is. The caret placement
+      // below (and the browser's own caret-follow while typing) still reveals
+      // the caret when it truly leaves the viewport.
+      el.focus({ preventScroll: true });
       if (!isNewText && el.firstChild) {
         const sel = window.getSelection();
         sel?.removeAllRanges();
@@ -711,7 +724,9 @@ export default function TextEditOverlay({
             // Clicks in the gutter/padding keep focus in the editor.
             if (e.target !== editableRef.current) {
               e.preventDefault();
-              editableRef.current?.focus();
+              // preventScroll: clicking the box's own padding must not move the
+              // page under the user's finger.
+              editableRef.current?.focus({ preventScroll: true });
             }
           }}
           style={{
