@@ -7,8 +7,9 @@ sections describe their dated checkpoint, not an instruction to repeat completed
 work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
-Latest committed local checkpoint: `a704cbbdfbae930294d4032a51373a367a3aacab`,
-following adoption implementation `9dca221e54b4e5c555602f25d0350f710fa36773`.
+Latest committed app checkpoint: `3c31d8c838092bdffc94733ddaa0206492aae6f0`
+(aggregate save wiring), following adoption install fix
+`a704cbbdfbae930294d4032a51373a367a3aacab`.
 The adoption full run passed 7,276 tests with 98 skipped and zero failures; the
 later install fix passed its 14 focused tests, independent review, build and
 clean synthetic-backend browser flow. The subsequent combined 40-test check
@@ -76,6 +77,28 @@ pending app diff. It targeted an absent Supabase Edge endpoint, while its
 existing executor needs Node worker threads. The new uncommitted transport
 file is not an operational server. Existing injection-only behavior stays
 unchanged. No new hosting, deployment or service access has been enabled.
+
+### Definition revision storage foundation — 2026-09-15
+
+New local-only migration `20260915102000_document_definition_revisions.sql`
+adds private append-only combined survey/entity revisions and an atomic current
+pointer. Owners review/apply; current authorized viewers can read current and
+old revisions. Existing rev1 readers are unchanged. Semantic IDs cannot be
+removed or moved to a new parent; archive records remain available to history.
+
+Exact replay binds all supplied request fields before accepting the prior
+operation. A changed request with the same operation/proof fails without
+appending; an exact retry after a later revision returns its original receipt.
+Revision digests match the JS history helper for tested rev1/rev2 data, including
+Unicode and small numeric values. Numeric serialization pins its PostgreSQL
+session setting; caller settings cannot change the tested digest.
+
+Focused verification: 14/14 tests passed, including 9/9 disposable PostgreSQL
+behavior cases with exact temp cleanup. Independent access/CAS/replay review
+passed, including the final numeric setting fix. No hosted migration was run.
+These are storage and history-reference primitives, not a completed user flow:
+client transport, owner review UI, history callers, and checked shared
+publication binding still need wiring and verification.
 
 ## Scope and status
 
