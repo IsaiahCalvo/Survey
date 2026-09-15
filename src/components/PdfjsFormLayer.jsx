@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { shouldApplyPersistedFormValue } from './pdfjsFormLocalValueGuard.js';
-import { getPdfjsFormTextSizing } from './pdfjsFormTextSizing.js';
+import { fitMultilineFontSize, getPdfjsFormTextSizing } from './pdfjsFormTextSizing.js';
 import { getPdfWidgetVisualStyle } from '../utils/pdfAnnotationImporter.js';
 
 /**
@@ -58,11 +58,25 @@ function ensureFormLayerCss() {
     .pdfjsFormLayer .textWidgetAnnotation input, .pdfjsFormLayer .textWidgetAnnotation textarea,
     .pdfjsFormLayer .choiceWidgetAnnotation select, .pdfjsFormLayer .buttonWidgetAnnotation input {
       width: 100%; height: 100%; box-sizing: border-box; margin: 0; font: inherit;
+      /* UX 2026-09-15 (owner: "when I zoom out, the content within checkboxes
+         and text input fields does not stay aligned within the checkboxes or
+         text input fields"): a form control is an INLINE-BLOCK replaced box by
+         default, so it sits on its section's text baseline. The section
+         inherits the app's 16px font, and that strut is a fixed CSS px no
+         matter what the zoom is — so as the widget box shrinks below the strut,
+         the control gets pushed further and further down inside its own box.
+         Measured in prog-10/acrobat-authored-annotations.pdf at 57% zoom: the
+         text field's control sat 7.1px low inside an 11.3px box (63% of the box
+         height) and the checkbox's sat 3.7px low; at 139% and above both were
+         flush, which is why it only ever showed up on zoom-OUT. Making the
+         control a block box takes it out of the inline formatting context
+         entirely: it fills its section's content box at every zoom. */
+      display: block;
       /* Gutter + border ride the same scale as the page so the field chrome
          thickens/thins with zoom like every other annotation stroke. */
-      padding: 0 calc(var(--scale-factor, 1) * 2px);
+      padding: 0 calc(var(--total-scale-factor, 1) * 2px);
       background: rgba(60,130,255,0.06);
-      border: calc(var(--scale-factor, 1) * 1px) solid rgba(60,130,255,0.55);
+      border: calc(var(--total-scale-factor, 1) * 1px) solid rgba(60,130,255,0.55);
       color: #111;
     }
     .pdfjsFormLayer .buttonWidgetAnnotation.checkBox input {
@@ -71,7 +85,17 @@ function ensureFormLayerCss() {
       background-image: none !important;
       border-color: var(--pdf-widget-border, #000) !important;
       border-style: solid !important;
-      border-width: var(--pdf-widget-border-width, 1px) !important;
+      /* UX 2026-09-15 (checkbox chrome scaled at a different rate than every
+         other mark): --pdf-widget-border-width carries the widget's /MK border
+         in PAGE UNITS (a bare number), multiplied here so the box outline
+         thickens with zoom like every annotation stroke. It used to carry a
+         fixed "Npx", and because this declaration is !important it also beat
+         the per-zoom input.style.borderWidth write in syncScaleFactor - so
+         the border sat at a constant 1-2 CSS px from fit-page to 400%. With
+         box-sizing:border-box that also squeezed the padding box the tick mark
+         is sized against (background-size:82%), so the glyph grew ~20% faster
+         than its own box across the zoom range and drifted off centre. */
+      border-width: calc(var(--pdf-widget-border-width, 1) * var(--total-scale-factor, 1) * 1px) !important;
       border-radius: 0;
     }
     .pdfjsFormLayer .buttonWidgetAnnotation.checkBox input:checked {
@@ -109,6 +133,40 @@ function applyPersistedToInputs(div, seed, localDirtyValues) {
       const want = pv.value == null ? '' : String(pv.value);
       if (el.value !== want) el.value = want;
     }
+  }
+}
+
+// Re-fit every auto-fitting multiline widget so its value stays inside its own
+// box at the CURRENT zoom.
+//
+// ZOOM CONTRACT (2026-09-15): the applied size is always a page-unit number
+// multiplied by --total-scale-factor, so the text rides zoom exactly like the
+// box around it. What could not be made zoom-invariant is the WRAP: the browser
+// re-lays-out the value at every scale, and glyph advances at 17px and at 58px
+// are not exact multiples of one another, so a line that ends flush with the
+// box at one zoom spills to a second line at another. prog-07-form-fields.pdf
+// is the witness — "Second line of the field value." fits on one line at 100%,
+// 140% and 175%, and wraps at fit-page, 219%, 274% and 342%, pushing "Third
+// line." out of sight. The old code ran the shrink loop ONCE inside a
+// requestAnimationFrame at mount, so whichever zoom the field happened to mount
+// at decided the answer forever and every other zoom clipped. Re-deriving the
+// fit from the /DA size on each scale change is stateless (the same zoom always
+// gives the same size, never a function of which zooms were visited) and keeps
+// the value fully visible at every one of them.
+function refitMultilineWidgets(targets) {
+  if (!Array.isArray(targets) || targets.length === 0) return;
+  for (const target of targets) {
+    const el = target?.el;
+    if (!el || !el.isConnected) continue;
+    const fitted = fitMultilineFontSize({
+      startFontSize: target.startFontSize,
+      measure: (fontSize) => {
+        el.style.fontSize = `calc(${fontSize}px * var(--total-scale-factor))`;
+        return { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
+      },
+    });
+    el.style.fontSize = `calc(${fitted}px * var(--total-scale-factor))`;
+    el.dataset.pdfWidgetFittedFontSize = String(fitted);
   }
 }
 
@@ -206,38 +264,50 @@ export default function PdfjsFormLayer({
         });
         if (cancelled || !ref.current) return;
 
+        // Capture pdf.js's widget-container border BEFORE anything rescales it.
+        // It arrives as a fixed `${data.borderStyle.width}px` inline style in
+        // CSS px; stash the number so syncScaleFactor can re-express it in page
+        // units on every zoom (see the comment there).
+        div.querySelectorAll('section[data-annotation-id]').forEach((section) => {
+          const declared = parseFloat(section.style.borderWidth);
+          if (Number.isFinite(declared) && declared > 0) {
+            section.dataset.pdfWidgetContainerBorder = String(declared);
+          }
+        });
+
         // Wire interaction events for persistence. Values themselves live in
         // pdf.annotationStorage (pdf.js mirrors edits there automatically); these
         // listeners drive emit timing + focus state. The stable field key is the
         // widget id pdf.js stamps on each rendered section. We enrich the payload
         // with field name/type + PDF-space rect so the parent can build the
         // persisted carrier object and its bounds.
+        const multilineFitTargets = [];
         const inputs = div.querySelectorAll('input, textarea, select');
         inputs.forEach((el) => {
           const section = el.closest('section');
           const fieldId = section?.getAttribute('data-annotation-id') || el.id || null;
           const meta = widgetMetaById.get(fieldId) || {};
           if (meta.textSizing && el.tagName === 'TEXTAREA') {
-            let fontSize = meta.textSizing.fontSize;
-            el.style.fontSize = `calc(${fontSize}px * var(--total-scale-factor))`;
+            const startFontSize = meta.textSizing.fontSize;
+            el.style.fontSize = `calc(${startFontSize}px * var(--total-scale-factor))`;
             // UX: a multi-line value must be fully visible in its box. The /DA
             // size (or the auto-size from the line count) is the starting
             // point, but a long line can wrap at that size and push the last
             // line out of view (E2E: "Third line" clipped while the file's own
             // stored picture fit). Shrink until the wrapped text fits — that is
             // what the stored appearance already shows in other viewers.
-            // Measure after layout: at mount the textarea has no box yet.
-            requestAnimationFrame(() => {
-              for (let step = 0; step < 24 && fontSize > 6 && el.scrollHeight > el.clientHeight + 1; step += 1) {
-                fontSize = Math.round((fontSize - 0.5) * 10) / 10;
-                el.style.fontSize = `calc(${fontSize}px * var(--total-scale-factor))`;
-              }
-            });
+            // The fit is re-derived on every zoom by refitMultilineWidgets (see
+            // the zoom contract there); this list is what it walks.
+            multilineFitTargets.push({ el, startFontSize });
           }
           if (meta.visualStyle && el.type === 'checkbox') {
             el.style.setProperty('--pdf-widget-background', meta.visualStyle.backgroundColor);
             el.style.setProperty('--pdf-widget-border', meta.visualStyle.borderColor);
-            el.style.setProperty('--pdf-widget-border-width', `${meta.visualStyle.borderWidth}px`);
+            // PAGE UNITS, unitless: the stylesheet multiplies by
+            // --total-scale-factor so the tick box outline rides zoom.
+            el.style.setProperty('--pdf-widget-border-width', String(meta.visualStyle.borderWidth));
+            // Kept for the DOM-level E2E/diagnostic probes that read the
+            // declared width without parsing a calc().
             el.dataset.pdfWidgetBorderWidth = String(meta.visualStyle.borderWidth);
             el.checked = meta.visualStyle.checked;
           }
@@ -305,17 +375,41 @@ export default function PdfjsFormLayer({
         const baseViewport = page.getViewport({ scale: 1, rotation: page.rotate });
         const pageWidthPoints = baseViewport.width;
         const host = div.parentElement;
+        let refitHandle = 0;
         const syncScaleFactor = () => {
           const w = host ? host.offsetWidth : 0;
           if (w > 0 && pageWidthPoints > 0) {
             const measuredScale = w / pageWidthPoints;
             div.style.setProperty('--scale-factor', String(measuredScale));
-            div.querySelectorAll('input[type="checkbox"][data-pdf-widget-border-width]').forEach((input) => {
-              const sourceWidth = Number(input.dataset.pdfWidgetBorderWidth);
-              if (Number.isFinite(sourceWidth)) input.style.borderWidth = `${sourceWidth * measuredScale}px`;
+            // The control's own border rides --total-scale-factor in CSS. The
+            // WIDGET CONTAINER's border does not: pdf.js writes it as a fixed
+            // `${data.borderStyle.width}px` inline style on the <section>
+            // (annotation_layer #createContainer) and never revisits it, so a
+            // PDF-declared widget outline — the red checkbox, the green notes
+            // box — stayed a 1-2 CSS px hairline at every zoom while the box
+            // around it grew. Because the section is border-box, that fixed
+            // border also ate a shrinking share of the control inside it, which
+            // walked the control's left edge ~0.2% of the page width across the
+            // zoom range. Re-express it in page units on every resize.
+            div.querySelectorAll('section[data-pdf-widget-container-border]').forEach((section) => {
+              const sourceWidth = Number(section.dataset.pdfWidgetContainerBorder);
+              if (Number.isFinite(sourceWidth) && sourceWidth > 0) {
+                section.style.borderWidth = `${sourceWidth * measuredScale}px`;
+              }
             });
+            // The box just changed size; the value inside it has to be re-fitted
+            // to the new one. Deferred a frame so the border/padding writes above
+            // are in layout before anything is measured.
+            if (multilineFitTargets.length > 0) {
+              if (refitHandle) cancelAnimationFrame(refitHandle);
+              refitHandle = requestAnimationFrame(() => {
+                refitHandle = 0;
+                refitMultilineWidgets(multilineFitTargets);
+              });
+            }
           }
         };
+        detachers.push(() => { if (refitHandle) cancelAnimationFrame(refitHandle); refitHandle = 0; });
         syncScaleFactor();
         if (host && typeof ResizeObserver !== 'undefined') {
           const ro = new ResizeObserver(syncScaleFactor);
