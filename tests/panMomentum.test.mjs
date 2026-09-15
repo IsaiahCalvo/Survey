@@ -481,3 +481,16 @@ test('stopping a glide that was not running never fires a pan end', async () => 
     'a wheel tick with nothing coasting must not force PAN_END while Space is held');
   assert.ok(tail.includes('return wasRunning'), 'callers can tell whether a glide was actually stopped');
 });
+
+test('touch release with idleTaper:false keeps full velocity after a short lift gap', () => {
+  const tracker = createPanVelocityTracker();
+  tracker.start(0, 0, 0);
+  for (let i = 1; i <= 6; i += 1) tracker.move(i * 16, 0, i * 16);
+  const tapered = createPanVelocityTracker();
+  tapered.start(0, 0, 0);
+  for (let i = 1; i <= 6; i += 1) tapered.move(i * 16, 0, i * 16);
+  const touch = tracker.release(96 + 100, { idleTaper: false });
+  const mouse = tapered.release(96 + 100);
+  assert.ok(touch.vx > 0.9, `touch keeps its velocity (${touch.vx})`);
+  assert.ok(mouse.vx < touch.vx * 0.5, `mouse release tapers (${mouse.vx} vs ${touch.vx})`);
+});

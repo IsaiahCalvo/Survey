@@ -164,14 +164,16 @@ export function createPanVelocityTracker(config) {
       return { dx, dy };
     },
     /** Consume the gesture and return its release velocity in px/ms. */
-    release(at) {
+    release(at, { idleTaper = true } = {}) {
       if (!state) return { vx: 0, vy: 0 };
       const gesture = state;
       reset();
       // A pointer that sat still before lifting is a hold or a plain click.
       // The taper is continuous: a brief hesitation shortens the glide in
-      // proportion to how long the finger was parked.
-      const idleScale = releaseIdleScale(at - gesture.lastTime, cfg);
+      // proportion to how long the finger was parked. Touch callers pass
+      // idleTaper:false — a finger always lifts a few ms after its last
+      // move, and the phone flick must stay exactly as it always was.
+      const idleScale = idleTaper ? releaseIdleScale(at - gesture.lastTime, cfg) : 1;
       if (idleScale <= 0) return { vx: 0, vy: 0 };
 
       const samples = gesture.samples || [];
