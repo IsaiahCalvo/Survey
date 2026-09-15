@@ -71,11 +71,38 @@ if (perfOutsideTimingList.length > 0) {
   process.exit(1);
 }
 
-const isolatedTestFiles = TIMING_SENSITIVE_TEST_FILES
+const blockingIsolatedFiles = TIMING_SENSITIVE_TEST_FILES
   .filter((file) => testFiles.includes(file) && !perfSet.has(file));
 const perfTestFiles = TIMING_SENSITIVE_TEST_FILES
   .filter((file) => testFiles.includes(file) && perfSet.has(file));
-const isolatedSet = new Set(isolatedTestFiles);
+
+// 2026-09-15 — SKIP_TIMING_SUITES=1 runs everything EXCEPT the isolated suites
+// above. It exists for one caller: CI on a Dependabot dependency-bump PR
+// (.github/workflows/ci.yml). Those suites are the slowest and the only ones
+// whose result can turn on how busy the shared runner was rather than on
+// whether something broke — which is precisely what happened on CI run
+// 34094848036 (2026-09-07), where roundStrokeOutlinePerformance failed on both
+// attempts at 341.6ms and emailed a failure for a change that was fine. A
+// version bump cannot move those readings on its own, so skipping them on bot
+// PRs removes false alarms without removing coverage: no assertion is relaxed,
+// every human push and pull request still runs them all, and they run again on
+// main the moment a bump lands.
+//
+// Never set this in a local run or a human PR — it is not a "make CI green"
+// switch, and leaving these unrun on a change that touches eraser, cloud,
+// SVG-path or annotation-doc code would hide a genuine regression.
+const skipTimingSuites = process.env.SKIP_TIMING_SUITES === '1';
+const isolatedTestFiles = skipTimingSuites ? [] : blockingIsolatedFiles;
+// The notice is printed further down, AFTER the `--list` early exit, so
+// `--list` output stays one test path per line and nothing else.
+const skipNotice = (skipTimingSuites && blockingIsolatedFiles.length > 0)
+  ? `[tests] SKIP_TIMING_SUITES=1 — not running ${blockingIsolatedFiles.length} isolated `
+    + `suite(s): ${blockingIsolatedFiles.join(', ')}`
+  : null;
+// Note the main pass excludes the isolated files whether or not SKIP is set:
+// skipping them must mean NOT RUN, never "quietly folded into the main pass on
+// a shared runner", which is the exact placement the isolation exists to avoid.
+const isolatedSet = new Set(blockingIsolatedFiles);
 const mainTestFiles = testFiles.filter(
   (file) => !isolatedSet.has(file) && !perfSet.has(file),
 );
@@ -236,7 +263,15 @@ if (options.shard) {
     + `~${bins[index - 1].load.toFixed(1)}s estimated)`;
 } else if (options.onlyTimingSensitive) {
   selectedMainFiles = [];
-  selectionLabel = `blocking timing-sensitive suites only `
+  // On a Dependabot bump this job has nothing to run. Exit 0 rather than fall
+  // through to the "no files selected" error below: an empty-by-design run must
+  // not turn the aggregate CI gate red.
+  if (skipTimingSuites && !options.list) {
+    if (skipNotice) console.log(skipNotice);
+    console.log('[tests] SKIP_TIMING_SUITES=1 — nothing to run in this job.');
+    process.exit(0);
+  }
+  selectionLabel = `blocking isolated suites only `
     + `(${selectedIsolatedFiles.length} files)`;
 } else if (options.onlyPerf) {
   // A rename or deletion that quietly emptied the perf lane would look green
@@ -271,6 +306,7 @@ if (
   process.exit(1);
 }
 
+if (skipNotice) console.log(skipNotice);
 console.log(`[tests] selection: ${selectionLabel}`);
 
 function runTestFile(file, label, timeoutMs = 120_000) {

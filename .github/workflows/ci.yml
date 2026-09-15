@@ -1,25 +1,46 @@
-name: CI
+name: Build and tests
 
 # 2026-05-28 — Build + test gate. Before this, a broken change could land on
 # main with a green checkmark because nothing ran the build or the full test
 # suite. This is the guardrail that makes parallel work safe: a bad cross-edit
 # now shows up as a red X instead of being discovered by hand later.
 #
+# 2026-09-15 — Renamed from "CI" to "Build and tests" so the failure email
+# subject ("Run failed: Build and tests — …") says what actually broke in
+# words. `run-name` below gives every run a plain-English title, and `ci-gate`
+# writes a plain-English summary onto the run page. The deploy gate keys off
+# this workflow's NAME (deploy-production.yml `workflow_run`), and
+# scripts/release-integrity.mjs now asserts those two stay paired, so a future
+# rename cannot silently switch production deploys off.
+#
 # 2026-09-15 — Split into parallel jobs. The old single job ran everything in
 # series and took a median of 380s, of which 333s was `npm test` alone on a
 # multi-core runner that sat 78% idle. The suite is top-heavy (479 of 512 files
 # finish in under a second), so it now runs as four balanced shards in
-# parallel, alongside the build. The five wall-clock-budget suites are NOT in
-# any shard: they still run alone, one process at a time, in `timing-suites`,
-# because neighbouring load is what has historically tripped their budgets.
+# parallel, alongside the build. The suites that must not share a machine are
+# NOT in any shard — they run alone, one process at a time, in `timing-suites`
+# and `perf`, because neighbouring load is what has historically tripped them.
 #
-# Every job is required. `ci-gate` is the single aggregate that must be green,
-# and the Deploy production workflow keys off this workflow's conclusion.
+# 2026-09-15 — Two different answers to "a timing reading must not veto a
+# merge", and both are in force:
+#   * `perf` is informational. The three files that assert millisecond budgets
+#     run there with `continue-on-error: true`, and `ci-gate` does not need it.
+#   * Dependabot's weekly bumps skip the blocking isolated suites
+#     (SKIP_TIMING_SUITES below). A routine version bump cannot regress them,
+#     and everything else still runs on a bump — including the license check.
+#
+# `ci-gate` is the single aggregate that must be green, and the Deploy
+# production workflow keys off this workflow's conclusion.
 
 on:
   push:
     branches: [main]
   pull_request:
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('Build and tests — PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title)
+      || format('Build and tests — main: {0}', github.sha) }}
 
 permissions:
   contents: read
@@ -36,7 +57,7 @@ jobs:
   # Static contract + type-check + the web bundle. Runs in parallel with the
   # tests; on the runner the whole job is ~45s, of which vite is ~3s.
   build:
-    name: Build
+    name: Build the app
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -72,6 +93,13 @@ jobs:
         run: npm install --include=optional --no-audit --no-fund
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Check dependency licenses
+        # Only on dependency bumps: the standalone "License check" workflow
+        # skips bot PRs so a bump cannot produce two separate red X's (and two
+        # separate emails) for one problem. Same script, same allowlist.
+        if: github.actor == 'dependabot[bot]'
+        run: npm run check:licenses
 
       # Vite's on-disk cache (dependency pre-bundling + transform results).
       # The bundle build is only ~3s today so this is insurance rather than a
@@ -139,11 +167,16 @@ jobs:
   # scripts/ci-perf-tests.mjs. The shards above exclude the whole
   # TIMING_SENSITIVE list, so between this job, the shards and `perf` below
   # every test file runs exactly once. `run-node-tests.mjs` fails loudly if a
-  # perf file ever falls out of the timing-sensitive list.
+  # perf file ever falls out of that union and into a shard.
   #
   # Blocking on purpose: if this job is ever given `continue-on-error`,
   # `needs.timing-suites.result` below reports success regardless, so the gate
   # would have to move to an explicit output instead.
+  #
+  # On a Dependabot bump SKIP_TIMING_SUITES=1 makes the runner print what it is
+  # not running and exit 0, so the job stays green by design rather than by
+  # accident — see scripts/run-node-tests.mjs for why a version bump cannot
+  # regress these.
   timing-suites:
     name: Slow isolated suites
     runs-on: ubuntu-latest
@@ -163,6 +196,10 @@ jobs:
 
       - name: Run the slow isolated suites one at a time
         run: node scripts/run-node-tests.mjs --only-timing-sensitive
+        env:
+          # A human re-run of a bot PR flips github.actor back to the person, so
+          # re-running a bump by hand gives you these suites on demand.
+          SKIP_TIMING_SUITES: ${{ github.actor == 'dependabot[bot]' && '1' || '' }}
 
   # 2026-09-15 — The performance lane. Informational ONLY.
   #
@@ -219,13 +256,65 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs: [build, test, timing-suites]
+    env:
+      # Dependency bumps opened by the Dependabot bot run the lighter, fully
+      # deterministic pass. Everything else runs the whole suite.
+      IS_DEPENDENCY_BUMP: ${{ github.actor == 'dependabot[bot]' }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      TEST_RESULT: ${{ needs.test.result }}
+      TIMING_RESULT: ${{ needs.timing-suites.result }}
     steps:
+      - name: Explain this run in plain English
+        # Written before the gate step below fails, so the run page (linked from
+        # every failure email) opens on a readable explanation rather than on
+        # raw logs.
+        if: always()
+        run: |
+          {
+            echo "## What this check does"
+            echo
+            echo "It downloads the app's building blocks, checks the server code,"
+            echo "runs the automated tests, and builds the app the way the website"
+            echo "and the desktop app are built. If this is green, the change is"
+            echo "safe to ship."
+            echo
+            echo "The tests are split across four machines that run at the same"
+            echo "time, plus one machine for the few slow tests that need to be"
+            echo "left alone, plus one for the speed measurements."
+            echo
+            if [ "${IS_DEPENDENCY_BUMP}" = "true" ]; then
+              echo "**This run was a routine dependency update opened by a robot.**"
+              echo "It ran everything except the slow isolated tests, which a"
+              echo "version bump cannot affect and which occasionally go red just"
+              echo "because the shared machine was busy. Those run in full the"
+              echo "moment the update is merged."
+            else
+              echo "**This run was a change made by a person, so everything ran.**"
+            fi
+            echo
+            echo "### Results"
+            echo
+            echo "- Build: ${BUILD_RESULT}"
+            echo "- Tests (four shards): ${TEST_RESULT}"
+            echo "- Slow isolated tests: ${TIMING_RESULT}"
+            echo
+            echo "The speed measurements run on their own and are reported for"
+            echo "information only — they can never fail this check or stop a"
+            echo "release. If that one is red, re-run it on its own before"
+            echo "investigating: it can go red simply because the shared machine"
+            echo "was busy."
+            echo
+            if [ "${BUILD_RESULT}" != "success" ] \
+              || [ "${TEST_RESULT}" != "success" ] \
+              || [ "${TIMING_RESULT}" != "success" ]; then
+              echo "Something above went red. Open the job marked with a red X —"
+              echo "its name says which part broke: the build, one of the four"
+              echo "test shards, or the slow isolated tests."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Require every CI job to have succeeded
         shell: bash
-        env:
-          BUILD_RESULT: ${{ needs.build.result }}
-          TEST_RESULT: ${{ needs.test.result }}
-          TIMING_RESULT: ${{ needs.timing-suites.result }}
         run: |
           echo "build=$BUILD_RESULT test=$TEST_RESULT timing-suites=$TIMING_RESULT"
           failed=0

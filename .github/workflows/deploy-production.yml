@@ -1,15 +1,23 @@
 name: Deploy production
 
-# The gate between a green CI run and production. CI became a multi-job
-# workflow on 2026-09-15 (build + four test shards + the timing-sensitive
-# suites, aggregated by its `ci-gate` job). `workflow_run` reports the whole
-# workflow's conclusion, so `conclusion == 'success'` below still means every
-# blocking CI job passed — including all four shards. No per-job check is
-# needed here, and none should be added: it would silently stop gating the day
-# a job is renamed.
+# The gate between a green CI run and production. "Build and tests" became a
+# multi-job workflow on 2026-09-15 (build + four test shards + the slow
+# isolated suites + an informational performance lane, aggregated by its
+# `ci-gate` job). `workflow_run` reports the whole workflow's conclusion, so
+# `conclusion == 'success'` below still means every BLOCKING CI job passed —
+# including all four shards. The performance lane carries
+# `continue-on-error: true`, so a red timing reading there leaves the run's
+# conclusion green and a deploy goes ahead: that is deliberate, and the reason
+# it exists. No per-job check is needed here, and none should be added: it
+# would silently stop gating the day a job is renamed.
 on:
   workflow_run:
-    workflows: [CI]
+    # 2026-09-15 — this must stay character-for-character equal to the `name:`
+    # in .github/workflows/ci.yml; `workflow_run` matches on the workflow's
+    # display name, not its filename, so a rename that misses this line would
+    # silently stop every production deploy. scripts/release-integrity.mjs
+    # asserts the two are still paired, and that check runs in CI.
+    workflows: ["Build and tests"]
     types: [completed]
   workflow_dispatch:
 
@@ -22,9 +30,9 @@ concurrency:
 
 jobs:
   deploy:
-    # `conclusion == 'success'` is the aggregate of every CI job: build, all
-    # four test shards, and the timing-sensitive suites. A red shard makes the
-    # CI run red, which skips this job.
+    # `conclusion == 'success'` is the aggregate of every blocking CI job:
+    # build, all four test shards, and the slow isolated suites. A red shard
+    # makes the run red, which skips this job.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -135,6 +143,8 @@ jobs:
 
       - name: Record deployment
         run: |
-          echo "### Production deployment complete" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Revision: \`${{ github.event.workflow_run.head_sha || github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- URL: https://surveytool.app" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Production deployment complete"
+            echo "- Revision: \`${{ github.event.workflow_run.head_sha || github.sha }}\`"
+            echo "- URL: https://surveytool.app"
+          } >> "$GITHUB_STEP_SUMMARY"

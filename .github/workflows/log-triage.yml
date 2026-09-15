@@ -1,4 +1,12 @@
-name: Log Triage
+name: Device log triage
+
+# 2026-09-15 — This opened one GitHub Issue per uploaded log, and uploads come
+# in bursts: 100 issues between 2026-06-02 and 2026-06-26, twenty of them on a
+# single day, 34 still open. Each one emailed the owner. It now files the first
+# log of a given kind as an Issue and hangs every repeat of that same kind
+# underneath it as a comment, so a debugging session becomes one thread to read
+# instead of twenty inboxes to clear. Nothing is dropped — every log still gets
+# filed, with its own permalink, under the matching heading.
 
 on:
   push:
@@ -11,7 +19,9 @@ permissions:
 
 jobs:
   open-issue:
+    name: File the new device log
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Open triage Issue for new log
         uses: actions/github-script@v7
@@ -77,10 +87,41 @@ jobs:
               '```'
             ].join('\n');
 
-            await github.rest.issues.create({
+            // Fold repeats into one thread. Logs uploaded during a single
+            // debugging session share an error signature, so they share a title;
+            // filing the second and later ones as comments on the still-open
+            // issue keeps all the evidence together and stops a burst of uploads
+            // becoming a burst of separate notifications. Matching is on the
+            // exact title of an OPEN device-log issue, so once the owner closes
+            // a thread the next log of that kind opens a fresh one.
+            const openDeviceLogIssues = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'open', labels: 'device-log', per_page: 100 }
+            );
+            const existing = openDeviceLogIssues
+              .find(issue => !issue.pull_request && issue.title === title);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner, repo,
+                issue_number: existing.number,
+                body: [
+                  `Another log with the same signature — [${logFile}](https://github.com/${owner}/${repo}/blob/logs/${logFile}) (commit ${context.sha.slice(0,7)}, host ${host}).`,
+                  '',
+                  '### Log preview' + (truncated ? ' (first 400 lines)' : ''),
+                  '```',
+                  preview,
+                  '```'
+                ].join('\n')
+              });
+              core.info(`Added ${logFile} to existing triage issue #${existing.number}`);
+              return;
+            }
+
+            const created = await github.rest.issues.create({
               owner, repo,
               title,
               body,
               labels: ['device-log', `platform:${platform}`]
             });
-            core.info(`Opened triage issue for ${logFile}`);
+            core.info(`Opened triage issue #${created.data.number} for ${logFile}`);

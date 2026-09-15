@@ -8,7 +8,25 @@
 # BlueOak-1.0.0/Python-2.0/Zlib. Waivers: @syncfusion/* (paid commercial EULA)
 # + named per-package overrides for legacy MIT-equivalent transitive deps.
 # AGPL/GPL/SSPL on any non-waived package still hard-blocks.
-name: License Gate
+#
+# 2026-09-15 — two changes, both about noise rather than about what is checked:
+#
+#   1. Dependabot's own pull requests skip this workflow, because the
+#      "Build and tests" workflow runs the very same `npm run check:licenses`
+#      on a bot pull request. Before, a bad license on a bump produced two red
+#      X's and two emails for one problem. Coverage is unchanged: every bump is
+#      still license-checked, once, and every human change to package.json or
+#      package-lock.json still lands here. Production is belt-and-braces
+#      regardless — deploy-production.yml re-runs the same script on every
+#      deploy.
+#
+#   2. Node and the actions now match ci.yml (node 24, checkout/setup-node v7,
+#      `npm install --include=optional` rather than `npm ci`). This workflow had
+#      drifted to node 20 / v4 actions / `npm ci`, so it could in principle go
+#      red on a tree that CI was perfectly happy with — a failure email about a
+#      difference between two workflows rather than about the code. The `npm
+#      install` comment in ci.yml explains why `ci` is avoided (npm/cli#4828).
+name: License check
 
 on:
   pull_request:
@@ -24,13 +42,18 @@ on:
 
 jobs:
   license-check:
+    name: Check every dependency's license
+    # See note 1 above — bot bumps are license-checked inside "Build and tests".
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
+          cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install --include=optional --no-audit --no-fund
       - name: License check (production deps only)
         run: node scripts/check-licenses.mjs

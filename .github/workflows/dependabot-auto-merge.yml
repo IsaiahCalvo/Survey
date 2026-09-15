@@ -1,0 +1,142 @@
+name: Dependabot auto-merge
+
+# 2026-09-15 — Dependabot opens roughly one dependency pull request a week per
+# package and nobody merges them; ten were sitting open on 2026-09-15, some
+# since August. Every one of them re-runs the whole build-and-test gate, and
+# every red X on one of them emails the owner about a robot's housekeeping.
+#
+# This merges a bump for him, but only a safe one:
+#   * the "Build and tests" run that just finished must be green,
+#   * it must have been a pull_request run from the Dependabot bot,
+#   * the branch must live in this repository (not a fork),
+#   * the pull request must still be open, still authored by Dependabot, not a
+#     draft, and cleanly mergeable,
+#   * its head commit must be the exact commit that was tested — a bump that
+#     picked up a new commit after the green run is left alone, and
+#   * the version jump must not cross a major version (and, for a 0.x package,
+#     must not cross a minor version either). Majors like
+#     "electron from 43.0.0 to 44.3.0" stay open for a person to look at.
+# Anything that does not match is skipped quietly with `exit 0` — this workflow
+# must never turn a robot's housekeeping into another failure email.
+#
+# Why `workflow_run` rather than running on the pull request itself: a workflow
+# triggered by Dependabot gets a deliberately read-only token and no access to
+# secrets. A `workflow_run` job runs from the default branch with the ordinary
+# repository token instead, which is what a merge needs. It also means this file
+# only takes effect once it is on main.
+#
+# Note for whoever reads this next: the repository has "Allow auto-merge"
+# switched off and, on a private repository on the Free plan, no branch
+# protection is available at all (the protection API answers 403). So this does
+# a plain squash merge after the gate has already gone green, rather than
+# GitHub's queued auto-merge. Merging pushes main, which re-runs the full suite
+# — timing tests included — and only a green run there can deploy to production.
+
+on:
+  workflow_run:
+    # Must match the `name:` in .github/workflows/ci.yml.
+    workflows: ["Build and tests"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    name: Merge a green dependency bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+      - name: Merge the bump if every guard still holds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+            --json number,title,headRefOid,author,isDraft,mergeable,mergeStateStatus \
+            --jq '.[0] // empty')"
+
+          if [ -z "$pr_json" ]; then
+            echo "No open pull request on $HEAD_BRANCH — nothing to merge."
+            exit 0
+          fi
+
+          echo "Candidate pull request: $pr_json"
+
+          # Every guard lives in one place so a future reader can see the whole
+          # safety story at once. Any guard that does not hold exits 0.
+          # The pull request data arrives through the environment, never
+          # interpolated into the script, so a hostile title cannot become code.
+          # The node script is single-quoted ON PURPOSE: its `${...}` are
+          # JavaScript template literals and must reach node unexpanded.
+          # shellcheck disable=SC2016
+          decision="$(PR_JSON="$pr_json" TESTED_SHA="$TESTED_SHA" node -e '
+            const pr = JSON.parse(process.env.PR_JSON);
+            const stop = (why) => { console.log("SKIP\t" + why); process.exit(0); };
+
+            const author = (pr.author && pr.author.login) || "";
+            // gh reports the bot as "app/dependabot"; the REST name is
+            // "dependabot[bot]". Accept both, reject everything else.
+            if (!["app/dependabot", "dependabot[bot]", "dependabot"].includes(author)) {
+              stop(`pull request author is "${author}", not Dependabot`);
+            }
+            if (pr.isDraft) stop("pull request is a draft");
+            if (pr.headRefOid !== process.env.TESTED_SHA) {
+              stop(`head commit ${pr.headRefOid} is not the tested commit ${process.env.TESTED_SHA}`);
+            }
+            if (pr.mergeable !== "MERGEABLE") {
+              stop(`GitHub reports mergeable=${pr.mergeable} (${pr.mergeStateStatus})`);
+            }
+
+            // Dependabot titles are formatted deterministically, e.g.
+            //   chore(deps): bump yjs from 13.6.30 to 13.6.32
+            //   chore(deps): bump actions/checkout from 4 to 7
+            // Anything that does not parse (grouped updates, security advisories
+            // with a different shape) is left for a person.
+            const m = /\bfrom\s+v?(\d+)(?:\.(\d+))?(?:\.\S*)?\s+to\s+v?(\d+)(?:\.(\d+))?/.exec(pr.title || "");
+            if (!m) stop("could not read a from/to version out of the title");
+            const [fromMajor, fromMinor, toMajor, toMinor] =
+              [m[1], m[2] ?? "0", m[3], m[4] ?? "0"].map(Number);
+            if (fromMajor !== toMajor) {
+              stop(`major version change ${fromMajor} -> ${toMajor}; a person should look at this`);
+            }
+            if (fromMajor === 0 && fromMinor !== toMinor) {
+              stop(`pre-1.0 minor change 0.${fromMinor} -> 0.${toMinor}; treated as a breaking change`);
+            }
+
+            console.log("MERGE\t" + pr.number);
+          ')"
+
+          verdict="${decision%%$'\t'*}"
+          detail="${decision#*$'\t'}"
+
+          if [ "$verdict" != "MERGE" ]; then
+            echo "Leaving this pull request open: $detail"
+            {
+              echo "## Left open for you"
+              echo
+              echo "This dependency update passed its checks but was **not** merged"
+              echo "automatically, because: $detail"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Merging pull request #$detail"
+          gh pr merge "$detail" --repo "$REPO" --squash --delete-branch
+          {
+            echo "## Merged for you"
+            echo
+            echo "Dependency update #$detail passed every check and was merged into"
+            echo "main. Main now re-runs the full test suite, including the speed"
+            echo "tests, and only a green run there can reach the live site."
+          } >> "$GITHUB_STEP_SUMMARY"
