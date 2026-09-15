@@ -43,6 +43,7 @@ import {
 } from '../utils/textEditCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
+import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -82,6 +83,105 @@ const calloutStylePatch = (key, val) => {
   }
 };
 
+/** Whole-contents range — the historical select-all-on-open behaviour. */
+function selectAllRange(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  return range;
+}
+
+/**
+ * The caret point for this editor, or null while it is still unlaid-out. The
+ * anchor is stored as a fraction of the annotation's box, so it is re-resolved
+ * against the editor's CURRENT rect — immune to any scroll the mount caused
+ * (observed live: under Text Select the editor mounted 500px below the click,
+ * and a raw client point landed nowhere near the glyphs).
+ */
+function caretPointFor(el, anchor) {
+  if (!anchor) return null;
+  const rect = el.getBoundingClientRect();
+  if (!(rect.width > 0 && rect.height > 0)) return null;
+  const point = resolveCaretAnchorPoint(anchor, rect);
+  if (!point) return null;
+  // A click on the frame or outside the glyph box keeps the historical
+  // select-all rather than snapping the caret to an arbitrary edge.
+  if (point.x < rect.left || point.x > rect.right
+    || point.y < rect.top || point.y > rect.bottom) return null;
+  return point;
+}
+
+/**
+ * Collapsed caret range at a client point, or null when the point resolves
+ * outside this editor (stale coordinates, a point on the box border, a browser
+ * without either caret-from-point API). Callers fall back to select-all, so a
+ * null here is always safe.
+ */
+function caretRangeAt(el, point) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+  try {
+    let range = null;
+    if (typeof document.caretRangeFromPoint === 'function') {
+      range = document.caretRangeFromPoint(point.x, point.y);
+    } else if (typeof document.caretPositionFromPoint === 'function') {
+      const position = document.caretPositionFromPoint(point.x, point.y);
+      if (position?.offsetNode) {
+        range = document.createRange();
+        range.setStart(position.offsetNode, position.offset);
+      }
+    }
+    if (!range || !el.contains(range.startContainer)) {
+      // The native APIs hit-test the whole page, so anything painted above the
+      // editor answers instead of us — notably the pdf.js text layer, which owns
+      // pointer events under Text Select. Fall back to measuring our own glyphs,
+      // which no stacking context can interfere with.
+      return caretRangeByGeometry(el, point);
+    }
+    range.collapse(true);
+    return range;
+  } catch {
+    return null;
+  }
+}
+
+/** Longest string we will walk character-by-character to place a caret. */
+const CARET_SCAN_CHAR_LIMIT = 2000;
+
+/**
+ * Caret range at a client point, measured from this editor's own text-node
+ * geometry: the nearest character boundary, preferring the line the point is on.
+ * Independent of z-order, pointer-events and any overlay above the editor.
+ */
+function caretRangeByGeometry(el, point) {
+  const doc = el.ownerDocument;
+  if (!doc?.createTreeWalker) return null;
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const probe = doc.createRange();
+  let scanned = 0;
+  let best = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const length = node.length || 0;
+    scanned += length;
+    if (scanned > CARET_SCAN_CHAR_LIMIT) return null;
+    for (let offset = 0; offset <= length; offset += 1) {
+      probe.setStart(node, offset);
+      probe.collapse(true);
+      const rect = probe.getBoundingClientRect();
+      if (rect.height <= 0) continue;
+      // Vertical distance dominates so a click always lands on the clicked LINE
+      // first, then on the nearest character boundary within it.
+      const dy = point.y < rect.top ? rect.top - point.y
+        : point.y > rect.bottom ? point.y - rect.bottom : 0;
+      const distance = dy * 10000 + Math.abs(point.x - rect.left);
+      if (!best || distance < best.distance) best = { node, offset, distance };
+    }
+  }
+  if (!best) return null;
+  const range = doc.createRange();
+  range.setStart(best.node, best.offset);
+  range.collapse(true);
+  return range;
+}
+
 export default function TextEditOverlay({
   pageNumber,
   pageWidth,
@@ -92,6 +192,12 @@ export default function TextEditOverlay({
   reactCalloutId = null,
   isNewText = false,
   clickPosition = null,
+  // UX 2026-09-15 — where in the annotation's own box the double-click /
+  // double-tap landed. The caret is placed at that spot instead of selecting the
+  // whole string, matching Drawboard PDF (double-click a text box and you land
+  // between the letters you clicked). Null for every other entry (toolbar
+  // button, new-text creation), which keeps the old select-all.
+  caretAnchor = null,
   textBoxWidth,
   newTextStyle = null,
   strokeColor,
@@ -209,26 +315,42 @@ export default function TextEditOverlay({
   // Text access — uncontrolled contentEditable (React never re-renders the
   // text node, so IME/undo/caret state is never clobbered).
   // ---------------------------------------------------------------------
+  // Last text/height this editor actually observed.
+  //
+  // 2026-09-15 — DATA LOSS GUARD. The unmount flush ("unmount = commit") can run
+  // after React has already detached the editable and nulled editableRef, which
+  // is exactly what happens whenever something else clears editingAnnotation
+  // first: PDFViewer's window-capture Escape / backdrop handler under the Select
+  // family runs before this component's own document-capture listeners. Reading
+  // '' off a dead element and committing it silently WIPED the annotation's
+  // text (reproduced on base: double-click a text box in Rectangle Select, press
+  // Escape, the text is gone). Commit what we last saw instead, and never commit
+  // a value we never observed.
+  const lastTextRef = useRef(null);
+  const lastInnerHeightRef = useRef(0);
+
   const readText = () => {
     const el = editableRef.current;
-    if (!el) return '';
+    if (!el) return lastTextRef.current;
     // contentEditable=plaintext-only keeps '\n' text nodes under
     // white-space:pre-wrap; innerText also folds any stray <br> to '\n'.
     let t = el.innerText ?? '';
     t = t.replace(/\r\n?/g, '\n');
     // A trailing newline artifact appears when the last child is a <br>.
     if (t.endsWith('\n') && !(el.textContent || '').endsWith('\n')) t = t.slice(0, -1);
+    lastTextRef.current = t;
     return t;
   };
 
   const measureNaturalInnerHeight = () => {
     const el = editableRef.current;
-    if (!el) return 0;
+    if (!el) return lastInnerHeightRef.current;
     // scrollHeight is untransformed layout units — page units under the
     // scaled page-space container — and reports CONTENT height even when
     // the flex container would squeeze the item's box (getBoundingClientRect
     // measures the flexed box, which under-reported by whole lines).
-    return el.scrollHeight;
+    lastInnerHeightRef.current = el.scrollHeight;
+    return lastInnerHeightRef.current;
   };
 
   // ---------------------------------------------------------------------
@@ -332,6 +454,13 @@ export default function TextEditOverlay({
     const g = geomRef.current;
     const text = readText();
     const naturalInnerH = measureNaturalInnerHeight();
+    if (text == null) {
+      // The editable is already detached and we never observed its text — there
+      // is nothing to commit, and writing anything here could only destroy the
+      // annotation. Close without touching the document.
+      if (typeof onEditCancel === 'function') onEditCancel();
+      return;
+    }
 
     let json = null;
     if (isNewText) {
@@ -410,22 +539,48 @@ export default function TextEditOverlay({
 
   // Mount: seed text, focus, select-all for existing text (parity with the
   // fabric path's enterEditing + selectAll), initial broadcasts.
+  //
+  // When the editor was opened by a double-click / double-tap we then collapse
+  // that select-all to a caret at the click point (Drawboard parity: you land
+  // between the letters you clicked). This CANNOT be done in the same tick:
+  // the editor's final on-page position is applied after this effect, so a
+  // synchronous caretRangeFromPoint resolves against a stale box and always
+  // answers offset 0 (observed live 2026-09-15). Retry for a few frames until
+  // the box actually contains the click point; if it never does, the select-all
+  // above simply stands — every failure path is the old behaviour.
   useEffect(() => {
     const el = editableRef.current;
+    let caretFrame = 0;
     if (el) {
       el.textContent = isNewText ? '' : String(annotationData?.text ?? '');
       el.focus();
       if (!isNewText && el.firstChild) {
-        const range = document.createRange();
-        range.selectNodeContents(el);
         const sel = window.getSelection();
         sel?.removeAllRanges();
-        sel?.addRange(range);
+        sel?.addRange(selectAllRange(el));
+        if (caretAnchor) {
+          const placeCaret = (attempt) => {
+            caretFrame = 0;
+            const node = editableRef.current;
+            if (!node || committedRef.current) return;
+            const point = caretPointFor(node, caretAnchor);
+            const range = point ? caretRangeAt(node, point) : null;
+            if (!range) {
+              if (attempt < 3) caretFrame = requestAnimationFrame(() => placeCaret(attempt + 1));
+              return;
+            }
+            const live = window.getSelection();
+            live?.removeAllRanges();
+            live?.addRange(range);
+          };
+          caretFrame = requestAnimationFrame(() => placeCaret(0));
+        }
       }
     }
     broadcastLiveBounds();
     publishBridge();
     return () => {
+      if (caretFrame) cancelAnimationFrame(caretFrame);
       // Unmount = commit, not cancel (tool switch, page virtualization,
       // zoom-driven remount) — mirror of the fabric onBeforeDispose flush.
       commitRef.current({ flush: true });
@@ -443,7 +598,7 @@ export default function TextEditOverlay({
         cancelRef.current();
       }
     };
-    const onDocMouseDown = (e) => {
+    const onDocPointerDown = (e) => {
       const t = e.target;
       if (!(t instanceof Element)) return;
       if (t.closest('[data-text-edit-overlay]')) return;
@@ -453,10 +608,19 @@ export default function TextEditOverlay({
       commitRef.current();
     };
     document.addEventListener('keydown', onKeyDown, true);
-    document.addEventListener('mousedown', onDocMouseDown, true);
+    // POINTERDOWN, not only mousedown. The editor can now be opened while the
+    // Pan tool is armed (double-click to edit, 2026-09-15), and the pdf.js
+    // scroller preventDefault()s pointerdown while panning — which per the
+    // Pointer Events spec suppresses the compatibility mouse events entirely.
+    // With a mousedown-only listener, clicking away in Pan never committed and
+    // the editor stayed open (observed live). mousedown is kept as a belt-and-
+    // braces second path; commitAndClose is idempotent via committedRef.
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    document.addEventListener('mousedown', onDocPointerDown, true);
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
-      document.removeEventListener('mousedown', onDocMouseDown, true);
+      document.removeEventListener('pointerdown', onDocPointerDown, true);
+      document.removeEventListener('mousedown', onDocPointerDown, true);
     };
   }, []);
 

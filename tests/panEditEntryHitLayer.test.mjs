@@ -18,10 +18,20 @@ import { JSDOM } from 'jsdom';
 
 import {
   isEditEntryAnnotation,
-  normalizeAnnotationTypeForEdit,
+  normalizeAnnotationEditType,
   resolveEditEntryKind,
   resolveEditTypeForAnnotation,
 } from '../src/utils/annotationEditRoute.js';
+
+// INTEGRATION NOTE (2026-09-15, claude/edit-modes-integration): this slice and
+// the double-click slice each landed their own copy of annotationEditRoute with
+// the same rules but different shapes — a bare 'text' | 'bbox' | null here, a
+// { annotationType, isCounter, editType, skipReason } record there (its
+// dispatcher needs the skip reason for its diagnostics and a caller-supplied
+// raw type). One module cannot have two shapes, so the record won and the
+// assertions below read `.editType`. Same rules, same coverage: nothing here
+// was relaxed, only re-spelled. Same reason `normalizeAnnotationTypeForEdit`
+// is now `normalizeAnnotationEditType` — one name for one function.
 
 const svgSource = await readFile(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
 const viewerSource = await readFile(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -35,36 +45,36 @@ const hitTestSource = await readFile(new URL('../src/utils/annotationHitTest.js'
 test('resolveEditTypeForAnnotation reproduces the double-click routing rules', () => {
   // text opens the inline text editor
   for (const type of ['text', 'textbox', 'i-text']) {
-    assert.equal(resolveEditTypeForAnnotation({ type }), 'text', type);
+    assert.equal(resolveEditTypeForAnnotation({ type }).editType, 'text', type);
   }
   // fabric 7 serializes capitalized class names; 'IText' must not fall through
-  assert.equal(resolveEditTypeForAnnotation({ type: 'Textbox' }), 'text');
-  assert.equal(resolveEditTypeForAnnotation({ type: 'IText' }), 'text');
+  assert.equal(resolveEditTypeForAnnotation({ type: 'Textbox' }).editType, 'text');
+  assert.equal(resolveEditTypeForAnnotation({ type: 'IText' }).editType, 'text');
 
   // line / arrow / polygon / polyline open the uniform bbox editor
   for (const type of ['line', 'polygon', 'polyline']) {
-    assert.equal(resolveEditTypeForAnnotation({ type }), 'bbox', type);
+    assert.equal(resolveEditTypeForAnnotation({ type }).editType, 'bbox', type);
   }
   // a counter keeps the bbox editor even though its base type is a shape
-  assert.equal(resolveEditTypeForAnnotation({ type: 'rect', data: { type: 'counter' } }), 'bbox');
-  assert.equal(resolveEditTypeForAnnotation({ type: 'circle', data: { type: 'counter' } }), 'bbox');
+  assert.equal(resolveEditTypeForAnnotation({ type: 'rect', data: { type: 'counter' } }).editType, 'bbox');
+  assert.equal(resolveEditTypeForAnnotation({ type: 'circle', data: { type: 'counter' } }).editType, 'bbox');
 
   // pen / highlighter strokes and plain shapes have no second-level editor
   for (const type of ['path', 'Path', 'rect', 'circle', 'ellipse', 'triangle']) {
-    assert.equal(resolveEditTypeForAnnotation({ type }), null, type);
+    assert.equal(resolveEditTypeForAnnotation({ type }).editType, null, type);
   }
   // unknown types are an explicit no-op, never a callout fallthrough (KAL-125)
-  assert.equal(resolveEditTypeForAnnotation({ type: 'image' }), null);
-  assert.equal(resolveEditTypeForAnnotation({ type: 'stamp' }), null);
-  assert.equal(resolveEditTypeForAnnotation(null), null);
-  assert.equal(resolveEditTypeForAnnotation({}), null);
+  assert.equal(resolveEditTypeForAnnotation({ type: 'image' }).editType, null);
+  assert.equal(resolveEditTypeForAnnotation({ type: 'stamp' }).editType, null);
+  assert.equal(resolveEditTypeForAnnotation(null).editType, null);
+  assert.equal(resolveEditTypeForAnnotation({}).editType, null);
 });
 
-test('normalizeAnnotationTypeForEdit folds fabric 7 class names onto app types', () => {
-  assert.equal(normalizeAnnotationTypeForEdit('IText'), 'i-text');
-  assert.equal(normalizeAnnotationTypeForEdit('itext'), 'i-text');
-  assert.equal(normalizeAnnotationTypeForEdit('Textbox'), 'textbox');
-  assert.equal(normalizeAnnotationTypeForEdit(undefined), '');
+test('normalizeAnnotationEditType folds fabric 7 class names onto app types', () => {
+  assert.equal(normalizeAnnotationEditType('IText'), 'i-text');
+  assert.equal(normalizeAnnotationEditType('itext'), 'i-text');
+  assert.equal(normalizeAnnotationEditType('Textbox'), 'textbox');
+  assert.equal(normalizeAnnotationEditType(undefined), '');
 });
 
 test('resolveEditEntryKind labels only carriers that actually open an editor', () => {
@@ -85,8 +95,13 @@ test('resolveEditEntryKind labels only carriers that actually open an editor', (
 
 test('PDFViewer routes double-click edit mode through the shared helper, not a second switch', () => {
   assert.match(viewerSource, /import \{ resolveEditTypeForAnnotation \} from '\.\/utils\/annotationEditRoute';/);
-  assert.match(viewerSource, /const editType = resolveEditTypeForAnnotation\(annotationData\);/);
-  // The inline copy of the mapping must be gone so the two entry points cannot drift.
+  // Integration: the call moved into requestAnnotationEditEntry, the single
+  // dispatcher both edit entries (native double-click and the double-tap
+  // recogniser) now share, and it passes the caller's raw type through.
+  assert.match(viewerSource, /const route = resolveEditTypeForAnnotation\(annotationData, annotationType\);/);
+  // Exactly one call site — a second one is how the entries drift apart.
+  assert.equal(viewerSource.match(/resolveEditTypeForAnnotation\(/g)?.length, 1);
+  // The inline copy of the mapping must be gone so the entry points cannot drift.
   assert.equal(viewerSource.includes("let editType;"), false);
 });
 
