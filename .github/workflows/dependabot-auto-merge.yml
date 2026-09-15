@@ -79,6 +79,26 @@ jobs:
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.actor.login == 'dependabot[bot]' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+    # 2026-09-15 — serialise the merges. Dependabot opens its bumps in one
+    # batch, so several "Build and tests" runs finish within seconds of each
+    # other; every bump edits package.json and package-lock.json, so without a
+    # group the second merge races a base that the first one just moved.
+    #
+    # JOB level, under the `if:` above, NOT workflow level. This workflow is
+    # triggered by EVERY completion of "Build and tests" — every human pull
+    # request, every push to main — and all of those runs skip this job. A
+    # workflow-level group would still admit them, and GitHub cancels a
+    # previously pending run when a new one queues, so an unrelated human pull
+    # request finishing its CI could silently cancel a bump's pending merge. A
+    # job-level group is only entered by runs that got past the `if:`.
+    #
+    # cancel-in-progress: false — a merge in flight is never interrupted. If a
+    # queued merge is displaced by a newer one, its bump simply stays open;
+    # Dependabot rebases the remaining pull requests once the first lands, and
+    # each rebase starts a fresh CI run and a fresh chance to merge.
+    concurrency:
+      group: dependabot-auto-merge
+      cancel-in-progress: false
     steps:
       - name: Merge the bump if every guard still holds
         env:
@@ -89,9 +109,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          pr_json="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+          # Every `gh` call below is guarded. The step runs under `set -euo
+          # pipefail`, so an unguarded API hiccup would exit non-zero and turn a
+          # robot's housekeeping into a red run — and failure mail on this
+          # repository is a repo-wide subscription, so a red run of ANY workflow
+          # emails the owner. Nothing in this file is worth an email.
+          pr_json=""
+          if ! pr_json="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
             --json number,title,headRefOid,author,isDraft,mergeable,mergeStateStatus \
-            --jq '.[0] // empty')"
+            --jq '.[0] // empty')"; then
+            echo "Could not read the pull request list — leaving this bump alone."
+            {
+              echo "## Left open for you"
+              echo
+              echo "GitHub did not answer when this checked the dependency update,"
+              echo "so nothing was merged. It will try again on the next run."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           if [ -z "$pr_json" ]; then
             echo "No open pull request on $HEAD_BRANCH — nothing to merge."
@@ -106,6 +141,9 @@ jobs:
           # interpolated into the script, so a hostile title cannot become code.
           # The node script is single-quoted ON PURPOSE: its `${...}` are
           # JavaScript template literals and must reach node unexpanded.
+          # `|| true` on the node call for the same reason as the gh calls: an
+          # unexpected title shape must leave the bump open, never red the run.
+          decision=""
           # shellcheck disable=SC2016
           decision="$(PR_JSON="$pr_json" TESTED_SHA="$TESTED_SHA" node -e '
             const pr = JSON.parse(process.env.PR_JSON);
@@ -142,10 +180,15 @@ jobs:
             }
 
             console.log("MERGE\t" + pr.number);
-          ')"
+          ')" || true
 
           verdict="${decision%%$'\t'*}"
           detail="${decision#*$'\t'}"
+
+          if [ -z "$decision" ]; then
+            verdict="SKIP"
+            detail="the pull request could not be read"
+          fi
 
           if [ "$verdict" != "MERGE" ]; then
             echo "Leaving this pull request open: $detail"
@@ -159,7 +202,23 @@ jobs:
           fi
 
           echo "Merging pull request #$detail"
-          gh pr merge "$detail" --repo "$REPO" --squash --delete-branch
+          # A losing merge is an ordinary outcome, not a fault: another bump can
+          # land between the green run and this call and leave package-lock.json
+          # unmergeable. Report it and stop, green.
+          merged=1
+          gh pr merge "$detail" --repo "$REPO" --squash --delete-branch || merged=0
+          if [ "$merged" -eq 0 ]; then
+            echo "Merge of #$detail did not go through — leaving it open."
+            {
+              echo "## Left open for you"
+              echo
+              echo "This dependency update passed its checks, but the merge did not"
+              echo "go through — usually because another update landed first and the"
+              echo "lock file no longer merges cleanly. Nothing is broken: the update"
+              echo "is still open, and it gets another try once the robot rebases it."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           # The merge push was made with GITHUB_TOKEN, so GitHub created no
           # workflow run for it (see the note at the top of this file). Ask for
