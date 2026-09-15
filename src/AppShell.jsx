@@ -38,6 +38,7 @@ import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
 import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
+import { createDocumentLegacySidecarRecovery } from './services/documentLegacySidecarRecovery.js';
 import { createDocumentEntityCatalogClient } from './services/documentEntityCatalog.js';
 import { createDocumentSurveyDefinitionClient } from './services/documentSurveyDefinition.js';
 import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
@@ -901,6 +902,33 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     };
   }
   const pageReplacementClientRef = useRef(null);
+  const handleRecoverLegacySidecar = useCallback(async ({ tabId, file, checkedBundle,
+    scope, signal }) => {
+    const actorUserId = scope?.actorUserId;
+    const documentId = file?.id;
+    const pdfGenerationId = checkedBundle?.pdfGenerationId;
+    const isCurrent = () => {
+      const live = closeViewRef.current;
+      const tab = live?.tabs?.find(entry => entry.id === tabId);
+      return documentOpenScopeRef.current === scope && actorUserId === user?.id
+        && live?.activeTabId === tabId && tab?.file === file
+        && tab?.checkedBundle === checkedBundle && tab?.documentOpenScope === scope;
+    };
+    if (!isCurrent() || checkedBundle?.document?.user_id !== actorUserId
+      || checkedBundle?.legacy_sidecar_migration?.version !== 1
+      || checkedBundle.legacy_sidecar_migration.state !== 'archived') {
+      throw new Error('This legacy archive is not available for the current document owner.');
+    }
+    const recovery = createDocumentLegacySidecarRecovery({ client:supabase,actorUserId,
+      isCurrent:() => isCurrent(),supabaseUrl:import.meta.env.VITE_SUPABASE_URL,
+      publicKey:import.meta.env.VITE_SUPABASE_ANON_KEY });
+    const result = await recovery.download({ documentId,pdfGenerationId,signal });
+    if (!isCurrent() || result.actorUserId !== actorUserId || result.documentId !== documentId
+      || result.pdfGenerationId !== pdfGenerationId) {
+      throw new Error('The document or account changed before the export finished.');
+    }
+    return result;
+  }, [user?.id]);
   useEffect(() => {
     pageReplacementClientRef.current = null;
     if (!CHECKED_DOCUMENT_OPEN_ENABLED || checkedPageReplacementEnabled !== true || !documentOpenScope.actorUserId
@@ -2080,6 +2108,16 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
               >
                 <Icon name="download" size={15} />
               </button>
+              {typeof bottomToolbarApi.recoverLegacySidecar === 'function' && (
+                <button
+                  onClick={bottomToolbarApi.recoverLegacySidecar}
+                  {...chromeTip('Export legacy sidecar archive', 'below')}
+                  aria-label="Export legacy sidecar archive"
+                  style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  <Icon name="history" size={15} />
+                </button>
+              )}
             </div>
           )}
 
@@ -3651,6 +3689,9 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                             input, tab.id, tab.file, tab.checkedBundle,
                           )
                         : null}
+                      onRecoverLegacySidecar={(input) => handleRecoverLegacySidecar({ ...input,
+                        tabId:tab.id,file:tab.file,checkedBundle:tab.checkedBundle,
+                        scope:tab.documentOpenScope })}
                       onCloseAfterFailure={handleTabClose}
                       onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                       onAnnotationsExistChange={handleAnnotationsExistChange}

@@ -50,15 +50,16 @@ function rpcResult(name, params) {
   if (!params.p_include_snapshot) { data.annotations.snapshot = null; data.annotations.snapshot_sha256 = null; }
   return { data };
 }
-function modernRpcResult(name, params) {
+function modernRpcResult(name, params, migration = null) {
   if (name === 'read_document_open_mode') return { error: { code: 'SG003' } };
   if (name === 'read_document_open_mode_v2') return modernModeResult();
   if (name === 'read_annotation_updates_v3') return { data: { version: 3, document_id: documentId,
     generation_id: generation, content_model_version: 1, through_seq: '1', has_more: false,
     rows: [{ seq: '1', client_id: 'writer', client_seq: '1', actor_user_id: actor, data: hex(modernTail) }] } };
-  assert.equal(name, 'read_document_generation_open_v3');
+  assert.ok(['read_document_generation_open_v3', 'read_document_generation_open_v4'].includes(name));
   const data = structuredClone(manifest);
-  data.version = 3; data.content_model_version = 1;
+  data.version = name.endsWith('_v4') ? 4 : 3; data.content_model_version = 1;
+  if (name.endsWith('_v4')) data.legacy_sidecar_migration = migration;
   data.annotations.version = 3; data.annotations.content_model_version = 1;
   data.annotations.snapshot_sha256 = sha(modernBaseline);
   data.annotations.snapshot.snapshot = hex(modernBaseline);
@@ -349,13 +350,20 @@ test('current legacy open uses fresh metadata and one JWT, then rechecks metadat
   assert.deepEqual(h.metadataCalls[0].filters, [['id', documentId], ['archived', false], ['user_archived_at', null]]);
 });
 
-test('current checked open passes exact discovered generation to real reader, never legacy metadata/storage', async () => {
-  const h = harness(); h.onRpc = call => call.name === 'read_document_open_mode'
-    ? modeResult('checked', generation) : rpcResult(call.name, call.params);
+test('current model-1 checked open reads its v4 retirement marker and never legacy metadata/storage', async () => {
+  const migration = { version:1,state:'archived',source_generation_id:id(90) };
+  const h = harness(); h.onRpc = call => modernRpcResult(call.name, call.params, migration);
   const opened = await h.openCurrent(); h.clean();
   assert.equal(opened.mode, 'checked'); assert.equal(h.metadataCalls.length, 0);
-  assert.deepEqual(new Uint8Array(await readCheckedGenerationPdf(opened.checkedBundle, scope).arrayBuffer()), pdf);
-  assert.ok(h.calls.filter(c => c.name === 'read_document_generation_open').every(c => c.params.p_generation_id === generation));
+  assert.deepEqual(opened.checkedBundle.legacy_sidecar_migration, migration);
+  assert.deepEqual(new Uint8Array(await readCheckedGenerationPdf(opened.checkedBundle,
+    { ...scope,contentModelVersion:1 }).arrayBuffer()), pdf);
+  assert.ok(h.calls.filter(c => c.name === 'read_document_generation_open_v4')
+    .every(c => c.params.p_generation_id === generation && c.params.p_content_model_version === 1));
+  assert.deepEqual(h.calls.map(c => c.name), [
+    'read_document_open_mode_v2','read_document_generation_open_v4','read_annotation_updates_v3',
+    'read_document_generation_open_v4',
+  ]);
   assert.ok(h.fetches.every(c => c.url.endsWith('/functions/v1/document-generation-download')));
 });
 

@@ -153,7 +153,7 @@ test('checked model2 reader accepts another actor pending entry without consumin
   const pdf = new Uint8Array([37, 80, 68, 70, 45, 49]);
   const path = `${ownerId}/_generations/${documentId}/${generationId}.pdf`;
   const response = includeSnapshot => ({
-    version: 3,
+    version: 4,
     actor_user_id: actorB,
     document_id: documentId,
     generation_id: generationId,
@@ -168,13 +168,14 @@ test('checked model2 reader accepts another actor pending entry without consumin
       content_model_version: 2, wal_head: '0', snapshot_sha256: includeSnapshot ? sha256(snapshot) : null,
       snapshot: includeSnapshot ? { at_seq: '0', snapshot: hex(snapshot), encoding_version: 1,
         writer_id: null, writer_epoch: '0' } : null },
+    legacy_sidecar_migration: null,
   });
   const calls = [];
   const reader = createDocumentGenerationReader({
     getActorUserId: () => actorB,
     request: async (name, params, context) => {
       calls.push({ name, params, actorUserId: context.actorUserId });
-      assert.equal(name, 'read_document_generation_open_v3');
+      assert.equal(name, 'read_document_generation_open_v4');
       return { data: response(params.p_include_snapshot) };
     },
     download: async (_descriptor, context) => {
@@ -189,8 +190,8 @@ test('checked model2 reader accepts another actor pending entry without consumin
   assert.equal(recovered.getMap('eraseOutbox').get('erase-one').actorUserId, actorA);
   assert.equal(recovered.getMap('eraseOutbox').get('erase-one').status, 'pending');
   assert.deepEqual(calls.map(call => [call.name, call.actorUserId, call.params.p_include_snapshot]), [
-    ['read_document_generation_open_v3', actorB, true],
-    ['read_document_generation_open_v3', actorB, false],
+    ['read_document_generation_open_v4', actorB, true],
+    ['read_document_generation_open_v4', actorB, false],
   ]);
   recovered.destroy();
   source.destroy();

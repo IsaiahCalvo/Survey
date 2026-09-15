@@ -15,7 +15,8 @@ const copy = v => JSON.parse(JSON.stringify(v));
 const pdfDoc = await PDFDocument.create(); pdfDoc.addPage([612, 792]);
 const pdf = await pdfDoc.save();
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
-function harness({ gzip = false, head = '2', start = '0', ...options } = {}) {
+function harness({ gzip = false, head = '2', start = '0', modern = false,
+  migration = null, ...options } = {}) {
   const state = createDetachedYDoc(); state.getMap('annotations').set('a', { p: 1, o: { type: 'rect', left: 10 } });
   const baseline = Y.encodeStateAsUpdate(state), updates = [];
   for (let i = 0; i < 2; i++) {
@@ -31,13 +32,20 @@ function harness({ gzip = false, head = '2', start = '0', ...options } = {}) {
     publication: { operation_id: id(7), generation_id: generation, published_at: '2026-09-09T00:00:00Z', wal_head: start },
     annotations: { version: 2, document_id: document, generation_id: generation, wal_head: head,
       snapshot_sha256: hash(bytes), snapshot: { at_seq: start, snapshot: hex(bytes), encoding_version: gzip ? 2 : 1, writer_id: null, writer_epoch: '0' } } };
+  if (modern) {
+    first.version = 4;
+    first.content_model_version = 1;
+    first.legacy_sidecar_migration = migration;
+    first.annotations.version = 3;
+    first.annotations.content_model_version = 1;
+  }
   const calls = [], downloads = [], pages = [], observedSignals = []; let currentActor = actor;
   const h = { first, calls, downloads, pages, observedSignals, baseline, updates, expected,
     setActor: v => { currentActor = v; }, mutateConfirm: v => v,
     onRead: null, onDownload: null, onPage: null };
   const request = async (name, params, context) => {
     calls.push({ name, ...params, actor: context.actorUserId }); observedSignals.push(context.signal);
-    if (name === 'read_document_generation_open') {
+    if (name === (modern ? 'read_document_generation_open_v4' : 'read_document_generation_open')) {
       if (h.onRead) { const r = await h.onRead(params); if (r !== undefined) return r; }
       const result = copy(first);
       if (!params.p_include_snapshot) {
@@ -46,10 +54,11 @@ function harness({ gzip = false, head = '2', start = '0', ...options } = {}) {
       }
       return { data: result };
     }
-    assert.equal(name, 'read_annotation_updates_v2'); pages.push(params);
+    assert.equal(name, modern ? 'read_annotation_updates_v3' : 'read_annotation_updates_v2'); pages.push(params);
     if (h.onPage) return h.onPage(params);
     const index = pages.length - 1;
-    return { data: { version: 2, document_id: document, generation_id: generation,
+    return { data: { version: modern ? 3 : 2, document_id: document, generation_id: generation,
+      ...(modern ? { content_model_version:1 } : {}),
       through_seq: head, has_more: index === 0, rows: [{ seq: String(BigInt(start) + BigInt(index + 1)),
         client_id: 'writer', client_seq: String(index + 1), actor_user_id: actor, data: hex(updates[index]) }] } };
   };
@@ -60,7 +69,8 @@ function harness({ gzip = false, head = '2', start = '0', ...options } = {}) {
     return h.onDownload ? h.onDownload(descriptor, context) : new Blob([pdf], { type: 'application/pdf' });
   };
   h.reader = createDocumentGenerationReader({ request, download, getActorUserId: () => currentActor, ...options });
-  h.open = extra => h.reader.open({ documentId: document, actorUserId: actor, ...extra });
+  h.open = extra => h.reader.open({ documentId: document, actorUserId: actor,
+    ...(modern ? { contentModelVersion:1 } : {}), ...extra });
   return h;
 }
 function decode(update) {
@@ -77,6 +87,43 @@ for (const gzip of [false, true]) test(`checked open joins real PDF, ${gzip ? 'g
   assert.equal(Object.isFrozen(result.document), true); assert.equal(Object.isFrozen(result.pdf), true);
   assert.ok(h.observedSignals.every(s => s.aborted));
   assert.deepEqual(JSON.parse(result.pdfCacheKey).slice(1, 4), [actor, document, generation]);
+});
+
+test('model-1 v4 checked open carries an exact archived marker or explicit null', async () => {
+  const marker = { version:1,state:'archived',source_generation_id:id(80) };
+  for (const migration of [null, marker]) {
+    const h = harness({ modern:true,migration });
+    const result = await h.open();
+    assert.deepEqual(result.legacy_sidecar_migration, migration);
+    assert.deepEqual(h.calls.filter(call => call.name === 'read_document_generation_open_v4')
+      .map(call => [call.p_content_model_version,call.p_include_snapshot]), [[1,true],[1,false]]);
+    assert.ok(h.pages.every(page => page.p_content_model_version === 1));
+    assert.equal(h.calls.some(call => call.name === 'read_document_generation_open'), false);
+  }
+});
+
+test('v4 full open rejects marker stripping, malformed markers, and marker change across byte reads', async () => {
+  const marker = { version:1,state:'archived',source_generation_id:id(80) };
+  const malformed = [
+    value => { value.version = 3; delete value.legacy_sidecar_migration; },
+    value => { delete value.legacy_sidecar_migration; },
+    value => { value.legacy_sidecar_migration = { ...marker,extra:true }; },
+    value => { value.legacy_sidecar_migration = { ...marker,state:'active' }; },
+    value => { value.legacy_sidecar_migration = { ...marker,source_generation_id:null }; },
+    value => { value.legacy_sidecar_migration = { ...marker,source_generation_id:'bad' }; },
+    value => { value.content_model_version = 2; },
+    value => { value.annotations.content_model_version = 2; },
+  ];
+  for (const change of malformed) {
+    const h = harness({ modern:true,migration:marker });
+    change(h.first);
+    await assert.rejects(h.open(), { code:'DOCUMENT_OPEN_PROTOCOL' });
+    assert.equal(h.downloads.length, 0);
+  }
+  const h = harness({ modern:true,migration:marker });
+  h.mutateConfirm = value => { value.legacy_sidecar_migration.source_generation_id = id(81); };
+  await assert.rejects(h.open(), { code:'DOCUMENT_OPEN_PROTOCOL' });
+  assert.equal(h.downloads.length, 1);
 });
 
 test('snapshot at frontier needs no tail and final check need not re-download advanced state', async () => {

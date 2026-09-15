@@ -86,8 +86,10 @@ export async function createDocumentSurveyModelV2Fixture({ pdfBlob }) {
       capacitySnapshotAttempts += 1;
       return { error: { code: 'SG004', message: 'The fixture reached its model 2 snapshot size limit.' } };
     }
-    if (name === 'read_document_generation_open_v3') return { data: { ...base,
+    if (['read_document_generation_open_v3', 'read_document_generation_open_v4'].includes(name)) return { data: {
+      ...base, version: name.endsWith('_v4') ? 4 : base.version,
       actor_user_id: ids.actorUserId,
+      ...(name.endsWith('_v4') ? { legacy_sidecar_migration: null } : {}),
       document: { id: ids.documentId, user_id: ids.actorUserId, project_id: null,
         name: 'Model 2 viewer fixture.pdf', file_path: pdf.path, file_size: String(pdfBytes.length) },
       pdf, publication,

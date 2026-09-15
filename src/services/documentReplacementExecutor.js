@@ -84,11 +84,14 @@ function captureInput(input) {
     ? ownData(input, 'targetContentModelVersion') : undefined;
   const aggregateAdmissionVersion = Object.hasOwn(input, 'aggregateAdmissionVersion')
     ? ownData(input, 'aggregateAdmissionVersion') : undefined;
+  const legacySidecarArchiveVersion = Object.hasOwn(input, 'legacySidecarArchiveVersion')
+    ? ownData(input, 'legacySidecarArchiveVersion') : undefined;
   const targetContentModelVersion = suppliedTargetModel === undefined ? 1 : suppliedTargetModel;
   const envelopeCapture = captureReplacementJson(ownData(input, 'envelope'), { maxBytes: JSON_LIMIT });
   const operationCapture = captureReplacementJson(ownData(input, 'operation'), { maxBytes: JSON_LIMIT });
   const objects = ownData(input, 'objects');
-  if (!Array.isArray(objects) || objects.length !== 1) throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
+  if (!Array.isArray(objects) || objects.length < 1 || objects.length > 2)
+    throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
   const object = ownData(objects, '0');
   if (!plain(object)) throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
   const objectId = ownData(object, 'id');
@@ -100,10 +103,22 @@ function captureInput(input) {
   if (aggregateAdmissionVersion !== undefined
     && (aggregateAdmissionVersion !== 1 || targetContentModelVersion !== 2))
     throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
-  const view = replacementByteView(ownData(object, 'bytes'));
+  if (legacySidecarArchiveVersion !== undefined
+    && (legacySidecarArchiveVersion !== 1 || aggregateAdmissionVersion !== 1))
+    throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
+  if (objects.length < 1 || objects.length > (legacySidecarArchiveVersion === 1 ? 2 : 1))
+    throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
+  const views = objects.map((entry, index) => {
+    if (!plain(entry)) throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
+    const id = ownData(entry, 'id'), version = ownData(entry, 'version');
+    if (!validUuid(id) || !validUuid(version)) throw failure('DOCUMENT_REPLACEMENT_EXECUTOR_INPUT');
+    return { id, version, view: replacementByteView(ownData(entry, 'bytes')), index };
+  });
+  const view = views[0].view;
   const scalarBytes = [actorUserId, documentId, sourceId, operationId, objectId, objectVersion]
     .reduce((total, value) => total + (typeof value === 'string' ? Buffer.byteLength(value) + 2 : 8), 0);
-  const byteLength = envelopeCapture.byteLength + operationCapture.byteLength + scalarBytes + view.length;
+  const byteLength = envelopeCapture.byteLength + operationCapture.byteLength + scalarBytes
+    + views.reduce((total, item) => total + item.view.length, 0);
   return {
     byteLength,
     view,
@@ -114,10 +129,11 @@ function captureInput(input) {
       operationId,
       ...(suppliedTargetModel === undefined ? {} : { targetContentModelVersion }),
       ...(aggregateAdmissionVersion === undefined ? {} : { aggregateAdmissionVersion }),
+      ...(legacySidecarArchiveVersion === undefined ? {} : { legacySidecarArchiveVersion }),
       envelope: envelopeCapture.value,
       operation: operationCapture.value,
-      objectId,
-      objectVersion,
+      objectId, objectVersion,
+      objects: views.map(item => ({ id: item.id, version: item.version, view: item.view })),
     },
   };
 }
@@ -137,6 +153,7 @@ function expectedBinding(captured) {
     sourceContentModelVersion: semantic?.version === 2 ? semantic.content_model_version : 1,
     targetContentModelVersion: captured.targetContentModelVersion ?? 1,
     aggregateAdmissionVersion: captured.aggregateAdmissionVersion,
+    legacySidecarArchiveVersion: captured.legacySidecarArchiveVersion,
   };
 }
 
@@ -144,13 +161,16 @@ function validateResult(message, job) {
   if (!exactKeys(message, ['jobId', 'binding', 'result']) || message.jobId !== job.id) return null;
   const binding = message.binding;
   const targetModel = job.expected.targetContentModelVersion;
-  if (!exactKeys(binding, job.expected.aggregateAdmissionVersion === 1
+  if (!exactKeys(binding, job.expected.legacySidecarArchiveVersion === 1
+    ? ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead', 'targetContentModelVersion', 'aggregateAdmissionVersion', 'legacySidecarArchiveVersion']
+    : job.expected.aggregateAdmissionVersion === 1
     ? ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead', 'targetContentModelVersion', 'aggregateAdmissionVersion']
     : targetModel === 2
     ? ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead', 'targetContentModelVersion']
     : ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead'])
     || (targetModel === 2 && binding.targetContentModelVersion !== 2)
-    || binding.aggregateAdmissionVersion !== job.expected.aggregateAdmissionVersion) return null;
+    || binding.aggregateAdmissionVersion !== job.expected.aggregateAdmissionVersion
+    || binding.legacySidecarArchiveVersion !== job.expected.legacySidecarArchiveVersion) return null;
   for (const key of ['actorUserId', 'documentId', 'sourceId', 'operationId', 'generationId', 'walHead'])
     if (binding[key] !== job.expected[key]) return null;
   const result = message.result;
@@ -165,12 +185,15 @@ function validateResult(message, job) {
     || !Number.isSafeInteger(candidate.pageCount) || candidate.pageCount < 1 || candidate.pageCount > PAGE_LIMIT
     || String.fromCharCode(...candidate.bytes.subarray(0, 5)) !== '%PDF-') return null;
   const plan = result.plan;
-  if (!exactKeys(plan, job.expected.aggregateAdmissionVersion === 1
+  if (!exactKeys(plan, job.expected.legacySidecarArchiveVersion === 1
+    ? ['version', 'contentModelVersion', 'aggregateAdmissionVersion', 'legacySidecarArchive', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy']
+    : job.expected.aggregateAdmissionVersion === 1
     ? ['version', 'contentModelVersion', 'aggregateAdmissionVersion', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy']
     : targetModel === 2
     ? ['version', 'contentModelVersion', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy']
     : ['version', 'operationId', 'source', 'operation', 'projection', 'baseline_base64', 'legacy'])
-    || plan.version !== (job.expected.aggregateAdmissionVersion === 1 ? 3 : targetModel)
+    || plan.version !== (job.expected.legacySidecarArchiveVersion === 1 ? 4
+      : job.expected.aggregateAdmissionVersion === 1 ? 3 : targetModel)
     || (targetModel === 2 && plan.contentModelVersion !== 2)
     || plan.aggregateAdmissionVersion !== job.expected.aggregateAdmissionVersion
     || plan.operationId !== job.expected.operationId
@@ -401,8 +424,11 @@ export function createDocumentReplacementExecutor(options = {}) {
       try {
         // Capacity is reserved before this potentially large copy. The caller's
         // view stays attached; only this new full buffer crosses to the worker.
-        const ownedBytes = new Uint8Array(captured.view.length);
-        Uint8Array.prototype.set.call(ownedBytes, captured.view.bytes);
+        const ownedObjects = captured.json.objects.map(item => {
+          const ownedBytes = new Uint8Array(item.view.length);
+          Uint8Array.prototype.set.call(ownedBytes, item.view.bytes);
+          return { id: item.id, version: item.version, bytes: ownedBytes };
+        });
         job.input = {
           actorUserId: captured.json.actorUserId,
           documentId: captured.json.documentId,
@@ -412,9 +438,11 @@ export function createDocumentReplacementExecutor(options = {}) {
             : { targetContentModelVersion: captured.json.targetContentModelVersion }),
           ...(captured.json.aggregateAdmissionVersion === undefined ? {}
             : { aggregateAdmissionVersion: captured.json.aggregateAdmissionVersion }),
+          ...(captured.json.legacySidecarArchiveVersion === undefined ? {}
+            : { legacySidecarArchiveVersion: captured.json.legacySidecarArchiveVersion }),
           envelope: captured.json.envelope,
           operation: captured.json.operation,
-          objects: [{ id: captured.json.objectId, version: captured.json.objectVersion, bytes: ownedBytes }],
+          objects: ownedObjects,
         };
       } catch {
         release(job);

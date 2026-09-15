@@ -167,6 +167,7 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     flushPendingFormFieldsRef: { current: () => {} },
     user, features: { cloudSync: cloud },
     surveyDefinition: { mode: 'legacy', busy: false, definition: null },
+    checkedLegacySidecarArchived: false,
     document: { body: { getAttribute: () => null } },
     summarizeAnnotationCountsForSaveExport: () => ({ byType: {} }),
     saveAnnotationsByPage: () => localSaved,
@@ -189,6 +190,18 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
       .slice('[PDFSaveExport] action complete '.length)),
   };
 }
+
+test('a proved archived sidecar stops mutable cloud writes while an unmarked checked document keeps them', async () => {
+  const unmarked = saveCallbackHarness({ localSaved: true, cloud: true });
+  assert.equal(await unmarked.save(), true);
+  assert.equal(unmarked.state.cloudWrites, 1, 'null migration marker preserves the legacy write');
+
+  const archived = saveCallbackHarness({ localSaved: true, cloud: true,
+    overrides: { checkedLegacySidecarArchived: true } });
+  assert.equal(await archived.save(), true);
+  assert.equal(archived.state.cloudWrites, 0, 'proved generation archive owns recovery bytes');
+  assert.equal(archived.state.flushes, 1, 'canonical annotation flush remains enabled');
+});
 
 function managedLocalHelpers(file, write) {
   const stateRef = { current: { pageNames: { 1: 'First' } } };

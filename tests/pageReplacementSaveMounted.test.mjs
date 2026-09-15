@@ -92,8 +92,13 @@ const deferred = () => {
 };
 
 function publication(body, changes = {}) {
+  const v4 = body.archive_operation_ids.length === 2 || changes.version === 4;
   return {
-    version: 1,
+    version: v4 ? 4 : 1,
+    ...(v4 ? { content_model_version:2,aggregate_admission_version:1,
+      offered_archive_operation_ids:[...body.archive_operation_ids],
+      used_archive_operation_ids:[body.archive_operation_ids[0]],
+      legacy_sidecar_migration:null } : {}),
     state: 'published',
     document_id: body.document_id,
     source_id: body.source_id,
@@ -108,8 +113,12 @@ function publication(body, changes = {}) {
 }
 
 function expiredTerminal(body, changes = {}) {
+  const v4 = body.archive_operation_ids.length === 2;
   return {
-    version: 1,
+    version: v4 ? 4 : 1,
+    ...(v4 ? { aggregate_admission_version:1,
+      offered_archive_operation_ids:[...body.archive_operation_ids],
+      used_archive_operation_ids:null } : {}),
     state: 'expired',
     actor_user_id: actorA,
     document_id: body.document_id,
@@ -148,7 +157,9 @@ test('real IndexedDB reserve fixes exact request IDs and cold reopen returns the
     created.body.source_id,
     created.body.candidate_operation_id,
     ...created.body.archive_operation_ids,
-  ]).size, 3);
+  ]).size, 4);
+  assert.equal(created.body.archive_operation_ids.length, 2,
+    'new intents reserve ordered PDF and optional-sidecar archive ids');
 
   const same = await first.reserve(actorA, documentId, reserveInput());
   assert.equal(same.created, false);
@@ -162,6 +173,111 @@ test('real IndexedDB reserve fixes exact request IDs and cold reopen returns the
   assert.notEqual(otherActor.body.source_id, created.body.source_id);
   assert.deepEqual(await cold.get(actorA, documentId), created);
   cold.close();
+});
+
+test('persisted version-1 one-archive intent remains readable and resumable', async t => {
+  const indexedDB = new IDBFactory();
+  const store = createDocumentPageReplacementIntentStore({ indexedDB });
+  const { row } = await store.reserve(actorA, documentId, reserveInput());
+  store.close();
+
+  const legacy = structuredClone(row);
+  legacy.body.archive_operation_ids = [legacy.body.archive_operation_ids[0]];
+  await new Promise((resolve, reject) => {
+    const open = indexedDB.open('survey-document-page-replacements-v1', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction('intents', 'readwrite');
+      tx.objectStore('intents').put(legacy);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    };
+  });
+
+  const cold = createDocumentPageReplacementIntentStore({ indexedDB });
+  t.after(() => cold.close());
+  assert.deepEqual(await cold.get(actorA, documentId), legacy);
+  const resumed = await cold.reserve(actorA, documentId, reserveInput());
+  assert.equal(resumed.created, false);
+  assert.deepEqual(resumed.row, legacy);
+  const oldPublished = await cold.markPublished(actorA, documentId, legacy.revision,
+    publication(legacy.body));
+  assert.equal(oldPublished.publication.version, 1);
+});
+
+test('one-offered-id v4 carried retirement receipt commits with its exact used prefix', async t => {
+  const indexedDB = new IDBFactory();
+  const initial = createDocumentPageReplacementIntentStore({ indexedDB });
+  const { row } = await initial.reserve(actorA, documentId, reserveInput());
+  initial.close();
+  const legacy = structuredClone(row);
+  legacy.body.archive_operation_ids = [legacy.body.archive_operation_ids[0]];
+  await new Promise((resolve, reject) => {
+    const open = indexedDB.open('survey-document-page-replacements-v1', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result, tx = db.transaction('intents', 'readwrite');
+      tx.objectStore('intents').put(legacy);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+    };
+  });
+  const store = createDocumentPageReplacementIntentStore({ indexedDB });
+  t.after(() => store.close());
+  const marker = { version:1,state:'archived',source_generation_id:generationId };
+  const receipt = publication(legacy.body, { version:4,legacy_sidecar_migration:marker });
+  const published = await store.markPublished(actorA, documentId, legacy.revision, receipt);
+  assert.equal(published.publication.version, 4);
+  assert.deepEqual(published.publication.offered_archive_operation_ids,
+    legacy.body.archive_operation_ids);
+  assert.deepEqual(published.publication.used_archive_operation_ids,
+    legacy.body.archive_operation_ids);
+  assert.deepEqual(published.publication.legacy_sidecar_migration, marker);
+});
+
+test('client resumes a one-offered-id intent through v4 and installs the carried marker', async t => {
+  const indexedDB = new IDBFactory();
+  const initial = createDocumentPageReplacementIntentStore({ indexedDB });
+  const { row } = await initial.reserve(actorA, documentId, reserveInput());
+  initial.close();
+  const legacy = structuredClone(row);
+  legacy.body.archive_operation_ids = [legacy.body.archive_operation_ids[0]];
+  await new Promise((resolve, reject) => {
+    const open = indexedDB.open('survey-document-page-replacements-v1', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result, tx = db.transaction('intents', 'readwrite');
+      tx.objectStore('intents').put(legacy);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+    };
+  });
+  const store = createDocumentPageReplacementIntentStore({ indexedDB });
+  t.after(() => store.close());
+  const marker = { version:1,state:'archived',source_generation_id:generationId };
+  let installed = null;
+  const client = makeClient({ store,
+    transport: async ({ body }) => {
+      assert.deepEqual(body.archive_operation_ids, legacy.body.archive_operation_ids);
+      return new Response(JSON.stringify({ replacement:publication(body, {
+        version:4,legacy_sidecar_migration:marker,
+      }) }), { status:200,headers:{ 'Content-Type':'application/json' } });
+    },
+    reacquire: async () => ({
+      mode:'checked',actorUserId:actorA,documentId,
+      checkedBundle:{ documentId,pdfGenerationId:nextGenerationId,
+        contentModelVersion:2,legacy_sidecar_migration:marker },
+    }),
+  });
+  const result = await client.replace(clientInput({ install: async opened => {
+    installed = opened.checkedBundle; return true;
+  } }));
+  assert.equal(result.publication.version, 4);
+  assert.equal(installed.contentModelVersion, 2);
+  assert.deepEqual(installed.legacy_sidecar_migration, marker);
+  assert.equal(await store.get(actorA, documentId), null);
 });
 
 test('unresolved intent rejects changed operation, generation, or frontier without changing saved IDs', async () => {
@@ -331,7 +447,11 @@ function makeClient({ store, actor = actorA, current = () => true, transport,
     },
     reacquire: async input => {
       events.push('reacquire');
-      return reacquire(input);
+      const opened = await reacquire(input);
+      if (opened?.checkedBundle && opened.checkedBundle.contentModelVersion === undefined) {
+        opened.checkedBundle.contentModelVersion = 2;
+      }
+      return opened;
     },
     ...(responseTimeoutMs === undefined ? {} : { responseTimeoutMs }),
   });
@@ -487,6 +607,24 @@ test('changed page op resolves the saved exact request first without sending the
   assert.deepEqual(calls[1], calls[0], 'retry sends the saved exact intent, not the new click');
   assert.deepEqual(await store.get(actorA, documentId), retained);
   store.close();
+});
+
+test('legacy entity adoption block keeps the exact two-id intent with a useful error', async t => {
+  const store = createDocumentPageReplacementIntentStore({ indexedDB:new IDBFactory() });
+  t.after(() => store.close());
+  const client = makeClient({ store,
+    transport: async () => new Response(JSON.stringify({ error:{
+      code:'legacy_entity_adoption_required',
+      message:"Review and adopt this document's entity list before replacing pages.",
+    } }), { status:409,headers:{ 'Content-Type':'application/json' } }),
+    reacquire: async () => assert.fail('blocked adoption cannot reopen'),
+  });
+  await assert.rejects(client.replace(clientInput()), error =>
+    error.code === 'DOCUMENT_PAGE_REPLACEMENT_ADOPTION_REQUIRED'
+      && /Review and adopt/.test(error.message));
+  const saved = await store.get(actorA, documentId);
+  assert.equal(saved.phase, 'dispatched');
+  assert.equal(saved.body.archive_operation_ids.length, 2);
 });
 
 test('exact expired response is durably blocked before reopen and explicit reset mints no work', async t => {
@@ -1230,7 +1368,7 @@ function checkedInstallHarness(t, { targetGeneration = nextGenerationId, failGen
   const scope = { actorUserId: actorA };
   const mount = {};
   const oldBundle = { pdfGenerationId: generationId };
-  const targetBundle = { pdfGenerationId: targetGeneration };
+  const targetBundle = { pdfGenerationId: targetGeneration,contentModelVersion:2 };
   const oldFile = { id: documentId, pdfGenerationId: generationId, name: 'checked.pdf' };
   const state = { tabs: [{ id: 'tab-a', actorUserId: actorA, file: oldFile, checkedBundle: oldBundle,
     viewState: { pageNum: 2, scale: 1.25, zoomMode: 'manual', scrollMode: 'continuous',

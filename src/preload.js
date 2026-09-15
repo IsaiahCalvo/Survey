@@ -127,6 +127,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:export-annotated-pdf', subscription);
     return () => ipcRenderer.removeListener('menu:export-annotated-pdf', subscription);
   },
+  onRecoverLegacySidecarMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:recover-legacy-sidecar', subscription);
+    return () => ipcRenderer.removeListener('menu:recover-legacy-sidecar', subscription);
+  },
 
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
   // SECURITY 2026-06-17: the renderer now passes fallbackToken = null — no

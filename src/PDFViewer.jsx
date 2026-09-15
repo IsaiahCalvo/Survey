@@ -94,6 +94,7 @@ import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
+import { ConfirmModal } from './home/BulkModals';
 import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, resolveFirstVisibleAnnotationPage, shouldGateFirstVisibleAnnotationPage } from './utils/annotationHydrationGate';
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
@@ -449,7 +450,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRecoverLegacySidecar = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -4797,6 +4798,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // Excel sync modals and state
   const [showExcelLockedModal, setShowExcelLockedModal] = useState(false);
   const [showExcelSyncConfirmModal, setShowExcelSyncConfirmModal] = useState(false);
+  const [legacySidecarRecoveryModalScope, setLegacySidecarRecoveryModalScope] = useState(null);
   const [applyRedactionsModalOpen, setApplyRedactionsModalOpen] = useState(false);
   const [pendingRedactionRequest, setPendingRedactionRequest] = useState(null);
   const [applyRedactionsBusy, setApplyRedactionsBusy] = useState(false);
@@ -21862,6 +21864,115 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
+  // A v4 checked-open receipt proves that the old mutable sidecar was copied
+  // into this generation's retained recovery set. Canonical annotations,
+  // document-owned definitions, and the actor's checked view state now have
+  // separate owners, so this fixed path must no longer load or save for that
+  // exact generation. A null marker keeps all older behavior unchanged.
+  const checkedLegacySidecarArchived = checkedBundle?.legacy_sidecar_migration?.version === 1
+    && checkedBundle.legacy_sidecar_migration.state === 'archived';
+
+  const legacySidecarRecoveryScopeRef = useRef(null);
+  if (legacySidecarRecoveryScopeRef.current?.file !== pdfFile
+    || legacySidecarRecoveryScopeRef.current?.bundle !== checkedBundle
+    || legacySidecarRecoveryScopeRef.current?.actorUserId !== (user?.id || null)) {
+    legacySidecarRecoveryScopeRef.current = {
+      file: pdfFile, bundle: checkedBundle, actorUserId: user?.id || null,
+    };
+  }
+  const legacySidecarRecoveryScope = legacySidecarRecoveryScopeRef.current;
+  const legacySidecarRecoveryKey = checkedBundle && user?.id
+    ? `${user.id}:${checkedBundle.documentId || ''}:${checkedBundle.pdfGenerationId || ''}`
+    : null;
+  const legacySidecarRecoveryAbortRef = useRef(null);
+  const canRecoverLegacySidecar = checkedLegacySidecarArchived
+    && typeof onRecoverLegacySidecar === 'function'
+    && checkedBundle?.document?.user_id === user?.id
+    && checkedBundle?.documentId === pdfFile?.id
+    && typeof checkedBundle?.pdfGenerationId === 'string';
+
+  useLayoutEffect(() => {
+    legacySidecarRecoveryAbortRef.current?.abort();
+    legacySidecarRecoveryAbortRef.current = null;
+    return () => {
+      legacySidecarRecoveryAbortRef.current?.abort();
+      legacySidecarRecoveryAbortRef.current = null;
+    };
+  }, [legacySidecarRecoveryScope]);
+
+  const handleLegacySidecarRecoveryExport = useCallback(async () => {
+    const scope = legacySidecarRecoveryScope;
+    const isCurrentRecovery = () => legacySidecarRecoveryScopeRef.current === scope
+      && scope.file === pdfFile && scope.bundle === checkedBundle && isActive;
+    if (!canRecoverLegacySidecar || !isCurrentRecovery()) {
+      showToast('This legacy archive is not available for the current document owner.', 'error');
+      return;
+    }
+    const controller = new AbortController();
+    legacySidecarRecoveryAbortRef.current?.abort();
+    legacySidecarRecoveryAbortRef.current = controller;
+    try {
+      const result = await onRecoverLegacySidecar({
+        documentId: checkedBundle.documentId,
+        pdfGenerationId: checkedBundle.pdfGenerationId,
+        signal: controller.signal,
+      });
+      if (!isCurrentRecovery() || controller.signal.aborted
+        || result?.documentId !== checkedBundle.documentId
+        || result?.pdfGenerationId !== checkedBundle.pdfGenerationId
+        || result?.actorUserId !== user?.id || !(result?.blob instanceof Blob)) {
+        throw new Error('The document or account changed before the export finished.');
+      }
+      const baseName = String(pdfFile?.name || 'document').replace(/\.pdf$/i, '') || 'document';
+      const outputName = `${baseName}-legacy-sidecar-recovery.json`;
+      const api = typeof window !== 'undefined' ? window.electronAPI : null;
+      if (api?.saveFile) {
+        const resultBytes = new Uint8Array(await result.blob.arrayBuffer());
+        if (!isCurrentRecovery() || controller.signal.aborted) {
+          throw new Error('The document or account changed before the export finished.');
+        }
+        const saved = await api.saveFile({
+          title: 'Export legacy sidecar archive',
+          defaultPath: outputName,
+          filters: [{ name: 'JSON files', extensions: ['json'] }],
+          data: Array.from(resultBytes),
+        });
+        if (saved?.canceled) return;
+        if (saved?.error) throw new Error(saved.error);
+      } else {
+        const url = URL.createObjectURL(result.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = outputName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+      if (isCurrentRecovery()) {
+        showToast('Legacy sidecar archive exported. The open document was not changed.', 'success');
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && isCurrentRecovery()) {
+        showToast(error?.message || 'Could not export the legacy sidecar archive.', 'error');
+      }
+    } finally {
+      if (legacySidecarRecoveryAbortRef.current === controller) {
+        legacySidecarRecoveryAbortRef.current = null;
+      }
+    }
+  }, [canRecoverLegacySidecar, checkedBundle, isActive, legacySidecarRecoveryScope,
+    onRecoverLegacySidecar, pdfFile, user?.id]);
+
+  const requestLegacySidecarRecovery = useCallback(() => {
+    if (!isActive) return;
+    if (!canRecoverLegacySidecar) {
+      showToast('Only the current owner can export an archived legacy sidecar.', 'error');
+      return;
+    }
+    setLegacySidecarRecoveryModalScope(legacySidecarRecoveryKey);
+  }, [canRecoverLegacySidecar, isActive, legacySidecarRecoveryKey]);
+
   // Load survey data from Supabase Storage
   const legacySidecarScopeRef = useRef(null);
   if (legacySidecarScopeRef.current?.file !== pdfFile
@@ -22216,6 +22327,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     };
   }, [handleExportAnnotatedPDF]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onRecoverLegacySidecarMenu) {
+      return undefined;
+    }
+    const unsubscribe = window.electronAPI.onRecoverLegacySidecarMenu(() => {
+      requestLegacySidecarRecovery();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [requestLegacySidecarRecovery]);
+
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
   const saveDocumentScopeRef = useRef(null);
@@ -22388,7 +22511,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       // desktop quit grace period. Other save callers need no callback.
       onLocalBackupResult?.(localBackupSaved);
       const legacySidecarSaveRequested = features?.cloudSync && !managedLocal
-        && surveyDefinition.mode === 'legacy';
+        && surveyDefinition.mode === 'legacy' && !checkedLegacySidecarArchived;
       if (features?.cloudSync && !managedLocal) {
         if (legacySidecarSaveRequested) {
           await saveSurveyDataToSupabase(surveyMarkers, spaces, selectedTemplate);
@@ -22469,7 +22592,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       return false;
     }
   }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush, surveyDefinition.mode,
-    managedLocalSaveTracking.ready, managedLocalSaveTracking.markSaved, managedLocalDraftTracking.flush]);
+    checkedLegacySidecarArchived, managedLocalSaveTracking.ready,
+    managedLocalSaveTracking.markSaved, managedLocalDraftTracking.flush]);
 
   useManagedLocalAutoSave({ file: pdfFile,
     enabled: isManagedLocalDocument(pdfFile) && managedLocalSaveTracking.ready && hasUnsavedAnnotations,
@@ -22919,7 +23043,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         }
 
         // Load project data from Supabase if available
-        if (pdfFile.projectId) {
+        if (pdfFile.projectId && !checkedLegacySidecarArchived) {
           await loadSurveyDataFromSupabase(pdfFile, () => !isCurrentLoad());
         }
         if (!isCurrentLoad()) return;
@@ -24726,11 +24850,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       handlePageInputBlur,
       // Browser-visible entry point for File → Export Annotated PDF… (the
       // Electron menu drives the same handler on desktop).
-      exportAnnotatedPdf: handleExportAnnotatedPDF
+      exportAnnotatedPdf: handleExportAnnotatedPDF,
+      recoverLegacySidecar: canRecoverLegacySidecar ? requestLegacySidecarRecovery : null,
     });
   }, [
     isActive,
     onBottomToolbarApiChange,
+    canRecoverLegacySidecar,
+    requestLegacySidecarRecovery,
     bottomToolbarRef,
     zoomInputRef,
     zoomMenuRef,
@@ -38959,6 +39086,16 @@ ${pageBlocks}
           handleExcelSyncConfirmChoice(choice);
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
+      />
+      <ConfirmModal
+        open={legacySidecarRecoveryModalScope === legacySidecarRecoveryKey
+          && canRecoverLegacySidecar && isActive}
+        onClose={() => setLegacySidecarRecoveryModalScope(null)}
+        title="Export legacy sidecar archive?"
+        message="This saves the exact old JSON for recovery review. It may contain old private view or tool settings. The export does not load, adopt, share, or change the open document."
+        confirmLabel="Export JSON"
+        busyLabel="Exporting…"
+        onConfirm={handleLegacySidecarRecoveryExport}
       />
       {browserPrintDocument}
       {typeof document !== 'undefined' && createPortal(

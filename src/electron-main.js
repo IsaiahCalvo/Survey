@@ -562,6 +562,15 @@ function createAppMenu() {
             }
           }
         },
+        {
+          label: 'Export legacy sidecar archive…',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:recover-legacy-sidecar');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Re-import PDF Bookmarks',

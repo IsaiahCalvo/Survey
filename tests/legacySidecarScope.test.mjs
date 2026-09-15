@@ -86,6 +86,15 @@ test('current cloud sidecar restores entities and view but never old annotations
   assert.deepEqual(h.values.savedAnnotationsByPageRef.current, {});
 });
 
+test('only a proved generation archive gates the mutable sidecar load', async () => {
+  assert.match(source, /if \(pdfFile\.projectId && !checkedLegacySidecarArchived\) \{\s*await loadSurveyDataFromSupabase/);
+  assert.match(source, /checkedBundle\?\.legacy_sidecar_migration\?\.version === 1/);
+  assert.match(source, /checkedBundle\.legacy_sidecar_migration\.state === 'archived'/);
+  const unmarked = harness({ download: async () => blob() });
+  await unmarked.load(unmarked.doc);
+  assert.equal(unmarked.state.downloads, 1, 'the no-marker legacy path still reads its sidecar');
+});
+
 test('current local sidecar preserves legacy restoration and rejects a queued stale spaces update', async () => {
   const h = harness({ download: async () => blob(),
     doc: { name: 'local.pdf', size: 42, projectId: 'project-a' },

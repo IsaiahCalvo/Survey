@@ -37,7 +37,8 @@ async function fixture(t) {
       throw new Error('offline fixture');
     }
     const base = { version: 3, document_id: documentId, generation_id: generation, content_model_version: 2 };
-    if (name === 'read_document_generation_open_v3') return { data: { ...base, actor_user_id: actor,
+    if (name === 'read_document_generation_open_v4') return { data: { ...base, version:4,
+      legacy_sidecar_migration:null,actor_user_id: actor,
       document: { id: documentId, user_id: actor, project_id: null, name: 'v2', file_path: pdf.path,
         file_size: String(pdfBytes.length) }, pdf, publication,
       annotations: { ...base, wal_head: String(head), snapshot: params.p_include_snapshot ? snapshot : null,

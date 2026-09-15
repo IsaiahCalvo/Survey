@@ -42,22 +42,42 @@ function operation(value) {
 }
 
 function published(value, body) {
-  check(exact(value, ['version', 'state', 'document_id', 'source_id', 'candidate_operation_id',
-    'archive_operation_ids', 'previous_generation_id', 'generation_id', 'wal_head', 'published_at']));
-  check(value.version === 1 && value.state === 'published' && value.document_id === body.document_id
+  const v4 = value?.version === 4;
+  check(body.archive_operation_ids.length === 1 || v4);
+  check(exact(value, ['version', ...(v4
+    ? ['content_model_version', 'aggregate_admission_version', 'offered_archive_operation_ids',
+      'used_archive_operation_ids', 'legacy_sidecar_migration'] : []),
+  'state', 'document_id', 'source_id', 'candidate_operation_id', 'archive_operation_ids',
+  'previous_generation_id', 'generation_id', 'wal_head', 'published_at']));
+  check(value.version === (v4 ? 4 : 1) && value.state === 'published' && value.document_id === body.document_id
     && value.source_id === body.source_id && value.candidate_operation_id === body.candidate_operation_id
     && stable(value.archive_operation_ids) === stable(body.archive_operation_ids)
     && value.previous_generation_id === body.generation_id && uuid(value.generation_id)
     && value.generation_id !== value.previous_generation_id && value.wal_head === body.wal_head
     && typeof value.published_at === 'string' && Number.isFinite(Date.parse(value.published_at)));
+  if (v4) check(value.content_model_version === 2 && value.aggregate_admission_version === 1
+    && stable(value.offered_archive_operation_ids) === stable(body.archive_operation_ids)
+    && Array.isArray(value.used_archive_operation_ids)
+    && [1, 2].includes(value.used_archive_operation_ids.length)
+    && stable(value.used_archive_operation_ids)
+      === stable(body.archive_operation_ids.slice(0, value.used_archive_operation_ids.length))
+    && (value.legacy_sidecar_migration === null
+      || (exact(value.legacy_sidecar_migration, ['version', 'state', 'source_generation_id'])
+        && value.legacy_sidecar_migration.version === 1
+        && value.legacy_sidecar_migration.state === 'archived'
+        && uuid(value.legacy_sidecar_migration.source_generation_id))));
   return structuredClone(value);
 }
 
 function terminal(value, body, actorUserId) {
-  check(exact(value, ['version', 'state', 'actor_user_id', 'document_id', 'source_id',
+  const v4 = value?.version === 4;
+  check(body.archive_operation_ids.length === 1 || v4);
+  check(exact(value, ['version', ...(v4 ? ['aggregate_admission_version',
+    'offered_archive_operation_ids', 'used_archive_operation_ids'] : []),
+  'state', 'actor_user_id', 'document_id', 'source_id',
     'candidate_operation_id', 'archive_operation_ids', 'expected_generation_id',
     'expected_wal_head', 'operation', 'prepared_at', 'expires_at']));
-  check(value.version === 1 && value.state === 'expired' && value.actor_user_id === actorUserId
+  check(value.version === (v4 ? 4 : 1) && value.state === 'expired' && value.actor_user_id === actorUserId
     && value.document_id === body.document_id && value.source_id === body.source_id
     && value.candidate_operation_id === body.candidate_operation_id
     && stable(value.archive_operation_ids) === stable(body.archive_operation_ids)
@@ -66,6 +86,14 @@ function terminal(value, body, actorUserId) {
     && stable(operation(value.operation)) === stable(body.operation)
     && typeof value.prepared_at === 'string' && Number.isFinite(Date.parse(value.prepared_at))
     && typeof value.expires_at === 'string' && Number.isFinite(Date.parse(value.expires_at)));
+  if (v4) check(value.aggregate_admission_version === 1
+    && stable(value.offered_archive_operation_ids) === stable(body.archive_operation_ids)
+    && (value.used_archive_operation_ids === null
+      || (Array.isArray(value.used_archive_operation_ids)
+        && value.used_archive_operation_ids.length >= 1
+        && value.used_archive_operation_ids.length <= body.archive_operation_ids.length
+        && stable(value.used_archive_operation_ids)
+          === stable(body.archive_operation_ids.slice(0, value.used_archive_operation_ids.length)))));
   return structuredClone(value);
 }
 
@@ -81,9 +109,10 @@ function validate(row, actorUserId, documentId) {
     'candidate_operation_id', 'archive_operation_ids'])
     && body.document_id === documentId && uuid(body.generation_id) && seq(body.wal_head)
     && uuid(body.source_id) && uuid(body.candidate_operation_id)
-    && Array.isArray(body.archive_operation_ids) && body.archive_operation_ids.length === 1
-    && uuid(body.archive_operation_ids[0])
-    && new Set([body.source_id, body.candidate_operation_id, ...body.archive_operation_ids]).size === 3);
+    && Array.isArray(body.archive_operation_ids) && [1, 2].includes(body.archive_operation_ids.length)
+    && body.archive_operation_ids.every(uuid)
+    && new Set([body.source_id, body.candidate_operation_id, ...body.archive_operation_ids]).size
+      === 2 + body.archive_operation_ids.length);
   operation(body.operation);
   captureCheckedPageStructure(row.localPageState);
   check(typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))
@@ -182,7 +211,11 @@ export function createDocumentPageReplacementIntentStore({ indexedDB,
               body: { document_id: documentId, generation_id: input.generationId,
                 wal_head: input.walHead, operation: capturedOperation,
                 source_id: randomUUID(), candidate_operation_id: randomUUID(),
-                archive_operation_ids: [randomUUID()] } }, actorUserId, documentId);
+                // New intents offer one ordered archive id for the PDF and one
+                // for the optional fixed legacy sidecar. The server consumes
+                // the verified-object-count prefix. Version-1 rows with one id
+                // remain valid and resumable for sidecar-free sources.
+                archive_operation_ids: [randomUUID(), randomUUID()] } }, actorUserId, documentId);
             store.add(row); done({ row, created: true });
           } catch (error) { abort(error); }
         };

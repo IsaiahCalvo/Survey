@@ -1,5 +1,34 @@
 # Non-Microsoft data hardening — 2026-09-08
 
+## Current checkpoint — 2026-09-15
+
+This file is a chronological work log. Earlier "still required" and "next"
+sections describe their dated checkpoint, not an instruction to repeat completed
+work. Check the later entries and current code before reopening an old item.
+Nothing in this summary grants deployment, account, deletion or Microsoft access.
+
+Prior local checkpoint: `bb0b5b77c4f086645c11501cf8ca03617f83c4a6`.
+Its full run passed 7,222 tests with 97 skipped and zero failures/cancellations;
+the build and synthetic-backend browser checks passed. It is not deployed proof.
+
+- Recent completed local work: device-local history/restore, account-scoped
+  reconnect replay, private recoverable tool settings, explicit legacy History
+  recovery, bounded document catalog callers, verified PDF-only action reads,
+  and private checked-document view storage with layout-ready restore.
+- Current locally verified change: checked legacy sidecar archive/retirement, including
+  stable offered/used archive identities, owner-only recovery and a generation
+  marker that stops legacy mutable reads/writes. Full tests: 7,240 passed,
+  98 skipped, zero failures/cancellations; build, separate disposable PostgreSQL,
+  independent review and synthetic browser checks passed. Details are below.
+- Known remaining work: legacy/null-generation adoption, accepted-definition
+  history/upgrades, compatible old-client rollout, and complete publication/
+  adoption proof. The current sidecar work does not close all of these items.
+- Hosted gates remain: schema/client rollout, real leased multi-user/offline/
+  revocation checks, and measured production quota/latency results. Microsoft
+  365 trials and live Microsoft testing remain deferred.
+
+The detailed evidence and limitations for each checkpoint follow below.
+
 ## Scope and status
 
 Local work starts at `49ee7b6a` (draft PR #803), on
@@ -6005,3 +6034,123 @@ included. Mutable legacy sidecar publication/recovery, generation adoption,
 old-client rollout fences, hosted collaboration proof and live quota/latency
 measurement remain open as recorded above. This change does not retire sidecars
 or claim the whole data-layer goal is complete.
+
+### Active connected work — checked legacy sidecar retirement (unverified changes)
+
+The next path will retain the exact verified raw sidecar as recovery evidence,
+not publish an active shared legacy JSON blob. Checked-generation annotation
+state remains authoritative: old sidecar annotation carriers must not be merged
+back into it. The checked legacy runtime still uses entity choices; nonempty
+legacy entities without a server-verified accepted document catalog must block
+replacement rather than silently lose those choices. Accepted catalogs and
+survey definitions remain document-owned and unchanged across PDF generations.
+
+The publication/read contract needs a small retirement marker so the viewer
+can stop both mutable legacy load and save after a successful publication.
+Normal opens must not expose raw archive bytes, private settings or Excel links.
+Explicit recovery requires current owner authority and exact retained-object
+proof. No-sidecar behavior and legacy/null-generation adoption remain unchanged
+in this path. Raw capture is not authorization to adopt shared definitions.
+
+Database/server and client work must agree the wire contract before edits to
+their separate files. Required proof includes physical source/archive binding,
+publication retry, accepted-catalog checks, owner-only recovery, stale scope
+rejection, marker-driven mutable-write retirement, and unchanged no-sidecar
+flows. These are pending gates, not a completed migration or deployment.
+
+The v4 retry contract reserves two ordered archive operation IDs before the
+request. The request digest binds the full offered array; the server consumes
+only the proof-count prefix (PDF first, then the optional sidecar). Unused IDs
+create no asset or cleanup job. Journal/publication receipts bind both offered
+and used arrays. Older one-ID requests remain valid for one-object proofs and
+must reject two-object proofs before staging or publication. This avoids a new
+preflight request and keeps lost-reply retries on one stable request identity.
+
+Retirement must survive later PDF replacements. A successor with a PDF-only
+source proof must retain the exact original archive/provenance marker without
+reading the fixed JSON path again, copying the same archive again, or walking
+an unbounded generation history. A second-successor test must prove that legacy
+load/save stays retired and that the original recovery archive remains retained.
+
+Partial local proof, 2026-09-15: the full reader now accepts a strict v4 open
+receipt for content model 1, while keeping annotation protocol v3 pinned to
+content model 1. It rejects response downgrade, model substitution, invalid
+markers and marker changes between the two checked reads. The client agent's
+reader/acquisition/intent set passed 103/103. The first disposable PostgreSQL
+migration/control run passed 11/11; this is not yet proof of the new archive,
+replay, access or successor-retention cases.
+
+In-app browser positive control at 127.0.0.1:5185: both unmarked and archived
+model-1 fixtures rendered the three-page PDF after receipt, snapshot and update
+reads. The unmarked open downloaded the fixed legacy JSON once; the archived
+open downloaded it zero times. Neither had an unknown RPC after the synthetic
+backend gained the supported model-1 annotation-v3 read responses. This proves
+the open/read gate, not the write gate, real cloud sync or raw archive recovery.
+No hosted service was used. Combined tests, build, independent review and the
+remaining archive/recovery browser checks are still pending; do not treat this
+section as a completed checkpoint.
+
+The first broad integration run stopped at an old full-open response fixture in
+`annotationGenerationPendingEraseRecovery.test.mjs`; it did not finish the full
+suite. That fixture and the full-open fixture in
+`useAnnotationDocAggregateMounted.test.mjs` now send exact v4 envelopes without
+changing their content models or cross-user assertions. A combined root run
+passed 12/12. Log of the incomplete broad run:
+`/tmp/survey-sidecar-integration-baseline-20260915.log`.
+
+Independent review also found an old one-ID request/receipt mismatch. The fix
+must accept a valid v4 one-object receipt for an old one-ID intent, reject a
+two-object proof before staging when only one ID was offered, and keep retirement
+on later generations. Falling back to v3 based on ID count is not an accepted
+fix. Composed publication/retry tests remain required before this work is done.
+
+### Checked sidecar candidate — connected verification, 2026-09-15
+
+The implementation now retains exact raw legacy sidecar bytes for owner-only
+recovery and carries a bounded retirement marker through PDF-only successors.
+Normal opens do not return the retained descriptor or private raw content.
+Checked annotation state stays authoritative; sidecar annotation carriers are
+not promoted. Nonempty legacy entities still require an accepted document
+catalog. Old one-ID requests receive valid v4 one-object receipts; a two-object
+proof with one offered ID rejects before rendering, staging or publication.
+
+Disposable PostgreSQL checks passed 13 groups, including actual v4 request
+handling, lost-publish cold replay without repeating source/render/stage/publish
+work, lost-prepare replay, old one-ID successor retention, and exact first and
+successor publish retries. The migration wrapper passed 2/2 and server focused
+tests passed 66/66. Independent connected review passed 246/246 focused checks;
+the raw recovery download handler independently passed 22/22.
+
+The next full-suite run found an omitted-caller-model/captured-model mismatch
+that had reached intent reservation. The client now checks equality before
+reserving IDs; explicit model-2 replacement remains supported. Independent
+page/model-gate checks passed 49/49 on this revised source, and the final client
+focused batch passed 185/185. The earlier full-suite result is superseded.
+
+Actual in-app browser recovery checks used only a synthetic local backend.
+Cancel made zero archive requests. Owner confirmation completed a 137-byte raw
+JSON download; Chromium download completion events confirmed both the first and
+repeat export. Changing actors while the warning was open dismissed it without
+another archive request. The collaborator's fresh PDF open showed no recovery
+export control. The archive stayed absent from ordinary mutable sidecar reads.
+No native Electron Save As or hosted multi-user test is claimed here.
+
+Two test-setup defects were fixed without weakening the app's guards: the test
+panel had covered the export button, and the fake archive receipt had wrongly
+used the retained archive as its original source descriptor. The warning and
+download passed after moving the panel and correcting the fixture. The higher
+level download wait timed out; Chromium's recorded completed download events,
+not that timeout, provide the download evidence.
+
+Candidate build passed with the existing large-chunk warning. Final full-suite
+run passed: 7,338 total, 7,240 passed, 98 skipped, zero failures/cancellations,
+exit 0, in `/tmp/survey-sidecar-full-candidate-r2-20260915.log`. The extra skip
+is the new opt-in PostgreSQL integration test; its separate enabled wrapper
+passed 2/2 against the disposable database, including all 13 harness groups.
+Other logs: `/tmp/survey-sidecar-build-candidate-20260915.log`,
+`/tmp/survey-sidecar-retirement-pg-v4.log`,
+`/tmp/survey-sidecar-retirement-wrapper.log`,
+`/tmp/survey-sidecar-server-focused.log`, and
+`/tmp/replacement-executor-sidecar-client-final-20260915.log`.
+This remains local candidate evidence, not a hosted migration, rollout, quota
+reduction measurement or completion of the whole data-layer goal.

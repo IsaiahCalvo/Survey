@@ -12,6 +12,7 @@ const versionId = '55555555-5555-4555-8555-555555555555';
 const operationId = '66666666-6666-4666-8666-666666666666';
 const differentId = '77777777-7777-4777-8777-777777777777';
 const bytes = new TextEncoder().encode('%PDF-v1');
+const sidecarBytes = new TextEncoder().encode('{"legacy":true,"entities":[]}');
 const sha = value => createHash('sha256').update(value).digest('hex');
 const pdf = value => ({ bucket_id: 'documents', path: `${actor}/_generations/a # %.pdf`, id: objectId,
   version: versionId, byte_length: String(value.length), content_sha256: sha(value) });
@@ -20,19 +21,28 @@ const open = value => ({ version: 1, actor_user_id: actor, document_id: document
   publication: { operation_id: operationId, generation_id: generationId, published_at: '2026-09-09T12:00:00+00:00', wal_head: '0' },
   annotations: { wal_head: '0', snapshot: null } });
 const body = value => ({ document_id: documentId, generation_id: generationId, pdf: value });
+const sourceObject = { bucket_id: 'documents', path: `${actor}/legacy/source.json`, id: differentId,
+  version: operationId, byte_length: String(sidecarBytes.length) };
+const legacyArchive = value => ({ kind: 'sidecar', bucket_id: 'documents',
+  path: `${actor}/_generations/legacy-sidecar.json`, id: objectId, version: versionId,
+  byte_length: String(value.length), content_sha256: sha(value), source_object: sourceObject });
+const legacyReceipt = value => ({ version: 1, actor_user_id: actor, document_id: documentId,
+  generation_id: generationId, source_generation_id: differentId, archive: value });
+const recoveryBody = () => ({ action: 'legacy-sidecar-recovery', document_id: documentId, generation_id: generationId });
 const request = (value = body(pdf(bytes)), init = {}) => new Request('https://download.invalid', {
   method: 'POST', headers: { Authorization: 'Bearer test-token' }, body: JSON.stringify(value), ...init,
 });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const nextTurn = () => new Promise(resolve => setTimeout(resolve, 0));
 
-function harness({ chunks = [bytes], manifest = open(pdf(bytes)), ...overrides } = {}) {
-  const calls = { auth: [], opens: [], streams: [], reads: 0, cancels: 0, releases: 0 };
+function harness({ chunks = [bytes], manifest = open(pdf(bytes)), legacy = legacyReceipt(legacyArchive(sidecarBytes)), ...overrides } = {}) {
+  const calls = { auth: [], opens: [], legacy: [], streams: [], reads: 0, cancels: 0, releases: 0 };
   let cursor = 0;
   const deps = {
     enabled: true,
     getUser: async (...args) => { calls.auth.push(args); return { id: actor }; },
     readOpen: async (...args) => { calls.opens.push(args); return structuredClone(manifest); },
+    readLegacySidecar: async (...args) => { calls.legacy.push(args); return structuredClone(legacy); },
     openStream: async (...args) => {
       calls.streams.push(args);
       return { getReader: () => ({
@@ -45,6 +55,73 @@ function harness({ chunks = [bytes], manifest = open(pdf(bytes)), ...overrides }
   };
   return { deps, calls, run: (req = request()) => handleDocumentGenerationDownload(req, deps) };
 }
+
+test('legacy sidecar recovery returns only checked raw JSON bytes from its bound archive', async () => {
+  const h = harness({ chunks: [sidecarBytes.slice(0, 7), sidecarBytes.slice(7)] });
+  const response = await h.run(request(recoveryBody()));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'application/json');
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), sidecarBytes);
+  assert.equal(h.calls.opens.length, 0);
+  assert.equal(h.calls.legacy.length, 2);
+  for (const args of h.calls.legacy) assert.deepEqual(args.slice(0, 3), ['test-token', documentId, generationId]);
+  assert.deepEqual(h.calls.streams[0][0], legacyArchive(sidecarBytes));
+  assert.equal(Object.isFrozen(h.calls.streams[0][0]), true);
+  assert.equal(Object.isFrozen(h.calls.streams[0][0].source_object), true);
+});
+
+test('legacy sidecar recovery rejects denied access before Storage and revocation before response', async () => {
+  const denied = harness({ readLegacySidecar: async () => {
+    throw Object.assign(new Error('SECRET collaborator'), { code: '42501' });
+  } });
+  const deniedResponse = await denied.run(request(recoveryBody()));
+  assert.equal(deniedResponse.status, 403);
+  assert.equal(denied.calls.streams.length, 0);
+  assert.doesNotMatch(await deniedResponse.text(), /SECRET|collaborator/);
+
+  let reads = 0;
+  const revoked = harness({ chunks: [sidecarBytes], readLegacySidecar: async () => {
+    if (++reads === 2) throw Object.assign(new Error('SECRET revoked'), { code: '42501' });
+    return legacyReceipt(legacyArchive(sidecarBytes));
+  } });
+  const revokedResponse = await revoked.run(request(recoveryBody()));
+  assert.equal(revokedResponse.status, 403);
+  assert.doesNotMatch(await revokedResponse.text(), /SECRET|revoked/);
+  assert.equal(reads, 2);
+});
+
+test('legacy sidecar recovery rejects byte, JSON, receipt, and 16 MiB bound mismatches', async () => {
+  for (const options of [
+    { chunks: [sidecarBytes.slice(0, -1)] },
+    { chunks: [new Uint8Array(sidecarBytes.length)] },
+  ]) {
+    const h = harness(options);
+    assert.equal((await h.run(request(recoveryBody()))).status, 409);
+    assert.equal(h.calls.legacy.length, 1);
+  }
+  const notJson = new TextEncoder().encode('not json');
+  const invalid = harness({ chunks: [notJson], legacy: legacyReceipt(legacyArchive(notJson)) });
+  assert.equal((await invalid.run(request(recoveryBody()))).status, 502);
+  assert.equal(invalid.calls.legacy.length, 1);
+
+  let reads = 0;
+  const changed = harness({ chunks: [sidecarBytes], readLegacySidecar: async () => {
+    const value = legacyReceipt(legacyArchive(sidecarBytes));
+    if (++reads === 2) value.archive.version = operationId;
+    return value;
+  } });
+  assert.equal((await changed.run(request(recoveryBody()))).status, 409);
+  assert.equal(reads, 2);
+
+  const oversizedArchive = legacyArchive(sidecarBytes);
+  oversizedArchive.byte_length = String(16 * 1024 * 1024 + 1);
+  const oversized = harness({ legacy: legacyReceipt(oversizedArchive) });
+  assert.equal((await oversized.run(request(recoveryBody()))).status, 413);
+  assert.equal(oversized.calls.streams.length, 0);
+});
 
 test('every chunk partition verifies real SHA-256 and returns exact bytes', async () => {
   for (let mask = 0; mask < (1 << (bytes.length - 1)); mask++) {
@@ -63,6 +140,7 @@ test('every chunk partition verifies real SHA-256 and returns exact bytes', asyn
     assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
     assert.deepEqual(new Uint8Array(await response.arrayBuffer()), bytes);
     assert.equal(h.calls.opens.length, 2);
+    assert.equal(h.calls.legacy.length, 0);
     for (const args of h.calls.opens) assert.deepEqual(args.slice(0, 3), ['test-token', documentId, generationId]);
     assert.deepEqual(h.calls.streams[0][0], pdf(bytes));
     assert.equal(Object.isFrozen(h.calls.streams[0][0]), true);
@@ -282,6 +360,8 @@ test('entrypoint stays disabled by two flags and uses authenticated SQL plus enc
   assert.match(source, /SURVEY_GENERATION_STORAGE_CONTRACT'\) === 'versioned-standard-v1'/);
   assert.match(source, /enabled: enabled && !!url && !!anonKey && !!serviceKey/);
   assert.match(source, /client\(anonKey, signal, token\)\.rpc\('read_document_generation_open'/);
+  assert.match(source, /client\(anonKey, signal, token\)\.rpc\('read_document_generation_legacy_sidecar_archive_v1'/);
+  assert.match(source, /p_document_id: documentId, p_generation_id: generationId/);
   assert.match(source, /p_include_snapshot: false/);
   assert.match(source, /download\(encodeSourceObjectPath\(pdf\.path\), \{ cacheNonce: crypto\.randomUUID\(\) \}/);
   assert.match(source, /cache: 'no-store', signal/); assert.match(source, /\.asStream\(\)/);

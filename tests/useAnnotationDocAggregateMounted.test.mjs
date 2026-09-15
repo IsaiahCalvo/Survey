@@ -274,7 +274,7 @@ async function model1CheckedBundle(backend) {
   const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
   const path = `${backend.ids.actorUserId}/_generations/model1-hook-fixture.pdf`;
   const envelope = includeSnapshot => ({
-    version: 3,
+    version: 4,
     actor_user_id: backend.ids.actorUserId,
     document_id: backend.ids.documentId,
     generation_id: backend.ids.generationId,
@@ -316,12 +316,13 @@ async function model1CheckedBundle(backend) {
       } : null,
       snapshot_sha256: includeSnapshot ? sha(update) : null,
     },
+    legacy_sidecar_migration: null,
   });
   const reader = createDocumentGenerationReader({
     getActorUserId: () => backend.ids.actorUserId,
     download: async () => pdfBlob,
     request: async (name, params) => {
-      assert.equal(name, 'read_document_generation_open_v3');
+      assert.equal(name, 'read_document_generation_open_v4');
       return { data: envelope(params.p_include_snapshot) };
     },
   });

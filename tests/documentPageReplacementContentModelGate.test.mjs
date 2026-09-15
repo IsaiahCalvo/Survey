@@ -38,15 +38,15 @@ const runInput = contentModelVersion => ({
   persistSourceLocalState: async () => {},
 });
 
-test('model-2 page replacement fails before intent storage, capture, or transport', async () => {
+test('model-2 page replacement is supported only through an explicit model-bound capture', async () => {
   const { client, calls } = clientWith();
-  assert.throws(() => client.replace(runInput(2)), {
+  await assert.rejects(client.replace(runInput(2)), {
     code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE',
   });
-  assert.throws(() => client.resume(runInput(2)), {
-    code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE',
-  });
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, ['get']);
+  calls.length = 0;
+  assert.deepEqual(await client.resume(runInput(2)), { recoveredPrior:false,noIntent:true });
+  assert.deepEqual(calls, ['get']);
 });
 
 test('a model-2 accepted capture cannot enter the legacy intent path when the caller omits its model', async () => {
@@ -59,7 +59,7 @@ test('a model-2 accepted capture cannot enter the legacy intent path when the ca
       annotationState: { contentModelVersion: 2 },
     }),
   }), { code: 'DOCUMENT_PAGE_REPLACEMENT_UNAVAILABLE' });
-  assert.deepEqual(calls, ['get']);
+  assert.deepEqual(calls, ['get'], 'capture mismatch fails before durable ID reserve');
 });
 
 test('contradictory legacy and model-2 capture fields fail before reserve', async () => {

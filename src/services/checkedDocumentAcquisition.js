@@ -179,7 +179,11 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         check(typeof subscription?.unsubscribe === 'function');
         alive();
         accessToken = await readSession(); alive();
-        const mode = discover ? await readMode(preview !== null) : null;
+        // Every current checked open uses the model-bearing mode receipt. Model
+        // 1 is still a valid checked model; treating its old v1 mode receipt as
+        // an unversioned open would omit the generation retirement marker and
+        // could revive the fixed mutable sidecar path.
+        const mode = discover ? await readMode(true) : null;
         if (preview?.kind === 'describe') {
           const cacheKey = mode.mode === 'checked' ? JSON.stringify([
             'document-preview-v1',actorUserId,documentId,mode.generationId,mode.contentModelVersion,

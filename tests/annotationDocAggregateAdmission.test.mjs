@@ -233,9 +233,11 @@ test('aggregate opt-in rejects a checked model 1 generation before storage or re
     getActorUserId: () => actorUserId,
     download: async () => new Blob([pdfBytes], { type: 'application/pdf' }),
     request: async (name, params) => {
-      assert.equal(name, 'read_document_generation_open_v3');
-      return { data: { version: 3, actor_user_id: actorUserId, document_id: documentId,
+      assert.equal(name, 'read_document_generation_open_v4');
+      return { data: { version: 4, actor_user_id: actorUserId, document_id: documentId,
         generation_id: generationId, content_model_version: 1,
+        legacy_sidecar_migration: { version: 1, state: 'archived',
+          source_generation_id: generationId },
         document: { id: documentId, user_id: actorUserId, project_id: null,
           name: 'model1.pdf', file_path: path, file_size: String(pdfBytes.length) },
         publication: { operation_id: operationId, generation_id: generationId,
@@ -252,6 +254,8 @@ test('aggregate opt-in rejects a checked model 1 generation before storage or re
   });
   const checkedBundle = await reader.open({ documentId, actorUserId,
     pdfGenerationId: generationId, contentModelVersion: 1 });
+  assert.deepEqual(checkedBundle.legacy_sidecar_migration, { version: 1,
+    state: 'archived', source_generation_id: generationId });
   let storageTouches = 0;
   let aggregateRequests = 0;
   const untouchedStore = new Proxy({}, { get() {

@@ -27,6 +27,14 @@ Deno.serve((request: Request) => handleDocumentGenerationDownload(request, {
     if (error) throw error;
     return data;
   },
+  readLegacySidecar: async (token: string, documentId: string, generationId: string, signal: AbortSignal) => {
+    // The checked RPC requires the current owner and retained source provenance.
+    const { data, error } = await client(anonKey, signal, token).rpc('read_document_generation_legacy_sidecar_archive_v1', {
+      p_document_id: documentId, p_generation_id: generationId,
+    });
+    if (error) throw error;
+    return data;
+  },
   openStream: async (pdf: { bucket_id: string; path: string }, signal: AbortSignal) => {
     const { data, error } = await client(serviceKey, signal).storage.from(pdf.bucket_id)
       .setHeader('Cache-Control', 'no-cache')

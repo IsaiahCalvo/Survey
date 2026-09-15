@@ -69,7 +69,7 @@ export function readDocumentGenerationNameReceipt(value, scope) {
     check(object(scope) && uuid(scope.documentId) && uuid(scope.actorUserId)
       && uuid(scope.pdfGenerationId) && [1, 2].includes(scope.contentModelVersion),
     'DOCUMENT_OPEN_INPUT');
-    return bundle(value, scope, false, 0).document.name;
+    return bundle(value, scope, false, 0, 3).document.name;
   } catch (caught) {
     throw failure(codes.has(caught?.code) ? caught.code : undefined);
   }
@@ -124,7 +124,7 @@ export function createDocumentGenerationPdfReader(deps) {
         p_include_snapshot:false };
       const response = await call(() => request(name, params, { actorUserId,signal:controller.signal }));
       if (response?.error) throw failure(codes.has(response.error.code) ? response.error.code : undefined);
-      return bundle(response?.data, scope, false, 0);
+      return bundle(response?.data, scope, false, 0, contentModelVersion === null ? 1 : 3);
     };
     try {
       const first = await read();
@@ -140,7 +140,9 @@ export function createDocumentGenerationPdfReader(deps) {
       const confirmed = await read();
       check(Object.keys(first.pdf).every(key => confirmed.pdf[key] === first.pdf[key])
         && Object.keys(first.publication).every(key => confirmed.publication[key] === first.publication[key])
-        && confirmed.document.name === first.document.name,
+        && confirmed.document.name === first.document.name
+        && JSON.stringify(confirmed.legacy_sidecar_migration ?? null)
+          === JSON.stringify(first.legacy_sidecar_migration ?? null),
       'DOCUMENT_OPEN_BYTES');
       alive();
       return Object.freeze({ actorUserId,documentId,pdfGenerationId,
@@ -170,18 +172,27 @@ function hexBytes(v, limit) {
   for (let i = 0; i < b.length; i++) b[i] = parseInt(v.slice(i * 2 + 2, i * 2 + 4), 16);
   return b;
 }
-function bundle(value, scope, includeSnapshot, stateLimit) {
+function bundle(value, scope, includeSnapshot, stateLimit, expectedVersion) {
   const modern = scope.contentModelVersion != null;
-  check(keys(value, modern
+  const modernV4 = modern && expectedVersion === 4;
+  check(keys(value, modernV4
+    ? ['version', 'actor_user_id', 'document_id', 'generation_id', 'content_model_version', 'document', 'publication', 'pdf', 'annotations', 'legacy_sidecar_migration']
+    : modern
     ? ['version', 'actor_user_id', 'document_id', 'generation_id', 'content_model_version', 'document', 'publication', 'pdf', 'annotations']
     : ['version', 'actor_user_id', 'document_id', 'generation_id', 'document', 'publication', 'pdf', 'annotations']));
   // Own the response before any later await. A transport/cache cannot change
   // a checked identity while bytes are in flight.
   const b = JSON.parse(JSON.stringify(value));
-  check(b.version === (modern ? 3 : 1) && (!modern || (b.content_model_version === scope.contentModelVersion
+  check(b.version === expectedVersion && (!modern || (b.content_model_version === scope.contentModelVersion
     && [1, 2].includes(b.content_model_version)))
     && b.actor_user_id === scope.actorUserId && b.document_id === scope.documentId
     && uuid(b.generation_id) && (scope.pdfGenerationId === null || b.generation_id === scope.pdfGenerationId));
+  if (modernV4) {
+    const migration = b.legacy_sidecar_migration;
+    check(migration === null || (keys(migration, ['version', 'state', 'source_generation_id'])
+      && migration.version === 1 && migration.state === 'archived'
+      && uuid(migration.source_generation_id)));
+  }
   const d = b.document, p = b.pdf, r = b.publication, a = b.annotations;
   check(object(d) && d.id === scope.documentId && uuid(d.user_id)
     && (d.project_id === null || uuid(d.project_id)) && typeof d.name === 'string');
@@ -258,11 +269,12 @@ export function createDocumentGenerationReader(deps) {
       return r;
     };
     const read = async (generationId, includeSnapshot) => bundle((await rpc(
-      contentModelVersion === null ? 'read_document_generation_open' : 'read_document_generation_open_v3', {
+      contentModelVersion === null ? 'read_document_generation_open' : 'read_document_generation_open_v4', {
       p_document_id: documentId, p_generation_id: generationId,
       ...(contentModelVersion === null ? {} : { p_content_model_version: contentModelVersion }),
       p_include_snapshot: includeSnapshot,
-    }))?.data, { ...scope, pdfGenerationId: generationId }, includeSnapshot, maxStateBytes);
+    }))?.data, { ...scope, pdfGenerationId: generationId }, includeSnapshot, maxStateBytes,
+    contentModelVersion === null ? 1 : 4);
     let doc;
     try {
       const first = await read(pdfGenerationId, true);
@@ -330,6 +342,8 @@ export function createDocumentGenerationReader(deps) {
       const confirmed = await read(generationId, false);
       check(Object.keys(first.pdf).every(k => confirmed.pdf[k] === first.pdf[k])
         && Object.keys(first.publication).every(k => confirmed.publication[k] === first.publication[k])
+        && JSON.stringify(confirmed.legacy_sidecar_migration ?? null)
+          === JSON.stringify(first.legacy_sidecar_migration ?? null)
         && BigInt(confirmed.annotations.wal_head) >= BigInt(annotations.wal_head));
       alive();
       const snapshotBase = Object.freeze({ atSeq: checkpoint.at_seq,
@@ -350,7 +364,10 @@ export function createDocumentGenerationReader(deps) {
       }) : null;
       const result = Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
         ...(contentModelVersion === null ? {} : { contentModelVersion: model }),
-        document: confirmed.document, pdf: first.pdf, publication: first.publication, pdfBlob,
+        document: confirmed.document, pdf: first.pdf, publication: first.publication,
+        ...(contentModelVersion === null ? {} : {
+          legacy_sidecar_migration: first.legacy_sidecar_migration ?? null,
+        }), pdfBlob,
         get annotationUpdate() { return new Uint8Array(ownedUpdate); },
         snapshotBase, encodingVersion: 1, throughSeq: annotations.wal_head,
         // PDF byte identity only. Annotation state must also retain throughSeq

@@ -42,10 +42,14 @@ export async function prepareDocumentGenerationReplacement(input) {
     const targetContentModelVersion = input.targetContentModelVersion === undefined
       ? 1 : input.targetContentModelVersion;
     const aggregateAdmissionVersion = input.aggregateAdmissionVersion;
+    const legacySidecarArchiveVersion = input.legacySidecarArchiveVersion;
     check([actorUserId, documentId, sourceId, operationId].every(validId));
     check(targetContentModelVersion === 1 || targetContentModelVersion === 2);
     check(aggregateAdmissionVersion === undefined
       || (aggregateAdmissionVersion === 1 && targetContentModelVersion === 2));
+    check(legacySidecarArchiveVersion === undefined
+      || (legacySidecarArchiveVersion === 1 && aggregateAdmissionVersion === 1
+        && targetContentModelVersion === 2));
     const envelope = copyJson(input.envelope), operation = copyJson(input.operation);
     const versioned = envelope?.version === 2;
     check(keys(envelope, versioned
@@ -75,9 +79,11 @@ export async function prepareDocumentGenerationReplacement(input) {
     check(object(semantic) && semantic.version === envelope.version && semantic.document_id === documentId
       && semantic.generation_id === envelope.generation_id && semantic.wal_head === envelope.wal_head
       && semantic.document?.id === documentId && validId(semantic.document.user_id));
-    check(Array.isArray(semantic.sidecar_objects) && semantic.sidecar_objects.length === 0
+    check(Array.isArray(semantic.sidecar_objects)
+      && semantic.sidecar_objects.length <= (legacySidecarArchiveVersion === 1 ? 1 : 0)
       && keys(semantic.document.annotations, ''));
-    check(Array.isArray(proof.objects) && proof.objects.length === 1);
+    check(Array.isArray(proof.objects)
+      && proof.objects.length === 1 + semantic.sidecar_objects.length);
     const descriptor = semantic.source_object, attested = proof.objects[0];
     check(keys(descriptor, 'bucket_id,path,id,version,byte_length')
       && keys(attested, 'bucket_id,path,id,version,byte_length,kind,content_sha256'));
@@ -87,8 +93,20 @@ export async function prepareDocumentGenerationReplacement(input) {
       && seq(descriptor.byte_length) && BigInt(descriptor.byte_length) > 0n && BigInt(descriptor.byte_length) <= BigInt(PDF_LIMIT)
       && Object.keys(descriptor).every(key => descriptor[key] === attested[key])
       && attested.kind === 'pdf' && validHash(attested.content_sha256));
+    const sidecarDescriptor = semantic.sidecar_objects[0] ?? null;
+    const sidecarAttested = sidecarDescriptor ? proof.objects[1] : null;
+    if (sidecarDescriptor) check(keys(sidecarDescriptor, 'bucket_id,path,id,version,byte_length')
+      && keys(sidecarAttested, 'bucket_id,path,id,version,byte_length,kind,content_sha256')
+      && sidecarDescriptor.bucket_id === 'documents' && sidecarAttested.kind === 'sidecar'
+      && validId(sidecarDescriptor.id) && validId(sidecarDescriptor.version)
+      && typeof sidecarDescriptor.path === 'string' && sidecarDescriptor.path.length > 0
+      && sidecarDescriptor.path.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(sidecarDescriptor.path)
+      && seq(sidecarDescriptor.byte_length) && BigInt(sidecarDescriptor.byte_length) > 0n
+      && BigInt(sidecarDescriptor.byte_length) <= BigInt(SOURCE_LIMIT)
+      && Object.keys(sidecarDescriptor).every(key => sidecarDescriptor[key] === sidecarAttested[key])
+      && validHash(sidecarAttested.content_sha256) && envelope.generation_id !== null);
     const objects = input.objects;
-    check(Array.isArray(objects) && objects.length === 1);
+    check(Array.isArray(objects) && objects.length === proof.objects.length);
     const supplied = objects[0];
     check(keys(supplied, 'id,version,bytes') && supplied.id === descriptor.id && supplied.version === descriptor.version);
     const bytes = supplied.bytes;
@@ -99,6 +117,26 @@ export async function prepareDocumentGenerationReplacement(input) {
     check(buffer instanceof ArrayBuffer && length === Number(descriptor.byte_length) && length <= PDF_LIMIT);
     const owned = new Uint8Array(length); Uint8Array.prototype.set.call(owned, bytes);
     check(hash(owned) === attested.content_sha256);
+    let legacySidecarArchive = null;
+    if (sidecarDescriptor) {
+      const sidecarSupplied = objects[1];
+      check(keys(sidecarSupplied, 'id,version,bytes') && sidecarSupplied.id === sidecarDescriptor.id
+        && sidecarSupplied.version === sidecarDescriptor.version && sidecarSupplied.bytes instanceof Uint8Array);
+      const sidecarLength = Object.getOwnPropertyDescriptor(proto, 'byteLength').get.call(sidecarSupplied.bytes);
+      const sidecarBuffer = Object.getOwnPropertyDescriptor(proto, 'buffer').get.call(sidecarSupplied.bytes);
+      check(sidecarBuffer instanceof ArrayBuffer && sidecarLength === Number(sidecarDescriptor.byte_length)
+        && sidecarLength <= SOURCE_LIMIT);
+      const sidecarBytes = new Uint8Array(sidecarLength);
+      Uint8Array.prototype.set.call(sidecarBytes, sidecarSupplied.bytes);
+      check(hash(sidecarBytes) === sidecarAttested.content_sha256);
+      let sidecar;
+      try { sidecar = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(sidecarBytes)); } catch { fail(); }
+      check(object(sidecar) && sidecar.version === 1);
+      const entities = Object.hasOwn(sidecar, 'entities') ? sidecar.entities : [];
+      check(Array.isArray(entities) && entities.length <= 256 && entities.every(object));
+      legacySidecarArchive = { version: 1, sourceObjectId: sidecarDescriptor.id,
+        entities: entities.length === 0 ? 'absent' : 'accepted-catalog' };
+    }
     check(object(operation) && ['move','reorder','insert','delete','rotate','copy','duplicate'].includes(operation.type));
     check(Buffer.byteLength(JSON.stringify(payload)) <= SOURCE_LIMIT);
     unexpired();
@@ -111,16 +149,20 @@ export async function prepareDocumentGenerationReplacement(input) {
     check(pageSizes.every(size => Number.isFinite(size.width) && size.width > 0 && Number.isFinite(size.height) && size.height > 0));
     const mutation = await mutateLoadedPdfPagesWithIdentity(pdf, operation); unexpired();
     check(mutation.bytes.byteLength > 0 && mutation.bytes.byteLength <= PDF_LIMIT);
-    const transformed = await transformDocumentGenerationSource({ sourcePayload: payload, sidecars: [], operationId,
+    const transformPayload = copyJson(payload);
+    transformPayload.semantic.sidecar_objects = [];
+    const transformed = await transformDocumentGenerationSource({ sourcePayload: transformPayload, sidecars: [], operationId,
       operation, pageCount, pageSizes, copiedWidgets: mutation.copiedWidgets, targetContentModelVersion });
     unexpired();
     const c = transformed.legacyCheckpoint;
     check(transformed.baselineUpdate.byteLength + c.state.byteLength + c.stateVector.byteLength <= SOURCE_LIMIT);
     check(transformed.version === targetContentModelVersion
       && (targetContentModelVersion !== 2 || transformed.contentModelVersion === 2));
-    const plan = { version: aggregateAdmissionVersion === 1 ? 3 : targetContentModelVersion,
+    const plan = { version: legacySidecarArchiveVersion === 1 ? 4
+      : aggregateAdmissionVersion === 1 ? 3 : targetContentModelVersion,
       ...(targetContentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
       ...(aggregateAdmissionVersion === 1 ? { aggregateAdmissionVersion: 1 } : {}),
+      ...(legacySidecarArchiveVersion === 1 ? { legacySidecarArchive } : {}),
       operationId: transformed.operationId, source: transformed.source,
       operation: transformed.operation, projection: transformed.projection, baseline_base64: b64(transformed.baselineUpdate),
       legacy: { documentId: c.documentId, encodingVersion: c.encodingVersion, throughSeq: c.throughSeq,
