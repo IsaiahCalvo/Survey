@@ -37,6 +37,10 @@ import {
   listDocumentHistoryEvents,
   subscribeDocumentHistoryStorage,
 } from '../../services/documentHistoryService';
+import {
+  inspectLegacyDocumentHistory,
+  selectLegacyDocumentHistoryBucket,
+} from '../../services/legacyDocumentHistoryRecovery.js';
 import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';
 import { claimBodyReadOnly } from '../../utils/readOnlyBodyReasons.js';
 
@@ -107,6 +111,32 @@ function isDeleteHistoryEvent(event) {
 
 function historyEventId(event) {
   return event?.client_event_id || event?.id;
+}
+
+function emptyLegacyRecovery() {
+  return {
+    stage: 'idle',
+    authorizationToken: null,
+    inspection: null,
+    selectedBucketId: null,
+    documentId: null,
+    rows: [],
+    error: null,
+    busy: false,
+  };
+}
+
+function isSupportedLegacyRestore(event) {
+  return Boolean(
+    event?.__legacyRecovery === true
+    && event?.__canRestore === true
+    && (
+      event?.payload?.restoreAction
+      || (event?.event_type === 'annotations_bulk_deleted'
+        && Array.isArray(event?.payload?.objects)
+        && event.payload.objects.length > 0)
+    )
+  );
 }
 
 function originBadge(origin) {
@@ -190,6 +220,7 @@ export default function RevisionsPanel({
   const [statusMsg, setStatusMsg] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [selectedEventDetail, setSelectedEventDetail] = useState(null);
+  const [legacyRecovery, setLegacyRecovery] = useState(emptyLegacyRecovery);
   // KAL-313 CONFIRM-CASCADE: pending cascade restore { regionEvent, spaceEvent }
   // Set when Restore is clicked for an orphaned region whose space has a restorable record.
   const [cascadePending, setCascadePending] = useState(null);
@@ -218,14 +249,16 @@ export default function RevisionsPanel({
     [actorUserId, guestScopeId],
   );
   const isGuestHistoryScope = guestScopeId === 'device-local';
+  const isExplicitLocalHistoryScope = hasExplicitHistoryScope && requestedGuestScopeId === 'device-local';
   // Embedded panels stay mounted while hidden. Only the visible History
   // panel with a valid scope needs list reads, event refreshes, or polling.
   const shouldLoadHistory = Boolean(historyScope) && isActive && (embedded || open);
   const scopeRef = useRef(null);
   const lifecycleRef = useRef({ key: null, generation: 0, mounted: true });
   const requestEpochRef = useRef(0);
+  const legacyRecoveryRequestRef = useRef(0);
   const historyScopeKey = guestScopeId ? `guest:${guestScopeId}` : `actor:${actorUserId || ''}`;
-  const lifecycleKey = `${documentId || ''}\u0000${historyScopeKey}\u0000${shouldLoadHistory ? '1' : '0'}`;
+  const lifecycleKey = `${documentId || ''}\u0000${historyScopeKey}\u0000${fallbackActorUserId || ''}\u0000${shouldLoadHistory ? '1' : '0'}`;
   if (lifecycleRef.current.key !== lifecycleKey) {
     lifecycleRef.current.key = lifecycleKey;
     lifecycleRef.current.generation += 1;
@@ -233,6 +266,7 @@ export default function RevisionsPanel({
   scopeRef.current = {
     documentId,
     historyScopeKey,
+    viewerUserId: fallbackActorUserId,
     shouldLoadHistory,
     generation: lifecycleRef.current.generation,
   };
@@ -244,6 +278,7 @@ export default function RevisionsPanel({
       && current?.shouldLoadHistory
       && current.documentId === scope.documentId
       && current.historyScopeKey === scope.historyScopeKey
+      && current.viewerUserId === scope.viewerUserId
       && current.generation === scope.generation
       && lifecycleRef.current.mounted
     );
@@ -255,6 +290,7 @@ export default function RevisionsPanel({
       lifecycleRef.current.mounted = false;
       lifecycleRef.current.generation += 1;
       requestEpochRef.current += 1;
+      legacyRecoveryRequestRef.current += 1;
     };
   }, []);
 
@@ -305,7 +341,9 @@ export default function RevisionsPanel({
     setSelectedEventId(null);
     setSelectedEventDetail(null);
     setCascadePending(null);
-  }, [documentId, historyScopeKey, shouldLoadHistory]);
+    legacyRecoveryRequestRef.current += 1;
+    setLegacyRecovery(emptyLegacyRecovery());
+  }, [documentId, fallbackActorUserId, historyScopeKey, shouldLoadHistory]);
 
   // Load list when drawer opens, when embedded in the left rail, or after a mutation.
   const refresh = useCallback(async (options = {}) => {
@@ -356,7 +394,7 @@ export default function RevisionsPanel({
     } finally {
       if (isCurrentScope(scope) && epoch === requestEpochRef.current) setLoading(false);
     }
-  }, [actorUserId, documentId, historyScope, isCurrentScope, shouldLoadHistory]);
+  }, [actorUserId, documentId, fallbackActorUserId, historyScope, isCurrentScope, shouldLoadHistory]);
 
   useEffect(() => {
     if (shouldLoadHistory) refresh({ silent: hasLoadedRef.current });
@@ -896,6 +934,129 @@ export default function RevisionsPanel({
     }
   }, [busy, onRestoreHistoryActivity, refresh, historyEvents, isCurrentScope]);
 
+  const closeLegacyRecovery = useCallback(() => {
+    legacyRecoveryRequestRef.current += 1;
+    setLegacyRecovery(emptyLegacyRecovery());
+  }, []);
+
+  const beginLegacyRecovery = useCallback(() => {
+    legacyRecoveryRequestRef.current += 1;
+    setLegacyRecovery({
+      ...emptyLegacyRecovery(),
+      stage: isExplicitLocalHistoryScope ? 'consent' : 'cloud-guidance',
+    });
+  }, [isExplicitLocalHistoryScope]);
+
+  const inspectLegacyHistory = useCallback(async () => {
+    if (!isExplicitLocalHistoryScope || !shouldLoadHistory || !documentId) return;
+    const scope = { ...scopeRef.current };
+    const request = ++legacyRecoveryRequestRef.current;
+    const authorizationToken = globalThis.crypto?.randomUUID?.()
+      || `legacy-history-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setLegacyRecovery((current) => ({
+      ...current,
+      authorizationToken,
+      busy: true,
+      error: null,
+    }));
+    try {
+      const inspection = await inspectLegacyDocumentHistory({
+        authorized: true,
+        authorizationToken,
+        storage: window.localStorage,
+      });
+      if (request !== legacyRecoveryRequestRef.current || !isCurrentScope(scope)) return;
+      setLegacyRecovery((current) => ({
+        ...current,
+        stage: inspection.status === 'ready' ? 'buckets' : 'absent',
+        inspection,
+        selectedBucketId: null,
+        documentId: null,
+        rows: [],
+        busy: false,
+        error: null,
+      }));
+    } catch (error) {
+      if (request !== legacyRecoveryRequestRef.current || !isCurrentScope(scope)) return;
+      setLegacyRecovery((current) => ({
+        ...current,
+        busy: false,
+        error: error?.code || 'DOCUMENT_HISTORY_LEGACY_INSPECTION_FAILED',
+      }));
+    }
+  }, [documentId, isCurrentScope, isExplicitLocalHistoryScope, shouldLoadHistory]);
+
+  const confirmLegacyBucket = useCallback(async () => {
+    const sourceBucketId = legacyRecovery.selectedBucketId;
+    if (
+      !isExplicitLocalHistoryScope
+      || !shouldLoadHistory
+      || !documentId
+      || !sourceBucketId
+      || !legacyRecovery.inspection
+      || !legacyRecovery.authorizationToken
+    ) return;
+    const scope = { ...scopeRef.current };
+    const request = ++legacyRecoveryRequestRef.current;
+    setLegacyRecovery((current) => ({ ...current, busy: true, error: null, rows: [] }));
+    try {
+      const selection = await selectLegacyDocumentHistoryBucket(legacyRecovery.inspection, {
+        authorized: true,
+        authorizationToken: legacyRecovery.authorizationToken,
+        storage: window.localStorage,
+        sourceBucketId,
+        confirmedSourceBucketId: sourceBucketId,
+        openLocalDocumentId: documentId,
+        confirmedOpenLocalDocumentId: documentId,
+      });
+      if (request !== legacyRecoveryRequestRef.current || !isCurrentScope(scope)) return;
+      setLegacyRecovery((current) => ({
+        ...current,
+        stage: 'selected',
+        documentId: selection.documentId,
+        selectedBucketId: selection.sourceBucketId,
+        rows: selection.rows,
+        busy: false,
+        error: null,
+      }));
+    } catch (error) {
+      if (request !== legacyRecoveryRequestRef.current || !isCurrentScope(scope)) return;
+      setLegacyRecovery((current) => ({
+        ...current,
+        busy: false,
+        rows: [],
+        error: error?.code || 'DOCUMENT_HISTORY_LEGACY_SELECTION_FAILED',
+      }));
+    }
+  }, [documentId, isCurrentScope, isExplicitLocalHistoryScope, legacyRecovery, shouldLoadHistory]);
+
+  const handleRestoreLegacyActivity = useCallback(async (event) => {
+    const scope = { ...scopeRef.current };
+    const matchesCurrentSelection = Boolean(
+      isExplicitLocalHistoryScope
+      && shouldLoadHistory
+      && legacyRecovery.stage === 'selected'
+      && legacyRecovery.documentId === documentId
+      && legacyRecovery.selectedBucketId
+      && legacyRecovery.rows.includes(event)
+      && isSupportedLegacyRestore(event)
+      && typeof onRestoreHistoryActivity === 'function'
+      && isCurrentScope(scope)
+    );
+    if (!matchesCurrentSelection) return;
+    if (!isCurrentScope(scope)) return;
+    await handleRestoreActivity(event);
+    if (!isCurrentScope(scope)) return;
+  }, [
+    documentId,
+    handleRestoreActivity,
+    isCurrentScope,
+    isExplicitLocalHistoryScope,
+    legacyRecovery,
+    onRestoreHistoryActivity,
+    shouldLoadHistory,
+  ]);
+
   // KAL-313: Execute the confirmed cascade restore (space first, then region).
   const handleCascadeConfirm = useCallback(async () => {
     if (!cascadePending || typeof onCascadeRestoreRegion !== 'function') return;
@@ -1001,9 +1162,137 @@ export default function RevisionsPanel({
             {historyStorageMessage(historyStorageStatus, isGuestHistoryScope)}
           </div>
         )}
-        {historyStorageStatus?.legacyUnscopedAvailable && (
-          <div data-testid="document-history-legacy-notice" style={{ padding: 10, color: '#8d96a6', fontSize: 11 }}>
-            Older local history stays on this device but is not shown in this history view.
+        {(historyStorageStatus?.legacyUnscopedAvailable || legacyRecovery.stage !== 'idle') && (
+          <div
+            data-testid="document-history-legacy-notice"
+            style={{ padding: 10, marginBottom: 6, color: '#aeb8ca', fontSize: 11, border: '1px solid #303746', borderRadius: 6 }}
+          >
+            <div>Older local history stays on this device unchanged. It is not part of your account history.</div>
+            {legacyRecovery.stage === 'idle' && (
+              <button
+                type="button"
+                data-testid="document-history-legacy-review"
+                onClick={beginLegacyRecovery}
+                style={{ marginTop: 8, fontSize: 11 }}
+              >
+                Review older local history
+              </button>
+            )}
+            {legacyRecovery.stage === 'cloud-guidance' && (
+              <div data-testid="document-history-legacy-cloud-guidance" style={{ marginTop: 8 }}>
+                Older device data cannot be linked to this cloud document. Open a local copy of the PDF, then review it from that local document's History panel.
+              </div>
+            )}
+            {legacyRecovery.stage === 'consent' && (
+              <div data-testid="document-history-legacy-consent" style={{ marginTop: 8 }}>
+                <div>Only inspect this cache if you have the right to view data saved in this browser.</div>
+                <button
+                  type="button"
+                  data-testid="document-history-legacy-consent-confirm"
+                  disabled={legacyRecovery.busy}
+                  onClick={inspectLegacyHistory}
+                  style={{ marginTop: 8, fontSize: 11 }}
+                >
+                  {legacyRecovery.busy ? 'Checking…' : 'I have the right to inspect'}
+                </button>
+              </div>
+            )}
+            {legacyRecovery.stage === 'buckets' && (
+              <div data-testid="document-history-legacy-buckets" style={{ marginTop: 8 }}>
+                <div>Choose a saved document group. Its name does not prove who owns it.</div>
+                {legacyRecovery.inspection?.buckets?.map((bucket) => (
+                  <button
+                    key={bucket.bucketId}
+                    type="button"
+                    data-testid={`document-history-legacy-bucket-${bucket.bucketId}`}
+                    onClick={() => setLegacyRecovery((current) => ({
+                      ...current,
+                      stage: 'confirm',
+                      selectedBucketId: bucket.bucketId,
+                      documentId: null,
+                      rows: [],
+                      error: null,
+                    }))}
+                    style={{ display: 'block', width: '100%', marginTop: 6, padding: 6, textAlign: 'left', fontSize: 11 }}
+                  >
+                    {bucket.bucketId} · {bucket.rowCount} saved {bucket.rowCount === 1 ? 'item' : 'items'} · {bucket.recoverableRowCount} restorable
+                  </button>
+                ))}
+              </div>
+            )}
+            {legacyRecovery.stage === 'confirm' && (
+              <div data-testid="document-history-legacy-match-confirm" style={{ marginTop: 8 }}>
+                <div>
+                  Confirm that saved group <strong>{legacyRecovery.selectedBucketId}</strong> belongs to the local PDF open now ({documentId}).
+                </div>
+                <button
+                  type="button"
+                  data-testid="document-history-legacy-match-confirm-button"
+                  disabled={legacyRecovery.busy}
+                  onClick={confirmLegacyBucket}
+                  style={{ marginTop: 8, fontSize: 11 }}
+                >
+                  {legacyRecovery.busy ? 'Opening…' : 'Yes, this group matches this local PDF'}
+                </button>
+              </div>
+            )}
+            {legacyRecovery.stage === 'absent' && (
+              <div data-testid="document-history-legacy-absent" style={{ marginTop: 8 }}>
+                No older local history was found.
+              </div>
+            )}
+            {legacyRecovery.stage === 'selected' && (
+              <div data-testid="document-history-legacy-selected" style={{ marginTop: 8 }}>
+                <div>
+                  Recovered from <strong>{legacyRecovery.selectedBucketId}</strong> for this session only. The old cache stays unchanged.
+                </div>
+                {legacyRecovery.rows.map((event, index) => {
+                  const eventId = historyEventId(event) || `row-${index}`;
+                  const canRestore = isSupportedLegacyRestore(event) && Boolean(onRestoreHistoryActivity);
+                  return (
+                    <div
+                      key={`${eventId}:${index}`}
+                      data-testid={`document-history-legacy-row-${eventId}`}
+                      style={{ marginTop: 7, padding: 7, border: '1px solid #3a4252', borderRadius: 4 }}
+                    >
+                      <div>{event.summary || 'Older history item'}</div>
+                      <div style={{ marginTop: 3, color: '#8d96a6' }}>
+                        {formatDate(event.occurred_at || event.created_at)}
+                        {event.page_number ? ` · page ${event.page_number}` : ''}
+                      </div>
+                      {canRestore ? (
+                        <button
+                          type="button"
+                          data-testid={`document-history-legacy-restore-${eventId}`}
+                          disabled={busy}
+                          onClick={() => handleRestoreLegacyActivity(event)}
+                          style={{ marginTop: 6, fontSize: 11 }}
+                        >
+                          Restore into open local PDF
+                        </button>
+                      ) : (
+                        <div style={{ marginTop: 5, color: '#9b8b8b' }}>This item cannot be restored.</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {legacyRecovery.error && (
+              <div data-testid="document-history-legacy-error" style={{ marginTop: 8, color: '#ff9a9a' }}>
+                Could not open older history ({legacyRecovery.error}). No saved data was changed.
+              </div>
+            )}
+            {legacyRecovery.stage !== 'idle' && (
+              <button
+                type="button"
+                data-testid="document-history-legacy-close"
+                onClick={closeLegacyRecovery}
+                style={{ marginTop: 8, fontSize: 11 }}
+              >
+                Close older history
+              </button>
+            )}
           </div>
         )}
         {loading && <div style={{ padding: 10, fontSize: 12, color: '#8d96a6' }}>Loading…</div>}

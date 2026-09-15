@@ -528,17 +528,22 @@ test('the lock deadline abort signal reaches an RPC already running after lock g
   const pendingRaw = [...storage.values.values()].find(value => value.includes('deadline-client'));
   const nativeSetTimeout = globalThis.setTimeout;
   let shortenedAcquireTimer = false;
+  let triggerAcquireDeadline;
   globalThis.setTimeout = (callback, delay, ...args) => {
     if (delay === 60000 && !shortenedAcquireTimer) {
       shortenedAcquireTimer = true;
-      return nativeSetTimeout(callback, 0, ...args);
+      triggerAcquireDeadline = () => callback(...args);
+      return 0;
     }
     return nativeSetTimeout(callback, delay, ...args);
   };
   try {
     const flushing = service.flush(scope, { isCurrent:() => true });
+    const rejected = assert.rejects(flushing, { code:'DATABASE_MUTATION_ABORTED' });
     while (!release) await new Promise(resolve => setImmediate(resolve));
-    await assert.rejects(flushing, { code:'DATABASE_MUTATION_ABORTED' });
+    assert.equal(typeof triggerAcquireDeadline, 'function');
+    triggerAcquireDeadline();
+    await rejected;
     assert.equal(cloud.calls.length, 1);
     assert.equal(cloud.calls[0].signal.aborted, true);
     assert.ok([...storage.values.values()].includes(pendingRaw));

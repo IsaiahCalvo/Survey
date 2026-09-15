@@ -5761,6 +5761,70 @@ and `/tmp/survey-private-prefs-frozen-build-20260914.log`. The index log is
 `/tmp/survey-private-prefs-frozen-graph-20260914.log`; generated graph files
 remain outside the code commit.
 
+### Legacy History recovery checkpoint — 2026-09-15
+
+The local recovery change adds explicit permission
+to inspect the old v1 cache, source-group and open-local-PDF confirmation, and
+session-only recovery through the existing local restore callback. The parser
+does not write storage or import cloud/outbox code. Account changes clear the
+recovery view even when the underlying History scope remains device-local.
+
+The first full regression run exits 0 with 7,167 passed, 97 skipped, no failures
+or cancellations (`/tmp/survey-legacy-history-frozen-full-20260915.log`). Despite
+that log name, source changed during this run; it is baseline evidence only.
+The same qualification applies to the first build log. Final frozen checks and
+browser restore/save/reopen proof remain required.
+
+The real app at loopback port 5184 loaded an imported synthetic local PDF and
+showed the permission, source-group, exact local-destination and Restore steps.
+The first synthetic cache omitted the historical Fabric `annotationId`; only
+the fixture was corrected, not the parser. The corrected raw cache has SHA-256
+`6fc6e5e8923f72c2b2f033a57a2835d8f6aff59263d1773d5b2319fd432a93b3`.
+The first Restore click blocked browser control behind a redundant native
+confirmation. That confirmation was removed and a regression test forbids it.
+The old tab initially resisted dialog, observation and close calls; native
+Codex control was disallowed and was not bypassed. The tab became responsive
+on the next check. A clean reload then completed the actual local flow:
+inspect permission, source choice, exact open-file confirmation, Restore,
+Cmd+S, close document, and reopen it from the local library. The restored
+rectangle remained visible at the page's upper left, the saved state was clean,
+and two new local History rows survived. The session-only recovery view reset
+on close. Screenshots showed the real PDF and History panel without a framework
+overlay; the app error log was empty. A separate read-only fixture button proved
+the original v1 bytes retained the exact hash above after restore/save/reopen.
+This uses synthetic data in the real app, not real-auth collaboration, mobile,
+or hosted cloud proof. No cloud account, hosted SQL, rollout flag or Microsoft
+service was used.
+
+The final independent focused review passes 56/56 tests and scoped diff checks.
+Frozen source hashes are `be52162f` (parser) and `e751f820` (panel); test hashes
+are `12ec805e`, `5e6f6592` and `839765f6`. This includes exact nested object/target
+IDs and positive page validation, actor-switch fencing, and a test that rejects
+any native confirmation in this already-confirmed recovery flow. The final
+build exits 0 with the existing large-chunk warning. The final full suite exits
+0: 7,265 tests, 7,168 passed, 97 skipped, no failures or cancellations. Its log is
+`/tmp/survey-legacy-history-final-full-20260915.log`; do not confuse it with the
+earlier baseline run. All five frozen source/test hashes still match the
+independent review and browser run. The desktop local restore flow has
+the browser proof above; live multi-user/cloud gates remain separate.
+The AST-only code-index update exits 0; its log is
+`/tmp/survey-legacy-history-final-graph-20260915.log`. Generated graph files are
+excluded from the code commit. The only app console warnings in this local
+test were the expected missing-Supabase-credentials/offline-mode messages.
+
+The existing catalog, generation replacement and aggregate-sync work still has
+local integration gaps as well as hosted rollout gates. A current-source check
+corrects the older claim that checked opening has no UI caller: AppShell wires
+Dashboard opens, uploads and deep links through checked acquisition when
+`VITE_SURVEY_CHECKED_DOCUMENT_OPEN === 'mode-v1'`. Its checked legacy path also
+accepts null-generation documents, subject to deployed mode RPC support.
+The document catalog reader itself remains disconnected from UI callers;
+Dashboard still uses the legacy `useDocuments` reads. Do not confuse its rollout
+with the separate `VITE_SURVEY_DOCUMENT_ENTITY_CATALOG` feature. Generation
+publication/adoption and the legacy mutable sidecar still have their recorded
+integration and recovery gates. These are not completed merely by passing
+isolated tests. Keep the delivery-control scope above intact.
+
 ## Sources
 
 - [PostgreSQL string escape rules](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)

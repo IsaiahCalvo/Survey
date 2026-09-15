@@ -24,6 +24,7 @@ async function loadPanel() {
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')
     .replace(/import \{\s*getDocumentHistoryStorageStatus,\s*listDocumentHistoryEvents,\s*subscribeDocumentHistoryStorage,?\s*\} from '\.\.\/\.\.\/services\/documentHistoryService';/, 'const { getDocumentHistoryStorageStatus, listDocumentHistoryEvents, subscribeDocumentHistoryStorage } = globalThis.__historyPollingService;')
+    .replace(/import \{\s*inspectLegacyDocumentHistory,\s*selectLegacyDocumentHistoryBucket,?\s*\} from '\.\.\/\.\.\/services\/legacyDocumentHistoryRecovery\.js';/, 'const { inspectLegacyDocumentHistory, selectLegacyDocumentHistoryBucket } = globalThis.__historyPollingService;')
     .replace("import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';", 'const resolveRegionRestoreCascade = () => null; const describeHistoryEventSubject = () => null;')
     .replace("from '../../utils/readOnlyBodyReasons.js'", `from ${JSON.stringify(readOnlyUrl)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(sourceUrl), { lang: 'jsx' });
@@ -45,7 +46,7 @@ async function mountPanel(t, initialProps, serviceOverrides = {}) {
     previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
-  const calls = { revisions: [], history: [], status: [], subscribe: [], owner: [] };
+  const calls = { revisions: [], history: [], status: [], subscribe: [], owner: [], legacyInspect: [], legacySelect: [] };
   const listeners = new Set();
   globalThis.__historyPollingSupabase = {
     from(table) {
@@ -86,6 +87,18 @@ async function mountPanel(t, initialProps, serviceOverrides = {}) {
       listeners.add(listener);
       let active = true;
       return () => { if (active) listeners.delete(listener); active = false; };
+    },
+    async inspectLegacyDocumentHistory(options) {
+      calls.legacyInspect.push(options);
+      return serviceOverrides.inspectLegacyDocumentHistory
+        ? serviceOverrides.inspectLegacyDocumentHistory(options)
+        : { status: 'absent', version: 1, buckets: [] };
+    },
+    async selectLegacyDocumentHistoryBucket(inspection, options) {
+      calls.legacySelect.push({ inspection, options });
+      return serviceOverrides.selectLegacyDocumentHistoryBucket
+        ? serviceOverrides.selectLegacyDocumentHistoryBucket(inspection, options)
+        : { status: 'selected', version: 1, sourceBucketId: options.sourceBucketId, documentId: options.openLocalDocumentId, rows: [] };
     },
     async createRevision(...args) {
       return serviceOverrides.createRevision?.(...args) || { revision_number: 2 };
@@ -433,6 +446,177 @@ test('storage health and preserved legacy data are stated without exposing legac
   assert.match(document.querySelector('[data-testid="document-history-storage-status"]')?.textContent || '', /storage is full/i);
   assert.match(document.querySelector('[data-testid="document-history-legacy-notice"]')?.textContent || '', /stays on this device/i);
   assert.doesNotMatch(document.body.textContent, /migrat/i);
+});
+
+test('a managed-local user explicitly inspects, matches, and restores legacy history without changing its raw cache', async (t) => {
+  const rawLegacy = JSON.stringify({
+    'old-bucket': [{ client_event_id: 'legacy-delete', summary: 'Deleted older rectangle' }],
+  });
+  const recovered = {
+    __local: true,
+    __legacyRecovery: true,
+    __canRestore: true,
+    document_id: 'old-bucket',
+    client_event_id: 'legacy-delete',
+    event_type: 'annotation_deleted',
+    summary: 'Deleted older rectangle',
+    occurred_at: '2026-09-14T12:00:00.000Z',
+    page_number: 1,
+    payload: {
+      restoreAction: {
+        type: 'fabric:create',
+        pageNumber: 1,
+        annotation: { id: 'legacy-rect', type: 'rect', left: 40, top: 50, width: 80, height: 60 },
+      },
+    },
+  };
+  const restoredAnnotations = [];
+  const normalRows = [];
+  const { calls, click } = await mountPanel(t, {
+    documentId: 'managed-local-a',
+    isActive: true,
+    user: { id: 'actor-a' },
+    historyScope: { guestScopeId: 'device-local' },
+    onRestoreHistoryActivity(event) {
+      restoredAnnotations.push(event.payload.restoreAction.annotation);
+      normalRows.push({
+        client_event_id: 'new-local-restore-event',
+        event_type: 'annotation_restored',
+        summary: 'Restored older rectangle',
+        occurred_at: '2026-09-14T12:01:00.000Z',
+        payload: {},
+      });
+      return { ok: true, pageNumber: 1 };
+    },
+  }, {
+    async listDocumentHistoryEvents() { return [...normalRows]; },
+    async getDocumentHistoryStorageStatus() {
+      return { available: true, pendingCount: 0, protectedBytes: 0, confirmedCacheBytes: 0,
+        protectedFull: false, legacyUnscopedAvailable: true, errorCode: null };
+    },
+    async inspectLegacyDocumentHistory({ authorizationToken }) {
+      assert.equal(typeof authorizationToken, 'string');
+      assert.ok(authorizationToken.length > 0);
+      return {
+        status: 'ready', version: 1, inspectionDigest: 'digest-a', authorizationDigest: 'auth-a',
+        buckets: [{ bucketId: 'old-bucket', rowCount: 1, recoverableRowCount: 1 }],
+      };
+    },
+    async selectLegacyDocumentHistoryBucket(_inspection, options) {
+      assert.equal(options.sourceBucketId, 'old-bucket');
+      assert.equal(options.confirmedSourceBucketId, 'old-bucket');
+      assert.equal(options.openLocalDocumentId, 'managed-local-a');
+      assert.equal(options.confirmedOpenLocalDocumentId, 'managed-local-a');
+      return { status: 'selected', version: 1, sourceBucketId: 'old-bucket',
+        documentId: 'managed-local-a', rows: [recovered] };
+    },
+  });
+  window.localStorage.setItem('survey_document_history_events_v1', rawLegacy);
+
+  assert.equal(document.querySelector('[data-testid^="document-history-legacy-row-"]'), null,
+    'the notice exposes no old row before consent and document matching');
+  await click('[data-testid="document-history-legacy-review"]');
+  assert.equal(calls.legacyInspect.length, 0, 'opening the notice does not parse the cache');
+  await click('[data-testid="document-history-legacy-consent-confirm"]');
+  assert.equal(calls.legacyInspect.length, 1);
+  assert.equal(document.querySelector('[data-testid^="document-history-legacy-row-"]'), null);
+  await click('[data-testid="document-history-legacy-bucket-old-bucket"]');
+  assert.equal(calls.legacySelect.length, 0, 'choosing a bucket does not expose rows');
+  await click('[data-testid="document-history-legacy-match-confirm-button"]');
+  assert.equal(calls.legacySelect.length, 1);
+  assert.match(document.body.textContent, /Deleted older rectangle/);
+
+  window.confirm = () => { throw new Error('recovered restore must not open a native blocking dialog'); };
+  await click('[data-testid="document-history-legacy-restore-legacy-delete"]');
+  assert.deepEqual(restoredAnnotations, [{ id: 'legacy-rect', type: 'rect', left: 40, top: 50, width: 80, height: 60 }]);
+  assert.match(document.body.textContent, /Restored older rectangle/,
+    'the proven restore path refreshes the normal durable local timeline');
+  assert.equal(window.localStorage.getItem('survey_document_history_events_v1'), rawLegacy,
+    'review and restore leave the legacy cache byte-for-byte unchanged');
+});
+
+test('cloud history gives local-copy guidance and never inspects or restores legacy rows', async (t) => {
+  const restored = [];
+  const { calls, click } = await mountPanel(t, {
+    documentId: 'cloud-doc',
+    isActive: true,
+    user: { id: 'actor-a' },
+    historyScope: { actorUserId: 'actor-a' },
+    onRestoreHistoryActivity(event) { restored.push(event); return { ok: true }; },
+  }, {
+    async getDocumentHistoryStorageStatus() {
+      return { available: true, pendingCount: 0, protectedBytes: 0, confirmedCacheBytes: 0,
+        protectedFull: false, legacyUnscopedAvailable: true, errorCode: null };
+    },
+  });
+  await click('[data-testid="document-history-legacy-review"]');
+  assert.match(document.querySelector('[data-testid="document-history-legacy-cloud-guidance"]')?.textContent || '',
+    /Open a local copy/);
+  assert.equal(calls.legacyInspect.length, 0);
+  assert.equal(calls.legacySelect.length, 0);
+  assert.deepEqual(restored, []);
+  assert.equal(document.querySelector('[data-testid^="document-history-legacy-row-"]'), null);
+});
+
+test('legacy inspection is cleared on a document change and its late result cannot expose buckets', async (t) => {
+  const inspection = deferred();
+  const { calls, click, render } = await mountPanel(t, {
+    documentId: 'managed-local-a',
+    isActive: true,
+    historyScope: { guestScopeId: 'device-local' },
+  }, {
+    async getDocumentHistoryStorageStatus() {
+      return { available: true, pendingCount: 0, protectedBytes: 0, confirmedCacheBytes: 0,
+        protectedFull: false, legacyUnscopedAvailable: true, errorCode: null };
+    },
+    async inspectLegacyDocumentHistory() { return inspection.promise; },
+  });
+  await click('[data-testid="document-history-legacy-review"]');
+  await click('[data-testid="document-history-legacy-consent-confirm"]');
+  assert.equal(calls.legacyInspect.length, 1);
+  await render({ documentId: 'managed-local-b' });
+  await act(async () => inspection.resolve({
+    status: 'ready', version: 1, inspectionDigest: 'late', authorizationDigest: 'late',
+    buckets: [{ bucketId: 'old-bucket', rowCount: 1, recoverableRowCount: 1 }],
+  }));
+  assert.equal(document.querySelector('[data-testid="document-history-legacy-buckets"]'), null);
+  assert.doesNotMatch(document.body.textContent, /old-bucket/);
+});
+
+test('an account change on the same local PDF clears recovery and rejects a late bucket selection', async (t) => {
+  const selection = deferred();
+  const { click, render } = await mountPanel(t, {
+    documentId: 'managed-local-a',
+    isActive: true,
+    user: { id: 'actor-a' },
+    historyScope: { guestScopeId: 'device-local' },
+  }, {
+    async getDocumentHistoryStorageStatus() {
+      return { available: true, pendingCount: 0, protectedBytes: 0, confirmedCacheBytes: 0,
+        protectedFull: false, legacyUnscopedAvailable: true, errorCode: null };
+    },
+    async inspectLegacyDocumentHistory() {
+      return {
+        status: 'ready', version: 1, inspectionDigest: 'digest-a', authorizationDigest: 'auth-a',
+        buckets: [{ bucketId: 'old-bucket', rowCount: 1, recoverableRowCount: 1 }],
+      };
+    },
+    async selectLegacyDocumentHistoryBucket() { return selection.promise; },
+  });
+  await click('[data-testid="document-history-legacy-review"]');
+  await click('[data-testid="document-history-legacy-consent-confirm"]');
+  await click('[data-testid="document-history-legacy-bucket-old-bucket"]');
+  await click('[data-testid="document-history-legacy-match-confirm-button"]');
+  await render({ user: { id: 'actor-b' } });
+  await act(async () => selection.resolve({
+    status: 'selected', version: 1, sourceBucketId: 'old-bucket', documentId: 'managed-local-a',
+    rows: [{ __legacyRecovery: true, __canRestore: true, client_event_id: 'late-row',
+      event_type: 'annotation_deleted', summary: 'Late account row', payload: { restoreAction: {} } }],
+  }));
+  assert.equal(document.querySelector('[data-testid="document-history-legacy-selected"]'), null);
+  assert.doesNotMatch(document.body.textContent, /Late account row|old-bucket/);
+  assert.ok(document.querySelector('[data-testid="document-history-legacy-review"]'),
+    'the new account sees only the payload-free starting notice');
 });
 
 test('pending storage status states its account-wide or device-wide scope', async (t) => {
