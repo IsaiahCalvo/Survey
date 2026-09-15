@@ -154,7 +154,39 @@ test('a mobile tap on a widget is not preventDefaulted into a pan', () => {
     containerSource.indexOf('const onTouchStart = (event) => {'),
   );
   assert.match(guard, /isLiveFormWidgetTarget\(nativeTarget\)/);
-  assert.match(containerSource, /const onTouchStart = \(event\) => \{\s*\n\s*if \(isNativeInteractionTarget\(event\.target\)\) return;/);
+  // The bail must happen before ANY preventDefault: preventing the touch
+  // sequence on a widget kills its focus/click/change chain outright.
+  const touchStartHead = containerSource.slice(
+    containerSource.indexOf('const onTouchStart = (event) => {'),
+    containerSource.indexOf('cancelPanInertia();',
+      containerSource.indexOf('const onTouchStart = (event) => {')),
+  );
+  assert.match(touchStartHead, /if \(isNativeInteractionTarget\(event\.target\)\) \{/);
+  assert.doesNotMatch(touchStartHead, /preventDefault/,
+    'a touch on a widget must reach the control, never be cancelled into a pan');
+});
+
+test('a drag that starts on a widget still pans the page on touch', () => {
+  // ASSERTION ADDED 2026-09-15 alongside a narrowing of the one above, which
+  // used to pin the exact line `if (isNativeInteractionTarget(...)) return;`.
+  // That shape was too strict AND too weak: it made a widget a dead patch you
+  // could not scroll off (touch-action is none on the scroller, so nothing
+  // moved at all), while saying nothing about the tap actually surviving.
+  // Reference behaviour (Drawboard PDF on a phone): a tap belongs to the
+  // control, a drag belongs to the page.
+  const touchStart = containerSource.slice(
+    containerSource.indexOf('const onTouchStart = (event) => {'),
+    containerSource.indexOf('const onTouchMove = (event) => {'),
+  );
+  assert.match(touchStart, /widgetTapCandidate = \{ startX: touch\.clientX, startY: touch\.clientY \}/);
+  const touchMove = containerSource.slice(
+    containerSource.indexOf('const onTouchMove = (event) => {'),
+    containerSource.indexOf('const onTouchEnd = (event) => {'),
+  );
+  // Under the slop it is still a tap and the control is left alone...
+  assert.match(touchMove, /travelled <= WIDGET_TAP_TO_PAN_SLOP_PX\) return;/);
+  // ...past it, the gesture becomes an ordinary page pan.
+  assert.match(touchMove, /widgetTapPromotedToPan = true;[\s\S]{0,700}schedulePan\(dx, dy\);/);
 });
 
 test('a pan click on a widget fills the field and selects nothing', () => {
