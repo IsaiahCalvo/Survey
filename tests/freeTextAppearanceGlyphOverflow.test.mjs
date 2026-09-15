@@ -23,10 +23,17 @@
 //                     glyph was cut on the left edge)
 //   callout label    /Rect [29.25 112.05 75.75 188.75] -> [... 82.25 ...]
 //
+// THE SECOND DEFECT (2026-09-14, round 9). Measuring the laid-out runs is not
+// enough while the measurement itself is made of the ADVANCE WIDTH and the
+// NOMINAL DESCENDER: an italic face's ink leans past its advance and real
+// tails run below the descender the font declares, so the box still clipped
+// glyphs that fit their frame perfectly well. Section 4 below carries those
+// cases and their measured cuts.
+//
 // THE CONTRACT. The appearance box is measured from the ACTUAL drawn text -
-// the laid-out runs, each measured in the font that draws it - so what
-// pdf.js, poppler and Quick Look paint is what the print paints. A box whose
-// text fits inside it is untouched: same /Rect, same /BBox, same stream.
+// the laid-out runs, each measured GLYPH BY GLYPH in the font that draws it -
+// so what pdf.js, poppler and Quick Look paint is what the print paints. A box
+// whose text fits inside it is untouched: same /Rect, same /BBox, same stream.
 //
 // Everything below drives the app's REAL writers.
 
@@ -163,6 +170,10 @@ const has = (command) => spawnSync('which', [command], { encoding: 'utf8' }).sta
 const inkStats = (png) => {
   if (!png) return null;
   let count = 0; let sumX = 0; let sumY = 0;
+  // The ink's own bounding box, in raster points. A /BBox is a rectangular
+  // CLIP, so when it cuts, it cuts an EDGE - which makes this box, not the
+  // pixel count, the direct proof that nothing was clipped.
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
   for (let y = 0; y < png.height; y += 1) {
     for (let x = 0; x < png.width; x += 1) {
       const index = (png.width * y + x) << 2;
@@ -170,9 +181,17 @@ const inkStats = (png) => {
       const channel = (offset) => png.data[index + offset] * alpha + 255 * (1 - alpha);
       if (255 - Math.min(channel(0), channel(1), channel(2)) < 40) continue;
       count += 1; sumX += x; sumY += y;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
   }
-  return count === 0 ? null : { count, centroid: { x: sumX / count / SCALE, y: sumY / count / SCALE } };
+  return count === 0 ? null : {
+    count,
+    centroid: { x: sumX / count / SCALE, y: sumY / count / SCALE },
+    box: [minX / SCALE, minY / SCALE, (maxX + 1) / SCALE, (maxY + 1) / SCALE],
+  };
 };
 
 const rasterPoppler = (bytes, label) => {
@@ -269,6 +288,48 @@ const assertPaintsWhatThePrintPaints = (label, lanes) => {
     assert.ok(
       centroid <= CENTROID_TOLERANCE_PT,
       `${label}/${lane}: ink centroid ${centroid.toFixed(3)}pt from the print's - a cut on one edge moves it`,
+    );
+  }
+};
+
+// A clip always insets an EDGE of the ink, so the appearance's ink box has to
+// hold the print's on all four sides. One raster pixel of slack absorbs the
+// antialiasing difference between operators inside an /AP form and the same
+// operators inlined in a page content stream; a clip costs whole points
+// (2.3pt off Courier's tails, 12pt off an oblique 'W').
+const EDGE_SLACK_PT = 1 / SCALE + 1e-9;
+// What "0% ink cut" means against a rasteriser: the two lanes differ only by
+// that same antialiasing, never by the 1.1% - 7.7% the clip used to cost.
+const ZERO_CUT_TOLERANCE = 0.002;
+
+const assertNothingClipped = (label, lanes) => {
+  assert.ok(Object.keys(lanes).length > 0, `${label}: at least one renderer lane must run`);
+  if (has('qlmanage')) {
+    assert.ok(lanes.quartz, `${label}: qlmanage is installed, so the Quartz lane must have rastered`);
+  }
+  for (const [lane, [annotated, printed]] of Object.entries(lanes)) {
+    assert.ok(printed, `${label}/${lane}: the flattened print must draw ink`);
+    assert.ok(annotated, `${label}/${lane}: the exported annotation must show ink`);
+    // How far the appearance's ink stops SHORT of the print's, per edge.
+    const edges = [
+      ['left', annotated.box[0] - printed.box[0]],
+      ['top', annotated.box[1] - printed.box[1]],
+      ['right', printed.box[2] - annotated.box[2]],
+      ['bottom', printed.box[3] - annotated.box[3]],
+    ];
+    for (const [edge, inset] of edges) {
+      assert.ok(
+        inset <= EDGE_SLACK_PT,
+        `${label}/${lane}: the appearance's ink stops ${inset.toFixed(3)}pt short of the print's on the `
+          + `${edge} edge - the /AP /BBox is clipping the glyph (print box `
+          + `${printed.box.map((value) => value.toFixed(2)).join(' ')}, appearance box `
+          + `${annotated.box.map((value) => value.toFixed(2)).join(' ')})`,
+      );
+    }
+    assert.ok(
+      printed.count - annotated.count <= printed.count * ZERO_CUT_TOLERANCE,
+      `${label}/${lane}: the appearance paints ${annotated.count} ink pixels against the print's `
+        + `${printed.count} (${(100 * (printed.count - annotated.count) / printed.count).toFixed(2)}% cut)`,
     );
   }
 };
@@ -398,6 +459,268 @@ test('the callout text part still fits its /Rect as a pure translation', async (
 });
 
 // ---------------------------------------------------------------------------
+// 4. Italic overhang and real descenders
+//
+// The same clip, from the two things a line's ADVANCE WIDTH and a font's
+// NOMINAL DESCENDER cannot describe:
+//
+//   - a slanted face's ink leans PAST its advance. Times-Italic's FontBBox
+//     reaches 1010/1000 em against a 833 'W' advance; Helvetica-Oblique's
+//     reaches 1116 against 944. Reachable from the Italic toggle, the
+//     formatItalic toolbar action and callout italic.
+//   - real tails run deeper than the nominal descender. Courier says
+//     Descender -157/1000 em; its FontBBox bottom is -250. Reachable from the
+//     font picker.
+//
+// Measured on this 420 x 320 page at 216 dpi, dark >= 40 (ink pixels,
+// print vs the round-8 export, and the edge the /BBox cut):
+//
+//   case                                lane      print   round 8      cut
+//   Times-Italic 'W' 46pt / 10pt box    poppler    3732      3639    2.49%  right
+//                                       pdf.js     3663      3576    2.38%  right
+//                                       Quartz     3322      3277    1.35%  right
+//   Helvetica-Oblique 'W' 90pt          Quartz    18507     17144    7.36%  right
+//   Courier New 'gjpqy' 70pt / 320x24   poppler   28254     26422    6.48%  bottom
+//                                       pdf.js    27996     25847    7.68%  bottom
+//                                       Quartz    28277     26449    6.46%  bottom
+//   Times New Roman 'gjpqy' 50pt        pdf.js    11376     11251    1.10%  bottom
+//   Times-BoldItalic 'W' 46pt           pdf.js     5300      5186    2.15%  right
+//
+// The last row is why a slanted standard-14 face gets more room than its own
+// FontBBox: a reader with no copy of the face substitutes a metric-compatible
+// one whose slant is its own, and pdf.js's Times-BoldItalic stand-in paints
+// 0.09 em past the AFM box.
+// ---------------------------------------------------------------------------
+const GLYPH_REACH_BOXES = {
+  // A. The two measured italic/oblique cases.
+  "Times-Italic 'W' at 46pt in a 10pt-wide box": freeText({
+    id: 'note-times-italic',
+    left: 60, top: 120, width: 10, height: 60, text: 'W', fontSize: 46,
+    fontFamily: 'Times New Roman', fontStyle: 'italic',
+  }),
+  "Helvetica-Oblique 'W' at 90pt": freeText({
+    id: 'note-helvetica-oblique',
+    left: 60, top: 100, width: 14, height: 110, text: 'W', fontSize: 90,
+    fontFamily: 'Helvetica', fontStyle: 'italic',
+  }),
+  // B. The two measured descender cases.
+  "Courier New 'gjpqy' at 70pt in a 320 x 24 box": freeText({
+    id: 'note-courier-tails',
+    left: 40, top: 120, width: 320, height: 24, text: 'gjpqy', fontSize: 70,
+    fontFamily: 'Courier New',
+  }),
+  "Times New Roman 'gjpqy' at 50pt": freeText({
+    id: 'note-times-tails',
+    left: 40, top: 120, width: 320, height: 24, text: 'gjpqy', fontSize: 50,
+    fontFamily: 'Times New Roman',
+  }),
+  // C. Bold-italic: both defects at once, and the face whose renderer
+  // substitute leans furthest past its own metrics.
+  "Times-BoldItalic 'W' at 46pt": freeText({
+    id: 'note-times-bold-italic',
+    left: 60, top: 120, width: 10, height: 60, text: 'W', fontSize: 46,
+    fontFamily: 'Times New Roman', fontStyle: 'italic', fontWeight: 'bold',
+  }),
+  'Helvetica-BoldOblique at 64pt': freeText({
+    id: 'note-helvetica-bold-oblique',
+    left: 60, top: 110, width: 12, height: 80, text: 'W', fontSize: 64,
+    fontStyle: 'italic', fontWeight: 'bold',
+  }),
+  "Courier-Oblique 'gjpqy' at 56pt - lean and tails together": freeText({
+    id: 'note-courier-oblique-tails',
+    left: 40, top: 120, width: 60, height: 24, text: 'gjpqy', fontSize: 56,
+    fontFamily: 'Courier New', fontStyle: 'italic',
+  }),
+  // D. The decoration spans drawFlattenedText paints on the same line.
+  'an italic span with underline and strikethrough': freeText({
+    id: 'note-italic-decorated',
+    left: 40, top: 110, width: 40, height: 40, text: 'Wgy', fontSize: 40,
+    fontFamily: 'Times New Roman', fontStyle: 'italic', underline: true, linethrough: true,
+  }),
+  // E. Alignment decides which way the overflow runs, so pin both.
+  'a right-aligned italic glyph - the overhang runs left': freeText({
+    id: 'note-italic-right',
+    left: 220, top: 120, width: 12, height: 60, text: 'W', fontSize: 46,
+    fontFamily: 'Times New Roman', fontStyle: 'italic', textAlign: 'right',
+  }),
+  'a centred italic glyph - the overhang runs both ways': freeText({
+    id: 'note-italic-centre',
+    left: 180, top: 120, width: 12, height: 60, text: 'W', fontSize: 46,
+    fontStyle: 'italic', textAlign: 'center',
+  }),
+};
+
+for (const [label, object] of Object.entries(GLYPH_REACH_BOXES)) {
+  test(`${label} is painted whole by the exported appearance`, async () => {
+    const { lanes } = await compareLanes(
+      String(object.id), { objects: [object] },
+    );
+    assertNothingClipped(label, lanes);
+    assertPaintsWhatThePrintPaints(label, lanes);
+  });
+
+  test(`${label} keeps a translation-only /BBox fit and a non-negative /RD`, async () => {
+    const { doc, dicts } = await annotDicts(await exportAnnotated({ objects: [object] }));
+    assert.equal(dicts.length, 1, `${label}: the note must reach the exported file`);
+    const form = appearanceForm(doc, dicts[0]);
+    assert.ok(form, `${label}: the note must carry an /AP /N form`);
+    const rect = numbers(doc, dicts[0].get(PDFName.of('Rect')));
+    const mapped = transformedBBox(doc, form);
+    for (let index = 0; index < 4; index += 1) {
+      assert.ok(
+        Math.abs(rect[index] - mapped[index]) < 0.01,
+        `${label}: /Rect[${index}] ${rect[index]} vs transformed /BBox ${mapped[index]} - the grown box must still fit as a pure translation`,
+      );
+    }
+    const rd = numbers(doc, dicts[0].get(PDFName.of('RD')));
+    assert.ok(Array.isArray(rd) && rd.length === 4, `${label}: /RD must be written`);
+    assert.ok(rd.every((value) => value >= 0), `${label}: /RD insets must never go negative`);
+    const authored = [
+      object.left,
+      PAGE.height - (object.top + object.height),
+      object.left + object.width,
+      PAGE.height - object.top,
+    ];
+    baseRectFromRD(rect, rd).forEach((value, index) => {
+      assert.ok(
+        Math.abs(value - authored[index]) < 0.01,
+        `${label}: /Rect less /RD gives ${value} for edge ${index}, not the authored ${authored[index]}`,
+      );
+    });
+  });
+}
+
+// Three more shapes of the same two defects, each measured cut on round 8
+// (print vs export, poppler / pdf.js / Quartz). A rotated box carries a
+// /Matrix rather than a pure translation, and a bordered one has a stroke in
+// its padding, so these are judged on the paint alone.
+//
+//   a bottom-aligned Courier line, tails below the box   5.36% / 3.89% / 5.36%
+//   a rotated italic glyph                               1.96% / 0.00% / 1.50%
+//   a bordered italic box                                1.27% / 1.13% / 0.62%
+const GLYPH_REACH_PAINT_ONLY = {
+  'a bottom-aligned Courier line whose tails fall below the box': freeText({
+    id: 'note-courier-valign-bottom',
+    left: 40, top: 100, width: 300, height: 30, text: 'gjpqy', fontSize: 48,
+    fontFamily: 'Courier New', verticalAlign: 'bottom',
+  }),
+  'a rotated italic glyph': freeText({
+    id: 'note-italic-rotated',
+    left: 120, top: 110, width: 16, height: 70, text: 'W', fontSize: 50,
+    fontFamily: 'Times New Roman', fontStyle: 'italic', angle: 30,
+  }),
+  'a bordered italic box': freeText({
+    id: 'note-italic-bordered',
+    left: 60, top: 120, width: 14, height: 60, text: 'W', fontSize: 46,
+    fontFamily: 'Times New Roman', fontStyle: 'italic',
+    stroke: '#c42747', strokeWidth: 3, backgroundColor: '#ffffff',
+  }),
+};
+
+for (const [label, object] of Object.entries(GLYPH_REACH_PAINT_ONLY)) {
+  test(`${label} is painted whole by the exported appearance`, async () => {
+    const { lanes } = await compareLanes(String(object.id), { objects: [object] });
+    assertNothingClipped(label, lanes);
+    assertPaintsWhatThePrintPaints(label, lanes);
+  });
+}
+
+// The lean has a direction: a left-aligned slanted glyph grows the box to the
+// RIGHT of the advance, a right-aligned one to the LEFT of the box.
+test('an italic overhang grows the box on the side the slant runs to', async () => {
+  const leftAligned = GLYPH_REACH_BOXES["Times-Italic 'W' at 46pt in a 10pt-wide box"];
+  const { doc, dicts } = await annotDicts(await exportAnnotated({ objects: [leftAligned] }));
+  const rect = numbers(doc, dicts[0].get(PDFName.of('Rect')));
+  // Where the advance alone stopped - the round-8 /Rect right edge, to the
+  // hundredth: the pen starts a 6pt padding in, the 'W' advances 833/1000 em,
+  // and the appearance box added its quarter-point.
+  const advanceEdge = leftAligned.left + 6 + (833 / 1000) * 46 + 0.25;
+  assert.ok(
+    Math.abs(advanceEdge - 104.568) < 0.01,
+    `the advance-only edge must be the round-8 number 104.568 (computed ${advanceEdge})`,
+  );
+  assert.ok(
+    rect[2] > advanceEdge + 1,
+    `the appearance box must reach past the advance-only edge ${advanceEdge.toFixed(3)} (got ${rect[2]})`,
+  );
+
+  const rightAligned = GLYPH_REACH_BOXES['a right-aligned italic glyph - the overhang runs left'];
+  const right = await annotDicts(await exportAnnotated({ objects: [rightAligned] }));
+  const rightRd = numbers(right.doc, right.dicts[0].get(PDFName.of('RD')));
+  assert.ok(
+    rightRd[0] > rightRd[2],
+    `a right-aligned overflow must grow the LEFT inset past the right one (got /RD ${JSON.stringify(rightRd)})`,
+  );
+});
+
+// The real tails have to clear the nominal descender by the amount the AFM
+// FontBBox says they do - 0.093 em for Courier, which is the 2.3pt that was
+// being shaved off 'gjpqy' at 70pt.
+test("Courier's appearance box clears the nominal descender by the FontBBox depth", async () => {
+  const object = GLYPH_REACH_BOXES["Courier New 'gjpqy' at 70pt in a 320 x 24 box"];
+  const { doc, dicts } = await annotDicts(await exportAnnotated({ objects: [object] }));
+  const rect = numbers(doc, dicts[0].get(PDFName.of('Rect')));
+  // drawFlattenedText's baseline for a single line: top + padding + fontSize.
+  const baselineAppY = object.top + 6 + object.fontSize;
+  const nominalBottomAppY = baselineAppY + (157 / 1000) * object.fontSize;
+  const realBottomAppY = baselineAppY + (250 / 1000) * object.fontSize;
+  // PDF space is y-up, so the box's bottom edge is the LOWEST /Rect number.
+  const boxBottomAppY = PAGE.height - rect[1];
+  assert.ok(
+    boxBottomAppY >= realBottomAppY,
+    `the box bottom ${boxBottomAppY.toFixed(2)} must clear the FontBBox tails at ${realBottomAppY.toFixed(2)}`,
+  );
+  assert.ok(
+    boxBottomAppY > nominalBottomAppY + 6,
+    `the box bottom ${boxBottomAppY.toFixed(2)} must sit well below the nominal descender at ${nominalBottomAppY.toFixed(2)}`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 5. The slant on a callout's label - italic is a callout style too
+// ---------------------------------------------------------------------------
+const ITALIC_CALLOUT = {
+  id: 'callout-italic',
+  pageNumber: 1,
+  arrowTip: { x: 0.74, y: 0.26 },
+  knee: { x: 0.54, y: 0.5 },
+  textBoxPosition: { x: 0.10, y: 0.45 },
+  textBoxWidth: 0.04,
+  textBoxHeight: 0.18,
+  text: 'W',
+  style: {
+    borderColor: '#c42747',
+    fontColor: '#1e293b',
+    backgroundColor: '#ffffff',
+    fontSize: 44,
+    lineThickness: 2,
+    italic: true,
+  },
+};
+
+test('an italic callout label is painted whole by the exported appearance', async () => {
+  const { lanes } = await compareLanes('callout-italic', { callouts: [ITALIC_CALLOUT] });
+  assertNothingClipped('italic callout label', lanes);
+  assertPaintsWhatThePrintPaints('italic callout label', lanes);
+});
+
+test('the italic callout text part still fits its /Rect as a pure translation', async () => {
+  const { doc, dicts } = await annotDicts(await exportAnnotated({ callouts: [ITALIC_CALLOUT] }));
+  const texts = dicts.filter((dict) => String(dict.get(PDFName.of('Subtype'))) === '/FreeText');
+  assert.equal(texts.length, 1, 'exactly one callout part is the /FreeText label');
+  const form = appearanceForm(doc, texts[0]);
+  assert.ok(form, 'the italic callout label must carry an /AP /N form');
+  const rect = numbers(doc, texts[0].get(PDFName.of('Rect')));
+  const mapped = transformedBBox(doc, form);
+  for (let index = 0; index < 4; index += 1) {
+    assert.ok(
+      Math.abs(rect[index] - mapped[index]) < 0.01,
+      `italic callout label: /Rect[${index}] ${rect[index]} vs transformed /BBox ${mapped[index]}`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
 // The other half of the contract: a box whose text fits does not move
 // ---------------------------------------------------------------------------
 const FITTING_BOXES = {
@@ -410,6 +733,18 @@ const FITTING_BOXES = {
   'a centred CJK glyph inside the historic pad': freeText({
     id: 'note-centred',
     left: 180, top: 200, width: 16, height: 44, text: CJK_IRON, fontSize: 26, textAlign: 'center',
+  }),
+  // The two faces whose measurement changed. An ordinary italic note still
+  // leans, and an ordinary Courier note still has its real tails - but both
+  // sit inside a roomy box, so both must come out at the historic numbers to
+  // 1e-9. This is the guard that says the fix costs nothing on normal text.
+  'an ordinary italic note': freeText({
+    id: 'note-italic-fits',
+    left: 40, top: 40, width: 260, height: 60, text: 'Bay 3 check', fontSize: 14, fontStyle: 'italic',
+  }),
+  'an ordinary Courier note': freeText({
+    id: 'note-courier-fits',
+    left: 40, top: 40, width: 260, height: 60, text: 'Bay 3 check', fontSize: 14, fontFamily: 'Courier New',
   }),
 };
 
@@ -465,7 +800,18 @@ const reimport = async (bytes) => {
   }
 };
 
-for (const [label, object] of Object.entries(OVERFLOW_BOXES)) {
+for (const [label, object] of Object.entries({
+  ...OVERFLOW_BOXES,
+  // The slant allowance grows the box by up to 0.3 em on each side, which is
+  // the most an ordinary note's /Rect ever moves - so it is the case most
+  // likely to leak into the geometry the app reads back.
+  "Times-Italic 'W' at 46pt in a 10pt-wide box":
+    GLYPH_REACH_BOXES["Times-Italic 'W' at 46pt in a 10pt-wide box"],
+  'a right-aligned italic glyph - the overhang runs left':
+    GLYPH_REACH_BOXES['a right-aligned italic glyph - the overhang runs left'],
+  "Courier New 'gjpqy' at 70pt in a 320 x 24 box":
+    GLYPH_REACH_BOXES["Courier New 'gjpqy' at 70pt in a 320 x 24 box"],
+})) {
   test(`${label} re-imports at the box the user drew, not the grown one`, async (t) => {
     const imported = await reimport(await exportAnnotated({ objects: [object] }));
     if (!imported) return t.skip('pdfjs-dist is not installed in this checkout');

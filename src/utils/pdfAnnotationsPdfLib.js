@@ -5248,6 +5248,180 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
 };
 
 /**
+ * The face pdf-lib embedded behind a PDFFont: a fontkit `Font` for anything we
+ * embedded from bytes (every Unicode fallback), or the AFM metrics record for
+ * one of the standard 14. Null when pdf-lib's internals are not the shape we
+ * expect, which sends every caller back to its em-based estimate.
+ */
+const embeddedFontFace = (font) => {
+  try {
+    const face = font?.embedder?.font;
+    return face && typeof face === 'object' ? face : null;
+  } catch {
+    return null;
+  }
+};
+
+// Every AFM metric pdf-lib carries for the standard 14 - widths, FontBBox,
+// ascender, descender - is in 1000ths of an em.
+const AFM_UNITS_PER_EM = 1000;
+
+/**
+ * A safety margin, in points, on every side of the measured glyph box.
+ *
+ * Two things the measurement below cannot see live in this number. A FontBBox
+ * bounds the face's own OUTLINES, but a reader that has no copy of a standard
+ * 14 face substitutes a metric-compatible one whose tails can run a hair
+ * deeper (pdf.js does exactly this, and Times New Roman 'gjpqy' at 50pt landed
+ * ~0.35pt below the AFM bottom there). And a /BBox that ends exactly on the
+ * ink clips the antialiased fringe the rasteriser paints just outside it. Both
+ * are fractions of a point, so a flat half-point plus a hair of the em covers
+ * them without ever pushing the box out past the padding an ordinary text box
+ * already carries (fontSize * 0.35 + 1).
+ */
+const glyphInkSafetyPad = (fontSize) => Math.max(0.5, fontSize * 0.02);
+
+/**
+ * How far the ink of one laid-out run really reaches, in points, measured from
+ * the run's pen origin (x) and its baseline (y):
+ * `{ minX, maxX, ascent, descent }`, with `minX <= 0`, `maxX >= runWidth` and
+ * ascent/descent positive distances above/below the baseline. Null when the
+ * face cannot be measured, which leaves the caller on its em-based estimate.
+ *
+ * 2026-09-14 (italic overhang / descender undershoot): the caller used to take
+ * a line's horizontal reach from the ADVANCE width and its vertical reach from
+ * the font's NOMINAL ascender/descender. Both under-measure real glyphs, and
+ * an /AP /BBox is a CLIP, so every renderer sliced the difference off while the
+ * flattened print - which has no such box - drew the whole glyph:
+ *
+ *   - an oblique face's ink leans PAST its advance. Times-Italic's FontBBox
+ *     reaches 1010/1000 em against a 833 'W' advance, so a 46pt 'W' in a 10pt
+ *     box lost 2.5% of its ink off the slanted side; Helvetica-Oblique (1116
+ *     against 944) lost 7.4% at 90pt - 12pt of the letter.
+ *   - the nominal descender is shallower than the real tails. Courier says
+ *     Descender -157/1000 em while its FontBBox bottom is -250, and 'gjpqy' at
+ *     70pt in a 320x24 box came out shaved flat 2.3pt above the tails (6.5-7.7%
+ *     of the ink).
+ *
+ * Two sources, in order of fidelity:
+ *
+ *   1. A fontkit-embedded face carries real outlines, so each glyph's own bbox
+ *      is walked along the run at the positions pdf-lib itself lays out -
+ *      exact, italic overhang included, and never wider than the glyphs are.
+ *   2. The standard 14 have no outlines here, only AFM metrics. Their FontBBox
+ *      is the union of every glyph's box, so it BOUNDS the ink: no glyph paints
+ *      left of its pen + llx, above ury, below lly, or right of its pen + urx.
+ *      The last glyph is the rightmost reach, so the bound is applied there.
+ *      That is the tightest bound the AFM data allows - it cannot say WHICH
+ *      glyph reaches urx, so a narrow last glyph gets a generous allowance -
+ *      and the overhang it describes is real: Courier's box reaches 715/1000
+ *      em against a 600 advance, so even its upright 'm' and 'W' run past
+ *      their own advance. A bigger box never clips; a smaller one does.
+ *   3. If a face offers neither (it should not happen), an italic/oblique one
+ *      still leans past its advance, so fall back to the documented margin -
+ *      tan(ItalicAngle) x the em, floored at 0.3 x fontSize on the overhang
+ *      side - rather than clipping at the advance.
+ */
+const glyphRunInkExtents = (font, text, fontSize, runWidth) => {
+  const source = String(text ?? '');
+  if (!source || !(fontSize > 0)) return null;
+  const width = Number.isFinite(runWidth) && runWidth > 0 ? runWidth : 0;
+  const face = embeddedFontFace(font);
+  if (!face) return null;
+
+  // 1. Real outlines.
+  const unitsPerEm = Number(face.unitsPerEm);
+  if (unitsPerEm > 0 && typeof face.layout === 'function') {
+    let laid = null;
+    try { laid = face.layout(source); } catch { laid = null; }
+    const glyphs = Array.isArray(laid?.glyphs) ? laid.glyphs : [];
+    if (glyphs.length) {
+      const positions = Array.isArray(laid?.positions) ? laid.positions : [];
+      const scale = fontSize / unitsPerEm;
+      let pen = 0;
+      let minX = 0;
+      let maxX = 0;
+      let ascent = 0;
+      let descent = 0;
+      let measured = false;
+      glyphs.forEach((glyph, index) => {
+        const position = positions[index] || {};
+        const xOffset = Number(position.xOffset) || 0;
+        const yOffset = Number(position.yOffset) || 0;
+        let box = null;
+        // A colour/bitmap glyph (emoji) can refuse to report a path box; the
+        // face-wide box still bounds it.
+        try { box = glyph?.bbox && Number.isFinite(glyph.bbox.minX) ? glyph.bbox : face.bbox; } catch { box = face.bbox; }
+        if (box && Number.isFinite(box.minX) && Number.isFinite(box.maxX)
+          && Number.isFinite(box.minY) && Number.isFinite(box.maxY)) {
+          minX = Math.min(minX, (pen + xOffset + box.minX) * scale);
+          maxX = Math.max(maxX, (pen + xOffset + box.maxX) * scale);
+          ascent = Math.max(ascent, (yOffset + box.maxY) * scale);
+          descent = Math.max(descent, -(yOffset + box.minY) * scale);
+          measured = true;
+        }
+        const advance = Number(position.xAdvance);
+        pen += Number.isFinite(advance) ? advance : (Number(glyph?.advanceWidth) || 0);
+      });
+      if (measured) {
+        return {
+          minX: Math.min(0, minX),
+          maxX: Math.max(width, pen * scale, maxX),
+          ascent: Math.max(0, ascent),
+          descent: Math.max(0, descent),
+        };
+      }
+    }
+  }
+
+  // 2. AFM metrics.
+  const scale = fontSize / AFM_UNITS_PER_EM;
+  const fontBBox = Array.isArray(face.FontBBox) ? face.FontBBox.map(Number) : null;
+  let lastAdvance = 0;
+  const characters = [...source];
+  if (characters.length) {
+    try { lastAdvance = font.widthOfTextAtSize(characters[characters.length - 1], fontSize); } catch { lastAdvance = 0; }
+  }
+  if (!Number.isFinite(lastAdvance) || lastAdvance < 0) lastAdvance = 0;
+  if (fontBBox && fontBBox.length === 4 && fontBBox.every(Number.isFinite)) {
+    const [llx, lly, urx, ury] = fontBBox;
+    const ascent = Math.max(0, ury * scale);
+    const descent = Math.max(0, -lly * scale);
+    // A slanted standard-14 face needs more room than its own FontBBox says,
+    // because a reader that has no copy of it substitutes a metric-compatible
+    // one whose slant is its own: pdf.js's Times-BoldItalic stand-in paints
+    // 0.09 em PAST the AFM box (a 46pt 'W' lost 2.2% of its ink to the clip
+    // even with the box applied). So the overhang on a slanted face is floored
+    // at the geometric lean - tan(ItalicAngle) x the ascent, the distance the
+    // top of a glyph travels sideways - and at the documented 0.3 em margin,
+    // which is what this code falls back to when no metric can be read at all.
+    // Upright faces get no such floor, so an ordinary note is untouched.
+    const italicAngle = Number(face.ItalicAngle);
+    const lean = Number.isFinite(italicAngle) && italicAngle !== 0
+      ? Math.abs(Math.tan((italicAngle * Math.PI) / 180))
+      : 0;
+    const slantPad = lean > 0 ? Math.max(lean * ascent, fontSize * 0.3) : 0;
+    return {
+      minX: Math.min(0, llx * scale, -slantPad),
+      // The rightmost ink on the line is the LAST glyph's, painted from a pen
+      // that sits one advance back from the end of the run.
+      maxX: Math.max(width, width - lastAdvance + urx * scale, width + slantPad),
+      ascent,
+      descent,
+    };
+  }
+
+  // 3. No box at all: keep an italic face's lean out of the clip.
+  const italicAngle = Number(face.ItalicAngle);
+  if (Number.isFinite(italicAngle) && italicAngle !== 0) {
+    const lean = Math.abs(Math.tan((italicAngle * Math.PI) / 180));
+    const overhang = Math.max(fontSize * 0.3, lean * fontSize);
+    return { minX: -overhang, maxX: width + overhang, ascent: 0, descent: 0 };
+  }
+  return null;
+};
+
+/**
  * The app-space (y-down) box the GLYPHS drawFlattenedText paints actually
  * occupy, measured run by run in the run's own font, before any `angle` tilt.
  * Null when there is nothing to measure (no fonts, no text).
@@ -5281,14 +5455,21 @@ const flattenedTextInkBounds = (obj, fonts) => {
       maxY: Math.max(box.maxY, maxY),
     } : { minX, minY, maxX, maxY };
   };
+  const safetyPad = glyphInkSafetyPad(fontSize);
   for (const line of layout.lines) {
     if (!line.runs.length && !line.text) continue;
     // Vertical reach from the FONTS that draw the line: a CJK or emoji
     // fallback rises and drops much further from the baseline than Helvetica.
     // `heightAtSize(size, { descender: false })` is the ascent; the difference
-    // from the full height is the descent.
+    // from the full height is the descent. That pair is the NOMINAL reach and
+    // is kept only as a floor - real tails run deeper than it (Courier's by
+    // 0.09 em) and a slanted face's ink runs past its advance, so every run is
+    // also measured glyph by glyph. See glyphRunInkExtents.
     let ascent = 0;
     let descent = 0;
+    let inkMinX = line.textX;
+    let inkMaxX = line.textX + line.lineWidth;
+    let runAdvance = 0;
     for (const run of line.runs) {
       try {
         const above = run.font.heightAtSize(fontSize, { descender: false });
@@ -5296,14 +5477,26 @@ const flattenedTextInkBounds = (obj, fonts) => {
         if (Number.isFinite(above)) ascent = Math.max(ascent, above);
         if (Number.isFinite(full) && Number.isFinite(above)) descent = Math.max(descent, full - above);
       } catch { /* fall back to the em-based estimate below */ }
+      // The same per-run advance drawFlattenedText steps the pen by, so a run
+      // starts here exactly where it is painted.
+      let runWidth = 0;
+      try { runWidth = widthOfTextRunsAtSize([run], fontSize); } catch { runWidth = 0; }
+      const extents = glyphRunInkExtents(run.font, run.text, fontSize, runWidth);
+      if (extents) {
+        ascent = Math.max(ascent, extents.ascent);
+        descent = Math.max(descent, extents.descent);
+        inkMinX = Math.min(inkMinX, line.textX + runAdvance + extents.minX);
+        inkMaxX = Math.max(inkMaxX, line.textX + runAdvance + extents.maxX);
+      }
+      runAdvance += Number.isFinite(runWidth) ? runWidth : 0;
     }
     if (!(ascent > 0)) ascent = fontSize;
     if (!(descent > 0)) descent = fontSize * 0.25;
     grow(
-      line.textX,
-      line.appBaseline - ascent,
-      line.textX + line.lineWidth,
-      line.appBaseline + descent,
+      inkMinX - safetyPad,
+      line.appBaseline - ascent - safetyPad,
+      inkMaxX + safetyPad,
+      line.appBaseline + descent + safetyPad,
     );
     if (!line.text) continue;
     // The underline / strikethrough drawFlattenedText paints on the same span.
