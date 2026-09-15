@@ -38,6 +38,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
+import { createPanMomentumRunner, createPanVelocityTracker } from '../utils/panMomentum';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
 import {
@@ -1009,7 +1010,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const panPointerRef = useRef(null);
   const panDeltaRef = useRef({ x: 0, y: 0 });
   const panRafRef = useRef(0);
-  const panInertiaRafRef = useRef(0);
+  // Shared flick physics (src/utils/panMomentum.js) drives BOTH the mobile
+  // touch pan and the desktop mouse / space-drag pan, so the two surfaces can
+  // never drift into two different feels.
+  const panMomentumRef = useRef(null);
+  const panVelocityRef = useRef(null);
+  if (!panVelocityRef.current) panVelocityRef.current = createPanVelocityTracker();
+  const panMomentumHooksRef = useRef({ clamp: null, restore: null, mark: null });
+  const panCoastOriginRef = useRef({ left: 0, top: 0 });
   const mobileTouchRef = useRef(null);
   const suppressMobileTouchUntilRef = useRef(0);
   const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
@@ -1698,63 +1706,71 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
   }, [clampHorizontalScrollForPage]);
 
-  const cancelPanInertia = useCallback((endInteraction = true) => {
-    if (panInertiaRafRef.current) cancelAnimationFrame(panInertiaRafRef.current);
-    panInertiaRafRef.current = 0;
-    if (endInteraction) setPanInteraction(false);
+  const restorePanInteraction = useCallback(() => {
+    setPanInteraction(spacePanRef.current || Boolean(panPointerRef.current));
   }, [setPanInteraction]);
 
-  const startMobilePanInertia = useCallback((fingerVelocityX, fingerVelocityY) => {
-    cancelPanInertia(false);
-    let vx = Number(fingerVelocityX) || 0;
-    let vy = Number(fingerVelocityY) || 0;
-    if (Math.hypot(vx, vy) < 0.08) {
-      setPanInteraction(false);
-      return false;
-    }
-    // Finger velocity is px/ms; scroll travels in the opposite direction.
-    // Exponential decay preserves direction (including diagonals) and feels
-    // consistent across 60/120 Hz devices.
-    let last = performance.now();
-    const coastStartLeft = scrollerRef.current?.scrollLeft || 0;
-    const coastStartTop = scrollerRef.current?.scrollTop || 0;
-    if (nativePanCoastMarkerRef.current) {
-      nativePanCoastMarkerRef.current.setAttribute('aria-label', 'PDF pan coast distance 0 0');
-    }
-    setPanInteraction(true);
-    const tick = (now) => {
-      const el = scrollerRef.current;
-      if (!el) { cancelPanInertia(); return; }
-      const dt = Math.min(32, Math.max(1, now - last));
-      last = now;
-      const beforeLeft = el.scrollLeft;
-      const beforeTop = el.scrollTop;
-      el.scrollLeft -= vx * dt;
-      el.scrollTop -= vy * dt;
-      clampHorizontalScrollForPage();
-      if (nativePanCoastMarkerRef.current) {
-        nativePanCoastMarkerRef.current.setAttribute(
-          'aria-label',
-          `PDF pan coast distance ${Math.round(Math.abs(el.scrollLeft - coastStartLeft))} ${Math.round(Math.abs(el.scrollTop - coastStartTop))}`,
-        );
-      }
-      if (Math.abs(el.scrollLeft - beforeLeft) < 0.1) vx = 0;
-      if (Math.abs(el.scrollTop - beforeTop) < 0.1) vy = 0;
-      const decay = Math.exp(-dt / 325);
-      vx *= decay;
-      vy *= decay;
-      if (Math.hypot(vx, vy) < 0.015) {
-        panInertiaRafRef.current = 0;
-        setPanInteraction(false);
-        return;
-      }
-      panInertiaRafRef.current = requestAnimationFrame(tick);
-    };
-    panInertiaRafRef.current = requestAnimationFrame(tick);
-    return true;
-  }, [cancelPanInertia, clampHorizontalScrollForPage, setPanInteraction]);
+  const markPanCoast = useCallback((left, top) => {
+    const marker = nativePanCoastMarkerRef.current;
+    if (!marker) return;
+    const origin = panCoastOriginRef.current;
+    marker.setAttribute(
+      'aria-label',
+      `PDF pan coast distance ${Math.round(Math.abs(left - origin.left))} ${Math.round(Math.abs(top - origin.top))}`,
+    );
+  }, []);
 
-  const finishPan = useCallback(() => {
+  // Kept fresh during render (same pattern as cb/scaleRef above) so the single
+  // long-lived momentum runner never closes over a stale callback identity.
+  panMomentumHooksRef.current.clamp = clampHorizontalScrollForPage;
+  panMomentumHooksRef.current.restore = restorePanInteraction;
+  panMomentumHooksRef.current.mark = markPanCoast;
+
+  const getPanMomentumRunner = useCallback(() => {
+    if (panMomentumRef.current) return panMomentumRef.current;
+    panMomentumRef.current = createPanMomentumRunner({
+      getScroll: () => {
+        const el = scrollerRef.current;
+        return { left: el?.scrollLeft || 0, top: el?.scrollTop || 0 };
+      },
+      scrollBy: (dx, dy) => {
+        const el = scrollerRef.current;
+        if (!el) return;
+        el.scrollLeft += dx;
+        el.scrollTop += dy;
+        panMomentumHooksRef.current.clamp?.();
+      },
+      onFrame: ({ left, top }) => { panMomentumHooksRef.current.mark?.(left, top); },
+      onSettle: () => { panMomentumHooksRef.current.restore?.(); },
+    });
+    return panMomentumRef.current;
+  }, []);
+
+  const cancelPanInertia = useCallback((endInteraction = true) => {
+    const runner = panMomentumRef.current;
+    const wasRunning = Boolean(runner?.isRunning());
+    runner?.cancel();
+    if (endInteraction && !wasRunning) setPanInteraction(false);
+  }, [setPanInteraction]);
+
+  // Release a pan drag while still moving and the page keeps gliding, decaying
+  // to rest on the same curve mobile has always used. Bounds are respected by
+  // the runner: a coast into an edge stops instead of banking velocity.
+  const startPanInertia = useCallback((fingerVelocityX, fingerVelocityY) => {
+    const el = scrollerRef.current;
+    panCoastOriginRef.current = { left: el?.scrollLeft || 0, top: el?.scrollTop || 0 };
+    markPanCoast(panCoastOriginRef.current.left, panCoastOriginRef.current.top);
+    const started = getPanMomentumRunner().start(fingerVelocityX, fingerVelocityY);
+    if (started) setPanInteraction(true);
+    else restorePanInteraction();
+    return started;
+  }, [getPanMomentumRunner, markPanCoast, restorePanInteraction, setPanInteraction]);
+
+  // `glide: true` is passed only by a real pointerup that ended a drag. Every
+  // other caller (space release, tool change, pointercancel, unmount) stops
+  // dead, because those are not a hand letting go of a moving page.
+  const finishPan = useCallback((options) => {
+    const glide = options?.glide === true;
     flushPan();
     const pointer = panPointerRef.current;
     const el = scrollerRef.current;
@@ -1763,8 +1779,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try { el.releasePointerCapture(pointer.id); } catch { /* already released */ }
     }
     updatePanPresentation();
+    const release = glide && pointer ? panVelocityRef.current.release(performance.now()) : null;
+    panVelocityRef.current.reset();
+    if (release && startPanInertia(release.vx, release.vy)) return;
     setPanInteraction(spacePanRef.current);
-  }, [flushPan, setPanInteraction, updatePanPresentation]);
+  }, [flushPan, setPanInteraction, startPanInertia, updatePanPresentation]);
 
   useEffect(() => {
     const activateSpacePan = (event) => {
@@ -1822,11 +1841,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')) return;
       event.preventDefault();
       event.stopPropagation();
+      // A new grab always beats an in-flight glide.
+      cancelPanInertia();
       panPointerRef.current = {
         id: event.pointerId,
         x: event.clientX,
         y: event.clientY,
       };
+      panVelocityRef.current.start(event.clientX, event.clientY, performance.now());
       try { el.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
       setPanInteraction(true);
       updatePanPresentation();
@@ -1840,30 +1862,45 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const dy = event.clientY - pointer.y;
       pointer.x = event.clientX;
       pointer.y = event.clientY;
+      panVelocityRef.current.move(event.clientX, event.clientY, performance.now());
       schedulePan(dx, dy);
     };
-    const onPointerEnd = (event) => {
+    const onPointerUp = (event) => {
+      const pointer = panPointerRef.current;
+      if (!pointer || pointer.id !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      finishPan({ glide: true });
+    };
+    const onPointerAbort = (event) => {
       const pointer = panPointerRef.current;
       if (!pointer || pointer.id !== event.pointerId) return;
       event.preventDefault();
       event.stopPropagation();
       finishPan();
     };
+    // Any wheel/trackpad scroll takes the page back: the browser's own
+    // scrolling must never fight a coast. Passive, so native scrolling and the
+    // ctrl+wheel zoom path are both left exactly as they were.
+    const onWheelStopGlide = () => { cancelPanInertia(); };
 
     el.addEventListener('pointerdown', onPointerDown, { capture: true, passive: false });
     el.addEventListener('pointermove', onPointerMove, { capture: true, passive: false });
-    el.addEventListener('pointerup', onPointerEnd, { capture: true, passive: false });
-    el.addEventListener('pointercancel', onPointerEnd, { capture: true, passive: false });
-    el.addEventListener('lostpointercapture', onPointerEnd, { capture: true, passive: false });
+    el.addEventListener('pointerup', onPointerUp, { capture: true, passive: false });
+    el.addEventListener('pointercancel', onPointerAbort, { capture: true, passive: false });
+    el.addEventListener('lostpointercapture', onPointerAbort, { capture: true, passive: false });
+    el.addEventListener('wheel', onWheelStopGlide, { capture: true, passive: true });
     return () => {
       el.removeEventListener('pointerdown', onPointerDown, true);
       el.removeEventListener('pointermove', onPointerMove, true);
-      el.removeEventListener('pointerup', onPointerEnd, true);
-      el.removeEventListener('pointercancel', onPointerEnd, true);
-      el.removeEventListener('lostpointercapture', onPointerEnd, true);
+      el.removeEventListener('pointerup', onPointerUp, true);
+      el.removeEventListener('pointercancel', onPointerAbort, true);
+      el.removeEventListener('lostpointercapture', onPointerAbort, true);
+      el.removeEventListener('wheel', onWheelStopGlide, true);
+      cancelPanInertia();
       finishPan();
     };
-  }, [finishPan, schedulePan, setPanInteraction, updatePanPresentation]);
+  }, [cancelPanInertia, finishPan, schedulePan, setPanInteraction, updatePanPresentation]);
 
   useEffect(() => {
     if (interactionMode !== 'Pan' && !spacePanRef.current && panPointerRef.current) {
@@ -1949,18 +1986,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (event.touches.length === 1 && interactionModeRef.current === 'Pan') {
         event.stopPropagation();
         const touch = event.touches[0];
-        mobileTouchRef.current = {
-          mode: 'pan',
-          startX: touch.clientX,
-          startY: touch.clientY,
-          startTime: performance.now(),
-          lastX: touch.clientX,
-          lastY: touch.clientY,
-          lastTime: performance.now(),
-          velocityX: 0,
-          velocityY: 0,
-          samples: [{ x: touch.clientX, y: touch.clientY, at: performance.now() }],
-        };
+        // Velocity sampling lives in the shared flick tracker so touch and
+        // mouse panning release with identical numbers.
+        panVelocityRef.current.start(touch.clientX, touch.clientY, performance.now());
+        mobileTouchRef.current = { mode: 'pan' };
         setPanInteraction(true);
         setMobileTouchMode('pan');
         return;
@@ -2046,18 +2075,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (touchState?.mode === 'pan' && event.touches.length === 1) {
         event.stopPropagation();
         const touch = event.touches[0];
-        const now = performance.now();
-        const dx = touch.clientX - touchState.lastX;
-        const dy = touch.clientY - touchState.lastY;
-        const dt = Math.max(1, now - touchState.lastTime);
+        const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, performance.now());
         schedulePan(dx, dy);
-        touchState.velocityX = touchState.velocityX * 0.7 + (dx / dt) * 0.3;
-        touchState.velocityY = touchState.velocityY * 0.7 + (dy / dt) * 0.3;
-        touchState.samples.push({ x: touch.clientX, y: touch.clientY, at: now });
-        touchState.samples = touchState.samples.filter((sample) => now - sample.at <= 140);
-        touchState.lastX = touch.clientX;
-        touchState.lastY = touch.clientY;
-        touchState.lastTime = now;
         return;
       }
       // Tool gestures continue to the native Fabric/SVG handlers.
@@ -2077,6 +2096,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
       event.stopPropagation();
       if (touchState.mode === 'pinch' || touchState.mode === 'pinch-release') {
+        panVelocityRef.current.reset();
         const transition = resolvePinchEndTransition(touchState.mode, event.touches.length);
         mobileTouchRef.current = transition.nextMode ? { mode: transition.nextMode } : null;
         suppressMobileTouchUntilRef.current = performance.now() + 450;
@@ -2091,23 +2111,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         suppressMobileTouchUntilRef.current = performance.now() + 180;
         setMobileTouchMode(null);
         flushPan();
-        const samples = touchState.samples || [];
-        const firstSample = samples[0];
-        const lastSample = samples[samples.length - 1];
-        const sampleDt = Math.max(1, (lastSample?.at || 0) - (firstSample?.at || 0));
-        const sampleVelocityX = firstSample && lastSample ? (lastSample.x - firstSample.x) / sampleDt : 0;
-        const sampleVelocityY = firstSample && lastSample ? (lastSample.y - firstSample.y) / sampleDt : 0;
-        // WebKit may coalesce a fast final move into one sparse touch sample.
-        // Keep a whole-gesture fallback so a real flick cannot lose momentum
-        // merely because the last 140ms window contains only one event.
-        const gestureDt = Math.max(1, performance.now() - touchState.startTime);
-        const gestureVelocityX = (touchState.lastX - touchState.startX) / gestureDt;
-        const gestureVelocityY = (touchState.lastY - touchState.startY) / gestureDt;
-        const velocityX = [touchState.velocityX, sampleVelocityX, gestureVelocityX]
-          .reduce((best, candidate) => (Math.abs(candidate) > Math.abs(best) ? candidate : best), 0);
-        const velocityY = [touchState.velocityY, sampleVelocityY, gestureVelocityY]
-          .reduce((best, candidate) => (Math.abs(candidate) > Math.abs(best) ? candidate : best), 0);
-        startMobilePanInertia(velocityX, velocityY);
+        const { vx: velocityX, vy: velocityY } = panVelocityRef.current.release(performance.now());
+        startPanInertia(velocityX, velocityY);
       }
     };
 
@@ -2170,7 +2175,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, cancelPanInertia, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction, startMobilePanInertia]);
+  }, [applyWheelZoom, cancelPanInertia, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or

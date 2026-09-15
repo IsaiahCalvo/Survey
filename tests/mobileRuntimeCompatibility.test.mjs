@@ -24,6 +24,7 @@ const HUB_SHELL_SOURCE = readFileSync(new URL('../src/home/HubShell.jsx', import
 const IOS_SIMULATOR_SOURCE = readFileSync(new URL('../scripts/run-ios-simulator.mjs', import.meta.url), 'utf8');
 const IOS_APP_SCHEME_SOURCE = readFileSync(new URL('../ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme', import.meta.url), 'utf8');
 const PDFJS_VIEWER_SOURCE = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+const PAN_MOMENTUM_SOURCE = readFileSync(new URL('../src/utils/panMomentum.js', import.meta.url), 'utf8');
 const UNSUPPORTED_NOTICE_SOURCE = readFileSync(new URL('../src/components/UnsupportedAnnotationsNotice.jsx', import.meta.url), 'utf8');
 // Unified renderer (FabricDrawingCanvas retired): touch-compat behavior for
 // creation strokes now lives in SVGAnnotationLayer (the live creation surface).
@@ -309,14 +310,37 @@ test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale'
   assert.match(PDFJS_VIEWER_SOURCE, /willChange: isMobileSurface[\s\S]{0,80}\? 'auto'/);
 });
 
+// The flick physics moved out of PdfjsViewerContainer into the shared
+// src/utils/panMomentum.js so desktop pointer panning reuses the very same
+// curve. These assertions are relocated, not relaxed: every invariant the
+// mobile coast relied on (EMA + sample push, two-axis velocity, the release
+// call site, the coast marker, the hypot rest test, the 325ms exponential
+// decay) is still asserted, now against the module that owns it.
 test('mobile pan keeps two-axis velocity and coasts after release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /velocityX/);
   assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
-  assert.match(PDFJS_VIEWER_SOURCE, /touchState\.samples\.push/);
-  assert.match(PDFJS_VIEWER_SOURCE, /startMobilePanInertia\(velocityX, velocityY\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /startPanInertia\(velocityX, velocityY\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(performance\.now\(\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
-  assert.match(PDFJS_VIEWER_SOURCE, /Math\.hypot\(vx, vy\)/);
-  assert.match(PDFJS_VIEWER_SOURCE, /Math\.exp\(-dt \/ 325\)/);
+  assert.match(PAN_MOMENTUM_SOURCE, /state\.samples\.push/);
+  assert.match(PAN_MOMENTUM_SOURCE, /Math\.hypot\(x, y\)/);
+  assert.match(PAN_MOMENTUM_SOURCE, /decayTauMs: 325/);
+  assert.match(PAN_MOMENTUM_SOURCE, /Math\.exp\(-dt \/ tau\)/);
+});
+
+test('desktop pointer panning reuses the mobile flick physics', () => {
+  // One physics, two surfaces: the desktop pointer path must call the same
+  // tracker and the same runner, and must stop a glide on a new grab or wheel.
+  assert.match(PDFJS_VIEWER_SOURCE, /import \{ createPanMomentumRunner, createPanVelocityTracker \} from '\.\.\/utils\/panMomentum'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.start\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.move\(event\.clientX, event\.clientY, performance\.now\(\)\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /finishPan\(\{ glide: true \}\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const onWheelStopGlide = \(\) => \{ cancelPanInertia\(\); \}/);
+  // A new grab always beats an in-flight glide.
+  assert.match(PDFJS_VIEWER_SOURCE, /cancelPanInertia\(\);[\s\S]{0,120}panPointerRef\.current = \{/);
+  // Zoom is untouched by this path: the shared physics owns no DOM and no
+  // scale state, it only writes scroll offsets through injected callbacks.
+  assert.doesNotMatch(PAN_MOMENTUM_SOURCE, /document\.|\.style\.|liveZoomRef|scaleRef/);
 });
 
 test('mobile PDF load paints page one before refining remaining page sizes', () => {
