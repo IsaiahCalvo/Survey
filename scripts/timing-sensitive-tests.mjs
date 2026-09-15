@@ -8,9 +8,9 @@
 //
 // This list is the UNION. Which job a file lands in is decided by whether it
 // also appears in CI_PERF_TEST_FILES (scripts/ci-perf-tests.mjs):
-//   * on that list  -> the NON-BLOCKING `perf` job (`--only-perf`). Those three
-//     files assert millisecond budgets, and a timing reading taken on a loaded
-//     hosted runner must never be able to veto a merge or a deploy.
+//   * on that list  -> the NON-BLOCKING `perf` job (`--only-perf`). Those files
+//     assert millisecond budgets, and a timing reading taken on a loaded hosted
+//     runner must never be able to veto a merge or a deploy.
 //   * not on it     -> the BLOCKING `timing-suites` job
 //     (`--only-timing-sensitive`). annotationDocConcurrency and
 //     svgPathTransformFidelity are correctness gates that merely happen to be
@@ -26,7 +26,9 @@
 // runner, so deleting a test file cannot break CI; pruning this list is still
 // the right follow-up.
 export const TIMING_SENSITIVE_TEST_FILES = [
+  'src/lib/collab/__tests__/crdtBackfillLoserLatency.test.mjs',
   'tests/annotationDocConcurrency.test.mjs',
+  'tests/cloudStrokeBandPathologicalBudget.test.mjs',
   'tests/partialEraseCurveLocality.test.mjs',
   'tests/partialEraserComplexity.test.mjs',
   'tests/roundStrokeOutlinePerformance.test.mjs',

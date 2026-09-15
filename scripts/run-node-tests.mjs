@@ -46,8 +46,8 @@ if (testFiles.length === 0) {
 //
 // The list splits in two, and the split is what decides blocking vs not:
 //
-//   * CI_PERF_TEST_FILES (scripts/ci-perf-tests.mjs) — the three files that
-//     assert real wall-clock or CPU budgets. They run ONLY under `--only-perf`,
+//   * CI_PERF_TEST_FILES (scripts/ci-perf-tests.mjs) — the files that assert
+//     real wall-clock or CPU budgets. They run ONLY under `--only-perf`,
 //     in the non-blocking `perf` job. `npm test` skips them: a timing reading
 //     taken on a loaded runner must never be able to veto a merge or a deploy.
 //
@@ -250,7 +250,7 @@ let selectedIsolatedFiles = isolatedTestFiles;
 let selectedPerfFiles = [];
 // Every mode but the perf lane stops at the first failure: one broken file
 // makes the rest of a correctness run meaningless. The perf lane is a report,
-// so it runs all three files and names every one that was over budget.
+// so it runs every budget file and names each one that was over budget.
 let stopOnFirstFailure = true;
 let selectionLabel = 'full suite';
 

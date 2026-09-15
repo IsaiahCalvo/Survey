@@ -23,8 +23,8 @@ name: Build and tests
 #
 # 2026-09-15 — Two different answers to "a timing reading must not veto a
 # merge", and both are in force:
-#   * `perf` is informational. The three files that assert millisecond budgets
-#     run there with `continue-on-error: true`, and `ci-gate` does not need it.
+#   * `perf` is informational. Every file that asserts a millisecond budget
+#     runs there with `continue-on-error: true`, and `ci-gate` does not need it.
 #   * Dependabot's weekly bumps skip the blocking isolated suites
 #     (SKIP_TIMING_SUITES below). A routine version bump cannot regress them,
 #     and everything else still runs on a bump — including the license check.

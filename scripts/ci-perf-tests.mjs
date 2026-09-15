@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS (2026-09-15)
 // ----------------------------
-// Three test files assert wall-clock or CPU budgets. Those budgets measure the
+// Five test files assert wall-clock or CPU budgets. Those budgets measure the
 // host as much as they measure our code, so on a loaded 2-core hosted runner
 // they go red without a single line of product code changing. That happened for
 // real: CI run 34094848036 (push to main, 2026-09-07) failed on
@@ -61,6 +61,15 @@ export const CI_PERF_TEST_FILES = Object.freeze([
   'tests/roundStrokeOutlinePerformance.test.mjs',
   // 750ms single-sample "first erase" interaction-release budget.
   'tests/partialEraseCurveLocality.test.mjs',
+  // 2026-09-15 — the last two elapsed-time assertions that were still sitting
+  // in BLOCKING test shards, split out of their parent suites so the parents'
+  // correctness assertions could stay blocking. See each file's header.
+  // 5000ms hang guard on the two pathological filled polygon clouds.
+  'tests/cloudStrokeBandPathologicalBudget.test.mjs',
+  // 100ms "loser tab short-circuits" budget on the Web Locks backfill election.
+  // The tightest budget we have, and tighter than the 250ms reading that held a
+  // deploy on run 34094848036 — it had no business in the blocking path.
+  'src/lib/collab/__tests__/crdtBackfillLoserLatency.test.mjs',
 ]);
 
 /** Set by the ci.yml perf job. Nothing else should ever set it. */
