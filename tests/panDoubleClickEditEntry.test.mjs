@@ -35,7 +35,12 @@ test('double-click / double-tap in Pan and Text Select is recognised from pointe
   assert.match(viewerSource, /const tracker = createDoubleTapTracker\(\);/);
   // window CAPTURE, mirroring the pan quick-click select effect: the pdf.js
   // scroller preventDefault()s pointerdown, so no native dblclick exists in Pan.
-  assert.match(viewerSource, /const tracker = createDoubleTapTracker\(\);[\s\S]{0,6000}window\.addEventListener\('pointerup', onUp, true\)/);
+  // Proximity bound only — it pins that THIS effect is the one registering the
+  // window-capture pointerup (the pan quick-click effect uses the same handler
+  // names earlier in the file). Widened from 6000 on integration: the merged
+  // effect also bails on live form widgets and orders candidates by the hit
+  // layer's label, so the body is longer. Same claim, same handler.
+  assert.match(viewerSource, /const tracker = createDoubleTapTracker\(\);[\s\S]{0,9000}window\.addEventListener\('pointerup', onUp, true\)/);
   assert.match(viewerSource, /window\.addEventListener\('pointercancel', onCancel, true\)/);
   // a gesture that moved is a pan / marquee / text drag and is discarded
   assert.match(viewerSource, /const slop = event\.pointerType === 'touch' \? 12 : 6;[\s\S]{0,200}tracker\.reset\(\); return;/);
