@@ -453,7 +453,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRecoverLegacySidecar = null, documentFirstGenerationAdoptionEnabled = false, onFirstGenerationAdoption = null, firstGenerationAdoptionScope = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, annotationDocClient, annotationGenerationAggregateEnabled = false, createAnnotationGenerationAggregateRequest = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRecoverLegacySidecar = null, documentFirstGenerationAdoptionEnabled = false, onFirstGenerationAdoption = null, firstGenerationAdoptionScope = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, documentSurveyDefinitionEnabled = false, documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -7907,6 +7907,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   ]);
   const [items, setItems] = useState({}); // { [itemId]: Item }
   const [annotations, setAnnotations] = useState({}); // { [annotationId]: Annotation }
+
+  // A selected model-2 aggregate gate must never fall back to the direct
+  // writer because app setup is absent or malformed.
+  const annotationGenerationAggregateRequest = useMemo(() => {
+    if (annotationGenerationAggregateEnabled !== true
+      || checkedBundle?.contentModelVersion !== 2) return null;
+    const unavailable = async () => {
+      throw Object.assign(new Error('The annotation update could not be confirmed.'), {
+        code: 'ANNOTATION_AGGREGATE_UNCONFIRMED',
+      });
+    };
+    if (typeof createAnnotationGenerationAggregateRequest !== 'function'
+      || !user?.id || !pdfFile?.id) return unavailable;
+    try {
+      const request = createAnnotationGenerationAggregateRequest({
+        actorUserId: user.id,
+        documentId: pdfFile.id,
+      });
+      return typeof request === 'function' ? request : unavailable;
+    } catch {
+      return unavailable;
+    }
+  }, [annotationGenerationAggregateEnabled, checkedBundle?.contentModelVersion,
+    createAnnotationGenerationAggregateRequest, pdfFile?.id, user?.id]);
 
   // Per-document, per-tool preferences hook
   const {
@@ -19902,6 +19926,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     docRole: yjsDocRole,
     documentLocked,
     annotationDocClient,
+    aggregateRequest: annotationGenerationAggregateRequest,
   });
   surveyV2MutationBridgeRef.current = checkedBundle?.contentModelVersion === 2
     && normalAnnotationHydration.ready === true

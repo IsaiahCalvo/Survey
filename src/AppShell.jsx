@@ -38,6 +38,7 @@ import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
 import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
+import { createAnnotationGenerationAggregateAppRequest } from './services/annotationGenerationAggregateAppRequest.js';
 import { createDocumentLegacyAdoptionArchiveRecovery,
   createDocumentLegacySidecarRecovery } from './services/documentLegacySidecarRecovery.js';
 import { createDocumentFirstGenerationAdoptionTransport } from './services/documentFirstGenerationAdoption.js';
@@ -80,6 +81,7 @@ import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 const CHECKED_DOCUMENT_OPEN_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_DOCUMENT_OPEN === 'mode-v1';
 const CHECKED_PAGE_REPLACEMENT_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_PAGE_REPLACEMENT === 'mode-v1';
+const ANNOTATION_GENERATION_AGGREGATE_ENABLED = import.meta.env.VITE_SURVEY_ANNOTATION_GENERATION_AGGREGATE === 'mode-v1';
 const DOCUMENT_ENTITY_CATALOG_ENABLED = import.meta.env.VITE_SURVEY_DOCUMENT_ENTITY_CATALOG === 'mode-v1';
 const readLocalCheckedPageStructure = (options, fallback = null) => {
   try {
@@ -135,6 +137,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   documentReplacementIntentStore = null, checkedPageStructureStorage = null,
   checkedDocumentViewStateStorage = null,
   checkedPageReplacementEnabled = CHECKED_PAGE_REPLACEMENT_ENABLED,
+  annotationGenerationAggregateEnabled = ANNOTATION_GENERATION_AGGREGATE_ENABLED,
   documentEntityCatalogEnabled = DOCUMENT_ENTITY_CATALOG_ENABLED,
   documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
   documentSurveyDefinitionEnabled = false,
@@ -856,6 +859,16 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     documentOpenScopeRef.current = { actorUserId: user?.id || null };
   }
   const documentOpenScope = documentOpenScopeRef.current;
+  const resolvedAnnotationDocClient = annotationDocClient || supabase;
+  const createAnnotationGenerationAggregateRequest = useCallback(({ actorUserId, documentId }) => (
+    createAnnotationGenerationAggregateAppRequest({
+      actorUserId,
+      documentId,
+      client: resolvedAnnotationDocClient,
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    })
+  ), [resolvedAnnotationDocClient]);
   useEffect(() => { setPageReplacementRecoveryByTab({}); }, [documentOpenScope]);
   const priorDocumentOpenScopeRef = useRef(documentOpenScope);
   useLayoutEffect(() => {
@@ -3784,6 +3797,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                         return accepted;
                       }}
                       annotationDocClient={annotationDocClient || undefined}
+                      annotationGenerationAggregateEnabled={annotationGenerationAggregateEnabled}
+                      createAnnotationGenerationAggregateRequest={createAnnotationGenerationAggregateRequest}
                       onBack={handleBack}
                       tabId={tab.id}
                       isActive={isVisible}

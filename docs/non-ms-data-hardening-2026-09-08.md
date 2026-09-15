@@ -7,27 +7,75 @@ sections describe their dated checkpoint, not an instruction to repeat completed
 work. Check the later entries and current code before reopening an old item.
 Nothing in this summary grants deployment, account, deletion or Microsoft access.
 
-Prior local checkpoint: `bb0b5b77c4f086645c11501cf8ca03617f83c4a6`.
-Its full run passed 7,222 tests with 97 skipped and zero failures/cancellations;
-the build and synthetic-backend browser checks passed. It is not deployed proof.
+Latest committed local checkpoint: `a704cbbdfbae930294d4032a51373a367a3aacab`,
+following adoption implementation `9dca221e54b4e5c555602f25d0350f710fa36773`.
+The adoption full run passed 7,276 tests with 98 skipped and zero failures; the
+later install fix passed its 14 focused tests, independent review, build and
+clean synthetic-backend browser flow. The subsequent combined 40-test check
+also covers the new, not-yet-wired aggregate request factory. These later
+changes are not claimed to be covered by the earlier full run or deployed.
 
 - Recent completed local work: device-local history/restore, account-scoped
   reconnect replay, private recoverable tool settings, explicit legacy History
   recovery, bounded document catalog callers, verified PDF-only action reads,
   and private checked-document view storage with layout-ready restore.
-- Current locally verified change: checked legacy sidecar archive/retirement, including
+- Completed locally: checked legacy sidecar archive/retirement, including
   stable offered/used archive identities, owner-only recovery and a generation
   marker that stops legacy mutable reads/writes. Full tests: 7,240 passed,
   98 skipped, zero failures/cancellations; build, separate disposable PostgreSQL,
   independent review and synthetic browser checks passed. Details are below.
-- Known remaining work: legacy/null-generation adoption, accepted-definition
-  history/upgrades, compatible old-client rollout, and complete publication/
-  adoption proof. The current sidecar work does not close all of these items.
+- Completed locally: explicit owner-reviewed legacy/null-generation adoption,
+  byte-identical PDF retention, private archive recovery, and checked install.
+  The clean browser flow records one preview, confirm and publish; a post-install
+  legacy-scope regression is fixed with account-change safety coverage.
+- Known remaining local work: a supported checked replacement server entry
+  and app caller wiring, and
+  accepted-definition history/upgrades/shared publication. Existing
+  service or injected-caller tests do not close those integration requirements.
 - Hosted gates remain: schema/client rollout, real leased multi-user/offline/
   revocation checks, and measured production quota/latency results. Microsoft
   365 trials and live Microsoft testing remain deferred.
 
 The detailed evidence and limitations for each checkpoint follow below.
+
+### Aggregate app caller closure — 2026-09-15
+
+The normal AppShell now builds the actor/document-bound aggregate request
+adapter; PDFViewer passes it to the checked model-2 annotation hook. The flag
+remains off by default. Invalid enabled setup rejects the write instead of
+falling back to the legacy writer. The adapter uses a fresh session bearer,
+fixed Supabase origin, the existing binary/receipt contract and abort signal,
+with no redirect or legacy retry.
+
+The first actual browser rectangle sent one 735-byte aggregate POST and got
+sequence 1, with zero legacy append/snapshot writes and an acknowledged sync
+status. Initial reopen exposed two synthetic-backend defects: rows were only
+held in memory, and the publication baseline wrongly followed the mutable WAL
+head. The temp backend now persists accepted rows and keeps the publication
+baseline fixed. No product verification checks were weakened.
+
+After those repairs, a distinct rectangle sent one 735-byte POST, received
+sequence 1, and survived full reload and reopen through the checked reader.
+The rendered rectangle and cumulative counters were verified in the in-app
+browser: one POST, zero legacy append/snapshot writes, no extra write on reopen,
+and the cloud badge said up to date. This uses a synthetic backend, not hosted
+multi-user proof. The tab still displays an unsaved marker; its existing versus
+regressed status semantics are a separate open check, not silently called clean.
+
+Final verification on frozen aggregate app source: 84 focused tests passed;
+full npm test exited 0 with 7,396 total, 7,298 passed, 98 skipped, zero failures
+or cancellations across 746 test summaries. Build and graph refresh exited 0.
+Evidence: `/tmp/survey-aggregate-app-final-tests-20260915.log`,
+`/tmp/survey-aggregate-app-final-build-20260915.log`, and
+`/tmp/survey-aggregate-app-final-graph-20260915.log`. The build log is the
+worker's later successful npm build (it overwrote the earlier successful Vite
+build log). New definition SQL work is separate and not covered by this claim.
+
+The proposed default page-replacement transport has been removed from the
+pending app diff. It targeted an absent Supabase Edge endpoint, while its
+existing executor needs Node worker threads. The new uncommitted transport
+file is not an operational server. Existing injection-only behavior stays
+unchanged. No new hosting, deployment or service access has been enabled.
 
 ## Scope and status
 
