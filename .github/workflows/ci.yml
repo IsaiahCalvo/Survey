@@ -38,13 +38,54 @@ name: Build and tests
 # to get the isolated suites" escape hatch impossible to use. The one exception
 # is the license step, which runs when EITHER actor is the bot — see there.
 #
+# 2026-09-15 — THE MINUTES BUDGET, because the split is not free. The account is
+# on the GitHub Free plan: 2,000 Actions minutes a month, and this repository is
+# private, so every job minute is billed. Four shards plus the isolated and perf
+# runners each pay their own checkout and `npm install`, which takes one CI run
+# from roughly 7 billed minutes to roughly 23, and the month from ~523 minutes
+# to ~1,088 (~1,436 all-in, counting Deploy production, License check and the
+# desktop Release runs). That is inside the allowance but uncomfortably close,
+# and it would not have survived the auto-merge: merged bumps free slots for
+# Dependabot to refill weekly, and each merged bump now also costs a run on main
+# and a deploy.
+#
+# So the run COUNT came down instead of the split:
+#
+#   ~47 CI runs/month at ~23 billed min      = ~1,088 min
+#   - grouping the bumps (.github/dependabot.yml): one pull request per
+#     ecosystem per month instead of ~20 bump runs      -18 runs   -414 min
+#   + the auto-merge's re-run on main, 2/month           +2 runs    +46 min
+#   - paths-ignore below: root notes and graphify-out
+#     refreshes, ~4 pushes a month                       -4 runs    -92 min
+#   ------------------------------------------------------------------------
+#   ≈ 628 min/month of CI, ≈ 976 min/month all-in, of 2,000.
+#
+# The run counts are estimates from the September 2026 history; the per-run
+# minutes are not. If the allowance ever stops being the binding constraint, the
+# note on the `test` job below says what a fifth shard would buy.
+#
 # `ci-gate` is the single aggregate that must be green, and the Deploy
 # production workflow keys off this workflow's conclusion.
 
 on:
   push:
     branches: [main]
+    # 2026-09-15 — pushes and pull requests that touch ONLY these never change
+    # what gets built or tested, and on the Free plan every skipped run is ~23
+    # billed runner-minutes kept. The list is deliberately narrow: `docs/**` and
+    # `.planning/**` are NOT on it, because tests read files out of both
+    # (docs/MOBILE-RUN.md, docs/FULL-APP-E2E.md, the KAL-260/261/262 baseline
+    # reports), and ignoring them would let an edit break main unseen. `*.md`
+    # has no slash in it, so it matches root-level notes only, not docs/*.md.
+    # The two lists are written out twice on purpose: YAML anchors are not
+    # supported in GitHub Actions workflows.
+    paths-ignore:
+      - '*.md'
+      - 'graphify-out/**'
   pull_request:
+    paths-ignore:
+      - '*.md'
+      - 'graphify-out/**'
   # 2026-09-15 — added so .github/workflows/dependabot-auto-merge.yml can
   # re-run this workflow on main after it squash-merges a bump. GitHub creates
   # NO workflow run for a push made with the repository's GITHUB_TOKEN, so the
@@ -157,9 +198,21 @@ jobs:
 
   # The bulk of the suite, split four ways. `--shard=N/M` is a deterministic
   # longest-processing-time partition of every non-timing-sensitive file:
-  # stable ordering, every file in exactly one shard, nothing dropped. Four is
-  # the useful maximum — the single heaviest file (partialEraserSequentialStress,
-  # ~59s on CI) is the floor for any shard, so a fifth shard buys nothing.
+  # stable ordering, every file in exactly one shard, nothing dropped.
+  #
+  # 2026-09-15 — an earlier note here claimed a fifth shard "buys nothing"
+  # because the heaviest single file (partialEraserSequentialStress, ~59s) is
+  # the floor for any shard. That is wrong: at four shards the worst shard is
+  # ~78s of estimated test time, comfortably ABOVE that floor, and five shards
+  # would bring it to ~62s — a real 20% cut. Six is where the floor actually
+  # bites (~59s, a further 6%).
+  #
+  # Four is a BUDGET choice, not a technical ceiling. Each extra shard is
+  # another runner paying its own checkout and `npm install` — about three
+  # billed minutes on every CI run, whatever the tests cost — and this account
+  # has 2,000 Actions minutes a month for a private repository. A fifth shard
+  # would spend roughly 140 minutes a month to save 15 seconds of wall clock per
+  # run. If the allowance ever stops being the constraint, five is the next step.
   #
   # Files still run one process at a time INSIDE a shard. The parallelism is
   # across runners, so each machine carries roughly today's load.

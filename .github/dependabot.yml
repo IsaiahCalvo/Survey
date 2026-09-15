@@ -1,13 +1,50 @@
 version: 2
+
+# 2026-09-15 — grouped, and moved from weekly to monthly, to buy back CI
+# minutes. The account is on the GitHub Free plan: 2,000 Actions minutes a
+# month, and a private repository spends real minutes on every run.
+#
+# Splitting the test suite four ways roughly doubled the billed minutes per CI
+# run (four runners each pay their own checkout and `npm install`), so the way
+# back inside the allowance is to cut the NUMBER of runs rather than the split.
+# Dependency bumps were the biggest source of runs by far: two ecosystems,
+# weekly, up to five open pull requests each, and — now that they auto-merge —
+# every merged bump frees a slot for the next week to refill, plus a re-run on
+# main and a production deploy behind it.
+#
+# One grouped pull request per ecosystem per month replaces that with two pull
+# requests a month. Everything is still updated; it arrives in one review
+# instead of forty.
+#
+# `applies-to: version-updates` keeps the grouping OFF security updates.
+# Dependabot security updates are a separate feature (repository settings, not
+# this file) and they stay one pull request per advisory, so an urgent fix is
+# never held behind a month's routine bumps or hidden inside a batch.
+#
+# Note for whoever reads this next: a grouped pull request's title is
+# "bump the npm-dependencies group with N updates", which carries no version
+# numbers. dependabot-auto-merge.yml reads the per-package "Updates `x` from A
+# to B" lines out of the body instead, and still refuses the whole group if any
+# single package in it crosses a major version.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 5
+    groups:
+      npm-dependencies:
+        applies-to: version-updates
+        patterns:
+          - '*'
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - '*'

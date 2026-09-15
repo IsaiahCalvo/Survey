@@ -116,7 +116,7 @@ jobs:
           # emails the owner. Nothing in this file is worth an email.
           pr_json=""
           if ! pr_json="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
-            --json number,title,headRefOid,author,isDraft,mergeable,mergeStateStatus \
+            --json number,title,body,headRefOid,author,isDraft,mergeable,mergeStateStatus \
             --jq '.[0] // empty')"; then
             echo "Could not read the pull request list — leaving this bump alone."
             {
@@ -163,20 +163,46 @@ jobs:
               stop(`GitHub reports mergeable=${pr.mergeable} (${pr.mergeStateStatus})`);
             }
 
-            // Dependabot titles are formatted deterministically, e.g.
+            // Dependabot titles are formatted deterministically for a single
+            // package, e.g.
             //   chore(deps): bump yjs from 13.6.30 to 13.6.32
             //   chore(deps): bump actions/checkout from 4 to 7
-            // Anything that does not parse (grouped updates, security advisories
-            // with a different shape) is left for a person.
-            const m = /\bfrom\s+v?(\d+)(?:\.(\d+))?(?:\.\S*)?\s+to\s+v?(\d+)(?:\.(\d+))?/.exec(pr.title || "");
-            if (!m) stop("could not read a from/to version out of the title");
-            const [fromMajor, fromMinor, toMajor, toMinor] =
-              [m[1], m[2] ?? "0", m[3], m[4] ?? "0"].map(Number);
-            if (fromMajor !== toMajor) {
-              stop(`major version change ${fromMajor} -> ${toMajor}; a person should look at this`);
+            //
+            // 2026-09-15 — .github/dependabot.yml now GROUPS the routine monthly
+            // updates, and a grouped title carries no versions at all:
+            //   chore(deps): bump the npm-dependencies group with 5 updates
+            // Its body does, one line per package ("Updates `yjs` from 13.6.30
+            // to 13.6.32"), so read those instead and hold the whole group to
+            // the same rule: if ANY package in it crosses a major version the
+            // group is left for a person. Anything that parses to nothing at
+            // all — a shape neither of these covers — is also left alone.
+            const bumps = [];
+            const titleMatch =
+              /\bfrom\s+v?(\d+)(?:\.(\d+))?(?:\.\S*)?\s+to\s+v?(\d+)(?:\.(\d+))?/
+                .exec(pr.title || "");
+            if (titleMatch) {
+              bumps.push({ name: "this package", m: titleMatch });
+            } else {
+              const grouped =
+                /Updates `([^`]+)` from v?(\d+)(?:\.(\d+))?(?:\.\S*)?\s+to\s+v?(\d+)(?:\.(\d+))?/g;
+              let hit;
+              while ((hit = grouped.exec(pr.body || "")) !== null) {
+                bumps.push({ name: hit[1], m: [hit[0], hit[2], hit[3], hit[4], hit[5]] });
+              }
             }
-            if (fromMajor === 0 && fromMinor !== toMinor) {
-              stop(`pre-1.0 minor change 0.${fromMinor} -> 0.${toMinor}; treated as a breaking change`);
+            if (bumps.length === 0) {
+              stop("could not read a from/to version out of the title or the body");
+            }
+
+            for (const bump of bumps) {
+              const [fromMajor, fromMinor, toMajor, toMinor] =
+                [bump.m[1], bump.m[2] ?? "0", bump.m[3], bump.m[4] ?? "0"].map(Number);
+              if (fromMajor !== toMajor) {
+                stop(`${bump.name} changes major version ${fromMajor} -> ${toMajor}; a person should look at this`);
+              }
+              if (fromMajor === 0 && fromMinor !== toMinor) {
+                stop(`${bump.name} changes pre-1.0 minor 0.${fromMinor} -> 0.${toMinor}; treated as a breaking change`);
+              }
             }
 
             console.log("MERGE\t" + pr.number);
