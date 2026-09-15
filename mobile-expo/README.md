@@ -17,7 +17,9 @@ can never render stale HTML while still keeping the signed-in WebView profile.
 
 ## What to open on your phone
 
-1. Open **Expo Go** (signed in once as Expo user `isaiahcalvo`).
+1. Open **Expo Go** (signed in once as Expo user `isaiahcalvo`). The shell is
+   published at Expo SDK 57, so Expo Go must be an SDK 57 build — an older Expo
+   Go says "Project is incompatible with this version of Expo Go".
 2. Open **Survey** from the list — or, the first time, open this permanent link
    on the iPhone:
 
@@ -49,7 +51,7 @@ npm run mobile:phone -- "Describe the shell change"
 
 That wrapper computes the release gate's own `shell:<sha256>` marker, stamps it
 with the current `release:<commit>`, and publishes to the `expo-go` branch for
-iOS at runtime `exposdk:54.0.0`. It refuses to run on a dirty worktree, because
+iOS at runtime `exposdk:57.0.0`. It refuses to run on a dirty worktree, because
 the hash has to describe reviewed, committed source — the fail-closed release
 gate (`npm run release:mobile:readiness`) reads that exact marker back out of
 Expo's read-only `update:list` metadata and blocks deployment if it drifts.
@@ -82,5 +84,5 @@ TestFlight still needs a paid Apple Developer Program membership.
 
 Full runbook, including the Tailscale and TestFlight paths: `docs/MOBILE-RUN.md`.
 
-Expo SDK 54 — read the versioned docs at <https://docs.expo.dev/versions/v54.0.0/>
+Expo SDK 57 — read the versioned docs at <https://docs.expo.dev/versions/v57.0.0/>
 before changing anything here.

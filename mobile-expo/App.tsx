@@ -574,7 +574,11 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   centered: {
-    ...StyleSheet.absoluteFillObject,
+    // RN 0.86 (Expo SDK 57) removed StyleSheet.absoluteFillObject; absoluteFill
+    // is the same {position:'absolute', top/right/bottom/left: 0} object and is
+    // the supported spelling. Spreading the removed export would have silently
+    // dropped the overlay's absolute positioning.
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,

@@ -20,7 +20,7 @@
         },
         "ITSAppUsesNonExemptEncryption": false
       },
-      "runtimeVersion": "exposdk:54.0.0"
+      "runtimeVersion": "exposdk:57.0.0"
     },
     "android": {
       "package": "com.kalvoe.survey",

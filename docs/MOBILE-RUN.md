@@ -34,7 +34,7 @@ this hash; any shell change blocks release until its reviewed update is
 published.
 
 Verified on 2026-08-06 in Expo Go on the iPhone 17 Pro Max Simulator with Metro stopped.
-The published update uses Expo Go's SDK 54 runtime and renders the production sign-in flow.
+The published update uses Expo Go's SDK 57 runtime and renders the production sign-in flow.
 Expo's free plan hosts this preview. Use the Survey development app below for full native
 testing, including Google identity and its return to the signed-in Survey session.
 
@@ -346,7 +346,7 @@ iOS screen recording and attach the Analytics session/correlation ID.
 
 Official references:
 
-- [Expo SDK 54](https://docs.expo.dev/versions/v54.0.0/)
+- [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/)
 - [Expo CLI tunneling](https://docs.expo.dev/more/expo-cli/#tunneling)
 - [Expo environment variables](https://docs.expo.dev/guides/environment-variables/)
 - [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)

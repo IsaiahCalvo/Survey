@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#CFCFCF',
   },
   contextColorFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill, // RN 0.86 removed absoluteFillObject; absoluteFill is the same object
     borderRadius: 12,
   },
   counterSwatchText: {
@@ -854,7 +854,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   contextMenuDismissLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill, // RN 0.86 removed absoluteFillObject; absoluteFill is the same object
     zIndex: 84,
     backgroundColor: 'rgba(0,0,0,0.01)',
   },
@@ -2589,7 +2589,7 @@ const styles = StyleSheet.create({
     zIndex: 70,
   },
   dismissLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill, // RN 0.86 removed absoluteFillObject; absoluteFill is the same object
     backgroundColor: 'rgba(0,0,0,0.01)',
     zIndex: 25,
   },
