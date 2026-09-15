@@ -142,3 +142,26 @@ test('SQL source loss recovers a v3 archive only through the same checked operat
     assert.ok(!names(h).includes('release'));
   }
 });
+
+test('model-bound archive begin uses only beginArchiveV2 and preserves its checked model',async()=>{
+  for(const contentModelVersion of [1,2]) {
+    const h=harness({contentModelVersion,beginArchive:()=>assert.fail('archive v1 fallback'),
+      beginArchiveV2:async()=>receipt({content_model_version:contentModelVersion})});
+    const r=await h.run();assert.equal(r.status,200);
+    assert.deepEqual(names(h),['getUser','beginArchiveV2','mint','get']);
+    assert.deepEqual(h.calls[1].args.slice(0,3),['caller-token',input(),contentModelVersion]);
+    assert.equal(h.calls[1].args[3] instanceof AbortSignal,true);
+    assert.equal(r.body.operation.content_model_version,contentModelVersion);
+  }
+});
+
+test('model-bound archive begin rejects missing or switched model receipts and maps SG003',async()=>{
+  for(const value of [receipt(),receipt({content_model_version:2})]) {
+    const h=harness({contentModelVersion:1,beginArchiveV2:async()=>value,
+      beginArchive:()=>assert.fail('archive v1 fallback')});
+    assert.equal((await h.run()).status,502);assert.ok(!names(h).includes('mint'));
+  }
+  const h=harness({contentModelVersion:1,
+    beginArchiveV2:async()=>{throw Object.assign(Error('private'),{code:'SG003'});}});
+  const r=await h.run();assert.equal(r.status,409);assert.equal(r.body.error.code,'SG003');
+});

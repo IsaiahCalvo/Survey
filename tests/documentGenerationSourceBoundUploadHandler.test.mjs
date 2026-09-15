@@ -123,3 +123,30 @@ test('failed or mismatched SQL recovery cannot leak another operation or mask th
     const r=await h.run(input('verify'));assert.equal(r.status,403);assert.equal(r.body.operation,undefined);assert.equal(gets,2);
   }
 });
+
+test('model-bound candidate begin uses only beginV3 and preserves its checked model',async()=>{
+  for(const contentModelVersion of [1,2]) {
+    const h=harness({contentModelVersion,beginV2:()=>assert.fail('v2 fallback'),
+      beginV3:async()=>receipt({content_model_version:contentModelVersion})});
+    const r=await h.run();assert.equal(r.status,200);
+    assert.deepEqual(names(h),['getUser','beginV3','mint','get']);
+    assert.deepEqual(h.calls[1].args.slice(0,3),['caller-token',input(),contentModelVersion]);
+    assert.equal(h.calls[1].args[3] instanceof AbortSignal,true);
+    assert.equal(r.body.operation.content_model_version,contentModelVersion);
+  }
+});
+
+test('model-bound candidate begin rejects missing or switched model receipts and maps SG003',async()=>{
+  for(const value of [receipt(),receipt({content_model_version:2})]) {
+    const h=harness({contentModelVersion:1,beginV3:async()=>value,beginV2:()=>assert.fail('v2 fallback')});
+    assert.equal((await h.run()).status,502);assert.ok(!names(h).includes('mint'));
+  }
+  const h=harness({contentModelVersion:1,beginV3:async()=>{throw Object.assign(Error('private'),{code:'SG003'});}});
+  const r=await h.run();assert.equal(r.status,409);assert.equal(r.body.error.code,'SG003');
+});
+
+test('default candidate output strips an unselected future content model field',async()=>{
+  const h=harness({get:async()=>receipt({content_model_version:2})});
+  const r=await h.run();assert.equal(r.status,200);
+  assert.equal(Object.hasOwn(r.body.operation,'content_model_version'),false);
+});

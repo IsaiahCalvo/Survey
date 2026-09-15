@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import * as Y from 'yjs';
 import { syncByPageToDoc } from '../src/services/annotationDocStore.js';
+import { initializeSurveyCrdtV2 } from '../src/services/documentSurveyCrdtV2.js';
 import { createDocumentReplacementExecutor } from '../src/services/documentReplacementExecutor.js';
 import { createDocumentReplacementRequestHandler } from '../src/services/documentReplacementRequest.js';
 
@@ -21,14 +22,18 @@ const publication = Object.freeze({ version: 1, operation_id: candidateId, docum
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const future = '2030-01-02T00:00:00.000Z';
 
-async function realSourceFixture() {
+async function realSourceFixture({ sourceContentModelVersion = 1, checked = false,
+  versioned = false } = {}) {
   const pdf = await PDFDocument.create();
   pdf.addPage([612, 792]); pdf.addPage([420, 600]); pdf.addPage([500, 700]);
   const bytes = new Uint8Array(await pdf.save());
   const ydoc = new Y.Doc();
   syncByPageToDoc(ydoc, { 2: { objects: [{ type: 'rect', pageNumber: 2, left: 10, top: 20,
     width: 30, height: 40, data: { id: 'request-mark', pageNumber: 2 }, meta: { authorId: actor } }] } });
+  if (sourceContentModelVersion === 2) initializeSurveyCrdtV2(ydoc,
+    { surveyMarkers: {}, spaces: [], createId: () => id(90) });
   const snapshot = Buffer.from(Y.encodeStateAsUpdate(ydoc)).toString('base64'); ydoc.destroy();
+  const sourceGenerationId = checked ? generationId : null;
   const sourceObject = { kind: 'pdf', bucket_id: 'documents', path: `${actor}/source/body.pdf`,
     id: sourceObjectId, version: sourceObjectVersion, byte_length: String(bytes.byteLength) };
   const { kind: _kind, ...sourceStorageObject } = sourceObject;
@@ -37,22 +42,34 @@ async function realSourceFixture() {
     file_size: sourceObject.byte_length }, sources: { annotation_snapshot: { document_id: documentId,
       at_seq: walHead, writer_epoch: '1', encoding_version: 1, snapshot_base64: snapshot },
     annotation_updates: [], document_annotations: [], doc_yjs_state: null, doc_yjs_updates: [],
-    survey_sessions: [], survey_items: [], active_generation: null },
+    survey_sessions: [], survey_items: [], active_generation: checked ? { baseline: {
+      document_id: documentId, generation_id: sourceGenerationId, base_seq: walHead,
+      baseline_snapshot_base64: snapshot, baseline_encoding_version: 1,
+      content_model_version: sourceContentModelVersion }, snapshot: null, updates: [] } : null },
   compare: { wal_head: walHead, covered_head: walHead }, scope: 'sql-metadata-only' };
-  const capture = { version: 1, source_id: sourceId, actor_user_id: actor, document_id: documentId,
-    generation_id: null, state: 'captured', source_byte_state: 'unverified', source_sql_sha256: 'b'.repeat(64),
+  const capture = { version: versioned ? 2 : 1,
+    ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+    source_id: sourceId, actor_user_id: actor, document_id: documentId,
+    generation_id: sourceGenerationId, state: 'captured', source_byte_state: 'unverified', source_sql_sha256: 'b'.repeat(64),
     wal_head: walHead, expires_at: future, source_object: { ...sourceObject }, sidecar_objects: [], visible_capture: visible };
-  const attestation = state => ({ version: 1, source_id: sourceId, actor_user_id: actor,
-    document_id: documentId, generation_id: null, source_sql_sha256: capture.source_sql_sha256,
+  const attestation = state => ({ version: versioned ? 2 : 1,
+    ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+    source_id: sourceId, actor_user_id: actor,
+    document_id: documentId, generation_id: sourceGenerationId, source_sql_sha256: capture.source_sql_sha256,
     state, objects: [{ ...sourceObject, content_sha256: state === 'verified' ? hash(bytes) : null }],
     verified_at: state === 'verified' ? '2030-01-01T00:00:00.000Z' : null, expires_at: future });
-  const envelope = { version: 1, actor_user_id: actor, document_id: documentId, source_id: sourceId,
-    generation_id: null, source_sql_sha256: capture.source_sql_sha256, body_sha256: 'c'.repeat(64),
+  const envelope = { version: versioned ? 2 : 1,
+    ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+    actor_user_id: actor, document_id: documentId, source_id: sourceId,
+    generation_id: sourceGenerationId, source_sql_sha256: capture.source_sql_sha256, body_sha256: 'c'.repeat(64),
     wal_head: walHead, expires_at: future, source_bytes: attestation('verified'), payload: { semantic: {
-      version: 1, document_id: documentId, generation_id: null, wal_head: walHead,
-      document: visible.document, sources: { annotation_snapshot: visible.sources.annotation_snapshot,
+      version: versioned ? 2 : 1,
+      ...(versioned ? { content_model_version: sourceContentModelVersion } : {}),
+      document_id: documentId, generation_id: sourceGenerationId, wal_head: walHead,
+      document: visible.document, sources: { annotation_snapshot: checked ? null : visible.sources.annotation_snapshot,
         annotation_updates: [], document_annotations: [], doc_yjs_state: null, doc_yjs_updates: [],
-        survey_sessions: [], survey_items: [], generation_snapshot: null, generation_updates: [], generation_baseline: null },
+        survey_sessions: [], survey_items: [], generation_snapshot: null, generation_updates: [],
+        generation_baseline: checked ? visible.sources.active_generation.baseline : null },
       source_object: sourceStorageObject, sidecar_objects: [], connector_consumed: { head: [], ops: [] } },
     connector_history: { audit: [] }, wal_history: { legacy: [], generation: [] } } };
   return { bytes, sourceObject, capture, attestation, envelope };
@@ -68,16 +85,34 @@ function realClients(fixture, { alreadyVerified = false } = {}) {
   } });
   const source = {
     begin: note('source.begin', async () => fixture.capture), get: note('source.get', async () => fixture.capture),
+    beginV2: note('source.beginV2', async (_actor, _input, contentModelVersion) => {
+      assert.equal(contentModelVersion, fixture.capture.content_model_version); return fixture.capture;
+    }),
+    getV2: note('source.getV2', async (_actor, _input, contentModelVersion) => {
+      assert.equal(contentModelVersion, fixture.capture.content_model_version); return fixture.capture;
+    }),
     cancel: note('source.cancel', async () => ({ ...fixture.capture, state: 'canceled', source_object: null,
       sidecar_objects: [], visible_capture: null })),
   };
   const verified = fixture.attestation('verified');
   const sourceBytes = {
     get: note('sourceBytes.get', async () => fixture.attestation(alreadyVerified ? 'verified' : 'unverified')),
+    getV2: note('sourceBytes.getV2', async (_actor, _source, contentModelVersion) => {
+      assert.equal(contentModelVersion, fixture.capture.content_model_version);
+      return fixture.attestation(alreadyVerified ? 'verified' : 'unverified');
+    }),
     claim: note('sourceBytes.claim', async () => ({ ...fixture.attestation('verifying'),
       verification_claim_id: id(70), verification_claim_expires_at: future })),
+    claimV2: note('sourceBytes.claimV2', async (_actor, _source, _claim, contentModelVersion) => {
+      assert.equal(contentModelVersion, fixture.capture.content_model_version);
+      return { ...fixture.attestation('verifying'), verification_claim_id: id(70),
+        verification_claim_expires_at: future };
+    }),
     openStream: note('sourceBytes.openStream', async object => stream(provider.get(object.path))),
     record: note('sourceBytes.record', async () => verified), release: note('sourceBytes.release', async () => ({ released: true })),
+    recordV2: note('sourceBytes.recordV2', async (_actor, _source, _claim, _objects, contentModelVersion) => {
+      assert.equal(contentModelVersion, fixture.capture.content_model_version); return verified;
+    }),
     newId: () => id(70),
   };
   const uploadState = new Map();
@@ -88,7 +123,9 @@ function realClients(fixture, { alreadyVerified = false } = {}) {
     const path = `${actor}/_generations/${documentId}/${publishedGenerationId}/${operationId}.${archive ? 'bin' : 'pdf'}`;
     return { version: archive ? 3 : 2, operation_id: operationId, actor_user_id: actor, document_id: documentId,
       generation_id: publishedGenerationId, owner_user_id: actor, source_id: sourceId,
-      purpose: archive ? 'source-object-archive' : 'candidate-pdf', expected_source_generation_id: null,
+      purpose: archive ? 'source-object-archive' : 'candidate-pdf',
+      expected_source_generation_id: fixture.capture.generation_id,
+      ...(fixture.capture.version === 2 ? { content_model_version: fixture.capture.content_model_version } : {}),
       ...(archive ? { archived_source_object_id: sourceObjectId, source_object: { ...fixture.sourceObject,
         content_sha256: hash(fixture.bytes) } } : {}), path, content_sha256: digest,
       byte_length: length, source_sql_sha256: fixture.capture.source_sql_sha256, expires_at: future,
@@ -104,7 +141,19 @@ function realClients(fixture, { alreadyVerified = false } = {}) {
       byteLength: input.byte_length });
     const value = uploadReceipt(input.operation_id, 'candidate'); uploadState.set(input.operation_id, value); return value;
   });
-  const upload = { begin: forbidden('upload.begin'), beginV2, beginArchive,
+  const beginArchiveV2 = note('upload.beginArchiveV2', async (_token, input, contentModelVersion) => {
+    assert.equal(contentModelVersion, fixture.capture.content_model_version);
+    uploads.set(input.operation_id, { kind: 'archive', expectedBytes: fixture.bytes,
+      contentSha256: hash(fixture.bytes), byteLength: String(fixture.bytes.byteLength) });
+    const value = uploadReceipt(input.operation_id, 'archive'); uploadState.set(input.operation_id, value); return value;
+  });
+  const beginV3 = note('upload.beginV3', async (_token, input, contentModelVersion) => {
+    assert.equal(contentModelVersion, fixture.capture.content_model_version);
+    uploads.set(input.operation_id, { kind: 'candidate', contentSha256: input.content_sha256,
+      byteLength: input.byte_length });
+    const value = uploadReceipt(input.operation_id, 'candidate'); uploadState.set(input.operation_id, value); return value;
+  });
+  const upload = { begin: forbidden('upload.begin'), beginV2, beginV3, beginArchive, beginArchiveV2,
     get: note('upload.get', async (_token, operationId) => uploadState.get(operationId)),
     mint: note('upload.mint', async path => ({ path, token: 'signed-secret', signedUrl: `https://local.invalid/${path}` })),
     cancel: note('upload.cancel', async () => assert.fail('unexpected cancel')),
@@ -132,12 +181,16 @@ function realClients(fixture, { alreadyVerified = false } = {}) {
 const forbidden = name => () => assert.fail(`unexpected ${name}`);
 function serviceClients(overrides = {}) {
   const base = {
-    source: { begin: forbidden('source.begin'), get: forbidden('source.get'), cancel: forbidden('source.cancel') },
+    source: { begin: forbidden('source.begin'), get: forbidden('source.get'), cancel: forbidden('source.cancel'),
+      beginV2: forbidden('source.beginV2'), getV2: forbidden('source.getV2') },
     sourceBytes: { get: forbidden('sourceBytes.get'), claim: forbidden('sourceBytes.claim'),
       openStream: forbidden('sourceBytes.openStream'), record: forbidden('sourceBytes.record'),
-      release: forbidden('sourceBytes.release'), newId: () => id(70) },
+      release: forbidden('sourceBytes.release'), getV2: forbidden('sourceBytes.getV2'),
+      claimV2: forbidden('sourceBytes.claimV2'), recordV2: forbidden('sourceBytes.recordV2'),
+      newId: () => id(70) },
     upload: { begin: forbidden('upload.begin'), beginV2: forbidden('upload.beginV2'),
-      beginArchive: forbidden('upload.beginArchive'), get: forbidden('upload.get'), mint: forbidden('upload.mint'),
+      beginV3: forbidden('upload.beginV3'), beginArchive: forbidden('upload.beginArchive'),
+      beginArchiveV2: forbidden('upload.beginArchiveV2'), get: forbidden('upload.get'), mint: forbidden('upload.mint'),
       cancel: forbidden('upload.cancel'), claim: forbidden('upload.claim'), openStream: forbidden('upload.openStream'),
       record: forbidden('upload.record'), reject: forbidden('upload.reject'), release: forbidden('upload.release'),
       newId: () => id(71) },
@@ -152,6 +205,17 @@ const journal = (state, changes = {}) => ({ version: 1, state, actor_user_id: ac
   prepared_at: state === 'missing' || state === 'untracked' ? null : '2030-01-01T00:00:00.000Z',
   expires_at: state === 'missing' || state === 'untracked' ? null : future,
   plan: null, publication: state === 'published' ? publication : null, ...changes });
+
+const aggregatePublication = Object.freeze({ ...publication, version: 3, content_model_version: 2,
+  aggregate_admission_version: 1 });
+const aggregatePlan = (sourceContentModelVersion = 1) => ({ version: 3, contentModelVersion: 2,
+  aggregateAdmissionVersion: 1, operationId: candidateId,
+  source: { documentId, generationId: null, contentModelVersion: sourceContentModelVersion,
+    walHead, sourceObject: { path: 'source/body.pdf' } },
+  operation, projection: { document: {} }, baseline_base64: 'private-plan', legacy: { documentId } });
+const aggregateJournal = (state, changes = {}) => ({ ...journal(state), version: 3,
+  aggregate_admission_version: 1,
+  publication: state === 'published' ? aggregatePublication : null, ...changes });
 
 const rpcResult = data => ({ data, error: null });
 function harness({ rpc, getUser, clients, executor, putSignedUpload, ...options } = {}) {
@@ -236,6 +300,86 @@ test('published replay stays immutable after source expiry or a newer active gen
     const result = await h.run();
     assert.equal(result.status, 200); assert.deepEqual(rpcNames(h), ['read_document_generation_replacement']);
   }
+});
+
+test('aggregate cold published replay uses only v3 lookup even when the configured source model changed', async () => {
+  for (const sourceContentModelVersion of [1, 2]) {
+    const h = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion,
+      rpc: async (name, params) => {
+        assert.equal(name, 'read_document_generation_replacement_v3');
+        assert.deepEqual(params, expectedReadParams);
+        return rpcResult(aggregateJournal('published'));
+      } });
+    const result = await h.run();
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.value.replacement, { version: 3, content_model_version: 2,
+      aggregate_admission_version: 1, state: 'published', document_id: documentId,
+      source_id: sourceId, candidate_operation_id: candidateId, archive_operation_ids: [archiveId],
+      previous_generation_id: null, generation_id: publishedGenerationId, wal_head: walHead,
+      published_at: publication.published_at });
+    assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v3']);
+  }
+});
+
+test('aggregate prepared replay validates source policy before the only v3 publish call', async () => {
+  const plan = aggregatePlan(1);
+  const exact = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 1,
+    rpc: async (name, params) => {
+      if (name === 'read_document_generation_replacement_v3') {
+        assert.deepEqual(params, expectedReadParams);
+        return rpcResult(aggregateJournal('prepared', { plan }));
+      }
+      assert.equal(name, 'publish_document_generation_v3');
+      assert.deepEqual(params, { p_actor: actor, p_source: sourceId, p_candidate: candidateId,
+        p_archives: [archiveId], p_plan: plan });
+      return rpcResult(aggregatePublication);
+    } });
+  assert.equal((await exact.run()).status, 200);
+  assert.deepEqual(rpcNames(exact), ['read_document_generation_replacement_v3',
+    'publish_document_generation_v3']);
+
+  const mismatch = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 2,
+    rpc: async name => {
+      assert.equal(name, 'read_document_generation_replacement_v3');
+      return rpcResult(aggregateJournal('prepared', { plan }));
+    } });
+  const rejected = await mismatch.run();
+  assert.equal(rejected.status, 502);
+  assert.equal(rejected.value.error.code, 'invalid_receipt');
+  assert.deepEqual(rpcNames(mismatch), ['read_document_generation_replacement_v3']);
+});
+
+test('aggregate policy and receipts fail closed without legacy lookup or publish fallback', async () => {
+  for (const patch of [
+    { aggregateAdmissionVersion: 1 },
+    { sourceContentModelVersion: 1 },
+    { aggregateAdmissionVersion: 2, sourceContentModelVersion: 1 },
+    { aggregateAdmissionVersion: 1, sourceContentModelVersion: 3 },
+  ]) assert.throws(() => harness(patch), { code: 'DOCUMENT_REPLACEMENT_REQUEST_INPUT' });
+
+  for (const stored of [
+    aggregateJournal('published', { aggregate_admission_version: 2 }),
+    aggregateJournal('published', { publication: { ...aggregatePublication, content_model_version: 1 } }),
+    aggregateJournal('prepared', { plan: { ...aggregatePlan(1), aggregateAdmissionVersion: 2 } }),
+  ]) {
+    const h = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 1,
+      rpc: async name => {
+        assert.equal(name, 'read_document_generation_replacement_v3');
+        return rpcResult(stored);
+      } });
+    const result = await h.run();
+    assert.notEqual(result.status, 200);
+    assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v3']);
+  }
+  const failed = harness({ aggregateAdmissionVersion: 1, sourceContentModelVersion: 1,
+    rpc: async name => {
+      assert.equal(name, 'read_document_generation_replacement_v3');
+      return { data: null, error: { code: 'SG003' } };
+    } });
+  const result = await failed.run();
+  assert.equal(result.status, 409);
+  assert.equal(result.value.error.code, 'replacement_conflict');
+  assert.deepEqual(rpcNames(failed), ['read_document_generation_replacement_v3']);
 });
 
 test('mismatched journal and publication identities never become a success receipt', async () => {
@@ -350,6 +494,17 @@ test('mismatched expired journal identity never becomes terminal reset authority
 for (const alreadyVerified of [false, true]) test(`missing journal uses real handlers and worker with one source transfer (${alreadyVerified ? 'verified recovery' : 'new byte proof'})`, async () => {
   const fixture = await realSourceFixture();
   const boundary = realClients(fixture, { alreadyVerified });
+  for (const client of Object.values(boundary.clients)) client.contentModelVersion = 2;
+  Object.assign(boundary.clients.source, {
+    beginV2: forbidden('source.beginV2'), getV2: forbidden('source.getV2'),
+  });
+  Object.assign(boundary.clients.sourceBytes, {
+    getV2: forbidden('sourceBytes.getV2'), claimV2: forbidden('sourceBytes.claimV2'),
+    recordV2: forbidden('sourceBytes.recordV2'),
+  });
+  Object.assign(boundary.clients.upload, {
+    beginV3: forbidden('upload.beginV3'), beginArchiveV2: forbidden('upload.beginArchiveV2'),
+  });
   const executor = createDocumentReplacementExecutor({ timeoutMs: 120_000 });
   let preparedPlan;
   const h = harness({ clients: boundary.clients, putSignedUpload: boundary.putSignedUpload, executor,
@@ -395,6 +550,63 @@ for (const alreadyVerified of [false, true]) test(`missing journal uses real han
   } finally { await executor.close(); await executor.close(); }
 });
 
+for (const sourceContentModelVersion of [1, 2]) test(`aggregate missing journal composes checked model ${sourceContentModelVersion} through real handlers and worker`, async () => {
+  const fixture = await realSourceFixture({ sourceContentModelVersion, checked: true, versioned: true });
+  const boundary = realClients(fixture);
+  const executor = createDocumentReplacementExecutor({ timeoutMs: 120_000 });
+  const checkedBody = { ...body, generation_id: generationId };
+  const checkedParams = { ...expectedReadParams, p_expected_generation: generationId };
+  const published = { ...aggregatePublication, previous_generation_id: generationId };
+  const savedJournal = (state, changes = {}) => ({ ...aggregateJournal(state),
+    expected_generation_id: generationId,
+    publication: state === 'published' ? published : null,
+    ...changes });
+  let savedPlan;
+  const h = harness({ clients: boundary.clients, putSignedUpload: boundary.putSignedUpload, executor,
+    aggregateAdmissionVersion: 1, sourceContentModelVersion,
+    rpc: async (name, params) => {
+      if (name === 'read_document_generation_replacement_v3') {
+        assert.deepEqual(params, checkedParams); return rpcResult(savedJournal('missing'));
+      }
+      if (name === 'read_document_generation_transform_source_v2') {
+        assert.deepEqual(params, { p_actor_user_id: actor, p_source_id: sourceId,
+          p_content_model_version: sourceContentModelVersion });
+        return rpcResult(fixture.envelope);
+      }
+      if (name === 'prepare_document_generation_replacement_v3') {
+        assert.deepEqual(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'p_plan')),
+          checkedParams);
+        savedPlan = structuredClone(params.p_plan);
+        assert.deepEqual(Object.keys(savedPlan).sort(), ['version', 'contentModelVersion',
+          'aggregateAdmissionVersion', 'operationId', 'source', 'operation', 'projection',
+          'baseline_base64', 'legacy'].sort());
+        assert.equal(savedPlan.version, 3);
+        assert.equal(savedPlan.contentModelVersion, 2);
+        assert.equal(savedPlan.aggregateAdmissionVersion, 1);
+        assert.equal(savedPlan.source.contentModelVersion, sourceContentModelVersion);
+        return rpcResult(savedJournal('prepared', { plan: savedPlan }));
+      }
+      if (name === 'publish_document_generation_v3') {
+        assert.deepEqual(params, { p_actor: actor, p_source: sourceId, p_candidate: candidateId,
+          p_archives: [archiveId], p_plan: savedPlan });
+        return rpcResult(published);
+      }
+      assert.fail(`unexpected RPC ${name}`);
+    } });
+  try {
+    const result = await h.run(checkedBody);
+    assert.equal(result.status, 200, JSON.stringify(result.value));
+    assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v3',
+      'read_document_generation_transform_source_v2',
+      'prepare_document_generation_replacement_v3', 'publish_document_generation_v3']);
+    const called = boundary.calls.map(call => call.name);
+    for (const name of ['source.beginV2', 'sourceBytes.getV2', 'sourceBytes.claimV2',
+      'sourceBytes.recordV2', 'upload.beginArchiveV2', 'upload.beginV3']) assert.ok(called.includes(name), name);
+    for (const name of ['source.begin', 'sourceBytes.get', 'sourceBytes.claim',
+      'sourceBytes.record', 'upload.beginArchive', 'upload.beginV2']) assert.equal(called.includes(name), false, name);
+  } finally { await executor.close(); }
+});
+
 test('publish lost response returns an unconfirmed same-ID result, and journal replay never renders again', async () => {
   const plan = { version: 1, operationId: candidateId,
     source: { documentId, generationId: null, walHead, sourceObject: { path: 'source/body.pdf' } },
@@ -416,6 +628,31 @@ test('publish lost response returns an unconfirmed same-ID result, and journal r
   assert.equal(recovered.value.replacement.generation_id, publishedGenerationId);
   assert.equal(publishes, 1, 'a same-ID journal replay must not retry an uncertain publish or render');
   publishGate.resolve(rpcResult(publication));
+});
+
+test('aggregate publish lost response recovers only from the same v3 journal intent', async () => {
+  const plan = aggregatePlan(1), publishGate = deferred();
+  let reads = 0, publishes = 0;
+  const h = harness({ maxConcurrent: 2, aggregateAdmissionVersion: 1, sourceContentModelVersion: 1,
+    rpc: async name => {
+      if (name === 'read_document_generation_replacement_v3') return rpcResult(++reads === 1
+        ? aggregateJournal('prepared', { plan }) : aggregateJournal('published'));
+      if (name === 'publish_document_generation_v3') { publishes++; return publishGate.promise; }
+      assert.fail(`unexpected RPC ${name}`);
+    } });
+  const controller = new AbortController();
+  const first = h.run(body, { signal: controller.signal });
+  await waitFor(() => publishes === 1); controller.abort();
+  const uncertain = await first;
+  assert.equal(uncertain.status, 503);
+  assert.equal(uncertain.value.error.code, 'replacement_unconfirmed');
+  const recovered = await h.run();
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.value.replacement.version, 3);
+  assert.equal(publishes, 1);
+  assert.deepEqual(rpcNames(h), ['read_document_generation_replacement_v3',
+    'publish_document_generation_v3', 'read_document_generation_replacement_v3']);
+  publishGate.resolve(rpcResult(aggregatePublication));
 });
 
 test('request admission rejects excess valid work before auth and holds capacity until a late provider read settles', async () => {

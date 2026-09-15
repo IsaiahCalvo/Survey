@@ -24,6 +24,6 @@ test('actual isolated PostgreSQL proves aggregate publication intent, rollback, 
 },()=>{
   const result=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024});
   assert.equal(result.status,0,`${result.stdout}\n${result.stderr}\n${result.error?.message||''}`);
-  assert.match(result.stdout,/Annotation aggregate publication PostgreSQL checks passed: 10/);
+  assert.match(result.stdout,/Annotation aggregate publication PostgreSQL checks passed: 11/);
   assert.match(result.stdout,/Disposable local PostgreSQL stopped; exact temporary cluster removed/);
 });

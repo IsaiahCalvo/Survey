@@ -41,8 +41,11 @@ export async function prepareDocumentGenerationReplacement(input) {
     const { actorUserId, documentId, sourceId, operationId } = input;
     const targetContentModelVersion = input.targetContentModelVersion === undefined
       ? 1 : input.targetContentModelVersion;
+    const aggregateAdmissionVersion = input.aggregateAdmissionVersion;
     check([actorUserId, documentId, sourceId, operationId].every(validId));
     check(targetContentModelVersion === 1 || targetContentModelVersion === 2);
+    check(aggregateAdmissionVersion === undefined
+      || (aggregateAdmissionVersion === 1 && targetContentModelVersion === 2));
     const envelope = copyJson(input.envelope), operation = copyJson(input.operation);
     const versioned = envelope?.version === 2;
     check(keys(envelope, versioned
@@ -115,7 +118,9 @@ export async function prepareDocumentGenerationReplacement(input) {
     check(transformed.baselineUpdate.byteLength + c.state.byteLength + c.stateVector.byteLength <= SOURCE_LIMIT);
     check(transformed.version === targetContentModelVersion
       && (targetContentModelVersion !== 2 || transformed.contentModelVersion === 2));
-    const plan = { version: targetContentModelVersion, ...(targetContentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
+    const plan = { version: aggregateAdmissionVersion === 1 ? 3 : targetContentModelVersion,
+      ...(targetContentModelVersion === 2 ? { contentModelVersion: 2 } : {}),
+      ...(aggregateAdmissionVersion === 1 ? { aggregateAdmissionVersion: 1 } : {}),
       operationId: transformed.operationId, source: transformed.source,
       operation: transformed.operation, projection: transformed.projection, baseline_base64: b64(transformed.baselineUpdate),
       legacy: { documentId: c.documentId, encodingVersion: c.encodingVersion, throughSeq: c.throughSeq,

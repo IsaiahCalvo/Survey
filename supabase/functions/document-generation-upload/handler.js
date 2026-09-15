@@ -59,7 +59,7 @@ export async function hashGenerationUploadStream(stream, { byteLength, signal } 
   }
 }
 
-function descriptor(value, actor, operationId) {
+function descriptor(value, actor, operationId, contentModelVersion = null) {
   const archive = value?.version === 3;
   const bound = value?.version === 2 || archive;
   requireValue(value && (value.version === 1 || bound) && value.actor_user_id === actor
@@ -71,6 +71,8 @@ function descriptor(value, actor, operationId) {
     && typeof value.expires_at === 'string' && Number.isFinite(Date.parse(value.expires_at))
     && (value.verified_at === null || (typeof value.verified_at === 'string'
       && Number.isFinite(Date.parse(value.verified_at)))), 'invalid_receipt');
+  requireValue(contentModelVersion === null
+    || value.content_model_version === contentModelVersion, 'invalid_receipt');
   if (bound) {
     requireValue(uuid(value.source_id) && (archive ? value.purpose === 'source-object-archive'
       : ['prior-pdf', 'candidate-pdf'].includes(value.purpose))
@@ -132,9 +134,10 @@ function sameOperation(a, b) {
       && (!a.source_object || !b.source_object || SOURCE_OBJECT.every(key => a.source_object[key] === b.source_object[key])), 'invalid_receipt');
   }
 }
-function publicDescriptor(value) {
+function publicDescriptor(value, includeContentModel = false) {
   // Do not return private verification leases or future private RPC fields.
-  return { ...Object.fromEntries(['version', ...IMMUTABLE, 'state', 'verified_at'].map(key => [key, value[key]])),
+  return { ...Object.fromEntries(['version', ...(includeContentModel
+    ? ['content_model_version'] : []), ...IMMUTABLE, 'state', 'verified_at'].map(key => [key, value[key]])),
     ...(value.version !== 1 ? Object.fromEntries([...SOURCE_BINDING, 'upload_state'].map(key => [key, value[key]])) : {}),
     ...(value.version === 3 ? { archived_source_object_id: value.archived_source_object_id,
       source_object: value.source_object === null ? null
@@ -165,6 +168,7 @@ const errors = {
   '54000': [409, 'This document needs a larger verified-publication workflow.'],
   SG001: [409, 'The source generation changed. Keep the candidate and load the current document.'],
   SG002: [409, 'The source generation changed. Keep the candidate and load the current document.'],
+  SG003: [409, 'The replacement source model does not match its saved intent.'],
 };
 const rejectedResponse = operation => response(422, { operation: publicDescriptor(operation),
   error: { code: 'byte_mismatch', message: errors.byte_mismatch[1] } });
@@ -189,6 +193,8 @@ export async function handleDocumentGenerationUpload(request, deps) {
   let recovery = null;
   try {
     requireValue(deps.enabled === true, 'unavailable');
+    const contentModelVersion = deps.contentModelVersion ?? null;
+    requireValue(contentModelVersion === null || [1, 2].includes(contentModelVersion), 'unavailable');
     const token = request.headers.get('Authorization')?.match(/^Bearer ([^\s]+)$/i)?.[1];
     requireValue(token && token.length <= 16384, 'unauthorized');
     const actor = (await call(() => deps.getUser(token, signal), signal))?.id;
@@ -233,8 +239,12 @@ export async function handleDocumentGenerationUpload(request, deps) {
         requireValue(deps.sourceBoundEnabled === true, 'unavailable');
       } else requireValue(uuid(input.document_id));
       if (!archive) requireValue(sha(input.content_sha256) && size(input.byte_length));
-      const prepared = descriptor(await call(() => archive ? deps.beginArchive(token, input, signal) : sourceBound
-        ? deps.beginV2(token, input, signal) : deps.begin(token, input, signal), signal), actor, operationId);
+      const prepared = descriptor(await call(() => archive
+        ? contentModelVersion === null ? deps.beginArchive(token, input, signal)
+          : deps.beginArchiveV2(token, input, contentModelVersion, signal)
+        : sourceBound ? contentModelVersion === null ? deps.beginV2(token, input, signal)
+          : deps.beginV3(token, input, contentModelVersion, signal)
+          : deps.begin(token, input, signal), signal), actor, operationId, contentModelVersion);
       requireValue(prepared.version === (archive ? 3 : sourceBound ? 2 : 1)
         && (archive ? prepared.source_id === input.source_id && prepared.archived_source_object_id === input.source_object_id
           : (sourceBound ? prepared.source_id === input.source_id && prepared.purpose === input.purpose
@@ -254,7 +264,9 @@ export async function handleDocumentGenerationUpload(request, deps) {
       sameOperation(prepared, current);
       if (current.state === 'source-unavailable') return sourceUnavailableResponse(current);
       if (current.state === 'canceled') throw fail('canceled');
-      return response(200, { operation: publicDescriptor(current),
+      const confirmedCurrent = contentModelVersion === null ? current
+        : { ...current, content_model_version: contentModelVersion };
+      return response(200, { operation: publicDescriptor(confirmedCurrent, contentModelVersion !== null),
         upload: current.state === 'reserved' && current.object === null ? upload : null });
     }
     if (action === 'cancel') {
@@ -311,7 +323,7 @@ export async function handleDocumentGenerationUpload(request, deps) {
     // SQL can reject a source that changed between get and claim/record. Read
     // only this same operation once; never retry the mutation or hide a bad
     // receipt. Recovery must itself authenticate and retain every binding.
-    if (recovery && !signal.aborted && ['23514', '42501', '40001', '55P03', 'SG001', 'SG002'].includes(error?.code)) {
+    if (recovery && !signal.aborted && ['23514', '42501', '40001', '55P03', 'SG001', 'SG002', 'SG003'].includes(error?.code)) {
       try {
         const current = descriptor(await call(() => deps.get(recovery.token, recovery.operationId, signal), signal),
           recovery.actor, recovery.operationId);

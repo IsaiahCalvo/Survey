@@ -9,7 +9,10 @@ import * as Y from 'yjs';
 import {withDisposablePostgres} from './helpers/disposablePostgres.mjs';
 import {syncByPageToDoc,syncSurveyMarkersToDoc} from '../src/services/annotationDocStore.js';
 import {mapSurveyMarkerRowToLocalAnnotation} from '../src/services/documentSurveyMarkerMapper.js';
+import {materializeAnnotationGenerationStateForOpen} from '../src/services/annotationGenerationState.js';
+import {createDocumentGenerationReader,readCheckedGenerationBootstrap} from '../src/services/documentGenerationReader.js';
 import {createDocumentReplacementExecutor} from '../src/services/documentReplacementExecutor.js';
+import {createDocumentReplacementRequestHandler} from '../src/services/documentReplacementRequest.js';
 
 assert.equal(process.argv.length,2,'This local fixture accepts no arguments');
 const migrationPath=name=>fileURLToPath(new URL(`../supabase/migrations/${name}`,import.meta.url));
@@ -353,6 +356,161 @@ await withDisposablePostgres(async pg=>{
   assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE operation_id='${legacy.candidate.operation_id}'`),'0');
   const legacyReceipt=JSON.parse(scalar(publishSql(legacy,1)));
   assert.equal(legacyReceipt.version,1);assert.equal(JSON.parse(asRole(owner,`SELECT public.read_document_generation_open('${legacy.d}','${legacy.candidate.generation_id}',true)`).stdout).version,1);
+ });
+ await check('request handler composes actual v3 SQL, executor and byte stores across recovery and successor publication',async()=>{
+  let serial=3000;const fresh=()=>id(serial++),bytesByPath=new Map();
+  const sqlArgs=args=>args.map(value=>quote(typeof value==='object'&&value!==null?JSON.stringify(value):value)).join(',');
+  const sqlJson=(statement,actorId=null)=>{const result=actorId===null?sql(statement,false)
+   :sql(`SET request.jwt.claim.sub=${quote(actorId)};SET request.jwt.claim.role='authenticated';${statement}`,false);
+   if(result.status!==0){const code=result.stderr.match(/\b([A-Z0-9]{5}):/)?.[1]||'XX000';throw Object.assign(new Error(result.stderr),{code});}
+   return JSON.parse(result.stdout);
+  };
+  const publicActor=(actorId,name,args)=>sqlJson(`SELECT public.${name}(${sqlArgs(args)})`,actorId);
+  const publicTrusted=(name,args)=>sqlJson(`SELECT public.${name}(${sqlArgs(args)})`);
+  const privateTrusted=(name,args)=>sqlJson(`SELECT survey_private.${name}(${sqlArgs(args)})`);
+  const stream=bytes=>new ReadableStream({start(controller){controller.enqueue(bytes.slice(0,Math.min(23,bytes.length)));
+   controller.enqueue(bytes.slice(Math.min(23,bytes.length)));controller.close();}});
+  const seed=()=>{const d=fresh(),path=`${owner}/${d}.pdf`,sourceObjectId=fresh(),sourceObjectVersion=fresh(),sid=fresh();
+   sql(`INSERT INTO documents(id,user_id,project_id,name,file_path,file_size,page_count) VALUES('${d}','${owner}','${project}','Composed aggregate publication',${quote(path)},${originalPdf.length},3);
+    INSERT INTO storage.objects(id,bucket_id,name,version,metadata) VALUES('${sourceObjectId}','documents',${quote(path)},'${sourceObjectVersion}',jsonb_build_object('size',${originalPdf.length}));
+    INSERT INTO survey_sessions(id,template_id,user_id,document_id,is_active) VALUES('${sid}','${id(500)}','${other}','${d}',false)`);
+   const shape={type:'rect',pageNumber:2,left:10,top:20,width:30,height:40,data:{id:'composed-mark',pageNumber:2},meta:{authorId:owner}};
+   sql(`INSERT INTO document_annotations(document_id,user_id,annotation_id,annotation_type,page_number,bounds,annotation_data) VALUES('${d}','${owner}','composed-mark','square',2,'{"x":10,"y":20,"width":30,"height":40}',${quote(JSON.stringify({fabricObject:shape,pageNumber:2}))})`);
+   const modern=new Y.Doc();syncByPageToDoc(modern,{2:{objects:[shape]}});
+   sql(`${pg.actorContext(owner)}SELECT public.store_annotation_snapshot('${d}',0,decode('${Buffer.from(Y.encodeStateAsUpdate(modern)).toString('hex')}','hex'),1,'composed-publisher',1,NULL,NULL,0)`);modern.destroy();
+   const legacy=new Y.Doc(),record=new Y.Map();record.set('id','composed-mark');record.set('type','rect');record.set('pageNumber',2);
+   record.set('fabric',new Y.Map(Object.entries(shape)));record.set('meta',new Y.Map([['authorId',owner]]));legacy.getMap('annotations').set('composed-mark',record);
+   sql(`INSERT INTO doc_yjs_state(document_id,state,state_vector,through_seq) VALUES('${d}',decode('${Buffer.from(Y.encodeStateAsUpdate(legacy)).toString('hex')}','hex'),decode('${Buffer.from(Y.encodeStateVector(legacy)).toString('hex')}','hex'),0)`);legacy.destroy();
+   bytesByPath.set(path,new Uint8Array(originalPdf));return {d,path};
+  };
+  const body=(d,generationId,walHead,ids)=>({document_id:d,generation_id:generationId,wal_head:walHead,
+   operation:{type:'move',from:2,to:1},source_id:ids.source,candidate_operation_id:ids.candidate,
+   archive_operation_ids:[ids.archive]});
+  const ids=()=>({source:fresh(),candidate:fresh(),archive:fresh()});
+  const counts=()=>({journalReads:0,transformReads:0,sourceReads:0,uploadReads:0,renders:0,puts:0,prepares:0,publishes:0});
+  const snapshotCounts=value=>structuredClone(value);
+  const sideEffectDelta=(before,after)=>Object.fromEntries(['transformReads','sourceReads','uploadReads','renders','puts','prepares','publishes']
+   .map(key=>[key,after[key]-before[key]]));
+  const makePrivateRpc=(counter,{losePrepare=false,losePublish=false}={})=>async(name,params)=>{
+   if(name==='read_document_generation_replacement_v3')counter.journalReads++;
+   if(name==='read_document_generation_transform_source_v2'){
+    counter.transformReads++;try{return {data:publicActor(params.p_actor_user_id,name,
+     [params.p_actor_user_id,params.p_source_id,params.p_content_model_version]),error:null};}
+    catch(error){return {data:null,error:{code:error.code}};}
+   }
+   if(name==='prepare_document_generation_replacement_v3')counter.prepares++;
+   if(name==='publish_document_generation_v3')counter.publishes++;
+   const common=`${quote(params.p_actor)},${quote(params.p_source)},${quote(params.p_candidate)},ARRAY[${params.p_archives.map(quote).join(',')}]::uuid[]`;
+   const statement=name==='read_document_generation_replacement_v3'
+    ?`SELECT survey_private.read_document_generation_replacement_v3(${common},${quote(params.p_expected_generation)},${quote(params.p_expected_wal_head)}::bigint,${quote(JSON.stringify(params.p_operation))}::jsonb)`
+    :name==='prepare_document_generation_replacement_v3'
+     ?`SELECT survey_private.prepare_document_generation_replacement_v3(${common},${quote(params.p_expected_generation)},${quote(params.p_expected_wal_head)}::bigint,${quote(JSON.stringify(params.p_operation))}::jsonb,${quote(JSON.stringify(params.p_plan))}::jsonb)`
+     :name==='publish_document_generation_v3'
+      ?`SELECT survey_private.publish_document_generation_v3(${common},${quote(JSON.stringify(params.p_plan))}::jsonb)`
+      :assert.fail(`unexpected private RPC ${name}`);
+   try{const data=sqlJson(statement);if((losePrepare&&name==='prepare_document_generation_replacement_v3')
+     ||(losePublish&&name==='publish_document_generation_v3'))throw Object.assign(new Error('fixture lost committed reply'),{lost:true});
+    return {data,error:null};}
+   catch(error){if(error.lost)throw error;return {data:null,error:{code:error.code}};}
+  };
+  const makeServices=(model,counter)=>{
+   const source={
+    begin:()=>assert.fail('legacy source begin used'),get:()=>assert.fail('legacy source get used'),cancel:()=>assert.fail('source cancel used'),
+    beginV2:(actorId,input,contentModel)=>publicActor(actorId,'begin_document_generation_source_v2',
+     [actorId,input.document_id,input.source_id,input.generation_id,contentModel]),
+    getV2:(actorId,input,contentModel)=>publicActor(actorId,'get_document_generation_source_v2',[actorId,input.source_id,contentModel]),
+   };
+   const sourceBytes={
+    get:()=>assert.fail('legacy source byte get used'),claim:()=>assert.fail('legacy source byte claim used'),record:()=>assert.fail('legacy source byte record used'),
+    getV2:(actorId,sourceId,contentModel)=>privateTrusted('check_document_generation_source_bytes_v2',[actorId,sourceId,contentModel]),
+    claimV2:(actorId,sourceId,claimId,contentModel)=>publicTrusted('claim_document_generation_source_bytes_v2',[actorId,sourceId,claimId,contentModel]),
+    recordV2:(actorId,sourceId,claimId,objects,contentModel)=>publicTrusted('record_document_generation_source_bytes_v2',[actorId,sourceId,claimId,objects,contentModel]),
+    openStream:async descriptor=>{counter.sourceReads++;const bytes=bytesByPath.get(descriptor.path);assert.ok(bytes);return stream(bytes);},
+    release:(actorId,sourceId,claimId)=>publicTrusted('release_document_generation_source_bytes',[actorId,sourceId,claimId]),newId:fresh,
+   };
+   const upload={begin:()=>assert.fail('plain upload begin used'),beginV2:()=>assert.fail('legacy source-bound upload used'),
+    beginArchive:()=>assert.fail('legacy archive used'),cancel:()=>assert.fail('upload cancel used'),
+    beginArchiveV2:(_token,input,contentModel)=>publicActor(owner,'begin_document_generation_source_archive_v2',
+     [input.source_id,input.operation_id,input.source_object_id,contentModel]),
+    beginV3:(_token,input,contentModel)=>publicActor(owner,'begin_document_generation_upload_v3',
+     [input.source_id,input.operation_id,input.purpose,input.content_sha256,input.byte_length,contentModel]),
+    get:(_token,operationId)=>publicActor(owner,'get_document_generation_upload',[operationId]),
+    mint:async path=>({path,token:'local-signed-token',signedUrl:`https://local.invalid/${path}`}),
+    claim:(actorId,operationId,claimId)=>publicTrusted('claim_document_generation_upload_verification',[actorId,operationId,claimId]),
+    openStream:async path=>{counter.uploadReads++;const bytes=bytesByPath.get(path);assert.ok(bytes);return stream(bytes);},
+    record:(actorId,operationId,claimId,objectId,version,contentSha,byteLength)=>publicTrusted('record_document_generation_upload_verification',
+     [actorId,operationId,objectId,version,contentSha,byteLength,claimId]),
+    reject:(actorId,operationId,claimId,objectId,version,contentSha,byteLength)=>publicTrusted('reject_document_generation_upload_verification',
+     [actorId,operationId,claimId,objectId,version,contentSha,byteLength]),
+    release:(actorId,operationId,claimId)=>publicTrusted('release_document_generation_upload_verification',[actorId,operationId,claimId]),newId:fresh,
+   };
+   return {source,sourceBytes,upload,model};
+  };
+  const executor=createDocumentReplacementExecutor({timeoutMs:120000});
+  const makeHandler=(model,counter,rpcOptions={})=>{const concrete=makeServices(model,counter);
+   return createDocumentReplacementRequestHandler({enabled:true,getUser:async()=>({id:owner}),serviceClients:concrete,
+    privateRpc:makePrivateRpc(counter,rpcOptions),putSignedUpload:async({path},blob)=>{counter.puts++;
+     const bytes=new Uint8Array(await blob.arrayBuffer()),objectId=fresh(),version=fresh();bytesByPath.set(path,bytes);
+     sql(`INSERT INTO storage.objects(id,bucket_id,name,version,metadata) VALUES('${objectId}','documents',${quote(path)},'${version}',jsonb_build_object('size',${bytes.length}))`);},
+    executor:{prepare(...args){counter.renders++;return executor.prepare(...args);}},aggregateAdmissionVersion:1,sourceContentModelVersion:model,timeoutMs:120000});};
+  const invoke=async(handler,input)=>{const response=await handler(new Request('https://local.invalid/replacement',{method:'POST',
+   headers:{Authorization:'Bearer local-only','Content-Type':'application/json'},body:JSON.stringify(input)}));
+   return {status:response.status,value:await response.json()};};
+  try{
+   const firstSeed=seed(),firstIds=ids(),firstBody=body(firstSeed.d,null,'0',firstIds),firstCounts=counts();
+   const lostPublish=await invoke(makeHandler(1,firstCounts,{losePublish:true}),firstBody);
+   assert.equal(lostPublish.status,503);assert.equal(lostPublish.value.error.code,'replacement_unconfirmed');
+   assert.deepEqual({journalReads:firstCounts.journalReads,transformReads:firstCounts.transformReads,sourceReads:firstCounts.sourceReads,
+    uploadReads:firstCounts.uploadReads,renders:firstCounts.renders,puts:firstCounts.puts,prepares:firstCounts.prepares,publishes:firstCounts.publishes},
+    {journalReads:1,transformReads:1,sourceReads:1,uploadReads:2,renders:1,puts:2,prepares:1,publishes:1});
+   const beforePublishedReplay=snapshotCounts(firstCounts),publishedReplay=await invoke(makeHandler(1,firstCounts),firstBody);
+   assert.equal(publishedReplay.status,200);assert.equal(publishedReplay.value.replacement.version,3);
+   assert.equal(publishedReplay.value.replacement.previous_generation_id,null);
+   assert.equal(firstCounts.journalReads-beforePublishedReplay.journalReads,1,'fresh recovery reads exactly one committed receipt');
+   assert.deepEqual(sideEffectDelta(beforePublishedReplay,firstCounts),{transformReads:0,sourceReads:0,uploadReads:0,renders:0,puts:0,prepares:0,publishes:0});
+   const firstReceipt=structuredClone(publishedReplay.value.replacement),firstGeneration=firstReceipt.generation_id;
+   const checkedFirst=run(owner,`SELECT public.read_document_generation_open_v3('${firstSeed.d}','${firstGeneration}',2::smallint,true)`);
+   assert.equal(checkedFirst.generation_id,firstGeneration);assert.equal(checkedFirst.annotations.content_model_version,2);
+
+   const successorIds=ids(),successorBody=body(firstSeed.d,firstGeneration,
+    scalar(`SELECT last_seq FROM survey_private.annotation_generation_heads WHERE document_id='${firstSeed.d}'`),successorIds),successorCounts=counts();
+   const successor=await invoke(makeHandler(2,successorCounts),successorBody);
+   assert.equal(successor.status,200);assert.equal(successor.value.replacement.previous_generation_id,firstGeneration);
+   assert.deepEqual({journalReads:successorCounts.journalReads,transformReads:successorCounts.transformReads,sourceReads:successorCounts.sourceReads,
+    uploadReads:successorCounts.uploadReads,renders:successorCounts.renders,puts:successorCounts.puts,
+    prepares:successorCounts.prepares,publishes:successorCounts.publishes},
+   {journalReads:1,transformReads:1,sourceReads:1,uploadReads:2,renders:1,puts:2,prepares:1,publishes:1});
+   const successorOpen=run(owner,`SELECT public.read_document_generation_open_v3('${firstSeed.d}',
+    '${successor.value.replacement.generation_id}',2::smallint,true)`);
+   assert.equal(successorOpen.generation_id,successor.value.replacement.generation_id);assert.equal(successorOpen.content_model_version,2);
+   const successorGeneration=successor.value.replacement.generation_id;
+   const reader=createDocumentGenerationReader({getActorUserId:()=>owner,timeoutMs:120000,
+    request:async(name,params)=>{try{return {data:name==='read_document_generation_open_v3'
+     ?publicActor(owner,name,[params.p_document_id,params.p_generation_id,params.p_content_model_version,params.p_include_snapshot])
+     :name==='read_annotation_updates_v3'
+      ?publicActor(owner,name,[params.p_document_id,params.p_generation_id,params.p_content_model_version,
+       params.p_after_seq,params.p_through_seq,params.p_limit])
+      :assert.fail(`unexpected checked-reader RPC ${name}`),error:null};}
+     catch(error){return {data:null,error:{code:error.code}};}},
+    download:async descriptor=>{const bytes=bytesByPath.get(descriptor.path);assert.ok(bytes);return new Blob([bytes],{type:'application/pdf'});}});
+   const checkedBundle=await reader.open({documentId:firstSeed.d,actorUserId:owner,pdfGenerationId:successorGeneration,contentModelVersion:2});
+   const bootstrap=readCheckedGenerationBootstrap(checkedBundle,{documentId:firstSeed.d,actorUserId:owner,
+    pdfGenerationId:successorGeneration,contentModelVersion:2}),reconstructed=new Y.Doc();
+   try{Y.applyUpdate(reconstructed,bootstrap.update);const state=materializeAnnotationGenerationStateForOpen(reconstructed,2);
+    assert.equal(state.annotationsByPage[2].objects.some(value=>value.data?.id==='composed-mark'),true);}
+   finally{reconstructed.destroy();}
+   const retiredBefore=snapshotCounts(firstCounts),retired=await invoke(makeHandler(2,firstCounts),firstBody);
+   assert.deepEqual(retired.value.replacement,firstReceipt);assert.deepEqual(sideEffectDelta(retiredBefore,firstCounts),
+    {transformReads:0,sourceReads:0,uploadReads:0,renders:0,puts:0,prepares:0,publishes:0});
+
+   const preparedSeed=seed(),preparedBody=body(preparedSeed.d,null,'0',ids()),preparedCounts=counts();
+   const lostPrepare=await invoke(makeHandler(1,preparedCounts,{losePrepare:true}),preparedBody);
+   assert.equal(lostPrepare.status,503);assert.equal(lostPrepare.value.error.code,'replacement_unconfirmed');assert.equal(preparedCounts.publishes,0);
+   const beforePreparedReplay=snapshotCounts(preparedCounts),preparedReplay=await invoke(makeHandler(1,preparedCounts),preparedBody);
+   assert.equal(preparedReplay.status,200);assert.equal(preparedReplay.value.replacement.state,'published');
+   assert.equal(preparedCounts.journalReads-beforePreparedReplay.journalReads,1,'cold recovery reads exactly one prepared receipt');
+   assert.deepEqual(sideEffectDelta(beforePreparedReplay,preparedCounts),{transformReads:0,sourceReads:0,uploadReads:0,renders:0,puts:0,prepares:0,publishes:1});
+  }finally{await executor.close();}
  });
  for(const role of ['anon','authenticated','service_role'])
   errorState(asRole(owner,'SELECT * FROM survey_private.annotation_generations',role,false),'42501');

@@ -169,3 +169,43 @@ test('already-aborted requests never authenticate', async () => {
   const controller = new AbortController(); controller.abort(); const h = harness();
   assert.equal((await h.run('verify', { signal: controller.signal })).status, 503); assert.deepEqual(names(h), []);
 });
+
+test('versioned source proof uses only v2 methods and preserves the selected model', async () => {
+  for (const contentModelVersion of [1, 2]) {
+    const versioned = state => ({ ...receipt(state), version: 2, content_model_version: contentModelVersion });
+    const h = harness({ contentModelVersion,
+      get: () => assert.fail('v1 get fallback'), claim: () => assert.fail('v1 claim fallback'),
+      record: () => assert.fail('v1 record fallback'),
+      getV2: async () => versioned(),
+      claimV2: async () => ({ ...versioned('verifying'), verification_claim_id: claimId,
+        verification_claim_expires_at: '2030-01-01T00:02:00Z' }),
+      recordV2: async () => versioned('verified') });
+    const result = await h.run();
+    assert.equal(result.status, 200);
+    assert.equal(result.body.attestation.content_model_version, contentModelVersion);
+    assert.deepEqual(names(h), ['getUser', 'getV2', 'newId', 'claimV2', 'openStream',
+      'openStream', 'recordV2']);
+    const getArgs = h.calls.find(call => call.name === 'getV2').args;
+    assert.deepEqual(getArgs.slice(0, 3), [actor, sourceId, contentModelVersion]);
+    assert.equal(getArgs[3] instanceof AbortSignal, true);
+    assert.deepEqual(h.calls.find(call => call.name === 'claimV2').args.slice(0, 4),
+      [actor, sourceId, claimId, contentModelVersion]);
+    assert.deepEqual(h.calls.find(call => call.name === 'recordV2').args.slice(0, 4),
+      [actor, sourceId, claimId, versioned('verified').objects]);
+    assert.equal(h.calls.find(call => call.name === 'recordV2').args[4], contentModelVersion);
+  }
+});
+
+test('versioned source proof rejects missing or switched model receipts and maps SG003', async () => {
+  for (const value of [receipt(), { ...receipt(), version: 2, content_model_version: 2 }]) {
+    const h = harness({ contentModelVersion: 1, getV2: async () => value,
+      get: () => assert.fail('v1 fallback') });
+    assert.equal((await h.run()).status, 502);
+    assert.ok(!names(h).includes('claimV2'));
+  }
+  const h = harness({ contentModelVersion: 1,
+    getV2: async () => { throw Object.assign(new Error('private'), { code: 'SG003' }); } });
+  const result = await h.run();
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error.code, 'SG003');
+});

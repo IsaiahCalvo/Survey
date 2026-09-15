@@ -81,8 +81,10 @@ function visibleCapture(value, actor, documentId, generationId) {
     compare: pick(value.compare, compareKeys), scope: 'sql-metadata-only' };
 }
 
-function descriptor(value, actor, input) {
-  check(object(value) && value.version === 1 && value.source_id === input.source_id
+function descriptor(value, actor, input, contentModelVersion = null) {
+  check(object(value) && value.version === (contentModelVersion === null ? 1 : 2)
+    && (contentModelVersion === null || value.content_model_version === contentModelVersion)
+    && value.source_id === input.source_id
     && value.actor_user_id === actor && uuid(value.document_id)
     && (value.generation_id === null || uuid(value.generation_id))
     && ['captured', 'expired', 'canceled'].includes(value.state)
@@ -98,7 +100,8 @@ function descriptor(value, actor, input) {
   const visible = value.state === 'captured'
     ? visibleCapture(value.visible_capture, actor, value.document_id, value.generation_id) : null;
   if (visible) check(visible.compare.wal_head === value.wal_head);
-  return { ...pick(value, ['version', 'source_id', 'actor_user_id', 'document_id', 'generation_id',
+  return { ...pick(value, ['version', ...(contentModelVersion === null ? [] : ['content_model_version']),
+    'source_id', 'actor_user_id', 'document_id', 'generation_id',
     'state', 'source_byte_state', 'source_sql_sha256', 'wal_head', 'expires_at']),
     source_object: storageObject(value.source_object),
     sidecar_objects: value.sidecar_objects.map(storageObject), visible_capture: visible };
@@ -120,6 +123,7 @@ const errors = {
   '23505': [409, 'This source ID already belongs to a different capture.'],
   SG001: [409, 'The document generation changed. Prepare a fresh source after loading it.'],
   SG002: [409, 'The document generation changed. Prepare a fresh source after loading it.'],
+  SG003: [409, 'The replacement source model does not match its saved intent.'],
   '54000': [409, 'This document exceeds the bounded source capture limit.'],
 };
 
@@ -134,6 +138,8 @@ export async function handleDocumentGenerationSource(request, deps) {
   const signal = controller.signal;
   try {
     check(deps.enabled === true, 'unavailable');
+    const contentModelVersion = deps.contentModelVersion ?? null;
+    check(contentModelVersion === null || [1, 2].includes(contentModelVersion), 'unavailable');
     const token = request.headers.get('Authorization')?.match(/^Bearer ([^\s]+)$/i)?.[1];
     check(token && token.length <= 16384, 'unauthorized');
     const actor = (await call(() => deps.getUser(token, signal), signal))?.id;
@@ -166,8 +172,14 @@ export async function handleDocumentGenerationSource(request, deps) {
     check(Object.keys(input).length === keys.length && keys.every(key => Object.hasOwn(input, key)), 'invalid_request');
     if (input.action === 'begin') check(uuid(input.document_id)
       && (input.generation_id === null || uuid(input.generation_id)), 'invalid_request');
-    const result = await call(() => deps[input.action](actor, input, signal), signal);
-    return response(200, { source: descriptor(result, actor, input) });
+    const method = contentModelVersion !== null && input.action !== 'cancel'
+      ? `${input.action}V2` : input.action;
+    check(typeof deps[method] === 'function'
+      && !(contentModelVersion !== null && input.action === 'cancel'), 'unavailable');
+    const result = await call(() => contentModelVersion === null
+      ? deps[method](actor, input, signal)
+      : deps[method](actor, input, contentModelVersion, signal), signal);
+    return response(200, { source: descriptor(result, actor, input, contentModelVersion) });
   } catch (error) {
     const code = Object.hasOwn(errors, error?.code) ? error.code : 'capture_pending';
     const [status, message] = errors[code];

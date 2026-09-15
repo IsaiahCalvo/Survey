@@ -1268,10 +1268,10 @@ stripped v2 form of the same saved v3 plan cannot bypass this intent: the existi
 publication-row trigger rejects its different plan hash and rolls back its
 earlier changes. That trigger must be enabled for this migration to load.
 
-This is an additive private database contract, not app activation. The existing
-worker still emits v2 plans. The trusted caller must explicitly create v3 plans
-and use the matching preparation, lookup and publication calls before opting
-into this mode. Client routing, hard worker resource limits, publication/history
+This is an additive private database contract, not app activation. At this SQL
+checkpoint the worker still emitted v2 plans. The trusted caller must explicitly
+create v3 plans and use the matching preparation, lookup and publication calls
+before opting into this mode. Client routing, hard worker resource limits, publication/history
 capacity, old-generation recovery and leased live collaboration checks remain
 rollout gates. No live migration, fence insertion, role grant or Microsoft
 connection is authorized by this local work.
@@ -1309,6 +1309,83 @@ the default skips and was explicitly run and passed as noted above. The Vite
 build passed with its existing large-chunk warning. The AST-only graph refresh
 completed, and all four SQL/harness/wrapper hashes stayed frozen during the
 full-suite run. No viewer, sync, application route or Microsoft code changed.
+
+## Trusted replacement request policy
+
+The private request module keeps the existing browser request body and
+disabled-by-default host behavior. Aggregate publication is a trusted constructor
+choice: `aggregateAdmissionVersion: 1` requires an explicit
+`sourceContentModelVersion: 1 | 2`, and fixes the target content model to 2.
+The caller must choose the source model from trusted document state. A legacy
+source has no generation and must use model 1; a checked source may use model 1
+or 2. SQL still verifies that choice against the captured generation. Neither
+model nor admission policy may be selected by extra browser request fields.
+
+Every opted-in request first reads the v3 replacement journal. There is no
+legacy/v2 probe, automatic upgrade of an earlier intent, or fallback on failure.
+A prepared plan must match the configured source model and required policy
+before publication. A published receipt needs no fresh source read, render, or
+upload: its saved v3 request identity proves the policy even after the original
+plan has been removed or its target generation has retired. A changed current
+source-model setting therefore cannot invalidate an otherwise exact published
+receipt; it can reject an incompatible prepared plan before any new publication.
+
+The compute worker receives the source bytes and immutable model/policy inputs,
+not credentials or a publication capability. Its result must bind the exact
+operation, source, target model and admission policy. The parent owns staging,
+durable preparation and publication, and retains the existing cancellation and
+uncertain-result rules. In particular, an HTTP timeout cannot prove that a SQL
+request already sent did not commit; recovery uses the same saved intent.
+
+The existing source and source-byte handlers accept the explicitly selected
+versioned source model, while the shared upload verifier keeps its immutable
+source/object checks. Upload and archive creation prove the source model; the
+later verification receipt need not invent a model field absent from SQL.
+The parent explicitly overrides nested dependency model settings even on the
+default path, so they cannot silently opt that path into the new protocol.
+SQL model mismatch (`SG003`) remains a conflict, not an endless uncertain retry.
+
+The focused request, worker, source and upload set passed 150 tests on
+2026-09-14, compared with the recovered 132-test baseline. New cases cover all
+three source transitions (legacy 1 to 2, checked 1 to 2 and checked 2 to 2),
+worker input/result policy binding, strict configuration, unchanged request
+bodies, malformed receipts, cold prepared/published recovery, lost replies,
+cancellation and default behavior. The constructor remains private and unmounted.
+
+The Vite build and static release-contract check passed. The separate Deno
+entry-point check could not run with the existing dependency layout: manual
+node-modules resolution cannot find `@supabase/supabase-js`. Remote imports and
+dependency changes were disallowed for that check; no package was installed or
+lockfile changed. Node handler tests are not a substitute for that missing
+Deno deployment-runtime check.
+
+The composed local PostgreSQL test uses the real request handler, compute
+executor, PDF/Yjs transform and committed v3 SQL, with an in-memory byte store
+and owned synthetic Storage metadata. A normal replacement performs one source
+byte read, one transform-source read, one render, two signed uploads (source
+archive and candidate), two upload-verification reads, one preparation and one
+publication. After a lost publication reply, a fresh handler adds one journal
+read and none of that work. After a lost preparation reply, it adds one journal
+read and one publication, with no repeat download, render, upload or preparation.
+A checked reader downloads and reconstructs the successor's PDF and Yjs state.
+The original receipt still replays after that successor is published, even with
+the caller now configured for source model 2.
+
+These tests use a local trusted adapter, not hosted credentials, real signed
+Storage URLs or a deployed HTTP route. They do not establish production egress
+savings, network latency or two-real-user collaboration proof. This extension
+does not authorize a host entry point, role grants, live migration, Microsoft
+testing or cloud rollout. Hard worker resource limits and the other rollout
+gates listed above remain required.
+
+Final local verification on 2026-09-14: independent source review passed and
+the focused suite passed 150/150. The opted-in PostgreSQL wrapper passed 2/2,
+including all 11 database groups and the composed checked-reader reconstruction.
+`npm test` passed across 717 files: 7,161 tests, 7,064 passed, 97 skipped, zero
+failed or cancelled. The source-and-test diff hash remained unchanged throughout
+that run. The AST-only graph refresh completed (29,216 nodes, 48,339 edges).
+The existing Deno dependency-layout limit remains as noted above; these local
+checks are not a deployment or live collaboration claim.
 
 ## References
 

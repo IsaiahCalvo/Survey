@@ -136,3 +136,39 @@ test('already-aborted request does not authenticate', async () => {
   const controller = new AbortController(); controller.abort();
   assert.equal((await run(begin, { getUser: () => assert.fail() }, { signal: controller.signal })).status, 503);
 });
+
+test('versioned source capture uses only beginV2/getV2 and binds the server-selected model', async () => {
+  for (const contentModelVersion of [1, 2]) {
+    const calls = [];
+    const versioned = { ...receipt(), version: 2, content_model_version: contentModelVersion };
+    const versionedDeps = deps({ contentModelVersion,
+      begin: () => assert.fail('v1 begin fallback'), get: () => assert.fail('v1 get fallback'),
+      beginV2: async (...args) => { calls.push(['beginV2', ...args]); return versioned; },
+      getV2: async (...args) => { calls.push(['getV2', ...args]); return versioned; } });
+    const begun = await handleDocumentGenerationSource(request(begin), versionedDeps);
+    assert.equal(begun.status, 200);
+    assert.equal((await begun.json()).source.content_model_version, contentModelVersion);
+    assert.deepEqual(calls[0].slice(0, 4), ['beginV2', actor, begin, contentModelVersion]);
+    assert.equal(calls[0][4] instanceof AbortSignal, true);
+    const getInput = { action: 'get', source_id: sourceId };
+    const got = await handleDocumentGenerationSource(request(getInput), versionedDeps);
+    assert.equal(got.status, 200);
+    assert.deepEqual(calls[1].slice(0, 4), ['getV2', actor, getInput, contentModelVersion]);
+  }
+});
+
+test('versioned source capture rejects missing, switched, or unsupported model receipts without fallback', async () => {
+  for (const value of [receipt(), { ...receipt(), version: 2, content_model_version: 2 }]) {
+    const result = await handleDocumentGenerationSource(request(begin), deps({ contentModelVersion: 1,
+      begin: () => assert.fail('v1 fallback'), beginV2: async () => value, getV2: async () => value }));
+    assert.equal(result.status, 502);
+  }
+  const unsupported = await handleDocumentGenerationSource(request(begin), deps({ contentModelVersion: 3,
+    beginV2: () => assert.fail('versioned call') }));
+  assert.equal(unsupported.status, 503);
+  const conflict = await handleDocumentGenerationSource(request(begin), deps({ contentModelVersion: 1,
+    beginV2: async () => { throw Object.assign(new Error('private'), { code: 'SG003' }); },
+    getV2: async () => assert.fail('get') }));
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json()).error.code, 'SG003');
+});

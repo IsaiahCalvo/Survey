@@ -23,7 +23,8 @@ const original = await makePdf(3);
 const slowOriginal = await makePdf(1800);
 
 function fixture({ actor = 1, bytes = original, pageCount = 3, operation = { type: 'move', from: 2, to: 1 },
-  sourceContentModelVersion = 1, targetContentModelVersion } = {}) {
+  sourceContentModelVersion = 1, targetContentModelVersion, aggregateAdmissionVersion,
+  checkedSource = sourceContentModelVersion === 2 } = {}) {
   const actorUserId = id(actor), documentId = id(actor + 10), sourceId = id(actor + 20), operationId = id(actor + 30);
   const doc = new Y.Doc();
   syncByPageToDoc(doc, { 2: { objects: [{ type: 'rect', pageNumber: 2, left: 10, top: 20, width: 30, height: 40,
@@ -34,8 +35,8 @@ function fixture({ actor = 1, bytes = original, pageCount = 3, operation = { typ
   const wal = '9007199254740993', expires = new Date(Date.now() + 120000).toISOString();
   const descriptor = { bucket_id: 'documents', path: `${actorUserId}/source.pdf`, id: id(actor + 40),
     version: id(actor + 50), byte_length: String(bytes.byteLength) };
-  const versioned = sourceContentModelVersion === 2 || targetContentModelVersion === 2;
-  const generationId = sourceContentModelVersion === 2 ? id(actor + 60) : null;
+  const versioned = checkedSource || sourceContentModelVersion === 2 || targetContentModelVersion === 2;
+  const generationId = checkedSource ? id(actor + 60) : null;
   const sources = { annotation_snapshot: generationId === null ? { document_id: documentId, at_seq: wal, writer_epoch: '1', encoding_version: 1,
       snapshot_base64: state } : null, annotation_updates: [], document_annotations: [], doc_yjs_state: null,
     doc_yjs_updates: [], survey_sessions: [], survey_items: [], generation_snapshot: null,
@@ -60,6 +61,7 @@ function fixture({ actor = 1, bytes = original, pageCount = 3, operation = { typ
     expires_at: expires, source_bytes: proof, payload };
   return { actorUserId, documentId, sourceId, operationId, operation, envelope,
     ...(targetContentModelVersion === undefined ? {} : { targetContentModelVersion }),
+    ...(aggregateAdmissionVersion === undefined ? {} : { aggregateAdmissionVersion }),
     objects: [{ id: descriptor.id, version: descriptor.version, bytes: new Uint8Array(bytes) }] };
 }
 
@@ -103,6 +105,68 @@ test('real worker accepts explicit model 1 to 2 and model 2 to 2 plans', async (
       assert.equal(result.plan.version, 2);assert.equal(result.plan.contentModelVersion, 2);
       assert.equal(result.plan.source.contentModelVersion, sourceContentModelVersion);
     }
+  });
+});
+
+test('aggregate policy emits a strict v3 plan for legacy 1 to 2, checked 1 to 2, and checked 2 to 2', async () => {
+  await withExecutor({}, async executor => {
+    for (const [sourceContentModelVersion, checkedSource] of [[1, false], [1, true], [2, true]]) {
+      const input = fixture({ actor: 23 + sourceContentModelVersion + Number(checkedSource),
+        sourceContentModelVersion, checkedSource, targetContentModelVersion: 2,
+        aggregateAdmissionVersion: 1 });
+      const result = await executor.prepare(input);
+      assert.deepEqual(Object.keys(result.plan).sort(), ['version', 'contentModelVersion',
+        'aggregateAdmissionVersion', 'operationId', 'source', 'operation', 'projection',
+        'baseline_base64', 'legacy'].sort());
+      assert.equal(result.plan.version, 3);
+      assert.equal(result.plan.contentModelVersion, 2);
+      assert.equal(result.plan.aggregateAdmissionVersion, 1);
+      assert.equal(result.plan.source.contentModelVersion, sourceContentModelVersion);
+      assert.equal(result.plan.source.generationId, checkedSource ? input.envelope.generation_id : null);
+    }
+  });
+});
+
+test('aggregate policy requires the exact immutable target and worker echo', async () => {
+  await withExecutor({}, async executor => {
+    for (const mutate of [
+      input => { delete input.targetContentModelVersion; },
+      input => { input.targetContentModelVersion = 1; },
+      input => { input.aggregateAdmissionVersion = 2; },
+      input => { input.aggregateAdmissionVersion = '1'; },
+      input => { input.aggregateAdmissionVersion = null; },
+    ]) {
+      const input = fixture({ actor: 38, checkedSource: true, targetContentModelVersion: 2,
+        aggregateAdmissionVersion: 1 });
+      mutate(input);
+      await assert.rejects(executor.prepare(input), error => ['DOCUMENT_REPLACEMENT_EXECUTOR_INPUT',
+        'DOCUMENT_REPLACEMENT_EXECUTOR_FAILED'].includes(error.code));
+    }
+    const input = fixture({ actor: 39, checkedSource: true, targetContentModelVersion: 2,
+      aggregateAdmissionVersion: 1 });
+    const result = await executor.prepare(input);
+    const message = { jobId: 9, binding: { actorUserId: input.actorUserId,
+      documentId: input.documentId, sourceId: input.sourceId, operationId: input.operationId,
+      generationId: input.envelope.generation_id, walHead: input.envelope.wal_head,
+      targetContentModelVersion: 2, aggregateAdmissionVersion: 1 }, result };
+    assert.ok(__testValidateDocumentReplacementWorkerMessage(message, input));
+    for (const binding of [
+      { ...message.binding, targetContentModelVersion: 1 },
+      { ...message.binding, aggregateAdmissionVersion: 2 },
+      Object.fromEntries(Object.entries(message.binding).filter(([key]) => key !== 'aggregateAdmissionVersion')),
+    ]) assert.equal(__testValidateDocumentReplacementWorkerMessage({ ...message, binding }, input), null);
+    const changed = structuredClone(message);
+    changed.result.plan.aggregateAdmissionVersion = 2;
+    assert.equal(__testValidateDocumentReplacementWorkerMessage(changed, input), null);
+  });
+});
+
+test('aggregate work honors cancellation before worker admission', async () => {
+  await withExecutor({}, async executor => {
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(executor.prepare(fixture({ actor: 40, checkedSource: true,
+      targetContentModelVersion: 2, aggregateAdmissionVersion: 1 }), { signal: controller.signal }),
+    errorCode('DOCUMENT_REPLACEMENT_EXECUTOR_ABORTED'));
   });
 });
 

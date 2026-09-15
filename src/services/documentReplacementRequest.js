@@ -169,10 +169,13 @@ function rpcParams(intent) {
   };
 }
 
-function publication(value, intent) {
-  check(exactKeys(value, ['version', 'operation_id', 'document_id', 'actor_user_id', 'source_id',
+function publication(value, intent, policy = null) {
+  check(exactKeys(value, ['version', ...(policy ? ['content_model_version', 'aggregate_admission_version'] : []),
+    'operation_id', 'document_id', 'actor_user_id', 'source_id',
     'generation_id', 'previous_generation_id', 'plan_sha256', 'wal_head', 'published_at']));
-  check(value.version === 1 && value.operation_id === intent.candidateOperationId
+  check(value.version === (policy ? 3 : 1)
+    && (!policy || (value.content_model_version === 2 && value.aggregate_admission_version === 1))
+    && value.operation_id === intent.candidateOperationId
     && value.document_id === intent.documentId && value.actor_user_id === intent.actorUserId
     && value.source_id === intent.sourceId && uuid(value.generation_id)
     && value.generation_id !== value.previous_generation_id
@@ -180,7 +183,8 @@ function publication(value, intent) {
     && value.wal_head === intent.walHead && typeof value.published_at === 'string'
     && Number.isFinite(Date.parse(value.published_at)));
   return Object.freeze({
-    version: 1,
+    version: policy ? 3 : 1,
+    ...(policy ? { content_model_version: 2, aggregate_admission_version: 1 } : {}),
     state: 'published',
     document_id: intent.documentId,
     source_id: intent.sourceId,
@@ -193,21 +197,28 @@ function publication(value, intent) {
   });
 }
 
-function planBinding(value, intent) {
-  check(exactKeys(value, ['version', 'operationId', 'source', 'operation', 'projection',
-    'baseline_base64', 'legacy']) && value.version === 1
+function planBinding(value, intent, policy = null) {
+  check(exactKeys(value, ['version', ...(policy ? ['contentModelVersion', 'aggregateAdmissionVersion'] : []),
+    'operationId', 'source', 'operation', 'projection',
+    'baseline_base64', 'legacy']) && value.version === (policy ? 3 : 1)
+    && (!policy || (value.contentModelVersion === 2 && value.aggregateAdmissionVersion === 1))
     && value.operationId === intent.candidateOperationId && sameJson(value.operation, intent.operation));
-  check(exactKeys(value.source, ['documentId', 'generationId', 'walHead', 'sourceObject'])
+  check(exactKeys(value.source, ['documentId', 'generationId', ...(policy ? ['contentModelVersion'] : []),
+    'walHead', 'sourceObject'])
     && value.source.documentId === intent.documentId && value.source.generationId === intent.generationId
-    && value.source.walHead === intent.walHead);
+    && value.source.walHead === intent.walHead
+    && (!policy || value.source.contentModelVersion === policy.sourceContentModelVersion));
   return value;
 }
 
-function journal(value, intent) {
-  check(exactKeys(value, ['version', 'state', 'actor_user_id', 'document_id', 'source_id',
+function journal(value, intent, policy = null) {
+  check(exactKeys(value, ['version', ...(policy ? ['aggregate_admission_version'] : []),
+    'state', 'actor_user_id', 'document_id', 'source_id',
     'candidate_operation_id', 'archive_operation_ids', 'expected_generation_id', 'expected_wal_head',
     'prepared_at', 'expires_at', 'plan', 'publication']));
-  check(value.version === 1 && ['missing', 'untracked', 'prepared', 'published', 'expired'].includes(value.state));
+  check(value.version === (policy ? 3 : 1)
+    && (!policy || value.aggregate_admission_version === 1)
+    && ['missing', 'untracked', 'prepared', 'published', 'expired'].includes(value.state));
   if (value.actor_user_id !== intent.actorUserId || value.source_id !== intent.sourceId
     || value.candidate_operation_id !== intent.candidateOperationId
     || !sameJson(value.archive_operation_ids, intent.archiveOperationIds)
@@ -221,16 +232,17 @@ function journal(value, intent) {
       && typeof value.expires_at === 'string' && Number.isFinite(Date.parse(value.expires_at)));
   }
   if (value.state === 'prepared') check(Date.parse(value.expires_at) > Date.now()
-    && value.publication === null && plain(planBinding(value.plan, intent)));
+    && value.publication === null && plain(planBinding(value.plan, intent, policy)));
   if (value.state === 'published') check(value.plan === null && plain(value.publication));
   if (['untracked', 'expired'].includes(value.state)) check(value.plan === null && value.publication === null);
   return value;
 }
 
-function expiredTerminal(value, intent) {
+function expiredTerminal(value, intent, policy = null) {
   check(value.state === 'expired' && value.document_id === intent.documentId);
   return Object.freeze({
-    version: 1,
+    version: policy ? 3 : 1,
+    ...(policy ? { aggregate_admission_version: 1 } : {}),
     state: 'expired',
     actor_user_id: intent.actorUserId,
     document_id: intent.documentId,
@@ -245,11 +257,14 @@ function expiredTerminal(value, intent) {
   });
 }
 
-function sourceDescriptor(value, intent) {
-  check(exactKeys(value, ['version', 'source_id', 'actor_user_id', 'document_id', 'generation_id',
+function sourceDescriptor(value, intent, policy = null) {
+  check(exactKeys(value, ['version', ...(policy ? ['content_model_version'] : []),
+    'source_id', 'actor_user_id', 'document_id', 'generation_id',
     'state', 'source_byte_state', 'source_sql_sha256', 'wal_head', 'expires_at', 'source_object',
     'sidecar_objects', 'visible_capture']));
-  check(value.version === 1 && value.source_id === intent.sourceId && value.actor_user_id === intent.actorUserId
+  check(value.version === (policy ? 2 : 1)
+    && (!policy || value.content_model_version === policy.sourceContentModelVersion)
+    && value.source_id === intent.sourceId && value.actor_user_id === intent.actorUserId
     && value.document_id === intent.documentId && value.generation_id === intent.generationId
     && value.wal_head === intent.walHead && value.state === 'captured'
     && value.source_byte_state === 'unverified' && SHA.test(value.source_sql_sha256)
@@ -259,10 +274,13 @@ function sourceDescriptor(value, intent) {
   return value;
 }
 
-function attestation(value, intent, source) {
-  check(exactKeys(value, ['version', 'source_id', 'actor_user_id', 'document_id', 'generation_id',
+function attestation(value, intent, source, policy = null) {
+  check(exactKeys(value, ['version', ...(policy ? ['content_model_version'] : []),
+    'source_id', 'actor_user_id', 'document_id', 'generation_id',
     'source_sql_sha256', 'expires_at', 'state', 'verified_at', 'objects']));
-  check(value.version === 1 && value.state === 'verified' && value.source_id === intent.sourceId
+  check(value.version === (policy ? 2 : 1) && value.state === 'verified'
+    && (!policy || value.content_model_version === policy.sourceContentModelVersion)
+    && value.source_id === intent.sourceId
     && value.actor_user_id === intent.actorUserId && value.document_id === intent.documentId
     && value.generation_id === intent.generationId && value.source_sql_sha256 === source.source_sql_sha256
     && Array.isArray(value.objects) && value.objects.length === 1 && plain(value.objects[0]));
@@ -276,11 +294,16 @@ function attestation(value, intent, source) {
   return object;
 }
 
-function envelope(value, intent, object) {
+function envelope(value, intent, object, policy = null) {
   const captured = captureReplacementJson(value, { maxBytes: MAX_PRIVATE_JSON_BYTES }).value;
-  check(exactKeys(captured, ['version', 'source_id', 'actor_user_id', 'document_id', 'generation_id',
+  check(exactKeys(captured, ['version', ...(policy ? ['content_model_version'] : []),
+    'source_id', 'actor_user_id', 'document_id', 'generation_id',
     'source_sql_sha256', 'body_sha256', 'wal_head', 'expires_at', 'source_bytes', 'payload']));
-  check(captured.version === 1 && captured.source_id === intent.sourceId
+  check(captured.version === (policy ? 2 : 1)
+    && (!policy || (captured.content_model_version === policy.sourceContentModelVersion
+      && captured.source_bytes?.content_model_version === policy.sourceContentModelVersion
+      && captured.payload?.semantic?.content_model_version === policy.sourceContentModelVersion))
+    && captured.source_id === intent.sourceId
     && captured.actor_user_id === intent.actorUserId && captured.document_id === intent.documentId
     && captured.generation_id === intent.generationId && captured.wal_head === intent.walHead
     && captured.source_bytes?.state === 'verified' && captured.source_bytes?.objects?.length === 1
@@ -288,11 +311,12 @@ function envelope(value, intent, object) {
   return captured;
 }
 
-function uploadReceipt(value, intent, operationId, kind, object) {
+function uploadReceipt(value, intent, operationId, kind, object, policy = null, requireModel = false) {
   check(plain(value) && value.operation_id === operationId && value.actor_user_id === intent.actorUserId
     && value.document_id === intent.documentId && value.source_id === intent.sourceId
     && value.expected_source_generation_id === intent.generationId
     && ['reserved', 'verified'].includes(value.state));
+  if (requireModel && policy) check(value.content_model_version === policy.sourceContentModelVersion);
   if (kind === 'candidate') {
     check(value.version === 2 && value.purpose === 'candidate-pdf');
   } else {
@@ -368,10 +392,16 @@ function makeJob(active, release) {
 export function createDocumentReplacementRequestHandler(options = {}) {
   check(plain(options), 'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
   check(Object.keys(options).every(key => ['enabled', 'getUser', 'serviceClients', 'privateRpc',
-    'putSignedUpload', 'executor', 'timeoutMs', 'maxConcurrent'].includes(key)),
+    'putSignedUpload', 'executor', 'timeoutMs', 'maxConcurrent', 'aggregateAdmissionVersion',
+    'sourceContentModelVersion'].includes(key)),
   'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
+  const hasAggregatePolicy = Object.hasOwn(options, 'aggregateAdmissionVersion');
+  const hasSourceModel = Object.hasOwn(options, 'sourceContentModelVersion');
   const { enabled = false, getUser, serviceClients, privateRpc, putSignedUpload, executor,
     timeoutMs = 300000, maxConcurrent = 1 } = options;
+  const aggregateAdmissionVersion = hasAggregatePolicy ? options.aggregateAdmissionVersion : null;
+  const sourceContentModelVersion = hasSourceModel ? options.sourceContentModelVersion : null;
+  const policy = hasAggregatePolicy ? Object.freeze({ aggregateAdmissionVersion, sourceContentModelVersion }) : null;
   check(typeof enabled === 'boolean' && typeof getUser === 'function' && plain(serviceClients)
     && plain(serviceClients.source) && plain(serviceClients.sourceBytes) && plain(serviceClients.upload)
     && typeof privateRpc === 'function' && typeof putSignedUpload === 'function'
@@ -379,11 +409,18 @@ export function createDocumentReplacementRequestHandler(options = {}) {
     && Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= TIMER_LIMIT
     && Number.isSafeInteger(maxConcurrent) && maxConcurrent >= 1 && maxConcurrent <= 16,
   'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
+  check(hasAggregatePolicy === hasSourceModel && (!hasAggregatePolicy
+    || (aggregateAdmissionVersion === 1 && [1, 2].includes(sourceContentModelVersion))),
+  'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
   const functions = (value, keys) => keys.every(key => typeof value[key] === 'function');
   check(functions(serviceClients.source, ['begin', 'get', 'cancel'])
     && functions(serviceClients.sourceBytes, ['get', 'claim', 'openStream', 'record', 'release'])
     && functions(serviceClients.upload, ['beginV2', 'beginArchive', 'get', 'mint', 'claim',
-      'openStream', 'record', 'release', 'reject']), 'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
+      'openStream', 'record', 'release', 'reject'])
+    && (!policy || (functions(serviceClients.source, ['beginV2', 'getV2'])
+      && functions(serviceClients.sourceBytes, ['getV2', 'claimV2', 'recordV2'])
+      && functions(serviceClients.upload, ['beginV3', 'beginArchiveV2']))),
+  'DOCUMENT_REPLACEMENT_REQUEST_INPUT');
 
   const active = new Set();
   const release = job => {
@@ -450,34 +487,44 @@ export function createDocumentReplacementRequestHandler(options = {}) {
         if (result.error) throw new ConfirmedFailure(result.error.code ?? 'invalid_receipt');
         return captureReplacementJson(result.data, { maxBytes: MAX_PRIVATE_JSON_BYTES }).value;
       };
-      const publish = async privatePlan => publication(await rpc('publish_document_generation', {
+      const readReplacementRpc = policy
+        ? 'read_document_generation_replacement_v3' : 'read_document_generation_replacement';
+      const prepareReplacementRpc = policy
+        ? 'prepare_document_generation_replacement_v3' : 'prepare_document_generation_replacement';
+      const publishReplacementRpc = policy
+        ? 'publish_document_generation_v3' : 'publish_document_generation';
+      const publish = async privatePlan => publication(await rpc(publishReplacementRpc, {
         p_actor: actor,
         p_source: intent.sourceId,
         p_candidate: intent.candidateOperationId,
         p_archives: [...intent.archiveOperationIds],
         p_plan: privatePlan,
-      }, true), intent);
+      }, true), intent, policy);
 
-      const first = journal(await rpc('read_document_generation_replacement', rpcParams(intent)), intent);
-      if (first.state === 'published') return response(200, { replacement: publication(first.publication, intent) });
-      if (first.state === 'prepared') return response(200, { replacement: await publish(planBinding(first.plan, intent)) });
+      const first = journal(await rpc(readReplacementRpc, rpcParams(intent)), intent, policy);
+      if (first.state === 'published') return response(200, { replacement: publication(first.publication, intent, policy) });
+      if (first.state === 'prepared') return response(200, { replacement: await publish(planBinding(first.plan, intent, policy)) });
       if (first.state === 'expired') {
-        return errorResponse('replacement_expired', intent, expiredTerminal(first, intent));
+        return errorResponse('replacement_expired', intent, expiredTerminal(first, intent, policy));
       }
       if (first.state === 'untracked') {
         throw new ConfirmedFailure('replacement_conflict');
       }
+      check(!policy || intent.generationId !== null || policy.sourceContentModelVersion === 1,
+        'invalid_request');
 
       const sourceResult = await invoke(handleDocumentGenerationSource, {
         action: 'begin',
         source_id: intent.sourceId,
         document_id: intent.documentId,
         generation_id: intent.generationId,
-      }, serviceClients.source, true);
-      const source = sourceDescriptor(sourceResult?.source, intent);
+      }, { ...serviceClients.source,
+        contentModelVersion: policy ? policy.sourceContentModelVersion : null }, true);
+      const source = sourceDescriptor(sourceResult?.source, intent, policy);
       let captured = null;
       const sourceBytesDeps = {
         ...serviceClients.sourceBytes,
+        contentModelVersion: policy ? policy.sourceContentModelVersion : null,
         async openStream(descriptor, signal) {
           check(captured === null && descriptor?.kind === 'pdf' && seq(descriptor.byte_length)
             && BigInt(descriptor.byte_length) > 0n
@@ -498,7 +545,7 @@ export function createDocumentReplacementRequestHandler(options = {}) {
       };
       const verifiedResult = await invoke(handleDocumentGenerationSourceBytes,
         { action: 'verify', source_id: intent.sourceId }, sourceBytesDeps, true);
-      const sourceObject = attestation(verifiedResult?.attestation, intent, source);
+      const sourceObject = attestation(verifiedResult?.attestation, intent, source, policy);
       if (captured === null) {
         const length = Number(sourceObject.byte_length);
         captured = { bytes: new Uint8Array(length), offset: 0, descriptor: sourceObject };
@@ -517,13 +564,16 @@ export function createDocumentReplacementRequestHandler(options = {}) {
       }
       check(captured.offset === captured.bytes.length && captured.descriptor.id === sourceObject.id
         && captured.descriptor.version === sourceObject.version);
-      const trustedEnvelope = envelope(await rpc('read_document_generation_transform_source', {
+      const trustedEnvelope = envelope(await rpc(policy
+        ? 'read_document_generation_transform_source_v2' : 'read_document_generation_transform_source', {
         p_actor_user_id: actor,
         p_source_id: intent.sourceId,
-      }), intent, sourceObject);
+        ...(policy ? { p_content_model_version: policy.sourceContentModelVersion } : {}),
+      }), intent, sourceObject, policy);
 
       const uploadStreamDeps = {
         ...serviceClients.upload,
+        contentModelVersion: policy ? policy.sourceContentModelVersion : null,
         async openStream(path, signal) {
           const stream = await job.track(() => serviceClients.upload.openStream(path, signal));
           return trackedReadable(stream, job, null);
@@ -535,7 +585,8 @@ export function createDocumentReplacementRequestHandler(options = {}) {
           sourceBoundEnabled: true,
           archiveEnabled: true,
         }, true);
-        let receipt = uploadReceipt(begun?.operation, intent, body.operation_id, kind, expectedObject);
+        let receipt = uploadReceipt(begun?.operation, intent, body.operation_id, kind, expectedObject,
+          policy, true);
         if (receipt.state === 'reserved' && receipt.object === null) {
           check(exactKeys(begun.upload, ['path', 'token', 'signedUrl']));
           mutationStarted = true;
@@ -548,7 +599,8 @@ export function createDocumentReplacementRequestHandler(options = {}) {
               sourceBoundEnabled: true,
               archiveEnabled: true,
             }, true);
-          receipt = uploadReceipt(checked?.operation, intent, body.operation_id, kind, expectedObject);
+          receipt = uploadReceipt(checked?.operation, intent, body.operation_id, kind, expectedObject,
+            policy, false);
         }
         check(receipt.state === 'verified');
         return receipt;
@@ -562,6 +614,7 @@ export function createDocumentReplacementRequestHandler(options = {}) {
         operationId: intent.candidateOperationId,
         envelope: trustedEnvelope,
         operation: intent.operation,
+        ...(policy ? { targetContentModelVersion: 2, aggregateAdmissionVersion: 1 } : {}),
         // The concrete executor owns this input synchronously before its first
         // await. Request admission keeps the capture live until its actual
         // promise settles, including after an early abort response.
@@ -571,7 +624,7 @@ export function createDocumentReplacementRequestHandler(options = {}) {
       check(exactKeys(prepared, ['candidate', 'plan']) && plain(prepared.candidate)
         && prepared.candidate.bytes instanceof Uint8Array && SHA.test(prepared.candidate.contentSha256)
         && seq(prepared.candidate.byteLength) && prepared.candidate.bytes.byteLength === Number(prepared.candidate.byteLength));
-      planBinding(prepared.plan, intent);
+      planBinding(prepared.plan, intent, policy);
       let sourceBlob = new Blob([captured.bytes], { type: 'application/pdf' });
       wipe(captured.bytes);
       captured = null;
@@ -595,20 +648,20 @@ export function createDocumentReplacementRequestHandler(options = {}) {
       }, candidateBlob, 'candidate');
       candidateBlob = null;
 
-      const committed = journal(await rpc('prepare_document_generation_replacement', {
+      const committed = journal(await rpc(prepareReplacementRpc, {
         ...rpcParams(intent),
         p_plan: prepared.plan,
-      }, true), intent);
-      if (committed.state === 'published') return response(200, { replacement: publication(committed.publication, intent) });
+      }, true), intent, policy);
+      if (committed.state === 'published') return response(200, { replacement: publication(committed.publication, intent, policy) });
       check(committed.state === 'prepared' && sameJson(committed.plan, prepared.plan));
-      return response(200, { replacement: await publish(planBinding(committed.plan, intent)) });
+      return response(200, { replacement: await publish(planBinding(committed.plan, intent, policy)) });
     } catch (error) {
       if (error instanceof ConfirmedFailure) {
         if (['capture_pending', 'verification_pending', 'upload_unconfirmed'].includes(error.code)) {
           return errorResponse('replacement_unconfirmed', intent);
         }
         if (['replacement_conflict', 'untracked', 'expired', 'source_unavailable', 'byte_mismatch', 'canceled', '23505', '23514',
-          '40001', '55P03', 'SG001', 'SG002', '42501'].includes(error.code)) {
+          '40001', '55P03', 'SG001', 'SG002', 'SG003', '42501'].includes(error.code)) {
           return errorResponse('replacement_conflict');
         }
         if (error.code === 'unsupported_source') return errorResponse('unsupported_source');

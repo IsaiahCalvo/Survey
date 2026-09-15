@@ -15,6 +15,7 @@ try {
       generationId: result.plan.source.generationId,
       walHead: result.plan.source.walHead,
       ...(workerData.input.targetContentModelVersion === 2 ? { targetContentModelVersion: 2 } : {}),
+      ...(workerData.input.aggregateAdmissionVersion === 1 ? { aggregateAdmissionVersion: 1 } : {}),
     },
     result,
   }, [result.candidate.bytes.buffer]);

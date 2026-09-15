@@ -45,8 +45,10 @@ export function encodeSourceObjectPath(path) {
 const IDENTITY = ['version', 'source_id', 'actor_user_id', 'document_id', 'generation_id',
   'source_sql_sha256', 'expires_at'];
 const OBJECT = ['kind', 'bucket_id', 'path', 'id', 'version', 'byte_length'];
-function descriptor(value, actor, sourceId) {
-  check(value && value.version === 1 && value.source_id === sourceId && value.actor_user_id === actor
+function descriptor(value, actor, sourceId, contentModelVersion = null) {
+  check(value && value.version === (contentModelVersion === null ? 1 : 2)
+    && (contentModelVersion === null || value.content_model_version === contentModelVersion)
+    && value.source_id === sourceId && value.actor_user_id === actor
     && uuid(value.document_id) && (value.generation_id === null || uuid(value.generation_id))
     && sha(value.source_sql_sha256) && timestamp(value.expires_at)
     && ['unverified', 'verifying', 'verified', 'expired', 'canceled'].includes(value.state)
@@ -69,9 +71,11 @@ function descriptor(value, actor, sourceId) {
 }
 function sameSource(a, b) {
   check(IDENTITY.every(key => a[key] === b[key]) && a.objects.length === b.objects.length
+    && (a.version !== 2 || a.content_model_version === b.content_model_version)
     && a.objects.every((object, index) => OBJECT.every(key => object[key] === b.objects[index][key])));
 }
-const publicDescriptor = value => ({ ...pick(value, [...IDENTITY, 'state', 'verified_at']),
+const publicDescriptor = value => ({ ...pick(value, [...IDENTITY,
+  ...(value.version === 2 ? ['content_model_version'] : []), 'state', 'verified_at']),
   objects: value.objects.map(object => pick(object, [...OBJECT, 'content_sha256'])) });
 const response = (status, body) => new Response(JSON.stringify(body), {
   status, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -93,6 +97,7 @@ const errors = {
   '54000': [409, 'This source exceeds the bounded verification workflow.'],
   SG001: [409, 'The document generation changed. Load it before preparing a new source.'],
   SG002: [409, 'The document generation changed. Load it before preparing a new source.'],
+  SG003: [409, 'The replacement source model does not match its saved intent.'],
 };
 
 async function input(request, signal) {
@@ -135,12 +140,16 @@ export async function handleDocumentGenerationSourceBytes(request, deps) {
   let leaseTimer;
   try {
     check(deps.enabled === true, 'unavailable');
+    const contentModelVersion = deps.contentModelVersion ?? null;
+    check(contentModelVersion === null || [1, 2].includes(contentModelVersion), 'unavailable');
     const token = request.headers.get('Authorization')?.match(/^Bearer ([^\s]+)$/i)?.[1];
     check(token && token.length <= 16384, 'unauthorized');
     const actor = (await call(() => deps.getUser(token, signal), signal))?.id;
     check(uuid(actor), 'unauthorized');
     const body = await input(request, signal), sourceId = body.source_id;
-    const prepared = descriptor(await call(() => deps.get(actor, sourceId, signal), signal), actor, sourceId);
+    const prepared = descriptor(await call(() => contentModelVersion === null
+      ? deps.get(actor, sourceId, signal)
+      : deps.getV2(actor, sourceId, contentModelVersion, signal), signal), actor, sourceId, contentModelVersion);
     if (body.action === 'get' || prepared.state === 'verified') {
       return response(200, { attestation: publicDescriptor(prepared) });
     }
@@ -148,7 +157,9 @@ export async function handleDocumentGenerationSourceBytes(request, deps) {
     check(Date.parse(prepared.expires_at) > Date.now(), 'source_unavailable');
     for (const object of prepared.objects) encodeSourceObjectPath(object.path);
     const claimId = (deps.newId ?? (() => crypto.randomUUID()))(); check(uuid(claimId));
-    const target = descriptor(await call(() => deps.claim(actor, sourceId, claimId, signal), signal), actor, sourceId);
+    const target = descriptor(await call(() => contentModelVersion === null
+      ? deps.claim(actor, sourceId, claimId, signal)
+      : deps.claimV2(actor, sourceId, claimId, contentModelVersion, signal), signal), actor, sourceId, contentModelVersion);
     sameSource(prepared, target);
     if (target.state === 'verified') return response(200, { attestation: publicDescriptor(target) });
     check(target.state === 'verifying' && target.verification_claim_id === claimId
@@ -170,7 +181,9 @@ export async function handleDocumentGenerationSourceBytes(request, deps) {
     }
     leaseLive();
     recordStarted = true;
-    const confirmed = descriptor(await call(() => deps.record(actor, sourceId, claimId, objects, signal), signal), actor, sourceId);
+    const confirmed = descriptor(await call(() => contentModelVersion === null
+      ? deps.record(actor, sourceId, claimId, objects, signal)
+      : deps.recordV2(actor, sourceId, claimId, objects, contentModelVersion, signal), signal), actor, sourceId, contentModelVersion);
     sameSource(target, confirmed);
     check(confirmed.state === 'verified' && confirmed.objects.every((object, index) => object.content_sha256 === objects[index].content_sha256));
     return response(200, { attestation: publicDescriptor(confirmed) });
