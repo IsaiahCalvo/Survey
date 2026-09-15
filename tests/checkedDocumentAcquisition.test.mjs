@@ -111,6 +111,9 @@ function harness(config = {}) {
     enabled: true, fetch: h.fetch, ...config });
   h.open = extra => h.acquisition.open({ documentId, ...extra });
   h.openCurrent = extra => h.acquisition.openCurrent({ documentId, ...extra });
+  h.readName = extra => h.acquisition.readNameCurrent({ documentId, ...extra });
+  h.describePreview = extra => h.acquisition.describePreviewCurrent({ documentId, ...extra });
+  h.acquirePreview = (descriptor, extra) => h.acquisition.acquirePreviewPdf(descriptor, extra);
   h.clean = () => { assert.equal(callbacks.size, 0); assert.equal(h.subscriptions, h.unsubscribes); };
   return h;
 }
@@ -354,6 +357,168 @@ test('current checked open passes exact discovered generation to real reader, ne
   assert.deepEqual(new Uint8Array(await readCheckedGenerationPdf(opened.checkedBundle, scope).arrayBuffer()), pdf);
   assert.ok(h.calls.filter(c => c.name === 'read_document_generation_open').every(c => c.params.p_generation_id === generation));
   assert.ok(h.fetches.every(c => c.url.endsWith('/functions/v1/document-generation-download')));
+});
+
+test('checked preview description is one authorized metadata read and a cache hit needs no PDF or state', async () => {
+  const h = harness(); h.onRpc = call => modernRpcResult(call.name, call.params);
+  const descriptor = await h.describePreview(); h.clean();
+  assert.deepEqual(descriptor, { version:1,mode:'checked',actorUserId:actor,documentId,
+    pdfGenerationId:generation,contentModelVersion:1,
+    cacheKey:JSON.stringify(['document-preview-v1',actor,documentId,generation,1]) });
+  assert.equal(Object.isFrozen(descriptor), true);
+  assert.deepEqual(h.calls.map(call => call.name), ['read_document_open_mode_v2']);
+  assert.equal(h.fetches.length + h.metadataCalls.length, 0);
+  assert.equal(h.calls.some(call => /annotation_updates/.test(call.name)), false);
+});
+
+test('checked current name uses one owned snapshot-free receipt and final mode with zero bytes or state', async () => {
+  const h = harness();
+  h.onRpc = call => {
+    const response = modernRpcResult(call.name, call.params);
+    if (call.name === 'read_document_generation_open_v3') {
+      response.data.document.name = 'Full authoritative checked document name.pdf';
+    }
+    return response;
+  };
+  const result = await h.readName(); h.clean();
+  assert.deepEqual(result, { version:1,mode:'checked',actorUserId:actor,documentId,
+    pdfGenerationId:generation,contentModelVersion:1,name:'Full authoritative checked document name.pdf' });
+  assert.equal(Object.isFrozen(result), true);
+  assert.deepEqual(h.calls.map(call => call.name), [
+    'read_document_open_mode_v2','read_document_generation_open_v3','read_document_open_mode_v2',
+  ]);
+  assert.equal(h.calls[1].params.p_include_snapshot, false);
+  assert.equal(h.calls.some(call => /annotation_updates/.test(call.name)), false);
+  assert.equal(h.fetches.length + h.metadataCalls.length, 0);
+});
+
+test('current name fails closed on null name, generation race, revocation, and actor change without bytes', async () => {
+  for (const failureMode of ['null-name','generation-change','revoked','actor-change']) {
+    const h = harness(); let modeReads = 0;
+    h.onRpc = call => {
+      if (call.name === 'read_document_open_mode_v2') {
+        modeReads += 1;
+        return failureMode === 'generation-change' && modeReads === 2
+          ? { data:{ ...modernModeResult().data,generation_id:id(93) } } : modernModeResult();
+      }
+      if (failureMode === 'revoked') return { error:{ code:'42501' } };
+      const response = modernRpcResult(call.name, call.params);
+      if (failureMode === 'null-name') response.data.document.name = null;
+      if (failureMode === 'actor-change') h.sessionActor = id(94);
+      return response;
+    };
+    await assert.rejects(h.readName(), { code:failureMode === 'generation-change' ? 'DOCUMENT_OPEN_STATE'
+      : failureMode === 'revoked' ? '42501'
+      : failureMode === 'actor-change' ? 'DOCUMENT_OPEN_ACTOR_CHANGED' : 'DOCUMENT_OPEN_PROTOCOL' });
+    h.clean(); assert.equal(h.fetches.length + h.metadataCalls.length, 0);
+    assert.equal(h.calls.some(call => /annotation_updates/.test(call.name)), false);
+  }
+});
+
+test('checked preview miss reads two snapshot-free receipts and one verified PDF without Yjs or WAL', async () => {
+  const h = harness(); h.onRpc = call => modernRpcResult(call.name, call.params);
+  const descriptor = await h.describePreview();
+  h.calls.length = 0; h.fetches.length = 0;
+  const result = await h.acquirePreview(descriptor); h.clean();
+  assert.deepEqual(Object.keys(result).sort(), ['actorUserId','blob','byteLength','cacheKey','contentModelVersion',
+    'contentSha256','documentId','mode','name','pdfGenerationId','version'].sort());
+  assert.equal(result.mode, 'checked'); assert.equal(result.cacheKey, descriptor.cacheKey);
+  assert.equal(result.name, 'Checked');
+  assert.equal(result.byteLength, String(pdf.length)); assert.equal(result.contentSha256, sha(pdf));
+  assert.deepEqual(new Uint8Array(await result.blob.arrayBuffer()), pdf);
+  assert.deepEqual(h.calls.map(call => call.name), [
+    'read_document_open_mode_v2','read_document_generation_open_v3','read_document_generation_open_v3',
+    'read_document_open_mode_v2',
+  ]);
+  assert.deepEqual(h.calls.filter(call => call.name === 'read_document_generation_open_v3')
+    .map(call => call.params.p_include_snapshot), [false,false]);
+  assert.equal(h.calls.some(call => /annotation_updates/.test(call.name)), false);
+  assert.equal(h.fetches.length, 1); assert.equal(h.metadataCalls.length, 0);
+  assert.throws(() => readCheckedGenerationPdf(result, { ...scope,contentModelVersion:1 }),
+    { code:'DOCUMENT_OPEN_INPUT' });
+});
+
+test('preview descriptors are exact-instance capabilities and actor or generation changes fail before bytes', async () => {
+  const h = harness(); h.onRpc = call => modernRpcResult(call.name, call.params);
+  const descriptor = await h.describePreview();
+  const other = harness(); other.onRpc = call => modernRpcResult(call.name, call.params);
+  assert.throws(() => other.acquirePreview(descriptor), { code:'DOCUMENT_OPEN_INPUT' }); other.clean();
+  assert.throws(() => h.acquirePreview({ ...descriptor }), { code:'DOCUMENT_OPEN_INPUT' });
+  assert.equal(h.fetches.length, 0);
+  h.onRpc = call => call.name === 'read_document_open_mode_v2'
+    ? { data:{ ...modernModeResult().data,generation_id:id(90) } }
+    : modernRpcResult(call.name, call.params);
+  await assert.rejects(h.acquirePreview(descriptor), { code:'DOCUMENT_OPEN_STATE' });
+  assert.equal(h.fetches.length, 0);
+  h.sessionActor = id(91);
+  await assert.rejects(h.acquirePreview(descriptor), { code:'DOCUMENT_OPEN_ACTOR_CHANGED' });
+  assert.equal(h.fetches.length, 0); h.clean();
+});
+
+test('preview corruption, receipt rename, revocation, and a new current generation return no cache proof', async () => {
+  for (const failureMode of ['corrupt','rename','null-name','revoked','generation-change']) {
+    const h = harness(); let generationReads = 0,modeReads = 0;
+    h.onRpc = call => {
+      if (call.name === 'read_document_open_mode_v2') {
+        modeReads += 1;
+        return failureMode === 'generation-change' && modeReads === 3
+          ? { data:{ ...modernModeResult().data,generation_id:id(92) } }
+          : modernModeResult();
+      }
+      if (call.name === 'read_document_generation_open_v3' && ++generationReads === 2
+        && failureMode === 'revoked') return { error:{ code:'42501' } };
+      const response = modernRpcResult(call.name, call.params);
+      if (call.name === 'read_document_generation_open_v3'
+        && failureMode === 'rename' && generationReads === 2) response.data.document.name = 'Changed.pdf';
+      if (call.name === 'read_document_generation_open_v3'
+        && failureMode === 'null-name') response.data.document.name = null;
+      return response;
+    };
+    if (failureMode === 'corrupt') {
+      const wrong = new Uint8Array(pdf); wrong[wrong.length - 1] ^= 1;
+      h.onFetch = () => new Response(wrong, { headers:{ 'Content-Type':'application/pdf' } });
+    }
+    const descriptor = await h.describePreview();
+    await assert.rejects(h.acquirePreview(descriptor), { code:failureMode === 'revoked' ? '42501'
+      : failureMode === 'generation-change' ? 'DOCUMENT_OPEN_STATE'
+      : failureMode === 'null-name' ? 'DOCUMENT_OPEN_PROTOCOL' : 'DOCUMENT_OPEN_BYTES' });
+    h.clean(); assert.equal(h.fetches.length, failureMode === 'null-name' ? 0 : 1);
+    assert.equal(h.calls.some(call => /annotation_updates/.test(call.name)), false);
+  }
+});
+
+test('legacy preview has no durable identity and keeps metadata, mode and actor rechecks', async () => {
+  const h = harness();
+  h.onRpc = call => call.name === 'read_document_open_mode_v2'
+    ? { data:{ version:2,actor_user_id:actor,document_id:documentId,mode:'legacy',generation_id:null,
+      content_model_version:1 } }
+    : modeResult();
+  const descriptor = await h.describePreview();
+  assert.deepEqual(descriptor, { version:1,mode:'legacy',actorUserId:actor,documentId,
+    pdfGenerationId:null,contentModelVersion:null,cacheKey:null });
+  h.calls.length = 0;
+  const result = await h.acquirePreview(descriptor); h.clean();
+  assert.equal(result.mode, 'legacy'); assert.equal(result.cacheKey, null);
+  assert.equal(result.name, 'Legacy.pdf');
+  assert.equal(result.contentSha256, null); assert.equal(result.pdfGenerationId, null);
+  assert.equal(result.contentModelVersion, null); assert.equal(result.byteLength, String(pdf.length));
+  assert.deepEqual(new Uint8Array(await result.blob.arrayBuffer()), pdf);
+  assert.deepEqual(h.calls.map(call => call.name), ['read_document_open_mode_v2','read_document_open_mode']);
+  assert.equal(h.metadataCalls.length, 2); assert.equal(h.fetches.length, 1);
+});
+
+test('legacy current name uses copied validated metadata and final mode without Storage', async () => {
+  const h = harness();
+  h.onRpc = call => call.name === 'read_document_open_mode_v2'
+    ? { data:{ version:2,actor_user_id:actor,document_id:documentId,mode:'legacy',generation_id:null,
+      content_model_version:1 } } : modeResult();
+  h.onMetadata = () => ({ data:{ ...legacyRow,name:'Full authoritative legacy document name.pdf' } });
+  const result = await h.readName(); h.clean();
+  assert.deepEqual(result, { version:1,mode:'legacy',actorUserId:actor,documentId,
+    pdfGenerationId:null,contentModelVersion:null,name:'Full authoritative legacy document name.pdf' });
+  assert.equal(Object.isFrozen(result), true);
+  assert.deepEqual(h.calls.map(call => call.name), ['read_document_open_mode_v2','read_document_open_mode_v2']);
+  assert.equal(h.metadataCalls.length, 1); assert.equal(h.fetches.length, 0);
 });
 
 test('conditional checkpoint acquisition is strict, default-off, and reaches the real private bootstrap', async () => {

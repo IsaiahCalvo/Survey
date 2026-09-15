@@ -5901,3 +5901,56 @@ and opt-in viewer adoption now have local test coverage. Keep these readers and
 writers when disabling new adoption; older six-entry-only writers are unsafe for
 adopted files. Cloud deployment and shared publication still need their own tested
 integration before cloud adoption is enabled.
+
+## 2026-09-15 — Catalog callers and PDF-only action reads
+
+This closes the unused catalog-reader caller gap recorded at `ad47819f3`.
+The existing checked-open flag (`VITE_SURVEY_CHECKED_DOCUMENT_OPEN=mode-v1`)
+now selects the bounded catalog reader for both Dashboard document-hook roles.
+It does not introduce a new flag or deploy SQL. Deploy and verify the catalog RPC
+before rolling out this client with that flag enabled; missing RPCs fail closed.
+
+- Listing pages contain metadata only, use 200-row pages, share in-flight work,
+  and never fall back to raw rows or return partial results after a failed page.
+  Mounted tests measure one catalog RPC for 10 rows/two consumers, two for
+  201 rows/two consumers, and no per-row document or PDF reads. This is not a
+  claim that every library size uses fewer requests than every prior path.
+- Selected previews and explicit copy/paste acquire verified PDF bytes without
+  downloading or materializing annotation snapshots or update logs. Cloud row
+  thumbnails still do not download PDFs. Current actor/document/generation/model
+  proof precedes checked memory and durable thumbnail hits; mutable legacy paths
+  receive no durable checked cache key. Shared work survives one consumer leaving
+  and aborts when no consumers remain. Stale renders cannot write a thumbnail.
+- Rename reads the full current name without PDF or annotation transfer. The
+  modal is fenced by actor, current catalog membership, and request identity.
+  Lock actions read the current role rather than treating the creator as owner.
+  Catalog mutations keep sparse list state while preserving raw caller receipts.
+- Copy retains the prior PDF-only duplicate behavior; it is not a full annotation
+  or collaborative-state clone. PDF-only results cannot bootstrap the viewer.
+
+Verification on frozen app source: independent focused review 186/186; full
+`npm test` 7,297 total, 7,200 passed, 97 skipped, zero failed/cancelled; Vite build
+passed with the existing large-chunk warning. The first full run exposed missing
+`useCallback` ports in two source-extraction tests. Test-only fixes retained all
+assertions, passed 27/27 independently, then the complete rerun passed.
+
+Real in-app browser, synthetic backend only: list, desktop and 390px preview,
+full-name rename, account-switch modal dismissal, editor lock denial, and copy/
+paste passed. Copy/paste produced a third row with one PDF download, two receipts,
+one synthetic upload and metadata write, and zero snapshot/update-log reads.
+Rename used two mode reads and one receipt with zero PDF/state bytes. The fixture
+blocks outbound requests; attempted analytics requests were blocked. Full-viewer
+open then passed: the PDF rendered with its link and form, the loading mask cleared,
+and no unknown fixture RPC remained. The full open used one PDF download and two
+receipts; viewer initialization also read its empty annotation state. This proves
+the open route, not a live collaboration connection or cloud save. Fixture-only
+receipt corrections and missing read handlers did not change app source.
+Graphify update passed (29,438 nodes / 48,706 edges); generated files are excluded.
+Full-run log: `/tmp/survey-catalog-final-full-r2-20260915.log`; build log:
+`/tmp/survey-catalog-final-build-20260915.log`.
+
+No push, hosted SQL/flag change, real-account mutation, Microsoft test, or production
+quota result is included. Generation publication/adoption, old-client fences,
+mutable-sidecar integration/recovery, authorized hosted multi-user proof, and live
+quota/latency measurements remain separate known work; this is not completion of
+the whole data-layer goal.

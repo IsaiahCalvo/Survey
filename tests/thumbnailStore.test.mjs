@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 
 import { indexedDB as fakeIndexedDB } from 'fake-indexeddb';
 import {
+  checkedPreviewThumbCacheKey,
   createThumbnailStore,
   thumbCacheKey,
   THUMB_CACHE_BUDGET_BYTES,
@@ -102,13 +103,30 @@ test('a broken IndexedDB degrades to no cache instead of breaking thumbnails', a
   assert.equal(await broken.put('k', thumb()), false);
 });
 
+test('checked preview cache keys bind actor, document, generation, and model', () => {
+  const descriptor = {
+    version: 1,
+    mode: 'checked',
+    actorUserId: 'ca000000-0000-4000-8000-000000000001',
+    documentId: 'ca000000-0000-4000-8000-000000000002',
+    pdfGenerationId: 'ca000000-0000-4000-8000-000000000003',
+    contentModelVersion: 2,
+  };
+  descriptor.cacheKey = JSON.stringify(['document-preview-v1', descriptor.actorUserId,
+    descriptor.documentId, descriptor.pdfGenerationId, descriptor.contentModelVersion]);
+  assert.equal(checkedPreviewThumbCacheKey(descriptor), descriptor.cacheKey);
+  assert.equal(checkedPreviewThumbCacheKey({ ...descriptor, documentId: 'ca000000-0000-4000-8000-000000000004' }), null);
+  assert.equal(checkedPreviewThumbCacheKey({ ...descriptor, cacheKey: `${descriptor.cacheKey}-wrong` }), null);
+  assert.equal(checkedPreviewThumbCacheKey({ ...descriptor, mode: 'legacy', cacheKey: null }), null);
+});
+
 test('PdfPageThumb checks the durable cache before downloading or queueing', () => {
   // Keep the cloud cache-first ordering explicit; mounted local-source and
   // queue-priority behavior is covered by thumbnailLocalCoalescing.test.mjs.
   const THUMB = read('../src/home/PdfPageThumb.jsx');
-  assert.match(THUMB, /import \{ thumbnailStore, thumbCacheKey \} from '\.\.\/services\/thumbnailStore'/);
+  assert.match(THUMB, /import \{ checkedPreviewThumbCacheKey, thumbnailStore, thumbCacheKey \} from '\.\.\/services\/thumbnailStore'/);
 
-  const body = THUMB.match(/const persistKey = doc\?\.file \|\| doc\?\.dataUrl \? null : thumbCacheKey\(doc\);[\s\S]*?\}\)\(\);/)[0];
+  const body = THUMB.match(/let persistKey = doc\?\.file \|\| doc\?\.dataUrl \? null : thumbCacheKey\(doc\);[\s\S]*?\}\)\(\);/)[0];
   const idbAt = body.indexOf('thumbnailStore().get(persistKey)');
   const downloadAt = body.indexOf('resolvePdfBytes(doc, downloadDocument)');
   const slotAt = body.indexOf('acquireSlot(priority, requestKey)');

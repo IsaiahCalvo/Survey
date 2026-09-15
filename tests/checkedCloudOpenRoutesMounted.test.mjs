@@ -81,19 +81,66 @@ function shellHarness({ enabled = true, actorUserId = actor, scopeObject, tabs =
   const activate = document => extract(shellSource, 'const handleActivateOpenDocument =', '\n  const handleDocumentSelect =', base())(document);
   const select = (...args) => extract(shellSource, 'const handleDocumentSelect =', '\n  const handleOpenCloudDocument =', base())(...args);
   const acquisitionObject = acquisition || { openCurrent: async () => assert.fail('unexpected acquisition') };
+  const acquisitionPort = {
+    openCurrent: async input => { state.acquisitions++; return acquisitionObject.openCurrent(input); },
+    describePreviewCurrent: input => acquisitionObject.describePreviewCurrent(input),
+    acquirePreviewPdf: (descriptor, options) => acquisitionObject.acquirePreviewPdf(descriptor, options),
+    readNameCurrent: input => acquisitionObject.readNameCurrent(input),
+  };
   const ports = { ...base(), CHECKED_DOCUMENT_OPEN_ENABLED: enabled,
+    useCallback: callback => callback,
     handleActivateOpenDocument: activate, handleDocumentSelect: select,
     documentOpenMountRef: mounted,
     pendingCloudDocumentOpensRef: { current: pendingMap || new Map() },
-    checkedDocumentAcquisitionRef: { current: { scope, acquisition: { openCurrent: async input => {
-      state.acquisitions++; return acquisitionObject.openCurrent(input);
-    } } } },
+    checkedDocumentAcquisitionRef: { current: { scope, acquisition: acquisitionPort } },
     downloadFromStorage: async path => { state.downloads++; return download ? download(path) : new Blob(['legacy-download']); },
     fetch: globalThis.fetch, File, Blob,
   };
   const open = extract(shellSource, 'const handleOpenCloudDocument =', '\n  // DEV-ONLY: Auto-open test PDF', ports);
-  return { state, scope, ref, ports, open, select, activate };
+  const acquireAction = extract(shellSource, 'const handleAcquireCloudDocumentForAction =', '\n  const handleDescribeCloudDocumentPreview =', ports);
+  const describePreview = extract(shellSource, 'const handleDescribeCloudDocumentPreview =', '\n  const handleAcquireCloudDocumentPreview =', ports);
+  const acquirePreview = extract(shellSource, 'const handleAcquireCloudDocumentPreview =', '\n  const handleReadCloudDocumentName =', ports);
+  const readName = extract(shellSource, 'const handleReadCloudDocumentName =', '\n\n  // DEV-ONLY:', ports);
+  return { state, scope, ref, ports, open, select, activate, acquireAction, describePreview, acquirePreview, readName };
 }
+
+test('catalog preview, copy, and rename adapters use only the PDF-only acquisition APIs', async () => {
+  const descriptor = Object.freeze({ version: 1, mode: 'checked', actorUserId: actor,
+    documentId, pdfGenerationId: generation, contentModelVersion: 2, cacheKey: 'issued-key' });
+  const calls = [];
+  const acquisition = {
+    openCurrent: async () => assert.fail('catalog actions must not fetch annotation state'),
+    describePreviewCurrent: async input => { calls.push(['describe', input.documentId]); return descriptor; },
+    acquirePreviewPdf: async input => { calls.push(['acquire', input]); return Object.freeze({ ...descriptor,
+      name: 'Full authoritative title.pdf', blob: new Blob(['current PDF']), byteLength: '11', contentSha256: 'a'.repeat(64) }); },
+    readNameCurrent: async input => { calls.push(['name', input.documentId]); return Object.freeze({ ...descriptor,
+      name: 'Full authoritative title.pdf' }); },
+  };
+  const h = shellHarness({ acquisition });
+  assert.equal(await h.describePreview({ documentId }), descriptor);
+  assert.equal((await h.acquirePreview(descriptor)).documentId, documentId);
+  const action = await h.acquireAction({ documentId });
+  assert.equal(action.name, 'Full authoritative title.pdf');
+  assert.equal(await action.blob.text(), 'current PDF');
+  assert.equal((await h.readName({ documentId })).name, 'Full authoritative title.pdf');
+  assert.deepEqual(calls.map(call => call[0]), ['describe', 'acquire', 'describe', 'acquire', 'name']);
+});
+
+test('catalog preview adapter rejects a late descriptor after the actor scope changes', async () => {
+  const pending = deferred();
+  const scope = { actorUserId: actor };
+  const scopeRef = { current: scope };
+  const h = shellHarness({ scopeObject: scope, scopeRef, acquisition: {
+    openCurrent: async () => assert.fail('unexpected full open'),
+    describePreviewCurrent: () => pending.promise,
+    acquirePreviewPdf: async () => assert.fail('unexpected acquire'),
+    readNameCurrent: async () => assert.fail('unexpected name read'),
+  } });
+  const result = h.describePreview({ documentId });
+  scopeRef.current = { actorUserId: 'ca000000-0000-4000-8000-000000000099' };
+  pending.resolve({ version: 1, mode: 'checked', actorUserId: actor, documentId });
+  await assert.rejects(result, error => error?.code === 'DOCUMENT_OPEN_ACTOR_CHANGED');
+});
 
 test('flag-on edited legacy open uses exact acquired bytes despite stale import size and hash', async () => {
   const currentBytes = 'edited PDF bytes are longer than import';

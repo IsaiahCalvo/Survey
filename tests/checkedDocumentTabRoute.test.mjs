@@ -50,6 +50,7 @@ function handlerHarness(initial = []) {
   let serial = 0;
   const set = name => value => { changes.push(name); state[name] = typeof value === 'function' ? value(state[name]) : value; };
   const ports = () => { closeViewRef.current = { tabs: state.tabs }; return ({ tabs: state.tabs, selectedPDF: state.selected, documentOpenScope: scope, documentOpenScopeRef: ref,
+    useCallback: callback => callback,
     closeViewRef,
     openingPdfsRef: opening, prepareCheckedDocumentOpen, getDocumentOpenKey, isSameDocumentTab,
     checkedPageStructureStorage: null,

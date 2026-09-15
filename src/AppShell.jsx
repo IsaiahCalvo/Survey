@@ -1183,6 +1183,87 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     }
   };
 
+  const handleAcquireCloudDocumentForAction = useCallback(async ({ documentId, signal } = {}) => {
+    const scope = documentOpenScope;
+    const mount = documentOpenMountRef.current;
+    const actorUserId = scope.actorUserId;
+    const current = () => mount !== null && documentOpenMountRef.current === mount
+      && documentOpenScopeRef.current === scope;
+    if (!CHECKED_DOCUMENT_OPEN_ENABLED || !actorUserId || typeof documentId !== 'string' || !current()) {
+      throw Object.assign(new Error('The current PDF could not be read.'), { code: 'DOCUMENT_OPEN_INPUT' });
+    }
+    const entry = checkedDocumentAcquisitionRef.current;
+    if (!entry || entry.scope !== scope) {
+      throw Object.assign(new Error('The current PDF could not be read.'), { code: 'DOCUMENT_OPEN_INPUT' });
+    }
+    const descriptor = await entry.acquisition.describePreviewCurrent({ documentId, signal });
+    if (!current() || descriptor?.actorUserId !== actorUserId || descriptor?.documentId !== documentId) {
+      throw Object.assign(new Error('The current PDF could not be read.'), { code: 'DOCUMENT_OPEN_ACTOR_CHANGED' });
+    }
+    const result = await entry.acquisition.acquirePreviewPdf(descriptor, { signal });
+    if (!current() || result?.actorUserId !== actorUserId || result?.documentId !== documentId
+      || typeof result?.name !== 'string' || result.name.length === 0 || !(result?.blob instanceof Blob)) {
+      throw Object.assign(new Error('The current PDF could not be read.'), { code: 'DOCUMENT_OPEN_PROTOCOL' });
+    }
+    return Object.freeze({
+      version: 1,
+      actorUserId,
+      documentId,
+      name: result.name,
+      blob: result.blob.slice(0, result.blob.size, result.blob.type || 'application/pdf'),
+    });
+  }, [documentOpenScope]);
+
+  const handleDescribeCloudDocumentPreview = useCallback(async ({ documentId, signal } = {}) => {
+    const scope = documentOpenScope;
+    const mount = documentOpenMountRef.current;
+    const entry = checkedDocumentAcquisitionRef.current;
+    if (!CHECKED_DOCUMENT_OPEN_ENABLED || !scope.actorUserId || !entry || entry.scope !== scope
+      || mount === null || documentOpenMountRef.current !== mount || documentOpenScopeRef.current !== scope) {
+      throw Object.assign(new Error('The PDF preview could not be read.'), { code: 'DOCUMENT_OPEN_INPUT' });
+    }
+    const descriptor = await entry.acquisition.describePreviewCurrent({ documentId, signal });
+    if (documentOpenMountRef.current !== mount || documentOpenScopeRef.current !== scope
+      || descriptor?.actorUserId !== scope.actorUserId || descriptor?.documentId !== documentId) {
+      throw Object.assign(new Error('The PDF preview could not be read.'), { code: 'DOCUMENT_OPEN_ACTOR_CHANGED' });
+    }
+    return descriptor;
+  }, [documentOpenScope]);
+
+  const handleAcquireCloudDocumentPreview = useCallback(async (descriptor, { signal } = {}) => {
+    const scope = documentOpenScope;
+    const mount = documentOpenMountRef.current;
+    const entry = checkedDocumentAcquisitionRef.current;
+    if (!CHECKED_DOCUMENT_OPEN_ENABLED || !scope.actorUserId || !entry || entry.scope !== scope
+      || descriptor?.actorUserId !== scope.actorUserId || mount === null
+      || documentOpenMountRef.current !== mount || documentOpenScopeRef.current !== scope) {
+      throw Object.assign(new Error('The PDF preview could not be read.'), { code: 'DOCUMENT_OPEN_INPUT' });
+    }
+    const result = await entry.acquisition.acquirePreviewPdf(descriptor, { signal });
+    if (documentOpenMountRef.current !== mount || documentOpenScopeRef.current !== scope
+      || result?.actorUserId !== scope.actorUserId || result?.documentId !== descriptor.documentId) {
+      throw Object.assign(new Error('The PDF preview could not be read.'), { code: 'DOCUMENT_OPEN_ACTOR_CHANGED' });
+    }
+    return result;
+  }, [documentOpenScope]);
+
+  const handleReadCloudDocumentName = useCallback(async ({ documentId, signal } = {}) => {
+    const scope = documentOpenScope;
+    const mount = documentOpenMountRef.current;
+    const entry = checkedDocumentAcquisitionRef.current;
+    if (!CHECKED_DOCUMENT_OPEN_ENABLED || !scope.actorUserId || !entry || entry.scope !== scope
+      || mount === null || documentOpenMountRef.current !== mount || documentOpenScopeRef.current !== scope) {
+      throw Object.assign(new Error('The full document name could not be read.'), { code: 'DOCUMENT_OPEN_INPUT' });
+    }
+    const result = await entry.acquisition.readNameCurrent({ documentId, signal });
+    if (documentOpenMountRef.current !== mount || documentOpenScopeRef.current !== scope
+      || result?.actorUserId !== scope.actorUserId || result?.documentId !== documentId
+      || typeof result?.name !== 'string' || result.name.length === 0) {
+      throw Object.assign(new Error('The full document name could not be read.'), { code: 'DOCUMENT_OPEN_ACTOR_CHANGED' });
+    }
+    return result;
+  }, [documentOpenScope]);
+
   // DEV-ONLY: Auto-open test PDF when loaded via dev test route
   useEffect(() => {
     if (import.meta.env.DEV && devInitialCheckedBundle) {
@@ -3407,8 +3488,13 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
             <Dashboard
               ref={dashboardRef}
               isActive={currentView === 'dashboard'}
+              catalogEnabled={CHECKED_DOCUMENT_OPEN_ENABLED}
               onDocumentSelect={handleDocumentSelect}
               onOpenCloudDocument={handleOpenCloudDocument}
+              onAcquireCloudDocumentForAction={handleAcquireCloudDocumentForAction}
+              onDescribeCloudDocumentPreview={handleDescribeCloudDocumentPreview}
+              onAcquireCloudDocumentPreview={handleAcquireCloudDocumentPreview}
+              onReadCloudDocumentName={handleReadCloudDocumentName}
               onBack={handleBack}
               documents={documents}
               setDocuments={setDocuments}

@@ -61,6 +61,99 @@ export function readCheckedGenerationPdf(issuedBundle, scope) {
   } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
 }
 
+/** Parse one actor-bound, snapshot-free generation receipt for metadata-only
+ * actions. This returns an owned primitive and does not issue or mint a full
+ * checked bundle. */
+export function readDocumentGenerationNameReceipt(value, scope) {
+  try {
+    check(object(scope) && uuid(scope.documentId) && uuid(scope.actorUserId)
+      && uuid(scope.pdfGenerationId) && [1, 2].includes(scope.contentModelVersion),
+    'DOCUMENT_OPEN_INPUT');
+    return bundle(value, scope, false, 0).document.name;
+  } catch (caught) {
+    throw failure(codes.has(caught?.code) ? caught.code : undefined);
+  }
+}
+
+/** PDF-only checked read. This validates the same generation/publication/PDF
+ * receipt as a full open, but never requests a snapshot, reads WAL updates, or
+ * creates a Y.Doc. The returned value is deliberately not registered as a
+ * checked bundle and cannot be passed to the viewer bootstrap seams. */
+export function createDocumentGenerationPdfReader(deps) {
+  check(object(deps) && ['request', 'download', 'getActorUserId'].every(key => typeof deps[key] === 'function'),
+    'DOCUMENT_OPEN_INPUT');
+  const { request, download, getActorUserId, maxPdfBytes = 256 * 1024 * 1024,
+    timeoutMs = 60000 } = deps;
+  check(Number.isSafeInteger(maxPdfBytes) && maxPdfBytes > 0 && maxPdfBytes <= 1024 * 1024 * 1024
+    && Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 120000, 'DOCUMENT_OPEN_INPUT');
+  return Object.freeze({ async open(input = {}) {
+    check(object(input), 'DOCUMENT_OPEN_INPUT');
+    const { documentId, actorUserId, pdfGenerationId, contentModelVersion = null, signal } = input;
+    check(uuid(documentId) && uuid(actorUserId) && uuid(pdfGenerationId)
+      && (contentModelVersion === null || [1, 2].includes(contentModelVersion))
+      && (signal == null || (typeof signal.aborted === 'boolean'
+        && typeof signal.addEventListener === 'function' && typeof signal.removeEventListener === 'function')),
+    'DOCUMENT_OPEN_INPUT');
+    const scope = { documentId, actorUserId, pdfGenerationId, contentModelVersion };
+    const controller = new AbortController(), abort = () => controller.abort();
+    const deadline = performance.now() + timeoutMs, timer = setTimeout(abort, timeoutMs);
+    signal?.addEventListener('abort', abort, { once:true }); if (signal?.aborted) abort();
+    const alive = () => {
+      check(!controller.signal.aborted && performance.now() < deadline, 'DOCUMENT_OPEN_ABORTED');
+      check(getActorUserId() === actorUserId, 'DOCUMENT_OPEN_ACTOR_CHANGED');
+    };
+    const call = operation => {
+      alive();
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback, value) => {
+          if (settled) return;
+          settled = true; controller.signal.removeEventListener('abort', onAbort); callback(value);
+        };
+        const onAbort = () => finish(reject, failure('DOCUMENT_OPEN_ABORTED'));
+        controller.signal.addEventListener('abort', onAbort, { once:true });
+        Promise.resolve().then(() => { alive(); return operation(); }).then(value => {
+          try { alive(); finish(resolve, value); } catch (error) { finish(reject, error); }
+        }, error => finish(reject, error));
+      });
+    };
+    const read = async () => {
+      const name = contentModelVersion === null ? 'read_document_generation_open' : 'read_document_generation_open_v3';
+      const params = { p_document_id:documentId,p_generation_id:pdfGenerationId,
+        ...(contentModelVersion === null ? {} : { p_content_model_version:contentModelVersion }),
+        p_include_snapshot:false };
+      const response = await call(() => request(name, params, { actorUserId,signal:controller.signal }));
+      if (response?.error) throw failure(codes.has(response.error.code) ? response.error.code : undefined);
+      return bundle(response?.data, scope, false, 0);
+    };
+    try {
+      const first = await read();
+      const expected = decimal(first.pdf.byte_length, true);
+      check(expected <= BigInt(maxPdfBytes), 'DOCUMENT_OPEN_LIMIT');
+      const received = await call(() => download(first.pdf, { actorUserId,documentId,pdfGenerationId,
+        signal:controller.signal }));
+      check(received instanceof Blob, 'DOCUMENT_OPEN_BYTES');
+      const blob = Blob.prototype.slice.call(received, 0, undefined, 'application/pdf');
+      check(BigInt(blob.size) === expected, 'DOCUMENT_OPEN_BYTES');
+      const bytes = new Uint8Array(await call(() => Blob.prototype.arrayBuffer.call(blob)));
+      check(await call(() => computeContentSha256(bytes)) === first.pdf.content_sha256, 'DOCUMENT_OPEN_BYTES');
+      const confirmed = await read();
+      check(Object.keys(first.pdf).every(key => confirmed.pdf[key] === first.pdf[key])
+        && Object.keys(first.publication).every(key => confirmed.publication[key] === first.publication[key])
+        && confirmed.document.name === first.document.name,
+      'DOCUMENT_OPEN_BYTES');
+      alive();
+      return Object.freeze({ actorUserId,documentId,pdfGenerationId,
+        ...(contentModelVersion === null ? {} : { contentModelVersion }),
+        name:confirmed.document.name,pdf:first.pdf,publication:first.publication,blob });
+    } catch (caught) {
+      throw failure(codes.has(caught?.code) ? caught.code : undefined);
+    } finally {
+      controller.abort(); clearTimeout(timer); signal?.removeEventListener('abort', abort);
+    }
+  } });
+}
+
 function decimal(v, positive = false) {
   check(typeof v === 'string' && /^(0|[1-9][0-9]{0,18})$/.test(v));
   const n = BigInt(v); check(n <= MAX_INTEGER && (!positive || n > 0n)); return n;

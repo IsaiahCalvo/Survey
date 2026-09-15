@@ -20,6 +20,7 @@ import { storageDownloads } from '../services/storageDownloads.js';
 import { cleanupDocumentStorage } from '../services/documentStorageCleanup.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 import { documentToolPreferences, documentToolPreferenceScopeKey, resolveDocumentToolPreferenceScope } from '../services/documentToolPreferences.js';
+import { createDocumentCatalogReader } from '../services/documentCatalogReader.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -233,11 +234,11 @@ export const useProjects = () => {
 
 // Mutation-only consumers can opt out of library reads and invalidation events.
 // Existing callers retain the full query behavior by default.
-export const useDocuments = (projectId = null, { enabled = true } = {}) => {
+export const useDocuments = (projectId = null, { enabled = true, catalogEnabled = false } = {}) => {
   const { user, tier } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(enabled);
-  const documentScopeKey = `${user?.id || 'anonymous'}:${projectId ?? 'all'}:${enabled ? 'enabled' : 'disabled'}`;
+  const documentScopeKey = `${user?.id || 'anonymous'}:${projectId ?? 'all'}:${enabled ? 'enabled' : 'disabled'}:${catalogEnabled ? 'catalog' : 'legacy'}`;
   const [loadedDocumentReadScope, setLoadedDocumentReadScope] = useState(null);
   const documentScopeKeyRef = useRef(documentScopeKey);
   const documentRequestRef = useRef(0);
@@ -246,7 +247,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   const documentReadRef = useRef(null);
   const documentHasReadRef = useRef(false);
   if (documentReadScopeRef.current?.key !== documentScopeKey) {
-    documentReadScopeRef.current = { key: documentScopeKey, actorId: user?.id, projectId,
+    documentReadScopeRef.current = { key: documentScopeKey, actorId: user?.id, projectId, catalogEnabled,
       initialMount: !documentHasReadRef.current };
   }
   const documentReadScope = documentReadScopeRef.current;
@@ -256,6 +257,22 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   const initialLoading = !!(enabled && user && isSupabaseAvailable()) && loadedDocumentReadScope !== documentReadScope;
   documentScopeKeyRef.current = documentScopeKey;
   const [error, setError] = useState(null);
+  const catalogStateRow = (row) => {
+    if (!documentReadScope.catalogEnabled) return row;
+    const nameParts = typeof row?.name === 'string' ? [...row.name] : null;
+    return {
+      id: row?.id,
+      user_id: row?.user_id,
+      project_id: row?.project_id ?? null,
+      name: nameParts ? nameParts.slice(0, 1024).join('') : null,
+      name_truncated: nameParts ? nameParts.length > 1024 : null,
+      file_size: row?.file_size == null ? null : String(row.file_size),
+      page_count: row?.page_count ?? null,
+      created_at: row?.created_at ?? null,
+      updated_at: row?.updated_at ?? null,
+      locked_at: row?.locked_at ?? null,
+    };
+  };
 
   useEffect(() => {
     documentMountedRef.current = true;
@@ -299,6 +316,25 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
   const runDocumentsQuery = async (signal) => {
+    if (documentReadScope.catalogEnabled) {
+      const reader = createDocumentCatalogReader({
+        client: supabase,
+        actorUserId: documentReadScope.actorId,
+        enabled: true,
+        pageSize: 200,
+        signal,
+        // Coalesced reads belong to the shared operation signal, not the hook
+        // instance that happened to start them. Auth reads and the catalog's
+        // own subscription still pin the exact actor for every page.
+        isCurrent: () => !signal.aborted,
+      });
+      try {
+        const result = await reader.read({ projectId: documentReadScope.projectId });
+        return result.rows;
+      } finally {
+        reader.dispose();
+      }
+    }
     const ownedQuery = () => {
       let query = supabase
         .from('documents')
@@ -400,7 +436,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
       }
       setLoading(true);
       setError(null);
-      const key = `documents:${documentReadScope.actorId}:${documentReadScope.projectId ?? 'null'}`;
+      const key = `documents:${documentReadScope.catalogEnabled ? 'catalog' : 'legacy'}:${documentReadScope.actorId}:${documentReadScope.projectId ?? 'null'}`;
       const merged = coalesce
         ? await coalesceRead(key, runDocumentsQuery, { signal: controller.signal })
         : await runDocumentsQuery(controller.signal);
@@ -461,7 +497,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     }
     if (error) throw error;
     return data;
-  }, row => ({ kind: 'upsert', row }));
+  }, row => ({ kind: 'upsert', row: catalogStateRow(row) }));
 
   const updateDocument = (id, updates) => mutateDocument({ id, updates }, async (values, { request }) => {
     const { data, error } = await request(() => supabase.from('documents')
@@ -469,7 +505,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     if (error) throw error;
     if (data?.id !== values.id) throw new Error('Invalid update response.');
     return data;
-  }, row => ({ kind: 'update', row }));
+  }, row => ({ kind: 'update', row: catalogStateRow(row) }));
 
   const deleteDocument = (id) => mutateDocument({ id }, async (values, { request }) => {
     const { error } = await request(() => supabase.from('documents')

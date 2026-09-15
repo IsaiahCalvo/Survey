@@ -20,7 +20,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { loadPdfjs, getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
-import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
+import { checkedPreviewThumbCacheKey, thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 import { canResolveThumbnailBytes, createThumbnailRequestPool } from './thumbnailRequestPolicy';
 
 /* Two tiers of cache.
@@ -59,8 +59,9 @@ const inlineSourceId = (doc) => {
 // Local Files are immutable, but replacement Files can retain the same document
 // id/path. Download callbacks change with the signed-in actor. CSS row/preview
 // sizes share the same first-page raster; include its pixel contract explicitly.
-const memoryThumbKey = (doc, downloadDocument) => doc && JSON.stringify([
-  doc.id || null, sourceObjectId(downloadDocument), thumbCacheKey(doc),
+const memoryThumbKey = (doc, downloadDocument, describeCloudPreview, acquireCloudPreview) => doc && JSON.stringify([
+  doc.id || null, sourceObjectId(downloadDocument), sourceObjectId(describeCloudPreview),
+  sourceObjectId(acquireCloudPreview), thumbCacheKey(doc), doc.updated_at || null,
   doc.file ? sourceObjectId(doc.file) : inlineSourceId(doc),
   `page-1:${TARGET}:jpeg-0.9:v1`,
 ]);
@@ -209,32 +210,56 @@ const renderFirstPage = async (arrayBuffer) => {
   }
 };
 
-const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled = () => false) => {
+const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled = () => false,
+  describeCloudPreview = null, acquireCloudPreview = null, signal) => {
   // A row may join preview work only if these bytes are already on-device.
   const requestKey = docId && `${docId}:${canResolveThumbnailBytes(doc, false) ? 'local' : priority ? 'preview' : 'local'}`;
   if (priority) acquireSlot.prioritize?.(requestKey);
-  return thumbnailRequests.run(requestKey, isCancelled, (hasActiveConsumer) => {
+  return thumbnailRequests.run(requestKey, isCancelled, (hasActiveConsumer, requestSignal) => {
   const promise = (async () => {
     // Metadata can still describe the predecessor when a File is replaced.
     // Never let its persistent thumbnail override the supplied local bytes.
-    const persistKey = doc?.file || doc?.dataUrl ? null : thumbCacheKey(doc);
+    let persistKey = doc?.file || doc?.dataUrl ? null : thumbCacheKey(doc);
     if (persistKey) {
       const stored = await thumbnailStore().get(persistKey);
       if (stored) return stored;
     }
 
+    let previewDescriptor = null;
+    if (!canResolveThumbnailBytes(doc, false) && priority
+      && typeof describeCloudPreview === 'function' && typeof acquireCloudPreview === 'function') {
+      previewDescriptor = await describeCloudPreview({ documentId: doc?.id, signal: requestSignal });
+      if (!hasActiveConsumer()) return 'DEFERRED';
+      persistKey = checkedPreviewThumbCacheKey(previewDescriptor);
+      if (persistKey) {
+        const stored = await thumbnailStore().get(persistKey);
+        if (stored) return stored;
+      }
+    }
+
     // A missing cached row image is not a corrupt PDF. Leave a placeholder
     // without poisoning the cache: a selected preview can still render it.
-    if (!hasActiveConsumer() || !canResolveThumbnailBytes(doc, priority)) return 'DEFERRED';
+    if (!hasActiveConsumer() || (!previewDescriptor && !canResolveThumbnailBytes(doc, priority))) return 'DEFERRED';
     await acquireSlot(priority, requestKey);
     try {
       // Limit downloads as well as renders. Do not start a queued transfer
       // after every consumer has left this screen.
       if (!hasActiveConsumer()) return 'DEFERRED';
-      const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
+      const acquired = previewDescriptor
+        ? await acquireCloudPreview(previewDescriptor, { signal: requestSignal })
+        : null;
+      if (previewDescriptor && (acquired?.actorUserId !== previewDescriptor.actorUserId
+        || acquired?.documentId !== previewDescriptor.documentId
+        || acquired?.cacheKey !== previewDescriptor.cacheKey || !(acquired?.blob instanceof Blob))) {
+        return 'FAILED';
+      }
+      const arrayBuffer = previewDescriptor
+        ? await readBlobAsArrayBuffer(acquired.blob)
+        : await resolvePdfBytes(doc, downloadDocument);
       if (!hasActiveConsumer()) return 'DEFERRED';
       if (!arrayBuffer) return 'FAILED';
       const result = await renderFirstPage(arrayBuffer);
+      if (!hasActiveConsumer()) return 'DEFERRED';
       if (persistKey) void thumbnailStore().put(persistKey, result);
       return result;
     } finally {
@@ -242,7 +267,7 @@ const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled =
     }
   })();
   return promise.finally(() => acquireSlot.clearPriority?.(requestKey));
-});
+  }, signal);
 };
 
 /* US Letter portrait — the loading-state default aspect before the real
@@ -259,8 +284,10 @@ export default function PdfPageThumb({
   // Set only on a selected preview: permits a cloud download on cache miss
   // and moves the request to the front of the shared queue.
   priority = false,
+  describeCloudPreview = null,
+  acquireCloudPreview = null,
 }) {
-  const docId = memoryThumbKey(doc, downloadDocument);
+  const docId = memoryThumbKey(doc, downloadDocument, describeCloudPreview, acquireCloudPreview);
   const hostRef = useRef(null);
   const [nearViewport, setNearViewport] = useState(() => typeof IntersectionObserver === 'undefined');
   const [data, setData] = useState(null);
@@ -287,8 +314,13 @@ export default function PdfPageThumb({
       return undefined;
     }
     let cancelled = false;
+    const controller = new AbortController();
 
-    const existing = readCachedThumb(docId);
+    // Sparse catalog rows have no byte identity. Prove current access/mode and
+    // obtain the issued generation key before using any cached cloud pixels.
+    const requiresCloudProof = priority && !canResolveThumbnailBytes(doc, false)
+      && typeof describeCloudPreview === 'function' && typeof acquireCloudPreview === 'function';
+    const existing = requiresCloudProof ? null : readCachedThumb(docId);
     if (existing) { setData(existing); setFailed(false); return undefined; }
 
     setData(null);
@@ -298,11 +330,12 @@ export default function PdfPageThumb({
       try {
         /* loadThumb checks IndexedDB before downloading or entering the
            shared render queue, then persists newly rendered thumbnails. */
-        const result = await loadThumb(docId, doc, downloadDocument, priority, () => cancelled);
+        const result = await loadThumb(docId, doc, downloadDocument, priority, () => cancelled,
+          describeCloudPreview, acquireCloudPreview, controller.signal);
         if (cancelled) return;
         if (result === 'DEFERRED') { setFailed(true); return; }
         if (result === 'FAILED') { setFailed(true); return; }
-        cacheThumb(docId, result);
+        if (!requiresCloudProof) cacheThumb(docId, result);
         setData(result);
       } catch (error) {
         // Show the placeholder for this mount. Leave future mounts eligible
@@ -314,8 +347,9 @@ export default function PdfPageThumb({
       }
     })();
 
-    return () => { cancelled = true; };
-  }, [nearViewport, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument, priority]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [nearViewport, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl,
+    downloadDocument, describeCloudPreview, acquireCloudPreview, priority]);
 
   const isRow = variant === 'row';
   const aspect = data?.aspect || DEFAULT_ASPECT;

@@ -37,6 +37,7 @@ import { computeContentSha256 } from './services/contentHash';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
+import { runActorBoundDatabaseMutation } from './services/actorBoundDatabaseMutation.js';
 import { showToast } from './utils/toast';
 import { archiveItems } from './services/archiveService';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
@@ -82,6 +83,12 @@ const normalizeName = (value) => {
   return value.trim().toLowerCase();
 };
 
+const canonicalDocumentByteSize = (value) => {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0 ? String(value) : null;
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+  return value;
+};
+
 const hasNameConflict = (
   items,
   candidateName,
@@ -108,7 +115,10 @@ const hasNameConflict = (
 };
 
 
-const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSelect, onOpenCloudDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ isActive = true, catalogEnabled = false, onDocumentSelect, onOpenCloudDocument,
+  onAcquireCloudDocumentForAction, onDescribeCloudDocumentPreview, onAcquireCloudDocumentPreview,
+  onReadCloudDocumentName, onBack, documents, setDocuments, templates: externalTemplates = [],
+  onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   const localFileInputRef = useRef(null);
@@ -628,13 +638,13 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     updateDocument: updateSupabaseDocument,
     deleteDocument: deleteSupabaseDocument,
     refetch: refetchDocuments
-  } = useDocuments(selectedProjectId);
+  } = useDocuments(selectedProjectId, { catalogEnabled });
 
   // Fetch all documents for file count display in project list
   const {
     documents: allDocuments,
     refetch: refetchAllDocuments
-  } = useDocuments(null);
+  } = useDocuments(null, { catalogEnabled });
 
   const isProjectCreateCurrent = () => projectCreateScope.active && projectCreateScopeRef.current === projectCreateScope;
   const projectUploadRecovery = useProjectUploadRecovery({
@@ -808,22 +818,27 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     // files; the old mapping dropped it (kept only camelCase projectId),
     // so files never showed inside their project. The camelCase keys below
     // are legacy aliases the pre-redesign UI still reads.
-    const formattedDocs = supabaseDocuments.map(doc => ({
+    const formattedDocs = supabaseDocuments.map(doc => {
+      const catalogName = typeof doc.name === 'string' ? doc.name : null;
+      return ({
       ...doc,
       id: doc.id,
-      name: doc.name,
-      size: doc.file_size || 0,
+      name: catalogName ?? 'Untitled PDF',
+      catalogName,
+      nameTruncated: doc.name_truncated ?? null,
+      size: doc.file_size ?? 0,
       uploadedAt: doc.created_at || doc.updated_at,
       type: 'application/pdf',
       filePath: doc.file_path,
       projectId: doc.project_id,
       cutoverCompletedAt: doc.cutover_completed_at || null
-    }));
+    }); });
     setDocuments(prev => {
       // Keep temporary documents that haven't been replaced by real ones yet
       const tempDocs = prev.filter(d =>
         d.id.startsWith('temp-') &&
-        !formattedDocs.some(fd => fd.name === d.name && fd.size === d.size)
+        !formattedDocs.some(fd => fd.name === d.name
+          && canonicalDocumentByteSize(fd.size) === canonicalDocumentByteSize(d.size))
       );
       return [...tempDocs, ...formattedDocs];
     });
@@ -1210,7 +1225,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     if (!searchQuery) return documents;
     const lq = searchQuery.toLowerCase();
     return documents.filter(doc =>
-      doc.name.toLowerCase().includes(lq) ||
+      (doc.name || '').toLowerCase().includes(lq) ||
       (doc.name_aliases || []).some((a) => String(a).toLowerCase().includes(lq))
     );
   }, [documents, searchQuery]);
@@ -1752,12 +1767,48 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     }
   };
 
+  const hubPrepareDocumentRename = async (doc) => {
+    if (!catalogEnabled) return doc;
+    if (!doc?.id || !user) return null;
+    const scope = documentOpenScope;
+    try {
+      if (typeof onReadCloudDocumentName !== 'function') throw new Error('Name reader unavailable.');
+      const result = await onReadCloudDocumentName({ documentId: doc.id });
+      if (documentOpenScopeRef.current !== scope || result?.actorUserId !== scope.actorUserId
+        || result?.documentId !== doc.id || typeof result?.name !== 'string'
+        || result.name.length === 0 || result.name.length > 65536) throw new Error('Invalid name result.');
+      return { ...doc, name: result.name };
+    } catch {
+      if (documentOpenScopeRef.current === scope) {
+        showToast('The full document name could not be read. Please try again.', 'error');
+      }
+      return null;
+    }
+  };
+
   const cloneDocumentToProject = async (doc, projectId = null, operation = null) => {
     const actualDoc = (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc;
-    const filePath = actualDoc?.file_path || actualDoc?.filePath;
-    if (!filePath) throw new Error(`Document "${actualDoc?.name || 'Untitled'}" has no stored PDF.`);
-    const blob = await downloadFromStorage(filePath);
-    const sourceName = actualDoc.name || 'Untitled.pdf';
+    let blob;
+    let sourceName;
+    if (catalogEnabled) {
+      if (typeof onAcquireCloudDocumentForAction !== 'function') {
+        throw new Error('The current PDF could not be read for copying.');
+      }
+      const scope = documentOpenScope;
+      const acquired = await onAcquireCloudDocumentForAction({ documentId: actualDoc?.id });
+      if (documentOpenScopeRef.current !== scope || acquired?.actorUserId !== scope.actorUserId
+        || acquired?.documentId !== actualDoc?.id || !(acquired?.blob instanceof Blob)
+        || typeof acquired?.name !== 'string' || acquired.name.length === 0) {
+        throw new Error('The current PDF could not be read for copying.');
+      }
+      blob = acquired.blob;
+      sourceName = acquired.name;
+    } else {
+      const filePath = actualDoc?.file_path || actualDoc?.filePath;
+      if (!filePath) throw new Error(`Document "${actualDoc?.name || 'Untitled'}" has no stored PDF.`);
+      blob = await downloadFromStorage(filePath);
+      sourceName = actualDoc.name || 'Untitled.pdf';
+    }
     const dot = sourceName.toLowerCase().lastIndexOf('.pdf');
     const copyName = dot >= 0
       ? `${sourceName.slice(0, dot)} (Copy)${sourceName.slice(dot)}`
@@ -2022,7 +2073,28 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
   const hubToggleDocumentLock = async (doc) => {
     if (!doc?.id) return;
     if (!user) { showToast('Please sign in to lock documents', 'warn'); return; }
-    if (doc.user_id && doc.user_id !== user.id) {
+    const scope = documentOpenScope;
+    if (catalogEnabled) {
+      let role;
+      try {
+        role = await runActorBoundDatabaseMutation({
+          client: supabase,
+          actorUserId: scope.actorUserId,
+          isCurrent: () => documentOpenScopeRef.current === scope,
+        }, async ({ request }) => {
+          const response = await request(() => supabase.rpc('get_my_document_role', { doc_id: doc.id }), { write: false });
+          if (response?.error || response?.data !== 'owner') return null;
+          return response.data;
+        });
+      } catch {
+        role = null;
+      }
+      if (documentOpenScopeRef.current !== scope) return;
+      if (role !== 'owner') {
+        showToast('Only the document owner can lock or unlock this document.', 'error');
+        return;
+      }
+    } else if (doc.user_id && doc.user_id !== user.id) {
       showToast('Only the document owner can lock or unlock this document.', 'error');
       return;
     }
@@ -2039,7 +2111,12 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
           danger: false,
         });
         if (!ok) return;
-        result = await unlockDocument(doc.id);
+        result = catalogEnabled
+          ? await runActorBoundDatabaseMutation({ client: supabase, actorUserId: scope.actorUserId,
+              isCurrent: () => documentOpenScopeRef.current === scope }, ({ request }) => (
+              request(() => supabase.rpc('kal49_unlock_document', { doc_id: doc.id }))
+            ))
+          : await unlockDocument(doc.id);
       } else {
         const raw = await askPrompt({
           title: 'Lock this document?',
@@ -2052,7 +2129,14 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         // same distinction native prompt() made, and lockDocument() relies on
         // it below.
         if (raw == null) return;
-        result = await lockDocument(doc.id, raw.trim() ? raw.trim() : null);
+        result = catalogEnabled
+          ? await runActorBoundDatabaseMutation({ client: supabase, actorUserId: scope.actorUserId,
+              isCurrent: () => documentOpenScopeRef.current === scope }, ({ request }) => (
+              request(() => supabase.rpc('kal49_lock_document', {
+                doc_id: doc.id, label: raw.trim() ? raw.trim() : null,
+              }))
+            ))
+          : await lockDocument(doc.id, raw.trim() ? raw.trim() : null);
       }
 
       if (result.error) throw result.error;
@@ -2168,6 +2252,8 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
+        onDescribeCloudDocumentPreview={catalogEnabled ? onDescribeCloudDocumentPreview : null}
+        onAcquireCloudDocumentPreview={catalogEnabled ? onAcquireCloudDocumentPreview : null}
         onUpload={handleUploadClick}
         uploadBusy={!!singleUploadWork?.current() || documentUploadRecovery.busy || (uploadInFlight && projectCreateBusyRef.current?.scope === projectCreateScope) || projectUploadRecovery.busy}
         onCreateProject={handleCreateProjectClick}
@@ -2182,9 +2268,11 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         onDuplicateDocuments={hubDuplicateDocuments}
         onDeleteDocuments={hubDeleteDocuments}
         onRenameDocument={hubRenameDocument}
+        onPrepareDocumentRename={hubPrepareDocumentRename}
         onMoveCopyDocuments={hubMoveCopyDocuments}
         onProjectPreferencesChange={hubProjectPreferencesChange}
         onLockDocument={hubToggleDocumentLock}
+        catalogActionsEnabled={catalogEnabled}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
         onSignIn={onShowAuthModal}

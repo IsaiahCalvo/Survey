@@ -68,6 +68,8 @@ export default function SurveyHub({
   initialTab = null,
   initialMobileDetailOpen = false,
   onOpenDocument,
+  onDescribeCloudDocumentPreview,
+  onAcquireCloudDocumentPreview,
   onUpload,
   uploadBusy = false,
   onCreateProject,
@@ -85,9 +87,11 @@ export default function SurveyHub({
   onDuplicateDocuments,
   onDeleteDocuments,
   onRenameDocument,
+  onPrepareDocumentRename,
   onMoveCopyDocuments,
   onProjectPreferencesChange,
   onLockDocument,
+  catalogActionsEnabled = false,
   onSettings,
   onSignOut,
   onSignIn,
@@ -263,14 +267,18 @@ export default function SurveyHub({
           documents={documents}
           projects={projects}
           onOpenDocument={(document) => onOpenDocument?.(document, 'documents')}
+          onDescribeCloudDocumentPreview={onDescribeCloudDocumentPreview}
+          onAcquireCloudDocumentPreview={onAcquireCloudDocumentPreview}
           onUpload={onUpload}
           uploadBusy={uploadBusy}
           onShare={shareDocuments}
           onDuplicate={onDuplicateDocuments}
           onDelete={onDeleteDocuments}
           onRename={onRenameDocument}
+          onPrepareRename={onPrepareDocumentRename}
           onMoveCopy={onMoveCopyDocuments}
           onLockDocument={onLockDocument}
+          catalogActionsEnabled={catalogActionsEnabled}
           />
         )
       )}

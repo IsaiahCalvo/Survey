@@ -1,4 +1,5 @@
-import { createDocumentGenerationReader } from './documentGenerationReader.js';
+import { createDocumentGenerationPdfReader, createDocumentGenerationReader,
+  readDocumentGenerationNameReceipt } from './documentGenerationReader.js';
 import { createDocumentGenerationDownload } from './documentGenerationDownload.js';
 import { createLegacyDocumentDownload } from './legacyDocumentDownload.js';
 
@@ -54,11 +55,12 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
   check(typeof conditionalAnnotationCheckpoint === 'boolean');
   let retired = false;
   const pending = new Set();
+  const previewDescriptors = new WeakMap();
   const retire = code => {
     retired = true;
     for (const abort of pending) abort(code);
   };
-  async function run(input = {}, discover = false) {
+  async function run(input = {}, discover = false, preview = null) {
       // Disabled means zero auth, subscriptions, RPCs and HTTP, even with no config.
       check(enabled === true, 'DOCUMENT_OPEN_DISABLED');
       check(input !== null && typeof input === 'object' && !Array.isArray(input));
@@ -131,11 +133,11 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
             .setHeader('Authorization', `Bearer ${accessToken}`).abortSignal(context.signal));
           alive(); return response;
         };
-        const readMode = async () => {
-          let response = await request('read_document_open_mode', { p_document_id: documentId });
-          if (response?.error?.code === 'SG003') {
-            response = await request('read_document_open_mode_v2', { p_document_id: documentId });
-          }
+        const readMode = async (modernOnly = false) => {
+          let response = await request(modernOnly ? 'read_document_open_mode_v2' : 'read_document_open_mode',
+            { p_document_id: documentId });
+          if (!modernOnly && response?.error?.code === 'SG003') response = await request(
+            'read_document_open_mode_v2', { p_document_id: documentId });
           if (response?.error) throw response.error;
           const value = response?.data;
           const old = exactKeys(value, 'version,actor_user_id,document_id,mode,generation_id')
@@ -167,6 +169,8 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         const reader = createDocumentGenerationReader({ timeoutMs, maxPdfBytes, maxStateBytes, maxUpdatePages,
           getActorUserId: () => { alive(); return actorUserId; }, download,
           request });
+        const pdfReader = createDocumentGenerationPdfReader({ timeoutMs,maxPdfBytes,
+          getActorUserId: () => { alive(); return actorUserId; },download,request });
         // Subscribe before the first session await to catch actor A -> B -> A.
         const result = client.auth.onAuthStateChange((event, session) => {
           if (active && (event === 'SIGNED_OUT' || session?.user?.id !== actorUserId)) retire('DOCUMENT_OPEN_ACTOR_CHANGED');
@@ -175,9 +179,52 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         check(typeof subscription?.unsubscribe === 'function');
         alive();
         accessToken = await readSession(); alive();
-        const mode = discover ? await readMode() : null;
+        const mode = discover ? await readMode(preview !== null) : null;
+        if (preview?.kind === 'describe') {
+          const cacheKey = mode.mode === 'checked' ? JSON.stringify([
+            'document-preview-v1',actorUserId,documentId,mode.generationId,mode.contentModelVersion,
+          ]) : null;
+          const descriptor = Object.freeze({ version:1,mode:mode.mode,actorUserId,documentId,
+            pdfGenerationId:mode.mode === 'checked' ? mode.generationId : null,
+            contentModelVersion:mode.mode === 'checked' ? mode.contentModelVersion : null,cacheKey });
+          previewDescriptors.set(descriptor, Object.freeze({ mode:mode.mode,generationId:mode.generationId,
+            contentModelVersion:mode.contentModelVersion,modern:mode.modern,cacheKey }));
+          await readSession(); alive(); return descriptor;
+        }
+        if (preview?.kind === 'acquire') {
+          const issued = preview.issued;
+          check(mode.mode === issued.mode && mode.generationId === issued.generationId
+            && mode.contentModelVersion === issued.contentModelVersion && mode.modern === issued.modern,
+          'DOCUMENT_OPEN_STATE');
+        }
+        if (preview?.kind === 'name' && mode.mode === 'checked') {
+          const response = await request('read_document_generation_open_v3', {
+            p_document_id:documentId,p_generation_id:mode.generationId,
+            p_content_model_version:mode.contentModelVersion,p_include_snapshot:false,
+          });
+          if (response?.error) throw response.error;
+          const name = readDocumentGenerationNameReceipt(response?.data, {
+            actorUserId,documentId,pdfGenerationId:mode.generationId,
+            contentModelVersion:mode.contentModelVersion,
+          });
+          const finalMode = await readMode(true);
+          check(finalMode.mode === 'checked' && finalMode.generationId === mode.generationId
+            && finalMode.contentModelVersion === mode.contentModelVersion && finalMode.modern === mode.modern,
+          'DOCUMENT_OPEN_STATE');
+          await readSession(); alive();
+          return Object.freeze({ version:1,mode:'checked',actorUserId,documentId,
+            pdfGenerationId:mode.generationId,contentModelVersion:mode.contentModelVersion,name });
+        }
         if (mode?.mode === 'legacy') {
           const document = await readMetadata();
+          if (preview?.kind === 'name') {
+            const finalMode = await readMode(true);
+            check(finalMode.mode === 'legacy' && finalMode.generationId === null && finalMode.modern === mode.modern,
+            'DOCUMENT_OPEN_STATE');
+            await readSession(); alive();
+            return Object.freeze({ version:1,mode:'legacy',actorUserId,documentId,
+              pdfGenerationId:null,contentModelVersion:null,name:document.name });
+          }
           const blob = await wait(() => legacyDownload({ path: document.file_path },
           { actorUserId, documentId, signal: controller.signal }));
           const finalDocument = await readMetadata();
@@ -187,7 +234,28 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
           await readSession(); alive();
           // Hashless mutable Storage objects cannot prove a physical version.
           // No descriptor-only equality claim upgrades this to checked mode.
+          if (preview?.kind === 'acquire') {
+            const owned = Blob.prototype.slice.call(blob, 0, undefined, 'application/pdf');
+            return Object.freeze({ version:1,mode:'legacy',actorUserId,documentId,pdfGenerationId:null,
+              contentModelVersion:null,name:finalDocument.name,blob:owned,byteLength:String(owned.size),
+              contentSha256:null,cacheKey:null });
+          }
           return Object.freeze({ mode: 'legacy', actorUserId, documentId, document, blob, checkedBundle: null });
+        }
+        if (preview?.kind === 'acquire') {
+          const issued = preview.issued;
+          const result = await pdfReader.open({ documentId,actorUserId,pdfGenerationId:issued.generationId,
+            contentModelVersion:issued.modern ? issued.contentModelVersion : null,signal:controller.signal });
+          const finalMode = await readMode(true);
+          check(finalMode.mode === issued.mode && finalMode.generationId === issued.generationId
+            && finalMode.contentModelVersion === issued.contentModelVersion && finalMode.modern === issued.modern,
+          'DOCUMENT_OPEN_STATE');
+          await readSession(); alive();
+          const blob = Blob.prototype.slice.call(result.blob, 0, undefined, 'application/pdf');
+          return Object.freeze({ version:1,mode:'checked',actorUserId,documentId,
+            pdfGenerationId:issued.generationId,contentModelVersion:issued.contentModelVersion,
+            name:result.name,blob,byteLength:result.pdf.byte_length,contentSha256:result.pdf.content_sha256,
+            cacheKey:issued.cacheKey });
         }
         const bundle = await wait(() => reader.open({ documentId, actorUserId,
           pdfGenerationId: mode ? mode.generationId : pdfGenerationId,
@@ -209,5 +277,14 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
     dispose() { retire('DOCUMENT_OPEN_ABORTED'); },
     open(input) { return run(input); },
     openCurrent(input) { return run(input, true); },
+    readNameCurrent(input) { return run(input, true, { kind:'name' }); },
+    describePreviewCurrent(input) { return run(input, true, { kind:'describe' }); },
+    acquirePreviewPdf(descriptor, input = {}) {
+      check(input !== null && typeof input === 'object' && !Array.isArray(input)
+        && Object.keys(input).every(key => key === 'signal'));
+      const issued = previewDescriptors.get(descriptor);
+      check(issued);
+      return run({ documentId:descriptor.documentId,signal:input.signal }, true, { kind:'acquire',issued });
+    },
   });
 }

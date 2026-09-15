@@ -109,11 +109,25 @@ const longDate = (value) => {
 };
 
 const formatSize = (bytes) => {
-  const n = Number(bytes) || 0;
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + ' GB';
-  if (n >= 1e6) return (n / 1e6).toFixed(2) + ' MB';
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' KB';
-  return n + ' B';
+  const text = typeof bytes === 'number' && Number.isSafeInteger(bytes) && bytes >= 0
+    ? String(bytes) : typeof bytes === 'string' && /^(0|[1-9][0-9]*)$/.test(bytes) ? bytes : '0';
+  const n = BigInt(text);
+  const scaled = (unit, digits, suffix) => {
+    const whole = n / unit;
+    const factor = 10n ** BigInt(digits);
+    const fraction = ((n % unit) * factor) / unit;
+    return `${whole}.${String(fraction).padStart(digits, '0')} ${suffix}`;
+  };
+  if (n >= 1_000_000_000n) return scaled(1_000_000_000n, 2, 'GB');
+  if (n >= 1_000_000n) return scaled(1_000_000n, 2, 'MB');
+  if (n >= 1_000n) return scaled(1_000n, 1, 'KB');
+  return `${n} B`;
+};
+
+const compareByteSize = (left, right) => {
+  const a = BigInt(left || '0');
+  const b = BigInt(right || '0');
+  return a < b ? -1 : a > b ? 1 : 0;
 };
 
 export default function DocumentsLedger({
@@ -124,14 +138,18 @@ export default function DocumentsLedger({
   templatesLocked = false,
   onNav,
   onOpenDocument,
+  onDescribeCloudDocumentPreview,
+  onAcquireCloudDocumentPreview,
   onUpload,
   uploadBusy = false,
   onShare,
   onDuplicate,
   onDelete,
   onRename,
+  onPrepareRename,
   onMoveCopy,
   onLockDocument,
+  catalogActionsEnabled = false,
 }) {
   const [selId, setSelId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(true);
@@ -150,7 +168,12 @@ export default function DocumentsLedger({
   const mobileDetailModalRef = useRef(null);
   const mobileDetailCloseRef = useRef(null);
   const mobileDetailOpenerRef = useRef(null);
+  const renameRequestRef = useRef(0);
   const closeMobileDetail = useCallback(() => setMobileDetailId(null), []);
+  useEffect(() => {
+    renameRequestRef.current += 1;
+    setRenameTarget(null);
+  }, [user?.id]);
   useModalFocusTrap({
     active: Boolean(mobileDetailId),
     containerRef: mobileDetailModalRef,
@@ -178,10 +201,11 @@ export default function DocumentsLedger({
     return {
       raw: d,
       id: d.id,
-      name: d.name,
+      name: typeof d.name === 'string' ? d.name : 'Untitled PDF',
       project: projectNameById.get(d.project_id) || 'Sandbox',
       size: formatSize(d.file_size),
-      sizeBytes: Number(d.file_size) || 0,
+      sizeBytes: typeof d.file_size === 'string' && /^(0|[1-9][0-9]*)$/.test(d.file_size)
+        ? d.file_size : Number.isSafeInteger(d.file_size) && d.file_size >= 0 ? String(d.file_size) : '0',
       pages: d.pages ?? d.page_count ?? null,
       rev: d.rev || '',
       editedMs: ms,
@@ -207,9 +231,13 @@ export default function DocumentsLedger({
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
     else if (sortKey === 'project') arr.sort((a, b) => sign * (a.project || '').localeCompare(b.project || ''));
     else if (sortKey === 'edited') arr.sort((a, b) => sign * (a.editedMs - b.editedMs));
-    else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
+    else if (sortKey === 'size') arr.sort((a, b) => sign * compareByteSize(a.sizeBytes, b.sizeBytes));
     return arr;
   }, [mapped, search, sortKey, sortDir]);
+  const visibleRenameTarget = renameTarget
+    && docs.some(doc => doc.id === renameTarget.id)
+    && (!catalogActionsEnabled || renameTarget.__catalogActorUserId === user?.id)
+    ? renameTarget : null;
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   useEffect(() => {
@@ -355,6 +383,7 @@ export default function DocumentsLedger({
   };
   const openDocMenu = (e, d) => {
     e.stopPropagation();
+    renameRequestRef.current += 1;
     const trigger = e.currentTarget;
     const rect = e.currentTarget.getBoundingClientRect();
     setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
@@ -494,6 +523,7 @@ export default function DocumentsLedger({
                             e.stopPropagation();
                             const trigger = e.currentTarget;
                             const rect = e.currentTarget.getBoundingClientRect();
+                            renameRequestRef.current += 1;
                             setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
                           }}
                           style={moreButtonStyle()}
@@ -556,6 +586,8 @@ export default function DocumentsLedger({
                   variant="preview"
                   fill
                   priority
+                  describeCloudPreview={onDescribeCloudDocumentPreview}
+                  acquireCloudPreview={onAcquireCloudDocumentPreview}
                   fallback={
                     <div style={{ width: '100%', height: '100%' }}>
                       <PdfThumb height="100%" color={sel.color} stamp={(sel.rev || '').replace(' ', '')}
@@ -647,6 +679,8 @@ export default function DocumentsLedger({
                   variant="preview"
                   fill
                   priority
+                  describeCloudPreview={onDescribeCloudDocumentPreview}
+                  acquireCloudPreview={onAcquireCloudDocumentPreview}
                   fallback={<PdfThumb height="100%" color={mobileDetailDoc.color} stamp={(mobileDetailDoc.rev || '').replace(' ', '')} />}
                 />
               </div>
@@ -681,24 +715,32 @@ export default function DocumentsLedger({
       }}
     />
     <RenameModal
-      open={!!renameTarget}
-      onClose={() => setRenameTarget(null)}
+      open={!!visibleRenameTarget}
+      onClose={() => { renameRequestRef.current += 1; setRenameTarget(null); }}
       title="Rename document"
-      initialName={renameTarget?.name || ''}
-      onConfirm={(name) => onRename?.(renameTarget, name)}
+      initialName={visibleRenameTarget?.name || ''}
+      onConfirm={(name) => onRename?.(visibleRenameTarget, name)}
     />
     {docMenu && (() => {
       const doc = docs.find((d) => d.id === docMenu.id);
       if (!doc) return null;
       const locked = doc.raw?.locked_at != null;
-      const canLock = user?.id && doc.raw?.user_id === user.id;
+      const canLock = user?.id && (catalogActionsEnabled || doc.raw?.user_id === user.id);
       return (
         <DocumentActionMenu
           anchorRect={docMenu.rect}
           onClose={() => setDocMenu(null)}
           items={[
             { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },
-            { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
+            { label: 'Rename', onClick: async () => {
+              const request = ++renameRequestRef.current;
+              const target = onPrepareRename ? await onPrepareRename(doc.raw) : doc.raw;
+              if (request === renameRequestRef.current && target?.id === doc.id) {
+                setRenameTarget(catalogActionsEnabled
+                  ? { ...target, __catalogActorUserId: user?.id }
+                  : target);
+              }
+            } },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },

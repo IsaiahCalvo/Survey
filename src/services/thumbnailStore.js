@@ -64,6 +64,20 @@ export function thumbCacheKey(doc) {
   return `${id}::${stamp}`;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** A checked preview key is issued only after the current mode read. It is a
+ * cache locator, not an access grant; callers must obtain a fresh descriptor
+ * before every read and use that exact descriptor for a cache miss. */
+export function checkedPreviewThumbCacheKey(descriptor) {
+  if (!descriptor || descriptor.version !== 1 || descriptor.mode !== 'checked'
+    || !UUID.test(descriptor.actorUserId || '') || !UUID.test(descriptor.documentId || '')
+    || !UUID.test(descriptor.pdfGenerationId || '') || ![1, 2].includes(descriptor.contentModelVersion)) return null;
+  const expected = JSON.stringify(['document-preview-v1', descriptor.actorUserId, descriptor.documentId,
+    descriptor.pdfGenerationId, descriptor.contentModelVersion]);
+  return descriptor.cacheKey === expected ? expected : null;
+}
+
 function requestResult(request, transaction, timeoutMs = REQUEST_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     let settled = false;

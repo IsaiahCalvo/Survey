@@ -56,6 +56,7 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
   const invoke = (incoming) => extractHandler(shellSource,
     'const handleDocumentSelect =', '  // DEV-ONLY: Auto-open test PDF', {
       tabs, closeViewRef, openingPdfsRef: pending, selectedPDF: tabs[0].file,
+      useCallback: callback => callback,
       documentOpenScope, documentOpenScopeRef: { current: documentOpenScope },
       getDocumentOpenKey, isSameDocumentTab,
       checkedPageStructureStorage: null,

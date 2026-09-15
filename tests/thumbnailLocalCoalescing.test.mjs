@@ -35,7 +35,7 @@ async function mount(t) {
   source = source.replace("from 'react'", `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)}`)
     .replace("import { loadPdfjs, getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => globalThis.__localThumbQa.pdfjs; const getPdfjsDocumentOptions = () => ({});')
     .replace("import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';", 'const readBlobAsArrayBuffer = file => globalThis.__localThumbQa.read(file);')
-    .replace("import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';", 'const thumbnailStore = () => ({ get: async () => globalThis.__localThumbQa.stored, put: async () => true }); const thumbCacheKey = doc => doc.file_path ? doc.id + doc.file_path : null;')
+    .replace("import { checkedPreviewThumbCacheKey, thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';", 'const thumbnailStore = () => ({ get: async () => globalThis.__localThumbQa.stored, put: async () => true }); const thumbCacheKey = doc => doc.file_path ? doc.id + doc.file_path : null; const checkedPreviewThumbCacheKey = () => null;')
     .replace("from './thumbnailRequestPolicy'", `from ${JSON.stringify(new URL('../src/home/thumbnailRequestPolicy.js', import.meta.url).href)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(url), { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(pathToFileURL(require.resolve('react/jsx-runtime')).href));
@@ -124,7 +124,8 @@ test('a preview promotes shared local row work ahead of the queued row backlog',
   const order = [];
   const scope = {
     thumbnailRequests: createThumbnailRequestPool(), canResolveThumbnailBytes,
-    thumbCacheKey: () => null, thumbnailStore: () => ({ get: async () => null }),
+    thumbCacheKey: () => null, checkedPreviewThumbCacheKey: () => null,
+    thumbnailStore: () => ({ get: async () => null }),
     resolvePdfBytes: async doc => { order.push(doc.id); return new ArrayBuffer(1); },
     renderFirstPage: async () => ({ url: 'pixels', aspect: 1 }),
   };
