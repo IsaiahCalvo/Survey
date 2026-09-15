@@ -11,6 +11,9 @@ const PUBLICATION = ['operation_id', 'generation_id', 'published_at', 'wal_head'
 const LEGACY_RECEIPT = ['version', 'actor_user_id', 'document_id', 'generation_id', 'source_generation_id', 'archive'];
 const LEGACY_ARCHIVE = ['kind', 'bucket_id', 'path', 'id', 'version', 'byte_length', 'content_sha256', 'source_object'];
 const SOURCE_OBJECT = ['bucket_id', 'path', 'id', 'version', 'byte_length'];
+const ADOPTION_RECEIPT = ['version','state','actor_user_id','document_id','generation_id','adoption_operation_id','objects'];
+const ADOPTION_ARCHIVE = ['kind','bucket_id','path','id','version','byte_length','content_sha256','source_object'];
+const ADOPTION_SOURCE = ['kind','bucket_id','path','id','version','byte_length','content_sha256','owner_id'];
 const LEGACY_SIDECAR_MAX_BYTES = 16 * 1024 * 1024;
 const fail = code => Object.assign(new Error(code), { code });
 const check = (value, code = 'invalid_manifest') => { if (!value) throw fail(code); };
@@ -100,6 +103,42 @@ function sameLegacySidecarReceipt(a, b) {
     && same(a.archive, b.archive, LEGACY_ARCHIVE.filter(key => key !== 'source_object'))
     && same(a.archive.source_object, b.archive.source_object, SOURCE_OBJECT);
 }
+function legacyAdoptionReceipt(value, actor, body) {
+  check(exactKeys(value, ADOPTION_RECEIPT) && value.version === 1 && value.state === 'available'
+    && value.actor_user_id === actor && value.document_id === body.document_id
+    && value.generation_id === body.generation_id && uuid(value.adoption_operation_id)
+    && Array.isArray(value.objects) && [1, 2].includes(value.objects.length));
+  const objects = value.objects.map((archive, index) => {
+    const kind = index === 0 ? 'pdf' : 'sidecar';
+    check(exactKeys(archive, ADOPTION_ARCHIVE) && archive.kind === kind
+      && archive.bucket_id === 'documents' && typeof archive.path === 'string'
+      && archive.path.length > 0 && archive.path.length <= 2048
+      && !/[\u0000-\u001f\u007f]/.test(archive.path) && uuid(archive.id) && uuid(archive.version)
+      && size(archive.byte_length) && SHA.test(archive.content_sha256));
+    try { encodeSourceObjectPath(archive.path); } catch { throw fail('invalid_manifest'); }
+    const source = archive.source_object;
+    check(exactKeys(source, ADOPTION_SOURCE) && source.kind === kind && source.bucket_id === 'documents'
+      && typeof source.path === 'string' && source.path.length > 0 && source.path.length <= 2048
+      && !/[\u0000-\u001f\u007f]/.test(source.path) && uuid(source.id) && uuid(source.version)
+      && size(source.byte_length) && SHA.test(source.content_sha256) && uuid(source.owner_id)
+      && source.byte_length === archive.byte_length && source.content_sha256 === archive.content_sha256);
+    try { encodeSourceObjectPath(source.path); } catch { throw fail('invalid_manifest'); }
+    return Object.freeze({ ...pick(archive, ADOPTION_ARCHIVE),
+      source_object: Object.freeze(pick(source, ADOPTION_SOURCE)) });
+  });
+  if (Object.hasOwn(body, 'adoption_operation_id')) check(body.adoption_operation_id === value.adoption_operation_id);
+  return Object.freeze({ version:1,state:'available',actor_user_id:actor,document_id:value.document_id,
+    generation_id:value.generation_id,adoption_operation_id:value.adoption_operation_id,
+    objects:Object.freeze(objects) });
+}
+function sameLegacyAdoptionReceipt(a,b) {
+  return same(a,b,ADOPTION_RECEIPT.filter(key=>key!=='objects')) && a.objects.length===b.objects.length
+    && a.objects.every((item,index)=>same(item,b.objects[index],ADOPTION_ARCHIVE.filter(key=>key!=='source_object'))
+      && same(item.source_object,b.objects[index].source_object,ADOPTION_SOURCE));
+}
+const publicLegacyAdoptionReceipt = receipt => ({ version:2,state:'available',document_id:receipt.document_id,
+  generation_id:receipt.generation_id,adoption_operation_id:receipt.adoption_operation_id,
+  objects:receipt.objects.map(({kind,byte_length,content_sha256})=>({kind,byte_length,content_sha256})) });
 function discardReader(reader) {
   if (!reader) return;
   try { void Promise.resolve(reader.cancel()).catch(() => {}); } catch { /* already ended */ }
@@ -125,9 +164,14 @@ async function input(request, call) {
   try { body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, length))); }
   catch { throw fail('invalid_request'); }
   if (exactKeys(body, ['action', 'document_id', 'generation_id'])) {
-    check(body.action === 'legacy-sidecar-recovery' && uuid(body.document_id)
+    check(['legacy-sidecar-recovery','legacy-adoption-archive-status'].includes(body.action) && uuid(body.document_id)
       && uuid(body.generation_id), 'invalid_request');
     return body;
+  }
+  if (exactKeys(body,['action','document_id','generation_id','adoption_operation_id','kind'])) {
+    check(body.action==='legacy-adoption-archive-download' && uuid(body.document_id)
+      && uuid(body.generation_id) && uuid(body.adoption_operation_id)
+      && ['pdf','sidecar'].includes(body.kind),'invalid_request');return body;
   }
   check(exactKeys(body, ['document_id', 'generation_id', 'pdf'])
     && uuid(body.document_id) && uuid(body.generation_id), 'invalid_request');
@@ -192,6 +236,33 @@ export async function handleDocumentGenerationDownload(request, deps = {}) {
     const actor = (await call(() => deps.getUser(token, signal)))?.id;
     check(uuid(actor), 'unauthorized');
     const body = await input(request, call);
+    if (body.action === 'legacy-adoption-archive-status') {
+      const receipt = legacyAdoptionReceipt(await call(() => deps.readLegacyAdoption(
+        token, actor, body.document_id, body.generation_id, signal)), actor, body);
+      cleanup();return json(200,publicLegacyAdoptionReceipt(receipt));
+    }
+    if (body.action === 'legacy-adoption-archive-download') {
+      const initial = legacyAdoptionReceipt(await call(() => deps.readLegacyAdoption(
+        token, actor, body.document_id, body.generation_id, signal)), actor, body);
+      const archive = initial.objects.find(value=>value.kind===body.kind);
+      check(archive,'invalid_request');
+      const expected=BigInt(archive.byte_length),limit=body.kind==='pdf'?BigInt(maxBytes):BigInt(LEGACY_SIDECAR_MAX_BYTES);
+      check(expected<=limit,'size_limit');
+      await call(async()=>{const stream=await deps.openStream(archive,signal);try{alive();}catch(error){discardStream(stream);throw error;}
+        check(typeof stream?.getReader==='function','invalid_object');providerReader=stream.getReader();});
+      hash=createHash('sha256');const chunks=[];let count=0;
+      for(;;){const {value,done}=await call(()=>providerReader.read());if(done)break;check(value instanceof Uint8Array,'invalid_object');
+        if(value.byteLength===0)continue;check(BigInt(count+value.byteLength)<=expected,'byte_mismatch');const chunk=new Uint8Array(value);
+        chunks.push(chunk);count+=chunk.byteLength;hash.update(chunk);}
+      check(BigInt(count)===expected&&hash.digest('hex')===archive.content_sha256,'byte_mismatch');
+      const bytes=new Uint8Array(count);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+      if(body.kind==='sidecar')try{JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{throw fail('invalid_object');}
+      const final=legacyAdoptionReceipt(await call(()=>deps.readLegacyAdoption(
+        token,actor,body.document_id,body.generation_id,signal)),actor,body);
+      check(sameLegacyAdoptionReceipt(initial,final),'descriptor_mismatch');alive();cleanup();
+      return new Response(bytes,{status:200,headers:{...CORS,'Content-Type':body.kind==='pdf'?'application/pdf':'application/json',
+        'Cache-Control':'private, no-store, no-transform','X-Content-Type-Options':'nosniff'}});
+    }
     if (body.action === 'legacy-sidecar-recovery') {
       const initial = legacySidecarReceipt(await call(() => deps.readLegacySidecar(
         token, body.document_id, body.generation_id, signal)), actor, body);

@@ -167,7 +167,7 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     flushPendingFormFieldsRef: { current: () => {} },
     user, features: { cloudSync: cloud },
     surveyDefinition: { mode: 'legacy', busy: false, definition: null },
-    checkedLegacySidecarArchived: false,
+    checkedLegacySidecarRetired: false,
     document: { body: { getAttribute: () => null } },
     summarizeAnnotationCountsForSaveExport: () => ({ byType: {} }),
     saveAnnotationsByPage: () => localSaved,
@@ -197,7 +197,7 @@ test('a proved archived sidecar stops mutable cloud writes while an unmarked che
   assert.equal(unmarked.state.cloudWrites, 1, 'null migration marker preserves the legacy write');
 
   const archived = saveCallbackHarness({ localSaved: true, cloud: true,
-    overrides: { checkedLegacySidecarArchived: true } });
+    overrides: { checkedLegacySidecarRetired: true } });
   assert.equal(await archived.save(), true);
   assert.equal(archived.state.cloudWrites, 0, 'proved generation archive owns recovery bytes');
   assert.equal(archived.state.flushes, 1, 'canonical annotation flush remains enabled');

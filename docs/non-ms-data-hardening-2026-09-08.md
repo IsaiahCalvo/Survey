@@ -6154,3 +6154,143 @@ Other logs: `/tmp/survey-sidecar-build-candidate-20260915.log`,
 `/tmp/replacement-executor-sidecar-client-final-20260915.log`.
 This remains local candidate evidence, not a hosted migration, rollout, quota
 reduction measurement or completion of the whole data-layer goal.
+
+### Next required path — explicit first-generation adoption (implementation authorized locally)
+
+The current legacy reader is safe but cannot create the first checked generation.
+The next connected change keeps the same document, shares and history, targets
+content model 2, and copies verified original PDF bytes without rerendering.
+It is explicit owner-reviewed conversion, never automatic migration or a hidden
+copy/re-share operation. Local files remain local.
+
+The server owns review identity, canonical annotation provenance, SQL/WAL/source
+object checks and final publication. The client's drained local capture is only
+a preflight, not a server checkpoint. Persist exact intent and consent before
+requests; reconcile missing/review/confirmed/published outcomes after lost replies.
+Reject changed source, role, definitions or annotations instead of silently
+rebasing consent. Keep drafts and raw source evidence on failure.
+
+Use canonical legacy annotation snapshot/WAL first; only validated compatible
+legacy SQL/Yjs fallback may supply a missing baseline. Conflicting sources reject.
+Sidecar annotations and private view/tool/template/Excel fields never seed shared
+state. Nonempty legacy entities require an accepted catalog. Survey definitions
+must satisfy real annotation references; a blank PDF must not require an
+arbitrary private template. Existing accepted definitions remain document-owned.
+
+Effective document owners may authorize conversion, but this does not grant
+access to private raw recovery files. Bind the original permanent document/
+Storage owner separately from the adoption actor; raw recovery requires the
+current permanent document owner to match the adoption-time document owner,
+not merely project-owner status. The original Storage uploader may be a different
+authorized editor: pin that identity as object provenance, not an access grant
+or an extra equality requirement with the recovery actor. After publication,
+recovery checks the retained immutable archive and stored source proof; later
+changes to the retired fixed upload path must not invalidate that archive.
+An explicit version-2 legacy-origin marker records the adoption operation, never
+a fabricated source-generation UUID. It must survive later PDF replacements.
+
+Existing per-document locks serialize accepted legacy SQL writes with publication.
+They do not prove that an already-issued Storage upload never reached provider
+bytes. After adoption, fixed legacy paths are retired and ignored, not silently
+treated as current work. Preserve those paths and recovery evidence. Old-client
+rollout and live multi-user proof remain activation gates; local implementation
+and tests do not enable this path on hosted documents.
+
+Server/SQL and client agents have separate ownership and must agree the exact
+bearer-bound HTTP contract before coupling their routes. The gateway derives
+actor identity from authentication. Required local gates include concurrent
+writers/adoptions, source and role drift, exact lost-reply replay, private-field
+exclusion, model-2 annotation round-trip, successor marker retention, and owner
+recovery. This section is a work contract, not completion evidence.
+
+Early adoption checks (not a completed checkpoint): the client and durable-intent
+store tests pass 9/9 with `node --test
+tests/documentFirstGenerationAdoption.test.mjs
+tests/documentFirstGenerationAdoptionIntentStore.test.mjs`. Independent review
+confirmed the source fixes for exact reviewed-field matching, distinct operation
+IDs, bounded sequence values, dirty-state checks before storing a review, and
+lost-preview recovery without automatic consent. The two latter paths still need
+their explicit retry regression cases before source freeze.
+
+The disposable PostgreSQL harness
+`node scripts/test-document-first-generation-adoption-postgres.mjs` passed its
+first migration-apply/private-grant group, recorded in
+`/tmp/survey-first-adoption-pg-20260915.log`. This does not yet prove a complete
+review/confirm/publish transaction, races, archive recovery or successor behavior.
+Those checks, actual SQL-to-client receipt validation, mounted retry checks,
+full tests, build and in-app browser proof remain required. UI activation is an
+explicit test-injected AppShell prop and defaults off; no hosted rollout or
+live bandwidth reduction is claimed.
+
+Adoption integration progress (September 15, still not a completed checkpoint):
+the disposable PostgreSQL harness now exits 0 for actual two-object publication,
+exact publication replay, separate permanent-owner/uploader/converter authority,
+archive recovery after simulated loss of retired source bytes, restricted server
+prepare access, and an inherited-project-owner revocation race. A real v4
+successor publication also keeps the exact v2 adoption origin and marker and
+ignores the retired fixed sidecar. Evidence remains in
+`/tmp/survey-first-adoption-pg-20260915.log`.
+
+Independent endpoint review found a reserved-upload retry bug: a committed PUT
+with a missing verify reply could not resume. The repair verifies an existing
+reserved object without uploading it again; the focused request suite passes
+6/6 and the bounded re-review passes. The function-local Deno map includes the
+transitive dependencies, and the server worker reports `deno check` passing.
+Client focused checks pass 53/53. The root's Vite build exits 0 in
+`/tmp/survey-first-adoption-build-20260915.log`. A new root-owned full test run
+is in progress at `/tmp/survey-first-adoption-final-tests-20260915.log`; do not
+substitute the earlier client run for that final source check.
+
+The local full-app browser fixture opens the three-page legacy PDF. Browser
+adoption acceptance is still incomplete: its fake collaboration setup has not
+yet reached the required ready state. Fixture-only fixes cover React resolution,
+legacy metadata, presence calls, and a debug panel that had covered the Open file
+button. No app guard was relaxed to make those setup failures pass.
+
+The final root-owned full test process has now exited 0:
+7,374 tests, 7,276 passed, 98 skipped, zero failures/cancellations across 741
+isolated groups (`/tmp/survey-first-adoption-final-tests-20260915.log`). The
+code-index refresh also exited 0, with 29,724 nodes and 49,256 edges
+(`/tmp/survey-first-adoption-graph-20260915.log`). These supersede the earlier
+in-progress statuses, not the still-open browser gate. Temporary browser
+diagnostics prove annotation hydration and cloud sync are ready and the
+migration client is present; the remaining blocked input is `yjsDocRole: null`.
+The role lookup is under investigation; no owner role is being forced into the
+app to bypass it.
+
+Browser follow-up isolated that role symptom to the fake SDK: its missing
+`realtime.setAuth` caused legacy-session construction to fail. Adding the
+fixture method allowed the real app to load its owner role and show the review.
+Cancel produced only a preview request. A simulated lost confirm reply resumed
+in the same mounted dialog with calls `preview, confirm, status, publish`, using
+the same operation IDs. Checked reacquisition remains unverified: the fixture
+contained an undefined operation-ID variable and a non-model-2 snapshot, both
+rejected by the unchanged reader. The fixture is being rebuilt with real model-2
+conversion output and verified directly through the real reader before further
+browser acceptance. These are setup findings, not product regressions.
+
+Further fixture contract checks now pass through the actual checked reader,
+annotation bootstrap and generation session. The apparent update loop ceased
+after the fake private-channel/presence and generation-authority APIs matched
+the real SDK; no product fix or suppressed React warning was used. In the full
+editor, the checked generation hydrates with owner access, page navigation
+advances to page 2, and no new console error appears. The original publication
+call list remains unchanged. Owner JSON recovery completed a 2-byte download,
+verified by Chromium download-completed events. Switching to the collaborator
+closed the recovery dialog and removed its owner-only control. Original-PDF
+recovery still reports a verification error and remains an open browser gate.
+The separate real server-handler composition test is also still pending; shell,
+SQL and stage-seam passes do not replace it.
+
+The original-PDF recovery browser gate now passes: Chromium reported a completed
+3,233-byte `Fixture legacy 3-page PDF-legacy-source.pdf` download, GUID
+`766ed7c6-84a4-40e0-9ffa-e60192e45098`. The failed attempt came from the temporary
+fixture constructing a Response from a Promise instead of awaited PDF bytes;
+the product's byte verification correctly rejected it. No product guard changed.
+The composed real adoption handler test also passes independently with the four
+transform checks (5 passed, zero failures). It covers preview, consent, publication
+and retry through the real child handlers with local RPC/storage boundaries.
+This new test was added after the 7,374-test full run and is reported separately.
+A clean, uninterrupted browser review-to-checked-install flow remains to close
+before this checkpoint is called complete. No hosted activation or measured
+Supabase savings is claimed.

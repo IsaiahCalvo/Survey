@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDocumentLegacySidecarRecovery } from '../src/services/documentLegacySidecarRecovery.js';
+import { createDocumentLegacyAdoptionArchiveRecovery,
+  createDocumentLegacySidecarRecovery } from '../src/services/documentLegacySidecarRecovery.js';
 
 const id = n => `ab000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = id(1), documentId = id(2), generation = id(3), sourceGeneration = id(4);
@@ -108,4 +109,72 @@ test('a cacheable download response never reaches Save As', async () => {
     } }; } } });
   await assert.rejects(recovery.download({ documentId,pdfGenerationId:generation }),
     { code:'LEGACY_SIDECAR_RECOVERY_PROTOCOL' });
+});
+
+test('legacy-origin status lists PDF and optional JSON, then download verifies exact bytes', async () => {
+  const pdf = new Uint8Array([37,80,68,70,45,49,46,55,10]);
+  const sidecar = new TextEncoder().encode(raw);
+  const sha = async bytes => Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex');
+  const adoptionOperationId = id(11);
+  const objects = [{ kind:'pdf',byte_length:String(pdf.byteLength),
+    content_sha256:await sha(pdf) },{ kind:'sidecar',byte_length:String(sidecar.byteLength),
+    content_sha256:await sha(sidecar) }];
+  const requests = [];
+  const client = { auth:{
+    getSession:async () => ({ data:{ session:{ user:{ id:actor },access_token:'token' } } }),
+    onAuthStateChange() { return { data:{ subscription:{ unsubscribe() {} } } }; },
+  } };
+  const fetch = async (url, options) => {
+    const body = JSON.parse(options.body); requests.push(body);
+    if (body.action === 'legacy-adoption-archive-status') return new Response(JSON.stringify({
+      version:2,state:'available',document_id:documentId,generation_id:generation,
+      adoption_operation_id:adoptionOperationId,objects,
+    }), { status:200,headers:{ 'Content-Type':'application/json','Cache-Control':'no-store' } });
+    const bytes = body.kind === 'pdf' ? pdf : sidecar;
+    return new Response(bytes, { status:200,headers:{
+      'Content-Type':body.kind === 'pdf' ? 'application/pdf' : 'application/json',
+      'Content-Length':String(bytes.byteLength),'Cache-Control':'no-store',
+    } });
+  };
+  const recovery = createDocumentLegacyAdoptionArchiveRecovery({ client,actorUserId:actor,
+    isCurrent:scope => scope.actorUserId === actor,fetch,
+    supabaseUrl:'https://example.supabase.co/',publicKey:'key' });
+  const status = await recovery.status({ documentId,pdfGenerationId:generation });
+  assert.deepEqual(status.objects.map(item => item.kind), ['pdf','sidecar']);
+  assert.equal(JSON.stringify(status).includes('path'), false);
+  const result = await recovery.download({ documentId,pdfGenerationId:generation,
+    adoptionOperationId,kind:'sidecar' });
+  assert.equal(await result.blob.text(), raw);
+  assert.deepEqual(requests, [
+    { action:'legacy-adoption-archive-status',document_id:documentId,generation_id:generation },
+    { action:'legacy-adoption-archive-status',document_id:documentId,generation_id:generation },
+    { action:'legacy-adoption-archive-download',document_id:documentId,generation_id:generation,
+      adoption_operation_id:adoptionOperationId,kind:'sidecar' },
+  ]);
+});
+
+test('PDF-only legacy-origin status cannot request a sidecar and a bad hash exposes no blob', async () => {
+  const pdf = new Uint8Array([37,80,68,70,45,49,46,55,10]);
+  const adoptionOperationId = id(12), requests = [];
+  const status = { version:2,state:'available',document_id:documentId,generation_id:generation,
+    adoption_operation_id:adoptionOperationId,objects:[{ kind:'pdf',
+      byte_length:String(pdf.byteLength),content_sha256:'a'.repeat(64) }] };
+  const recovery = createDocumentLegacyAdoptionArchiveRecovery({ actorUserId:actor,
+    isCurrent:() => true,supabaseUrl:'https://example.supabase.co/',publicKey:'key',
+    client:{ auth:{ getSession:async () => ({ data:{ session:{ user:{ id:actor },access_token:'token' } } }),
+      onAuthStateChange() { return { data:{ subscription:{ unsubscribe() {} } } }; } } },
+    fetch:async (url, options) => {
+      const body = JSON.parse(options.body); requests.push(body);
+      if (body.action.endsWith('status')) return new Response(JSON.stringify(status), { status:200,
+        headers:{ 'Content-Type':'application/json','Cache-Control':'no-store' } });
+      return new Response(pdf, { status:200,headers:{ 'Content-Type':'application/pdf',
+        'Content-Length':String(pdf.byteLength),'Cache-Control':'no-store' } });
+    } });
+  const found = await recovery.status({ documentId,pdfGenerationId:generation });
+  assert.deepEqual(found.objects.map(item => item.kind), ['pdf']);
+  await assert.rejects(recovery.download({ documentId,pdfGenerationId:generation,
+    adoptionOperationId,kind:'sidecar' }), { code:'LEGACY_SIDECAR_RECOVERY_PROTOCOL' });
+  assert.equal(requests.some(request => request.action.endsWith('download')), false);
+  await assert.rejects(recovery.download({ documentId,pdfGenerationId:generation,
+    adoptionOperationId,kind:'pdf' }), { code:'LEGACY_SIDECAR_RECOVERY_PROTOCOL' });
 });

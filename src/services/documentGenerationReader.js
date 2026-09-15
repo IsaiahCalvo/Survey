@@ -189,9 +189,14 @@ function bundle(value, scope, includeSnapshot, stateLimit, expectedVersion) {
     && uuid(b.generation_id) && (scope.pdfGenerationId === null || b.generation_id === scope.pdfGenerationId));
   if (modernV4) {
     const migration = b.legacy_sidecar_migration;
-    check(migration === null || (keys(migration, ['version', 'state', 'source_generation_id'])
-      && migration.version === 1 && migration.state === 'archived'
-      && uuid(migration.source_generation_id)));
+    check(migration === null
+      || (keys(migration, ['version', 'state', 'source_generation_id'])
+        && migration.version === 1 && migration.state === 'archived'
+        && uuid(migration.source_generation_id))
+      || (keys(migration, ['version', 'state', 'origin'])
+        && migration.version === 2 && migration.state === 'archived'
+        && keys(migration.origin, ['mode', 'adoption_operation_id'])
+        && migration.origin.mode === 'legacy' && uuid(migration.origin.adoption_operation_id)));
   }
   const d = b.document, p = b.pdf, r = b.publication, a = b.annotations;
   check(object(d) && d.id === scope.documentId && uuid(d.user_id)

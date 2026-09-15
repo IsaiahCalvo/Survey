@@ -91,7 +91,9 @@ for (const gzip of [false, true]) test(`checked open joins real PDF, ${gzip ? 'g
 
 test('model-1 v4 checked open carries an exact archived marker or explicit null', async () => {
   const marker = { version:1,state:'archived',source_generation_id:id(80) };
-  for (const migration of [null, marker]) {
+  const legacyOrigin = { version:2,state:'archived',
+    origin:{ mode:'legacy',adoption_operation_id:id(81) } };
+  for (const migration of [null, marker, legacyOrigin]) {
     const h = harness({ modern:true,migration });
     const result = await h.open();
     assert.deepEqual(result.legacy_sidecar_migration, migration);
@@ -113,6 +115,10 @@ test('v4 full open rejects marker stripping, malformed markers, and marker chang
     value => { value.legacy_sidecar_migration = { ...marker,source_generation_id:'bad' }; },
     value => { value.content_model_version = 2; },
     value => { value.annotations.content_model_version = 2; },
+    value => { value.legacy_sidecar_migration = { version:2,state:'archived',
+      origin:{ mode:'legacy',adoption_operation_id:null } }; },
+    value => { value.legacy_sidecar_migration = { version:2,state:'archived',
+      origin:{ mode:'legacy',adoption_operation_id:id(81),extra:true } }; },
   ];
   for (const change of malformed) {
     const h = harness({ modern:true,migration:marker });

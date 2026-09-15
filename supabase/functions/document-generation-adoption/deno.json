@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "yjs": "npm:yjs@13.6.27",
+    "pdf-lib": "npm:pdf-lib@1.17.1",
+    "martinez-polygon-clipping": "npm:martinez-polygon-clipping@0.7.4",
+    "@survey/shared": "../../../packages/shared/dist/index.js"
+  }
+}

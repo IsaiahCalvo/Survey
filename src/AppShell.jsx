@@ -38,7 +38,11 @@ import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
 import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
-import { createDocumentLegacySidecarRecovery } from './services/documentLegacySidecarRecovery.js';
+import { createDocumentLegacyAdoptionArchiveRecovery,
+  createDocumentLegacySidecarRecovery } from './services/documentLegacySidecarRecovery.js';
+import { createDocumentFirstGenerationAdoptionTransport } from './services/documentFirstGenerationAdoption.js';
+import { createDocumentFirstGenerationAdoptionClient } from './services/documentFirstGenerationAdoptionClient.js';
+import { createDocumentFirstGenerationAdoptionIntentStore } from './services/documentFirstGenerationAdoptionIntentStore.js';
 import { createDocumentEntityCatalogClient } from './services/documentEntityCatalog.js';
 import { createDocumentSurveyDefinitionClient } from './services/documentSurveyDefinition.js';
 import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
@@ -135,6 +139,9 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
   documentSurveyDefinitionEnabled = false,
   documentSurveyDefinitionClient = null, documentSurveyDefinitionAdoptionStore = null,
+  documentFirstGenerationAdoptionEnabled = false,
+  documentFirstGenerationAdoptionTransport = null,
+  documentFirstGenerationAdoptionIntentStore = null,
   localDocumentStateWriter = null, localDocumentFileReplacer = null,
   annotationDocClient = null, devInitialCheckedBundle = null,
   devOnGenerationSession = null }) {
@@ -903,7 +910,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
   }
   const pageReplacementClientRef = useRef(null);
   const handleRecoverLegacySidecar = useCallback(async ({ tabId, file, checkedBundle,
-    scope, signal }) => {
+    scope, signal, action = 'download', kind = 'sidecar', adoptionOperationId = null }) => {
     const actorUserId = scope?.actorUserId;
     const documentId = file?.id;
     const pdfGenerationId = checkedBundle?.pdfGenerationId;
@@ -914,10 +921,30 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
         && live?.activeTabId === tabId && tab?.file === file
         && tab?.checkedBundle === checkedBundle && tab?.documentOpenScope === scope;
     };
+    const marker = checkedBundle?.legacy_sidecar_migration;
+    const firstAdoption = marker?.version === 2 && marker.state === 'archived'
+      && marker.origin?.mode === 'legacy' && typeof marker.origin.adoption_operation_id === 'string';
     if (!isCurrent() || checkedBundle?.document?.user_id !== actorUserId
-      || checkedBundle?.legacy_sidecar_migration?.version !== 1
-      || checkedBundle.legacy_sidecar_migration.state !== 'archived') {
+      || (!(marker?.version === 1 && marker.state === 'archived') && !firstAdoption)) {
       throw new Error('This legacy archive is not available for the current document owner.');
+    }
+    if (firstAdoption) {
+      const recovery = createDocumentLegacyAdoptionArchiveRecovery({ client:supabase,actorUserId,
+        isCurrent:() => isCurrent(),supabaseUrl:import.meta.env.VITE_SUPABASE_URL,
+        publicKey:import.meta.env.VITE_SUPABASE_ANON_KEY });
+      const result = action === 'status'
+        ? await recovery.status({ documentId,pdfGenerationId,signal })
+        : await recovery.download({ documentId,pdfGenerationId,signal,kind,
+          adoptionOperationId });
+      if (!isCurrent() || result.actorUserId !== actorUserId || result.documentId !== documentId
+        || result.pdfGenerationId !== pdfGenerationId
+        || result.adoptionOperationId !== marker.origin.adoption_operation_id) {
+        throw new Error('The document or account changed before the export finished.');
+      }
+      return result;
+    }
+    if (action !== 'download' || kind !== 'sidecar') {
+      throw new Error('This legacy archive request is not available.');
     }
     const recovery = createDocumentLegacySidecarRecovery({ client:supabase,actorUserId,
       isCurrent:() => isCurrent(),supabaseUrl:import.meta.env.VITE_SUPABASE_URL,
@@ -955,6 +982,91 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     pageReplacementClientRef.current = entry;
     return () => { if (pageReplacementClientRef.current === entry) pageReplacementClientRef.current = null; };
   }, [checkedPageReplacementEnabled, documentOpenScope, documentReplacementTransport]);
+  const firstGenerationAdoptionStoreRef = useRef(null);
+  if (!firstGenerationAdoptionStoreRef.current
+    || firstGenerationAdoptionStoreRef.current.supplied !== documentFirstGenerationAdoptionIntentStore) {
+    firstGenerationAdoptionStoreRef.current = {
+      supplied: documentFirstGenerationAdoptionIntentStore,
+      store: documentFirstGenerationAdoptionIntentStore
+        || createDocumentFirstGenerationAdoptionIntentStore(),
+    };
+  }
+  const resolvedFirstGenerationAdoptionTransport = useMemo(() => {
+    if (typeof documentFirstGenerationAdoptionTransport === 'function') {
+      return documentFirstGenerationAdoptionTransport;
+    }
+    if (!documentFirstGenerationAdoptionEnabled) return null;
+    try {
+      return createDocumentFirstGenerationAdoptionTransport({
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      });
+    } catch { return null; }
+  }, [documentFirstGenerationAdoptionEnabled, documentFirstGenerationAdoptionTransport]);
+  const firstGenerationAdoptionClientRef = useRef(null);
+  useEffect(() => {
+    firstGenerationAdoptionClientRef.current = null;
+    if (!documentFirstGenerationAdoptionEnabled || !documentOpenScope.actorUserId
+      || typeof resolvedFirstGenerationAdoptionTransport !== 'function') return undefined;
+    const scope = documentOpenScope, mount = documentOpenMountRef.current;
+    const client = createDocumentFirstGenerationAdoptionClient({
+      store: firstGenerationAdoptionStoreRef.current.store,
+      transport: resolvedFirstGenerationAdoptionTransport,
+      getActorUserId: () => documentOpenScopeRef.current === scope ? scope.actorUserId : null,
+      isCurrent: ({ actorUserId }) => mount !== null && documentOpenMountRef.current === mount
+        && documentOpenScopeRef.current === scope && actorUserId === scope.actorUserId,
+      getAccessToken: async () => {
+        const response = await supabase.auth.getSession();
+        if (response?.error || response?.data?.session?.user?.id !== scope.actorUserId) return null;
+        return response.data.session.access_token;
+      },
+      reacquire: async ({ documentId, signal }) => {
+        const entry = checkedDocumentAcquisitionRef.current;
+        if (!entry || entry.scope !== scope) throw new Error('The checked document open is no longer current.');
+        return entry.acquisition.openCurrent({ documentId, signal });
+      },
+    });
+    const entry = { scope, mount, client };
+    firstGenerationAdoptionClientRef.current = entry;
+    return () => {
+      if (firstGenerationAdoptionClientRef.current === entry) {
+        firstGenerationAdoptionClientRef.current = null;
+      }
+    };
+  }, [documentFirstGenerationAdoptionEnabled, documentOpenScope,
+    resolvedFirstGenerationAdoptionTransport]);
+  const handleFirstGenerationAdoption = useCallback(async (method, input, targetTabId,
+    expectedFile, expectedCheckedBundle, expectedScope) => {
+    const entry = firstGenerationAdoptionClientRef.current;
+    const current = () => {
+      const live = closeViewRef.current;
+      const tab = live?.tabs?.find(candidate => candidate.id === targetTabId);
+      return entry?.scope === expectedScope && documentOpenScopeRef.current === expectedScope
+        && documentOpenMountRef.current === entry?.mount && live?.activeTabId === targetTabId
+        && tab?.actorUserId === expectedScope?.actorUserId && tab?.file === expectedFile
+        && tab?.checkedBundle === expectedCheckedBundle && expectedCheckedBundle === null;
+    };
+    if (!current() || !entry?.client || typeof entry.client[method] !== 'function') {
+      throw new Error('The document upgrade is not available.');
+    }
+    const install = async ({ opened }) => {
+      if (!current()) return false;
+      const prepared = prepareCheckedDocumentOpen(opened.checkedBundle, expectedScope.actorUserId);
+      if (!current() || prepared.pdfGenerationId !== opened.checkedBundle.pdfGenerationId) return false;
+      flushSync(() => {
+        setTabs(previous => !current() ? previous : previous.map(tab => tab.id === targetTabId
+          && tab.file === expectedFile && tab.checkedBundle === null
+          ? { ...tab, file: prepared.file, checkedBundle: opened.checkedBundle } : tab));
+        setSelectedPDF(previous => documentOpenScopeRef.current === expectedScope
+          && documentOpenMountRef.current === entry.mount
+          && closeViewRef.current?.activeTabId === targetTabId && previous === expectedFile
+          ? prepared.file : previous);
+      });
+      const installed = closeViewRef.current?.tabs?.find(tab => tab.id === targetTabId);
+      return installed?.file === prepared.file && installed.checkedBundle === opened.checkedBundle;
+    };
+    return entry.client[method]({ ...input, documentId: expectedFile.id, install });
+  }, []);
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
   // Template refetch for PDFViewer
@@ -3689,6 +3801,10 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                             input, tab.id, tab.file, tab.checkedBundle,
                           )
                         : null}
+                      documentFirstGenerationAdoptionEnabled={documentFirstGenerationAdoptionEnabled}
+                      onFirstGenerationAdoption={documentFirstGenerationAdoptionEnabled
+                        ? handleFirstGenerationAdoption : null}
+                      firstGenerationAdoptionScope={tab.documentOpenScope}
                       onRecoverLegacySidecar={(input) => handleRecoverLegacySidecar({ ...input,
                         tabId:tab.id,file:tab.file,checkedBundle:tab.checkedBundle,
                         scope:tab.documentOpenScope })}

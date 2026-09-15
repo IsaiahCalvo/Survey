@@ -87,8 +87,9 @@ test('current cloud sidecar restores entities and view but never old annotations
 });
 
 test('only a proved generation archive gates the mutable sidecar load', async () => {
-  assert.match(source, /if \(pdfFile\.projectId && !checkedLegacySidecarArchived\) \{\s*await loadSurveyDataFromSupabase/);
+  assert.match(source, /if \(pdfFile\.projectId && !checkedLegacySidecarRetired\) \{\s*await loadSurveyDataFromSupabase/);
   assert.match(source, /checkedBundle\?\.legacy_sidecar_migration\?\.version === 1/);
+  assert.match(source, /checkedBundle\?\.legacy_sidecar_migration\?\.version === 2/);
   assert.match(source, /checkedBundle\.legacy_sidecar_migration\.state === 'archived'/);
   const unmarked = harness({ download: async () => blob() });
   await unmarked.load(unmarked.doc);
