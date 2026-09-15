@@ -48,6 +48,7 @@ import {
 } from '../utils/pdfZoomMath';
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
+import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1886,8 +1887,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // annotation carriers — Drawboard pans from an unselected annotation, so
       // that drag has to keep reaching this scroller.
       if (isEditableTarget(event.target)
+        || isLiveFormWidgetTarget(event.target)
         || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')
-        || event.target?.closest?.('[data-pan-interactive="true"], .pdfjsFormLayer[data-interactive="true"] section')) return;
+        || event.target?.closest?.('[data-pan-interactive="true"]')) return;
       event.preventDefault();
       event.stopPropagation();
       // A new grab always beats an in-flight glide.
@@ -2016,11 +2018,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const isNativeInteractionTarget = (target) => {
       const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
       if (isEditableTarget(nativeTarget)) return true;
+      // A tap that lands in a widget's own box but beside its control (the
+      // section's padding, or the pointer-events:none chrome SVG) must still
+      // reach the control's section instead of being preventDefault()ed into a
+      // pan. isEditableTarget only sees the <input>/<select>/<textarea> itself.
+      if (isLiveFormWidgetTarget(nativeTarget)) return true;
       if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
-      // Mobile mirror of the desktop pan bail-out above: a tap on a live form
-      // widget must not be preventDefault()ed at touchstart or the field never
-      // focuses and the checkbox never toggles.
-      if (nativeTarget?.closest?.('[data-pan-interactive="true"], .pdfjsFormLayer[data-interactive="true"] section')) return true;
+      // Mobile mirror of the desktop pan bail-out above. The form-widget half
+      // of it is isLiveFormWidgetTarget() just above — one definition, not two
+      // drifting selectors. `[data-pan-interactive="true"]` is the general
+      // seam: stamp it on anything that must eat the gesture instead of
+      // panning. Never on an annotation carrier — Drawboard pans from an
+      // unselected annotation, so that drag has to reach the scroller.
+      if (nativeTarget?.closest?.('[data-pan-interactive="true"]')) return true;
       return interactionModeRef.current === 'TextSelection'
         && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer, [data-shape-kind^="text-markup-"]'));
     };

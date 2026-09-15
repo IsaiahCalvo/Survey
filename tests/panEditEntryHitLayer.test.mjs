@@ -179,19 +179,28 @@ test('form widgets stay interactive in Pan and in every Select mode', () => {
 });
 
 test('Pan does not swallow a pointer or touch that lands on a live form widget', () => {
-  const selector = /\[data-pan-interactive="true"\], \.pdfjsFormLayer\[data-interactive="true"\] section/;
+  // INTEGRATION (2026-09-15): this slice inlined the widget selector here while
+  // the forms slice extracted it to utils/formWidgetPointerTargets. The helper
+  // won — one definition, not two drifting selectors — so both halves of the
+  // bail-out are asserted separately instead of as one literal. Strictly more
+  // than before: it now also pins that the shared helper is the thing consulted.
+  const escapeMarker = /\[data-pan-interactive="true"\]/;
   // Desktop: the scroller's pointerdown preventDefault would kill focus/click.
   const panPointerDown = containerSource.match(
     /const onPointerDown = \(event\) => \{[\s\S]*?event\.preventDefault\(\);/,
   );
   assert.ok(panPointerDown, 'pan pointerdown handler not found');
-  assert.match(panPointerDown[0], selector);
+  assert.match(panPointerDown[0], /isLiveFormWidgetTarget\(event\.target\)/);
+  assert.match(panPointerDown[0], escapeMarker);
   // Mobile: touchstart preventDefault would stop the field ever focusing.
   const nativeTargetFn = containerSource.match(
     /const isNativeInteractionTarget = \(target\) => \{[\s\S]*?\n\s*\};/,
   );
   assert.ok(nativeTargetFn, 'isNativeInteractionTarget not found');
-  assert.match(nativeTargetFn[0], selector);
+  assert.match(nativeTargetFn[0], /isLiveFormWidgetTarget\(nativeTarget\)/);
+  assert.match(nativeTargetFn[0], escapeMarker);
+  // and the single definition of "this pointer belongs to a form control"
+  assert.match(containerSource, /import \{ isLiveFormWidgetTarget \} from '\.\.\/utils\/formWidgetPointerTargets\.js'/);
 });
 
 // ---------------------------------------------------------------------------

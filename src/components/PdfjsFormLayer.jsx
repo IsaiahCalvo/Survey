@@ -28,6 +28,38 @@ import { getPdfWidgetVisualStyle } from '../utils/pdfAnnotationImporter.js';
  * committed scale, exactly like the page canvas.
  */
 
+/* STACKING CONTRACT (2026-09-15) — THE WIDGET LAYER SITS ABOVE THE ANNOTATION
+   OVERLAY, IN EVERY TOOL.
+
+   Intended UX (owner: form fields must be fillable without hunting for a mode,
+   matched against Drawboard PDF, where a single click toggles a checkbox or
+   focuses a text field in BOTH Pan and Select and no tool change happens):
+   a form widget is live document content, so a click on one must reach the
+   control whatever tool is armed.
+
+   Why a z-index and not a pointer-events dance: the SVG annotation overlay
+   wrapper sits at zIndex 100 in the same stacking context as this layer, and
+   under every Select-family tool its <svg> root is `pointer-events: auto`
+   across the WHOLE page (that root is what marquee-selects blank pixels). At
+   the old zIndex 12 that root swallowed every widget click — measured live on
+   prog-07-form-fields.pdf: elementsFromPoint over a checkbox returned the svg
+   root first and the <input> second. SVG has no per-region pointer punch-through,
+   so the only way for the control to win the hit test is to be above it.
+
+   Raising is safe because THIS ROOT IS `pointer-events: none` and only its
+   `section` children are `auto` (and only while `interactive`): blank page
+   pixels still fall through to the SVG root, so marquee/lasso select, pan-drag
+   and native text selection are untouched. Verified live: a blank-pixel probe
+   in Select still resolves to the svg root, not to this layer.
+
+   It stays BELOW 102 (the Text-tool and Counter creation overlays) and ties
+   with TextEditOverlay's 101, which renders later in the tree and therefore
+   still paints over a widget while a text annotation is being edited.
+
+   The number is fixed, never tool-dependent: a widget that swapped above and
+   below markup as the armed tool changed would read as a rendering bug. */
+const FORM_LAYER_Z_INDEX = 101;
+
 const LINK_SERVICE_STUB = {
   externalLinkTarget: null, externalLinkRel: null, externalLinkEnabled: false,
   getDestinationHash: () => '#', getAnchorUrl: () => '#', addLinkAttributes: () => {},
@@ -600,7 +632,7 @@ export default function PdfjsFormLayer({
       className="pdfjsFormLayer annotationLayer"
       data-pdfjs-form-layer={pageNumber}
       data-interactive={interactive ? 'true' : 'false'}
-      style={{ position: 'absolute', inset: 0, zIndex: 12 }}
+      style={{ position: 'absolute', inset: 0, zIndex: FORM_LAYER_Z_INDEX }}
     />
   );
 }

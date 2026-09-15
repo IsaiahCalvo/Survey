@@ -226,6 +226,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
+import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
@@ -3783,6 +3784,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!start) return;
       if (activeTool !== 'pan') return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
+      // UX 2026-09-15 — a click on a live form field fills the field and does
+      // NOTHING else: no annotation selection, no switch to Select. Without
+      // this the quick-click hit test would still find an annotation that
+      // merely overlaps the widget box and yank the user out of Pan mid-typing.
+      // (Reference behaviour: Drawboard PDF — "it does not select a widget
+      // annotation, it does not show handles, it does not change tool".)
+      if (isLiveFormWidgetTarget(e.target)) return;
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
@@ -3981,6 +3989,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const e = latestEvent;
       latestEvent = null;
       if (!e) return;
+      // UX 2026-09-15 — over a live form field the control owns the affordance:
+      // its own caret / checkbox cursor, no annotation glow and no `pointer`
+      // override, matching the click rule above (a widget click never selects).
+      if (isLiveFormWidgetTarget(e.target)) {
+        if (lastKey !== '') {
+          lastKey = '';
+          setPendingSvgHover((prev) => (prev == null ? prev : null));
+        }
+        if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
+        return;
+      }
       const hit = resolveAnnotationAt(e);
       // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
       // glow under the pan tool (same affordance the Select tool shows).
@@ -11857,6 +11876,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         tracker.reset();
         return;
       }
+      // INTEGRATION 2026-09-15 — a live PDF form widget owns its own double
+      // click (select-a-word in a text field, a fast double toggle on a
+      // checkbox). The selector above only catches the control itself; a click
+      // on the widget section's padding would fall through here and could open
+      // the editor of an annotation that merely overlaps the field's box.
+      if (isLiveFormWidgetTarget(event.target)) {
+        tracker.reset();
+        return;
+      }
       // A gesture that moved is a pan / marquee / native text drag, never a tap.
       const slop = event.pointerType === 'touch' ? 12 : 6;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > slop) { tracker.reset(); return; }
@@ -11872,7 +11900,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         tool,
       });
       // Diag: one line answers "did my double-click register, and who owns it?"
-      appDebug(`[EditEntryGesture] tool=${tool} pointer=${event.pointerType} page=${hit.pageNumber} kind=${hit.kind} key=${key} double=${isDoubleTap} firstTapTool=${firstTapTool} firstTapTarget=${editEntryKeyForHit(target)}`);
+      appDebug(`[EditEntryGesture] tool=${tool} pointer=${event.pointerType} page=${hit.pageNumber} kind=${hit.kind} editEntryKind=${hit.editEntryKind} key=${key} double=${isDoubleTap} firstTapTool=${firstTapTool} firstTapTarget=${editEntryKeyForHit(target)} firstTapEditEntryKind=${target?.editEntryKind ?? null}`);
       if (!isDoubleTap) return;
       if (!shouldHandleDoubleTapEntry({ firstTapTool, pointerType: event.pointerType })) return;
       // Where annotations OVERLAP, the two taps can resolve different things:
@@ -11885,7 +11913,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const candidates = [hit, target].filter((candidate, index, list) => (
         candidate && editEntryKeyForHit(candidate)
         && list.findIndex((other) => other && editEntryKeyForHit(other) === editEntryKeyForHit(candidate)) === index
-      ));
+      ))
+        // INTEGRATION 2026-09-15 — the edit-entry hit layer stamps
+        // data-edit-entry-kind on every carrier that actually opens an editor,
+        // and resolveAnnotationAt hands it back as editEntryKind. When the two
+        // taps disagree, try the one the DOM already says is editor-bearing
+        // first, so an overlapping pen stroke or plain rectangle can never be
+        // the candidate that consumes the gesture. Ordering only — nothing is
+        // dropped, so a carrier the layer did not label (an older render, an
+        // annotation resolved purely by the pan geometry fallback) is still
+        // tried, and the dispatcher is still the one that says yes or no.
+        .sort((a, b) => (b.editEntryKind ? 1 : 0) - (a.editEntryKind ? 1 : 0));
       let opened = false;
       for (const candidate of candidates) {
         // Anchor the caret to the annotation's own box, not to raw client
@@ -32418,11 +32456,18 @@ ${pageBlocks}
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
                               scale={layerScale}
-                              // UX 2026-09-15 (Drawboard parity): AcroForm widgets are live
-                              // in Pan AND in every Select mode — a click toggles a checkbox
-                              // / focuses a text field with no tool change and no selection
-                              // chrome. Lasso and rectangle Select both report activeTool
-                              // 'select'; 'text-select' was the remaining gap.
+                              /* UX 2026-09-15 — form fields are live in Pan and in EVERY
+                                 Select-family mode (Rectangle, Lasso and Text Select all
+                                 land here as 'select' / 'text-select'). Reference
+                                 behaviour: Drawboard PDF, where one click toggles a
+                                 checkbox or focuses a text field under both Pan and
+                                 Select, with no tool change and no selection chrome —
+                                 widgets are document content, not markup. Text Select was
+                                 the gap: the mode arms PDF text, and a form field is not
+                                 text, so leaving widgets dead there made the field
+                                 unfillable for no reason. Creation tools (pen, shape,
+                                 text, counter, eraser) stay excluded so a stroke started
+                                 over a field is not eaten by the control. */
                               interactive={activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select'}
                               persistedValues={pageFormFieldValues}
                               onFieldChange={(payload) => handlePdfjsFormFieldChange(pageNumber, payload)}
