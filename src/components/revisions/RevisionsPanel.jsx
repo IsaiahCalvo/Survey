@@ -23,7 +23,7 @@
 // `documents.user_id` — matches the helper logic and avoids touching
 // useYDoc state.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import Icon from '../../Icons';
 import {
@@ -32,7 +32,11 @@ import {
   getRevision,
   restoreRevision,
 } from '../../services/documentRevisionService';
-import { listDocumentHistoryEvents } from '../../services/documentHistoryService';
+import {
+  getDocumentHistoryStorageStatus,
+  listDocumentHistoryEvents,
+  subscribeDocumentHistoryStorage,
+} from '../../services/documentHistoryService';
 import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';
 import { claimBodyReadOnly } from '../../utils/readOnlyBodyReasons.js';
 
@@ -101,6 +105,10 @@ function isDeleteHistoryEvent(event) {
   return text.includes('delete') || text.includes('deleted') || text.includes('fabric:delete');
 }
 
+function historyEventId(event) {
+  return event?.client_event_id || event?.id;
+}
+
 function originBadge(origin) {
   if (origin === 'auto-pre-restore') {
     return { label: 'auto', color: '#8a8a8a' };
@@ -124,6 +132,27 @@ function formatDate(iso) {
   } catch {
     return iso;
   }
+}
+
+function historyStorageMessage(status, isGuest) {
+  if (!status) return null;
+  if (status.errorCode === 'DOCUMENT_HISTORY_EVENT_CONFLICT') {
+    return 'A conflicting history event was not saved. The earlier saved event was kept.';
+  }
+  const isFull = status.protectedFull
+    || status.errorCode === 'DOCUMENT_HISTORY_PROTECTED_CAP_EXCEEDED'
+    || String(status.errorCode || '').toLowerCase().includes('quota');
+  if (isFull) return 'Local history storage is full. New history may not be kept on this device.';
+  if (!status.available) {
+    return 'Local history storage is unavailable. New history may not be kept on this device.';
+  }
+  if (status.pendingCount > 0) {
+    if (isGuest) {
+      return `Across your documents, ${status.pendingCount} local history ${status.pendingCount === 1 ? 'item is' : 'items are'} stored only on this device.`;
+    }
+    return `For this account, ${status.pendingCount} local history ${status.pendingCount === 1 ? 'item is' : 'items are'} not yet backed up.`;
+  }
+  return null;
 }
 
 export default function RevisionsPanel({
@@ -152,6 +181,7 @@ export default function RevisionsPanel({
   const [isOwner, setIsOwner] = useState(false);
   const [revisions, setRevisions] = useState([]);
   const [historyEvents, setHistoryEvents] = useState([]);
+  const [historyStorageStatus, setHistoryStorageStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [viewingRevision, setViewingRevision] = useState(null);
@@ -169,34 +199,101 @@ export default function RevisionsPanel({
   // Embedded panels stay mounted while hidden. Only the visible History
   // panel needs list reads, event refreshes, or the polling fallback.
   const shouldLoadHistory = isActive && (embedded || open);
+  const actorUserId = user?.id || null;
+  const historyScope = useMemo(
+    () => (actorUserId ? { actorUserId } : { guestScopeId: 'device-local' }),
+    [actorUserId],
+  );
+  const scopeRef = useRef(null);
+  const lifecycleRef = useRef({ key: null, generation: 0, mounted: true });
+  const requestEpochRef = useRef(0);
+  const lifecycleKey = `${documentId || ''}\u0000${actorUserId || ''}\u0000${shouldLoadHistory ? '1' : '0'}`;
+  if (lifecycleRef.current.key !== lifecycleKey) {
+    lifecycleRef.current.key = lifecycleKey;
+    lifecycleRef.current.generation += 1;
+  }
+  scopeRef.current = {
+    documentId,
+    actorUserId,
+    shouldLoadHistory,
+    generation: lifecycleRef.current.generation,
+  };
+
+  const isCurrentScope = useCallback((scope) => {
+    const current = scopeRef.current;
+    return Boolean(
+      scope?.shouldLoadHistory
+      && current?.shouldLoadHistory
+      && current.documentId === scope.documentId
+      && current.actorUserId === scope.actorUserId
+      && current.generation === scope.generation
+      && lifecycleRef.current.mounted
+    );
+  }, []);
+
+  useEffect(() => {
+    lifecycleRef.current.mounted = true;
+    return () => {
+      lifecycleRef.current.mounted = false;
+      lifecycleRef.current.generation += 1;
+      requestEpochRef.current += 1;
+    };
+  }, []);
 
   // Resolve ownership once per (documentId, user) — matches the open-coded
   // owner check in _kal48_can_access: project owner OR document creator.
   useEffect(() => {
     let cancelled = false;
     setIsOwner(false);
-    if (!documentId || !user?.id) return;
+    if (!documentId || !actorUserId || !shouldLoadHistory || !supabase?.from) return;
+    const scope = { ...scopeRef.current };
     (async () => {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('user_id, project_id, projects!documents_project_id_fkey(user_id)')
-        .eq('id', documentId)
-        .maybeSingle();
-      if (cancelled) return;
-      if (error || !data) {
+      try {
+        const { data, error } = await supabase
+          .from('documents')
+          .select('user_id, project_id, projects!documents_project_id_fkey(user_id)')
+          .eq('id', documentId)
+          .maybeSingle();
+        if (cancelled || !isCurrentScope(scope)) return;
+        if (error || !data) {
+          setIsOwner(false);
+          return;
+        }
+        const creatorOwner = data.user_id === user.id && !data.project_id;
+        const projectOwner = data?.projects?.user_id === user.id;
+        setIsOwner(Boolean(creatorOwner || projectOwner || data.user_id === user.id));
+      } catch (_error) {
+        if (cancelled || !isCurrentScope(scope)) return;
         setIsOwner(false);
-        return;
       }
-      const creatorOwner = data.user_id === user.id && !data.project_id;
-      const projectOwner = data?.projects?.user_id === user.id;
-      setIsOwner(Boolean(creatorOwner || projectOwner || data.user_id === user.id));
     })();
     return () => { cancelled = true; };
-  }, [documentId, user?.id]);
+  }, [actorUserId, documentId, isCurrentScope, shouldLoadHistory]);
+
+  // A hidden panel or a changed document/account must reject every older
+  // request. Clear the old view before the next scoped load can paint.
+  useLayoutEffect(() => {
+    requestEpochRef.current += 1;
+    hasLoadedRef.current = false;
+    setRevisions([]);
+    setHistoryEvents([]);
+    setHistoryStorageStatus(null);
+    setIsOwner(false);
+    setLoading(false);
+    setErr(null);
+    setViewingRevision(null);
+    setBusy(false);
+    setStatusMsg(null);
+    setSelectedEventId(null);
+    setSelectedEventDetail(null);
+    setCascadePending(null);
+  }, [actorUserId, documentId, shouldLoadHistory]);
 
   // Load list when drawer opens, when embedded in the left rail, or after a mutation.
   const refresh = useCallback(async (options = {}) => {
     if (!shouldLoadHistory) return;
+    const scope = { ...scopeRef.current };
+    const epoch = ++requestEpochRef.current;
     const silent = options?.silent === true || hasLoadedRef.current;
     if (!documentId) {
       setRevisions([]);
@@ -207,19 +304,41 @@ export default function RevisionsPanel({
     if (!silent) setLoading(true);
     setErr(null);
     try {
-      const [rows, events] = await Promise.all([
-        listRevisions(documentId),
-        listDocumentHistoryEvents(documentId, { limit: 200 }),
+      const [revisionResult, events, storageStatus] = await Promise.all([
+        actorUserId
+          ? Promise.resolve().then(() => listRevisions(documentId)).then((rows) => ({ rows })).catch(() => ({ rows: [] }))
+          : Promise.resolve({ rows: [] }),
+        listDocumentHistoryEvents(documentId, { limit: 200, ...historyScope }),
+        Promise.resolve()
+          .then(() => getDocumentHistoryStorageStatus(historyScope))
+          .catch((error) => ({
+            available: false,
+            pendingCount: 0,
+            protectedBytes: 0,
+            confirmedCacheBytes: 0,
+            legacyUnscopedAvailable: false,
+            errorCode: error?.code || 'DOCUMENT_HISTORY_LOCAL_UNAVAILABLE',
+          })),
       ]);
-      setRevisions(rows);
+      if (!isCurrentScope(scope) || epoch !== requestEpochRef.current) return;
+      setRevisions(revisionResult.rows);
       setHistoryEvents(events);
+      setHistoryStorageStatus(storageStatus);
       hasLoadedRef.current = true;
     } catch (e) {
+      if (!isCurrentScope(scope) || epoch !== requestEpochRef.current) return;
+      setRevisions([]);
+      setHistoryEvents([]);
+      setHistoryStorageStatus(null);
+      setViewingRevision(null);
+      setSelectedEventId(null);
+      setSelectedEventDetail(null);
+      setCascadePending(null);
       setErr(e.message);
     } finally {
-      if (!silent) setLoading(false);
+      if (isCurrentScope(scope) && epoch === requestEpochRef.current) setLoading(false);
     }
-  }, [documentId, shouldLoadHistory]);
+  }, [actorUserId, documentId, historyScope, isCurrentScope, shouldLoadHistory]);
 
   useEffect(() => {
     if (shouldLoadHistory) refresh({ silent: hasLoadedRef.current });
@@ -227,34 +346,24 @@ export default function RevisionsPanel({
 
   useEffect(() => {
     if (!documentId || !shouldLoadHistory) return undefined;
-    const handleRecorded = (event) => {
-      if (event?.detail?.documentId && event.detail.documentId !== documentId) return;
-      const row = event?.detail?.row;
-      if (row?.client_event_id) {
-        setHistoryEvents((prev) => {
-          const list = Array.isArray(prev) ? prev : [];
-          return [
-            row,
-            ...list.filter((entry) => entry?.client_event_id !== row.client_event_id),
-          ].sort((a, b) => new Date(b.occurred_at || b.created_at || 0) - new Date(a.occurred_at || a.created_at || 0));
-        });
-      }
+    const handleRecorded = () => {
+      requestEpochRef.current += 1;
       if (refreshTimeoutRef.current) window.clearTimeout(refreshTimeoutRef.current);
       refreshTimeoutRef.current = window.setTimeout(() => {
         refresh({ silent: true });
       }, 900);
     };
-    window.addEventListener('document-history:event-recorded', handleRecorded);
+    const unsubscribe = subscribeDocumentHistoryStorage(historyScope, handleRecorded);
     const intervalId = window.setInterval(() => refresh({ silent: true }), 10000);
     return () => {
-      window.removeEventListener('document-history:event-recorded', handleRecorded);
+      unsubscribe();
       window.clearInterval(intervalId);
       if (refreshTimeoutRef.current) {
         window.clearTimeout(refreshTimeoutRef.current);
         refreshTimeoutRef.current = null;
       }
     };
-  }, [documentId, shouldLoadHistory, refresh]);
+  }, [documentId, historyScope, shouldLoadHistory, refresh]);
 
   // body[data-readonly] mirroring — set when viewing a prior revision.
   // Ownership-aware (history-audit P1): if the attribute was ALREADY set when
@@ -272,37 +381,43 @@ export default function RevisionsPanel({
 
   const handleSave = useCallback(async () => {
     if (!documentId || busy) return;
+    const scope = { ...scopeRef.current };
     const label = window.prompt('Label for this revision (optional):', '');
     if (label === null) return; // user cancelled
     setBusy(true);
     setStatusMsg(null);
     try {
       const row = await createRevision(documentId, { label: label || null });
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(`Saved revision v${row.revision_number}.`);
       await refresh();
     } catch (e) {
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(`Save failed: ${e.message}`);
     } finally {
-      setBusy(false);
+      if (isCurrentScope(scope)) setBusy(false);
     }
-  }, [documentId, refresh, busy]);
+  }, [documentId, refresh, busy, isCurrentScope]);
 
   const handleOpenReadOnly = useCallback(async (rev) => {
     if (busy) return;
+    const scope = { ...scopeRef.current };
     setBusy(true);
     setStatusMsg(null);
     try {
       const full = await getRevision(rev.id);
+      if (!isCurrentScope(scope)) return;
       setViewingRevision({
         ...rev,
         snapshot: full?.snapshot_json || null,
       });
     } catch (e) {
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(`Open failed: ${e.message}`);
     } finally {
-      setBusy(false);
+      if (isCurrentScope(scope)) setBusy(false);
     }
-  }, [busy]);
+  }, [busy, isCurrentScope]);
 
   const handleReturnToCurrent = useCallback(() => {
     setViewingRevision(null);
@@ -644,6 +759,7 @@ export default function RevisionsPanel({
 
   const handleRestore = useCallback(async (rev) => {
     if (busy) return;
+    const scope = { ...scopeRef.current };
     const ok = window.confirm(
       `Restore v${rev.revisionNumber}? The current state will be saved as an auto revision first, then overwritten by this snapshot.`,
     );
@@ -652,21 +768,24 @@ export default function RevisionsPanel({
     setStatusMsg(null);
     try {
       const pre = await restoreRevision(rev.id);
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(
         `Restored v${rev.revisionNumber}. Previous state saved as v${pre.revision_number}.`,
       );
       setViewingRevision(null);
       await refresh();
     } catch (e) {
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(`Restore failed: ${e.message}`);
     } finally {
-      setBusy(false);
+      if (isCurrentScope(scope)) setBusy(false);
     }
-  }, [busy, refresh]);
+  }, [busy, refresh, isCurrentScope]);
 
   const handleActivityClick = useCallback((event) => {
     if (!event) return;
-    setSelectedEventId(event.client_event_id || event.id || null);
+    const scope = { ...scopeRef.current };
+    setSelectedEventId(historyEventId(event) || null);
     setSelectedEventDetail(event);
     // Decision 10 (KAL-90): restore the exact context the mark belongs to —
     // survey/region mode and the selected template/module/category — BEFORE
@@ -687,6 +806,7 @@ export default function RevisionsPanel({
       // the DOM yet on the first attempt — retry the spotlight briefly instead
       // of giving up after one shot.
       const trySpotlight = (attempt) => {
+        if (!isCurrentScope(scope)) return;
         const didSpotlight = spotlightHistoryPreview(pageNumber, event)
           || spotlightAnnotation(event.annotation_id || event.payload?.annotationId, pageNumber);
         if (!didSpotlight && attempt < 6) {
@@ -701,15 +821,18 @@ export default function RevisionsPanel({
       window.setTimeout(() => trySpotlight(1), 250);
       return;
     }
+    if (!isCurrentScope(scope)) return;
     setStatusMsg('This history item is not tied to a specific page.');
-  }, [onNavigateToPage, onRestoreHistoryContext, spotlightAnnotation, spotlightHistoryPreview]);
+  }, [isCurrentScope, onNavigateToPage, onRestoreHistoryContext, spotlightAnnotation, spotlightHistoryPreview]);
 
   const handleRestoreActivity = useCallback(async (event) => {
     if (!event || typeof onRestoreHistoryActivity !== 'function' || busy) return;
+    const scope = { ...scopeRef.current };
     setBusy(true);
     setStatusMsg(null);
     try {
-      const result = onRestoreHistoryActivity(event);
+      const result = await Promise.resolve(onRestoreHistoryActivity(event));
+      if (!isCurrentScope(scope)) return;
       if (result?.ok) {
         // KAL-313 follow-up: name the restored subject for space entries.
         const spaceName = event.event_type === 'space_deleted'
@@ -748,21 +871,24 @@ export default function RevisionsPanel({
         setStatusMsg('Restore unavailable for this history item.');
       }
     } catch (e) {
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(`Restore failed: ${e.message}`);
     } finally {
-      setBusy(false);
+      if (isCurrentScope(scope)) setBusy(false);
     }
-  }, [busy, onRestoreHistoryActivity, refresh, historyEvents]);
+  }, [busy, onRestoreHistoryActivity, refresh, historyEvents, isCurrentScope]);
 
   // KAL-313: Execute the confirmed cascade restore (space first, then region).
   const handleCascadeConfirm = useCallback(async () => {
     if (!cascadePending || typeof onCascadeRestoreRegion !== 'function') return;
+    const scope = { ...scopeRef.current };
     const { regionEvent, spaceEvent } = cascadePending;
     setCascadePending(null);
     setBusy(true);
     setStatusMsg(null);
     try {
-      const result = onCascadeRestoreRegion(spaceEvent, regionEvent);
+      const result = await Promise.resolve(onCascadeRestoreRegion(spaceEvent, regionEvent));
+      if (!isCurrentScope(scope)) return;
       if (result?.ok) {
         setStatusMsg(`Restored space and region${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
         await refresh({ silent: true });
@@ -770,11 +896,12 @@ export default function RevisionsPanel({
         setStatusMsg('Cascade restore failed — please try again.');
       }
     } catch (e) {
+      if (!isCurrentScope(scope)) return;
       setStatusMsg(`Cascade restore failed: ${e.message}`);
     } finally {
-      setBusy(false);
+      if (isCurrentScope(scope)) setBusy(false);
     }
-  }, [cascadePending, onCascadeRestoreRegion, refresh]);
+  }, [cascadePending, onCascadeRestoreRegion, refresh, isCurrentScope]);
 
   if (!documentId) return null;
 
@@ -788,7 +915,7 @@ export default function RevisionsPanel({
         revision: rev,
       })),
       ...historyEvents.map((event) => ({
-        id: `event:${event.id}`,
+        id: `event:${historyEventId(event)}`,
         kind: 'event',
         at: event.occurred_at || event.created_at,
         _ms: new Date(event.occurred_at || event.created_at || 0).getTime(),
@@ -851,6 +978,16 @@ export default function RevisionsPanel({
       </div>
 
       <div className={mobileMode ? 'mobile-revisions-panel' : undefined} style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+        {historyStorageMessage(historyStorageStatus, !actorUserId) && (
+          <div data-testid="document-history-storage-status" style={{ padding: 10, color: '#d8c28a', fontSize: 11 }}>
+            {historyStorageMessage(historyStorageStatus, !actorUserId)}
+          </div>
+        )}
+        {historyStorageStatus?.legacyUnscopedAvailable && (
+          <div data-testid="document-history-legacy-notice" style={{ padding: 10, color: '#8d96a6', fontSize: 11 }}>
+            Older local history stays on this device but is not shown in this history view.
+          </div>
+        )}
         {loading && <div style={{ padding: 10, fontSize: 12, color: '#8d96a6' }}>Loading…</div>}
         {err && <div style={{ padding: 10, color: '#ff8a8a', fontSize: 12 }}>Error: {err}</div>}
         {!loading && !err && timelineItems.length === 0 && (
@@ -861,7 +998,8 @@ export default function RevisionsPanel({
         {timelineItems.map((item) => {
           if (item.kind === 'event') {
             const event = item.event;
-            const isSelected = selectedEventId === (event.client_event_id || event.id);
+            const eventId = historyEventId(event);
+            const isSelected = selectedEventId === eventId;
             const isDeleted = isDeleteHistoryEvent(event);
             // KAL-313 / history F2 (2026-06-11): bulk-delete rows carry their
             // restore data in payload.objects (per-object restoreActions), not
@@ -877,7 +1015,7 @@ export default function RevisionsPanel({
             return (
               <div
                 key={item.id}
-                data-testid={`document-history-event-${event.id}`}
+                data-testid={`document-history-event-${eventId}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => handleActivityClick(event)}
@@ -917,7 +1055,7 @@ export default function RevisionsPanel({
                     {canRestoreDeleted && (
                       <button
                         type="button"
-                        data-testid={`document-history-restore-${event.id}`}
+                        data-testid={`document-history-restore-${eventId}`}
                         disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();

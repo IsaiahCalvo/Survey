@@ -2,13 +2,14 @@
  * documentHistoryService.js — document activity-history recording/reading service.
  *
  * Maps debug/checkpoint events into human-readable summaries and persists them
- * to the Supabase `document_history_events` table with a localStorage fallback
- * (LOCAL_HISTORY_STORAGE_KEY) when the table is missing/offline. Exports
+ * to the Supabase `document_history_events` table after a scoped IndexedDB
+ * admission. The old localStorage key remains a read-only legacy notice. Exports
  * buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent,
  * recordDocumentHistoryDebugEvent, and listDocumentHistoryEvents; classifies
  * callout/space/survey-marker actions for the activity feed.
  */
 import { supabase } from '../supabaseClient.js';
+import { getDocumentHistoryStore } from './documentHistoryStore.js';
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
@@ -16,7 +17,21 @@ const LOCAL_HISTORY_STORAGE_KEY = 'survey_document_history_events_v1';
 let warnedMissingTable = false;
 
 function isMissingHistoryTableError(error) {
-  return error?.code === '42P01' || String(error?.message || '').includes('document_history_events');
+  return error?.code === '42P01';
+}
+
+function isTransportError(error, response) {
+  if (error?.code && error.code !== 'NETWORK_ERROR') return false;
+  if (Number(response?.status) > 0) return false;
+  if (response?.status === 0) return true;
+  if (error instanceof TypeError || error?.name === 'NetworkError') return true;
+  return (error?.code == null || error.code === '')
+    && /^(?:TypeError: )?(?:Failed to fetch|Network request failed|Load failed)$/i.test(String(error?.message || ''));
+}
+
+function safeLegacyStorage() {
+  if (typeof window === 'undefined') return null;
+  try { return window.localStorage; } catch { return null; }
 }
 
 function getActorName(user) {
@@ -171,51 +186,8 @@ function trimPayload(payload) {
   };
 }
 
-function getLocalHistoryStore() {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(LOCAL_HISTORY_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch (_err) {
-    return {};
-  }
-}
-
-function writeLocalHistoryStore(store) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(LOCAL_HISTORY_STORAGE_KEY, JSON.stringify(store || {}));
-  } catch (_err) {
-    // Local fallback is best-effort; Supabase remains the durable store.
-  }
-}
-
-function cacheLocalHistoryRow(row) {
-  if (!row?.document_id || !row?.client_event_id) return;
-  const store = getLocalHistoryStore();
-  const existing = Array.isArray(store[row.document_id]) ? store[row.document_id] : [];
-  const nextRow = {
-    ...row,
-    id: row.id || row.client_event_id,
-    occurred_at: row.occurred_at || row.created_at || new Date().toISOString(),
-    created_at: row.created_at || row.occurred_at || new Date().toISOString(),
-    __local: true,
-  };
-  const deduped = [
-    nextRow,
-    ...existing.filter((entry) => entry?.client_event_id !== row.client_event_id),
-  ]
-    .sort((a, b) => (Date.parse(b.occurred_at || b.created_at || 0) || 0) - (Date.parse(a.occurred_at || a.created_at || 0) || 0))
-    .slice(0, 500);
-  store[row.document_id] = deduped;
-  writeLocalHistoryStore(store);
-}
-
-function listLocalHistoryRows(documentId) {
-  if (!documentId) return [];
-  const store = getLocalHistoryStore();
-  return Array.isArray(store[documentId]) ? store[documentId] : [];
+function legacyUnscopedAvailable(storage = safeLegacyStorage()) {
+  try { return storage?.getItem?.(LOCAL_HISTORY_STORAGE_KEY) != null; } catch { return false; }
 }
 
 function mergeHistoryRows(primaryRows = [], fallbackRows = [], limit = HISTORY_EVENT_LIMIT) {
@@ -226,6 +198,12 @@ function mergeHistoryRows(primaryRows = [], fallbackRows = [], limit = HISTORY_E
     const key = row.client_event_id || row.id;
     if (!key) return;
     byClientId.set(key, row);
+  });
+  // An unconfirmed local row is the first committed value for its immutable
+  // client id. A differing cloud duplicate must not hide its restore payload.
+  fallbackRows.filter(row => row?.__syncState === 'pending').forEach(row => {
+    const key = row.client_event_id || row.id;
+    if (key && shouldExposeHistoryRow(row)) byClientId.set(key, row);
   });
   return Array.from(byClientId.values())
     .sort((a, b) => (Date.parse(b.occurred_at || b.created_at || 0) || 0) - (Date.parse(a.occurred_at || a.created_at || 0) || 0))
@@ -313,26 +291,145 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
   };
 }
 
-export async function recordDocumentHistoryEvent(row) {
-  if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
-  cacheLocalHistoryRow(row);
-  if (!supabase) return { data: null, error: null };
-  const { id: _localId, __local: _localOnly, ...dbRow } = row;
-  const { error } = await supabase
-    .from('document_history_events')
-    .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true });
-  if (error) {
-    if (isMissingHistoryTableError(error)) {
-      if (!warnedMissingTable) {
-        warnedMissingTable = true;
-        console.warn('[DocumentHistory] document_history_events table is not available yet; activity history disabled until migrations run.');
-      }
-      return { data: null, error: null };
+const CLOUD_FIELDS = 'id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at';
+const scopeFor = (row, options = {}) => {
+  if (options.guestScopeId != null) return options.guestScopeId === 'device-local' ? 'guest:device-local' : null;
+  const actorUserId = options.actorUserId ?? row?.user_id;
+  return typeof actorUserId === 'string' && actorUserId.length > 0 ? `account:${actorUserId}` : null;
+};
+const safeError = error => Object.assign(new Error('Document history could not be saved locally.'),
+  { code: error?.code || 'DOCUMENT_HISTORY_LOCAL_ADMISSION_FAILED' });
+let defaultStore;
+const localDefault = () => {
+  if (defaultStore !== undefined) return defaultStore;
+  try { defaultStore = getDocumentHistoryStore(); } catch { defaultStore = null; }
+  return defaultStore;
+};
+
+export function createDocumentHistoryService({ cloud = supabase, localStore = localDefault(),
+  legacyStorage = safeLegacyStorage() } = {}) {
+  const localReadErrors = new Map();
+  const localReadFailed = error => Object.assign(new Error('Document history could not be read from local storage.'),
+    { code: 'DOCUMENT_HISTORY_LOCAL_READ_FAILED', cause: error });
+  const unavailable = code => ({ data: null,
+    error: Object.assign(new Error('Document history local storage is unavailable.'), { code }),
+    local: { state: 'unavailable', code } });
+  async function record(row, options = {}, onAdmitted = null) {
+    if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
+    const scopeKey = scopeFor(row, options);
+    if (!scopeKey) return unavailable('DOCUMENT_HISTORY_SCOPE_REQUIRED');
+    if (!localStore) return unavailable('DOCUMENT_HISTORY_LOCAL_UNAVAILABLE');
+    let admission;
+    try { admission = await localStore.admitPending(scopeKey, row); }
+    catch (error) {
+      const safe = safeError(error);
+      return { data: null, error: safe, local: { state: 'unavailable', code: safe.code } };
     }
-    console.error('[DocumentHistory] record failed:', error);
+    try { onAdmitted?.(); } catch { /* persistence succeeded; live UI owns callback errors */ }
+    const pending = { data: null, error: null, local: { state: 'pending' } };
+    if (scopeKey.startsWith('guest:') || !cloud) return pending;
+    const { id: _localId, __local: _localOnly, __syncState: _syncState, ...dbRow } = row;
+    let query = cloud.from('document_history_events')
+      .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true });
+    if (typeof query?.select === 'function') query = query.select(CLOUD_FIELDS);
+    let response;
+    try { response = await query; }
+    catch (error) {
+      console.error('[DocumentHistory] record failed:', error);
+      return { data: null, error, local: { state: 'pending' } };
+    }
+    const { data, error } = response;
+    if (error) {
+      if (isMissingHistoryTableError(error)) {
+        if (!warnedMissingTable) {
+          warnedMissingTable = true;
+          console.warn('[DocumentHistory] document_history_events table is not available yet; local activity history remains pending.');
+        }
+        return pending;
+      }
+      console.error('[DocumentHistory] record failed:', error);
+      return { data: null, error, local: { state: 'pending' } };
+    }
+    const returned = Array.isArray(data) ? data[0] : data;
+    const confirmed = returned ? await localStore.confirm(admission.token, returned) : false;
+    return { data: null, error: null, local: { state: confirmed ? 'confirmed' : 'pending' } };
   }
-  return { data: null, error };
+  async function list(documentId, { limit = HISTORY_EVENT_LIMIT, actorUserId, guestScopeId } = {}) {
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
+    const scopeKey = scopeFor(null, { actorUserId, guestScopeId });
+    let localRows = [];
+    if (scopeKey) {
+      if (!localStore) {
+        const error = localReadFailed(new Error('Local history storage is unavailable.'));
+        localReadErrors.set(scopeKey, error.code);
+        throw error;
+      }
+      try {
+        localRows = await localStore.list(scopeKey, documentId, safeLimit);
+        localReadErrors.delete(scopeKey);
+      } catch (cause) {
+        const error = localReadFailed(cause);
+        localReadErrors.set(scopeKey, error.code);
+        throw error;
+      }
+    }
+    if (!documentId || scopeKey?.startsWith('guest:') || !cloud) return mergeHistoryRows([], localRows, safeLimit);
+    let response;
+    try {
+      response = await cloud.from('document_history_events').select(CLOUD_FIELDS)
+        .eq('document_id', documentId).order('occurred_at', { ascending: false }).limit(safeLimit);
+    } catch (error) {
+      if (isTransportError(error)) return mergeHistoryRows([], localRows, safeLimit);
+      throw error;
+    }
+    const { data, error } = response;
+    if (error) {
+      if (isMissingHistoryTableError(error) || isTransportError(error, response)) return mergeHistoryRows([], localRows, safeLimit);
+      throw error;
+    }
+    if (scopeKey && localStore) {
+      try {
+        if (typeof localStore.cacheConfirmedBatch === 'function') {
+          await localStore.cacheConfirmedBatch(scopeKey, data || []);
+        } else {
+          for (const row of data || []) await localStore.cacheConfirmed(scopeKey, row);
+        }
+      } catch { /* cloud is durable */ }
+      try {
+        localRows = await localStore.list(scopeKey, documentId, safeLimit);
+        localReadErrors.delete(scopeKey);
+      } catch (cause) {
+        const error = localReadFailed(cause);
+        localReadErrors.set(scopeKey, error.code);
+        throw error;
+      }
+    }
+    return mergeHistoryRows(data || [], localRows, safeLimit);
+  }
+  const status = async options => {
+    const scopeKey = scopeFor(null, options);
+    let base = { available: false, pendingCount: 0, protectedBytes: 0, globalProtectedBytes: 0,
+      protectedLimitBytes: null, protectedFull: false, confirmedCacheBytes: 0,
+      errorCode: 'DOCUMENT_HISTORY_LOCAL_UNAVAILABLE' };
+    try { if (localStore) base = await localStore.status(scopeKey); } catch { /* status remains safe */ }
+    const localReadError = localReadErrors.get(scopeKey);
+    if (localReadError) base = { ...base, available: false, errorCode: localReadError };
+    return { ...base, legacyUnscopedAvailable: legacyUnscopedAvailable(legacyStorage) };
+  };
+  const subscribe = (options, listener) => {
+    const scopeKey = scopeFor(null, options);
+    try { return localStore?.subscribe(scopeKey, listener) || (() => {}); }
+    catch { return () => {}; }
+  };
+  const recordAndNotify = (row, options) => record(row, options,
+    () => notifyDocumentHistoryEventRecorded(row));
+  return Object.freeze({ recordDocumentHistoryEvent: record, listDocumentHistoryEvents: list,
+    getDocumentHistoryStorageStatus: status, subscribeDocumentHistoryStorage: subscribe,
+    recordAndNotifyDocumentHistoryEvent: recordAndNotify });
 }
+
+const defaultHistoryService = createDocumentHistoryService();
+export const recordDocumentHistoryEvent = (...args) => defaultHistoryService.recordDocumentHistoryEvent(...args);
 
 // History-audit P2 (2026-06-11): unified write path for DIRECT history rows
 // (space/region/callout/single-annotation/bulk deletes). Records the row AND
@@ -365,25 +462,11 @@ export function notifyDocumentHistoryEventRecorded(row) {
   }
 }
 
-export async function recordAndNotifyDocumentHistoryEvent(row) {
+export async function recordAndNotifyDocumentHistoryEvent(row, options) {
   if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
-  notifyDocumentHistoryEventRecorded(row);
-  return recordDocumentHistoryEvent(row);
+  return defaultHistoryService.recordAndNotifyDocumentHistoryEvent(row, options);
 }
 
-export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT } = {}) {
-  const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
-  const localRows = listLocalHistoryRows(documentId);
-  if (!supabase || !documentId) return mergeHistoryRows([], localRows, safeLimit);
-  const { data, error } = await supabase
-    .from('document_history_events')
-    .select('id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at')
-    .eq('document_id', documentId)
-    .order('occurred_at', { ascending: false })
-    .limit(safeLimit);
-  if (error) {
-    if (isMissingHistoryTableError(error)) return mergeHistoryRows([], localRows, safeLimit);
-    throw error;
-  }
-  return mergeHistoryRows(data || [], localRows, safeLimit);
-}
+export const listDocumentHistoryEvents = (...args) => defaultHistoryService.listDocumentHistoryEvents(...args);
+export const getDocumentHistoryStorageStatus = (...args) => defaultHistoryService.getDocumentHistoryStorageStatus(...args);
+export const subscribeDocumentHistoryStorage = (...args) => defaultHistoryService.subscribeDocumentHistoryStorage(...args);

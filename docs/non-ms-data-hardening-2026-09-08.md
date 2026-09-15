@@ -5516,6 +5516,100 @@ Accepted cloud mode cannot write the legacy mutable survey sidecar or a stale
 private template ID; full shared survey publication remains pending. This is
 local runtime evidence, not deployed SQL, live collaboration or Microsoft proof.
 
+## History cache and private preferences — 2026-09-14 follow-up
+
+The current history-cache pass separates the account holding a local cache from
+the author of an event. Cloud history remains document-wide for authorized
+collaborators. New local records use an explicit account or device-local scope;
+legacy `survey_document_history_events_v1` data has no proven cache owner and
+must remain unchanged, outside normal account reads, with a visible notice.
+Do not guess ownership from an event author or silently delete legacy history.
+
+The acceptance checks for this pass include durable admission before cloud
+upload, exact current-record confirmation before eviction, global cache budgets
+that never evict pending sole copies, bounded indexed I/O, and no cache-change
+notification loop that repeatedly fetches cloud rows. The History panel must
+reject late results across account/document/visibility changes and unmount,
+preserve collaborator events, and handle local storage failures honestly.
+
+The scoped store uses exact-key writes, compact byte counters and eviction
+metadata, SHA-256 tokens, and bounded newest-first reads (at most 500 rows).
+Confirmed rows have an 8 MiB global serialized-data budget; protected pending
+rows have a separate 64 MiB admission cap. These are application accounting
+limits, not a promise about the browser's total physical IndexedDB allocation.
+An event ID is immutable: an identical retry is allowed, but a conflicting
+payload cannot replace the first committed event. A mismatched cloud row cannot
+hide its pending local restore copy. Cache-only fills do not notify subscribers
+to fetch again. Missing-table handling is limited to `42P01`; verified transport
+failure can use scoped local history, but denied/unknown cloud failures cannot.
+Local read failures report `DOCUMENT_HISTORY_LOCAL_READ_FAILED`, not an empty
+healthy timeline.
+
+The frozen focused run passes 69/69 tests across seven files; independent review
+passes 55/55 store/service/panel checks. The Vite build passes with the existing
+large-chunk warning. The final AST graph refresh reports 29,263 nodes and 48,405
+edges. The final standard `npm test` run exits 0: 7,200 tests across 714 files,
+7,103 passed, 97 skipped, zero failures and zero cancellations. Skips are not
+claimed as verified. The production source hashes stayed unchanged throughout
+that complete run.
+
+Actual in-app browser checks used the real RevisionsPanel, history module and
+browser IndexedDB through a temporary offline harness at
+`http://127.0.0.1:5180/`. The checks covered guest/account/document separation,
+hide/reopen, reload durability, two-tab notification, immutable conflicting
+retries, preserved-but-hidden synthetic legacy history, and two local rows with
+stable client IDs. The last clean tab has no application console error; its
+only warning is expected offline Supabase configuration. The normal test-PDF
+route has no History document ID, and the existing deep-link fixture reached an
+auth modal. This is real panel/storage browser evidence, not full managed-local
+viewer or authenticated cloud evidence. Earlier hot-reloaded draft databases
+remain untouched; the final schema was tested on a fresh origin. Browser checks
+caught and drove fixes for silent read errors and duplicate React event keys.
+
+Logs: `/tmp/survey-history-final-focused-20260914.log`,
+`/tmp/survey-history-final-build-20260914.log`, and
+`/tmp/survey-history-final-graph-20260914.log`. The full run is recorded in
+`/tmp/survey-history-full-tests-20260914.log`. No push or deployment occurred.
+
+Required follow-ups remain distinct from this cache change:
+
+- **Legacy history recovery:** the notice and retained v1 bytes are not a
+  migration or a working restore path. Build an explicit ownership/recovery
+  flow before claiming old device-only history is usable in the new view.
+  Do not hide this deployment gate behind a claim that quarantine is complete
+  migration, and do not guess the reader account from an event author.
+- **Managed-local viewer history:** managed-local files have `id == null` and
+  a stable `localId`. The current viewer uses `pdfFile.id` for History and its
+  write guards, so those files neither record nor expose the timeline. Thread
+  a separate history document ID and explicit device-local scope from PDFViewer
+  through the existing AppShell prop spread into PDFSidebar/RevisionsPanel and
+  all history writers. Keep the author ID separate. A signed-in user opening a
+  local-only file must not cause history to upload. Standalone guest store or
+  panel tests are not proof that this viewer integration works.
+- **Pending history replay:** keeping a durable pending event does not by itself
+  retry it on reconnect. Add bounded, account-checked replay with exact write
+  acknowledgements and duplicate/conflict handling before claiming automatic
+  recovery to cloud. Device-local history must remain exempt from cloud replay.
+  Until then, the panel must describe pending account history as not yet backed
+  up, not promise an active sync queue.
+  Reuse the actor-bound database mutation helper for token binding and
+  auth-change cancellation; CRDT-specific drain loops are not an app-wide
+  scheduler. The same actor-bound checks must cover immediate history writes.
+- **Private tool preferences:** the chosen model remains shared document entity
+  definitions with private personal tool defaults and palette preferences.
+  `documents.tool_preferences` and `toolPrefs_<documentId>` still lack an actor
+  partition. They must not seed each collaborator's private settings or shared
+  entity definitions automatically. Use a separate actor/document store; only
+  verified actor-scoped pending drafts can migrate without a new ownership
+  decision. Preserve raw legacy settings and keep selected-annotation style
+  edits separate from private tool defaults. The current code has no dedicated
+  durable favorites/layout/filter store, so do not claim those paths are done.
+
+No cloud catalog flag, SQL deployment, Microsoft trial, or live Microsoft test
+is authorized by these local checks. Keep accepted catalogs, pending writes and
+recovery records when rolling back; never return an adopted document to an
+incompatible legacy writer.
+
 ## Sources
 
 - [PostgreSQL string escape rules](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)
