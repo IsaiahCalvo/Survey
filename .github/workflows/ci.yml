@@ -45,6 +45,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 2026-09-15 — added so .github/workflows/dependabot-auto-merge.yml can
+  # re-run this workflow on main after it squash-merges a bump. GitHub creates
+  # NO workflow run for a push made with the repository's GITHUB_TOKEN, so the
+  # merge commit would otherwise never be tested on main and
+  # deploy-production.yml (workflow_run on this workflow) would never fire.
+  # GitHub's own words, Actions → "Trigger a workflow" → "Triggering a workflow
+  # from a workflow": "When you use the repository's GITHUB_TOKEN to perform
+  # tasks, events triggered by the GITHUB_TOKEN will not create a new workflow
+  # run, with the following exceptions: workflow_dispatch and
+  # repository_dispatch events ALWAYS create workflow runs." That exception is
+  # the whole mechanism, and it needs no personal access token.
+  workflow_dispatch:
 
 run-name: >-
   ${{ github.event_name == 'pull_request'

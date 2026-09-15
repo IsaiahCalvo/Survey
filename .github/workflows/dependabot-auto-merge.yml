@@ -29,8 +29,33 @@ name: Dependabot auto-merge
 # switched off and, on a private repository on the Free plan, no branch
 # protection is available at all (the protection API answers 403). So this does
 # a plain squash merge after the gate has already gone green, rather than
-# GitHub's queued auto-merge. Merging pushes main, which re-runs the full suite
-# — timing tests included — and only a green run there can deploy to production.
+# GitHub's queued auto-merge.
+#
+# 2026-09-15 — THE MERGE PUSH DOES NOT RE-RUN CI, and an earlier version of this
+# comment claimed it did. GitHub documents (Actions → "Trigger a workflow" →
+# "Triggering a workflow from a workflow"): "When you use the repository's
+# GITHUB_TOKEN to perform tasks, events triggered by the GITHUB_TOKEN will not
+# create a new workflow run, with the following exceptions: workflow_dispatch
+# and repository_dispatch events always create workflow runs." A squash merge
+# performed with GITHUB_TOKEN is a push by GITHUB_TOKEN, so "Build and tests"
+# never ran on the merge commit, deploy-production.yml (workflow_run on "Build
+# and tests") never fired, and the two isolated suites the bump had skipped ran
+# nowhere at all. The bump silently never shipped.
+#
+# The fix, with no personal access token anywhere: after a successful merge this
+# workflow explicitly dispatches "Build and tests" on main with `gh workflow
+# run`, which is the workflow_dispatch REST endpoint and therefore lands inside
+# the documented exception above. The resulting run is an ordinary run of that
+# workflow -- SKIP_TIMING_SUITES is empty on it, so the isolated suites DO run --
+# and workflow_run fires on its completion exactly as it does for a human push,
+# so deploy-production.yml gates the deploy as usual. (The workflow_run
+# reference lists only two restrictions: the workflow file must be on the
+# default branch, and workflow_run chains cannot be nested more than three
+# deep. It excludes nothing on the grounds of what triggered the upstream run.)
+#
+# That dispatched run has event == 'workflow_dispatch' and actor
+# 'github-actions[bot]', so the `if:` below skips it and this workflow cannot
+# loop.
 
 on:
   workflow_run:
@@ -41,6 +66,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Needed for `gh workflow run` (the workflow_dispatch REST endpoint) below.
+  actions: write
 
 jobs:
   merge:
@@ -133,10 +160,47 @@ jobs:
 
           echo "Merging pull request #$detail"
           gh pr merge "$detail" --repo "$REPO" --squash --delete-branch
+
+          # The merge push was made with GITHUB_TOKEN, so GitHub created no
+          # workflow run for it (see the note at the top of this file). Ask for
+          # one explicitly: workflow_dispatch is the documented exception, so
+          # this is the one call that can start CI on main from here without a
+          # personal access token. Dispatched by FILE NAME rather than display
+          # name -- the workflow_run trigger above already couples this file to
+          # the display name, and one such coupling is enough.
+          dispatched=0
+          for attempt in 1 2 3; do
+            if gh workflow run ci.yml --repo "$REPO" --ref main; then
+              dispatched=1
+              break
+            fi
+            echo "Dispatch attempt $attempt failed; retrying."
+            sleep 5
+          done
+
           {
             echo "## Merged for you"
             echo
             echo "Dependency update #$detail passed every check and was merged into"
-            echo "main. Main now re-runs the full test suite, including the speed"
-            echo "tests, and only a green run there can reach the live site."
+            echo "main."
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$dispatched" -eq 1 ]; then
+            {
+              echo
+              echo "The full test suite — including the slow isolated tests this"
+              echo "bump skipped — has been started on main, and only a green run"
+              echo "there can reach the live site."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            # A warning annotation, not a failure: a red run here would email the
+            # owner about a robot's housekeeping, which is the thing this file
+            # exists to stop.
+            echo "::warning::Merged #$detail but could not start Build and tests on main. Run it by hand from the Actions tab so the bump gets tested and deployed."
+            {
+              echo
+              echo "**Please run \"Build and tests\" on main by hand** (Actions tab →"
+              echo "Build and tests → Run workflow). The merge itself cannot start it,"
+              echo "and until it runs this bump is neither fully tested nor deployed."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
