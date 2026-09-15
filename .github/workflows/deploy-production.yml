@@ -1,5 +1,12 @@
 name: Deploy production
 
+# The gate between a green CI run and production. CI became a multi-job
+# workflow on 2026-09-15 (build + four test shards + the timing-sensitive
+# suites, aggregated by its `ci-gate` job). `workflow_run` reports the whole
+# workflow's conclusion, so `conclusion == 'success'` below still means every
+# blocking CI job passed — including all four shards. No per-job check is
+# needed here, and none should be added: it would silently stop gating the day
+# a job is renamed.
 on:
   workflow_run:
     workflows: [CI]
@@ -15,6 +22,9 @@ concurrency:
 
 jobs:
   deploy:
+    # `conclusion == 'success'` is the aggregate of every CI job: build, all
+    # four test shards, and the timing-sensitive suites. A red shard makes the
+    # CI run red, which skips this job.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
