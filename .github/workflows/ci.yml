@@ -25,9 +25,18 @@ name: Build and tests
 # merge", and both are in force:
 #   * `perf` is informational. Every file that asserts a millisecond budget
 #     runs there with `continue-on-error: true`, and `ci-gate` does not need it.
-#   * Dependabot's weekly bumps skip the blocking isolated suites
-#     (SKIP_TIMING_SUITES below). A routine version bump cannot regress them,
-#     and everything else still runs on a bump — including the license check.
+#   * Dependabot's bumps skip the blocking isolated suites (SKIP_TIMING_SUITES
+#     below). A routine version bump cannot regress them, and everything else
+#     still runs on a bump — including the license check.
+#
+# 2026-09-15 — every "was this a bot or a person?" decision below reads
+# `github.triggering_actor`, NOT `github.actor`. GitHub documents github.actor as
+# "the username of the user that triggered the INITIAL workflow run. If the
+# workflow run is a re-run, this value may differ from github.triggering_actor"
+# (Actions reference → Contexts). On a re-run github.actor stays dependabot[bot]
+# forever, so keying off it would have made the documented "re-run a bump by hand
+# to get the isolated suites" escape hatch impossible to use. The one exception
+# is the license step, which runs when EITHER actor is the bot — see there.
 #
 # `ci-gate` is the single aggregate that must be green, and the Deploy
 # production workflow keys off this workflow's conclusion.
@@ -98,7 +107,17 @@ jobs:
         # Only on dependency bumps: the standalone "License check" workflow
         # skips bot PRs so a bump cannot produce two separate red X's (and two
         # separate emails) for one problem. Same script, same allowlist.
-        if: github.actor == 'dependabot[bot]'
+        #
+        # 2026-09-15 — this is the ONE place that must read BOTH actors, and it
+        # is an OR on purpose. license-gate.yml skips whenever github.actor is
+        # the bot, and github.actor never stops being the bot on a bot pull
+        # request — not even when a person re-runs it. So if this step keyed off
+        # github.triggering_actor alone, a human re-run of a bump would skip the
+        # licence check HERE (triggering_actor is the person) and also over
+        # THERE (actor is still the bot), and the bump would land having had its
+        # licences checked by nobody. The two conditions are exact complements:
+        # actor == bot → this step runs; actor != bot → license-gate.yml runs.
+        if: github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]'
         run: npm run check:licenses
 
       # Vite's on-disk cache (dependency pre-bundling + transform results).
@@ -197,9 +216,13 @@ jobs:
       - name: Run the slow isolated suites one at a time
         run: node scripts/run-node-tests.mjs --only-timing-sensitive
         env:
-          # A human re-run of a bot PR flips github.actor back to the person, so
-          # re-running a bump by hand gives you these suites on demand.
-          SKIP_TIMING_SUITES: ${{ github.actor == 'dependabot[bot]' && '1' || '' }}
+          # github.triggering_actor, not github.actor: a re-run keeps github.actor
+          # pinned to whoever opened the run (the bot, forever), while
+          # triggering_actor becomes the person who pressed re-run. Keying off the
+          # latter is what actually makes "re-run a bump by hand to get these
+          # suites on demand" work — a yjs bump can then be given the full CRDT
+          # convergence gate with two clicks.
+          SKIP_TIMING_SUITES: ${{ github.triggering_actor == 'dependabot[bot]' && '1' || '' }}
 
   # 2026-09-15 — The performance lane. Informational ONLY.
   #
@@ -257,9 +280,13 @@ jobs:
     if: always()
     needs: [build, test, timing-suites]
     env:
-      # Dependency bumps opened by the Dependabot bot run the lighter, fully
-      # deterministic pass. Everything else runs the whole suite.
+      # Was this pull request opened by the bot? (Stays true across re-runs.)
       IS_DEPENDENCY_BUMP: ${{ github.actor == 'dependabot[bot]' }}
+      # Did THIS run skip the slow isolated suites? That is decided by
+      # triggering_actor, so a person re-running a bump gets the full suite and
+      # a summary that says so, instead of one that still claims they were
+      # skipped.
+      SKIPPED_ISOLATED_SUITES: ${{ github.triggering_actor == 'dependabot[bot]' }}
       BUILD_RESULT: ${{ needs.build.result }}
       TEST_RESULT: ${{ needs.test.result }}
       TIMING_RESULT: ${{ needs.timing-suites.result }}
@@ -282,12 +309,16 @@ jobs:
             echo "time, plus one machine for the few slow tests that need to be"
             echo "left alone, plus one for the speed measurements."
             echo
-            if [ "${IS_DEPENDENCY_BUMP}" = "true" ]; then
+            if [ "${SKIPPED_ISOLATED_SUITES}" = "true" ]; then
               echo "**This run was a routine dependency update opened by a robot.**"
               echo "It ran everything except the slow isolated tests, which a"
               echo "version bump cannot affect and which occasionally go red just"
               echo "because the shared machine was busy. Those run in full the"
-              echo "moment the update is merged."
+              echo "moment the update is merged. To run them here instead, press"
+              echo "Re-run all jobs — a re-run by a person runs everything."
+            elif [ "${IS_DEPENDENCY_BUMP}" = "true" ]; then
+              echo "**This is a robot's dependency update, re-run by a person, so"
+              echo "everything ran** — the slow isolated tests included."
             else
               echo "**This run was a change made by a person, so everything ran.**"
             fi
