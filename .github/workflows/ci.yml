@@ -14,20 +14,22 @@ name: Build and tests
 # rename cannot silently switch production deploys off.
 #
 # 2026-09-15 — Split into parallel jobs. The old single job ran everything in
-# series and took a median of 380s, of which 333s was `npm test` alone on a
-# multi-core runner that sat 78% idle. The suite is top-heavy (479 of 512 files
-# finish in under a second), so it now runs as four balanced shards in
-# parallel, alongside the build. The suites that must not share a machine are
-# NOT in any shard — they run alone, one process at a time, in `timing-suites`
-# and `perf`, because neighbouring load is what has historically tripped them.
+# series and took a median of 380s, of which 381s was `npm test` alone on a
+# multi-core runner that sat 78% idle. The suite is top-heavy (492 of 509 files
+# finish in a fifth of a second), so it now runs as four balanced shards in
+# parallel. The suites that must not share a machine are NOT in any shard —
+# they run alone, one process at a time, in `isolated`.
 #
-# 2026-09-15 — Two different answers to "a timing reading must not veto a
-# merge", and both are in force:
-#   * `perf` is informational. Every file that asserts a millisecond budget
-#     runs there with `continue-on-error: true`, and `ci-gate` does not need it.
-#   * Dependabot's bumps skip the blocking isolated suites (SKIP_TIMING_SUITES
-#     below). A routine version bump cannot regress them, and everything else
-#     still runs on a bump — including the license check.
+# 2026-09-15 — "a timing reading must not veto a merge" is still in force, now
+# in one place instead of two: every file that asserts a millisecond budget runs
+# in the `Performance budgets` STEP of the `isolated` job, and that step carries
+# `continue-on-error: true`, so a slow reading cannot fail the job, cannot fail
+# the run, and cannot stop the production deploy. `ci-gate` reports the step's
+# result in words so a red budget is still visible rather than buried.
+# tests/ciBlockingPathWallClockBudgets.test.mjs holds the other half of the
+# promise: it scans every BLOCKING selection — all four shards and
+# --only-timing-sensitive — for any assertion that reaches a clock, so a new
+# wall-clock budget cannot quietly land in the blocking path.
 #
 # 2026-09-15 — every "was this a bot or a person?" decision below reads
 # `github.triggering_actor`, NOT `github.actor`. GitHub documents github.actor as
@@ -38,31 +40,106 @@ name: Build and tests
 # to get the isolated suites" escape hatch impossible to use. The one exception
 # is the license step, which runs when EITHER actor is the bot — see there.
 #
-# 2026-09-15 — THE MINUTES BUDGET, because the split is not free. The account is
-# on the GitHub Free plan: 2,000 Actions minutes a month, and this repository is
-# private, so every job minute is billed. Four shards plus the isolated and perf
-# runners each pay their own checkout and `npm install`, which takes one CI run
-# from roughly 7 billed minutes to roughly 23, and the month from ~523 minutes
-# to ~1,088 (~1,436 all-in, counting Deploy production, License check and the
-# desktop Release runs). That is inside the allowance but uncomfortably close,
-# and it would not have survived the auto-merge: merged bumps free slots for
-# Dependabot to refill weekly, and each merged bump now also costs a run on main
-# and a deploy.
+# ---------------------------------------------------------------------------
+# THE MINUTES BUDGET (rewritten 2026-09-16 against measured data)
 #
-# So the run COUNT came down instead of the split:
+# The account is on the GitHub Free plan: 2,000 Actions minutes a month, and
+# this repository is private, so every job minute is billed. Splitting the suite
+# costs minutes — each extra runner pays its own checkout and `npm install`, and
+# GitHub rounds EVERY job up to a whole minute — so the split has to be sized
+# against real numbers, not guesses.
 #
-#   ~47 CI runs/month at ~23 billed min      = ~1,088 min
-#   - grouping the bumps (.github/dependabot.yml): one pull request per
-#     ecosystem per month instead of ~20 bump runs      -18 runs   -414 min
-#   + the auto-merge's re-run on main, 2/month           +2 runs    +46 min
-#   - paths-ignore below: root notes and graphify-out
-#     refreshes, ~4 pushes a month                       -4 runs    -92 min
+# An earlier version of this block started from a guessed base of about 47 runs
+# a month and ended at "≈976 all-in". Both were wrong: the base was roughly a
+# third of the truth, and two of the savings were bigger than the things they
+# saved. Everything below is
+# measured. The measurement is committed at tests/fixtures/ciActionsUsage30d.json
+# and tests/ciMinutesBudgetBase.test.mjs re-derives this whole block from it and
+# fails if the two ever disagree, so these numbers cannot rot quietly.
+#
+# WHAT WAS MEASURED (30 days to 2026-09-15, `gh api .../actions/runs --paginate`
+# plus per-run job timings; billed per job, ceil to the minute, minimum one):
+#
+#   116 CI runs/month — 74 human pushes to main, 27 human pull requests,
+#                       15 Dependabot pull requests
+#   budget.measured.per_job_overhead_seconds: 27
+#                       (set up 2s + checkout 5s + setup-node 5s + install 15s)
+#   budget.measured.whole_suite_seconds: 381   (one process, no split)
+#   the shard work (the suite minus the isolated files)    311s, worst
+#                        of four shards 78s (the runner's own measured weights)
+#   the two blocking isolated suites                       45s
+#   the five performance-budget files                      26s
+#   build-only steps (setup-deno 4s, release contract 1s,
+#                     deno check 5s, vite build 4s)        14s
+#
+# WHAT A RUN COSTS, job by job (each rounded up to a whole minute):
+#
+#   test shard      27 + 78          = 105s -> 2 min, and there are four   = 8
+#   isolated        27 + 45 + 26     =  98s -> 2 min                       = 2
+#   ci-gate         27 + 14 + gate   =  49s -> 1 min                       = 1
 #   ------------------------------------------------------------------------
-#   ≈ 628 min/month of CI, ≈ 976 min/month all-in, of 2,000.
+#   push to main    8 + 2 + 1                                              = 11
+#   pull request    8 + 1        (isolated does not run — see its `if:`)   =  9
 #
-# The run counts are estimates from the September 2026 history; the per-run
-# minutes are not. If the allowance ever stops being the binding constraint, the
-# note on the `test` job below says what a fifth shard would buy.
+# WHY FOUR SHARDS AND NOT THREE. Three is not cheaper, it is dearer, because
+# the rounding is per job:
+#
+#   1 job    311s + 27s = 338s -> 6 min total, blocking path 5m38s  (over budget)
+#   2 shards 156s + 27s = 183s -> 4 min each  = 8, blocking path 3m03s
+#   3 shards 104s + 27s = 131s -> 3 min each  = 9, blocking path 2m11s
+#   4 shards  78s + 27s = 105s -> 2 min each  = 8, blocking path 1m45s
+#   5 shards  62s + 27s =  89s -> 2 min each  = 10
+#
+# Four is the cheapest split that also has the shortest blocking path: three
+# costs a minute more per run AND finishes later, two ties on minutes but is 78
+# seconds slower, five pays two more minutes for 16 seconds. One job is cheapest
+# of all and is the option this split exists to replace — 5m38s of blocking path
+# with the production deploy waiting behind it. The blocking path today is
+# max(shards, isolated) + ci-gate ≈ 105s + 49s ≈ 2m34s, inside the 4-minute
+# budget with room for a slow runner.
+#
+# THE RUN COUNT, from the same 30 days:
+#
+#   budget.base_ci_runs: 116
+#   budget.saving.grouped_bumps_runs: 15   # every Dependabot run in the window,
+#                                          # replaced by monthly grouped pull
+#                                          # requests (.github/dependabot.yml)
+#   budget.added.grouped_bump_runs: 2      # the two grouped pull requests
+#   budget.added.automerge_main_runs: 2    # the auto-merge's re-run on main
+#   budget.saving.paths_ignore_runs: 1     # 1 of 189 first-parent commits in
+#                                          # the window touches nothing outside
+#                                          # root-level *.md and graphify-out/**
+#   budget.projected_ci_runs: 104          # 75 on main, 29 on pull requests
+#
+# THE MONTH:
+#
+#   budget.billed_minutes.main_run: 11
+#   budget.billed_minutes.pull_request_run: 9
+#   75 main runs x 11                                              =   825
+#   29 pull-request runs x 9                                       =   261
+#   budget.projected_ci_minutes: 1086
+#   budget.other_workflow_minutes: 343
+#     (Deploy production 255, License check 28, Dependabot Updates 35,
+#      Toggle auth CAPTCHA 9, the since-deleted eraser probe 16 — every one at
+#      its measured value. Nothing here is discounted for the changes on this
+#      branch, even where a discount would be fair: the monthly Dependabot
+#      schedule will not keep costing 35 minutes and the eraser probe workflow
+#      no longer exists. Those are real savings and they are deliberately NOT
+#      booked, so the number below is a ceiling rather than a hope.)
+#   budget.projected_all_in_minutes: 1429
+#
+# 1,429 of 2,000, against a 1,500 target. The headroom is 571 minutes of
+# allowance and 71 minutes of target, and it is built on no saving that has not
+# already happened.
+#
+# WHAT IS DELIBERATELY NOT CLAIMED. `paths-ignore` below stays narrow: `docs/**`
+# and `.planning/**` are NOT on it, because tests read files out of both
+# (tests/mobileRolloutReadiness reads docs/MOBILE-RUN.md and docs/FULL-APP-E2E.md;
+# the KAL-260/261/262 harnesses read .planning/optimization/migration-baseline/).
+# Widening it would let an edit break main unseen, so the saving stays at the one
+# push a month it really is. Draft pull requests are likewise not skipped — the
+# saving is real but unmeasured, and an unmeasured saving does not belong in a
+# budget.
 #
 # `ci-gate` is the single aggregate that must be green, and the Deploy
 # production workflow keys off this workflow's conclusion.
@@ -71,14 +148,10 @@ on:
   push:
     branches: [main]
     # 2026-09-15 — pushes and pull requests that touch ONLY these never change
-    # what gets built or tested, and on the Free plan every skipped run is ~23
-    # billed runner-minutes kept. The list is deliberately narrow: `docs/**` and
-    # `.planning/**` are NOT on it, because tests read files out of both
-    # (docs/MOBILE-RUN.md, docs/FULL-APP-E2E.md, the KAL-260/261/262 baseline
-    # reports), and ignoring them would let an edit break main unseen. `*.md`
-    # has no slash in it, so it matches root-level notes only, not docs/*.md.
-    # The two lists are written out twice on purpose: YAML anchors are not
-    # supported in GitHub Actions workflows.
+    # what gets built or tested, and on the Free plan every skipped run is 9 to
+    # 11 billed runner-minutes kept. `*.md` has no slash in it, so it matches
+    # root-level notes only, not docs/*.md. The two lists are written out twice
+    # on purpose: YAML anchors are not supported in GitHub Actions workflows.
     paths-ignore:
       - '*.md'
       - 'graphify-out/**'
@@ -116,19 +189,160 @@ env:
   DENO_VERSION: v2.7.5
 
 jobs:
-  # Static contract + type-check + the web bundle. Runs in parallel with the
-  # tests; on the runner the whole job is ~45s, of which vite is ~3s.
-  build:
-    name: Build the app
+  # The bulk of the suite, split four ways. `--shard=N/M` is a deterministic
+  # longest-processing-time partition of every non-timing-sensitive file:
+  # stable ordering, every file in exactly one shard, nothing dropped.
+  #
+  # Four is both the cheapest parallel split and the fastest one; the table in
+  # the budget block above shows two, three and five all coming out worse on
+  # minutes, wall clock, or both. Files still run one process at a time INSIDE a
+  # shard — the parallelism is across runners, so each machine carries roughly a
+  # quarter of today's load and nothing runs beside anything else.
+  test:
+    name: Tests (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      # Report every failing shard, not just the first one to go red.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          # Restores ~/.npm so `npm install` below resolves from cache.
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Run test shard ${{ matrix.shard }} of ${{ strategy.job-total }}
+        run: node scripts/run-node-tests.mjs --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # The suites that must not share a machine, one runner, one process at a time.
+  #
+  # Two halves with different teeth, and the difference is the whole design:
+  #
+  #   * the BLOCKING half — annotationDocConcurrency (99 CRDT convergence tests)
+  #     and svgPathTransformFidelity. Neither asserts on elapsed time; they are
+  #     correctness gates that merely happen to be slow, so they keep their
+  #     teeth and a failure here reds the run.
+  #   * the INFORMATIONAL half — every file that asserts a millisecond or CPU
+  #     budget, run in a step carrying `continue-on-error: true`. A timing
+  #     reading taken on a loaded 2-core hosted runner must never veto a merge.
+  #     Run 34094848036 failed main on "round outline took 341.6ms" against a
+  #     250ms budget — twice, on the original run and the rerun — and held a
+  #     production deploy behind the weather. It cannot do that from here.
+  #
+  # The exact file lists are TIMING_SENSITIVE_TEST_FILES in
+  # scripts/timing-sensitive-tests.mjs, split by CI_PERF_TEST_FILES in
+  # scripts/ci-perf-tests.mjs. The shards exclude the whole TIMING_SENSITIVE
+  # list, so between this job and the shards every test file runs exactly once.
+  # `run-node-tests.mjs` fails loudly if a perf file ever falls out of that union
+  # and into a shard.
+  #
+  # 2026-09-16 — the two halves used to be two jobs. They are one now because
+  # two jobs cost two billed minutes and one costs two as well only on paper:
+  # 27s of setup + 45s + 26s is 98 seconds, a single rounded minute cheaper than
+  # paying the setup twice. Nothing about the teeth changed — `continue-on-error`
+  # simply moved from the job to the step it was always about. Do NOT put
+  # `continue-on-error: true` on this JOB: `needs.isolated.result` would then
+  # report success whatever the blocking suites did, and the gate below would
+  # wave a real failure through.
+  #
+  # 2026-09-16 — and it does not run on an ordinary pull request. A bump or a
+  # branch gets the four blocking shards and the build; these suites run on the
+  # main commit straight afterwards, which is the commit that deploys. Pressing
+  # "Re-run all jobs" on any pull request brings them back on demand, because a
+  # re-run has run_attempt > 1 — that is the escape hatch, and it is one click.
+  isolated:
+    name: Slow isolated suites and speed measurements
+    if: github.event_name != 'pull_request' || github.run_attempt != '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      perf: ${{ steps.perf.outcome }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Run the slow isolated suites one at a time
+        run: node scripts/run-node-tests.mjs --only-timing-sensitive
+        env:
+          # Belt and braces. The `if:` above already keeps this job off a bot's
+          # pull request, so this can never be '1' on a first run; the event
+          # test in front of it makes sure it can never be '1' on a MAIN run
+          # either, whoever dispatched it. github.triggering_actor, not
+          # github.actor: a re-run keeps github.actor pinned to whoever opened
+          # the run (the bot, forever), while triggering_actor becomes the person
+          # who pressed re-run, and it is that person who must get the full CRDT
+          # convergence gate.
+          # (One line on purpose: tests/ciBotNoiseContract.test.mjs reads this
+          # setting a line at a time.)
+          SKIP_TIMING_SUITES: ${{ (github.event_name == 'pull_request' && github.triggering_actor == 'dependabot[bot]') && '1' || '' }}
+
+      - name: Performance budgets (informational)
+        id: perf
+        # The one place a timing reading is allowed to be red. A failure here
+        # leaves this job green, the run green, and the deploy gate open;
+        # ci-gate reports it in words on the run page. CI_PERF_LANE=1 raises the
+        # best-of sample count and applies a 2x slack factor to the millisecond
+        # budgets (scripts/ci-perf-tests.mjs) so the report reds on genuine
+        # slowdowns rather than on runner weather. The unscaled budgets still
+        # apply to `npm run test:perf` locally.
+        continue-on-error: true
+        run: npm run test:perf
+        env:
+          CI_PERF_LANE: '1'
+          NODE_OPTIONS: --max-old-space-size=8192
+
+  # The build, and the single aggregate status that must be green.
+  #
+  # 2026-09-16 — these were two jobs, "Build the app" running in parallel with
+  # the tests and "CI gate" aggregating afterwards. Two jobs, two checkouts, two
+  # `npm install`s, and two billed minutes for 49 seconds of work. Merged, they
+  # are 49 seconds and one billed minute — 104 minutes a month back, a twentieth
+  # of the whole Free-plan allowance.
+  #
+  # The honest cost of the merge: a broken build is now reported when the tests
+  # finish rather than 41 seconds in, so about 105 seconds later on a green
+  # suite. `if: always()` means it still builds and still reports when a shard is
+  # red, so a broken build never hides behind a broken test.
+  #
+  # `if: always()` also turns "cancelled" and "skipped" into an explicit red
+  # instead of a silently-green workflow. `isolated` is ALLOWED to be skipped —
+  # that is how an ordinary pull request is paid for — and only that one job is.
+  ci-gate:
+    name: Build the app and gate the run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: always()
+    needs: [test, isolated]
+    env:
+      # Was this pull request opened by the bot? (Stays true across re-runs.)
+      IS_DEPENDENCY_BUMP: ${{ github.actor == 'dependabot[bot]' }}
+      TEST_RESULT: ${{ needs.test.result }}
+      ISOLATED_RESULT: ${{ needs.isolated.result }}
+      PERF_RESULT: ${{ needs.isolated.outputs.perf || 'not run' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - uses: denoland/setup-deno@v2
@@ -174,7 +388,7 @@ jobs:
         run: npm run check:licenses
 
       # Vite's on-disk cache (dependency pre-bundling + transform results).
-      # The bundle build is only ~3s today so this is insurance rather than a
+      # The bundle build is only ~4s today so this is insurance rather than a
       # big win, but it costs ~1s and keeps the build fast if the config ever
       # grows a heavier pre-bundle step.
       - name: Cache Vite build artifacts
@@ -196,166 +410,6 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
 
-  # The bulk of the suite, split four ways. `--shard=N/M` is a deterministic
-  # longest-processing-time partition of every non-timing-sensitive file:
-  # stable ordering, every file in exactly one shard, nothing dropped.
-  #
-  # 2026-09-15 — an earlier note here claimed a fifth shard "buys nothing"
-  # because the heaviest single file (partialEraserSequentialStress, ~59s) is
-  # the floor for any shard. That is wrong: at four shards the worst shard is
-  # ~78s of estimated test time, comfortably ABOVE that floor, and five shards
-  # would bring it to ~62s — a real 20% cut. Six is where the floor actually
-  # bites (~59s, a further 6%).
-  #
-  # Four is a BUDGET choice, not a technical ceiling. Each extra shard is
-  # another runner paying its own checkout and `npm install` — about three
-  # billed minutes on every CI run, whatever the tests cost — and this account
-  # has 2,000 Actions minutes a month for a private repository. A fifth shard
-  # would spend roughly 140 minutes a month to save 15 seconds of wall clock per
-  # run. If the allowance ever stops being the constraint, five is the next step.
-  #
-  # Files still run one process at a time INSIDE a shard. The parallelism is
-  # across runners, so each machine carries roughly today's load.
-  test:
-    name: Tests (shard ${{ matrix.shard }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      # Report every failing shard, not just the first one to go red.
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install dependencies
-        run: npm install --include=optional --no-audit --no-fund
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-
-      - name: Run test shard ${{ matrix.shard }} of ${{ strategy.job-total }}
-        run: node scripts/run-node-tests.mjs --shard=${{ matrix.shard }}/${{ strategy.job-total }}
-
-  # The BLOCKING slow suites, alone on their own runner, one process at a time:
-  # annotationDocConcurrency (99 CRDT convergence tests) and
-  # svgPathTransformFidelity (no timing assertion at all). Both are correctness
-  # gates that merely happen to be slow, so they keep their teeth.
-  #
-  # The exact file list is TIMING_SENSITIVE_TEST_FILES in
-  # scripts/timing-sensitive-tests.mjs MINUS CI_PERF_TEST_FILES in
-  # scripts/ci-perf-tests.mjs. The shards above exclude the whole
-  # TIMING_SENSITIVE list, so between this job, the shards and `perf` below
-  # every test file runs exactly once. `run-node-tests.mjs` fails loudly if a
-  # perf file ever falls out of that union and into a shard.
-  #
-  # Blocking on purpose: if this job is ever given `continue-on-error`,
-  # `needs.timing-suites.result` below reports success regardless, so the gate
-  # would have to move to an explicit output instead.
-  #
-  # On a Dependabot bump SKIP_TIMING_SUITES=1 makes the runner print what it is
-  # not running and exit 0, so the job stays green by design rather than by
-  # accident — see scripts/run-node-tests.mjs for why a version bump cannot
-  # regress these.
-  timing-suites:
-    name: Slow isolated suites
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install dependencies
-        run: npm install --include=optional --no-audit --no-fund
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-
-      - name: Run the slow isolated suites one at a time
-        run: node scripts/run-node-tests.mjs --only-timing-sensitive
-        env:
-          # github.triggering_actor, not github.actor: a re-run keeps github.actor
-          # pinned to whoever opened the run (the bot, forever), while
-          # triggering_actor becomes the person who pressed re-run. Keying off the
-          # latter is what actually makes "re-run a bump by hand to get these
-          # suites on demand" work — a yjs bump can then be given the full CRDT
-          # convergence gate with two clicks.
-          SKIP_TIMING_SUITES: ${{ github.triggering_actor == 'dependabot[bot]' && '1' || '' }}
-
-  # 2026-09-15 — The performance lane. Informational ONLY.
-  #
-  # `continue-on-error: true` means a red job here does NOT fail the workflow,
-  # and `ci-gate` below deliberately does not list it in `needs`, so it cannot
-  # block a merge and cannot stop deploy-production (which gates on this run's
-  # conclusion). That is the entire point: run 34094848036 failed main on
-  # "round outline took 341.6ms" against a 250ms budget — twice, on the original
-  # run and the rerun — and held a production deploy behind a timing reading
-  # taken on a busy 2-core runner, not behind a regression.
-  #
-  # These suites are NOT deleted and NOT skipped. They run on every CI run, in
-  # parallel with the shards, so they add no wall-clock time to the gate.
-  # CI_PERF_LANE=1 raises the best-of sample count and applies a 2x slack factor
-  # to the millisecond budgets (scripts/ci-perf-tests.mjs) so the lane reds on
-  # genuine slowdowns rather than on runner weather. The unscaled budgets still
-  # apply to `npm run test:perf` locally.
-  #
-  # If this job goes red: re-run it alone first (load-sensitive by nature), and
-  # only then go looking for the regression.
-  perf:
-    name: Performance budgets (informational)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install dependencies
-        run: npm install --include=optional --no-audit --no-fund
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-
-      - name: Run performance budget suites
-        run: npm run test:perf
-        env:
-          CI_PERF_LANE: '1'
-          NODE_OPTIONS: --max-old-space-size=8192
-
-  # One required status for branch protection and the Deploy production
-  # gate. `if: always()` makes it run even when something upstream failed, so
-  # it can turn "cancelled" and "skipped" into an explicit red instead of a
-  # silently-green workflow.
-  #
-  # `perf` is deliberately absent from `needs`: it is informational, and adding
-  # it here would hand a timing reading the veto this split exists to remove.
-  ci-gate:
-    name: CI gate
-    runs-on: ubuntu-latest
-    if: always()
-    needs: [build, test, timing-suites]
-    env:
-      # Was this pull request opened by the bot? (Stays true across re-runs.)
-      IS_DEPENDENCY_BUMP: ${{ github.actor == 'dependabot[bot]' }}
-      # Did THIS run skip the slow isolated suites? That is decided by
-      # triggering_actor, so a person re-running a bump gets the full suite and
-      # a summary that says so, instead of one that still claims they were
-      # skipped.
-      SKIPPED_ISOLATED_SUITES: ${{ github.triggering_actor == 'dependabot[bot]' }}
-      BUILD_RESULT: ${{ needs.build.result }}
-      TEST_RESULT: ${{ needs.test.result }}
-      TIMING_RESULT: ${{ needs.timing-suites.result }}
-    steps:
       - name: Explain this run in plain English
         # Written before the gate step below fails, so the run page (linked from
         # every failure email) opens on a readable explanation rather than on
@@ -365,60 +419,61 @@ jobs:
           {
             echo "## What this check does"
             echo
-            echo "It downloads the app's building blocks, checks the server code,"
-            echo "runs the automated tests, and builds the app the way the website"
-            echo "and the desktop app are built. If this is green, the change is"
-            echo "safe to ship."
+            echo "It downloads the app's building blocks, runs the automated"
+            echo "tests, checks the server code, and builds the app the way the"
+            echo "website and the desktop app are built. If this is green, the"
+            echo "change is safe to ship."
             echo
             echo "The tests are split across four machines that run at the same"
             echo "time, plus one machine for the few slow tests that need to be"
-            echo "left alone, plus one for the speed measurements."
+            echo "left alone and for the speed measurements."
             echo
-            if [ "${SKIPPED_ISOLATED_SUITES}" = "true" ]; then
-              echo "**This run was a routine dependency update opened by a robot.**"
-              echo "It ran everything except the slow isolated tests, which a"
-              echo "version bump cannot affect and which occasionally go red just"
-              echo "because the shared machine was busy. Those run in full the"
-              echo "moment the update is merged. To run them here instead, press"
-              echo "Re-run all jobs — a re-run by a person runs everything."
+            if [ "${ISOLATED_RESULT}" = "skipped" ]; then
+              echo "**This run was a pull request, so the slow isolated tests and"
+              echo "the speed measurements were left out.** They run in full on"
+              echo "main the moment the change lands, which is the commit that"
+              echo "actually ships. To run them here instead, press Re-run all"
+              echo "jobs — a re-run runs everything."
             elif [ "${IS_DEPENDENCY_BUMP}" = "true" ]; then
               echo "**This is a robot's dependency update, re-run by a person, so"
               echo "everything ran** — the slow isolated tests included."
             else
-              echo "**This run was a change made by a person, so everything ran.**"
+              echo "**Everything ran.**"
             fi
             echo
             echo "### Results"
             echo
-            echo "- Build: ${BUILD_RESULT}"
             echo "- Tests (four shards): ${TEST_RESULT}"
-            echo "- Slow isolated tests: ${TIMING_RESULT}"
+            echo "- Slow isolated tests: ${ISOLATED_RESULT}"
+            echo "- Speed measurements: ${PERF_RESULT}"
+            echo "- Build: this job — green unless it stopped above"
             echo
-            echo "The speed measurements run on their own and are reported for"
-            echo "information only — they can never fail this check or stop a"
-            echo "release. If that one is red, re-run it on its own before"
-            echo "investigating: it can go red simply because the shared machine"
-            echo "was busy."
+            echo "The speed measurements are reported for information only. They"
+            echo "can never fail this check or stop a release. If that line says"
+            echo "failure, re-run this job on its own before investigating: it"
+            echo "can go red simply because the shared machine was busy."
             echo
-            if [ "${BUILD_RESULT}" != "success" ] \
-              || [ "${TEST_RESULT}" != "success" ] \
-              || [ "${TIMING_RESULT}" != "success" ]; then
+            if [ "${TEST_RESULT}" != "success" ] \
+              || { [ "${ISOLATED_RESULT}" != "success" ] && [ "${ISOLATED_RESULT}" != "skipped" ]; }; then
               echo "Something above went red. Open the job marked with a red X —"
-              echo "its name says which part broke: the build, one of the four"
-              echo "test shards, or the slow isolated tests."
+              echo "its name says which part broke: one of the four test shards,"
+              echo "or the slow isolated tests."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Require every CI job to have succeeded
+      - name: Require every blocking CI job to have succeeded
         shell: bash
         run: |
-          echo "build=$BUILD_RESULT test=$TEST_RESULT timing-suites=$TIMING_RESULT"
+          echo "test=$TEST_RESULT isolated=$ISOLATED_RESULT perf=$PERF_RESULT"
           failed=0
-          for result in "$BUILD_RESULT" "$TEST_RESULT" "$TIMING_RESULT"; do
-            if [ "$result" != "success" ]; then failed=1; fi
-          done
+          if [ "$TEST_RESULT" != "success" ]; then failed=1; fi
+          # `isolated` is skipped by design on an ordinary pull request; every
+          # other non-success is a real failure.
+          if [ "$ISOLATED_RESULT" != "success" ] && [ "$ISOLATED_RESULT" != "skipped" ]; then
+            failed=1
+          fi
           if [ "$failed" -ne 0 ]; then
             echo "::error::CI is not green — see the failing job above." >&2
             exit 1
           fi
-          echo "All CI jobs succeeded."
+          echo "All blocking CI jobs succeeded."
