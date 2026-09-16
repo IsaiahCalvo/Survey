@@ -1272,11 +1272,11 @@ const SurveySpacesRail = ({
                       // else in the column used. The box measures the same 24 as
                       // before, so the strip's 35px height and the rail's centre
                       // line are unchanged — nothing moves.
-                      style={{ background: 'transparent', border: 'none', color: '#8d96a6', cursor: 'pointer', padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px`, borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+                      style={{ background: 'transparent', border: 'none', color: '#8d96a6', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = '#2a3140'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
                     >
-                      <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} color="#8d96a6" />
+                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="#8d96a6" />
                     </button>
                   </div>
                   <div style={{
@@ -1379,12 +1379,19 @@ const SurveySpacesRail = ({
                         });
                       }}
                       aria-label="Collapse Survey panel"
+                      // UX 2026-09-16 (desktop sweep): the shared rail control box
+                      // and glyph, the same as its twin "Expand Survey panel" — it
+                      // is the same control in the other state, so it cannot be a
+                      // different size. The phone keeps its own 16px sheet handle
+                      // chevron; mobile sizing is not this pass's lane.
                       style={{
                         background: 'transparent',
                         border: 'none',
                         color: 'rgb(153, 153, 153)',
                         cursor: 'pointer',
-                        padding: '4px',
+                        ...(mobileMode
+                          ? { padding: '4px' }
+                          : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
@@ -1394,7 +1401,7 @@ const SurveySpacesRail = ({
                       onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={16} color="#8d96a6" />
+                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="#8d96a6" />
                     </button>
                   </div>
 
