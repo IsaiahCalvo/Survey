@@ -12028,6 +12028,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Anchor the caret to the annotation's own box, not to raw client
         // coordinates: mounting the editor can scroll the page, and a stale
         // client point then lands outside the editor entirely.
+        //
+        // The carrier handed over here is the whole annotation — for a callout
+        // that is arrow + knee + text box. buildCaretAnchor narrows it to the
+        // box the editor actually covers (caretAnchorHostFor); measuring
+        // against the carrier put every callout caret at the end of the string.
         const hostSelector = candidate.kind === 'callout'
           ? `[data-callout-id="${candidate.calloutId}"]`
           : `[data-annotation-index="${candidate.annotationIndex}"]`;

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   DOUBLE_TAP_MAX_DELAY_MS,
   buildCaretAnchor,
+  caretAnchorHostFor,
   createDoubleTapTracker,
   editEntryKeyForHit,
   resolveCaretAnchorPoint,
@@ -143,4 +144,68 @@ test('a caret anchor with no usable host falls back to the raw client point', ()
     { x: 42, y: 84 });
   assert.equal(buildCaretAnchor({ x: NaN, y: 3, host: null }), null);
   assert.equal(resolveCaretAnchorPoint(null, { left: 0, top: 0, width: 1, height: 1 }), null);
+});
+
+// ---------------------------------------------------------------------------
+// Callout carrier vs callout text box (the caret-at-the-end bug, 2026-09-15)
+// ---------------------------------------------------------------------------
+
+/**
+ * A callout as the DOM sees it: the carrier <g data-callout-id> spans the
+ * arrow tip on the left all the way to the right edge of the text box, and the
+ * text box lives in the right-hand quarter of it.
+ */
+const calloutCarrierOf = ({ carrier, text = null, textBox = null } = {}) => ({
+  getAttribute: (name) => (name === 'data-callout-id' ? 'c-1' : null),
+  getBoundingClientRect: () => carrier,
+  querySelector: (selector) => {
+    if (selector === '[data-callout-part="text"]') return text ? hostOf(text.left, text.top, text.width, text.height) : null;
+    if (selector === '[data-callout-part="textBox"]') return textBox ? hostOf(textBox.left, textBox.top, textBox.width, textBox.height) : null;
+    return null;
+  },
+});
+
+test('a callout anchors against its text box, not the arrow-to-box carrier', () => {
+  // carrier: arrow tip at x=100, text box from x=400 to x=600.
+  const carrier = { left: 100, top: 180, width: 500, height: 120 };
+  const textArea = { left: 406, top: 200, width: 188, height: 40 };
+  const host = caretAnchorHostFor(calloutCarrierOf({ carrier, text: textArea }));
+  assert.deepEqual(host.getBoundingClientRect(), textArea);
+
+  // A double-click on the FIRST letter of the callout's text.
+  const anchor = buildCaretAnchor({ x: 410, y: 218, host: calloutCarrierOf({ carrier, text: textArea }) });
+  assert.deepEqual(anchor.hostRect, textArea);
+  // The editor covers that same text area, so the point comes back unmoved —
+  // it lands on the first letter. Measured against the carrier it resolved to
+  // (410-100)/500 = 0.62 of the editor's width instead, i.e. the middle of the
+  // string; a click past the middle of the box resolved past the last glyph and
+  // the caret collapsed to the end.
+  assert.deepEqual(resolveCaretAnchorPoint(anchor, textArea), { x: 410, y: 218 });
+  const carrierAnchor = { x: 410, y: 218, hostRect: carrier };
+  assert.notDeepEqual(resolveCaretAnchorPoint(carrierAnchor, textArea), { x: 410, y: 218 });
+});
+
+test('a callout with no text foreignObject falls back to its border rect, then the carrier', () => {
+  const carrier = { left: 100, top: 180, width: 500, height: 120 };
+  const border = { left: 400, top: 200, width: 200, height: 40 };
+  assert.deepEqual(
+    caretAnchorHostFor(calloutCarrierOf({ carrier, textBox: border })).getBoundingClientRect(),
+    border,
+  );
+  // hidden text + a collapsed border rect: the carrier is still better than nothing
+  assert.deepEqual(
+    caretAnchorHostFor(calloutCarrierOf({ carrier, text: { left: 0, top: 0, width: 0, height: 0 } })).getBoundingClientRect(),
+    carrier,
+  );
+});
+
+test('a plain text annotation carrier is already the box the editor covers', () => {
+  const box = hostOf(100, 200, 200, 50);
+  // no data-callout-id -> passed through untouched
+  assert.equal(caretAnchorHostFor({ ...box, getAttribute: () => null }).getBoundingClientRect().left, 100);
+  assert.equal(caretAnchorHostFor(box), box);
+  assert.equal(caretAnchorHostFor(null), null);
+  // and the anchor it produces is unchanged by the narrowing
+  const anchor = buildCaretAnchor({ x: 130, y: 215, host: box });
+  assert.deepEqual(anchor.hostRect, { left: 100, top: 200, width: 200, height: 50 });
 });

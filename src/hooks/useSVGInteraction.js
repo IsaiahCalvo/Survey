@@ -132,6 +132,11 @@ const buildPreviewObjects = (updatedAnnotations, originals) => {
  * editor mount can cause. TextEditOverlay drops the caret there instead of
  * selecting the whole string (Drawboard parity, 2026-09-15). Null when the event
  * carries no usable coordinates (synthetic or keyboard-driven entry).
+ *
+ * The carrier below is the whole annotation — for a callout, arrow + knee +
+ * text box. buildCaretAnchor narrows it to the box the editor covers
+ * (caretAnchorHostFor), so a click on a letter is measured against the text
+ * box and not against the arrow's reach.
  */
 function readCaretAnchor(event) {
   return buildCaretAnchor({

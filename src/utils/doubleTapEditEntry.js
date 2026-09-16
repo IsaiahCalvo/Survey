@@ -122,6 +122,45 @@ export function createDoubleTapTracker(options = {}) {
 }
 
 /**
+ * The element whose on-screen box the text editor will actually cover, given
+ * the carrier an edit gesture resolved to.
+ *
+ * WHY THIS IS NOT JUST THE CARRIER (fixed 2026-09-15). A callout's carrier is
+ * the whole <g data-callout-id>: arrow, knee, leader lines AND the text box. A
+ * click on the first letter therefore sat at, say, 0.85 of that carrier's
+ * width, and re-resolving 0.85 against the editor — which covers the text box
+ * alone — dropped the caret past the last glyph. Every callout double-click
+ * collapsed the caret to the END of the string, in every mode and at every
+ * zoom. The box to measure against is the one the editor is laid over: the
+ * callout's text area.
+ *
+ * `data-callout-part="text"` is that box exactly — the SVG foreignObject is
+ * the text-box rect inset by TEXT_PADDING on x, which is the same geometry
+ * TextEditOverlay gives its own content box (left: pad, top: padY=0 inside the
+ * callout box), so the fraction re-resolves onto the same glyphs. When it is
+ * missing (a render with hidden text) the border rect is the next best box,
+ * and the carrier remains the last resort.
+ *
+ * Plain text annotations carry no callout parts and pass straight through —
+ * their carrier already IS the box the editor covers.
+ *
+ * @param {Element|null} host - carrier element from the gesture
+ * @returns {Element|null}
+ */
+export function caretAnchorHostFor(host) {
+  if (!host) return null;
+  const isCalloutCarrier = typeof host.getAttribute === 'function'
+    && host.getAttribute('data-callout-id') != null;
+  if (!isCalloutCarrier || typeof host.querySelector !== 'function') return host;
+  for (const part of ['text', 'textBox']) {
+    const candidate = host.querySelector(`[data-callout-part="${part}"]`);
+    const rect = candidate?.getBoundingClientRect?.();
+    if (rect && rect.width > 0 && rect.height > 0) return candidate;
+  }
+  return host;
+}
+
+/**
  * Where the caret should land, recorded so it survives the editor mount.
  *
  * A raw client point is NOT enough: opening the editor can scroll the page
@@ -132,12 +171,17 @@ export function createDoubleTapTracker(options = {}) {
  * the editor is laid over that same box, so the fraction re-resolves against
  * the editor's fresh rect at mount time.
  *
+ * The box is always the one the EDITOR covers, never the carrier the gesture
+ * happened to hit — see caretAnchorHostFor. Both entry paths (the window
+ * double-tap recogniser in PDFViewer and the SVG layer's native double-click
+ * in useSVGInteraction) hand their carrier straight in, so neither can drift.
+ *
  * @param {{x:number, y:number, host:Element|null}} input
  * @returns {{x:number, y:number, hostRect:{left:number,top:number,width:number,height:number}|null}|null}
  */
 export function buildCaretAnchor({ x, y, host } = {}) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const rect = host?.getBoundingClientRect?.();
+  const rect = caretAnchorHostFor(host)?.getBoundingClientRect?.();
   const hostRect = rect && rect.width > 0 && rect.height > 0
     ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
     : null;
