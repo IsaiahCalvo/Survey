@@ -30,16 +30,37 @@ test('live text formatting uses only app-styled menus', () => {
  *   - the strip's right padding used to be the literal 52px, which was only
  *     ever "rail width + left padding" for a 44px rail. The rail is 40px now,
  *     so the rule states the relationship instead of a number.
- * The 44px hit targets this test exists to protect are untouched.
+ *
+ * RULED CHANGE 2026-09-16 (phone sweep; owner ruling "sizing follows
+ * Drawboard's ratios uniformly ... everything reads a little big", plus the
+ * measured defect that the Arrow and Callout bars pushed controls off a 375px
+ * screen with no scroll path). HOW the 44px target is delivered changed, so the
+ * assertions that pinned the old delivery had to change with it:
+ *   - the bar now SCROLLS sideways, and a scroll container clips both axes, so
+ *     `overflow: visible` could no longer let a pad escape a 36px bar. Instead
+ *     the BOX is 44px with only its top 36px painted (a gradient, plus 8px of
+ *     bottom padding so the controls still centre in the painted band), and the
+ *     pads reach the bottom of that box: -6px above, -14px below. Same 44px,
+ *     nothing clipped, and the bar looks identical.
+ *   - the rich-text bar was the one strip that painted 44px controls in a 52px
+ *     band. It paints 24px in the shared 36px band now, like every other tool,
+ *     and takes the same transparent pads.
+ * What this test exists to protect - a 24px visual with a full 44px target - is
+ * still exactly what is asserted.
  */
 test('compact eraser and shape selects keep 24px visuals with unclipped 44px targets', () => {
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,900}overflow: visible/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1600}height: 44px;[\s\S]{0,60}min-height: 44px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,2600}overflow-x: auto/);
   assert.match(mobileCss, /--mobile-strip-control-h: 24px;/);
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,350}padding: 0 calc\(var\(--mobile-rail-w\) \+ 8px\) 0 8px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1800}padding: 0 calc\(var\(--mobile-rail-w\) \+ 8px\) 8px 8px;/);
+  // The painted bar is still 36px: the gradient stops there and the rest of the
+  // box is transparent.
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, #202126 0 35px, #090a0d 35px 36px, transparent 36px\);/);
   assert.match(mobileCss, /\.mobile-pdf-properties--text \{[\s\S]{0,350}padding-right: 8px;/);
   assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,140}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -10px/);
-  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select[\s\S]{0,180}height: 44px;[\s\S]{0,50}min-height: 44px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -6px -14px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select,[\s\S]{0,180}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
+  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select \.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -6px -14px/);
 });
 
 test('shared color picker uses captured pointer gestures for touch and mouse', () => {

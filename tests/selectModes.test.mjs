@@ -155,10 +155,16 @@ test('Draw uses the approved group icon at its optical size', () => {
 test('Select family uses the larger optical sizes on mobile', () => {
   // 2026-09-16 phone sizing pass (owner ruling: one glyph size per tier, from
   // Drawboard's ratios). The Select chip is a rail tool like any other, so its
-  // glyph is the rail constant instead of its own 21. RAIL_GLYPH is 20 — still
-  // larger than the desktop group icons this test contrasts with (18), which is
-  // what "larger optical sizes on mobile" means here.
-  assert.match(MOBILE_CHROME_SOURCE, /const RAIL_GLYPH = 20;/);
+  // glyph is the rail constant instead of its own 21.
+  //
+  // RULED CHANGE 2026-09-16 (phone sweep; owner ruling "everything reads a
+  // little big; sizing follows Drawboard's ratios uniformly"): RAIL_GLYPH is 17,
+  // not 20. What this test protects is that the Select chip takes the rail's one
+  // constant rather than a size of its own, and that still holds. The "larger on
+  // mobile" in the title is now about the RATIO, not the raw number: the phone
+  // chip is 30px against the desktop's 34px, and 17-in-30 (0.57) is a fuller
+  // chip than the desktop's 18-in-34 (0.53).
+  assert.match(MOBILE_CHROME_SOURCE, /const RAIL_GLYPH = 17;/);
   assert.match(MOBILE_CHROME_SOURCE, /getSelectFamilyIconName\(activeTool, bottomToolbarApi\?\.selectionMode\)\} size=\{RAIL_GLYPH\}/);
   assert.match(MOBILE_CHROME_SOURCE, /getSelectModeIconName\(option\.mode\)\} size=\{19\}/);
 });
