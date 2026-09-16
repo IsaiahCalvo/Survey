@@ -20,6 +20,78 @@ import textGroupIconUrl from './assets/icons/case-sensitive.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
+/*
+ * HOUSE ICON GEOMETRY — owner ruling 2026-09-16.
+ *
+ * One icon set is rendered by desktop, web mobile and iOS. Every glyph in this
+ * module, and every asset in src/assets/icons, is drawn on a 24-unit grid and
+ * must read as part of the same set:
+ *
+ *   - ONE stroke weight. A glyph drawn on another grid, or inside a scaled
+ *     group, must carry a stroke width that RESOLVES to ICON_STROKE_WIDTH once
+ *     the grid and the group scales are applied (the 192-unit house glyph uses
+ *     12 = 1.5 x 192/24; the 1.2-scaled Text glyph uses 1.25 = 1.5 / 1.2).
+ *   - ONE vertex/handle circle. Every "shape with handles" glyph draws its
+ *     nodes through nodeCircle(), so polygon, polyline and the text-box asset
+ *     all show the same size handle. The radius is the one on the owner's
+ *     text-box-selection.svg corner handles.
+ *   - ONE corner radius ratio. A rounded box is rounded by
+ *     ICON_CORNER_RADIUS_RATIO of its shorter side, so a big box and a small
+ *     box look equally rounded (the Rectangle tool: 18-unit box, rx 2).
+ *   - ONE optical size. Ink, including half the stroke on each side, spans
+ *     about ICON_INK_ENVELOPE of the 24-unit grid, centred on the grid.
+ *
+ * tests/iconSetConsistency.test.mjs enforces the stroke weight and the node
+ * radius across this module and the asset folder.
+ */
+export const ICON_GRID = 24;
+export const ICON_STROKE_WIDTH = 1.5;
+export const ICON_NODE_RADIUS = 2;
+export const ICON_INK_ENVELOPE = 20;
+export const ICON_CORNER_RADIUS_RATIO = 1 / 9;
+
+/** Rounded-box corner radius for a box whose shorter side is `shorterSide`. */
+export const iconCornerRadius = (shorterSide) => (
+  Math.round(shorterSide * ICON_CORNER_RADIUS_RATIO * 100) / 100
+);
+
+/**
+ * The one vertex/handle node in the set, used by every glyph that draws a shape
+ * with handles so the handles can never drift apart in size again.
+ */
+const nodeCircle = (key, cx, cy, color) => (
+  <circle
+    key={key}
+    cx={cx}
+    cy={cy}
+    r={ICON_NODE_RADIUS}
+    fill="none"
+    stroke={color}
+    strokeWidth={ICON_STROKE_WIDTH}
+  />
+);
+
+/*
+ * Vertex tables for the Polygon and Polyline glyphs, on the 24 grid. Kept beside
+ * the geometry tokens so one place describes the whole "shape with handles"
+ * family. Both are the owner-approved artworks' own vertices, rescaled onto the
+ * grid — see the renderers for the history.
+ */
+const POLYGON_ICON_NODES = [
+  [14.71, 4.92],
+  [5.91, 7.13],
+  [4.77, 16.73],
+  [13.59, 19.08],
+  [19.23, 12.83],
+];
+
+const POLYLINE_ICON_NODES = [
+  [4.75, 18.34],
+  [9.1, 7.83],
+  [14.18, 11.82],
+  [19.25, 5.66],
+];
+
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
   <span
     aria-hidden="true"
@@ -110,7 +182,7 @@ const ICON_RENDERERS = {
     template: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         {/* Main clipboard outline */}
-        <rect x="5" y="4" width="14" height="16" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
+        <rect x="5" y="4" width="14" height="16" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
         {/* Top clip */}
         <path d="M9 4C9 3.44772 9.44772 3 10 3H14C14.5523 3 15 3.44772 15 4V6H9V4Z" stroke={color} strokeWidth="1.5" fill="none" />
         {/* Page lines - horizontal lines representing text */}
@@ -131,14 +203,14 @@ const ICON_RENDERERS = {
 
     history: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M3.0156 10H7M3.0156 10V6M3.0156 10L6.34315 6.34315C9.46734 3.21895 14.5327 3.21895 17.6569 6.34315C20.781 9.46734 20.781 14.5327 17.6569 17.6569C14.5327 20.781 9.46734 20.781 6.34315 17.6569C5.55928 16.873 4.97209 15.9669 4.58158 15M12 9V13L15 14.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M3.0156 10H7M3.0156 10V6M3.0156 10L6.34315 6.34315C9.46734 3.21895 14.5327 3.21895 17.6569 6.34315C20.781 9.46734 20.781 14.5327 17.6569 17.6569C14.5327 20.781 9.46734 20.781 6.34315 17.6569C5.55928 16.873 4.97209 15.9669 4.58158 15M12 9V13L15 14.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
     retry: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M20 11a8 8 0 1 0-2.34 5.66" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M20 5v6h-6" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M20 11a8 8 0 1 0-2.34 5.66" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M20 5v6h-6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
@@ -212,10 +284,26 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Pen sub-tool. UX 2026-09-16: redrawn as stroke work on the 24 grid. The
+    // old glyph was a filled outline of a nib, which meant the Draw sub-row held
+    // one solid glyph (Pen) beside two stroked ones (Highlighter, Eraser) — the
+    // same filled-vs-stroked break the owner called out on the Shapes row. Same
+    // subject, same 1.5 weight, same round caps as the rest of the set.
+    // The group scale keeps the ink inside the house optical margin (the nib runs
+    // corner to corner, so at 1:1 it would touch all four edges of its box).
     pen: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'matrix(1, 0, 0, 1, 0, -0.298866) rotate(630deg) scaleY(-1)' }} className={className}>
-        <rect id="view-box" width="24" height="24" fill="none" />
-        <path id="Shape" d="M.75,17.5A.751.751,0,0,1,0,16.75V12.569a.755.755,0,0,1,.22-.53L11.461.8a2.72,2.72,0,0,1,3.848,0L16.7,2.191a2.72,2.72,0,0,1,0,3.848L5.462,17.28a.747.747,0,0,1-.531.22ZM1.5,12.879V16h3.12l7.91-7.91L9.41,4.97ZM13.591,7.03l2.051-2.051a1.223,1.223,0,0,0,0-1.727L14.249,1.858a1.222,1.222,0,0,0-1.727,0L10.47,3.91Z" transform="translate(3.25 3.25)" fill={color} />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g
+          transform="translate(12 12) scale(0.93) translate(-11.9 -12.2)"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.61"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+          <path d="m15 5 4 4" />
+        </g>
       </svg>
     ),
 
@@ -223,22 +311,24 @@ const ICON_RENDERERS = {
     // shows Lucide's "square-pen" (lucide-static v1.43.0, ISC) — a pen writing on
     // a page, which reads as "markup tools" rather than as any one sub-tool. Its
     // sub-tools (Pen / Highlighter / Eraser) keep their own glyphs.
-    // Stroke width 2 is Lucide's own weight, kept deliberately: the rest of the
-    // top-toolbar row (Pan / Select / Shapes / Text) is solid filled artwork, and
-    // the file's usual 1.5 read visibly lighter than those neighbours at 18px.
+    // UX 2026-09-16: stroke width is the house 1.5, NOT Lucide's own 2. The old
+    // comment defended 2 because the rest of the top-toolbar row was filled
+    // artwork at mixed sizes; that row is now one stroked set at one size, so
+    // Lucide's heavier weight made Draw the odd one out (measured 1.50px painted
+    // against Pan's 1.25px in the same row).
     // UX 2026-09-07 rule still holds: no translateY nudge — this glyph is centred
     // on its own ink, like every other top-toolbar icon.
     drawGroup: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
         <g transform="rotate(-45 12 12)">
-          <rect x="7" y="4" width="10" height="16" rx="2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="7" y="4" width="10" height="16" rx="1.11" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           <line x1="7" y1="10" x2="17" y2="10" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </g>
       </svg>
@@ -248,12 +338,16 @@ const ICON_RENDERERS = {
     // about the viewBox centre (ink spans y 3.25..20.75 of 24), so the old
     // translateY(2px) simply hung the T below the top-toolbar baseline. Removed
     // so this glyph shares the row's common centre line wherever it is reused.
+    // UX 2026-09-16: the strokes are 1.25, not the house 1.5, because the whole
+    // glyph sits in a scale(1.2) group — 1.25 x 1.2 resolves to exactly 1.5 on
+    // the 24 grid. Before this, 1.5 x 1.2 painted 1.8 and the Text glyph read
+    // heavier than everything beside it.
     text: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <g transform="translate(12 12) scale(1.2) translate(-12 -12)">
-          <polyline points="4 7 4 4 20 4 20 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="9" y1="20" x2="15" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="12" y1="4" x2="12" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="4 7 4 4 20 4 20 7" stroke={color} strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="9" y1="20" x2="15" y2="20" stroke={color} strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="12" y1="4" x2="12" y2="20" stroke={color} strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
         </g>
       </svg>
     ),
@@ -266,68 +360,91 @@ const ICON_RENDERERS = {
 
     shapes: (size, color, style, className) => renderMaskIcon(shapesIconUrl, size, color, style, className),
 
-    // Shape icons
+    // Shape icons.
+    // Rectangle is the size reference for this row: an 18-unit box, so ink
+    // including the stroke spans 19.5 of the 24 grid. It is also the corner
+    // radius reference — rx 2 on an 18-unit box is ICON_CORNER_RADIUS_RATIO.
     rect: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       </svg>
     ),
 
+    // UX 2026-09-16: r 9.3, not 10. A circle has to overshoot a square of the
+    // same optical size, but only by 2-4% (the rule shapes.svg already applies
+    // to its own circle-and-square pair). At r 10 the ink ran 11% wider than
+    // Rectangle's and the Ellipse plainly read as the bigger glyph in the row.
+    // 9.3 puts outer ink at 20.1 against Rectangle's 19.5 — a 3.1% overshoot.
     ellipse: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <circle cx="12" cy="12" r="9.3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       </svg>
     ),
 
-    // Shape tool: Polygon. UX — the owner-approved artwork (a closed
-    // six-corner outline with hollow-look vertex nodes) re-fitted from its
-    // native 1156x1038 canvas onto the shared 24 grid with ~2px padding, so
-    // it carries the same optical weight as the Rectangle/Ellipse glyphs it
-    // sits beside in the Shapes menu. The white backing rectangle from the
-    // source file is intentionally dropped; only the glyph path is kept and
-    // it takes the caller's `color` like every other icon here.
+    // Shape tool: Polygon. UX 2026-09-16 — the owner-approved artwork (a closed
+    // five-corner run with hollow vertex nodes) redrawn natively on the 24 grid.
+    // Its vertices are the five node centres of the original 1156x1038 tracing,
+    // scaled 0.89 about their own bounding box and centred on the grid, so the
+    // shape is the owner's; only the drawing technique changed.
+    //
+    // Why it was redrawn: the tracing was a single FILLED path in a row of
+    // stroked outlines. Its limbs measured 1.15 grid units against the row's
+    // 1.5, its five node holes came out at five different sizes (1.75 to 1.85),
+    // and being filled it could not share a stroke weight with anything. Now:
+    // one 1.5 stroke, and nodes from the shared nodeCircle() so they match the
+    // text-box glyph's handles exactly.
+    //
+    // Segments stop 2.0 units short of each node centre — the same trim the
+    // owner's text-box asset uses, which lands the round cap on the ring's inner
+    // edge so the run reads as continuous through the node.
     polygon: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <g transform="translate(-3.4572 -1.9089) scale(0.0267)">
-          <path d="M878.5 488.98C882.73 489.32 886.99 489.04 891.22 489.45C907.26 490.99 923.4 498.15 934.72 509.77C967.91 543.81 957.66 603.02 913.14 621.6C899.44 627.31 884.07 628.78 869.5 625.98C864.37 624.99 859.58 622.79 854.5 621.79C805.36 678.36 756.21 734.93 707.07 791.5C708.36 796.29 710.53 800.78 711.74 805.63C714.87 818.17 714.26 832.16 709.73 844.3C693.44 887.94 636.42 901.88 599.91 874.57C590.22 867.32 582.92 857.36 578.37 846.19C576.57 841.74 575.93 836.86 574.16 832.5C569.64 830.65 564.82 829.73 560.12 828.43C548.83 825.32 537.5 822.36 526.17 819.42C494.67 811.26 463.3 802.64 431.77 794.61C410.11 789.09 388.49 783.31 366.89 777.54C354.74 774.29 338.69 768.82 326.5 767.7C321.12 772.22 316.17 776.92 310.1 780.58C295.46 789.41 277.17 791.7 260.52 788.85C214.32 780.94 191.54 730.78 212.26 689.75C217.46 679.46 226.02 670.39 235.75 664.27C239.79 661.72 244.28 660 248.29 657.5C249.72 652.24 249.84 646.5 250.52 641.08C252.09 628.56 253.6 616.02 255.22 603.51C260.77 560.57 266.06 517.59 271.38 474.63C274.03 453.29 276.87 431.99 279.39 410.64C280.6 400.43 283.78 386.4 282.72 376.5C268.38 365.45 257.39 352.51 253.25 334.39C243.76 292.92 273.51 253.53 315.5 249.96C330.74 248.66 346.91 252.28 359.72 260.78C366.03 264.97 370.74 270.46 376.5 275.12C456.5 253.84 536.5 232.57 616.5 211.29C618.19 207.66 618.98 203.63 620.42 199.86C624.19 189.97 629.98 180.56 637.81 173.34C671.47 142.29 724.9 150.02 748.31 189.22C757.43 204.5 759.62 223.24 756.04 240.5C754.93 245.84 753.08 251.27 750.62 256.14C749.46 258.43 746.89 261.23 747.57 263.94C748.75 268.61 758.66 283.75 761.67 288.79C771.93 305.96 781.81 323.36 791.93 340.61C812.64 375.9 832.77 411.58 853.81 446.69C859.32 455.9 864.54 465.32 869.89 474.63C872.62 479.38 874.92 484.84 878.5 488.98ZM682.71 190.44C661.21 192.5 647.51 215.07 653.34 235.24C656.44 245.92 665.05 253.67 675.2 257.37C679.88 259.08 684.52 259.78 689.5 259.28C726.77 255.52 733.04 204.14 697.53 191.92C692.85 190.31 687.61 189.97 682.71 190.44ZM627.5 264.43C621.37 264.54 615.13 267.12 609.16 268.56C596.42 271.62 583.77 275.15 571.12 278.55C536.34 287.89 501.34 296.49 466.71 306.34C450.32 311 433.75 315.41 417.23 319.61C409.15 321.67 397.59 323.36 390.5 327.39C385 348.36 378.21 364.43 358.82 376.36C354.8 378.83 350.54 380.85 346.15 382.6C342.93 383.87 339.55 384.47 336.78 386.5C325.61 477.17 314.44 567.83 303.27 658.5C308.12 662.03 313.73 664.14 318.38 668.1C330.06 678.03 337.88 689.63 342.1 704.46C343.27 708.58 343.43 712.91 344.5 717.02C425.5 738.28 506.5 759.53 587.5 780.79C592.83 776.72 596.96 771.07 602.47 766.98C612.8 759.32 626.72 754.66 639.5 754.02C645.55 753.72 651.53 754.1 657.5 755.12C660.57 755.65 663.39 756.54 666.5 756.63C717.04 698.25 767.57 639.88 818.11 581.5C817.95 577.99 816.82 574.92 816.21 571.47C815.03 564.77 814.67 557.43 815.41 550.67C816.37 541.78 819.33 532.95 823.6 525.11C825.77 521.12 829.07 517.64 830.82 513.5C788.05 440.6 745.27 367.7 702.5 294.81C694.17 294.5 685.93 296.06 677.5 295.09C661.76 293.29 647.95 285.65 636.53 274.97C633.1 271.77 630.77 267.71 627.5 264.43ZM314.64 286.29C299.98 289.46 288.12 302.21 287.56 317.5C286.81 337.62 305.55 354.42 325.5 351.17C330.71 350.33 335.77 348.67 340.08 345.56C347.08 340.48 352.54 333.14 354.15 324.5C358.34 301.97 336.97 281.46 314.64 286.29ZM880.68 525.4C845.4 529.78 840.93 578.44 874.35 590.22C879.06 591.88 884.33 592.24 889.26 591.58C925.05 586.76 928.24 535.6 893.15 526.45C889.03 525.37 884.93 524.87 880.68 525.4ZM268.71 689.36C252.5 692.32 239.82 706.74 240.56 723.5C241.38 742.28 259.68 757.21 278.25 754.57C283.27 753.85 288.44 751.92 292.67 749.15C322.45 729.67 303.53 682.98 268.71 689.36ZM640.67 789.43C605.59 792.48 598.46 840.42 632.47 852.07C637.29 853.72 642.43 854.36 647.5 853.83C682.49 850.17 688.12 801.93 654.43 791.15C649.95 789.72 645.38 789.03 640.67 789.43Z" fill={color} />
+        <g fill="none" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12.77 5.41 7.85 6.64" />
+          <path d="M5.67 9.12 5.01 14.74" />
+          <path d="M6.7 17.25 11.66 18.57" />
+          <path d="M14.93 17.6 17.89 14.32" />
+          <path d="M18.24 11.09 15.7 6.66" />
         </g>
+        {POLYGON_ICON_NODES.map(([cx, cy], i) => nodeCircle(`polygon-node-${i}`, cx, cy, color))}
       </svg>
     ),
 
-    // Shape tool: Polyline. UX — the owner-approved 64-unit artwork (an open
-    // four-point run with hollow circular vertices) scaled onto the 24 grid
-    // with ~2px padding. Strokes are kept in the source's own units inside a
-    // scaled group, which lands the connecting segments at ~1.4 rendered
-    // stroke — deliberately in the same weight family as the 1.5-stroke
-    // Rectangle/Ellipse/Line glyphs beside it.
+    // Shape tool: Polyline. UX 2026-09-16 — the owner-approved 64-unit artwork
+    // (an open four-point run with hollow circular vertices) redrawn natively on
+    // the 24 grid: its four vertices scaled and centred, nothing re-posed.
+    //
+    // Why it was redrawn: it carried TWO stroke weights inside one glyph (3.5
+    // segments and 2.2 rings inside a scale(0.4049) group, i.e. 1.42 and 0.89 on
+    // the 24 grid), and its vertex rings came out 31% smaller than the text-box
+    // glyph's handles, so the two never read as the same family. Now: one 1.5
+    // stroke and the shared node circle.
     polyline: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <g transform="translate(-0.956 -0.755) scale(0.4049)" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round">
-          <g strokeWidth="3.5">
-            <path d="M13.835 44.565 L22.165 24.435" />
-            <path d="M27.774 22.966 L34.226 28.034" />
-            <path d="M41.051 27.295 L48.949 17.705" />
-          </g>
-          <g strokeWidth="2.2">
-            <circle cx="12" cy="49" r="3.6" />
-            <circle cx="24" cy="20" r="3.6" />
-            <circle cx="38" cy="31" r="3.6" />
-            <circle cx="52" cy="14" r="3.6" />
-          </g>
+        <g fill="none" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5.52 16.49 8.34 9.68" />
+          <path d="M10.67 9.07 12.61 10.59" />
+          <path d="M15.45 10.28 17.98 7.2" />
         </g>
+        {POLYLINE_ICON_NODES.map(([cx, cy], i) => nodeCircle(`polyline-node-${i}`, cx, cy, color))}
       </svg>
     ),
 
+    // UX 2026-09-16: the diagonal now runs 3..21, the same span as the Rectangle
+    // glyph's box, so Line and Arrow fill their buttons like their neighbours. On
+    // the old 5..19 diagonal they measured 22% smaller than Rectangle and 30%
+    // smaller than Ellipse in a row of identical buttons — the widest size break
+    // in the app. The arrowhead legs keep their old half-the-span proportion.
     line: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <line x1="5" y1="19" x2="19" y2="5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="3" y1="21" x2="21" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
     arrow: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <line x1="5" y1="19" x2="19" y2="5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M12 5h7v7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="3" y1="21" x2="21" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 3h9v9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
@@ -376,9 +493,9 @@ const ICON_RENDERERS = {
     duplicate: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         {/* Back square */}
-        <rect x="3" y="5" width="14" height="14" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
+        <rect x="3" y="5" width="14" height="14" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
         {/* Front square with plus */}
-        <rect x="7" y="1" width="14" height="14" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
+        <rect x="7" y="1" width="14" height="14" rx="1.56" stroke={color} strokeWidth="1.5" fill="none" />
         <path d="M14 8V14M11 11H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
@@ -451,25 +568,27 @@ const ICON_RENDERERS = {
     // Copy icon
     copy: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <rect x="9" y="9" width="13" height="13" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
+        <rect x="9" y="9" width="13" height="13" rx="1.44" stroke={color} strokeWidth="1.5" fill="none" />
         <path d="M5 15H4C2.93913 15 1.92172 14.5786 1.17157 13.8284C0.421427 13.0783 0 12.0609 0 11V4C0 2.93913 0.421427 1.92172 1.17157 1.17157C1.92172 0.421427 2.93913 0 4 0H11C12.0609 0 13.0783 0.421427 13.8284 1.17157C14.5786 1.92172 15 2.93913 15 4V5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
-    // Paste icon - clipboard with paper
+    // Paste icon - clipboard with paper.
+    // UX 2026-09-16: one weight. This glyph used to carry three (1.5 clipboard,
+    // 1.2 paper, 1.0 text lines) — the only icon in the set that shaded its own
+    // detail. The inner paper rectangle and the fourth text line are gone: at
+    // the house 1.5 weight four lines 2 units apart merge into a block, so the
+    // detail was traded for the shared weight, which is the rule that matters.
     paste: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         {/* Clipboard body */}
-        <rect x="6" y="4" width="12" height="16" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
+        <rect x="6" y="4" width="12" height="16" rx="1.33" stroke={color} strokeWidth="1.5" fill="none" />
         {/* Clipboard clip */}
-        <rect x="8" y="2" width="8" height="4" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
-        {/* Paper on clipboard */}
-        <rect x="8" y="6" width="8" height="12" rx="0.5" stroke={color} strokeWidth="1.2" fill="none" />
-        {/* Text lines on paper */}
-        <path d="M10 9H14" stroke={color} strokeWidth="1" strokeLinecap="round" />
-        <path d="M10 11H14" stroke={color} strokeWidth="1" strokeLinecap="round" />
-        <path d="M10 13H13" stroke={color} strokeWidth="1" strokeLinecap="round" />
-        <path d="M10 15H14" stroke={color} strokeWidth="1" strokeLinecap="round" />
+        <rect x="8" y="2" width="8" height="4" rx="0.44" stroke={color} strokeWidth="1.5" fill="none" />
+        {/* Text lines on the clipboard */}
+        <path d="M9 10H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M9 13.5H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M9 17H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
 
@@ -531,14 +650,14 @@ const ICON_RENDERERS = {
     // preserved native viewer without changing the desktop history glyphs.
     undo2: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M9 14L5 10L9 6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M5 10H16C18.2091 10 20 11.7909 20 14C20 16.2091 18.2091 18 16 18H15" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M9 14L5 10L9 6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 10H16C18.2091 10 20 11.7909 20 14C20 16.2091 18.2091 18 16 18H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     redo2: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M15 14L19 10L15 6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M19 10H8C5.79086 10 4 11.7909 4 14C4 16.2091 5.79086 18 8 18H9" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M15 14L19 10L15 6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M19 10H8C5.79086 10 4 11.7909 4 14C4 16.2091 5.79086 18 8 18H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     formatBold: (size, color, style, className) => renderMaskIcon(textBoldUrl, size, color, style, className, size * 0.8),
@@ -601,7 +720,7 @@ const ICON_RENDERERS = {
     ),
     lock: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <rect x="4" y="11" width="16" height="10" rx="2" stroke={color} strokeWidth="1.5" /><path d="M8 11V7A4 4 0 0 1 16 7V11" stroke={color} strokeWidth="1.5" />
+        <rect x="4" y="11" width="16" height="10" rx="1.11" stroke={color} strokeWidth="1.5" /><path d="M8 11V7A4 4 0 0 1 16 7V11" stroke={color} strokeWidth="1.5" />
       </svg>
     ),
     signout: (size, color, style, className) => (
@@ -631,12 +750,12 @@ const ICON_RENDERERS = {
     ),
     warningCircle: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><path d="M12 8V13M12 17H12.01" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><path d="M12 8V13M12 17H12.01" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
     infoCircle: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><circle cx="12" cy="8" r="1" fill={color} /><path d="M12 11V16" stroke={color} strokeWidth="1.7" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><circle cx="12" cy="8" r="1" fill={color} /><path d="M12 11V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
     lightbulbOn: (size, color, style, className) => (
@@ -652,22 +771,22 @@ const ICON_RENDERERS = {
     ),
     fitWidth: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <rect x="4" y="5" width="16" height="14" rx="1.5" stroke={color} strokeWidth="1.5" /><path d="M7 12H17M7 12L10 9M7 12L10 15M17 12L14 9M17 12L14 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="4" y="5" width="16" height="14" rx="1.56" stroke={color} strokeWidth="1.5" /><path d="M7 12H17M7 12L10 9M7 12L10 15M17 12L14 9M17 12L14 15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     fitHeight: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <rect x="5" y="4" width="14" height="16" rx="1.5" stroke={color} strokeWidth="1.5" /><path d="M12 7V17M12 7L9 10M12 7L15 10M12 17L9 14M12 17L15 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="5" y="4" width="14" height="16" rx="1.56" stroke={color} strokeWidth="1.5" /><path d="M12 7V17M12 7L9 10M12 7L15 10M12 17L9 14M12 17L15 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     fitPage: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <rect x="6" y="3" width="12" height="18" rx="1.5" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="6" y="3" width="12" height="18" rx="1.33" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
     mail: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
-        <rect x="3" y="5" width="18" height="14" rx="2" stroke={color} strokeWidth="1.5" /><path d="M3 7L12 13L21 7" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <rect x="3" y="5" width="18" height="14" rx="1.56" stroke={color} strokeWidth="1.5" /><path d="M3 7L12 13L21 7" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
       </svg>
     ),
     userRole: (size, color, style, className) => (
