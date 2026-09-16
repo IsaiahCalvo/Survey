@@ -17,7 +17,44 @@
     "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
   --accent-red: #d95a56;
   --overlay-scrim: rgba(13, 15, 20, 0.55);
+
+  /* UX 2026-09-16 (desktop sizing pass): ONE size scale for the desktop
+     document chrome, so every control in the top bar, the tool sub-row and
+     the rails reads the same numbers instead of carrying its own.
+     REFERENCE = Drawboard PDF on the web, measured live at 1440x900: a 40px
+     tool strip holding 34x34 icon buttons whose glyph is 18px
+     (glyph:button = 0.53), 24px-tall value chips, and 2px gaps. Survey's top
+     bar stays 44px tall — the same 34/18 control simply sits in 5px of
+     breathing space instead of Drawboard's 3px, so the RATIO is Drawboard's
+     while the bar height is unchanged.
+     Before this pass the top row alone mixed glyph sizes 14 / 15 / 18 / 20 /
+     22 and control heights 26 / 28 / 30, and the sub-row used a third pair.
+     CARETS are NOT one size: the Width / Style dropdown caret is 10px, the
+     Select split button's is 7px. Drawboard does the same (its split-button
+     caret measures 6px) — a caret that hangs beside a full-size glyph has to
+     stay out of its way.
+     GAPS are 4px rather than Drawboard's 2px because Survey's hover state
+     paints a 1px border plus a 1px ring: at a 2px gap two neighbouring rings
+     would touch. 4px is the smallest gap that keeps a visible gutter.
+     Any control added to the chrome later should take these tokens rather
+     than inventing a number. */
+  --chrome-control-h: 34px;        /* top-bar icon button height (Drawboard: 34) */
+  --chrome-control-w: 34px;        /* top-bar icon button width — square, as Drawboard */
+  --chrome-control-split-w: 40px;  /* icon + caret (the Select mode button) */
+  --chrome-sub-control-h: 32px;    /* tool sub-row button, inside the 34px strip */
+  --chrome-sub-control-w: 34px;
+  --chrome-glyph: 18px;            /* every chrome control glyph (Drawboard: 18) */
+  --chrome-field-glyph: 14px;      /* glyph inside a 24px value chip */
+  --chrome-gap: 4px;               /* gap between neighbouring chrome controls */
+  --chrome-radius: 6px;
+  --chrome-field-h: 24px;          /* value chips: colour, width, line style (Drawboard: 24) */
+  --chrome-field-w: 76px;          /* the width control and the line-style dropdown are ONE size */
+  --chrome-field-trigger-w: 24px;  /* the width control's preset-list trigger */
+  --chrome-field-pad-x: 6px;
+  --chrome-menu-w: 126px;          /* dropdown popover width */
+  --chrome-menu-row-h: 34px;       /* dropdown popover row height */
 }
+
 
 .App {
   background-color: #0d0f14;
@@ -252,6 +289,44 @@
   min-width: 24px;
   width: 24px;
   height: 24px;
+}
+
+/* UX 2026-09-16 (desktop sizing pass): the two chrome control shapes.
+   `.chrome-control` is a top-bar button, `.chrome-subcontrol` a tool sub-row
+   button. Reference = Drawboard PDF's square 34x34 tool buttons. Scoped to
+   their own classes rather than to `#chrome-top-host button` so the colour
+   picker and the other popovers that render INSIDE the top bar keep their
+   own sizes. */
+.chrome-control,
+.chrome-subcontrol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--chrome-radius);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
+.chrome-control {
+  width: var(--chrome-control-w);
+  min-width: var(--chrome-control-w);
+  height: var(--chrome-control-h);
+  min-height: var(--chrome-control-h);
+}
+
+/* A control that carries a caret beside its glyph (the Select mode button)
+   needs the extra width; its height still comes from the shared token. */
+.chrome-control--split {
+  width: var(--chrome-control-split-w);
+  min-width: var(--chrome-control-split-w);
+}
+
+.chrome-subcontrol {
+  width: var(--chrome-sub-control-w);
+  min-width: var(--chrome-sub-control-w);
+  height: var(--chrome-sub-control-h);
+  min-height: var(--chrome-sub-control-h);
 }
 
 .survey-marker-name-fit {
