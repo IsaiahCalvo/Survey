@@ -844,6 +844,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overflow-y: hidden;
 }
 
+/* UX 2026-09-16: the strip centres its controls, and a centred flex row that
+   is wider than its box overflows equally at BOTH ends. With the Arrow and
+   Callout sets that pushed the colour swatch under the 44px tool rail (the
+   rail paints above the strip), so on a 375px phone an arrow's or callout's
+   colour could not be tapped at all. `safe` keeps the centring while the
+   controls fit and falls back to start-aligned the moment they do not, so
+   nothing is ever painted to the left of the rail. The text strip keeps its
+   own flex-start + scroll behaviour. */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) {
+  justify-content: safe center;
+}
+
 .mobile-pdf-properties--actions,
 .mobile-pdf-properties--survey {
   gap: 8px;
