@@ -845,23 +845,22 @@ const SVGAnnotationLayer = memo(({
   const isInteractive = isSelectTool || isCreationTool;
 
   // UX: the armed tool wears its own cursor over the page — a crosshair with a
-  // small badge of that tool, drawn in the colour the next mark will be — the
-  // toolbar swatch feeds `strokeColor`, so the badge is literally the colour
-  // the next mark comes out in. See src/utils/toolCursors.js for the geometry
-  // and the reasoning.
-  // Reference behavior matched: Drawboard PDF's 42px crosshair + 18px tinted
-  // tool glyph (measured 2026-09-16).
-  // Recomputed only on tool/colour changes; toolCursorCss caches the data URL
-  // so a drag never re-parses the same SVG.
+  // small badge of that tool. See src/utils/toolCursors.js for the geometry and
+  // the reasoning.
+  // Reference behavior matched: Drawboard PDF's 42px crosshair + 18px tool glyph
+  // (measured 2026-09-16). The glyph is a fixed neutral colour and deliberately
+  // does NOT follow the stroke colour — owner ruling 2026-09-16.
+  // Recomputed only on tool changes; toolCursorCss caches the data URL so a
+  // drag never re-parses the same SVG.
   const armedToolCursor = useMemo(() => {
     if (!isInteractive) return null;
-    if (isCreationTool) return toolCursorCss(activeTool, strokeColor);
+    if (isCreationTool) return toolCursorCss(activeTool);
     // Text Select is the PDF's own text, not a mark: it keeps the I-beam.
     if (activeTool === 'select' && selectionMode !== 'lasso') {
-      return toolCursorCss('select', strokeColor);
+      return toolCursorCss('select');
     }
     return null;
-  }, [isInteractive, isCreationTool, activeTool, selectionMode, strokeColor]);
+  }, [isInteractive, isCreationTool, activeTool, selectionMode]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)

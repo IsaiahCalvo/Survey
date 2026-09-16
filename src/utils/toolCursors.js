@@ -2,19 +2,25 @@
  * toolCursors.js — the cursor that tells you which tool is in your hand.
  *
  * Intended UX: with a drawing tool armed, the pointer over the page is a
- * crosshair with a small badge of that tool clipped to its lower right, and the
- * badge is drawn in the colour the next mark will be. You can look at the page
- * — not up at the toolbar — and know both what you are about to draw and what
- * colour it will come out. Before this, every drawing tool in Survey showed the
- * same bare `crosshair`, so the armed tool was invisible once your eyes left
- * the toolbar, and the stroke colour was invisible everywhere.
+ * crosshair with a small badge of that tool clipped to its lower right. You can
+ * look at the page — not up at the toolbar — and know what you are about to
+ * draw. Before this, every drawing tool in Survey showed the same bare
+ * `crosshair`, so the armed tool was invisible once your eyes left the toolbar.
  *
- * Reference behavior matched: Drawboard PDF, which uses a 42px crosshair with
- * an 18px mini tool icon in the current stroke colour (measured 2026-09-16).
- * Same geometry here: a 42x42 image, hotspot dead centre of the crosshair, an
- * 18-ish badge in the corner.
+ * Reference behavior matched: Drawboard PDF, which uses a 42px crosshair with an
+ * 18px mini tool icon (measured 2026-09-16). Same geometry here: a 42x42 image,
+ * hotspot dead centre of the crosshair, an 18-ish badge in the corner.
  *
- * Three rules this file keeps, and why:
+ * The badge does NOT take the stroke colour. Owner ruling 2026-09-16: the tool
+ * glyph beside the cursor must not change colour with the stroke colour. It is
+ * drawn in the crosshair's own ink on a white chip, so one fixed pair of colours
+ * reads on a white page, a dark page and a photo alike — a tinted glyph would
+ * vanish the moment someone picked white or pale yellow, and the whole point is
+ * that you can see which tool you are holding. (Same reasoning as the standing
+ * rule against backdrop-dependent colour transforms on annotations: never bet on
+ * what is behind you.) The colour of the next mark is the colour control's job.
+ *
+ * Three more rules this file keeps, and why:
  *   - Pan is NOT in here. The grab hand is a system cursor everyone already
  *     reads, and a crosshair would lie about what the drag does.
  *   - Select gets a crosshair with a marquee badge — it drags out a box like
@@ -22,13 +28,6 @@
  *   - Text gets a badge too, but only while the tool is armed over the page.
  *     Once a text editor is open the editor's own I-beam wins, because there
  *     the pointer is placing a caret, not starting a new box.
- *
- * The crosshair itself is always dark-on-white, never tinted. A white or pale
- * yellow stroke colour would make a tinted crosshair vanish over a white page,
- * and the whole point is that you can see it. The colour is carried by the
- * badge's glyph and its border instead, where a white chip guarantees contrast.
- * (This is the same reason the project forbids backdrop-dependent colour
- * transforms on annotations: never bet on what is behind you.)
  *
  * Everything is a plain string, so this runs in a test with no DOM, and the
  * result is cached — the browser re-parses a data-URL cursor on every
@@ -42,7 +41,10 @@ export const CURSOR_HOTSPOT = 13;
 /** Where the tool badge sits — clear of the crosshair arms, no overlap. */
 const BADGE = { x: 22, y: 22, size: 19, inset: 2.5 };
 
-/** The crosshair's own ink. Fixed, for the contrast reason in the header. */
+/**
+ * The one ink every part of the cursor is drawn in, and the halo behind it.
+ * Fixed on purpose — see the colour ruling in the header.
+ */
 const CROSSHAIR_INK = '#161a22';
 const CROSSHAIR_HALO = '#ffffff';
 
@@ -87,26 +89,18 @@ export function hasToolCursor(toolId) {
   return Object.prototype.hasOwnProperty.call(TOOL_CURSOR_GLYPHS, toolId);
 }
 
-/** Anything that is not a plain CSS colour token is not going in an SVG. */
-const SAFE_COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/]+\)|[a-z]{3,20})$/i;
-const FALLBACK_COLOR = '#161a22';
-
-export function normalizeCursorColor(color) {
-  const raw = typeof color === 'string' ? color.trim() : '';
-  return SAFE_COLOR.test(raw) ? raw : FALLBACK_COLOR;
-}
-
 /**
- * Build the 42x42 SVG for one tool in one colour.
+ * Build the 42x42 SVG for one tool.
  *
  * Paint order matters: halo strokes go down first so the ink sits on top of
  * its own outline, and the badge chip is painted last so it covers anything it
- * happens to reach.
+ * happens to reach. Nothing here is interpolated from user input — the only
+ * variable is which glyph path comes out of the table above — so no colour
+ * string can reach the markup.
  */
-export function buildToolCursorSvg(toolId, color) {
+export function buildToolCursorSvg(toolId) {
   const glyph = TOOL_CURSOR_GLYPHS[toolId];
   if (!glyph) return null;
-  const ink = normalizeCursorColor(color);
   const scale = (BADGE.size - BADGE.inset * 2) / 24;
   const gx = BADGE.x + BADGE.inset;
   const gy = BADGE.y + BADGE.inset;
@@ -126,25 +120,23 @@ export function buildToolCursorSvg(toolId, color) {
     `<path d="${arms}" stroke="${CROSSHAIR_HALO}" stroke-width="3.2" opacity="0.9"/>`,
     `<path d="${arms}" stroke="${CROSSHAIR_INK}" stroke-width="1.4"/>`,
     `</g>`,
-    // The chip: white so any stroke colour reads, bordered in that colour so a
-    // pale glyph still announces what the next mark will look like.
-    `<rect x="${BADGE.x}" y="${BADGE.y}" width="${BADGE.size}" height="${BADGE.size}" rx="5" fill="#ffffff" stroke="${ink}" stroke-width="1.6"/>`,
+    // The chip: white, outlined and drawn in the crosshair's own ink, so the
+    // badge reads the same over a white page, a dark page and a photo.
+    `<rect x="${BADGE.x}" y="${BADGE.y}" width="${BADGE.size}" height="${BADGE.size}" rx="5" fill="#ffffff" stroke="${CROSSHAIR_INK}" stroke-width="1.6"/>`,
     `<g transform="translate(${gx} ${gy}) scale(${scale.toFixed(4)})" fill="none" stroke-linecap="round" stroke-linejoin="round">`,
     `<path d="${glyph}" stroke="#ffffff" stroke-width="5"${dash}/>`,
-    `<path d="${glyph}" stroke="${ink}" stroke-width="2.6"${dash}/>`,
+    `<path d="${glyph}" stroke="${CROSSHAIR_INK}" stroke-width="2.6"${dash}/>`,
     `</g>`,
     `</svg>`,
   ].join('');
 }
 
 /**
- * Cache keyed by tool + colour. A drag can reassign the cursor dozens of times
- * a second, and every assignment of a fresh data URL is a fresh SVG parse.
+ * Cache keyed by tool. Nothing else varies, so one entry per tool is the whole
+ * cache — and every assignment of a fresh data URL is a fresh SVG parse, which
+ * a drag would otherwise pay for dozens of times a second.
  */
 const cursorCache = new Map();
-
-/** Keep the cache from growing without bound if a colour picker is scrubbed. */
-const CURSOR_CACHE_LIMIT = 128;
 
 /**
  * The full CSS `cursor` value for a tool, e.g.
@@ -155,17 +147,14 @@ const CURSOR_CACHE_LIMIT = 128;
  * push it there) the user still gets a crosshair rather than an arrow.
  * Returns null for tools that should keep their system cursor.
  */
-export function toolCursorCss(toolId, color) {
+export function toolCursorCss(toolId) {
   if (!hasToolCursor(toolId)) return null;
-  const ink = normalizeCursorColor(color);
-  const key = `${toolId}|${ink}`;
-  const cached = cursorCache.get(key);
+  const cached = cursorCache.get(toolId);
   if (cached) return cached;
-  const svg = buildToolCursorSvg(toolId, ink);
+  const svg = buildToolCursorSvg(toolId);
   if (!svg) return null;
   const value = `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${CURSOR_HOTSPOT} ${CURSOR_HOTSPOT}, crosshair`;
-  if (cursorCache.size >= CURSOR_CACHE_LIMIT) cursorCache.clear();
-  cursorCache.set(key, value);
+  cursorCache.set(toolId, value);
   return value;
 }
 

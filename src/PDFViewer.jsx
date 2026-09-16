@@ -3146,7 +3146,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // moves the mouse, otherwise the new tool is invisible until they twitch.
       // Tools that own a badge cursor get the same image the page surface uses
       // (see src/utils/toolCursors.js), so the switch and the hover agree.
-      const armedCursor = toolCursorCss(activeTool, strokeColor);
+      const armedCursor = toolCursorCss(activeTool);
       if (armedCursor) forcedCursor = armedCursor;
       else if (activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
@@ -33328,15 +33328,17 @@ ${pageBlocks}
                                     // UX 2026-09-16: with the Text tool armed but no
                                     // editor open, this surface is where you DRAG OUT a
                                     // new text box — so it wears the armed-tool cursor
-                                    // (crosshair + a "T" badge in the current colour)
-                                    // like every other creation tool. The I-beam belongs
+                                    // (crosshair + a neutral "T" badge — the badge
+                                    // never takes the stroke colour, owner ruling
+                                    // 2026-09-16) like every other creation tool.
+                                    // The I-beam belongs
                                     // to the editor: once one is open this overlay hands
                                     // its pointer events over and the editor's own
                                     // `cursor: text` takes the caret work. Falls back to
                                     // the old I-beam if the image cursor is refused.
                                     cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox')
                                       ? undefined
-                                      : (toolCursorCss('text', strokeColor) || 'text'),
+                                      : (toolCursorCss('text') || 'text'),
                                     zIndex: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 100 : 102,
                                     pointerEvents: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 'none' : 'auto',
                                   }}
