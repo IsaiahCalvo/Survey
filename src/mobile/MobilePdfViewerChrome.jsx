@@ -9,6 +9,7 @@ import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
@@ -343,7 +344,12 @@ const RailButton = ({ active = false, disabled = false, icon, label, onClick, ch
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
     aria-label={label}
-    title={label}
+    // UX 2026-09-16: on a tablet or a narrow desktop window this shell gets a
+    // real pointer, so the hover hint names the key that arms the tool
+    // ("Rectangle  R") exactly as the desktop chip does. A finger never sees
+    // it, and the aria-label stays the plain name so a screen reader never
+    // reads the keycap as part of the control's name.
+    title={tooltipForLabel(label)}
     disabled={disabled}
     onClick={onClick}
     {...buttonProps}

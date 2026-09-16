@@ -37,6 +37,7 @@ import { createContext, useContext, useLayoutEffect, useMemo, useRef } from 'rea
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
+import { tooltipForLabel } from '../utils/toolShortcuts.js';
 
 /**
  * The canonical tooltip look. Every tooltip in the app is painted from this one
@@ -164,13 +165,23 @@ export function FloatingTooltip({ tooltip }) {
  * hides on click so the chip does not sit over a menu the control just opened.
  */
 export function makeTooltipBinding(setTooltip) {
+  // UX 2026-09-16: every chip goes through tooltipForLabel on the way in, so a
+  // control whose name IS a tool name automatically shows the key that arms it
+  // ("Rectangle  R"). Doing it here rather than at each call site means a tool
+  // added later cannot be the one that forgets its badge, and the hundreds of
+  // non-tool chips ("Zoom in", "Undo", "Font color") are returned untouched
+  // because no shortcut answers to those names.
+  // Reference behavior matched: Drawboard PDF's tool tooltips, which print the
+  // name followed by a keycap. The control's own aria-label is NOT touched —
+  // a screen reader must not read a keycap as part of a control's name.
   // A pointer press is followed by focus on most buttons. Without this guard,
   // onMouseDown hides the tooltip and onFocus paints it again at once. Keep the
   // pressed control quiet until the pointer leaves it, then allow a fresh hover.
   const pressedControls = new WeakSet();
   let anchorObserver = null;
   const stopWatchingAnchor = () => { anchorObserver?.disconnect(); anchorObserver = null; };
-  return (text, placement = 'below') => {
+  return (rawText, placement = 'below') => {
+    const text = tooltipForLabel(rawText);
     if (!text) return {};
     const show = (e) => {
       const el = e?.currentTarget;

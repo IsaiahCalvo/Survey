@@ -24299,7 +24299,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (
         document.body.getAttribute('data-readonly') === 'true' &&
         !isFormField && !e.metaKey && !e.ctrlKey && !e.altKey &&
-        ['p', 'h', 'e', 't', 'q', 'l', 'a', 'c', 'g', 'k'].includes(e.key.toLowerCase())
+        // UX: the blocked set is derived from the one shortcut map
+        // (src/utils/toolShortcuts.js) rather than retyped here, so adding a
+        // drawing tool can never quietly leave its letter live on a document
+        // the user is not allowed to draw on.
+        READ_ONLY_BLOCKED_KEYS.includes(e.key.toLowerCase())
       ) {
         return;
       }
@@ -24455,6 +24459,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         e.preventDefault();
         setActiveTool('polyline');
+        return;
+      }
+
+      // 'R' key to switch to the Rectangle Tool (only when no modifiers).
+      // UX: R is the letter Drawboard PDF gives the rectangle, so anyone
+      // arriving from Drawboard finds it where they left it. The full map,
+      // and why each letter is what it is, lives in src/utils/toolShortcuts.js.
+      if ((e.key === 'r' || e.key === 'R') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('rect');
+        return;
+      }
+
+      // 'O' key to switch to the Ellipse Tool (only when no modifiers).
+      // UX: Drawboard uses E for the ellipse, but E has been Survey's Eraser
+      // for far longer (and Shift+E its Partial erase — a pair that only reads
+      // right while E is the eraser). O is the oval's letter in Figma and
+      // Sketch, so it still lands where a designer's finger expects.
+      if ((e.key === 'o' || e.key === 'O') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('ellipse');
+        return;
+      }
+
+      // 'M' key to put the tools down and switch to Pan (only when no
+      // modifiers). UX: "M for move the page". Holding Space already pans
+      // momentarily without disarming the current tool; M is for when you want
+      // the tool put down for good. H would be the usual hand-tool letter but
+      // the Highlighter owns it here.
+      if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('pan');
         return;
       }
 
