@@ -36,7 +36,13 @@ test('Text group uses the exact Lucide Case Sensitive icon on desktop and mobile
 
   assert.match(iconSource, /<path d="m2 16 4\.039-9\.69a\.5\.5 0 0 1 \.923 0L11 16" \/>/);
   assert.match(iconSource, /<circle cx="18\.5" cy="12\.5" r="3\.5" \/>/);
-  assert.match(iconSource, /stroke-width="2"/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, icon-set consistency pass): the
+  // Lucide geometry above is still exactly Lucide's, but the weight is the house
+  // 1.5 rather than Lucide's own 2. At 2 this glyph painted 1.58px beside Pan's
+  // 1.19px in the same rail column. Owner ruling of this pass: one stroke weight
+  // across the set. The glyph's identity — which is what this test is named for —
+  // is asserted by the two path/circle matches above and is untouched.
+  assert.match(iconSource, /stroke-width="1.5"/);
   assert.match(iconsSource, /import textGroupIconUrl from '\.\/assets\/icons\/case-sensitive\.svg';/);
   assert.match(iconsSource, /textGroup:.*renderMaskIcon\(textGroupIconUrl,/);
   assert.match(appShell, /aria-label="Text"[\s\S]{0,500}<Icon name="textGroup" size=\{18\}/);

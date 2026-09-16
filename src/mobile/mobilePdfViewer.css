@@ -394,9 +394,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--gold-bg, #2a2218);
 }
 
-/* UX 2026-09-16 (sizing pass): the rail is Drawboard's 40pt-wide rail. It has
-   no side padding — the chips centre themselves — so nothing sticks out past
-   the rail's edge and the rail can never scroll sideways. */
+/* UX 2026-09-16 (sizing pass + rail-defect pass, merged): the rail is
+   Drawboard's 40pt-wide rail, and it has NO horizontal padding. Both matter for
+   the same defect: at 44px wide with 4px of side padding every 44px button sat
+   outside the rail's content box, so the active tool's gold outline lost its left
+   and right edges and rendered as two detached rules, and the overflow made a
+   40pt rail horizontally scrollable — a light sideways drag shifted the whole
+   tool column left and it did not spring back. Owner rule: a rail is never
+   scrollable. Everything inside .mobile-pdf-tools__main is centred by that
+   element, so removing the padding moves no control; the footer below carries
+   align-self so it stays on the same centre line. */
 .mobile-pdf-tools {
   width: var(--mobile-rail-w);
   height: 100%;
@@ -421,15 +428,23 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   gap: var(--mobile-rail-gap);
   overflow-y: auto;
+  /* Owner rule: the rail never scrolls sideways. overflow-y:auto on its own
+     computes overflow-x to auto too, which is how a 44pt rail became draggable. */
+  overflow-x: hidden;
   scrollbar-width: none;
 }
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
+/* The chip token, never a hard pixel width: the rail is 40 wide with a 1px right
+   border, so its content box is 39. A 44px button put every chip past that edge,
+   which is what clipped the active tool's gold outline and made the column
+   scrollable. A 30px chip leaves clearance on both sides. */
 .mobile-pdf-tools__button {
   width: var(--mobile-rail-chip);
   height: var(--mobile-rail-chip);
   min-height: var(--mobile-rail-chip);
+  min-width: 0;
   padding: 0;
   display: grid;
   place-items: center;
@@ -487,14 +502,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-color: transparent;
 }
 
-/* The mode caret stays pinned to the chip's right edge, as it always has been;
-   it just follows the chip down to 30px. Its own ::after keeps a finger-sized
-   target over a deliberately small glyph. */
+/* The mode caret hugs the Select family's own right edge (right:0, not a hard
+   left offset), so it follows the chip down to 30px and can never hang past the
+   rail and lose its right side the way it used to. Its own ::after keeps a
+   finger-sized target over a deliberately small glyph. */
 .mobile-pdf-tools__select-caret {
   position: absolute;
-  /* 2px in from the chip's right edge — the same clearance the caret had when
-     the chip was 44px wide. */
-  right: 2px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 8px;
@@ -718,11 +732,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 50%;
 }
 
-/* UX 2026-09-16: the footer column is the same 30px chip as the rail above it
-   — "More", sync, history and the active-users avatar are rail buttons like
-   any other, so they take the rail chip token instead of three private sizes.
-   The translate offsets are the existing hand-set nudges; they are untouched,
-   so the bottom of the stack still lands exactly where it did. */
+/* UX 2026-09-16: the footer column is the same rail chip as the column above it
+   — "More", sync, history and the active-users avatar are rail buttons like any
+   other, so they take the rail chip token instead of three private sizes.
+   align-self keeps the footer on the rail's centre line now that the rail has no
+   side padding to offset it. The translate offsets are the existing hand-set
+   nudges; they are untouched, so the bottom of the stack still lands exactly
+   where it did. */
 .mobile-pdf-tools__footer {
   margin-top: auto;
   align-self: center;
@@ -736,7 +752,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   transform: translateY(34px);
 }
 
+/* UX 2026-09-16: the rail chip token, matching the footer that holds it and the
+   three buttons stacked under it. At the inherited 44 it was wider than its own
+   container and was clipped on both sides, like the rail buttons above it. */
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button {
+  width: var(--mobile-rail-chip);
+  min-width: var(--mobile-rail-chip);
   height: var(--mobile-rail-chip);
   min-height: var(--mobile-rail-chip);
 }

@@ -1552,15 +1552,20 @@ export default function App({ devPreviewReturnTab = null }) {
                   className={`btn chrome-control${isSelect ? ' chrome-control--split' : ''} ${isActive ? 'btn-active' : 'btn-default'}`}
                   style={isSelect ? { position: 'relative' } : undefined}
                 >
-                  {/* UX: 22 / 20, not the shared CHROME_GLYPH 18. These two
-                      glyphs under-fill their viewBox, so they are drawn a
-                      size or two larger to carry the SAME optical weight as
-                      their 18px neighbours. The pair is pinned by
-                      tests/selectModes.test.mjs — do not "unify" it without
-                      re-measuring the painted ink first. */}
+                  {/* UX 2026-09-16: ONE glyph size for the whole top tool row.
+                      Pan rendered at 20 and Select at 22 while Draw, Shapes and
+                      Text rendered at 18 — a 22% spread in the single
+                      most-looked-at row, so it never read as one set. 18 is the
+                      row size because three of the five already used it and
+                      because growing the others would grow the bar. The control
+                      BOX around it is the shared desktop-sizing one
+                      (.chrome-control / .chrome-control--split), so Pan and
+                      Select are the same height as their neighbours too.
+                      Pinned by tests/selectModes.test.mjs and
+                      tests/iconSetConsistency.test.mjs. */}
                   <Icon
                     name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
-                    size={isSelect ? 22 : 20}
+                    size={18}
                     style={isSelect ? { transform: 'translateX(-3px)' } : undefined}
                   />
                   {isSelect && (

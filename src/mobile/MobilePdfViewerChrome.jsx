@@ -356,6 +356,13 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
 
+/* UX 2026-09-16 (icon-set pass + sizing pass, merged): ONE glyph size per rail
+   tier, and no per-glyph exceptions inside a tier. The rail used to run 19 with
+   the Select cursor at 21, so Select was visibly the odd one out down a column
+   where everything else lined up. The size now comes from RAIL_GLYPH for a rail
+   tool and SUBTOOL_GLYPH for a sub-tool, because those are the two chip sizes
+   (30px and 24px) and each glyph sits at the same two-thirds fill inside its own
+   chip. Do not pass a bare number here. */
 const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
   <button
     type="button"
@@ -490,6 +497,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         }}
       />
       <div className="mobile-pdf-header__document">
+        {/* UX 2026-09-16: 17, the size undo/redo and the page chevrons use. At 21
+            the back chevron was a third bigger than the identical chevron glyph
+            two controls to its right. */}
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
@@ -1759,11 +1769,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               }}
             >
               {/* UX: 8px full-contrast caret keeps the phone's only mode
-                  disclosure legible at 1x in both active and idle states. */}
+                  disclosure legible at 1x in both active and idle states.
+                  2026-09-16: currentColor, not a hard-coded cream. The colour was
+                  a literal, so when the Select family went active and its glyph
+                  turned gold the caret stayed cream — one control showing two
+                  different active colours. */}
               <Icon
                 name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
                 size={8}
-                color="#e8e2d4"
+                color="currentColor"
               />
             </button>
           </div>
@@ -2140,6 +2154,9 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open pages, search, and bookmarks"
         onClick={onToggleHub}
       >
+        {/* UX 2026-09-16: one size across all three dock controls; they ran
+            21 / 18 / 22. DOCK_GLYPH is that size, two thirds of the 30px dock
+            chip the sizing pass settled on. */}
         <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_GLYPH} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
         <Icon name="chevronDown" size={12} color="currentColor" />

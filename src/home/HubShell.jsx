@@ -409,7 +409,13 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
       onClick={() => !disabled && onNav && onNav(key)}
       title={disabled ? 'Templates is a Pro feature' : undefined}
     >
-      <span className="ico"><Icon name={icon} size={14} /></span>
+      {/* UX 2026-09-16: currentColor, so all three tabs read as one icon set and
+          the selected tab's own icon changes with it. Documents and Templates
+          were picking up their content-type brand colours (blue and purple) by
+          default, which meant two of the three tabs ignored the selected state
+          entirely while Projects followed it. The brand colours still drive the
+          document and template rows themselves; a tab strip is not a row. */}
+      <span className="ico"><Icon name={icon} size={14} color="currentColor" /></span>
       {label}
       {disabled ? <span style={{ marginLeft: 'auto' }}><Icon name="lock" size={11} color="var(--ink-200)" /></span> : null}
     </button>
