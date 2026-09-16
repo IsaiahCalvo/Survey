@@ -323,7 +323,12 @@ const PDFSidebar = React.forwardRef(({
         borderBottom: '1px solid #2a3140',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        // UX 2026-09-16: when the rail is collapsed to its 48px strip, the
+        // toggle is the top icon of a single icon column, so it sits on that
+        // column's centre line like everything below it. Right-aligning it
+        // there left it 3.5px off-axis from Pages / Search / Bookmarks /
+        // Spaces. Expanded, it keeps its right-edge home.
+        justifyContent: (!mobileMode && isCollapsed) ? 'center' : 'flex-end',
         background: '#12151c'
       }}>
         <button
