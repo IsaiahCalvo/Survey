@@ -49,6 +49,39 @@
 //     (`process.hrtime(t0)`, `process.cpuUsage(before)`), or any arithmetic on
 //     a duration (`Number(ns) / 1e6`). Only these are wall-clock budgets.
 //
+// ---------------------------------------------------------------------------
+// 2026-09-15, third pass — THE DATA-FLOW PASS FOLLOWS VALUES, NOT `=` SIGNS.
+//
+// The pass above was one regex over `name = …` assignments, so it only ever
+// learned about durations bound with an equals sign. The single most ordinary
+// way to write a timing helper in this repository — a plain function
+// DECLARATION — has no `=` in it, so
+//
+//     function elapsedSince(startedAt) { return Date.now() - startedAt; }
+//     const budgetMs = elapsedSince(startedAt);
+//     assert.ok(budgetMs < 500, 'too slow');
+//
+// walked straight through, while the identical helper spelled
+// `const elapsedSince = (startedAt) => …` was caught — a hole in the detector,
+// not a stated limit. The pass now follows a duration through every in-file
+// shape it can reach:
+//
+//   * a FUNCTION whose return expression is a duration is duration-returning,
+//     however it is written — declaration, function expression, arrow, class
+//     method, object-literal method — and every call of it is a duration,
+//     whether bound first or called inline inside the assertion.
+//   * a function returning an OBJECT LITERAL records which of its keys hold
+//     durations, so `const { value, elapsedMs } = measure(…)` marks elapsedMs
+//     and leaves value alone.
+//   * an assignment TARGET may be dotted: `timings.elapsed = Date.now() - t0`
+//     binds the name `timings.elapsed`, and the assertion on it is caught.
+//   * an ARRAY that has had a duration pushed into it is a sample collection.
+//     The array is not itself a duration — `samples.length` is a count — but a
+//     reading taken out of it is: `Math.min(...samples)`, `samples.reduce(…)`,
+//     `samples.sort()[0]`, `samples.at(0)`.
+//
+// All four grow together to a fixed point, because each feeds the others.
+//
 // A trailing argument that is a bare string or template literal is the
 // assertion's MESSAGE, and is ignored: `assert.equal(rows.length, 3,
 // `took ${elapsedMs}ms`)` asserts on a row count, not on the clock.
@@ -60,6 +93,25 @@
 // CI_PERF_TEST_FILES by explicit listing, and the lists in
 // scripts/ci-perf-tests.mjs remain the first line of defence; this guard is the
 // net under them, not a replacement for reading them.
+//
+// HOW TO RUN THIS FILE AND ITS TWO VERIFICATION SUITES. One at a time:
+//
+//     node --test tests/ciBlockingPathWallClockBudgets.test.mjs
+//     node --test tests/ciWallClockGuardDetector.test.mjs
+//     node --test tests/ciWallClockGuardHelperFlow.test.mjs
+//
+// `node --test tests/ci*.test.mjs` — several of them in ONE invocation — is NOT
+// supported and reports a failure that means nothing. Both verification suites
+// prove the guard by WRITING a probe test file into tests/, leaving it there
+// while they run the guard as a child process, and deleting it afterwards.
+// node's own runner runs the files it was handed in parallel worker processes,
+// so a live probe from one file is in the tree — and therefore in a blocking
+// shard — while this guard is scanning, and the guard correctly reports it and
+// goes red. Verified: the three together fail every time; each on its own
+// passes every time.
+//
+// Run them singly, or through `node scripts/run-node-tests.mjs`, which spawns
+// exactly one file at a time and is what CI uses.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -84,10 +136,11 @@ const ACKNOWLEDGED = new Map([
     + 'is a correctness gate'],
 ]);
 
-/** The two guard files themselves: they talk about clocks, they do not use them. */
+/** This guard and its verification suites: they talk about clocks, never use them. */
 const GUARD_FILES = new Set([
   'tests/ciBlockingPathWallClockBudgets.test.mjs',
   'tests/ciWallClockGuardDetector.test.mjs',
+  'tests/ciWallClockGuardHelperFlow.test.mjs',
 ]);
 
 // --- the clock surface -----------------------------------------------------
@@ -110,8 +163,57 @@ const DIFFERENCE_CALL = new RegExp([
 ].join('|'));
 
 const IDENT = String.raw`[A-Za-z_$][A-Za-z0-9_$]*`;
-const word = (name) => new RegExp(String.raw`(?<![.\w$])${name}\b`);
+/** A dotted assignment target: `elapsed`, `timings.elapsed`, `this.spans.total`. */
+const TARGET = String.raw`${IDENT}(?:\s*\.\s*${IDENT})*`;
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
+/**
+ * `name` as a whole reference: never the tail of a longer identifier, and never
+ * somebody else's property — `elapsed` does not match `timings.elapsed`, while
+ * the dotted name `timings.elapsed` does.
+ */
+const wordSource = (name) => String.raw`(?<![.\w$])`
+  + name.split('.').map((part) => escapeRegExp(part.trim())).join(String.raw`\s*\.\s*`)
+  + String.raw`(?![\w$])`;
+
+/** Each identifier is looked up against every file; build its regex once. */
+const patternCache = new Map();
+function cachedPattern(key, build) {
+  let pattern = patternCache.get(key);
+  if (!pattern) { pattern = build(); patternCache.set(key, pattern); }
+  return pattern;
+}
+
+const word = (name) => cachedPattern(`w:${name}`, () => new RegExp(wordSource(name)));
 const mentions = (text, names) => [...names].some((name) => word(name).test(text));
+
+/**
+ * A reference to an array of samples. Unlike `word` a leading `.` is allowed,
+ * because the read that matters is the spread: `Math.min(...samples)`.
+ */
+const collectionSource = (name) => String.raw`(?<![\w$])${escapeRegExp(name)}(?![\w$])`;
+
+/** A call to `name`, with or without a receiver: `since(t)` and `watch.since(t)`. */
+const callOf = (name) => cachedPattern(
+  `c:${name}`,
+  () => new RegExp(String.raw`(?<![\w$])${escapeRegExp(name)}\s*\(`),
+);
+const calls = (text, names) => [...names].some((name) => callOf(name).test(text));
+
+/** Index of the bracket that closes the one at `open`, or -1 if none does. */
+function matchingBracket(code, open) {
+  const closer = { '(': ')', '[': ']', '{': '}' }[code[open]];
+  let depth = 0;
+  for (let index = open; index < code.length; index += 1) {
+    if (code[index] === code[open]) depth += 1;
+    else if (code[index] === closer) {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
 
 /**
  * Blank out comments and the literal TEXT of strings, keeping `${…}`
@@ -188,17 +290,22 @@ function blankCommentsAndStringText(source) {
  * identifier, `$`, `_` or `(` rather than a digit.
  */
 function differenceOfInstants(text, instants) {
-  const instant = [CLOCK, ...[...instants].map((name) => String.raw`(?<![.\w$])${name}\b`)]
-    .join('|');
+  const instant = [CLOCK, ...[...instants].map(wordSource)].join('|');
   return new RegExp(String.raw`(?:${instant})\s*-\s*[A-Za-z_$(]`).test(text)
     || new RegExp(String.raw`-\s*(?:${instant})`).test(text);
 }
 
-/** Every `name = <initialiser>` in the file, initialisers cut at `;` or newline. */
+/**
+ * Every `<target> = <initialiser>` in the file, initialisers cut at `;` or
+ * newline. The target may be dotted, so `timings.elapsed = Date.now() - t0`
+ * is a binding of the name `timings.elapsed` — a duration parked on an object
+ * property is still a duration. `==`, `===` and `=>` are not assignments and
+ * are skipped.
+ */
 function bindings(code) {
   const found = [];
   const pattern = new RegExp(
-    String.raw`(?:^|[;{}()\s])(?:(?:const|let|var)\s+)?(${IDENT})\s*(?:[-+*/]?=)\s*([^;\n]*)`,
+    String.raw`(?:^|[;{}()\s])(?:(?:const|let|var)\s+)?(${TARGET})\s*(?:[-+*/]?=)(?![=>])\s*([^;\n]*)`,
     'gm',
   );
   let match;
@@ -206,33 +313,241 @@ function bindings(code) {
     // A value being built as a string — a cache-busting URL, a log label — is
     // never a duration, however many clocks went into spelling it.
     if (/^\s*[`'"]/.test(match[2])) continue;
-    found.push([match[1], match[2]]);
+    found.push([match[1].replace(/\s+/g, ''), match[2]]);
   }
   return found;
 }
 
-/** Light data-flow: which identifiers hold an instant, and which a duration. */
+/** Every `const { a, b: c } = <initialiser>` in the file. */
+function destructurings(code) {
+  const found = [];
+  const pattern = new RegExp(
+    String.raw`(?:const|let|var)\s*\{([^{}]*)\}\s*=\s*([^;\n]*)`,
+    'g',
+  );
+  const entryPattern = new RegExp(String.raw`^\s*(${IDENT})\s*(?::\s*(${IDENT}))?`);
+  let match;
+  while ((match = pattern.exec(code)) !== null) {
+    const entries = [];
+    for (const part of match[1].split(',')) {
+      const pair = entryPattern.exec(part);
+      if (pair) entries.push({ key: pair[1], local: pair[2] ?? pair[1] });
+    }
+    if (entries.length > 0) found.push({ entries, initialiser: match[2] });
+  }
+  return found;
+}
+
+/** Every `samples.push(<argument>)`, argument read with balanced brackets. */
+function arrayPushes(code) {
+  const found = [];
+  const pattern = new RegExp(
+    String.raw`(?<![\w$])(${TARGET})\s*\.\s*(?:push|unshift)\s*\(`,
+    'g',
+  );
+  let match;
+  while ((match = pattern.exec(code)) !== null) {
+    const open = match.index + match[0].length - 1;
+    const close = matchingBracket(code, open);
+    if (close === -1) continue;
+    found.push([match[1].replace(/\s+/g, ''), code.slice(open + 1, close)]);
+  }
+  return found;
+}
+
+/** Words that can head a `keyword (…) {` block but are not function names. */
+const BLOCK_KEYWORDS = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'with', 'do', 'else', 'return',
+  'function', 'typeof', 'await', 'new', 'case', 'try', 'finally', 'class',
+  'import', 'export', 'delete', 'void', 'in', 'of', 'yield',
+]);
+
+/** Every `return <expression>` inside a function body, brackets balanced. */
+function returnExpressions(body) {
+  const found = [];
+  const pattern = /(?<![.\w$])return(?![\w$])/g;
+  let match;
+  while ((match = pattern.exec(body)) !== null) {
+    let index = match.index + 'return'.length;
+    let depth = 0;
+    let expression = '';
+    while (index < body.length) {
+      const char = body[index];
+      if (depth === 0 && (char === ';' || (char === '\n' && expression.trim()))) break;
+      if (char === '(' || char === '[' || char === '{') depth += 1;
+      else if (char === ')' || char === ']' || char === '}') {
+        if (depth === 0) break;
+        depth -= 1;
+      }
+      expression += char;
+      index += 1;
+    }
+    if (expression.trim()) found.push(expression.trim());
+  }
+  return found;
+}
+
+/**
+ * Every named function in the file that has a `{ … }` body, paired with the
+ * expressions it returns. Covers declarations (`function elapsedSince(t) {`),
+ * class and object-literal methods (`since(t) {`), and named function
+ * expressions and arrows (`const f = (t) => {`, `f: function (t) {`).
+ *
+ * A concise arrow — `const f = (t) => Date.now() - t` — needs nothing here:
+ * `bindings` already binds the whole arrow to the name, so the name itself
+ * reads as a duration and every call of it is caught by `mentions`.
+ */
+function namedFunctions(code) {
+  const heads = [
+    new RegExp(
+      String.raw`(?<![.\w$])(?:(?:async|static|get|set)\s+)*(?:function\s*\*?\s+)?`
+      + String.raw`(${IDENT})\s*\([^()]*\)\s*\{`,
+      'g',
+    ),
+    new RegExp(
+      String.raw`(?<![.\w$])(${IDENT})\s*[:=]\s*(?:async\s+)?`
+      + String.raw`(?:function\s*\*?\s*[A-Za-z0-9_$]*\s*)?\([^()]*\)\s*(?:=>\s*)?\{`,
+      'g',
+    ),
+  ];
+  const found = [];
+  const seen = new Set();
+  for (const head of heads) {
+    let match;
+    while ((match = head.exec(code)) !== null) {
+      if (BLOCK_KEYWORDS.has(match[1])) continue;
+      const open = match.index + match[0].length - 1;
+      if (seen.has(open)) continue;
+      seen.add(open);
+      const close = matchingBracket(code, open);
+      if (close === -1) continue;
+      found.push({ name: match[1], returns: returnExpressions(code.slice(open + 1, close)) });
+    }
+  }
+  return found;
+}
+
+/** Top-level `key: value` pairs, and shorthands, of an object literal. */
+function objectProperties(text) {
+  const found = [];
+  const keyed = new RegExp(String.raw`^\s*(${IDENT})\s*:([\s\S]*)$`);
+  const shorthand = new RegExp(String.raw`^\s*(${IDENT})\s*$`);
+  for (const part of splitArguments(text.slice(1, -1))) {
+    const pair = keyed.exec(part);
+    if (pair) { found.push([pair[1], pair[2]]); continue; }
+    const bare = shorthand.exec(part);
+    if (bare) found.push([bare[1], bare[1]]);
+  }
+  return found;
+}
+
+/**
+ * Light data-flow. Four sets come out of it, and the assertion scanner reads
+ * all four:
+ *
+ *   instants   — identifiers holding a clock READING (`const now = Date.now()`).
+ *                Fixture timestamps and cache-busting ids live here; asserting
+ *                on one is not a wall-clock budget.
+ *   durations  — identifiers holding an ELAPSED quantity, however it got there:
+ *                a difference written inline, a value read off a duration-
+ *                returning helper, a property assigned a difference
+ *                (`timings.elapsed = …`), or a name destructured out of a
+ *                measuring helper's result object.
+ *   collections — arrays that have had a duration pushed into them. A sample
+ *                array is not itself a duration; `Math.min(...samples)` is.
+ *   functions  — functions whose return expression is a duration, so that
+ *                `elapsedSince(t0)` — whether bound first or called inline
+ *                inside the assertion — reads as one.
+ *
+ * The four grow together to a fixed point, because each can feed the others: a
+ * helper's return is classified from the durations known so far, and its call
+ * sites then create new durations. The loop is bounded so a pathological file
+ * cannot spin.
+ */
 function clockValues(code) {
   const declarations = bindings(code);
+  const destructured = destructurings(code);
+  const pushes = arrayPushes(code);
+  const functions = namedFunctions(code);
+
   const instants = new Set();
   const durations = new Set();
+  const collections = new Set();
+  const durationFunctions = new Set();
+  /** helper name -> the keys of its returned object that hold durations. */
+  const durationKeys = new Map();
+
+  /** True when a duration is read out of one of the sample arrays. */
+  const reducesCollection = (text) => [...collections].some((name) => {
+    const reference = collectionSource(name);
+    return new RegExp(String.raw`Math\s*\.\s*(?:min|max)\s*\([^()]*${reference}`).test(text)
+      || new RegExp(
+        String.raw`${reference}\s*(?:\[|\.\s*(?:reduce|at|sort|find|every|some|pop|shift)\b)`,
+      ).test(text);
+  });
+
+  const isDuration = (text) => DIFFERENCE_CALL.test(text)
+    || mentions(text, durations)
+    || differenceOfInstants(text, instants)
+    || calls(text, durationFunctions)
+    || reducesCollection(text);
+
   let changed = true;
-  while (changed) {
+  let rounds = 0;
+  while (changed && rounds < 16) {
     changed = false;
+    rounds += 1;
+
+    for (const { name, returns } of functions) {
+      for (const expression of returns) {
+        if (expression.startsWith('{')) {
+          for (const [key, value] of objectProperties(expression)) {
+            if (!isDuration(value)) continue;
+            const keys = durationKeys.get(name) ?? new Set();
+            if (keys.has(key)) continue;
+            keys.add(key);
+            durationKeys.set(name, keys);
+            changed = true;
+          }
+          continue;
+        }
+        if (!durationFunctions.has(name) && isDuration(expression)) {
+          durationFunctions.add(name);
+          changed = true;
+        }
+      }
+    }
+
+    for (const [name, argument] of pushes) {
+      if (!collections.has(name) && isDuration(argument)) {
+        collections.add(name);
+        changed = true;
+      }
+    }
+
     for (const [name, initialiser] of declarations) {
       if (!durations.has(name)) {
-        const isDuration = DIFFERENCE_CALL.test(initialiser)
-          || mentions(initialiser, durations)
-          || differenceOfInstants(initialiser, instants);
-        if (isDuration) { durations.add(name); changed = true; continue; }
+        if (isDuration(initialiser)) { durations.add(name); changed = true; continue; }
       }
       if (!instants.has(name) && CLOCK_CALL.test(initialiser)) {
         instants.add(name);
         changed = true;
       }
     }
+
+    for (const { entries, initialiser } of destructured) {
+      const helper = [...durationKeys.keys()].find((name) => callOf(name).test(initialiser));
+      if (!helper) continue;
+      for (const { key, local } of entries) {
+        if (durations.has(local) || !durationKeys.get(helper).has(key)) continue;
+        durations.add(local);
+        changed = true;
+      }
+    }
   }
-  return { instants, durations };
+  return {
+    instants, durations, collections, durationFunctions, reducesCollection,
+  };
 }
 
 /** Split a balanced argument list on its top-level commas. */
@@ -256,7 +571,9 @@ const MESSAGE_ARGUMENT = /^\s*(?:`[\s\S]*`|'[\s\S]*'|"[\s\S]*")\s*$/;
 /** Every assertion in `source` whose value arguments carry an elapsed time. */
 export function wallClockAssertions(source) {
   const code = blankCommentsAndStringText(source);
-  const { instants, durations } = clockValues(code);
+  const {
+    instants, durations, durationFunctions, reducesCollection,
+  } = clockValues(code);
   const hits = [];
   const callSite = new RegExp(
     String.raw`(?<![.\w$])(assert(?:\s*\.\s*${IDENT})*|expect)\s*\(`,
@@ -281,6 +598,8 @@ export function wallClockAssertions(source) {
       .join(',');
     const offending = mentions(subject, durations)
       || differenceOfInstants(subject, instants)
+      || calls(subject, durationFunctions)
+      || reducesCollection(subject)
       || (CLOCK_CALL.test(subject) && /[<>]=?/.test(subject));
     if (offending) {
       hits.push({

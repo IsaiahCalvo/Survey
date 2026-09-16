@@ -45,7 +45,7 @@
 // is likewise invisible to it.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, rmSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
@@ -69,6 +69,21 @@ test('generated probe: an ordinary elapsed-time budget in a blocking shard', () 
 });
 `;
 
+/**
+ * How many shards ci.yml actually runs. Hard-coding four here would make this
+ * test lie the day the matrix is re-balanced: it would ask for shards that do
+ * not exist, the probe would look homeless, and the assertion would fail for a
+ * reason that has nothing to do with the detector. Read the matrix instead.
+ */
+function shardCountFromWorkflow() {
+  const ci = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const matrix = /^\s*shard:\s*\[([^\]]*)\]/m.exec(ci);
+  assert.ok(matrix, 'ci.yml no longer declares a `shard:` matrix for the test job');
+  const shards = matrix[1].split(',').map((entry) => entry.trim()).filter(Boolean);
+  assert.ok(shards.length > 0, 'ci.yml declares an empty `shard:` matrix');
+  return shards.length;
+}
+
 function runFromRoot(args) {
   // NODE_TEST_CONTEXT is set by the node:test runner for the processes it
   // spawns. Inheriting it here would put the child's reporter into the parent's
@@ -87,8 +102,9 @@ test('the blocking-shard wall-clock guard catches an ordinary elapsed-time budge
 
   // The probe must actually be in a blocking shard, or the guard is right to
   // stay green and this test would be measuring nothing.
-  const shards = [1, 2, 3, 4].map((shard) => runFromRoot([
-    'scripts/run-node-tests.mjs', `--shard=${shard}/4`, '--list',
+  const shardCount = shardCountFromWorkflow();
+  const shards = Array.from({ length: shardCount }, (_, index) => runFromRoot([
+    'scripts/run-node-tests.mjs', `--shard=${index + 1}/${shardCount}`, '--list',
   ]).stdout.split('\n').filter(Boolean));
   const home = shards.findIndex((files) => files.includes(relative(root, probePath)));
   assert.notEqual(home, -1, 'the probe did not land in any blocking shard');
