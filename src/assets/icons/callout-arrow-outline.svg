@@ -8,9 +8,15 @@
   empty rounded box with a leader did not read as a TEXT callout, and it was
   indistinguishable in kind from the plain Rectangle tool glyph.
 
-  The T is sized off the bubble the way the text-box icon's T is sized off its
-  own box (about 37% of the box), which lands it at 4.8 x 4.8 units, centred in
-  the bubble with an even 2.35-unit margin above and below.
+  The T is sized off the bubble the way the text-box icon's T is sized off its own
+  box: 37.5% of the box's shorter side, because that glyph's T is 6 units in a
+  16-unit box. On this 11-unit-tall bubble that is 4.125 x 4.125 units, centred in
+  the bubble with an even 2.69-unit margin above and below.
+
+  2026-09-16 (desktop sweep): it was 4.8 x 4.8 = 43.6% of the bubble, which is a
+  sixth again bigger than the fraction it is supposed to be copying — so the two
+  Ts sitting side by side in the same sub-toolbar read as two different letters.
+  4.125 is the same fraction as the text-box T, which is what the rule says.
 
   2026-09-16: the corner radius is 1.22, a ninth of the bubble's shorter side —
   ICON_CORNER_RADIUS_RATIO in src/Icons.jsx, the same roundness as the Rectangle
@@ -41,8 +47,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <rect x="6.75" y="2.95" width="14.5" height="11" rx="1.22"/>
-  <path d="M11.6 6.05H16.4"/>
-  <path d="M14 6.05V10.85"/>
+  <path d="M11.9375 6.3875H16.0625"/>
+  <path d="M14 6.3875V10.5125"/>
   <path d="M9.6 13.95 2.95 21.05"/>
   <path d="M7.95 20.89 2.95 21.05 2.79 16.05"/>
 </svg>

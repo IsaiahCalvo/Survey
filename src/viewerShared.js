@@ -338,11 +338,38 @@ export const REGION_EDIT_TOOL = 'region-edit';
 // REFERENCE = Drawboard PDF on the web: an 18px glyph inside a 34px tool
 // button (ratio 0.53) and a ~14px glyph inside a 24px value chip. Before this
 // pass Survey's top row alone mixed 14 / 15 / 18 / 20 / 22.
-// The two glyphs still drawn larger than CHROME_GLYPH — Pan at 20 and the
-// Select cursor at 22 — under-fill their own viewBox, so they need the extra
-// size to carry the same optical weight; tests/selectModes.test.mjs pins them.
+// 2026-09-16 (desktop sweep): nothing in the top row is drawn larger than
+// CHROME_GLYPH any more. Pan used to render at 20 and the Select cursor at 22,
+// on the argument that they under-fill their own viewBox — both are 18 now, and
+// their artwork carries the row's weight at 18 because both assets are drawn on
+// the house 24 grid at the house 1.5 stroke (src/assets/icons/pan-hand-closed.svg
+// and selection-cursor-rounded.svg). tests/selectModes.test.mjs pins the size.
 export const CHROME_GLYPH = 18;
 export const CHROME_FIELD_GLYPH = 14;
+
+// UX 2026-09-16 (desktop sweep): the RAIL tier — the left document rail and the
+// right Survey rail. Same idea as the chrome tokens above: one control box and
+// one glyph size, so a rail never mixes its own numbers. Two sizes per rail,
+// because a rail holds two kinds of control:
+//   - a TAB (Pages, Search, Bookmarks, Spaces, Survey): the full width of the
+//     48px rail, 40px tall, RAIL_GLYPH inside it.
+//   - everything else (the collapse/expand chevron at the top, Version history
+//     in the collaboration footer, and the whole zoom / page / fit footer):
+//     a RAIL_CONTROL square with a RAIL_CONTROL_GLYPH inside it.
+// Before this pass one rail could show 14, 16, 17, 18 and 20 in a single 48px
+// column, and its footer mixed 24px, 28px and 36x28 boxes.
+// RAIL_CONTROL / RAIL_CONTROL_GLYPH are the chrome's own value-chip pair (24 and
+// 14) rather than new numbers — a rail footer control and a value chip are the
+// same size of thing.
+export const RAIL_GLYPH = CHROME_GLYPH;
+export const RAIL_CONTROL = 24;
+export const RAIL_CONTROL_GLYPH = CHROME_FIELD_GLYPH;
+// The one rail control that hangs a caret beside its glyph (Fit options) needs
+// the extra width, exactly as the top bar's Select split button does. Its caret
+// is the dropdown caret size (10), not the glyph size — see the CARETS note in
+// styles.css: a caret beside a full-size glyph has to stay out of its way.
+export const RAIL_SPLIT_CONTROL_W = 36;
+export const RAIL_CARET = 10;
 
 // Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
 export const hexToRgba = (hex, opacity = 0.2) => {

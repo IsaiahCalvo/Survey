@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hyperlink glyph for the text-markup sub-toolbar.
+
+  2026-09-16 (desktop sweep): stroke-width is the house 1.5, down from 2.375.
+  At 2.375 this was the heaviest glyph in a row whose lightest ran 1.5 — a 58%
+  spread inside one toolbar. Owner ruling of this pass: ONE stroke weight across
+  the set, and "the asset is sha256-pinned" is no longer a reason to stay off it;
+  the pin in tests/textSelectionActionBarMounted.test.mjs was re-taken for this
+  weight. The geometry (a chain link, the Lucide/SVG-Repo drawing) is untouched.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 24 24" fill="none">
   <g clip-path="url(#clip0_429_11074)">
-    <path d="M8 11.9999H16" stroke="#292929" stroke-width="2.375" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M9 7.99994H6C3.79086 7.99994 2 9.7908 2 11.9999C2 14.2091 3.79086 15.9999 6 15.9999H9" stroke="#292929" stroke-width="2.375" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M15 7.99994H18C20.2091 7.99994 22 9.7908 22 11.9999C22 14.2091 20.2091 15.9999 18 15.9999H15" stroke="#292929" stroke-width="2.375" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8 11.9999H16" stroke="#292929" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9 7.99994H6C3.79086 7.99994 2 9.7908 2 11.9999C2 14.2091 3.79086 15.9999 6 15.9999H9" stroke="#292929" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M15 7.99994H18C20.2091 7.99994 22 9.7908 22 11.9999C22 14.2091 20.2091 15.9999 18 15.9999H15" stroke="#292929" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <defs>
     <clipPath id="clip0_429_11074"><rect width="24" height="24" fill="white"/></clipPath>

@@ -18,7 +18,12 @@ test('redact glyph is on the 24-unit grid at one stroke weight', async () => {
   const svg = await icon();
   assert.match(svg, /viewBox="0 0 24 24"/);
   const widths = new Set([...svg.matchAll(/stroke-width="([\d.]+)"/g)].map((m) => m[1]));
-  assert.deepEqual([...widths], ['1.75']);
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): 1.75 -> 1.5. The
+  // 1.75 was tuned against a row that then ran 1.42-1.78; hyperlink has since
+  // come down to the house 1.5 too, which left redact the one heavy glyph in the
+  // row. Owner ruling of this pass: ONE stroke weight across the set. What this
+  // test is FOR — one weight only, on the 24 grid — is unchanged.
+  assert.deepEqual([...widths], ['1.5']);
   assert.doesNotMatch(svg, /<script|onload\s*=|<!DOCTYPE|<!ENTITY/i);
 });
 
@@ -33,13 +38,13 @@ test('redact keeps a solid bar that outweighs the letter strokes', async () => {
   // Slimming the bar to the row's stroke weight was tried and killed the
   // meaning — the glyph just read as the letter A. The bar must stay clearly
   // heavier than the strokes, and wide enough to overhang the letter.
-  assert.ok(h >= 1.5 * 1.75, `bar height ${h} must stay well above the 1.75 stroke`);
+  assert.ok(h >= 1.5 * 1.5, `bar height ${h} must stay well above the 1.5 stroke`);
   assert.ok(w >= 14, `bar width ${w} must overhang the letter`);
 });
 
 test('redact ink is centred with the house optical margin', async () => {
   const svg = await icon();
-  const half = 1.75 / 2;
+  const half = 1.5 / 2;
   const letter = /<path d="M([\d. ]+)"/.exec(svg)[1].trim().split(/\s+/).map(Number);
   const rect = /<rect[^>]*>/.exec(svg)[0];
   const n = (k) => Number(new RegExp(`${k}="([\\d.]+)"`).exec(rect)[1]);

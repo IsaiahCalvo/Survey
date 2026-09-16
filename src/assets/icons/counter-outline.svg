@@ -11,10 +11,12 @@
   stroke 1.5 — so the two read as siblings and the ring picks up the row's
   ~5% optical margin instead of touching its box.
 
-  The "1" is drawn at 2.0 units rather than the ring's 1.5. That is the optical
-  sizing rule, not an inconsistency: the numeral is under half the height of the
-  ring around it, and a small form needs relatively heavier strokes to read at
-  the same weight.
+  2026-09-16 (desktop sweep): the "1" is drawn at the ring's 1.5, not its own
+  2.0. It was 2.0 on the optical-sizing argument (a small form needs relatively
+  heavier strokes to read at the same weight), and that argument is real — but
+  the owner's ruling for this pass overrides it: ONE stroke weight across the
+  whole set, no per-form compensation, and no exemption for an asset just because
+  nothing imports it yet. One weight is what the set is judged on.
 
   Its horizontal placement splits the difference between the two things that
   could be called "centred": centring the stem alone leaves the flag hanging
@@ -30,5 +32,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="#000" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
-  <path d="M10.7 9.5 12.7 7.6V16.4" stroke-width="2"/>
+  <path d="M10.7 9.5 12.7 7.6V16.4" stroke-width="1.5"/>
 </svg>

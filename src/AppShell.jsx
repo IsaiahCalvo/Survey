@@ -54,7 +54,7 @@ import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 
-import { CHROME_FIELD_GLYPH, CHROME_GLYPH, FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
+import { CHROME_FIELD_GLYPH, CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 function RailLiveZoomText({ fallback, viewerId }) {
@@ -1707,7 +1707,15 @@ export default function App({ devPreviewReturnTab = null }) {
                 );
               })}
 
-              <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
+              {/* Intended UX: the thin rule reads as part of ONE gutter, not as a
+                  wider break that makes the row look like two toolbars pushed
+                  together. It carries no margin of its own — the row's
+                  gap: var(--chrome-gap) and the side block's matching padding
+                  do all the spacing, so the gutter beside the rule measures the
+                  same 4px as every other pair of neighbouring controls.
+                  Reference behaviour matched: Drawboard PDF's tool strip, which
+                  holds one constant gutter across its whole width. */}
+              <div style={{ width: '1px', height: '20px', background: '#5a6473' }} />
               </div>
 
               {/* Draw category */}
@@ -1818,7 +1826,15 @@ export default function App({ devPreviewReturnTab = null }) {
                 paddingLeft: 'var(--chrome-gap)',
                 whiteSpace: 'nowrap'
               }}>
-              <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
+              {/* Intended UX: the thin rule reads as part of ONE gutter, not as a
+                  wider break that makes the row look like two toolbars pushed
+                  together. It carries no margin of its own — the row's
+                  gap: var(--chrome-gap) and the side block's matching padding
+                  do all the spacing, so the gutter beside the rule measures the
+                  same 4px as every other pair of neighbouring controls.
+                  Reference behaviour matched: Drawboard PDF's tool strip, which
+                  holds one constant gutter across its whole width. */}
+              <div style={{ width: '1px', height: '20px', background: '#5a6473' }} />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
@@ -3076,11 +3092,24 @@ export default function App({ devPreviewReturnTab = null }) {
               const fitMode = api.zoomMode;
               // Fall back to fit-page icon when mode is MANUAL or unknown.
               const fitIconMode = (fitMode === ZOOM_MODES.FIT_WIDTH || fitMode === ZOOM_MODES.FIT_HEIGHT) ? fitMode : ZOOM_MODES.FIT_PAGE;
-              // Shared icon-button chassis; variants spread size on top.
+              // Shared icon-button chassis.
+              // UX 2026-09-16 (desktop sweep): the BOX is part of the chassis now,
+              // at the shared rail size (--rail-control / RAIL_CONTROL). Variants
+              // used to spread their own width/height on top, which is how one
+              // footer ended up with 28px zoom buttons beside 24px page steppers
+              // beside a 36x28 Fit cell. Intended UX: one control box and one
+              // glyph size for the whole rail footer, the way the Pages tabs above
+              // it are one box and one glyph. Reference behaviour matched:
+              // Drawboard PDF, whose status bar holds one button size end to end.
+              // Only the Fit button, which hangs a caret beside its glyph, takes a
+              // wider box (RAIL_SPLIT_CONTROL_W) — the same exception the top
+              // bar's Select split button takes.
               const footerBtn = (disabled = false) => ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                width: `${RAIL_CONTROL}px`,
+                height: `${RAIL_CONTROL}px`,
                 padding: 0,
                 background: 'transparent',
                 border: 'none',
@@ -3199,18 +3228,18 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
                       aria-label="Zoom in"
-                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
+                      style={footerBtn()}
                     >
-                      <Icon name="plus" size={14} />
+                      <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
                     </button>
                     {zoomValue}
                     <button
                       onClick={api.zoomOut}
                       {...chromeTip('Zoom out', 'left')}
                       aria-label="Zoom out"
-                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
+                      style={footerBtn()}
                     >
-                      <Icon name="minus" size={14} />
+                      <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
                     </button>
 
                     <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
@@ -3221,9 +3250,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={api.goToPreviousPage}
                         disabled={atFirstPage}
                         aria-label="Previous page"
-                        style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px', pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                        style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
                       >
-                        <Icon name="chevronUp" size={14} />
+                        <Icon name="chevronUp" size={RAIL_CONTROL_GLYPH} />
                       </button>
                     </span>
                     {pageValue}
@@ -3238,9 +3267,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={api.goToNextPage}
                         disabled={atLastPage}
                         aria-label="Next page"
-                        style={{ ...footerBtn(atLastPage), width: '24px', height: '24px', pointerEvents: atLastPage ? 'none' : 'auto' }}
+                        style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
                       >
-                        <Icon name="chevronDown" size={14} />
+                        <Icon name="chevronDown" size={RAIL_CONTROL_GLYPH} />
                       </button>
                     </span>
 
@@ -3258,13 +3287,26 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
-                        style={{ position: 'relative', width: '36px', height: '28px', padding: 0, background: 'transparent', border: 'none', borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', cursor: 'pointer' }}
+                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6' }}
                       >
-                        <svg viewBox="0 0 12 12" aria-hidden="true" style={{ position: 'absolute', left: '2px', top: '50%', width: '12px', height: '12px', transform: 'translateY(-50%)', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.8 }}>
-                          <path d="M7.5 2.5 4 6l3.5 3.5" />
-                        </svg>
+                        {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
+                            hand-written <svg>. This caret was drawn inline at
+                            stroke 1.8 in a 12px box — 3.6 units on the house 24
+                            grid, 140% over the house 1.5 — so it was the heaviest
+                            mark in the rail, sitting between Zoom out and the page
+                            steppers. It still points LEFT: the popup flies out
+                            leftward over the PDF, and the direction is the thing
+                            this caret says. RAIL_CARET (10) is the dropdown caret
+                            size, deliberately smaller than the glyph beside it —
+                            see the CARETS note in styles.css. */}
+                        <Icon
+                          name="chevronLeft"
+                          size={RAIL_CARET}
+                          color="currentColor"
+                          style={{ position: 'absolute', left: '2px', top: '50%', transform: 'translateY(-50%)' }}
+                        />
                         <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {renderFitIcon(fitIconMode, 16)}
+                          {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                         </span>
                       </button>
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
@@ -3283,18 +3325,18 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
                     aria-label="Zoom out"
-                    style={{ ...footerBtn(), width: '24px', height: '24px' }}
+                    style={footerBtn()}
                   >
-                    <Icon name="minus" size={14} />
+                    <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
                   </button>
                   {zoomValue}
                   <button
                     onClick={api.zoomIn}
                     {...chromeTip('Zoom in', 'above')}
                     aria-label="Zoom in"
-                    style={{ ...footerBtn(), width: '24px', height: '24px' }}
+                    style={footerBtn()}
                   >
-                    <Icon name="plus" size={14} />
+                    <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
                   </button>
 
                   <div style={{ width: '1px', height: '20px', background: '#2a3140' }} />
@@ -3305,9 +3347,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
                       aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px', pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                      style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
                     >
-                      <Icon name="chevronLeft" size={14} />
+                      <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
                     </button>
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
@@ -3320,9 +3362,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.goToNextPage}
                       disabled={atLastPage}
                       aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), width: '24px', height: '24px', pointerEvents: atLastPage ? 'none' : 'auto' }}
+                      style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
                     >
-                      <Icon name="chevronRight" size={14} />
+                      <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
                     </button>
                   </span>
 
@@ -3338,13 +3380,22 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-label="Fit options"
                       data-active={fitMode !== ZOOM_MODES.MANUAL}
                       {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ height: '26px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 8px', border: 'none', background: 'transparent', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
+                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
                     >
-                      {renderFitIcon(fitIconMode, 15)}
+                      {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                       <span>{api.zoomDropdownLabel}</span>
-                      <svg viewBox="0 0 12 12" aria-hidden="true" style={{ width: '11px', height: '11px', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.8 }}>
-                        <path d={api.isZoomMenuOpen ? 'M2.5 4.5 6 8 9.5 4.5' : 'M2.5 7.5 6 4 9.5 7.5'} />
-                      </svg>
+                      {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
+                          hand-written <svg>. This caret was drawn inline at stroke
+                          1.8 in an 11px box — 3.6 units on the house 24 grid, 140%
+                          over the house 1.5 — so it read heavier than every glyph
+                          beside it in the same footer. It keeps flipping with the
+                          menu: the popup opens upward here, so the resting state
+                          points up and the open state points down. */}
+                      <Icon
+                        name={api.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'}
+                        size={RAIL_CARET}
+                        color="currentColor"
+                      />
                     </button>
                     {api.isZoomMenuOpen && fitMenu({ right: 0, bottom: '100%', marginBottom: '6px' })}
                   </div>

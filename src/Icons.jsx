@@ -360,6 +360,32 @@ const ICON_RENDERERS = {
 
     shapes: (size, color, style, className) => renderMaskIcon(shapesIconUrl, size, color, style, className),
 
+    // 2026-09-16 (desktop sweep): the photo and video glyphs the Survey Marker
+    // notes sheet used to hand-write as inline <svg>. Both drew at stroke 2 on a
+    // 24 grid, so they painted a third heavier than every icon in the set, and
+    // the video frame's rx was a flat 2 on a 12-unit side (a sixth) against the
+    // set's ninth. Same shapes as before, on the house rules: ICON_STROKE_WIDTH,
+    // iconCornerRadius(), and the video glyph inset to the 19.5-unit ink envelope
+    // the Rectangle glyph sets (it used to span 21.5, so it read oversized).
+    image: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx={iconCornerRadius(18)} />
+          <circle cx="9" cy="9" r="2" />
+          <path d="M21 15 17.5 11.5 6 21" />
+        </g>
+      </svg>
+    ),
+
+    video: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="6.6" width="12.6" height="10.8" rx={iconCornerRadius(10.8)} />
+          <path d="M21 8.4 15.6 12 21 15.6Z" />
+        </g>
+      </svg>
+    ),
+
     // Shape icons.
     // Rectangle is the size reference for this row: an 18-unit box, so ink
     // including the stroke spans 19.5 of the 24 grid. It is also the corner

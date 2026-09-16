@@ -53,6 +53,21 @@
   --chrome-field-pad-x: 6px;
   --chrome-menu-w: 126px;          /* dropdown popover width */
   --chrome-menu-row-h: 34px;       /* dropdown popover row height */
+
+  /* UX 2026-09-16 (desktop sweep): the RAIL tier — the left document rail and
+     the right Survey rail. One control box and one glyph size per kind, so a
+     48px rail column never mixes its own numbers (it used to show 14, 16, 17,
+     18 and 20 at once, with 24px, 28px and 36x28 boxes in one footer).
+     The small pair is the chrome's own value-chip pair rather than new numbers:
+     a rail footer button and a value chip are the same size of thing.
+     The JS mirrors of these live in src/viewerShared.js as RAIL_* — <Icon size>
+     takes a NUMBER, so a var() string will not do there. Keep the two in step. */
+  --rail-tab-h: 40px;              /* Pages / Search / Bookmarks / Spaces / Survey */
+  --rail-glyph: 18px;              /* the glyph inside a rail tab */
+  --rail-control: 24px;            /* every other rail button, square */
+  --rail-control-glyph: 14px;      /* the glyph inside one */
+  --rail-split-control-w: 36px;    /* the one that hangs a caret beside its glyph (Fit) */
+  --rail-caret: 10px;              /* that caret — the dropdown caret size, not the glyph size */
 }
 
 

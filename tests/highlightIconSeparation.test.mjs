@@ -15,8 +15,18 @@ test('text highlight and the freehand highlighter use separate locked assets', a
   ]);
 
   assert.equal(createHash('sha256').update(textHighlight).digest('hex'), 'bfe4a937890f2bd90e59aa3eb8d2f9e3e0224bd77c9c7a2f3e75919f21e6e932');
-  assert.equal(createHash('sha256').update(highlighterTool).digest('hex'), '201fe900b4659980ee3e2329ae4b5ff97a2df1721709869526dd7ef41050adfe');
-  assert.equal(highlighterTool.toString('utf8').match(/stroke-width="7\.2"/g)?.length, 3);
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): the highlighter
+  // asset's sha256 and its stroke-width literal were both re-taken. Its stroke
+  // was 7.2 on its 128-unit viewBox = 1.35 on the house 24 grid, so it painted
+  // 10% lighter than every icon beside it in the draw sub-toolbar. It is now 8 =
+  // exactly the house 1.5. Owner ruling of this pass: ONE stroke weight across
+  // the set, and a sha256 pin is not a reason to stay off it — the pin exists to
+  // stop the asset drifting silently, and this change is neither silent nor
+  // drift. What this test is FOR — text highlight and the freehand highlighter
+  // being two separate locked assets, wired to separate renderers — is untouched,
+  // and the three-stroke count still guards the glyph's shape.
+  assert.equal(createHash('sha256').update(highlighterTool).digest('hex'), '7a167ae7d73bf7c288286468777f679c80a6e48c28fe685b7f1078f9ab6dbb50');
+  assert.equal(highlighterTool.toString('utf8').match(/stroke-width="8"/g)?.length, 3);
   assert.match(iconsSource, /formatHighlight:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(textHighlightUrl,/);
   assert.match(iconsSource, /highlighterTool:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(highlighterToolUrl,/);
   assert.match(iconsSource, /highlighter:\s*'highlighterTool'/);

@@ -63,7 +63,19 @@ test('callout icon shows a T inside the bubble, drawn like the text-box T', asyn
   assert.ok(Math.abs(barW - stemH) < 0.05, `T is ${barW} x ${stemH}, must be square`);
   const inner = [num('y') + 0.75, num('y') + num('height') - 0.75];
   assert.ok(Math.abs((barY - inner[0]) - (inner[1] - stemY1)) < 0.1, 'T sits centred in the bubble');
-  assert.ok(barW / num('height') > 0.3 && barW / num('height') < 0.5, `T is ${(barW / num('height') * 100).toFixed(0)}% of the bubble, want ~37%`);
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): the band 0.3-0.5 is
+  // replaced by the actual number, 0.375. The loose band let the T sit at 43.6%
+  // of the bubble while the comment and this message both said "~37%" — and 37.5%
+  // is not a taste call, it is the fraction the text-box glyph's T IS of its box
+  // (6 units in 16). Two Ts side by side in the same sub-toolbar have to be the
+  // same fraction of their boxes or they read as two different letters. Owner
+  // ruling of this pass: the callout T is drawn the way the text-box T is drawn.
+  const tFraction = barW / num('height');
+  assert.ok(
+    Math.abs(tFraction - 0.375) < 0.005,
+    `T is ${(tFraction * 100).toFixed(1)}% of the bubble, want 37.5% — the same `
+    + "fraction the text-box glyph's 6-unit T is of its 16-unit box",
+  );
 });
 
 test('callout is stroke artwork at the text-box icon weight', async () => {

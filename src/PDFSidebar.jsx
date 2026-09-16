@@ -20,7 +20,7 @@ import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
-import { CHROME_GLYPH } from './viewerShared';
+import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -36,9 +36,13 @@ const HistoryButton = ({ isActive, onClick }) => {
     {...tip('Version history', 'right')}
     aria-label="Version history"
     onClick={onClick}
+    // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph. It
+    // was a 17px glyph in a 28px box, so the one button in the left rail's
+    // collaboration footer used a size nothing else in that rail used — a 48px
+    // column showing 14, 16, 17 and 18 at once.
     style={{
-      width: '28px',
-      height: '28px',
+      width: `${RAIL_CONTROL}px`,
+      height: `${RAIL_CONTROL}px`,
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -54,7 +58,7 @@ const HistoryButton = ({ isActive, onClick }) => {
       whiteSpace: 'nowrap'
     }}
   >
-    <Icon name="history" size={17} color="currentColor" />
+    <Icon name="history" size={RAIL_CONTROL_GLYPH} color="currentColor" />
   </button>
   );
 };
@@ -343,12 +347,19 @@ const PDFSidebar = React.forwardRef(({
       }}>
         <button
           onClick={toggleCollapse}
+          // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph.
+          // It was a 16px chevron in a padding-derived 24px box — a fourth glyph
+          // size in a rail that already ran 17 and 18. The box measures the same
+          // 24 as before, so the 35px strip and the icon column's centre line are
+          // unchanged; nothing moves.
           style={{
             background: 'transparent',
             border: 'none',
             color: '#8d96a6',
             cursor: 'pointer',
-            padding: '4px',
+            ...(mobileMode
+              ? { padding: '4px' }
+              : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
             borderRadius: '4px',
             display: 'flex',
             alignItems: 'center',
@@ -358,7 +369,7 @@ const PDFSidebar = React.forwardRef(({
           onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
-          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={16} color="#8d96a6" />
+          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="#8d96a6" />
         </button>
       </div>
 
@@ -720,9 +731,9 @@ const PDFSidebar = React.forwardRef(({
               >
                 <Icon
                   name={tab.icon}
-                  size={CHROME_GLYPH}
+                  size={RAIL_GLYPH}
                   color="#8d96a6"
-                  style={{ width: `${CHROME_GLYPH}px`, height: `${CHROME_GLYPH}px`, flexShrink: 0 }}
+                  style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
                 />
               </button>
             </div>

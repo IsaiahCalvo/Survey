@@ -40,24 +40,48 @@ const EXEMPT_RENDERERS = new Map([
   ['oneDrive', 'the OneDrive brand logo, an <img>'],
 ]);
 
-const EXEMPT_ASSETS = new Map([
-  // Filled letterform marks. These are typographic glyphs (a highlighted A, a U
-  // with an underline, a struck-through S), not outline drawings, so they have no
-  // stroke to match. Their optical sizes still do not match each other — see the
-  // 2026-09-16 notDone list; all of them are sha256-pinned by existing tests.
-  ['text-bold.svg', 'filled letterform, sha256-pinned by tests/textSelectionActionBarMounted'],
-  ['text-italic.svg', 'filled letterform, sha256-pinned by tests/textSelectionActionBarMounted'],
-  ['text-underline.svg', 'filled letterform, sha256-pinned by tests/textSelectionActionBarMounted'],
-  ['text-strikethrough.svg', 'filled letterform, sha256-pinned by tests/textSelectionActionBarMounted'],
-  ['text-squiggle.svg', 'filled letterform, sha256-pinned by tests/textSelectionActionBarMounted'],
-  ['text-highlight.svg', 'filled letterform, sha256-pinned by tests/highlightIconSeparation'],
-  // Stroked, but off the house weight and frozen by an existing hash assertion.
-  // Unlocking any of these needs an owner ruling, not a quiet edit here.
-  ['text-hyperlink.svg', 'stroke 2.375, sha256-pinned by tests/textSelectionActionBarMounted'],
-  ['text-redact.svg', 'stroke 1.75, sha256-pinned by tests/textSelectionActionBarMounted and tests/redactIconSource'],
-  ['highlighter-tool.svg', 'stroke 7.2 on a 128 grid (1.35 house units), sha256- and count-pinned by tests/highlightIconSeparation'],
-  ['counter.svg', 'owner-approved filled tracing, sha256- and viewBox-pinned by tests/counterIconSource and tests/counterControlFollowup'],
-  ['counter-outline.svg', 'a prepared alternative to counter.svg that nothing imports yet'],
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): a STROKE WEIGHT is no
+ * longer an excusable thing. This list used to hold five assets whose stated
+ * reason was the weight itself ("stroke 2.375, sha256-pinned", "stroke 1.75,
+ * sha256-pinned", "stroke 7.2 on a 128 grid", "the numeral is drawn at 2.0",
+ * "nothing imports it yet"), which meant the one-weight rule could be opted out
+ * of by writing a sentence. All five were redrawn at the house 1.5 in this pass
+ * and their pins re-taken. What is left is the only excuse that is not a weight:
+ * the glyph is not an outline drawing at all.
+ *
+ * Every entry below is VERIFIED to be fill-drawn by the test further down — a
+ * listing here cannot hide a real outline stroke. Two kinds of stroke survive on
+ * a fill-drawn glyph and neither is an outline:
+ *   - a HAIRLINE that firms a filled edge (0.25 on a 224-unit letterform), and
+ *   - the MARK itself, the thing the glyph is about: the rule under a U, the bar
+ *     over an A. A mark's weight is the glyph's meaning, exactly as documented on
+ *     text-redact.svg's solid bar, and it is measured against its filled siblings
+ *     rather than the house stroke.
+ */
+const FILL_DRAWN_ASSETS = new Map([
+  // Filled letterform marks (a highlighted A, a U with an underline, a
+  // struck-through S). Their optical sizes still do not match each other — see
+  // the 2026-09-16 notDone list.
+  ['text-bold.svg', 'a filled letterform: its ink is fill, so it has no outline stroke to match'],
+  ['text-italic.svg', 'a filled letterform: its ink is fill, so it has no outline stroke to match'],
+  ['text-underline.svg', 'a filled letterform: its ink is fill, so it has no outline stroke to match'],
+  ['text-strikethrough.svg', 'a filled letterform: its ink is fill, so it has no outline stroke to match'],
+  ['text-squiggle.svg', 'a filled letterform whose squiggle rule is the mark, not an outline drawing'],
+  ['text-highlight.svg', 'a filled letterform behind a mask: no stroke anywhere in the file'],
+  ['counter.svg', 'an owner-approved filled tracing: its ink is fill, so it has no outline stroke'],
+]);
+
+/*
+ * The one stroke-drawn MARK in the set, and the band its filled siblings' marks
+ * occupy. text-underline.svg draws its rule as fill about 2.4 house units thick;
+ * text-squiggle.svg draws the same idea as a stroke, so it is held to the marks'
+ * band and not to the house outline weight. This is a list of ONE on purpose: a
+ * second entry means someone is using it to dodge the weight rule.
+ */
+const MARK_STROKE_BAND = [2.0, 3.0];
+const MARK_STROKES = new Map([
+  ['text-squiggle.svg', 'the squiggly rule under the U — the mark the glyph is about'],
 ]);
 
 /** Product of the uniform scale factors in an SVG/CSS transform string. */
@@ -210,7 +234,7 @@ test('every icon asset resolves to the same stroke weight on the 24 grid', async
   const offenders = [];
   let checked = 0;
   for (const file of files) {
-    if (EXEMPT_ASSETS.has(file)) continue;
+    if (FILL_DRAWN_ASSETS.has(file)) continue;
     const source = await readFile(new URL(file, ASSET_DIR), 'utf8');
     let sawStroke = false;
     for (const element of walk(source)) {
@@ -225,9 +249,71 @@ test('every icon asset resolves to the same stroke weight on the 24 grid', async
   assert.deepEqual(offenders, [], `assets off the house ${HOUSE_STROKE} weight:\n  ${offenders.join('\n  ')}`);
 });
 
-test('every exemption from the one-weight rule carries a reason', () => {
-  for (const [name, reason] of [...EXEMPT_RENDERERS, ...EXEMPT_ASSETS]) {
+test('every glyph held back from the one-weight rule carries a reason', () => {
+  for (const [name, reason] of [...EXEMPT_RENDERERS, ...FILL_DRAWN_ASSETS, ...MARK_STROKES]) {
     assert.ok(reason && reason.length > 20, `${name} needs a real reason, not "${reason}"`);
+  }
+});
+
+test('no glyph is excused from the house stroke weight', () => {
+  // The rule this guards: a stroke weight is not a thing a glyph can be let off.
+  // Before this pass five assets sat on the exemption list with the WEIGHT as
+  // their stated reason ("stroke 2.375, sha256-pinned", "stroke 7.2 on a 128
+  // grid", "the numeral is drawn at 2.0", "nothing imports it yet"), so the
+  // one-weight rule could be opted out of by writing a sentence. All five were
+  // redrawn at the house 1.5. The only excuse left is not being an outline
+  // drawing at all — which the next test verifies rather than believes.
+  for (const [name, reason] of [...EXEMPT_RENDERERS, ...FILL_DRAWN_ASSETS]) {
+    assert.doesNotMatch(
+      reason,
+      /stroke[- ]?width|\bstroke \d|\bpinned\b|\bimports? it\b/i,
+      `${name} may not be held back because of its stroke weight or a hash pin — `
+      + 'redraw it at the house weight and re-take the pin as a ruled decision. '
+      + `Reason given: "${reason}"`,
+    );
+  }
+  assert.equal(
+    MARK_STROKES.size,
+    1,
+    'MARK_STROKES is the squiggle rule and nothing else. A second entry means '
+    + 'someone is calling an outline drawing a "mark" to dodge the weight rule.',
+  );
+});
+
+test('nothing on the fill-drawn list hides an outline stroke', async () => {
+  const hairline = HOUSE_STROKE / 4;
+  for (const [file] of FILL_DRAWN_ASSETS) {
+    const source = await readFile(new URL(file, ASSET_DIR), 'utf8');
+    for (const element of walk(source)) {
+      const paintsFill = /fill\s*=\s*["'](?!none)/.test(element.raw);
+      if (paintsFill) {
+        // Ink made of fill may carry a hairline to firm its edge. Anything
+        // thicker is an outline drawing and belongs on the house weight.
+        assert.ok(
+          element.effective <= hairline,
+          `${file} <${element.tag}> is fill-drawn but strokes at `
+          + `${element.effective.toFixed(3)} house units, well over the ${hairline} `
+          + 'hairline that firms a filled edge. That is an outline drawing, so it '
+          + `is held to the house ${HOUSE_STROKE} like everything else.`,
+        );
+        continue;
+      }
+      // A stroke with no fill behind it is either the glyph's MARK or an outline
+      // drawing hiding on this list.
+      assert.ok(
+        MARK_STROKES.has(file),
+        `${file} <${element.tag}> strokes ${element.effective.toFixed(3)} house `
+        + 'units with no fill behind it, which makes it an outline drawing, not a '
+        + `fill-drawn glyph. Draw it at the house ${HOUSE_STROKE}.`,
+      );
+      const [lo, hi] = MARK_STROKE_BAND;
+      assert.ok(
+        element.effective >= lo && element.effective <= hi,
+        `${file} <${element.tag}> is the glyph's mark, so it is measured against `
+        + `its filled siblings' marks (${lo}-${hi} house units) rather than the `
+        + `house outline weight — and ${element.effective.toFixed(3)} is outside that band.`,
+      );
+    }
   }
 });
 
@@ -259,6 +345,41 @@ test('every vertex node circle in the set is the same radius', () => {
   };
   assert.equal(nodeTable('POLYGON_ICON_NODES'), 5);
   assert.equal(nodeTable('POLYLINE_ICON_NODES'), 4);
+});
+
+test('every rounded box in the set is rounded by the same ratio', async () => {
+  // 2026-09-16 (desktop sweep): new. shapes.svg carried a flat rx="1" on a
+  // 7.9-unit square (1/7.9), which made it rounder than every other box in the
+  // set; it is 0.88 (7.9/9) now. Nothing guarded the ratio, so it could drift
+  // again the same way the stroke weights and the handle radii both did.
+  const boxes = [];
+  const collect = (source, where) => {
+    for (const match of source.matchAll(/<rect\b[^>]*>/g)) {
+      const tag = match[0];
+      const n = (key) => {
+        const m = new RegExp(`${key}\\s*=\\s*["'{]([\\d.]+)`).exec(tag);
+        return m ? Number(m[1]) : null;
+      };
+      const [w, h, rx] = [n('width'), n('height'), n('rx')];
+      if (!w || !h || rx === null) continue;
+      boxes.push({ where, w, h, rx, expected: Math.round(Math.min(w, h) * (1 / 9) * 100) / 100 });
+    }
+  };
+  collect(iconsSource, 'src/Icons.jsx');
+  for (const file of (await readdir(ASSET_DIR)).filter((f) => f.endsWith('.svg'))) {
+    collect((await readFile(new URL(file, ASSET_DIR), 'utf8')).replace(/<!--[\s\S]*?-->/g, ''), file);
+  }
+
+  assert.ok(boxes.length >= 14, `expected the set's rounded boxes, found ${boxes.length}`);
+  const offenders = boxes
+    .filter((box) => Math.abs(box.rx - box.expected) > 0.01)
+    .map((box) => `${box.where}: ${box.w}x${box.h} box has rx ${box.rx}, want ${box.expected}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    'a rounded box is rounded by a ninth of its shorter side '
+    + `(ICON_CORNER_RADIUS_RATIO), so a big box and a small box look equally rounded:\n  ${offenders.join('\n  ')}`,
+  );
 });
 
 test('the node radius is the one on the text-box glyph the owner supplied', async () => {

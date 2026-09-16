@@ -63,12 +63,12 @@
 }
 
 .annotation-size-control__popover {
-  /* The literal below is declared FIRST and kept on purpose:
-     tests/annotationSizeControlList.test.mjs reads this file as text and
-     guards `width: 126px`. The token declaration after it wins in the
-     cascade, so --chrome-menu-w is what actually drives the popover and the
-     two can never drift apart. */
-  width: 126px;
+  /* Intended UX: this popover is the same width as every other dropdown in the
+     document chrome, so the width control and the line-style menu beside it open
+     to the same size. --chrome-menu-w in styles.css is the one place that width
+     is written. The literal 126px that used to sit above this line was there
+     only to satisfy a text assertion in
+     tests/annotationSizeControlList.test.mjs; that test reads the token now. */
   width: var(--chrome-menu-w, 126px);
   max-height: min(520px, calc(100vh - 24px));
   padding: 5px;

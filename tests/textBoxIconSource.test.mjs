@@ -42,7 +42,10 @@ test('Text group uses the exact Lucide Case Sensitive icon on desktop and mobile
   // 1.19px in the same rail column. Owner ruling of this pass: one stroke weight
   // across the set. The glyph's identity — which is what this test is named for —
   // is asserted by the two path/circle matches above and is untouched.
-  assert.match(iconSource, /stroke-width="1.5"/);
+  // The dot is escaped: unescaped, /stroke-width="1.5"/ matched any character
+  // there, so "1x5" or a future "1.75" would have passed a test whose whole point
+  // is the weight.
+  assert.match(iconSource, /stroke-width="1\.5"/);
   assert.match(iconsSource, /import textGroupIconUrl from '\.\/assets\/icons\/case-sensitive\.svg';/);
   assert.match(iconsSource, /textGroup:.*renderMaskIcon\(textGroupIconUrl,/);
   assert.match(appShell, /aria-label="Text"[\s\S]{0,500}<Icon name="textGroup" size=\{18\}/);

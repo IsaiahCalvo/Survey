@@ -26,7 +26,17 @@ test('annotation size presets render as an accessible vertical list with row pre
   assert.match(presetListRule, /display:\s*flex/);
   assert.match(presetListRule, /flex-direction:\s*column/);
   assert.doesNotMatch(presetListRule, /grid-template-columns/);
-  assert.match(styleSource, /\.annotation-size-control__popover\s*\{[^}]*width:\s*126px/s);
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): the literal 126px is
+  // replaced by the token. This assertion was the only reason the stylesheet
+  // declared `width: 126px` twice — a dead first declaration purely to satisfy a
+  // text match, with `width: var(--chrome-menu-w, 126px)` under it winning the
+  // cascade. Owner ruling of this pass: one shared size scale, written in one
+  // place. Asserting the token is also stricter: a hard-coded literal here would
+  // now fail, which is the drift the test is for.
+  assert.match(
+    styleSource,
+    /\.annotation-size-control__popover\s*\{[^}]*width:\s*var\(--chrome-menu-w, 126px\)/s,
+  );
   assert.match(styleSource, /grid-template-columns:\s*68px\s+1fr/);
   assert.doesNotMatch(styleSource, /grid-template-columns:\s*68px\s+1fr\s+16px/);
   assert.match(styleSource, /button\.is-active\s*\{[^}]*color:\s*#f4f6f8[^}]*background:\s*#2b313a/s);

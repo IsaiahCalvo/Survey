@@ -22,10 +22,16 @@
   size, and the triangle is widest of the three (11.0) because a pointed form
   reads smallest of all. Composition (circle top-left, square right, triangle
   bottom) is the owner's, unchanged.
+
+  2026-09-16 (desktop sweep): the square's rx is 0.88, a ninth of its 7.9-unit
+  side — ICON_CORNER_RADIUS_RATIO in src/Icons.jsx, the one corner-radius RATIO
+  the set is drawn to. It was a flat 1, which on this small a square came out at
+  1/7.9 and made it rounder than every other box in the set. Owner ruling of this
+  pass: one corner-radius ratio across the set.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="6.7" cy="6.7" r="4.16"/>
-  <rect x="13.55" y="4.75" width="7.9" height="7.9" rx="1"/>
+  <rect x="13.55" y="4.75" width="7.9" height="7.9" rx="0.88"/>
   <path d="M11 14.2 15.75 21.45 6.25 21.45Z"/>
 </svg>
