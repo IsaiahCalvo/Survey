@@ -82,7 +82,19 @@
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* UX 2026-09-16: hover/press feedback is a COLOUR change only, and a fast
+     one. Reference = Drawboard PDF, whose buttons transition
+     `color, background-color, border-color, fill, stroke` over 100ms
+     cubic-bezier(.4,0,.2,1) and nothing else. Survey used `all 0.2s`, which
+     animated the 1px hover lift and the shadow too, so a button visibly slid
+     and took twice as long to acknowledge the pointer. Listing the properties
+     means transform/box-shadow now land in one frame (no slide) while the
+     colour still eases. Do not put `all` back here. */
+  transition:
+    color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1729,3 +1741,51 @@ input[type="text"].space-add-pages-input:focus-visible {
 /* UX: both label copies share a cell; the hidden bold copy reserves menu width. */
 .select-mode-label { display: inline-grid; }
 .select-mode-label > span { grid-area: 1 / 1; }
+
+/* ===========================================================================
+   Shared "open" motion for popovers, menus, the tool sub-row and side panels
+   UX 2026-09-16.
+
+   Reference = Drawboard PDF, whose popovers and menus fade + grow in over
+   100ms and fade out over 150ms. Survey's popovers, colour picker, tool
+   sub-row and Pages panel all measured `transition: 0s / animation: none` —
+   they appeared in a single frame with no cue about where they came from.
+
+   These classes give every one of them the same short fade + small slide:
+   140ms in (inside Drawboard's 100-150ms band), 4-6px of travel from the
+   direction the surface is anchored, and an ease that settles rather than
+   overshoots. Surfaces that stay mounted and toggle a class (the mobile zoom
+   menu) also get a 130ms fade OUT; surfaces that unmount on close only get
+   the "in" half, because there is nothing left in the DOM to animate out.
+
+   `translate` (the standalone property) is used instead of `transform` on
+   purpose: several of these popovers already carry an inline
+   `transform: translate(-50%, 0)` for centring, and animating `transform`
+   would wipe it out mid-flight.
+   =========================================================================== */
+@keyframes surveySurfaceIn {
+  from { opacity: 0; translate: 0 -5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes surveySurfaceInFromLeft {
+  from { opacity: 0; translate: -6px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* Anchored below its trigger: slides down into place. */
+.survey-surface-in {
+  animation: surveySurfaceIn 140ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* Anchored to the left edge of the window: slides in from the left. */
+.survey-surface-in-left {
+  animation: surveySurfaceInFromLeft 140ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survey-surface-in,
+  .survey-surface-in-left {
+    animation: none;
+  }
+}

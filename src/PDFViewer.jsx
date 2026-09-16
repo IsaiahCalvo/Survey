@@ -33903,6 +33903,12 @@ ${pageBlocks}
         {isActive && pdfFile && activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
           <div
             data-chrome-strip="true"
+            /* UX 2026-09-16: the tool sub-row fades and slides down 5px as it
+               opens (140ms), the same cue Drawboard gives its own second row.
+               It used to appear in a single frame with no transition at all,
+               which read as a flicker over the top of the page. Honours
+               prefers-reduced-motion via the shared class in styles.css. */
+            className="survey-surface-in"
             style={{
               width: '100%',
               height: '34px',

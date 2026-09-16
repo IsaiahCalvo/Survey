@@ -463,7 +463,14 @@ const PDFSidebar = React.forwardRef(({
           )}
 
           {/* Panel Content */}
-          <div style={{
+          {/* UX 2026-09-16: the panel body fades and slides in 6px from the
+              left edge it is anchored to (140ms), so opening Pages reads as
+              the panel arriving rather than the page jumping. Drawboard's own
+              panel opens with a short fade. Desktop only — on mobile the sheet
+              already owns its slide-up motion (useMobileSheetMotion), and
+              stacking a second animation on top would fight it. The shared
+              class in styles.css honours prefers-reduced-motion. */}
+          <div className={mobileMode ? undefined : 'survey-surface-in-left'} style={{
             flex: 1,
             overflow: 'hidden',
             display: 'flex',

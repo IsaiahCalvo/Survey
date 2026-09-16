@@ -1852,7 +1852,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         />
                       </button>
                       {showFontColorPicker && (
-                        <div style={{
+                        /* UX 2026-09-16: same 140ms fade-and-slide as every
+                           other popover (Drawboard's 100ms fade+grow in). */
+                        <div className="survey-surface-in" style={{
                           position: 'absolute',
                           top: '100%',
                           left: '50%',
@@ -2436,7 +2438,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   };
                   const picker = (
-                    <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
+                    /* UX 2026-09-16: the colour popover fades and slides down
+                       5px as it opens (140ms), matching Drawboard's 100ms
+                       fade-and-grow. It used to pop in with transition 0s.
+                       The shared class animates `translate`, not `transform`,
+                       so the inline translate(-50%) centring below survives. */
+                    <div ref={annotationColorPickerRef} data-annotation-color-picker className="survey-surface-in" style={{
                       position: isTextMarkupPalette ? 'fixed' : 'absolute',
                       top: isTextMarkupPalette ? textMarkupPickerPosition.top : '100%',
                       left: isTextMarkupPalette ? textMarkupPickerPosition.left : '50%',

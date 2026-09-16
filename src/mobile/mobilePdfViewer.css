@@ -460,6 +460,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-select-mode__menu {
+  /* UX 2026-09-16: the selection-mode flyout used to appear in a single frame
+     with no transition. It now fades and slides down 5px over 150ms — the
+     same in-motion the zoom menu above already uses (Drawboard: 100ms fade +
+     grow in). It unmounts on close, so only the "in" half exists. */
+  animation: mobilePdfFlyoutIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
   position: fixed;
   z-index: 8999;
   width: min(180px, calc(100vw - 16px));
@@ -514,6 +519,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__divider.is-short { width: 20px; }
 
 .mobile-pdf-tools__subtools {
+  /* UX 2026-09-16: the rail's sub-tool strip used to pop in with no
+     transition. It now fades and slides in 6px from the rail it hangs off
+     over 150ms, matching the zoom menu's in-motion (Drawboard: 100ms fade +
+     grow in). It unmounts on close, so only the "in" half exists. */
+  animation: mobilePdfStripIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
   width: 34px;
   padding: 4px 0;
   display: flex;
@@ -3071,6 +3081,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   .mobile-pdf-header__zoom-menu.is-open {
     transition: visibility 0s !important;
   }
+  .mobile-pdf-select-mode__menu,
+  .mobile-pdf-tools__subtools {
+    animation: none !important;
+  }
+}
+
+@keyframes mobilePdfFlyoutIn {
+  from { opacity: 0; translate: 0 -5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mobilePdfStripIn {
+  from { opacity: 0; translate: -6px 0; }
+  to { opacity: 1; translate: 0 0; }
 }
 
 @media (max-width: 340px) {
