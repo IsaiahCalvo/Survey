@@ -842,6 +842,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   -webkit-overflow-scrolling: touch;
   overflow-x: auto;
   overflow-y: hidden;
+  /* UX 2026-09-16: this row is wider than any phone and its scrollbar is
+     hidden, so at rest it ended in a control sliced vertically by the screen
+     edge and read as a broken render. Fade the last 20px against the strip's
+     own colour so the cut edge reads as "there is more this way". The mask
+     sits on the strip's border box, so it stays at the right edge while the
+     controls scroll underneath it. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
 }
 
 /* UX 2026-09-16: the strip centres its controls, and a centred flex row that
