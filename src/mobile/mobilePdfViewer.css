@@ -345,7 +345,25 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   gap: 5px;
   overflow-y: auto;
+  /* UX 2026-09-16: the rail is a fixed 44px column, so it must never be
+     draggable sideways. Without this the 44px buttons overflowed the 35px
+     track and a light horizontal drag shifted the whole tool column out of
+     alignment with no spring-back. */
+  overflow-x: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
+}
+
+/* UX 2026-09-16: fit the rail's own buttons to the rail's content box
+   (44px rail - 8px padding - 1px border = 35px). At 44px they were 4.5px
+   wider than the track on each side, so the active tool's gold outline lost
+   its left and right edges and its rounded corners and read as two loose
+   horizontal rules. The glyph stays on the same centre line and the button
+   keeps its 44px height, so the touch target is unchanged. */
+.mobile-pdf-tools__main > .mobile-pdf-tools__button,
+.mobile-pdf-tools__main > .mobile-pdf-tools__select-family,
+.mobile-pdf-tools__main > .mobile-pdf-tools__select-family > .mobile-pdf-tools__button {
+  width: 100%;
 }
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
@@ -398,7 +416,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__select-caret {
   position: absolute;
-  left: 31px;
+  /* UX 2026-09-16: seat the caret against the select button's right edge so
+     it stays inside the rail's clip box whatever the rail's width is. */
+  right: 1px;
   top: 50%;
   transform: translateY(-50%);
   width: 12px;
