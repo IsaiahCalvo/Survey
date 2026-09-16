@@ -5,6 +5,7 @@ import {
   DOUBLE_TAP_MAX_DELAY_MS,
   buildCaretAnchor,
   caretAnchorHostFor,
+  TEXT_BOX_GUTTER,
   createDoubleTapTracker,
   editEntryKeyForHit,
   resolveCaretAnchorPoint,
@@ -208,4 +209,36 @@ test('a plain text annotation carrier is already the box the editor covers', () 
   // and the anchor it produces is unchanged by the narrowing
   const anchor = buildCaretAnchor({ x: 130, y: 215, host: box });
   assert.deepEqual(anchor.hostRect, { left: 100, top: 200, width: 200, height: 50 });
+});
+
+test('a plain text carrier narrows to the glyph box the editor covers', () => {
+  // The carrier <g data-annotation-index> is the BORDER box; the renderer's
+  // foreignObject inside it is that box inset by the text gutter, which is
+  // exactly what TextEditOverlay's editable covers.
+  const carrier = { left: 513.8, top: 373.26, width: 183, height: 33 };
+  const glyphs = { left: 519.8, top: 379.26, width: 171, height: 26.6 };
+  const carrierEl = {
+    getBoundingClientRect: () => carrier,
+    querySelector: (selector) => (selector === '[data-annotation-text-bounds]'
+      ? hostOf(glyphs.left, glyphs.top, glyphs.width, glyphs.height)
+      : null),
+  };
+  assert.deepEqual(caretAnchorHostFor(carrierEl).getBoundingClientRect(), glyphs);
+
+  // A click 2.2px into the first letter comes back on the first letter.
+  const anchor = buildCaretAnchor({ x: 522, y: 389, host: carrierEl });
+  assert.deepEqual(anchor.hostRect, glyphs);
+  assert.equal(anchor.contentRect, null, 'no arithmetic fallback once narrowed');
+  const editable = { left: 519.8, top: 379.26, width: 171, height: 20.97 };
+  assert.deepEqual(resolveCaretAnchorPoint(anchor, editable), { x: 522, y: 389 });
+});
+
+test('the text gutter stays in lockstep with the renderer TEXT_PADDING', async () => {
+  // TEXT_BOX_GUTTER is duplicated rather than imported (the renderer is JSX and
+  // this suite is plain node), so the two must be checked against each other.
+  const { readFile } = await import('node:fs/promises');
+  const renderers = await readFile(new URL('../src/utils/svgAnnotationRenderers.jsx', import.meta.url), 'utf8');
+  const match = renderers.match(/export const TEXT_PADDING = (\d+(?:\.\d+)?);/);
+  assert.ok(match, 'TEXT_PADDING not found in svgAnnotationRenderers.jsx');
+  assert.equal(Number(match[1]), TEXT_BOX_GUTTER);
 });

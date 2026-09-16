@@ -122,40 +122,96 @@ export function createDoubleTapTracker(options = {}) {
 }
 
 /**
+ * The text gutter between an annotation's border and its glyphs, in page units.
+ *
+ * MUST stay equal to TEXT_PADDING in src/utils/svgAnnotationRenderers.jsx — the
+ * renderer insets the glyph box by it and TextEditOverlay insets its editable by
+ * the same amount, so the caret maths below depends on the two agreeing. It is
+ * duplicated rather than imported because that module is JSX and this one is
+ * loaded straight by the node test runner; a lockstep test keeps them equal.
+ */
+export const TEXT_BOX_GUTTER = 6;
+
+/**
+ * How close two boxes' widths must be, in client pixels, to count as the SAME
+ * box seen at two moments. Both boxes are the same page-unit width times the
+ * same zoom, so a real match differs only by float noise.
+ */
+const SAME_BOX_TOLERANCE_PX = 1;
+
+/** A usable on-screen box for an element, or null when it has no area. */
+const rectOf = (el) => {
+  const rect = el?.getBoundingClientRect?.();
+  if (!rect || !(rect.width > 0) || !(rect.height > 0)) return null;
+  return {
+    left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+  };
+};
+
+const isUsableRect = (rect) => !!rect && rect.width > 0 && rect.height > 0;
+
+const isCalloutCarrier = (host) => typeof host?.getAttribute === 'function'
+  && host.getAttribute('data-callout-id') != null;
+
+/** Page units -> client pixels for the SVG this element lives in. 1 when the
+ *  element is not in an SVG (or is a plain rect stub in a test). Read off the
+ *  root's own client box rather than getScreenCTM so any CSS transform on an
+ *  ancestor — the live-zoom scale wrapper — is included, exactly as
+ *  getBoundingClientRect includes it. */
+const pageToClientScale = (host) => {
+  const svg = host?.ownerSVGElement;
+  const viewBoxWidth = svg?.viewBox?.baseVal?.width;
+  const clientWidth = svg?.getBoundingClientRect?.().width;
+  return (viewBoxWidth > 0 && clientWidth > 0) ? clientWidth / viewBoxWidth : 1;
+};
+
+/** The glyph box implied by an annotation's OUTER box: the same box inset by
+ *  the text gutter on every side. Null when the box is too small to inset. */
+const gutterInsetRect = (rect, host) => {
+  const gutter = TEXT_BOX_GUTTER * pageToClientScale(host);
+  if (!(rect.width - 2 * gutter > 0) || !(rect.height - 2 * gutter > 0)) return null;
+  return {
+    left: rect.left + gutter,
+    top: rect.top + gutter,
+    width: rect.width - 2 * gutter,
+    height: rect.height - 2 * gutter,
+  };
+};
+
+/**
  * The element whose on-screen box the text editor will actually cover, given
  * the carrier an edit gesture resolved to.
  *
- * WHY THIS IS NOT JUST THE CARRIER (fixed 2026-09-15). A callout's carrier is
- * the whole <g data-callout-id>: arrow, knee, leader lines AND the text box. A
- * click on the first letter therefore sat at, say, 0.85 of that carrier's
- * width, and re-resolving 0.85 against the editor — which covers the text box
- * alone — dropped the caret past the last glyph. Every callout double-click
- * collapsed the caret to the END of the string, in every mode and at every
- * zoom. The box to measure against is the one the editor is laid over: the
- * callout's text area.
+ * WHY THIS IS NOT JUST THE CARRIER (callouts fixed 2026-09-15, text boxes the
+ * same day). A callout's carrier is the whole <g data-callout-id>: arrow, knee,
+ * leader lines AND the text box. A click on the first letter therefore sat at,
+ * say, 0.85 of that carrier's width, and re-resolving 0.85 against the editor —
+ * which covers the text box alone — dropped the caret past the last glyph.
+ * A plain text box's carrier is smaller but wrong the same way: it is the
+ * BORDER box, while the editor's editable is that box inset by TEXT_BOX_GUTTER
+ * on each side, so a click on the first letter came back a letter to the right
+ * and a click on the last letter a letter to the left.
  *
- * `data-callout-part="text"` is that box exactly — the SVG foreignObject is
- * the text-box rect inset by TEXT_PADDING on x, which is the same geometry
- * TextEditOverlay gives its own content box (left: pad, top: padY=0 inside the
- * callout box), so the fraction re-resolves onto the same glyphs. When it is
- * missing (a render with hidden text) the border rect is the next best box,
- * and the carrier remains the last resort.
- *
- * Plain text annotations carry no callout parts and pass straight through —
- * their carrier already IS the box the editor covers.
+ * The box to measure against is the one the editor is laid over: the glyph box.
+ * `data-callout-part="text"` and `data-annotation-text-bounds` are that box
+ * exactly — both are the foreignObject the renderer insets by TEXT_PADDING,
+ * which is the same geometry TextEditOverlay gives its own content box, so the
+ * click re-resolves onto the same glyphs. When the text is hidden the callout's
+ * border rect is the next best box, and the carrier remains the last resort —
+ * buildCaretAnchor then falls back to insetting the carrier arithmetically.
  *
  * @param {Element|null} host - carrier element from the gesture
  * @returns {Element|null}
  */
 export function caretAnchorHostFor(host) {
   if (!host) return null;
-  const isCalloutCarrier = typeof host.getAttribute === 'function'
-    && host.getAttribute('data-callout-id') != null;
-  if (!isCalloutCarrier || typeof host.querySelector !== 'function') return host;
-  for (const part of ['text', 'textBox']) {
-    const candidate = host.querySelector(`[data-callout-part="${part}"]`);
-    const rect = candidate?.getBoundingClientRect?.();
-    if (rect && rect.width > 0 && rect.height > 0) return candidate;
+  if (typeof host.querySelector !== 'function') return host;
+  const selectors = isCalloutCarrier(host)
+    ? ['[data-callout-part="text"]', '[data-callout-part="textBox"]']
+    : ['[data-annotation-text-bounds]'];
+  for (const selector of selectors) {
+    const candidate = host.querySelector(selector);
+    if (rectOf(candidate)) return candidate;
   }
   return host;
 }
@@ -167,37 +223,60 @@ export function caretAnchorHostFor(host) {
  * (caret-follow, virtualization), so by the time the editor exists the same
  * client coordinates point somewhere else entirely — observed live in Text
  * Select, where the editor mounted 500px below the click. Recording the point
- * as a FRACTION of the annotation's own on-screen box makes it scroll-proof:
- * the editor is laid over that same box, so the fraction re-resolves against
- * the editor's fresh rect at mount time.
+ * against the annotation's own on-screen box makes it scroll-proof: the editor
+ * is laid over that same box, so the point re-resolves against the editor's
+ * fresh rect at mount time.
  *
- * The box is always the one the EDITOR covers, never the carrier the gesture
- * happened to hit — see caretAnchorHostFor. Both entry paths (the window
- * double-tap recogniser in PDFViewer and the SVG layer's native double-click
- * in useSVGInteraction) hand their carrier straight in, so neither can drift.
+ * TWO boxes are recorded. `hostRect` is the box the gesture resolved to,
+ * already narrowed to the glyph box wherever the DOM could answer (see
+ * caretAnchorHostFor). `contentRect` is the glyph box the arithmetic implies
+ * when it could NOT — the carrier inset by the text gutter — so a render with
+ * no text foreignObject still puts the caret on the right letter. Whichever box
+ * the mounted editor turns out to match is the one resolveCaretAnchorPoint
+ * uses; a callout, whose carrier spans the arrow, never gets the arithmetic one.
  *
  * @param {{x:number, y:number, host:Element|null}} input
- * @returns {{x:number, y:number, hostRect:{left:number,top:number,width:number,height:number}|null}|null}
+ * @returns {{x:number, y:number, hostRect:{left:number,top:number,width:number,height:number}|null, contentRect:{left:number,top:number,width:number,height:number}|null}|null}
  */
 export function buildCaretAnchor({ x, y, host } = {}) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const rect = caretAnchorHostFor(host)?.getBoundingClientRect?.();
-  const hostRect = rect && rect.width > 0 && rect.height > 0
-    ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+  const textHost = caretAnchorHostFor(host);
+  const hostRect = rectOf(textHost);
+  const narrowed = textHost !== host;
+  const contentRect = (hostRect && !narrowed && !isCalloutCarrier(host))
+    ? gutterInsetRect(hostRect, host)
     : null;
-  return { x, y, hostRect };
+  return { x, y, hostRect, contentRect };
 }
 
 /**
  * Re-resolve a caret anchor against the element that now owns the text.
- * Falls back to the raw client point when no host box was captured.
+ *
+ * When one of the recorded boxes has the target's width it IS the box the
+ * editor covers, so the point is carried over by TRANSLATION: the two boxes
+ * share a top-left origin and differ only in trailing slack (the editable is as
+ * tall as its text, the annotation box can be taller), and translating keeps
+ * the caret on the clicked line instead of squeezing it up. Otherwise the point
+ * is rescaled proportionally, the historical behaviour for an editor box whose
+ * relationship to the annotation box we cannot name.
+ *
+ * Falls back to the raw client point when no box was captured at all.
  */
 export function resolveCaretAnchorPoint(anchor, targetRect) {
   if (!anchor) return null;
-  const host = anchor.hostRect;
-  if (!host || !targetRect || !(targetRect.width > 0) || !(targetRect.height > 0)) {
-    return { x: anchor.x, y: anchor.y };
+  const rawPoint = { x: anchor.x, y: anchor.y };
+  if (!isUsableRect(targetRect)) return rawPoint;
+  for (const box of [anchor.contentRect, anchor.hostRect]) {
+    if (isUsableRect(box)
+      && Math.abs(box.width - targetRect.width) <= SAME_BOX_TOLERANCE_PX) {
+      return {
+        x: targetRect.left + (anchor.x - box.left),
+        y: targetRect.top + (anchor.y - box.top),
+      };
+    }
   }
+  const host = anchor.hostRect;
+  if (!isUsableRect(host)) return rawPoint;
   return {
     x: targetRect.left + ((anchor.x - host.left) / host.width) * targetRect.width,
     y: targetRect.top + ((anchor.y - host.top) / host.height) * targetRect.height,
