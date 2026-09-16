@@ -61,6 +61,7 @@ import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // push, but the shared dispatch SKIPS them (no double-render) — they are never
 // rendered through the generic path.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
+import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
@@ -296,9 +297,11 @@ const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
 const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
-// UX 2026-09-09: touch hit disc (screen px radius, 44pt diameter) behind a
-// committed polygon/polyline vertex grabber. Mouse users keep the bare dot.
-const VERTEX_HANDLE_TOUCH_HIT_RADIUS = 22;
+// UX 2026-09-16: every selection grabber carries an invisible hit pad — the
+// drawn dot keeps its size, a transparent disc behind it catches the press.
+// 32 px on a mouse (Drawboard PDF measures 34 x 34), 44 pt on a finger. The
+// polygon vertex grabber pioneered this in 2026-09-09 with a touch-only 44 pt
+// disc; the mouse now gets one too. Sizes live in utils/handleHitPad.js.
 const hasCoarsePointer = () => (
   typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
@@ -1692,6 +1695,13 @@ const SVGAnnotationLayer = memo(({
   // same coarse flag gives the committed polygon's vertex grabbers an
   // invisible finger-sized hit disc so "drag one corner" works by touch.
   const [isCoarsePointer, setIsCoarsePointer] = useState(hasCoarsePointer);
+  // UX 2026-09-16: the transparent band painted along a mark so it can be
+  // picked by clicking NEAR its outline rather than exactly on it. 12 on a
+  // mouse (unchanged), 24 on a finger — a fingertip covers roughly 9 mm, and
+  // a 12-unit band made a hairline shape almost impossible to select by touch.
+  // Drawboard's own web build selects on-stroke only; the wider band is the
+  // touch concession, matching its phone build's far larger targets.
+  const markHitStrokeWidth = getMarkHitStrokePx(isCoarsePointer);
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const coarseQuery = window.matchMedia('(pointer: coarse)');
@@ -3449,6 +3459,39 @@ const SVGAnnotationLayer = memo(({
     // handles (and their matching transparent hit circles) stop growing on
     // extreme zoom-out. No-op at rest (inverseScale ≈ 1) / on zoom-in.
     const calloutHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
+    // UX 2026-09-16: an invisible hit pad behind each callout grabber — 32 px
+    // on a mouse (Drawboard PDF measures 34 x 34 on its handles), 44 pt on a
+    // finger — so the knee, the arrow tip and the four text-box corners can be
+    // grabbed without pixel-hunting the 11 px dot.
+    //
+    // ONLY while the callout is selected and its handles are showing. The
+    // 2026-05-18 ruling still stands for an UNSELECTED callout: its knee and
+    // arrow keep a grab zone exactly the size of the dot, so passing near a
+    // callout never snatches the arrow away from the click you meant. Once the
+    // callout is selected the user is plainly aiming at its chrome, so the
+    // Drawboard-size pad is the right target.
+    const calloutHitPad = (isSelected && showHandles)
+      ? resolveHandleHitPadPageSize({
+        isCoarsePointer: isCoarsePointer,
+        inverseScale: clampInverseScale(inverseScale),
+        minPadPageUnits: calloutHandleR * 2,
+      })
+      : calloutHandleR * 2;
+    const calloutHitR = calloutHitPad / 2;
+    // The four text-box corners sit on a box that can be small, so their pads
+    // shrink to the shortest side's half-span and can never overlap each other.
+    const calloutCornerSpan = Math.min(
+      Math.max(0, (callout.textBoxWidth ?? 0.1) * pageSize.width),
+      Math.max(0, (callout.textBoxHeight ?? 0.05) * pageSize.height),
+    );
+    const calloutCornerHitPad = (isSelected && showHandles)
+      ? resolveHandleHitPadPageSize({
+        isCoarsePointer,
+        inverseScale: clampInverseScale(inverseScale),
+        neighbourSpacingPageUnits: calloutCornerSpan > 0 ? calloutCornerSpan : undefined,
+        minPadPageUnits: calloutHandleR * 2,
+      })
+      : calloutHandleR * 2;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
     const atY = callout.arrowTip.y * H;
@@ -3486,7 +3529,7 @@ const SVGAnnotationLayer = memo(({
             x2={conn.effectiveKnee.x}
             y2={conn.effectiveKnee.y}
             stroke="transparent"
-            strokeWidth={12}
+            strokeWidth={markHitStrokeWidth}
             strokeLinecap="round"
             style={{ cursor: 'move', pointerEvents: 'stroke' }}
           />
@@ -3499,7 +3542,7 @@ const SVGAnnotationLayer = memo(({
           x2={atX}
           y2={atY}
           stroke="transparent"
-          strokeWidth={12}
+          strokeWidth={markHitStrokeWidth}
           strokeLinecap="round"
           style={{ cursor: 'move', pointerEvents: 'stroke' }}
         />
@@ -3511,7 +3554,7 @@ const SVGAnnotationLayer = memo(({
           data-callout-part="arrowTip"
           cx={atX}
           cy={atY}
-          r={calloutHandleR}
+          r={calloutHitR}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
@@ -3528,7 +3571,7 @@ const SVGAnnotationLayer = memo(({
           // UX: 2026-05-18 — knee hit target sized to the visible handle
           // (calloutHandleR), not an oversized 12px disc, so the knee can
           // only be grabbed by landing on it.
-          r={calloutHandleR}
+          r={calloutHitR}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
@@ -3723,28 +3766,45 @@ const SVGAnnotationLayer = memo(({
                 { id: 'br', x: tbX + tbW, y: bottomY, cursor: 'nwse-resize' },
               ];
             })().map((p) => (
-              <circle
-                key={`cb-corner-${p.id}`}
-                data-callout-part={`textBox-${p.id}`}
-                cx={p.x}
-                cy={p.y}
-                r={calloutHandleR}
-                fill={HANDLE_FILL}
-                stroke={ringColor}
-                strokeWidth={1.5}
-                vectorEffect="non-scaling-stroke"
-                style={{
-                  filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
-                  cursor: p.cursor,
-                  pointerEvents: 'all',
-                }}
-              />
+              <g key={`cb-corner-${p.id}`}>
+                {/* Invisible hit pad, under the dot so a direct hit still
+                    lands on the dot itself. */}
+                <rect
+                  data-callout-part={`textBox-${p.id}`}
+                  data-handle-hit-pad={`textBox-${p.id}`}
+                  x={p.x - calloutCornerHitPad / 2}
+                  y={p.y - calloutCornerHitPad / 2}
+                  width={calloutCornerHitPad}
+                  height={calloutCornerHitPad}
+                  rx={calloutCornerHitPad / 4}
+                  fill="transparent"
+                  stroke="none"
+                  style={{ cursor: p.cursor, pointerEvents: 'all', touchAction: 'none' }}
+                />
+                <circle
+                  data-callout-part={`textBox-${p.id}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={calloutHandleR}
+                  fill={HANDLE_FILL}
+                  stroke={ringColor}
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                  style={{
+                    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
+                    cursor: p.cursor,
+                    pointerEvents: 'all',
+                  }}
+                />
+              </g>
             ))}
           </>
         )}
       </g>
     );
-  }, []);
+    // isCoarsePointer sizes the invisible grabber pads (32 px mouse / 44 pt
+    // finger), so a pointer-kind change has to rebuild the hit targets.
+  }, [isCoarsePointer]);
 
   // ---------------------------------------------------------------------------
   // Filter and render callout annotations
@@ -4728,6 +4788,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: renderObj.strokeWidth || 1,
+              minStrokeWidth: markHitStrokeWidth,
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -4784,7 +4845,7 @@ const SVGAnnotationLayer = memo(({
               const headSize = Math.max(6, (renderObj.strokeWidth || 2) * 3);
               const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleDeg * Math.PI / 180) : x2;
               const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleDeg * Math.PI / 180) : y2;
-              const hitStrokeWidth = Math.max(12, (renderObj.strokeWidth || 2) + 10);
+              const hitStrokeWidth = Math.max(markHitStrokeWidth, (renderObj.strokeWidth || 2) + 10);
               return (
                 <g>
                   {annotationIsHovered && (
@@ -4890,7 +4951,7 @@ const SVGAnnotationLayer = memo(({
                   d={cloudD}
                   fill="none"
                   stroke="rgba(0,0,0,0.001)"
-                  strokeWidth={Math.max(CLOUD_HIT_STROKE_WIDTH, sw + 10)}
+                  strokeWidth={Math.max(CLOUD_HIT_STROKE_WIDTH, markHitStrokeWidth, sw + 10)}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents={cloudInteractive ? 'stroke' : 'none'}
@@ -4953,6 +5014,7 @@ const SVGAnnotationLayer = memo(({
               fill: isPolygonShape ? renderObj.fill : 'none',
               stroke: renderObj.stroke,
               strokeWidth: sw,
+              minStrokeWidth: markHitStrokeWidth,
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -5041,6 +5103,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
+              minStrokeWidth: markHitStrokeWidth,
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -5103,6 +5166,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
+              minStrokeWidth: markHitStrokeWidth,
               isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
@@ -5168,7 +5232,7 @@ const SVGAnnotationLayer = memo(({
             const inkHitProps = getFilledInkHitTargetProps(pathAttrs, { strokeWidth: sw, inverseScale });
             const hitStrokeWidth = inkHitProps
               ? inkHitProps.strokeWidth
-              : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
+              : Math.max(markHitStrokeWidth, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
             const pathPointerEvents = annotationHitTargetsInteractive && isObjectInteractive
               ? (isFilledPdfInkOutline ? 'all' : 'stroke')
               : 'none';
@@ -6013,8 +6077,75 @@ const SVGAnnotationLayer = memo(({
           // handle + its shadow stop growing on extreme zoom-out (no-op at rest).
           const is = Math.sqrt(clampInverseScale(inverseScale));
           const handleR = HANDLE_RADIUS * is;
+          // UX 2026-09-16: invisible hit pad behind the counter's rotate
+          // grabber — 32 px on a mouse (Drawboard PDF measures 34 x 34 on its
+          // handles), 44 pt on a finger. It is the only grabber on a selected
+          // counter, so nothing crowds it. The drag handlers live on both the
+          // pad and the visible dot because this grabber captures the pointer
+          // on whichever element was pressed.
+          const counterHitPad = resolveHandleHitPadPageSize({
+            isCoarsePointer,
+            inverseScale: clampInverseScale(inverseScale),
+            minPadPageUnits: handleR * 2,
+          });
+          const counterRotateHandlers = {
+                onPointerDown: (e) => {
+                  e.stopPropagation();
+                  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+                  counterRotateDragRef.current = {
+                    annotationIndex: selectedIndex,
+                    centerX: cx,
+                    centerY: cy,
+                  };
+                  const preview = {
+                    annotationIndex: selectedIndex,
+                    pointerAngle: pointerAngleDeg,
+                  };
+                  counterHandlePreviewRef.current = preview;
+                  setCounterHandlePreview(preview);
+                },
+                onPointerMove: (e) => {
+                  const drag = counterRotateDragRef.current;
+                  if (!drag || drag.annotationIndex !== selectedIndex) return;
+                  const svgEl = svgRef.current;
+                  if (!svgEl) return;
+                  // Convert client coords to viewBox (page-space) coords.
+                  // The SVG viewBox is "0 0 width height" with preserveAspectRatio:'none',
+                  // so a simple linear mapping works.
+                  const rect = svgEl.getBoundingClientRect();
+                  if (rect.width === 0 || rect.height === 0) return;
+                  const px = ((e.clientX - rect.left) / rect.width) * width;
+                  const py = ((e.clientY - rect.top) / rect.height) * height;
+                  const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
+                  const preview = {
+                    annotationIndex: selectedIndex,
+                    pointerAngle: newAngleDeg,
+                  };
+                  counterHandlePreviewRef.current = preview;
+                  setCounterHandlePreview(preview);
+                },
+                onPointerUp: (e) => {
+                  const drag = counterRotateDragRef.current;
+                  counterRotateDragRef.current = null;
+                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                  if (!drag || drag.annotationIndex !== selectedIndex) return;
+                },
+                onPointerCancel: () => {
+                  counterRotateDragRef.current = null;
+                },
+          };
           return (
             <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform}>
+              <circle
+                data-handle-hit-pad="counter-rotate"
+                cx={tipX}
+                cy={tipY}
+                r={counterHitPad / 2}
+                fill="transparent"
+                stroke="none"
+                style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                {...counterRotateHandlers}
+              />
               <circle
                 cx={tipX}
                 cy={tipY}
@@ -6035,50 +6166,7 @@ const SVGAnnotationLayer = memo(({
                   // shadow at 25% zoom. Matches SVGSelectionOverlay.jsx:48.
                   filter: `drop-shadow(0 ${1 * is}px ${3 * is}px rgba(0,0,0,0.25))`,
                 }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
-                  counterRotateDragRef.current = {
-                    annotationIndex: selectedIndex,
-                    centerX: cx,
-                    centerY: cy,
-                  };
-                  const preview = {
-                    annotationIndex: selectedIndex,
-                    pointerAngle: pointerAngleDeg,
-                  };
-                  counterHandlePreviewRef.current = preview;
-                  setCounterHandlePreview(preview);
-                }}
-                onPointerMove={(e) => {
-                  const drag = counterRotateDragRef.current;
-                  if (!drag || drag.annotationIndex !== selectedIndex) return;
-                  const svgEl = svgRef.current;
-                  if (!svgEl) return;
-                  // Convert client coords to viewBox (page-space) coords.
-                  // The SVG viewBox is "0 0 width height" with preserveAspectRatio:'none',
-                  // so a simple linear mapping works.
-                  const rect = svgEl.getBoundingClientRect();
-                  if (rect.width === 0 || rect.height === 0) return;
-                  const px = ((e.clientX - rect.left) / rect.width) * width;
-                  const py = ((e.clientY - rect.top) / rect.height) * height;
-                  const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
-                  const preview = {
-                    annotationIndex: selectedIndex,
-                    pointerAngle: newAngleDeg,
-                  };
-                  counterHandlePreviewRef.current = preview;
-                  setCounterHandlePreview(preview);
-                }}
-                onPointerUp={(e) => {
-                  const drag = counterRotateDragRef.current;
-                  counterRotateDragRef.current = null;
-                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
-                  if (!drag || drag.annotationIndex !== selectedIndex) return;
-                }}
-                onPointerCancel={() => {
-                  counterRotateDragRef.current = null;
-                }}
+                {...counterRotateHandlers}
               />
             </g>
           );
@@ -6275,6 +6363,34 @@ const SVGAnnotationLayer = memo(({
             cursor: 'grab',
             pointerEvents: 'auto',
           };
+          // UX 2026-09-16: an invisible pad behind each endpoint / bend grabber
+          // so a line can be re-aimed without pixel-hunting the 11 px dot —
+          // 32 px on a mouse (Drawboard PDF measures 34 x 34), 44 pt on a
+          // finger. It shrinks on a short line so the two ends and the bend
+          // grabber never fight over the same press.
+          const lineHandleSpan = Math.hypot(ep.x2 - ep.x1, ep.y2 - ep.y1);
+          const lineHitPad = resolveHandleHitPadPageSize({
+            isCoarsePointer,
+            inverseScale: clampInverseScale(inverseScale),
+            // Endpoint -> midpoint grabber is half the run, and that is the
+            // closest neighbour either end has.
+            neighbourSpacingPageUnits: lineHandleSpan > 0 ? lineHandleSpan / 2 : undefined,
+            minPadPageUnits: handleR * 2,
+          });
+          const renderLineHitPad = (handleId, cx, cy) => (
+            <rect
+              data-handle-hit-pad={handleId}
+              x={cx - lineHitPad / 2}
+              y={cy - lineHitPad / 2}
+              width={lineHitPad}
+              height={lineHitPad}
+              rx={lineHitPad / 4}
+              fill="transparent"
+              stroke="none"
+              style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+              onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, handleId); }}
+            />
+          );
           // Phase 15 LINE-01 / ARROW-01 — midpoint curvature handle.
           // Position: saved data.midpoint if curved (the bezier passes through
           // it at t=0.5 by construction), geometric midpoint if straight.
@@ -6313,6 +6429,11 @@ const SVGAnnotationLayer = memo(({
             : undefined;
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={lineSelRotate}>
+              {/* Invisible hit pads, under the visible dots so a direct hit on
+                  a dot still goes to that dot. */}
+              {renderLineHitPad('p1', ep.x1 + dx, ep.y1 + dy)}
+              {renderLineHitPad('p2', ep.x2 + dx, ep.y2 + dy)}
+              {renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
               {/* Start handle (line start / arrow tail) */}
               <circle
                 cx={ep.x1 + dx} cy={ep.y1 + dy}
@@ -6409,10 +6530,25 @@ const SVGAnnotationLayer = memo(({
           // vertex handles + shadows stop growing on extreme zoom-out (no-op at rest).
           const vHandleIs = Math.sqrt(clampInverseScale(inverseScale));
           const vHandleR = HANDLE_RADIUS * vHandleIs;
-          // UX 2026-09-09: on touch, an invisible finger-sized disc (44pt
-          // diameter, screen-constant) sits behind each vertex dot so a
-          // finger can grab the corner without landing on the 11px dot.
-          const vTouchHitR = isCoarsePointer ? VERTEX_HANDLE_TOUCH_HIT_RADIUS * clampInverseScale(inverseScale) : 0;
+          // UX 2026-09-16: an invisible hit disc sits behind each vertex dot so
+          // the corner can be grabbed without landing on the 11 px dot — 32 px
+          // wide on a mouse (Drawboard PDF measures 34 x 34 on its handles),
+          // 44 pt on a finger (Apple HIG). Screen-constant via the clamped
+          // inverse scale. It shrinks when two corners sit closer together than
+          // a full pad, so the nearer corner always wins the press.
+          const vNeighbourSpacing = worldPoints.length > 1
+            ? worldPoints.reduce((best, wp, i) => {
+              const prev = worldPoints[(i - 1 + worldPoints.length) % worldPoints.length];
+              const gap = Math.hypot(wp.x - prev.x, wp.y - prev.y);
+              return gap > 0 && gap < best ? gap : best;
+            }, Infinity)
+            : Infinity;
+          const vTouchHitR = resolveHandleHitPadPageSize({
+            isCoarsePointer,
+            inverseScale: clampInverseScale(inverseScale),
+            neighbourSpacingPageUnits: Number.isFinite(vNeighbourSpacing) ? vNeighbourSpacing : undefined,
+            minPadPageUnits: vHandleR * 2,
+          }) / 2;
           const vHandleStyle = {
             filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,
             cursor: 'grab',
@@ -6457,7 +6593,7 @@ const SVGAnnotationLayer = memo(({
                   {vTouchHitR > 0 && (
                     <circle
                       data-resize-handle={`vertex-${i}`}
-                      data-vertex-touch-hit="true"
+                      data-handle-hit-pad={`vertex-${i}`}
                       cx={wp.x}
                       cy={wp.y}
                       r={vTouchHitR}

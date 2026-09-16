@@ -3920,6 +3920,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         && !event.target?.closest?.('.survey-pdfjs-page-div')) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
       if (event.target?.closest?.('[data-resize-handle]')) return;
+      // UX 2026-09-16: same rule for the invisible pad behind each grabber —
+      // a press there is a press on the handle, not the start of a text drag.
+      if (event.target?.closest?.('[data-handle-hit-pad]')) return;
       // UX: keep the prior selection until this text gesture commits so
       // Escape can cancel it without discarding the selected annotation.
       textSelectGestureActiveRef.current = true;

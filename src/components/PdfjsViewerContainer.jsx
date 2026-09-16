@@ -2363,6 +2363,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         clear();
         return;
       }
+      // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
+      // the grabber for this rule. Without it a finger that landed on the pad
+      // (which is the normal way to grab a handle by touch) armed the
+      // long-press menu underneath instead of starting the transform.
+      if (event.target?.closest?.('[data-handle-hit-pad]')) {
+        clear();
+        return;
+      }
       const t = event.touches[0];
       startX = t.clientX;
       startY = t.clientY;
