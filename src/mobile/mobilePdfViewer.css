@@ -1797,13 +1797,26 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 900;
 }
 
+/* UX 2026-09-16 (phone reach pass): the sheet backdrop actually dims now. It
+   used to be rgba(0,0,0,0.01) — invisible — so a raised sheet read as part of
+   the page instead of something laid over it, and there was no signal that a
+   tap outside would dismiss it. 30% black is the same weight Drawboard PDF
+   puts behind its phone sheets. Fades in over the sheet's own 180ms entrance.
+   (The shared colour picker keeps its own never-dim overlay: it sits ABOVE a
+   sheet, and dimming twice would black the page out.) */
 .mobile-pdf-sheet-backdrop {
   position: fixed;
   inset: 0;
   padding: 0;
-  background: rgba(0, 0, 0, 0.01);
+  background: rgba(0, 0, 0, 0.3);
   border: 0;
   z-index: 6400;
+  animation: mobilePdfBackdropIn 180ms ease-out;
+}
+
+@keyframes mobilePdfBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .mobile-pdf-sheet {
@@ -1833,6 +1846,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding-bottom: calc(12px + var(--mobile-bottom-inset));
   z-index: 6500 !important;
   animation: mobilePdfSheetIn 180ms ease-out !important;
+}
+
+/* UX 2026-09-16 (phone reach pass): the hub tray's second, taller detent.
+   Drag the grab handle UP and the tray grows from its content-measured height
+   (Pages was 320px — 39% of a 812px screen) to 70% of the screen, so you can
+   scan far more page thumbnails without scrolling. Drag down and it steps back
+   to the compact height before a further pull dismisses it. Reference:
+   Drawboard PDF's phone page list opens to about two thirds of the screen. */
+.mobile-pdf-sheet.is-expanded {
+  --mobile-sheet-height: 70dvh;
 }
 
 .mobile-pdf-sheet.is-collapsed { display: none !important; }

@@ -18,7 +18,7 @@ import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
-import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -247,14 +247,18 @@ const PDFSidebar = React.forwardRef(({
   // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
   // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
   // touchend delta. Demo SurveySetupSheet.tsx:51-96 / inv-demo §17.
-  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose } =
-    useMobileSheetMotion(closePanel);
-
   const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
     ? { label: 'Spaces', icon: 'layers' }
     : mobileMode && activeTab === 'history'
       ? { label: 'Version history', icon: 'history' }
       : null;
+  // UX 2026-09-16 (phone reach pass): only the hub tray (Pages / Search /
+  // Bookmarks) gets the taller second detent — drag it up and it grows to 70%
+  // of the screen so you can see far more page thumbnails at once, the way
+  // Drawboard PDF's phone page list does. Spaces and Version history are
+  // content-measured standalone sheets and keep their single height.
+  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose, expanded: sheetExpanded } =
+    useMobileSheetMotion(closePanel, { expandable: mobileMode && !mobileStandalonePanel });
   const expandedNavigationTabs = mobileMode
     ? tabs.filter((tab) => tab.id !== 'spaces')
     : tabs.concat(
@@ -296,9 +300,12 @@ const PDFSidebar = React.forwardRef(({
         onClick={requestSheetClose}
       />
     )}
-    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+      // The tall detent overrides the content-measured height. It has to be
+      // written here, not from the stylesheet: this inline custom property
+      // always wins over a rule, so a CSS-only override would be ignored.
       '--mobile-sheet-height': mobileMode
-        ? `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`
+        ? (sheetExpanded ? SHEET_EXPANDED_HEIGHT : `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`)
         : undefined,
       width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
       height: '100%',
@@ -306,7 +313,9 @@ const PDFSidebar = React.forwardRef(({
       borderRight: mobileMode ? 'none' : '1px solid #2a3140',
       display: 'flex',
       flexDirection: 'column',
-      transition: 'width 0.2s ease',
+      // The height leg eases the step between the compact and tall detents
+      // with the same 260ms spring curve the sheet's spring-back uses.
+      transition: 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
       flexShrink: 0,
       // Phase F: finger-follow / spring-back / slide-down exit (mobile only).
       ...(mobileMode ? sheetMotionStyle : null)

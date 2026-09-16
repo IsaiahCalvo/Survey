@@ -15,6 +15,13 @@ import { useCallback, useRef, useState } from 'react';
  *    lightly-underdamped settle (the demo used RN spring damping 24 /
  *    stiffness 260 / mass .75; we approximate that with a CSS cubic-bezier —
  *    no physics lib, per Phase F constraint).
+ *  - Second detent (opt-in via options.expandable): dragging UP past 48px, or
+ *    flicking up faster than the dismiss velocity, snaps the sheet to a taller
+ *    70%-of-screen detent; dragging down from there returns it to its compact
+ *    height before a further pull can dismiss it. The height step is
+ *    deliberately NOT driven from here — the hook still only writes
+ *    transform/opacity, and the sheet's own CSS eases its height — so a detent
+ *    change never competes with the pdf.js render.
  *  - Exit slide-down: dismissing (or any routed close) slides the sheet down
  *    ~170ms with the demo's in-cubic easing before the real unmount fires
  *    (mirrors the 180ms slide-in), instead of a hard display swap.
@@ -31,6 +38,12 @@ export const SHEET_DISMISS_VY = 0.65; // px/ms flick velocity
 // demo close 170ms Easing.in(cubic); slide-in mirror is 180ms
 export const SHEET_CLOSE_MS = 170;
 export const SHEET_CLOSE_EASING = 'cubic-bezier(0.32, 0, 0.67, 0)'; // in-cubic
+// UX 2026-09-16 (phone reach pass): upward travel that commits to the taller
+// detent. Half the dismiss distance, because expanding is the cheap, reversible
+// direction. Reference: Drawboard PDF's phone page list opens to roughly two
+// thirds of the screen rather than one fixed short tray.
+export const SHEET_EXPAND_DY = 48; // px of upward travel
+export const SHEET_EXPANDED_HEIGHT = '70dvh';
 // spring-back settle approximating damping24/stiffness260/mass.75 — a brief
 // overshoot then settle; kept subtle so it reads as a snap, not a bounce.
 export const SHEET_SPRING_MS = 260;
@@ -51,12 +64,15 @@ function prefersReducedMotion() {
  * @param {object} [options]
  * @param {(event: TouchEvent) => boolean} [options.canStartDrag]  guard so the
  *   drag only engages from the handle / when inner scroll is at top.
+ * @param {boolean} [options.expandable]  opt this sheet into the taller second
+ *   detent (the Pages / Search / Bookmarks tray). Off for everything else.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag } = options;
+  const { canStartDrag, expandable = false } = options;
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
   const [springing, setSpringing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const startYRef = useRef(null);
   const lastYRef = useRef(null);
@@ -69,6 +85,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     if (prefersReducedMotion()) {
       setDragY(0);
       setSpringing(false);
+      setExpanded(false);
       onClose?.();
       return;
     }
@@ -78,6 +95,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     window.setTimeout(() => {
       setClosing(false);
       setDragY(0);
+      setExpanded(false);
       onClose?.();
     }, SHEET_CLOSE_MS);
   }, [closing, onClose]);
@@ -102,9 +120,13 @@ export function useMobileSheetMotion(onClose, options = {}) {
     const y = event.touches?.[0]?.clientY;
     if (y == null) return;
     const dy = y - startY;
-    // Only engage on downward pull; an upward/neutral move never hijacks the
-    // sheet's inner scroll (demo starts the responder from the handle only).
-    if (dy <= 0 && !engagedRef.current) return;
+    // Downward pull always engages. An upward move engages only on a sheet
+    // that HAS a taller detent to reach — everywhere else an upward/neutral
+    // move must never hijack the sheet's inner scroll (the demo starts the
+    // responder from the handle only). Note the sheet is never translated
+    // upward: it is anchored to the bottom, so moving it up would open a gap
+    // beneath it. The snap on release is the feedback.
+    if (dy <= 0 && !engagedRef.current && !expandable) return;
     engagedRef.current = true;
     const now = event.timeStamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
     const dt = now - (lastTRef.current || now);
@@ -112,7 +134,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     lastYRef.current = y;
     lastTRef.current = now;
     setDragY(Math.max(0, dy));
-  }, [closing]);
+  }, [closing, expandable]);
 
   const onTouchEnd = useCallback(() => {
     const startY = startYRef.current;
@@ -121,9 +143,23 @@ export function useMobileSheetMotion(onClose, options = {}) {
     const engaged = engagedRef.current;
     engagedRef.current = false;
     if (!engaged) return;
-    const dy = Math.max(0, (lastYRef.current ?? startY) - startY);
+    const travel = (lastYRef.current ?? startY) - startY;
     const vy = vyRef.current;
+    // Upward release on an expandable sheet: step up to the tall detent.
+    if (expandable && travel < 0) {
+      if (!expanded && (-travel > SHEET_EXPAND_DY || -vy > SHEET_DISMISS_VY)) setExpanded(true);
+      setDragY(0);
+      return;
+    }
+    const dy = Math.max(0, travel);
     if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
+      // From the tall detent a downward pull steps back to the compact height
+      // instead of dismissing, so the sheet is never lost in one gesture.
+      if (expanded) {
+        setExpanded(false);
+        setDragY(0);
+        return;
+      }
       requestClose();
     } else if (dy > 0) {
       // spring back home
@@ -135,7 +171,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
       setDragY(0);
       window.setTimeout(() => setSpringing(false), SHEET_SPRING_MS);
     }
-  }, [requestClose]);
+  }, [requestClose, expandable, expanded]);
 
   // Merge into the sheet element's inline style. Empty when idle+open so the
   // CSS slide-in keyframe (mobilePdfSheetIn) governs the entrance untouched.
@@ -163,5 +199,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     dragHandlers: { onTouchStart, onTouchMove, onTouchEnd },
     requestClose,
     closing,
+    expanded,
+    setExpanded,
   };
 }
