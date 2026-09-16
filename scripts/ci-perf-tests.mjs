@@ -14,13 +14,15 @@
 // blocking path can stop a deploy for reasons outside the diff.
 //
 // So these files move OUT of the blocking `npm test` path and into a separate,
-// parallel, `continue-on-error: true` CI job (the "perf" job in ci.yml).
+// parallel "Performance budgets" STEP, carrying `continue-on-error: true`,
+// inside the `isolated` job in ci.yml.
 //
 // WHAT THIS IS NOT
 // ----------------
 // This is NOT deletion and NOT a quarantine to be forgotten. The files run on
-// every single CI run, in their own job, and a red perf job is a real signal
-// that somebody should look. The only thing that changed is that a timing
+// every push to main, alone on their own runner, and a red budget is a real
+// signal that somebody should look — the gate reports it in words on the run
+// page. A pull request skips them; the main commit that lands runs them. The only thing that changed is that a timing
 // reading can no longer veto a merge or a deploy.
 //
 // HONEST NOTE ON BUDGET STRENGTH
@@ -72,7 +74,7 @@ export const CI_PERF_TEST_FILES = Object.freeze([
   'src/lib/collab/__tests__/crdtBackfillLoserLatency.test.mjs',
 ]);
 
-/** Set by the ci.yml perf job. Nothing else should ever set it. */
+/** Set by the ci.yml performance-budgets step. Nothing else should set it. */
 export const CI_PERF_LANE_ENV = 'CI_PERF_LANE';
 
 /**
@@ -88,7 +90,7 @@ export const PERF_LANE_BUDGET_SCALE = 2;
 /** Extra timing samples in the lane; the best-of minimum only gets sharper. */
 export const PERF_LANE_TIMING_SAMPLES = 7;
 
-/** True when running inside the non-blocking CI perf job. */
+/** True when running inside the non-blocking CI performance-budgets step. */
 export function isCiPerfLane() {
   return process.env[CI_PERF_LANE_ENV] === '1';
 }

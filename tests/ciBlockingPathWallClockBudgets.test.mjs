@@ -3,8 +3,8 @@
 //
 // ci.yml routes the millisecond-budget suites into the non-blocking `perf`
 // lane (CI_PERF_TEST_FILES) and the slow-but-timing-free correctness suites
-// into `timing-suites`. Everything else lands in one of the `test` shards. The
-// shards AND `timing-suites` are both blocking: a red job there reds the run,
+// into the `isolated` job. Everything else lands in one of the `test` shards.
+// The shards AND the isolated suites are both blocking: a red job reds the run,
 // and deploy-production.yml gates on that run's conclusion.
 //
 // Fix a report from this guard either by moving the offending file into
@@ -26,7 +26,7 @@
 // `latencyMs` — and, because `[^)]*` cannot cross a closing parenthesis, both
 // inline forms, assert.ok(Date.now() - t0 < 500) and the performance.now()
 // equivalent. It also scanned only the four shards, leaving the equally
-// BLOCKING `timing-suites` job unguarded.
+// BLOCKING isolated suites unguarded.
 //
 // What is asserted now is the property itself. A file is timing-asserting when
 // BOTH hold:
@@ -306,20 +306,20 @@ function filesIn(args) {
   return execFileSync(process.execPath, ['scripts/run-node-tests.mjs', ...args, '--list'], {
     cwd: root,
     encoding: 'utf8',
-    // The `timing-suites` job sets this on bot bumps; the guard must always see
+    // The `isolated` job sets this on bot bumps; the guard must always see
     // the full selection, never the skipped-empty one.
     env: { ...process.env, SKIP_TIMING_SUITES: '' },
   }).split('\n').filter(Boolean);
 }
 
-/** Every selection a BLOCKING ci.yml job runs: the shards, and timing-suites. */
+/** Every BLOCKING selection ci.yml runs: the shards, and the isolated suites. */
 function blockingSelections() {
   const selections = [];
   const shardCount = shardCountFromWorkflow();
   for (let shard = 1; shard <= shardCount; shard += 1) {
     selections.push([`shard ${shard}/${shardCount}`, [`--shard=${shard}/${shardCount}`]]);
   }
-  selections.push(['timing-suites', ['--only-timing-sensitive']]);
+  selections.push(['isolated suites', ['--only-timing-sensitive']]);
   return selections;
 }
 

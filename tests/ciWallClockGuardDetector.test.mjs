@@ -35,7 +35,7 @@
 // performance.mark/measure) reaching an assert/expect value argument, either
 // inline or through a light data-flow pass that separates INSTANTS (fixture
 // timestamps, cache-busting ids) from DURATIONS (one instant minus another).
-// It also scans the `timing-suites` selection now, not just the shards, so the
+// It also scans the isolated-suite selection now, not just the shards, so the
 // parenthetical below is fixed too. This test passes; nothing in it was
 // weakened to get there.
 //

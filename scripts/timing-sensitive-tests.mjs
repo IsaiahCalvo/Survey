@@ -8,10 +8,11 @@
 //
 // This list is the UNION. Which job a file lands in is decided by whether it
 // also appears in CI_PERF_TEST_FILES (scripts/ci-perf-tests.mjs):
-//   * on that list  -> the NON-BLOCKING `perf` job (`--only-perf`). Those files
+//   * on that list  -> the NON-BLOCKING performance-budgets step
+//     (`--only-perf`). Those files
 //     assert millisecond budgets, and a timing reading taken on a loaded hosted
 //     runner must never be able to veto a merge or a deploy.
-//   * not on it     -> the BLOCKING `timing-suites` job
+//   * not on it     -> the BLOCKING first step of the `isolated` job
 //     (`--only-timing-sensitive`). annotationDocConcurrency and
 //     svgPathTransformFidelity are correctness gates that merely happen to be
 //     slow, so they keep their teeth.

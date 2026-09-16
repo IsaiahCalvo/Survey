@@ -48,7 +48,8 @@ if (testFiles.length === 0) {
 //
 //   * CI_PERF_TEST_FILES (scripts/ci-perf-tests.mjs) — the files that assert
 //     real wall-clock or CPU budgets. They run ONLY under `--only-perf`,
-//     in the non-blocking `perf` job. `npm test` skips them: a timing reading
+//     in the non-blocking performance-budgets step. `npm test` skips them: a
+//     timing reading
 //     taken on a loaded runner must never be able to veto a merge or a deploy.
 //
 //   * the rest — annotationDocConcurrency (99 CRDT convergence tests) and
@@ -116,11 +117,13 @@ const mainTestFiles = testFiles.filter(
 //                              the MAIN pass. Timing-sensitive files are never
 //                              in a shard.
 //   --only-timing-sensitive    run only the BLOCKING timing-sensitive files,
-//                              alone and sequentially (the CI `timing-suites`
-//                              job). Never includes the perf-budget files.
+//                              alone and sequentially (the first step of the
+//                              CI `isolated` job). Never includes the
+//                              perf-budget files.
 //   --only-perf                run only the wall-clock/CPU budget files, alone
-//                              and sequentially (the non-blocking CI `perf`
-//                              job). Unlike every other mode this does NOT stop
+//                              and sequentially (the non-blocking
+//                              performance-budgets step of that same job).
+//                              Unlike every other mode this does NOT stop
 //                              at the first failure: the lane is a report, and
 //                              a report that stops after the first slow file
 //                              hides the other two.
