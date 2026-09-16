@@ -2844,7 +2844,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-hub-close {
   position: absolute !important;
-  right: 12px;
+  /* UX 2026-09-16: same 16px gutter as the tab row and the page strip. */
+  right: 16px;
   top: 4px;
   width: 32px !important;
   height: 32px !important;
@@ -2943,7 +2944,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-track {
-  padding: 2px 1px !important;
+  /* UX 2026-09-16: run the sheet's own 16px gutter down the thumbnail strip.
+     At 1px the first page card — and its gold selected border — sat flush
+     against the screen edge while the segment row above it and the action row
+     below it were both inset, so the strip read as clipped. scroll-padding
+     keeps scrolled cards stopping on the same rule. */
+  padding: 2px 16px !important;
+  scroll-padding-inline: 16px;
   flex-direction: row !important;
   gap: 16px !important;
   overflow-x: auto !important;
