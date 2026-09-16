@@ -33325,7 +33325,18 @@ ${pageBlocks}
                                     // UX 2026-04-19: only hand off pointer events to the
                                     // Fabric edit surface when it's actually mounted (not
                                     // bbox mode, which keeps the SVG layer interactive).
-                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? undefined : 'text',
+                                    // UX 2026-09-16: with the Text tool armed but no
+                                    // editor open, this surface is where you DRAG OUT a
+                                    // new text box — so it wears the armed-tool cursor
+                                    // (crosshair + a "T" badge in the current colour)
+                                    // like every other creation tool. The I-beam belongs
+                                    // to the editor: once one is open this overlay hands
+                                    // its pointer events over and the editor's own
+                                    // `cursor: text` takes the caret work. Falls back to
+                                    // the old I-beam if the image cursor is refused.
+                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox')
+                                      ? undefined
+                                      : (toolCursorCss('text', strokeColor) || 'text'),
                                     zIndex: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 100 : 102,
                                     pointerEvents: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 'none' : 'auto',
                                   }}

@@ -159,15 +159,23 @@ test('the shared tooltip binder appends the badge, so no call site can forget it
 // 2. The tool cursor
 // ---------------------------------------------------------------------------
 
-test('every drag-out and freehand tool has a cursor; Pan and Eraser do not', () => {
-  for (const tool of ['pen', 'highlighter', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter', 'callout', 'text', 'select']) {
+test('every drag-out and freehand tool has a cursor; Pan, Eraser and Counter do not', () => {
+  for (const tool of ['pen', 'highlighter', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'callout', 'text', 'select']) {
     assert.ok(hasToolCursor(tool), `${tool} has no cursor glyph`);
   }
-  // Pan keeps the system grab hand; the Eraser paints its own size ring.
-  assert.ok(!hasToolCursor('pan'));
-  assert.ok(!hasToolCursor('eraser'));
-  assert.equal(toolCursorCss('pan', '#ff0000'), null);
-  assert.equal(toolCursorCss('eraser', '#ff0000'), null);
+  // Pan keeps the system grab hand, the Eraser paints its own size ring, and
+  // the Counter's page overlay is parked, so it keeps its plain crosshair
+  // rather than flashing a badge that only survives the tool switch.
+  for (const tool of ['pan', 'eraser', 'counter']) {
+    assert.ok(!hasToolCursor(tool), `${tool} should keep its own cursor`);
+    assert.equal(toolCursorCss(tool, '#ff0000'), null);
+  }
+});
+
+test('the Text tool wears its badge on the page and leaves the I-beam to the editor', () => {
+  // The creation overlay takes the armed-tool cursor; when an editor opens the
+  // overlay hands its pointer events over and the editor's caret cursor wins.
+  assert.match(pdfViewerSource, /\(toolCursorCss\('text', strokeColor\) \|\| 'text'\)/);
 });
 
 test('the cursor is a 42px image whose hotspot is the crosshair centre', () => {

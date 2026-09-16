@@ -62,7 +62,6 @@ export const TOOL_CURSOR_GLYPHS = {
   polyline: 'M3.5 17.5 L9 8.5 L14 14.5 L20.5 5.5',
   line: 'M4.5 19.5 L19.5 4.5',
   arrow: 'M4.5 19.5 L19.5 4.5 M19.5 4.5 L12.5 5.8 M19.5 4.5 L18.2 11.5',
-  counter: 'M20 12 A8 8 0 1 1 4 12 A8 8 0 1 1 20 12 Z M10.5 10 L12.5 8 V16',
   callout: 'M3.5 4.5 H20.5 V14.5 H12 L7.5 19.5 V14.5 H3.5 Z',
   text: 'M5 7 V4.5 H19 V7 M12 4.5 V19.5 M9 19.5 H15',
   // UX: Select's badge is its marquee — the dashed box it drags out.
@@ -73,9 +72,14 @@ export const TOOL_CURSOR_GLYPHS = {
 const DASHED_GLYPHS = new Set(['select']);
 
 /**
- * Tools that own a page cursor. `pan` is absent by design (system grab hand),
- * and so is `eraser` — it paints its own live size ring on the page and sets
- * `cursor: none`, which is a better answer than any badge.
+ * Tools that own a page cursor. Three are absent by design:
+ *   pan     — the system grab hand already says "drag to move the page".
+ *   eraser  — it paints its own live size ring and sets `cursor: none`, which
+ *             tells you more than a badge could.
+ *   counter — its page overlay is parked mid-debug and carries a standing
+ *             "do not touch" note, so it keeps the plain crosshair it has
+ *             always had. A badge here would only appear for the instant after
+ *             a tool switch and then vanish, which is worse than none.
  */
 export const CURSOR_TOOL_IDS = Object.keys(TOOL_CURSOR_GLYPHS);
 
