@@ -97,7 +97,11 @@ test('the header row is one height and one glyph size, and undo/redo do not move
   assert.match(block(css, '.mobile-pdf-header__pages'), /bottom: 6px/);
   assert.match(block(css, '.mobile-pdf-header__history', 1), /right: 8px/);
 
-  assert.match(chrome, /const HEADER_GLYPH = 17;/);
+  // RULED CHANGE 2026-09-16 (phone sweep, owner ruling "everything reads a
+  // little big; sizing follows Drawboard's ratios uniformly"): the header glyph
+  // is 15, not 17. Drawboard's glyph fills 0.53 of its control; 17-in-26 was
+  // 0.65. The ratio is what this test guards, so the number moved with it.
+  assert.match(chrome, /const HEADER_GLYPH = 15;/);
   assert.match(chrome, /name="undo" size=\{HEADER_GLYPH\}/);
   assert.match(chrome, /name="redo" size=\{HEADER_GLYPH\}/);
   assert.match(chrome, /name="chevronLeft" size=\{HEADER_GLYPH\}/);
@@ -113,8 +117,15 @@ test('the width field and the line-style dropdown are the same control size', ()
 });
 
 test('rail glyphs come from one constant per tier', () => {
-  assert.match(chrome, /const RAIL_GLYPH = 20;/);
-  assert.match(chrome, /const SUBTOOL_GLYPH = 16;/);
+  // RULED CHANGE 2026-09-16 (phone sweep, owner ruling "everything reads a
+  // little big; Drawboard's ratios, uniformly"): 0.55-0.60 of the chip on every
+  // tier, where these were two thirds of it. Rail 17-in-30, sub-tool 14-in-24,
+  // header 15-in-26, dock 17-in-30 — one ratio, all four tiers. The hit pads
+  // are untouched, so no target shrank with the glyph.
+  assert.match(chrome, /const RAIL_GLYPH = 17;/);
+  assert.match(chrome, /const SUBTOOL_GLYPH = 14;/);
+  assert.match(chrome, /const DOCK_GLYPH = 17;/);
+  assert.match(chrome, /const STRIP_GLYPH = 14;/);
   assert.match(chrome, /glyph = RAIL_GLYPH/);
   assert.match(chrome, /glyph=\{SUBTOOL_GLYPH\}/);
 });

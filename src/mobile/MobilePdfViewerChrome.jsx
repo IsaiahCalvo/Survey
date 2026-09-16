@@ -13,17 +13,27 @@ import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
-// UX 2026-09-16 (sizing pass, owner ruling): one glyph size per tier, taken
-// from Drawboard's iPhone rail, where the glyph fills roughly two thirds of
-// its chip. The CSS tokens set the chips (30px rail, 24px sub-tool, 26px
-// header); these set what is drawn inside them.
-const RAIL_GLYPH = 20;
+// UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
+// ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
+// desktop glyph fills 0.53 of its button and its phone rail chip is about 28pt.
+// Ours were drawn at two thirds of the chip, which is why the whole phone read
+// heavy - rail 20-in-30 (0.67), sub-tool 16-in-24 (0.67), header 17-in-26
+// (0.65), dock 18-in-30 (0.60). Every tier is 0.55-0.60 now: rail 17-in-30,
+// sub-tool 14-in-24, header 15-in-26, dock 17-in-30. The CSS tokens still set
+// the chips; these set what is drawn inside them, and the hit pads are
+// untouched, so nothing got harder to tap.
+// RULED CHANGE: tests/mobilePhoneSizing.test.mjs pinned the old three.
+const RAIL_GLYPH = 17;
 // The line-style dropdown and the width field are one control size (owner
 // ruling 2026-09-16). Both read the same token, so neither can drift.
 const STRIP_DROPDOWN_WIDTH = 'var(--mobile-strip-dropdown-w)';
-const SUBTOOL_GLYPH = 16;
-const HEADER_GLYPH = 17;
-const DOCK_GLYPH = 18;
+const SUBTOOL_GLYPH = 14;
+const HEADER_GLYPH = 15;
+// The four rich-text format toggles are 28x24 strip controls, so they take the
+// strip's own glyph rather than the 18 they were drawn at (0.75 of their box -
+// the heaviest glyph on the phone).
+const STRIP_GLYPH = 14;
+const DOCK_GLYPH = 17;
 
 // Group icons stay shared with the desktop toolbar. Sub-tools keep their own
 // glyphs, so the Text group can differ from its Text Box option.
@@ -361,8 +371,9 @@ const toHexColor = (value, fallback = '#d8a84e') => {
    the Select cursor at 21, so Select was visibly the odd one out down a column
    where everything else lined up. The size now comes from RAIL_GLYPH for a rail
    tool and SUBTOOL_GLYPH for a sub-tool, because those are the two chip sizes
-   (30px and 24px) and each glyph sits at the same two-thirds fill inside its own
-   chip. Do not pass a bare number here. */
+   (30px and 24px) and each glyph sits at the same fill inside its own chip -
+   0.57 since the 2026-09-16 phone sweep, where it used to be two thirds.
+   Do not pass a bare number here. */
 const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
   <button
     type="button"
@@ -826,7 +837,7 @@ export function MobileToolProperties({ api }) {
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => editorApi[method]?.()}
           >
-            <Icon name={iconName} size={18} />
+            <Icon name={iconName} size={STRIP_GLYPH} />
           </button>
         ))}
         <MobileStyledSelect
@@ -1172,9 +1183,18 @@ export function MobileToolProperties({ api }) {
         </label>
       )}
       {showArrowhead && (
+        /* UX 2026-09-16 (phone sweep): 80px, the same width as the Width field
+           and the Border style dropdown beside it (--mobile-strip-dropdown-w).
+           It was 124 - half again as wide as its neighbours - and it is what
+           pushed Arrow's row 53px past a 375px screen, taking the colour swatch
+           off the left edge entirely. The literal is deliberate: the number is
+           read out of this file by tests/mobileToolPropertiesReach.test.mjs,
+           which proves the row fits a 375px phone. It must stay on the line
+           directly after ariaLabel for that test to find it. Long values
+           ellipsize in the trigger and read in full in the menu. */
         <MobileStyledSelect
           ariaLabel="Arrowhead style"
-          minWidth={124}
+          minWidth={80}
           value={api.arrowheadStyle || 'solidTriangle'}
           options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
           onChange={(value) => api.setArrowheadStyle(value)}
@@ -1774,15 +1794,21 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
               }}
             >
-              {/* UX: 8px full-contrast caret keeps the phone's only mode
-                  disclosure legible at 1x in both active and idle states.
+              {/* UX: the caret keeps the phone's only mode disclosure legible at
+                  1x in both active and idle states.
                   2026-09-16: currentColor, not a hard-coded cream. The colour was
                   a literal, so when the Select family went active and its glyph
                   turned gold the caret stayed cream — one control showing two
-                  different active colours. */}
+                  different active colours.
+                  2026-09-16 (phone sweep): 7px, the shared split-button caret
+                  size the desktop uses (AppShell's Select button, whose comment
+                  cites Drawboard's 6px). This is the same kind of caret for the
+                  same reason - it hangs beside a full-size glyph, so it has to
+                  stay out of its way - and it was the last phone caret still
+                  carrying its own number. */}
               <Icon
                 name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
-                size={8}
+                size={7}
                 color="currentColor"
               />
             </button>
@@ -2161,7 +2187,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         onClick={onToggleHub}
       >
         {/* UX 2026-09-16: one size across all three dock controls; they ran
-            21 / 18 / 22. DOCK_GLYPH is that size, two thirds of the 30px dock
+            21 / 18 / 22. DOCK_GLYPH is that size, 0.57 of the 30px dock
             chip the sizing pass settled on. */}
         <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_GLYPH} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
