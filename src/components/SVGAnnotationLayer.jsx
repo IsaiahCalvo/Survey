@@ -62,6 +62,7 @@ import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // rendered through the generic path.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
+import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
@@ -1524,6 +1525,16 @@ const SVGAnnotationLayer = memo(({
       const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
       updateAnnotationGesture(state.gestureId, { annotationId: id });
       const current = annotationsRef.current;
+      // UX 2026-09-16 (Drawboard PDF contract): the mark you just drew comes up
+      // already selected, handles showing, while the tool STAYS armed — so the
+      // next drag on empty page draws another one and a drag that starts on a
+      // handle resizes this one. The new mark is appended, so it takes the last
+      // index. Free-form ink is excluded on purpose (see autoSelectAfterCommit).
+      // The selection is set in the same React batch as the save, so the layer
+      // paints the committed shape and its handles in one frame.
+      if (shouldAutoSelectAfterCommit(tool)) {
+        selectAnnotation((current?.objects?.length || 0));
+      }
       // setShapeCreation(null) above + this save land in ONE batched React
       // render (React 18 batches native listeners too), so the preview frame
       // is replaced by the committed frame with no blank gap — the seam the
@@ -1601,7 +1612,7 @@ const SVGAnnotationLayer = memo(({
   }, [
     activeRegionId, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
-    onSurveyMarkerCreated, pageNumber, selectedModuleId, selectedSpaceId,
+    onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
 
@@ -1658,6 +1669,11 @@ const SVGAnnotationLayer = memo(({
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
     updateAnnotationGesture(draft.gestureId, { annotationId: id });
     const current = annotationsRef.current;
+    // Same Drawboard contract as the drag-out shapes above: the finished
+    // polygon / polyline is selected the instant it lands, tool still armed.
+    if (shouldAutoSelectAfterCommit(tool)) {
+      selectAnnotation((current?.objects?.length || 0));
+    }
     onSaveAnnotations(
       { ...(current || {}), objects: [...(current?.objects || []), json] },
       { source: 'path:created', tool },
@@ -1671,8 +1687,8 @@ const SVGAnnotationLayer = memo(({
     return true;
   }, [
     activeRegionId, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
-    lineBorderStyle, onSaveAnnotations, pageNumber, selectedModuleId, selectedSpaceId,
-    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
+    lineBorderStyle, onSaveAnnotations, pageNumber, selectAnnotation, selectedModuleId,
+    selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
 
   const cancelPolyDraft = useCallback(() => {

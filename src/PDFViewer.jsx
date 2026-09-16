@@ -155,6 +155,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVi
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
+import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
@@ -27332,6 +27333,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         tool: 'counter',
       });
     });
+    // UX 2026-09-16 (Drawboard PDF contract): the counter you just dropped is
+    // already selected, so its rotate grabber is there to aim the nub without
+    // switching to Select first. The counter tool stays armed, so the next drag
+    // on empty page drops the next pin in the series. The pin was appended, so
+    // it is the last index in the page's object list.
+    if (shouldAutoSelectAfterCommit('counter')) {
+      setPendingSvgSelection({
+        pageNumber: drag.pageKey,
+        annotationIndex: (currentPage.objects?.length || 0),
+        tick: Date.now(),
+      });
+    }
     removeCounterDragPreview(drag);
 
     counterDragRef.current = null;
