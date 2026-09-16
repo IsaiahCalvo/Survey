@@ -304,7 +304,54 @@ html[data-native-shell="expo"] .mobile-pdf-header {
     visibility 0s;
 }
 
-.mobile-pdf-header__zoom-menu > button {
+/* UX 2026-09-16: minus / live percentage / plus, above the fit modes. The
+   steppers take the same 34px square the fit rows below them already use, so
+   the whole pill reads as one control — a bespoke size here would only fight
+   the sizing pass that sets every control's height from Drawboard's ratios.
+   The reading between them is the live scale, so you always know where you are. */
+.mobile-pdf-header__zoom-steppers {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  margin-bottom: 3px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #3c424d;
+}
+
+.mobile-pdf-header__zoom-steppers > button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #e8e2d4;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.mobile-pdf-header__zoom-steppers > button:disabled { color: #6f7785; opacity: 0.5; }
+.mobile-pdf-header__zoom-steppers > button:not(:disabled):active { background: #2a2b31; }
+
+.mobile-pdf-header__zoom-percent {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #f2f2f2;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.mobile-pdf-header__zoom-fits {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-pdf-header__zoom-fits > button {
   min-height: 34px;
   padding: 0 8px;
   display: flex;
@@ -319,7 +366,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-align: left;
 }
 
-.mobile-pdf-header__zoom-menu > button.is-active {
+.mobile-pdf-header__zoom-fits > button.is-active {
   color: var(--accent-primary, #d8a84e);
   background: var(--gold-bg, #2a2218);
 }

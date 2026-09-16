@@ -20,6 +20,16 @@ const css = read('../src/mobile/mobilePdfViewer.css');
 const sheetMotion = read('../src/mobile/useMobileSheetMotion.js');
 const sidebar = read('../src/PDFSidebar.jsx');
 
+// Pull the declaration block for a selector so a size assertion can't be
+// satisfied by an unrelated rule elsewhere in the sheet.
+const block = (source, selector) => {
+  const at = source.indexOf(`${selector} {`);
+  assert.notEqual(at, -1, `missing rule for ${selector}`);
+  const open = source.indexOf('{', at);
+  const close = source.indexOf('}', open);
+  return source.slice(open + 1, close);
+};
+
 test('the sheet backdrop dims to 30% black', () => {
   assert.match(css, /\n\.mobile-pdf-sheet-backdrop \{[^}]*background: rgba\(0, 0, 0, 0\.3\)/);
   // The shared colour picker sits ABOVE a sheet, so it keeps its own
@@ -50,4 +60,38 @@ test('the existing sheet timings and drag-to-dismiss are unchanged', () => {
   assert.match(sheetMotion, /export const SHEET_CLOSE_MS = 170/);
   assert.match(sheetMotion, /export const SHEET_SPRING_MS = 260/);
   assert.match(css, /animation: mobilePdfSheetIn 180ms ease-out/);
+});
+
+test('the zoom menu has minus/plus steppers and a live percentage', () => {
+  assert.match(chrome, /className="mobile-pdf-header__zoom-steppers"/);
+  assert.match(chrome, /aria-label="Zoom out"[\s\S]{0,220}bottomToolbarApi\.zoomOut/);
+  assert.match(chrome, /aria-label="Zoom in"[\s\S]{0,220}bottomToolbarApi\.zoomIn/);
+  assert.match(chrome, /mobile-pdf-header__zoom-percent/);
+  // Live scale comes from the same state the desktop zoom field renders.
+  assert.match(chrome, /Number\.parseInt\(bottomToolbarApi\?\.zoomInputValue, 10\)/);
+  // Same limits as the desktop toolbar (zoomController clampScale 0.01..40).
+  assert.match(chrome, /const MOBILE_ZOOM_MIN_PERCENT = 1;/);
+  assert.match(chrome, /const MOBILE_ZOOM_MAX_PERCENT = 4000;/);
+  // The three fit modes are still there, in their own listbox.
+  assert.match(chrome, /className="mobile-pdf-header__zoom-fits" role="listbox"/);
+  // The steppers share the fit rows' square rather than inventing a size.
+  const steppers = block(css, '.mobile-pdf-header__zoom-steppers > button');
+  const fitRow = block(css, '.mobile-pdf-header__zoom-fits > button');
+  const square = fitRow.match(/min-height: (\d+)px/)[1];
+  assert.match(steppers, new RegExp(`width: ${square}px`));
+  assert.match(steppers, new RegExp(`height: ${square}px`));
+});
+
+test('zoomIn and zoomOut still step by the shared 1.25x factor', () => {
+  const shared = read('../src/viewerShared.js');
+  assert.match(shared, /export const TOOLBAR_ZOOM_STEP_FACTOR = 1\.25;/);
+  const viewer = read('../src/PDFViewer.jsx');
+  assert.match(viewer, /const zoomIn = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \* TOOLBAR_ZOOM_STEP_FACTOR/);
+  assert.match(viewer, /const zoomOut = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \/ TOOLBAR_ZOOM_STEP_FACTOR/);
+});
+
+test('tapping an open tool group closes its strip', () => {
+  assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,900}if \(openCategory === groupId\) \{\s*setOpenCategory\(null\);\s*return;/);
+  // Opening a group still arms its last-used tool.
+  assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,1600}selectTool\(preferred && TOOL_TO_GROUP\[preferred\] === groupId \? preferred : group\.fallback\)/);
 });

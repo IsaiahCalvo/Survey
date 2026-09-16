@@ -87,6 +87,11 @@ const MOBILE_ANNOTATION_COLORS = [
   '#000000',
 ];
 
+// Mirrors zoomController's clampScale bounds (MIN_SCALE 0.01, MAX_SCALE 40) so
+// the phone steppers grey out at exactly the limits the desktop toolbar hits.
+const MOBILE_ZOOM_MIN_PERCENT = 1;
+const MOBILE_ZOOM_MAX_PERCENT = 4000;
+
 const MOBILE_FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',
@@ -440,6 +445,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   const pagesRef = useRef(null);
   const dismissInsideRefs = useMemo(() => [pagesRef], []);
   const title = documentName || 'Document';
+  // Live scale, straight off the same state the desktop zoom field shows.
+  const rawZoomPercent = Number.parseInt(bottomToolbarApi?.zoomInputValue, 10);
+  const zoomPercent = Number.isFinite(rawZoomPercent) && rawZoomPercent > 0 ? rawZoomPercent : 100;
 
   const revealTitle = () => {
     // Only long titles marquee (demo gates on length > 18). The is-revealing
@@ -566,26 +574,55 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         {bottomToolbarApi && (
           <div
             className={`mobile-pdf-header__zoom-menu${zoomOpen ? ' is-open' : ''}`}
-            role="listbox"
-            aria-label="Zoom and fit mode"
             aria-hidden={!zoomOpen}
           >
-            {ZOOM_FIT_OPTIONS.map((option) => (
+            {/* UX 2026-09-16 (phone reach pass): the phone could only pick a fit
+                mode here — there was no way to step the zoom by hand and no
+                number telling you where you were, so the only manual zoom on a
+                phone was a pinch. Minus and plus step by exactly the desktop's
+                1.25x per tap and honour the same 1%-4000% limits (they call the
+                very same zoomOut/zoomIn the desktop toolbar uses), and the
+                reading between them is the live scale. The menu deliberately
+                stays open so you can tap up or down repeatedly. Reference:
+                Drawboard PDF's phone zoom control pairs steppers with a live
+                percentage rather than fit modes alone. */}
+            <div className="mobile-pdf-header__zoom-steppers" role="group" aria-label="Zoom level">
               <button
                 type="button"
-                key={option.id}
-                role="option"
-                aria-selected={bottomToolbarApi.zoomMode === option.id}
-                className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
-                onClick={() => {
-                  bottomToolbarApi.handleZoomModeSelect(option.id);
-                  setZoomOpen(false);
-                }}
+                aria-label="Zoom out"
+                disabled={zoomPercent <= MOBILE_ZOOM_MIN_PERCENT}
+                onClick={() => bottomToolbarApi.zoomOut?.()}
               >
-                <span>{option.label}</span>
-                {bottomToolbarApi.zoomMode === option.id && <Icon name="check" size={14} color="currentColor" />}
+                <Icon name="minus" size={15} color="currentColor" />
               </button>
-            ))}
+              <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                disabled={zoomPercent >= MOBILE_ZOOM_MAX_PERCENT}
+                onClick={() => bottomToolbarApi.zoomIn?.()}
+              >
+                <Icon name="plus" size={15} color="currentColor" />
+              </button>
+            </div>
+            <div className="mobile-pdf-header__zoom-fits" role="listbox" aria-label="Zoom and fit mode">
+              {ZOOM_FIT_OPTIONS.map((option) => (
+                <button
+                  type="button"
+                  key={option.id}
+                  role="option"
+                  aria-selected={bottomToolbarApi.zoomMode === option.id}
+                  className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
+                  onClick={() => {
+                    bottomToolbarApi.handleZoomModeSelect(option.id);
+                    setZoomOpen(false);
+                  }}
+                >
+                  <span>{option.label}</span>
+                  {bottomToolbarApi.zoomMode === option.id && <Icon name="check" size={14} color="currentColor" />}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1642,6 +1679,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   const toggleCategory = (groupId) => {
     const group = TOOL_GROUPS[groupId];
+    // UX 2026-09-16 (phone chrome pass): a second tap on the group that is
+    // already open closes its strip and gives the rail its height back. The
+    // armed tool is deliberately left alone — closing the strip is a view
+    // change, not a tool change. Reference: Drawboard PDF's phone rail
+    // collapses an expanded group on a repeat tap. Opening a group still arms
+    // its last-used tool (unchanged).
+    if (openCategory === groupId) {
+      setOpenCategory(null);
+      return;
+    }
     setOpenCategory(groupId);
     if (activeGroup !== groupId) {
       const preferred = groupId === 'draw'
