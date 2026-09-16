@@ -21,12 +21,24 @@ test('live text formatting uses only app-styled menus', () => {
   assert.match(mobileCss, /\.mobile-styled-select__menu > button \{[\s\S]{0,120}min-height: 44px/);
 });
 
+/*
+ * 2026-09-16 phone sizing pass (owner ruling: every phone control takes its
+ * height, glyph and gap from Drawboard's ratios, through shared tokens). Two
+ * pinned numbers moved with the tokens and are re-pinned here, same intent:
+ *   - the strip's compact visual height is now --mobile-strip-control-h, whose
+ *     value is still 24px, so "24px visuals" is unchanged;
+ *   - the strip's right padding used to be the literal 52px, which was only
+ *     ever "rail width + left padding" for a 44px rail. The rail is 40px now,
+ *     so the rule states the relationship instead of a number.
+ * The 44px hit targets this test exists to protect are untouched.
+ */
 test('compact eraser and shape selects keep 24px visuals with unclipped 44px targets', () => {
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,900}overflow: visible/);
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,350}padding: 0 52px 0 8px;/);
+  assert.match(mobileCss, /--mobile-strip-control-h: 24px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,350}padding: 0 calc\(var\(--mobile-rail-w\) \+ 8px\) 0 8px;/);
   assert.match(mobileCss, /\.mobile-pdf-properties--text \{[\s\S]{0,350}padding-right: 8px;/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,100}height: 24px;[\s\S]{0,50}min-height: 24px/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,250}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -10px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,140}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
+  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -10px/);
   assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select[\s\S]{0,180}height: 44px;[\s\S]{0,50}min-height: 44px/);
 });
 

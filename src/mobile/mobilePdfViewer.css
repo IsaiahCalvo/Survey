@@ -1,6 +1,27 @@
 :root {
   --mobile-bottom-inset: max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   --mobile-viewer-dock-height: calc(52px + var(--mobile-bottom-inset));
+
+  /* PHONE SIZE TOKENS (owner ruling 2026-09-16 — "everything is a little big;
+     use Drawboard's ratios as the page, uniformly"). Reference = Drawboard PDF
+     on an iPhone, measured 2026-09-16: tool rail 40.4pt wide with a 34.7pt
+     pitch and ~28pt chips; top-bar control row 27-30pt; bottom bar 59-70pt
+     with 24-33pt controls. Every phone control takes its height, glyph and gap
+     from these tokens — no control invents its own size.
+
+     The chip you SEE is smaller than the area you can HIT: each rail chip
+     carries a transparent ::after that fills its whole slot, so the visible
+     square follows Drawboard while the finger target stays the full pitch. */
+  --mobile-rail-w: 40px;           /* Drawboard 40.4pt */
+  --mobile-rail-chip: 30px;        /* the square you see; Drawboard ~28pt */
+  --mobile-rail-gap: 5px;          /* 30 + 5 = 35px pitch; Drawboard 34.7pt */
+  --mobile-rail-sub-w: 32px;       /* the open sub-tool strip */
+  --mobile-rail-sub-chip: 24px;
+  --mobile-rail-sub-gap: 4px;      /* 28px sub pitch */
+  --mobile-control-h: 26px;        /* every header control, one height */
+  --mobile-strip-control-h: 24px;  /* every tool-properties control, one height */
+  --mobile-strip-dropdown-w: 80px; /* width and line style are the same size */
+  --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
 }
 
 html.survey-viewer-open,
@@ -70,12 +91,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__document,
 .mobile-pdf-header__history {
   position: absolute;
-  bottom: 4px;
+  bottom: 6px;
   display: flex;
   align-items: center;
   z-index: 2;
 }
 
+/* UX 2026-09-16 (sizing pass): all three header groups share one baseline —
+   6px above the header's bottom rule — so the back button, the title, the page
+   cluster and undo/redo read as one row. 6px is where undo and redo already
+   sat, so the pair the owner asked to leave alone does not move at all. */
 .mobile-pdf-header__document {
   left: 7px;
   /* UX 2026-07-12 (matrix §9 title-pill overlap fix): cap the title group so it
@@ -92,8 +117,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__icon {
-  width: 30px;
-  height: 30px;
+  width: var(--mobile-control-h);
+  height: var(--mobile-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -104,16 +129,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 5px;
 }
 
-.mobile-pdf-header__history .mobile-pdf-header__icon {
-  width: 26px;
-  height: 26px;
-}
 
 .mobile-pdf-header__icon:disabled { color: #6f7785; opacity: 0.56; }
 .mobile-pdf-header__icon:not(:disabled):active { background: #2a2b31; }
 
 .mobile-pdf-header__title {
-  height: 25px;
+  height: var(--mobile-control-h);
   min-width: 0;
   max-width: 100%;
   padding: 0 12px;
@@ -164,7 +185,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__pages {
   position: absolute;
   left: 50%;
-  bottom: 5px;
+  bottom: 6px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -173,8 +194,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-nav {
-  width: 24px;
-  height: 24px;
+  width: var(--mobile-control-h);
+  height: var(--mobile-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -188,10 +209,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__page-nav:disabled { color: #535b68; }
 .mobile-pdf-header__page-nav:not(:disabled):active { background: #2a2b31; }
 
-/* Demo pill geometry: 68x24, radius 5, tabular-nums, gold active border. */
+/* Demo pill geometry: 68 wide, radius 5, tabular-nums, gold active border.
+   Its height comes from the shared header control token so the pill lines up
+   with the back button, the title and undo/redo. */
 .mobile-pdf-header__page-pill {
   width: 68px;
-  height: 24px;
+  height: var(--mobile-control-h);
   padding: 0 4px;
   display: flex;
   align-items: center;
@@ -371,10 +394,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--gold-bg, #2a2218);
 }
 
+/* UX 2026-09-16 (sizing pass): the rail is Drawboard's 40pt-wide rail. It has
+   no side padding — the chips centre themselves — so nothing sticks out past
+   the rail's edge and the rail can never scroll sideways. */
 .mobile-pdf-tools {
-  width: 44px;
+  width: var(--mobile-rail-w);
   height: 100%;
-  padding: 7px 4px calc(var(--mobile-viewer-dock-height) + 28px);
+  padding: 7px 0 calc(var(--mobile-viewer-dock-height) + 28px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -385,12 +411,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 5750;
 }
 
+/* The half-gap padding is what the chips' transparent hit areas hang into, so
+   the column never reports a stray pixel or two of scroll. */
 .mobile-pdf-tools__main {
   min-height: 0;
+  padding-block: 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: var(--mobile-rail-gap);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -398,17 +427,32 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
 .mobile-pdf-tools__button {
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
+  min-height: var(--mobile-rail-chip);
   padding: 0;
   display: grid;
   place-items: center;
+  position: relative;
   /* UX: tool glyphs share desktop cream; active gold stays distinct. */
   color: #e8e2d4;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
+}
+
+/* UX 2026-09-16: the chip you see is 30px, the area a finger hits is the whole
+   35px slot across the 40px rail — Drawboard's rail reads the same way (28pt
+   chip inside a 34.7pt pitch). Without this the smaller chip would also be a
+   smaller target, which is the one thing the phone research said not to do. */
+.mobile-pdf-tools__main > .mobile-pdf-tools__button::after,
+.mobile-pdf-tools__select-family > .mobile-pdf-tools__button::after,
+.mobile-pdf-tools__footer > .mobile-pdf-tools__button::after,
+.mobile-pdf-tools__footer-stack > .mobile-pdf-tools__button::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(var(--mobile-rail-gap) / -2);
+  inset-inline: -4px;
 }
 
 .mobile-pdf-tools__button.is-active {
@@ -421,8 +465,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__select-family {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
   border: 1px solid transparent;
   border-radius: 6px;
 }
@@ -443,13 +487,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-color: transparent;
 }
 
+/* The mode caret stays pinned to the chip's right edge, as it always has been;
+   it just follows the chip down to 30px. Its own ::after keeps a finger-sized
+   target over a deliberately small glyph. */
 .mobile-pdf-tools__select-caret {
   position: absolute;
-  left: 31px;
+  /* 2px in from the chip's right edge — the same clearance the caret had when
+     the chip was 44px wide. */
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 18px;
+  width: 8px;
+  height: 14px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -459,9 +508,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 1;
 }
 
+.mobile-pdf-tools__select-caret::after {
+  content: '';
+  position: absolute;
+  inset-block: -8px;
+  inset-inline: -6px 0;
+}
+
 .mobile-pdf-lasso-controls {
   position: fixed;
-  left: 52px;
+  left: calc(var(--mobile-rail-w) + 12px);
   bottom: calc(var(--mobile-viewer-dock-height) + 12px);
   z-index: 5751;
   display: flex;
@@ -571,38 +627,47 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      over 150ms, matching the zoom menu's in-motion (Drawboard: 100ms fade +
      grow in). It unmounts on close, so only the "in" half exists. */
   animation: mobilePdfStripIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
-  width: 34px;
-  padding: 4px 0;
+  width: var(--mobile-rail-sub-w);
+  padding: 3px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--mobile-rail-sub-gap);
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
 }
 
 .mobile-pdf-tools__subtools .mobile-pdf-tools__button {
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
+  min-height: var(--mobile-rail-sub-chip);
+}
+
+/* Sub-tool chips get the same treatment one tier down: a 24px square inside a
+   28px slot that fills the strip's width. */
+.mobile-pdf-tools__subtools .mobile-pdf-tools__button::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(var(--mobile-rail-sub-gap) / -2);
+  inset-inline: -3px;
 }
 
 .mobile-pdf-tools__survey-categories {
-  width: 34px;
-  padding: 4px 0;
+  width: var(--mobile-rail-sub-w);
+  padding: 3px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--mobile-rail-sub-gap);
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
 }
 
 .mobile-pdf-tools__survey-categories button {
-  width: 28px;
-  height: 28px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
   padding: 0;
   color: #f2f2f2;
   background: #2a2d34;
@@ -619,20 +684,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-entities {
-  width: 34px;
-  padding: 4px 0;
+  width: var(--mobile-rail-sub-w);
+  padding: 3px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--mobile-rail-sub-gap);
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
 }
 
 .mobile-pdf-tools__survey-entities button {
-  width: 28px;
-  height: 24px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
   padding: 0;
   display: grid;
   place-items: center;
@@ -647,15 +712,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-entities button span {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   border: 1px solid #0c0f13;
   border-radius: 50%;
 }
 
+/* UX 2026-09-16: the footer column is the same 30px chip as the rail above it
+   — "More", sync, history and the active-users avatar are rail buttons like
+   any other, so they take the rail chip token instead of three private sizes.
+   The translate offsets are the existing hand-set nudges; they are untouched,
+   so the bottom of the stack still lands exactly where it did. */
 .mobile-pdf-tools__footer {
   margin-top: auto;
-  width: 34px;
+  align-self: center;
+  width: var(--mobile-rail-chip);
   padding-top: 0;
   display: flex;
   flex-direction: column;
@@ -666,8 +737,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button {
-  height: 18px;
-  min-height: 18px;
+  height: var(--mobile-rail-chip);
+  min-height: var(--mobile-rail-chip);
 }
 
 .mobile-pdf-tools__footer-stack {
@@ -675,21 +746,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: var(--mobile-rail-gap);
   transform: translateY(-5px);
 }
 
 .mobile-pdf-tools__footer-stack .mobile-pdf-tools__button {
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
+  min-height: var(--mobile-rail-chip);
   position: relative;
   transform: translateY(-3px);
 }
 
 .mobile-pdf-tools__sync {
-  width: 34px;
-  height: 34px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
   padding: 0;
   display: grid;
   place-items: center;
@@ -747,8 +818,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__avatar {
-  width: 28px;
-  height: 28px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
   display: grid;
   place-items: center;
   color: #e8e2d4;
@@ -779,8 +850,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__popover {
   position: fixed;
-  left: 47px;
-  width: min(245px, calc(100vw - 58px));
+  left: calc(var(--mobile-rail-w) + 3px);
+  width: min(245px, calc(100vw - var(--mobile-rail-w) - 14px));
   padding: 6px;
   color: #e8e2d4;
   background: #181c24;
@@ -837,15 +908,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties {
   position: absolute;
   top: 0;
-  left: 44px;
-  width: calc(100vw - 44px);
+  left: var(--mobile-rail-w);
+  width: calc(100vw - var(--mobile-rail-w));
   max-width: none;
   height: 36px;
   min-height: 36px;
-  /* The strip starts after the 44px tool rail, but its controls align with
-     the page navigation in the full-width header above. The extra right
-     padding cancels half of that rail offset. */
-  padding: 0 52px 0 8px;
+  /* Right padding = rail width + left padding is what centres the strip on the
+     viewport, so its controls line up with the header's page cluster. */
+  padding: 0 calc(var(--mobile-rail-w) + 8px) 0 8px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -888,8 +958,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties--actions > button,
 .mobile-pdf-properties__keep {
-  height: 30px;
-  min-height: 30px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
   padding: 0 9px;
   flex: 0 0 auto;
   color: #f2f2f2;
@@ -966,8 +1036,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties::-webkit-scrollbar { display: none; }
 
 .mobile-pdf-properties__color {
-  width: 24px;
-  height: 24px;
+  width: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
   padding: 0;
   flex: 0 0 auto;
   display: grid;
@@ -993,8 +1063,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__swatch {
-  width: 24px;
-  height: 24px;
+  width: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -1073,7 +1143,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__width {
-  height: 27px;
+  height: var(--mobile-strip-control-h);
   padding-left: 6px;
   display: flex;
   align-items: center;
@@ -1105,7 +1175,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties select,
 .mobile-pdf-properties__text-button,
 .mobile-pdf-properties__edit {
-  height: 24px;
+  height: var(--mobile-strip-control-h);
   padding: 0 8px;
   flex: 0 0 auto;
   color: #ddd;
@@ -1147,14 +1217,37 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    the button's transparent pseudo-element supplies the full 44px target. The
    parent strip deliberately leaves vertical overflow visible above. */
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select {
-  height: 24px;
-  min-height: 24px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger {
   position: relative;
-  height: 24px;
-  min-height: 24px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
+}
+
+/* UX 2026-09-16 (owner ruling): the width field and the line-style dropdown are
+   one control size — same height, same width — so the strip reads as a row of
+   equals instead of one tall box beside a short one. 80px is the widest label
+   either of them has to show ("Dashed" needs 78.4px with its chevron). The
+   width field's own stylesheet still sets a taller mobile box for the edit
+   sheet, which is a different surface; this only governs the strip. */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control {
+  width: var(--mobile-strip-dropdown-w);
+  height: var(--mobile-strip-control-h);
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control > input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: calc(var(--mobile-strip-control-h) - 2px);
+  line-height: calc(var(--mobile-strip-control-h) - 2px);
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger {
+  height: calc(var(--mobile-strip-control-h) - 2px);
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger::after {
@@ -1221,7 +1314,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties__font-size {
   width: 40px;
-  height: 27px;
+  height: var(--mobile-strip-control-h);
   padding: 0 4px;
   box-sizing: border-box;
   flex: 0 0 auto;
@@ -1235,7 +1328,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties__format {
   width: 28px;
-  height: 24px;
+  height: var(--mobile-strip-control-h);
   padding: 0;
   flex: 0 0 auto;
   color: #ddd;
@@ -1762,10 +1855,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   pointer-events: auto;
 }
 
+/* UX 2026-09-16 (owner: "the dock buttons are not sitting in the dock"). The
+   dock box is taller than the bar you can see: its top 16px is a transparent
+   gutter over the page, and the bottom strip is the home-indicator reserve.
+   Padding the box by exactly those two amounts leaves a content band that IS
+   the visible bar, so `align-items: center` now centres the buttons in the
+   bar rather than in the box. Before this they hung 4px above the bar's top
+   edge and stopped 6px short of its bottom. */
 .mobile-pdf-dock {
   height: var(--mobile-viewer-dock-height);
   min-height: var(--mobile-viewer-dock-height);
-  padding: 2px 20px 4px;
+  padding: 16px 20px var(--mobile-bottom-inset);
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -1810,12 +1910,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: #181a1f;
   border: 1px solid #2e333c;
   box-shadow: none;
-  transform: translateY(4px);
 }
 
+/* Every dock button is one height — Drawboard's bottom-bar controls run
+   24-33pt, and 30px clears the bar's 36px band by 3px top and bottom. */
 .mobile-pdf-dock__side {
-  width: 44px;
-  height: 44px;
+  width: var(--mobile-dock-control-h);
+  height: var(--mobile-dock-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -1831,7 +1932,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-dock__center {
   min-width: 124px;
-  height: 38px;
+  height: var(--mobile-dock-control-h);
   padding: 0 12px;
   display: flex;
   align-items: center;
@@ -1839,7 +1940,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 6px;
   background: #20242c;
   border-color: #3a4250;
-  border-radius: 19px;
+  border-radius: calc(var(--mobile-dock-control-h) / 2);
   font-size: 12px;
   font-weight: 900;
 }
