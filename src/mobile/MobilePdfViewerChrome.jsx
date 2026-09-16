@@ -13,6 +13,18 @@ import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
+// UX 2026-09-16 (sizing pass, owner ruling): one glyph size per tier, taken
+// from Drawboard's iPhone rail, where the glyph fills roughly two thirds of
+// its chip. The CSS tokens set the chips (30px rail, 24px sub-tool, 26px
+// header); these set what is drawn inside them.
+const RAIL_GLYPH = 20;
+// The line-style dropdown and the width field are one control size (owner
+// ruling 2026-09-16). Both read the same token, so neither can drift.
+const STRIP_DROPDOWN_WIDTH = 'var(--mobile-strip-dropdown-w)';
+const SUBTOOL_GLYPH = 16;
+const HEADER_GLYPH = 17;
+const DOCK_GLYPH = 18;
+
 // Group icons stay shared with the desktop toolbar. Sub-tools keep their own
 // glyphs, so the Text group can differ from its Text Box option.
 const TOOL_GROUPS = {
@@ -344,7 +356,7 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
 
-const RailButton = ({ active = false, disabled = false, icon, label, onClick, children, ...buttonProps }) => (
+const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
   <button
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
@@ -359,7 +371,7 @@ const RailButton = ({ active = false, disabled = false, icon, label, onClick, ch
     onClick={onClick}
     {...buttonProps}
   >
-    {children || <Icon name={icon} size={19} color="currentColor" />}
+    {children || <Icon name={icon} size={glyph} color="currentColor" />}
   </button>
 );
 
@@ -479,7 +491,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
       />
       <div className="mobile-pdf-header__document">
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
-          <Icon name="chevronLeft" size={21} color="currentColor" />
+          <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
         <button
           type="button"
@@ -505,7 +517,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) <= 1}
           onClick={bottomToolbarApi?.goToPreviousPage}
         >
-          <Icon name="chevronLeft" size={16} color="currentColor" />
+          <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
         <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}`}>
@@ -563,7 +575,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) >= (bottomToolbarApi?.numPages || 1)}
           onClick={bottomToolbarApi?.goToNextPage}
         >
-          <Icon name="chevronRight" size={16} color="currentColor" />
+          <Icon name="chevronRight" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
         {/* Phase F: the zoom/fit dropdown stays mounted so it can animate BOTH
@@ -636,7 +648,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           onClick={topToolbarApi?.onUndo || undefined}
         >
           {/* UX: share the desktop undo arrow without changing the phone touch target. */}
-          <Icon name="undo" size={17} color="currentColor" />
+          <Icon name="undo" size={HEADER_GLYPH} color="currentColor" />
         </button>
         <button
           type="button"
@@ -646,7 +658,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           onClick={topToolbarApi?.onRedo || undefined}
         >
           {/* UX: share the desktop redo arrow without changing the phone touch target. */}
-          <Icon name="redo" size={17} color="currentColor" />
+          <Icon name="redo" size={HEADER_GLYPH} color="currentColor" />
         </button>
       </div>
     </header>
@@ -1111,7 +1123,7 @@ export function MobileToolProperties({ api }) {
       {showBorderStyle && (
         <MobileStyledSelect
           ariaLabel="Border style"
-          minWidth={82}
+          minWidth={STRIP_DROPDOWN_WIDTH}
           value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
           options={[
             { value: 'solid', label: 'Solid' },
@@ -1732,7 +1744,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             >
               {/* UX: centre the glyph on the phone rail axis; the desktop
                   horizontal pair's -3px shift does not fit a vertical rail. */}
-              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" />
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={RAIL_GLYPH} color="currentColor" />
             </RailButton>
             <button
               ref={selectModeCaretRef}
@@ -1774,6 +1786,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     key={tool.id}
                     active={activeTool === tool.id}
                     icon={tool.icon}
+                    glyph={SUBTOOL_GLYPH}
                     label={tool.label}
                     disabled={tool.disabled}
                     onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
@@ -2119,7 +2132,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open spaces"
         onClick={() => onOpenPanel?.('spaces')}
       >
-        <Icon name="layers" size={21} color="currentColor" />
+        <Icon name="layers" size={DOCK_GLYPH} color="currentColor" />
       </button>
       <button
         type="button"
@@ -2127,7 +2140,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open pages, search, and bookmarks"
         onClick={onToggleHub}
       >
-        <Icon name={hubIcons[hubMode] || 'pages'} size={18} color="currentColor" />
+        <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_GLYPH} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
         <Icon name="chevronDown" size={12} color="currentColor" />
       </button>
@@ -2137,7 +2150,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open survey"
         onClick={onOpenSurvey}
       >
-        <Icon name="survey" size={22} color="currentColor" />
+        <Icon name="survey" size={DOCK_GLYPH} color="currentColor" />
       </button>
     </nav>
   );
