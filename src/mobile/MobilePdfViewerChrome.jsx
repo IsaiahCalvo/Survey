@@ -465,7 +465,13 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
       />
       <div className="mobile-pdf-header__document">
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
-          <Icon name="chevronLeft" size={21} color="currentColor" />
+          {/* UX 2026-09-16: one glyph size for every action icon in this bar.
+              Back, the two page chevrons and undo/redo all draw at 17 so the
+              same chevron is never two different sizes side by side (back used
+              to be a third bigger than the page chevrons next to it). The
+              zoom disclosure caret stays smaller: it reads as a caret beside a
+              label, not as an action icon. */}
+          <Icon name="chevronLeft" size={17} color="currentColor" />
         </button>
         <button
           type="button"
@@ -491,7 +497,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) <= 1}
           onClick={bottomToolbarApi?.goToPreviousPage}
         >
-          <Icon name="chevronLeft" size={16} color="currentColor" />
+          {/* UX 2026-09-16: same 17px glyph as Back and undo/redo. */}
+          <Icon name="chevronLeft" size={17} color="currentColor" />
         </button>
 
         <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}`}>
@@ -549,7 +556,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) >= (bottomToolbarApi?.numPages || 1)}
           onClick={bottomToolbarApi?.goToNextPage}
         >
-          <Icon name="chevronRight" size={16} color="currentColor" />
+          {/* UX 2026-09-16: same 17px glyph as Back and undo/redo. */}
+          <Icon name="chevronRight" size={17} color="currentColor" />
         </button>
 
         {/* Phase F: the zoom/fit dropdown stays mounted so it can animate BOTH
