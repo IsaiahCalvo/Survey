@@ -5,8 +5,28 @@ const WHEEL_NOTCH_PX = 100;
 // Keep equal travel chunk-independent within each input regime.
 // Drawboard measured 74% -> 97% over twelve 8px Ctrl-wheel ticks.
 const TRACKPAD_EXPONENT = 0.0029;
+// A wheel event counts as a discrete mouse-wheel NOTCH when it reports a
+// line/page delta mode, or a pixel delta of at least this much. Anything
+// smaller is a trackpad pinch / Ctrl-wheel stream and keeps the gentle
+// per-delta TRACKPAD_EXPONENT rate, so a pinch never turns twitchy.
 const TRACKPAD_THRESHOLD_PX = 50;
-const WHEEL_NOTCH_EXPONENT = Math.log(1.1) / WHEEL_NOTCH_PX;
+/**
+ * UX (2026-09-16): one detent of a real mouse wheel zooms by this factor.
+ *
+ * Reference behaviour — Drawboard PDF on the web moves x1.343 for one 120px
+ * Ctrl-wheel notch, so a single flick of the wheel visibly resizes the page.
+ * Survey used to step x1.1 per 100px notch (x1.121 for the 120px notch Chrome
+ * reports), which needed roughly three notches to cover one Drawboard notch and
+ * made mouse zoom feel stuck. 1.3 per notch matches Drawboard's felt rate.
+ *
+ * This is the NOTCH rate ONLY. A trackpad pinch / Ctrl-wheel stream keeps
+ * TRACKPAD_EXPONENT untouched — a pinch is a continuous gesture and must not
+ * get faster. Callers pass a large `maximumDelta` (the live viewer passes
+ * 1000 = ten notches) so one notch is never clipped; the small default cap is
+ * only a guard for callers that do not say what device they are on.
+ */
+export const WHEEL_NOTCH_STEP_FACTOR = 1.3;
+const WHEEL_NOTCH_EXPONENT = Math.log(WHEEL_NOTCH_STEP_FACTOR) / WHEEL_NOTCH_PX;
 
 
 export function getClampedZoomTranslation({
