@@ -15,6 +15,8 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { toolCursorCss } from './utils/toolCursors.js';
+import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
@@ -3140,7 +3142,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
+      // UX: on a tool switch the pointer must change SHAPE before the user
+      // moves the mouse, otherwise the new tool is invisible until they twitch.
+      // Tools that own a badge cursor get the same image the page surface uses
+      // (see src/utils/toolCursors.js), so the switch and the hover agree.
+      const armedCursor = toolCursorCss(activeTool, strokeColor);
+      if (armedCursor) forcedCursor = armedCursor;
+      else if (activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
