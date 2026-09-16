@@ -133,8 +133,13 @@ test('the pair is clamped to the visual viewport so the keyboard cannot bury it'
   assert.match(region, /vv\?\.height/);
   assert.match(region, /vv\?\.offsetTop/);
   // Prefer under the box, flip above it when the keyboard owns that space.
-  assert.match(region, /const lowestAllowed =/);
+  assert.match(region, /const lowestAllowed = vTop \+ vHeight - ACTION_TOUCH_TARGET - ACTION_EDGE_MARGIN;/);
   assert.match(region, /const above = rect\.top - ACTION_BOX_GAP - ACTION_TOUCH_TARGET;/);
+  // Flipping above the box is only allowed when "above" is itself on screen —
+  // a box low on a phone page has the keyboard on both sides of it, and the
+  // pair then pins to the last visible row rather than vanishing under it.
+  assert.match(region, /top = \(above >= highestAllowed && above <= lowestAllowed\) \? above : lowestAllowed;/);
+  assert.match(region, /top = Math\.max\(highestAllowed, Math\.min\(lowestAllowed, top\)\);/);
   // And the pair re-measures when the keyboard opens or the page scrolls.
   assert.match(overlaySrc, /window\.visualViewport\?\.addEventListener\?\.\('resize', schedule\)/);
 });
@@ -142,7 +147,7 @@ test('the pair is clamped to the visual viewport so the keyboard cannot bury it'
 test('opening the keyboard scrolls the box back into view by the minimum', () => {
   const start = overlaySrc.indexOf('// On-screen keyboard reveal.');
   assert.ok(start > -1, 'the keyboard reveal must exist');
-  const region = overlaySrc.slice(start, start + 1800);
+  const region = overlaySrc.slice(start, start + 2400);
   assert.match(region, /const keyboardInset = window\.innerHeight - \(vv\.height \+ vv\.offsetTop\);/);
   assert.match(region, /if \(keyboardInset < 80\) return;/, 'a URL-bar collapse must not count as a keyboard');
   assert.match(region, /scroller\.scrollTop \+= overflow;/, 'scroll by the measured overflow, nothing more');

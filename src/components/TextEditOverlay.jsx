@@ -615,13 +615,19 @@ export default function TextEditOverlay({
       );
 
       const below = rect.bottom + ACTION_BOX_GAP;
+      const highestAllowed = vTop + ACTION_EDGE_MARGIN;
       const lowestAllowed = vTop + vHeight - ACTION_TOUCH_TARGET - ACTION_EDGE_MARGIN;
       let top = below;
       if (below > lowestAllowed) {
+        // No room under the box. Try directly above it — but only if THAT
+        // lands inside the visible strip too. On a phone with the keyboard up,
+        // a box sitting low on the page has no room above it either (both
+        // sides are behind the keyboard), and the pair must still be tappable,
+        // so it pins to the last row of visible screen.
         const above = rect.top - ACTION_BOX_GAP - ACTION_TOUCH_TARGET;
-        top = above >= vTop + ACTION_EDGE_MARGIN ? above : lowestAllowed;
+        top = (above >= highestAllowed && above <= lowestAllowed) ? above : lowestAllowed;
       }
-      top = Math.max(vTop + ACTION_EDGE_MARGIN, top);
+      top = Math.max(highestAllowed, Math.min(lowestAllowed, top));
 
       setActionAnchor((prev) => (
         prev && prev.left === left && prev.top === top ? prev : { left, top }
@@ -665,6 +671,11 @@ export default function TextEditOverlay({
   // against a box whose final position has not landed yet. This fires only on a
   // real keyboard-open event, moves by a measured minimum, and never runs on
   // desktop (no keyboard inset, so it returns immediately).
+  //
+  // When the whole document already fits the screen there is nothing to scroll
+  // and this does nothing — the keyboard simply covers part of the page, as it
+  // does in every app. The tick/cross pair is clamped separately above, so it
+  // stays reachable either way.
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!vv) return undefined;
