@@ -3877,7 +3877,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!['select', 'text-select'].includes(activeTool)) return undefined;
     const clear = (event) => {
-      if (event.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      // UX 2026-09-16 — the text editor owns Escape while it is open.
+      //
+      // Two bugs lived in the old selector. It matched only
+      // [contenteditable="true"], but TextEditOverlay's editable is
+      // contenteditable="plaintext-only", so a keystroke inside a live text box
+      // fell straight through to the clear-everything branch below — which
+      // calls setEditingAnnotation(null) and unmounts the editor from under the
+      // typing. Escape then raced the editor's own handler, and the typed text
+      // could be lost. Matching any contenteditable flavour (and the overlay
+      // wrapper itself) keeps this listener off the editor entirely: the first
+      // Escape closes the editor and commits, exactly as Drawboard does, and a
+      // second Escape at rest clears the selection — the same two-step rule the
+      // selection bands already follow.
+      if (event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-text-edit-overlay], [role="dialog"]')) return;
       if (event.type === 'keydown' && event.key !== 'Escape') return;
       // UX: modifier-held empty-space clicks preserve the selection in every mode; only plain clicks clear.
       if (event.type === 'pointerdown' && (event.button !== 0 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey

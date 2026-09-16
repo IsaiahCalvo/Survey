@@ -31,7 +31,7 @@
  * and scale the SVG foreignObject uses — pixel-identical wrap and line step.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import {
   buildPlainTextContentStyle,
   buildCalloutTextContentStyle,
@@ -47,7 +47,44 @@ import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
+// ---------------------------------------------------------------------------
+// Confirm / discard buttons under the open editor.
+//
+// UX 2026-09-16 — Drawboard PDF parity. Drawboard puts an explicit round tick
+// and cross pair (measured: 25x25, sitting under the text box) on every open
+// text editor, so committing and discarding are both one obvious tap instead of
+// folklore about which key does what. Survey showed nothing at all.
+//
+// The visible circles are 24px and the tap targets are 44px (Apple's minimum,
+// and the number the phone research pass called out as the thing Survey keeps
+// missing). Both numbers are SCREEN pixels, deliberately: these are controls,
+// like selection handles and marquees, not annotation ink, so they stay the
+// same physical size at every zoom (CLAUDE.md — only annotation visuals scale
+// in page units).
+const ACTION_BUTTON_VISUAL = 24;
+const ACTION_TOUCH_TARGET = 44;
+const ACTION_PAIR_GAP = 8;
+const ACTION_PAIR_WIDTH = ACTION_TOUCH_TARGET * 2 + ACTION_PAIR_GAP;
+// Gap between the bottom of the text box and the top of the tap targets. The
+// visible circle is centred in its 44px pad, so the ink-to-ink gap reads as
+// ACTION_BOX_GAP + 10, close to Drawboard's ~18px.
+const ACTION_BOX_GAP = 8;
+const ACTION_EDGE_MARGIN = 6;
+
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
+// Nearest scrollable ancestor — used only for the on-screen-keyboard reveal.
+const findScrollableAncestor = (node) => {
+  let el = node?.parentElement || null;
+  while (el && el !== document.body && el !== document.documentElement) {
+    const style = window.getComputedStyle(el);
+    const overflowY = style.overflowY;
+    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
+      && el.scrollHeight > el.clientHeight + 1) return el;
+    el = el.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+};
 
 // Shared 2D context for the new-text tight-fit width measurement. Canvas
 // measureText tracks DOM text width closely for single-name fonts; the +2px
@@ -287,7 +324,10 @@ export default function TextEditOverlay({
 
   const wrapperRef = useRef(null);
   const editableRef = useRef(null);
+  const boxRef = useRef(null);
   const committedRef = useRef(false);
+  // Screen position of the tick/cross pair, in client px (see ACTION_* above).
+  const [actionAnchor, setActionAnchor] = useState(null);
 
   // Container-aware effective scale from the page host's real size.
   const [effScale, setEffScale] = useState({ x: 1, y: 1 });
@@ -539,6 +579,111 @@ export default function TextEditOverlay({
   const cancelRef = useRef(cancelAndClose);
   useEffect(() => { cancelRef.current = cancelAndClose; }, [cancelAndClose]);
 
+  // ---------------------------------------------------------------------
+  // Tick / cross placement (screen space).
+  //
+  // The pair is portaled to <body> and positioned with fixed coordinates read
+  // off the live box, rather than being laid out inside the page-space div:
+  // a `transform` on any ancestor makes `position: fixed` resolve against that
+  // ancestor instead of the viewport, and the page-space div is scaled. Fixed
+  // coordinates also keep the buttons a constant 24/44px at every zoom.
+  //
+  // visualViewport is the source of truth for "what the user can actually
+  // see". On a phone the on-screen keyboard shrinks the visual viewport
+  // without changing window.innerHeight, so plain viewport maths would park
+  // the tick and cross underneath the keyboard. Clamped here: the pair prefers
+  // to sit under the box, flips above it when the keyboard has taken that
+  // space, and as a last resort pins to the bottom of the visible area.
+  // ---------------------------------------------------------------------
+  useLayoutEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const box = boxRef.current;
+      if (!box || committedRef.current) return;
+      const rect = box.getBoundingClientRect();
+      const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+      const vLeft = vv?.offsetLeft ?? 0;
+      const vTop = vv?.offsetTop ?? 0;
+      const vWidth = vv?.width ?? window.innerWidth;
+      const vHeight = vv?.height ?? window.innerHeight;
+
+      let left = rect.left + (rect.width / 2) - (ACTION_PAIR_WIDTH / 2);
+      left = Math.max(
+        vLeft + ACTION_EDGE_MARGIN,
+        Math.min(vLeft + vWidth - ACTION_PAIR_WIDTH - ACTION_EDGE_MARGIN, left),
+      );
+
+      const below = rect.bottom + ACTION_BOX_GAP;
+      const lowestAllowed = vTop + vHeight - ACTION_TOUCH_TARGET - ACTION_EDGE_MARGIN;
+      let top = below;
+      if (below > lowestAllowed) {
+        const above = rect.top - ACTION_BOX_GAP - ACTION_TOUCH_TARGET;
+        top = above >= vTop + ACTION_EDGE_MARGIN ? above : lowestAllowed;
+      }
+      top = Math.max(vTop + ACTION_EDGE_MARGIN, top);
+
+      setActionAnchor((prev) => (
+        prev && prev.left === left && prev.top === top ? prev : { left, top }
+      ));
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(measure);
+    };
+    measure();
+    const box = boxRef.current;
+    const ro = box ? new ResizeObserver(schedule) : null;
+    if (ro && box) ro.observe(box);
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    window.visualViewport?.addEventListener?.('resize', schedule);
+    window.visualViewport?.addEventListener?.('scroll', schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      ro?.disconnect();
+      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('orientationchange', schedule);
+      window.visualViewport?.removeEventListener?.('resize', schedule);
+      window.visualViewport?.removeEventListener?.('scroll', schedule);
+    };
+  }, [liveOuterH, effScale.x, effScale.y]);
+
+  // On-screen keyboard reveal.
+  //
+  // UX 2026-09-16 — on a phone the keyboard slides up over the bottom of the
+  // screen. If the box you are typing in is down there you end up typing blind.
+  // When visualViewport reports that the keyboard has taken real estate (the
+  // >=80px test keeps a browser URL bar collapse from counting), scroll the
+  // viewer by the SMALLEST amount that brings the box and its tick/cross back
+  // into the visible strip.
+  //
+  // This does not contradict the "opening an editor never moves the page" rule
+  // above: that rule is about focus-time reveal, where the browser guesses
+  // against a box whose final position has not landed yet. This fires only on a
+  // real keyboard-open event, moves by a measured minimum, and never runs on
+  // desktop (no keyboard inset, so it returns immediately).
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return undefined;
+    const reveal = () => {
+      const box = boxRef.current;
+      if (!box || committedRef.current) return;
+      const keyboardInset = window.innerHeight - (vv.height + vv.offsetTop);
+      if (keyboardInset < 80) return;
+      const needed = ACTION_BOX_GAP + ACTION_TOUCH_TARGET + ACTION_EDGE_MARGIN;
+      const rect = box.getBoundingClientRect();
+      const overflow = (rect.bottom + needed) - (vv.offsetTop + vv.height);
+      if (overflow <= 0) return;
+      const scroller = findScrollableAncestor(box);
+      if (scroller) scroller.scrollTop += overflow;
+    };
+    vv.addEventListener('resize', reveal);
+    return () => vv.removeEventListener('resize', reveal);
+  }, []);
+
   // Mount: seed text, focus, select-all for existing text (parity with the
   // fabric path's enterEditing + selectAll), initial broadcasts.
   //
@@ -602,13 +747,29 @@ export default function TextEditOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Escape cancels (capture, before app-level hotkeys); click-outside commits.
+  // Escape COMMITS (capture, before app-level hotkeys); click-outside commits.
+  //
+  // UX 2026-09-16 — Drawboard PDF contract: Escape closes the editor and KEEPS
+  // what you typed. Measured in the Drawboard web reference pass: "Escape —
+  // KEEPS the text; box stays with the typed content." Survey used to throw the
+  // text away, which is the one text behaviour a user cannot recover from.
+  // Discarding is now reachable only through the explicit cross button beside
+  // the tick, where the user is asking for it. An empty new box still
+  // disappears: commitAndClose routes blank new text to onEditCancel, so
+  // Escape on an untouched box leaves no stray annotation behind.
+  //
+  // flush: true — PDFViewer's select-family "clear everything" Escape listener
+  // is registered on window/capture, so it runs BEFORE this document/capture
+  // one and can null editingAnnotation in the same event. Committing
+  // synchronously puts the annotation in the page JSON before React unmounts
+  // this overlay, so persistence never depends on the unmount flush winning a
+  // race against a detached editable.
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        cancelRef.current();
+        commitRef.current({ flush: true });
       }
     };
     const onDocPointerDown = (e) => {
@@ -720,6 +881,7 @@ export default function TextEditOverlay({
         }}
       >
         <div
+          ref={boxRef}
           onMouseDown={(e) => {
             // Clicks in the gutter/padding keep focus in the editor.
             if (e.target !== editableRef.current) {
@@ -780,6 +942,106 @@ export default function TextEditOverlay({
           </div>
         </div>
       </div>
+      {actionAnchor && typeof document !== 'undefined' && createPortal(
+        (
+          <div
+            // data-text-edit-overlay: the outside-click commit handler treats
+            // anything inside the overlay as "still editing". The pair lives in
+            // a body portal, so it has to carry the marker itself or tapping
+            // the cross would commit on the way down and then find nothing to
+            // cancel.
+            data-text-edit-overlay
+            data-text-edit-actions
+            style={{
+              position: 'fixed',
+              left: actionAnchor.left,
+              top: actionAnchor.top,
+              width: ACTION_PAIR_WIDTH,
+              height: ACTION_TOUCH_TARGET,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: ACTION_PAIR_GAP,
+              pointerEvents: 'auto',
+              zIndex: 2147483000,
+            }}
+            onPointerDown={(e) => { e.stopPropagation(); }}
+            // preventDefault on mousedown keeps the caret and selection exactly
+            // where they were — the button must not pull focus out of the
+            // editable before it acts. pointerdown is deliberately NOT
+            // cancelled: cancelling it suppresses the click these buttons run on.
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          >
+            <button
+              type="button"
+              // UX: cross = discard. Reverts to the text the box had when this
+              // edit began; on a brand-new box (or a brand-new callout) there
+              // was no earlier text, so the box is removed instead. Matches
+              // Drawboard, which pairs its tick with a cross that throws the
+              // edit away.
+              title="Discard changes"
+              aria-label="Discard changes"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelRef.current(); }}
+              style={ACTION_TAP_PAD_STYLE}
+            >
+              <span style={actionDiscStyle('#ffffff', '#cbd5e1')}>
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M3 3 L9 9 M9 3 L3 9" stroke="#475569" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+                </svg>
+              </span>
+            </button>
+            <button
+              type="button"
+              // UX: tick = keep. Same commit the Escape key and a click outside
+              // the box perform, given its own button so committing is never a
+              // guess. Drawboard reference: round tick under the open text box.
+              title="Keep text"
+              aria-label="Keep text"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); commitRef.current({ flush: true }); }}
+              style={ACTION_TAP_PAD_STYLE}
+            >
+              <span style={actionDiscStyle('#2563eb', '#1d4ed8')}>
+                <svg width="13" height="13" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M2.8 6.3 L4.9 8.5 L9.2 3.6" stroke="#ffffff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+              </span>
+            </button>
+          </div>
+        ),
+        document.body,
+      )}
     </div>
   );
+}
+
+// The 44px tap target itself is invisible — the user sees only the 24px disc
+// the button wraps (see ACTION_* constants and the Drawboard note above).
+const ACTION_TAP_PAD_STYLE = {
+  width: ACTION_TOUCH_TARGET,
+  height: ACTION_TOUCH_TARGET,
+  padding: 0,
+  margin: 0,
+  border: 'none',
+  background: 'transparent',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  outline: 'none',
+  WebkitTapHighlightColor: 'transparent',
+};
+
+function actionDiscStyle(background, borderColor) {
+  return {
+    width: ACTION_BUTTON_VISUAL,
+    height: ACTION_BUTTON_VISUAL,
+    borderRadius: '50%',
+    background,
+    border: `1px solid ${borderColor}`,
+    boxSizing: 'border-box',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 1px 3px rgba(15,23,42,0.28)',
+  };
 }
