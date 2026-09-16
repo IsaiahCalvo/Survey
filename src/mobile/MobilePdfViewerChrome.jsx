@@ -338,6 +338,10 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
 
+/* UX 2026-09-16: ONE glyph size for the whole rail. The rail ran at 19 while the
+   Select cursor inside it ran at 21, so Select was visibly the odd one out in a
+   column where everything else lined up. 21 is the rail size: it is what the
+   Select family already used, and the buttons are 44pt so nothing has to grow. */
 const RailButton = ({ active = false, disabled = false, icon, label, onClick, children, ...buttonProps }) => (
   <button
     type="button"
@@ -348,7 +352,7 @@ const RailButton = ({ active = false, disabled = false, icon, label, onClick, ch
     onClick={onClick}
     {...buttonProps}
   >
-    {children || <Icon name={icon} size={19} color="currentColor" />}
+    {children || <Icon name={icon} size={21} color="currentColor" />}
   </button>
 );
 
@@ -464,8 +468,11 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         }}
       />
       <div className="mobile-pdf-header__document">
+        {/* UX 2026-09-16: 17, the size undo/redo and the page chevrons use. At 21
+            the back chevron was a third bigger than the identical chevron glyph
+            two controls to its right. */}
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
-          <Icon name="chevronLeft" size={21} color="currentColor" />
+          <Icon name="chevronLeft" size={17} color="currentColor" />
         </button>
         <button
           type="button"
@@ -491,7 +498,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) <= 1}
           onClick={bottomToolbarApi?.goToPreviousPage}
         >
-          <Icon name="chevronLeft" size={16} color="currentColor" />
+          <Icon name="chevronLeft" size={17} color="currentColor" />
         </button>
 
         <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}`}>
@@ -549,7 +556,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) >= (bottomToolbarApi?.numPages || 1)}
           onClick={bottomToolbarApi?.goToNextPage}
         >
-          <Icon name="chevronRight" size={16} color="currentColor" />
+          <Icon name="chevronRight" size={17} color="currentColor" />
         </button>
 
         {/* Phase F: the zoom/fit dropdown stays mounted so it can animate BOTH
@@ -1694,11 +1701,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               }}
             >
               {/* UX: 8px full-contrast caret keeps the phone's only mode
-                  disclosure legible at 1x in both active and idle states. */}
+                  disclosure legible at 1x in both active and idle states.
+                  2026-09-16: currentColor, not a hard-coded cream. The colour was
+                  a literal, so when the Select family went active and its glyph
+                  turned gold the caret stayed cream — one control showing two
+                  different active colours. */}
               <Icon
                 name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
                 size={8}
-                color="#e8e2d4"
+                color="currentColor"
               />
             </button>
           </div>
@@ -2074,7 +2085,8 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open pages, search, and bookmarks"
         onClick={onToggleHub}
       >
-        <Icon name={hubIcons[hubMode] || 'pages'} size={18} color="currentColor" />
+        {/* UX 2026-09-16: 21 across all three dock controls; they ran 21 / 18 / 22. */}
+        <Icon name={hubIcons[hubMode] || 'pages'} size={21} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
         <Icon name="chevronDown" size={12} color="currentColor" />
       </button>
@@ -2084,7 +2096,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open survey"
         onClick={onOpenSurvey}
       >
-        <Icon name="survey" size={22} color="currentColor" />
+        <Icon name="survey" size={21} color="currentColor" />
       </button>
     </nav>
   );

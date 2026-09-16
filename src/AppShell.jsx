@@ -1546,9 +1546,15 @@ export default function App({ devPreviewReturnTab = null }) {
                     padding: 0,
                   } : undefined}
                 >
+                  {/* UX 2026-09-16: ONE glyph size for the whole top tool row.
+                      Pan rendered at 20 and Select at 22 while Draw, Shapes and
+                      Text rendered at 18 — a 22% spread in the single
+                      most-looked-at row, so it never read as one set. 18 is the
+                      row size because three of the five already used it and
+                      because growing the others would grow the bar. */}
                   <Icon
                     name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
-                    size={isSelect ? 22 : 20}
+                    size={18}
                     style={isSelect ? { transform: 'translateX(-3px)' } : undefined}
                   />
                   {isSelect && (

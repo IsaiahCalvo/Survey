@@ -134,7 +134,12 @@ test('desktop Select uses one integrated Drawboard-style mode trigger', () => {
   // B1: desktop uses the canonical label, just like the trigger and mobile sheet.
   assert.match(selectToolbar, /<span>\{opt\.label\}<\/span>/);
   assert.equal(SELECT_MODE_OPTIONS.find(option => option.mode === 'rectangle').label, 'Rectangle Select');
-  assert.match(selectToolbar, /size=\{isSelect \? 22 : 20\}/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, icon-set consistency pass): the top
+  // tool row now renders every glyph at ONE size. It used to run Pan at 20,
+  // Select at 22 and Draw/Shapes/Text at 18 — a 22% spread in one row, which the
+  // owner called out. 18 is the row size: three of the five already used it, and
+  // growing the other two would grow the top bar.
+  assert.match(selectToolbar, /size=\{18\}/);
   assert.match(selectToolbar, /getSelectModeIconName\(opt\.mode\)\} size=\{20\}/);
 });
 
