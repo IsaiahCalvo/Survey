@@ -34,10 +34,13 @@ test('Shapes glyph is one stroke weight on the 24-unit grid', async () => {
   // Exactly one stroke-width declaration, set on the root, shared by all three
   // sub-forms. The old filled artwork mixed 2.0-unit and ~1.6-unit line weights.
   const widths = new Set([...icon.matchAll(/stroke-width="([\d.]+)"/g)].map((m) => m[1]));
-  // One weight only. 1.7 rather than the 1.5 of Pan / Select is deliberate:
-  // each sub-form is ~10 of the 24 units, and small forms need relatively
-  // heavier strokes to read at the same weight (optical sizing rule).
-  assert.deepEqual([...widths], ['1.7'], 'one weight only across all three forms');
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, icon-set consistency pass): 1.7 ->
+  // 1.5. The 1.7 was an optical compensation for a row where Shapes rendered at
+  // 18px and Pan at 20px; the whole row renders at one size now, so 1.7 stopped
+  // matching Pan and started reading 13% heavier than it. Owner ruling of this
+  // pass: one stroke weight across the set. What this test guards — ONE weight,
+  // never the old artwork's mixed 2.0 and ~1.6 — is unchanged.
+  assert.deepEqual([...widths], ['1.5'], 'one weight only across all three forms');
   assert.doesNotMatch(icon.replace(/<!--[\s\S]*?-->/g, ''), /\bfill="(?!none)/);
 });
 

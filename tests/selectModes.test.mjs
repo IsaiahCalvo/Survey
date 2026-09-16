@@ -57,8 +57,17 @@ test('Select family keeps distinct approved icons without changing its transitio
   assert.equal(getSelectFamilyIconName('select', 'lasso'), 'lassoSelect');
   assert.equal(getSelectFamilyIconName('text-select', 'rectangle'), 'textSelect');
 
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, icon-set consistency pass): the
+  // selection-cursor hash moves because its stroke-width went 1.75 -> 1.5. Owner
+  // ruling of this pass: the icons are ONE set and must share one stroke weight.
+  // Select was the second-heaviest glyph in a rail whose lightest was 1.5 (a 33%
+  // painted spread down one column). Nothing else about the asset changed, and
+  // what this test actually guards — that the three Select-family modes keep
+  // three distinct, locked assets — is untouched. The lasso and text-select
+  // hashes are unchanged: both already resolve to ~1.5 through their scaled
+  // groups.
   for (const [fileName, expectedHash] of [
-    ['selection-cursor-rounded.svg', '5b84e601f810c906dfe32d464b9d175e0d18db794b4be0c0251aa8455cb80a01'],
+    ['selection-cursor-rounded.svg', '0a438b4cf39a44e85607b9cd78d813a7e10ea2c0a49fa111b14ec77b2b9853ae'],
     ['lasso-select-rounded.svg', '9fe83afeef1c13c09aa557728badf71696341213210b5b2924e1becba8e50d22'],
     ['text-select-rounded.svg', '7f75647ee4d328ec68eb867dfde598019fe1537db3861a7014273b812a80192e'],
   ]) {

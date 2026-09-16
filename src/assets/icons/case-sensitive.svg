@@ -1,3 +1,11 @@
+<!--
+  Text group glyph: Lucide "case-sensitive" (ISC).
+
+  2026-09-16: stroke-width is the house 1.5, not Lucide's own 2. The glyph is
+  unchanged — same paths, same circle — but it sits in the tool rail beside Pan,
+  Select, Draw and Shapes, and at 2 it painted 1.58px against Pan's 1.19px, a
+  33% spread inside one column. Owner ruling 2026-09-16: one stroke weight.
+-->
 <svg
   xmlns="http://www.w3.org/2000/svg"
   width="24"
@@ -5,7 +13,7 @@
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"
-  stroke-width="2"
+  stroke-width="1.5"
   stroke-linecap="round"
   stroke-linejoin="round"
 >
