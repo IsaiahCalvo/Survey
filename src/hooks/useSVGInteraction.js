@@ -20,6 +20,7 @@ import {
   isCenterOriginInkGeometry,
   scaleInRotatedFrameAroundMatrix,
 } from '../utils/inkGeometryTransform.js';
+import { buildCaretAnchor } from '../utils/doubleTapEditEntry.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
@@ -126,13 +127,35 @@ const buildPreviewObjects = (updatedAnnotations, originals) => {
 };
 
 /**
+ * Where the caret should land for the gesture that asked for edit mode, recorded
+ * relative to the annotation's own on-screen box so it survives the scroll the
+ * editor mount can cause. TextEditOverlay drops the caret there instead of
+ * selecting the whole string (Drawboard parity, 2026-09-15). Null when the event
+ * carries no usable coordinates (synthetic or keyboard-driven entry).
+ *
+ * The carrier below is the whole annotation — for a callout, arrow + knee +
+ * text box. buildCaretAnchor narrows it to the box the editor covers
+ * (caretAnchorHostFor), so a click on a letter is measured against the text
+ * box and not against the arrow's reach.
+ */
+function readCaretAnchor(event) {
+  return buildCaretAnchor({
+    x: event?.clientX,
+    y: event?.clientY,
+    host: event?.target?.closest?.('[data-callout-id], [data-annotation-index]') || null,
+  });
+}
+
+/**
  * @param {object} options
  * @param {React.RefObject<SVGSVGElement>} options.svgRef - Ref to root <svg> element
  * @param {{ objects: Array }} options.annotations - Fabric.js JSON annotations
  * @param {number} options.pageWidth - Unscaled page width (viewBox width)
  * @param {number} options.pageHeight - Unscaled page height (viewBox height)
  * @param {Function} options.onSaveAnnotations - (updatedJSON, saveContext) => void
- * @param {Function} options.onRequestEditMode - (annotationIndex, annotationType) => void
+ * @param {Function} options.onRequestEditMode - (annotationIndex, annotationType, options?) => void
+ *   options carries { caretAnchor } so the text editor can drop the caret
+ *   where the double-click landed.
  * @param {Array} [options.callouts] - Phase 14 CALL-10 — array of React callouts
  *   (normalized 0-1 coords) from App.jsx. Used to look up the original callout
  *   by id for drag-start snapshots and whole-move delta math.
@@ -952,7 +975,10 @@ export function useSVGInteraction({
         // UX: fire the dispatch with 'callout' type — App.jsx disambiguates
         // by checking type === 'callout' and routes to the calloutEditAdapter
         // pipeline via handleRequestCalloutEditMode.
-        onRequestEditMode(calloutId, 'callout');
+        // The third arg carries the client point of the double-click so the
+        // caret lands where the user clicked instead of selecting the whole
+        // string (Drawboard parity, 2026-09-15).
+        onRequestEditMode(calloutId, 'callout', { caretAnchor: readCaretAnchor(e) });
         return;
       }
     }
@@ -963,7 +989,7 @@ export function useSVGInteraction({
       return;
     }
     if (onRequestEditMode && annotation) {
-      onRequestEditMode(index, annotation.type);
+      onRequestEditMode(index, annotation.type, { caretAnchor: readCaretAnchor(e) });
     }
   }, [onRequestEditMode, annotations]);
 

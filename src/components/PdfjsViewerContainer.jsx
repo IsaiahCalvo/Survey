@@ -48,6 +48,7 @@ import {
 } from '../utils/pdfZoomMath';
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
+import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1876,8 +1877,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // Pan owns blank document space, never native controls layered over it.
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,
       // click, and change sequence entirely on desktop.
+      // UX 2026-09-15 (Drawboard parity): AcroForm widgets stay fully live under
+      // Pan — a click toggles a checkbox / focuses a text field, and a drag on a
+      // widget does NOT pan. isEditableTarget only inspects the DIRECT target,
+      // so a click that lands on the <section> wrapper's padding rather than on
+      // its <input> used to be swallowed by the pan preventDefault.
+      // `[data-pan-interactive="true"]` is the general seam: stamp it on
+      // anything that must eat the gesture instead of panning. It is NOT on
+      // annotation carriers — Drawboard pans from an unselected annotation, so
+      // that drag has to keep reaching this scroller.
       if (isEditableTarget(event.target)
-        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')) return;
+        || isLiveFormWidgetTarget(event.target)
+        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')
+        || event.target?.closest?.('[data-pan-interactive="true"]')) return;
       event.preventDefault();
       event.stopPropagation();
       // A new grab always beats an in-flight glide.
@@ -2006,13 +2018,54 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const isNativeInteractionTarget = (target) => {
       const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
       if (isEditableTarget(nativeTarget)) return true;
+      // A tap that lands in a widget's own box but beside its control (the
+      // section's padding, or the pointer-events:none chrome SVG) must still
+      // reach the control's section instead of being preventDefault()ed into a
+      // pan. isEditableTarget only sees the <input>/<select>/<textarea> itself.
+      if (isLiveFormWidgetTarget(nativeTarget)) return true;
       if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
+      // Mobile mirror of the desktop pan bail-out above. The form-widget half
+      // of it is isLiveFormWidgetTarget() just above — one definition, not two
+      // drifting selectors. `[data-pan-interactive="true"]` is the general
+      // seam: stamp it on anything that must eat the gesture instead of
+      // panning. Never on an annotation carrier — Drawboard pans from an
+      // unselected annotation, so that drag has to reach the scroller.
+      if (nativeTarget?.closest?.('[data-pan-interactive="true"]')) return true;
       return interactionModeRef.current === 'TextSelection'
         && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer, [data-shape-kind^="text-markup-"]'));
     };
 
+    // UX 2026-09-15 — a one-finger drag that STARTS on a live form widget.
+    //
+    // Reference behaviour (Drawboard PDF on a phone): touching a field and
+    // dragging scrolls the document, exactly like touching anywhere else. Only
+    // a TAP belongs to the control. Bailing out of the whole touch pipeline on
+    // the widget — which is right for the tap — left that drag doing nothing at
+    // all: touch-action is none on the scroller, so the page could not move
+    // natively either, and a field near the bottom of a page became a dead
+    // patch you could not scroll off.
+    //
+    // So the press is held as a tap candidate, the control is left alone, and
+    // the moment the finger travels past the tap slop the gesture is promoted
+    // to an ordinary page pan (inertia and all). A finger that never travels
+    // lifts with the native click intact and focuses/toggles the field.
+    const WIDGET_TAP_TO_PAN_SLOP_PX = 8;
+    let widgetTapCandidate = null;
+    let widgetTapPromotedToPan = false;
+
     const onTouchStart = (event) => {
-      if (isNativeInteractionTarget(event.target)) return;
+      widgetTapCandidate = null;
+      widgetTapPromotedToPan = false;
+      if (isNativeInteractionTarget(event.target)) {
+        const nativeTarget = event.target?.nodeType === 3 ? event.target.parentElement : event.target;
+        if (event.touches.length === 1
+          && interactionModeRef.current === 'Pan'
+          && isLiveFormWidgetTarget(nativeTarget)) {
+          const touch = event.touches[0];
+          widgetTapCandidate = { startX: touch.clientX, startY: touch.clientY };
+        }
+        return;
+      }
       cancelPanInertia();
       // Required by Safari to stop native page zoom / Tab Expose and the
       // long-press loupe before either recognizer claims the sequence.
@@ -2041,7 +2094,34 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchMove = (event) => {
-      if (isNativeInteractionTarget(event.target)) return;
+      if (widgetTapCandidate) {
+        if (event.touches.length !== 1) { widgetTapCandidate = null; return; }
+        const touch = event.touches[0];
+        const travelled = Math.hypot(
+          touch.clientX - widgetTapCandidate.startX,
+          touch.clientY - widgetTapCandidate.startY,
+        );
+        if (travelled <= WIDGET_TAP_TO_PAN_SLOP_PX) return; // still a tap — leave the control alone
+        // Promote to an ordinary page pan, seeded from where the finger landed
+        // so the first frame does not jump.
+        const { startX, startY } = widgetTapCandidate;
+        widgetTapCandidate = null;
+        widgetTapPromotedToPan = true;
+        cancelPanInertia();
+        // The finger is scrolling, not selecting the field's text — drop
+        // anything the first few pixels started selecting.
+        try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* ignore */ }
+        event.preventDefault();
+        event.stopPropagation();
+        panVelocityRef.current.start(startX, startY, performance.now());
+        mobileTouchRef.current = { mode: 'pan' };
+        setPanInteraction(true);
+        setMobileTouchMode('pan');
+        const { dx, dy } = panVelocityRef.current.move(touch.clientX, touch.clientY, performance.now());
+        schedulePan(dx, dy);
+        return;
+      }
+      if (isNativeInteractionTarget(event.target) && !widgetTapPromotedToPan) return;
       event.preventDefault();
       if (event.touches.length >= 2) {
         event.stopPropagation();
@@ -2122,7 +2202,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchEnd = (event) => {
-      if (isNativeInteractionTarget(event.target)) return;
+      if (widgetTapCandidate) {
+        // A tap that never travelled: hands off, so the browser's own click
+        // focuses the text field or toggles the checkbox.
+        widgetTapCandidate = null;
+        return;
+      }
+      if (isNativeInteractionTarget(event.target) && !widgetTapPromotedToPan) return;
+      if (event.touches.length === 0) widgetTapPromotedToPan = false;
       event.preventDefault();
       const touchState = mobileTouchRef.current;
       if (!touchState) return;

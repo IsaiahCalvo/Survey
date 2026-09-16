@@ -23,6 +23,7 @@
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
+import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
   renderPath,
   renderRect,
@@ -131,6 +132,7 @@ import {
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
+import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -336,6 +338,26 @@ const SVGAnnotationLayer = memo(({
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
+  // UX 2026-09-15 (Drawboard parity — Pan is a selection mode):
+  // panEditEntryEnabled is set by PDFViewer when the PAN tool is armed. It does
+  // NOT arm pointer events anywhere; the SVG root and every annotation hit
+  // target stay pointer-inert in Pan exactly as before, so a drag that starts
+  // on blank page — or on a text box / callout — still reaches the pdf.js
+  // scroller and pans (Drawboard: "PAN drag on an UNSELECTED shape pans the
+  // view; the shape is neither moved nor selected"). What it DOES do is mount
+  // the edit-entry HIT LAYER: every editor-bearing carrier (text boxes,
+  // counters, lines, polys, callouts) is stamped with `data-edit-entry-kind`
+  // + `data-pan-edit-entry="true"` so a pan-mode double-click / double-tap can
+  // resolve "which editor" straight off the DOM (resolveAnnotationAt returns it
+  // as `editEntryKind`). No chrome, no hover, no cursor change — Drawboard
+  // shows no hover affordance in any mode.
+  //
+  // NOTE the deliberate naming split: `data-pan-edit-entry` is a LABEL (safe on
+  // anything). `data-pan-interactive` — read by PdfjsViewerContainer — means
+  // "Pan must not preventDefault here", i.e. the element eats the gesture
+  // instead of panning. Never put the latter on an annotation carrier: Drawboard
+  // pans from an unselected annotation, so the drag has to reach the scroller.
+  panEditEntryEnabled = false,
   lassoTouchOperation = 'replace',
   lassoTouchMode = 'window',
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
@@ -511,6 +533,49 @@ const SVGAnnotationLayer = memo(({
   const annotationsRef = useRef(annotations);
   const renderedAnnotationEntriesRef = useRef([]);
   const surveyMarkerDragRef = useRef(null);
+  // UX 2026-09-15 — a press that landed on blank SVG space with a LIVE PDF form
+  // widget underneath. The widget layer paints under this overlay (markup is
+  // always on top of document content — see PdfjsFormLayer's stacking
+  // contract), so under a Select-family tool the overlay is what the browser
+  // hit-tests and the control would never see the click.
+  //
+  // We do not bail on pointerdown, because the same press is also how a marquee
+  // or lasso starts, and Drawboard lets you start a rubber band anywhere —
+  // including inside a field's box. So: remember the press, let the normal
+  // gesture run, and at pointerup decide. Never moved => it was a click on a
+  // form control, so hand it down (focus a text field, toggle a checkbox).
+  // Moved => it was a selection gesture and the widget is not involved.
+  const formWidgetClickRef = useRef(null);
+  // UX 2026-09-15 — and no native text selection may start under that press.
+  //
+  // Measured: a marquee begun inside a text field's box took the field's own
+  // value as its selection anchor and then smeared blue highlight across every
+  // annotation it swept past. The marquee itself worked — this was junk left
+  // on top of it. The same marquee begun one pixel outside the box does
+  // nothing of the sort, which is the tell: the browser anchors a selection at
+  // the nearest selectable text, and inside the box that is the widget's value.
+  //
+  // Intended UX (reference: Drawboard PDF): a rubber band is a rubber band
+  // wherever it starts, and nothing highlights as text. Selecting a widget's
+  // text by dragging is not on offer here in any case — this overlay paints
+  // above the widget layer, so the control never sees the press at all.
+  //
+  // Armed only while such a press is pending, released on up / cancel /
+  // unmount, so ordinary text selection everywhere else is untouched.
+  const formWidgetSelectionGuardRef = useRef(null);
+  const releaseFormWidgetSelectionGuard = useCallback(() => {
+    const block = formWidgetSelectionGuardRef.current;
+    if (!block) return;
+    formWidgetSelectionGuardRef.current = null;
+    if (typeof document !== 'undefined') document.removeEventListener('selectstart', block, true);
+  }, []);
+  const armFormWidgetSelectionGuard = useCallback(() => {
+    if (formWidgetSelectionGuardRef.current || typeof document === 'undefined') return;
+    const block = (event) => { event.preventDefault(); };
+    formWidgetSelectionGuardRef.current = block;
+    document.addEventListener('selectstart', block, true);
+  }, []);
+  useEffect(() => releaseFormWidgetSelectionGuard, [releaseFormWidgetSelectionGuard]);
   const surveyMarkerClickRef = useRef({ annotationId: null, time: 0 });
   const [selectedSurveyMarkerId, setSelectedSurveyMarkerId] = useState(null);
   const [hoveredSurveyMarkerId, setHoveredSurveyMarkerId] = useState(null);
@@ -909,6 +974,13 @@ const SVGAnnotationLayer = memo(({
   const annotationHitTargetsInteractive = isSelectTool && (
     activeTool !== 'text-select' || textSelectManipulationArmed
   );
+  // UX 2026-09-15: the edit-entry hit layer is a pure DOM/attribute layer — it
+  // is mounted in Pan AND in every Select mode (rectangle, lasso, Text Select),
+  // independently of `annotationHitTargetsInteractive`, which stays the
+  // pointer-events gate and stays select-only. Keeping these two flags separate
+  // is the whole safety property: arming pointers in Pan would let an
+  // annotation swallow a pan drag; arming attributes cannot.
+  const editEntryTargetsMounted = isSelectTool || panEditEntryEnabled;
   const lastTextSelectPointerRef = useRef(null);
   const applyTextSelectPointerOwnership = useCallback((active) => {
     const ownsPointer = !!active;
@@ -3865,6 +3937,15 @@ const SVGAnnotationLayer = memo(({
         <g
           key={`callout-wrap-${displayCallout.id || i}`}
           transform={groupMoveTransform}
+          // UX 2026-09-15 (Drawboard parity — Pan is a selection mode): the
+          // callout's edit-entry label. Mounted in Pan AND in every Select
+          // mode; attributes only, so the callout still never swallows a pan
+          // drag and paints no extra chrome. The wrap <g> is the carrier
+          // because it covers BOTH the visible chrome and the hit-target
+          // overlay, and it already wraps the [data-callout-id] subtree that
+          // resolveAnnotationAt resolves the callout id from.
+          data-edit-entry-kind={editEntryTargetsMounted ? 'callout' : undefined}
+          data-pan-edit-entry={editEntryTargetsMounted ? 'true' : undefined}
           onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
           onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
         >
@@ -3893,7 +3974,7 @@ const SVGAnnotationLayer = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds]);
+  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -4321,6 +4402,15 @@ const SVGAnnotationLayer = memo(({
       renderElement = renderText(renderObj, i, liveTextEditBounds || null, true);
     }
     const renderIdentity = getAnnotationRenderIdentity(obj);
+    // UX 2026-09-15 (Drawboard parity — Pan is a selection mode): label every
+    // editor-bearing carrier so a Pan-mode double-click / double-tap can route
+    // to the right editor straight off the DOM, with no second copy of the
+    // type→editor switch. Attributes only — pointer events are untouched, so
+    // this cannot steal a pan drag and paints no hover / selection chrome.
+    // null for pen strokes and plain shapes, which have no second-level editor.
+    const editEntryKind = (editEntryTargetsMounted && isObjectInteractive)
+      ? resolveEditEntryKind(obj)
+      : null;
 
     // UX 2026-09-09 (Drawboard PDF): a CLOUD's scallop glow paints UNDER the
     // ink. Resolved here, ABOVE the visible render, because the glow is a
@@ -4365,6 +4455,10 @@ const SVGAnnotationLayer = memo(({
         // (viewBox owns all zoom; no JS coordination added).
         data-anno-id={renderIdentity.annotationId}
         data-author-id={renderIdentity.authorId}
+        // Pan/Select edit-entry hit layer (see panEditEntryEnabled). Present in
+        // Pan AND in every Select mode; absent for annotations with no editor.
+        data-edit-entry-kind={editEntryKind || undefined}
+        data-pan-edit-entry={editEntryKind ? 'true' : undefined}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
           opacity: hideForEdit ? 0 : undefined,
@@ -5236,6 +5330,25 @@ const SVGAnnotationLayer = memo(({
       preserveAspectRatio="none"
       onPointerDown={(e) => {
         if (isInteractive) {
+          // Form-widget click hand-down, step 1 of 2 (see formWidgetClickRef).
+          // Only a press on the SVG ROOT itself qualifies: if any annotation
+          // hit target claimed it, the user clicked their own markup and the
+          // markup wins — that is the whole point of painting it on top.
+          formWidgetClickRef.current = null;
+          releaseFormWidgetSelectionGuard();
+          if (e.button === 0 && e.target === svgRef.current) {
+            const widget = liveFormWidgetAtPoint(e.clientX, e.clientY);
+            if (widget) {
+              formWidgetClickRef.current = {
+                pointerId: e.pointerId,
+                x: e.clientX,
+                y: e.clientY,
+                slop: e.pointerType === 'touch' ? 12 : 4,
+                widget,
+              };
+              armFormWidgetSelectionGuard();
+            }
+          }
           if (shouldIgnoreLassoPointer?.(e.pointerId, e.pointerType)) {
             e.stopPropagation();
             e.preventDefault();
@@ -5353,10 +5466,22 @@ const SVGAnnotationLayer = memo(({
         handlePointerMove(e);
       } : undefined}
       onPointerUp={isInteractive ? (e) => {
+        // Form-widget click hand-down, step 2 of 2. Runs after the normal
+        // gesture has ended so a marquee/lasso still commits its selection
+        // first; a gesture that travelled is never handed down.
+        const pendingWidget = formWidgetClickRef.current;
+        formWidgetClickRef.current = null;
+        releaseFormWidgetSelectionGuard();
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, true)) return;
         handlePointerUp(e);
+        if (pendingWidget && pendingWidget.pointerId === e.pointerId
+          && Math.hypot(e.clientX - pendingWidget.x, e.clientY - pendingWidget.y) <= pendingWidget.slop) {
+          forwardClickToFormWidget(pendingWidget.widget);
+        }
       } : undefined}
       onPointerCancel={isInteractive ? (e) => {
+        formWidgetClickRef.current = null;
+        releaseFormWidgetSelectionGuard();
         cancelLasso?.(e.pointerId);
         handlePointerCancel(e);
         if (surveyMarkerDragRef.current) {
@@ -5378,7 +5503,13 @@ const SVGAnnotationLayer = memo(({
       // background because its secondary branch requires annotations.objects[index]
       // and `index` is undefined here. Gated on isSelectTool so double-
       // clicking empty space during creation tools doesn't misfire.
-      onDoubleClick={isSelectTool ? handleAnnotationDoubleClick : undefined}
+      // UX 2026-09-15: also armed under Pan (panEditEntryEnabled) so a native
+      // dblclick that DOES reach this layer routes identically in both modes —
+      // the documented seam for the desktop double-click edit-entry work.
+      // Inert today in Pan: the SVG root stays pointerEvents:'none' there, so
+      // nothing dispatches to it and pan drags are untouched. The pointer route
+      // (double-tap resolved through resolveAnnotationAt) is what fires in Pan.
+      onDoubleClick={(isSelectTool || panEditEntryEnabled) ? handleAnnotationDoubleClick : undefined}
     >
       {uniformTextMarkupElements}
       {wrappedAnnotations}

@@ -224,6 +224,10 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
+import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
+import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
+import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
 import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
@@ -427,6 +431,17 @@ function readWorkbookRegistration(workbook) {
     return { workbookId: null, syncToken: null };
   }
 }
+
+// UX 2026-09-15 (integration) — how long after a Pan tap auto-armed Select an
+// edit entry still counts as the SAME gesture and puts Pan back. Long enough to
+// cover the double-tap window (350ms) plus the render between the two clicks;
+// short enough that a later, deliberate tool change stands.
+//
+// This window is ONLY used backwards, to recognise the gesture that is still in
+// flight. It is deliberately NOT used to suppress the Pan quick-click: a fixed
+// timer there meant that dismissing an editor and tapping another annotation
+// inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
+const PAN_EDIT_ENTRY_RESTORE_MS = 600;
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
@@ -3358,6 +3373,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [editingAnnotation?.pageNumber, editingAnnotation?.index, editingAnnotation?.reactCalloutId]);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
+  // The (pageNumber, annotationIndex) currently open in an editor, mirrored as a
+  // ref so the edit dispatcher can reject a duplicate entry for the same target
+  // synchronously — React state lands a render too late for that.
+  const openEditTargetRef = useRef(null);
+  // UX 2026-09-15 (integration) — the two edit entries and the Pan quick-click
+  // have to agree on who owns the armed tool during a double-click. Drawboard
+  // PDF keeps the tool the gesture STARTED in: a double-click in Pan opens the
+  // editor and leaves Pan armed. Our Pan single-click auto-arms Select (the
+  // quick-click effect below), so the first of the two clicks flips the tool
+  // and the editor entry has to flip it back. These two timestamps are how:
+  //   panQuickClickAutoSelectAtRef — when a Pan tap last auto-armed Select
+  // Ordering-proof on purpose: the quick-click listener re-subscribes on every
+  // tool change, so whether it runs before or after the edit entry flips run to
+  // run (verified live 2026-09-15: the first double-click after a fresh load
+  // took the other order and stranded the user in Select).
+  const panQuickClickAutoSelectAtRef = useRef(0);
+  // UX 2026-09-15 (fix) — the Pan quick-click has to ignore exactly ONE thing:
+  // the click that opened an editor must not also re-arm Select behind it. It
+  // used to do that with a 600ms timer, which also swallowed the NEXT tap: the
+  // user dismissed the editor, tapped a different annotation straight away, and
+  // nothing was selected.
+  //
+  // Intended UX (reference: Drawboard PDF): as soon as the editor is gone the
+  // page answers taps again, immediately — no dead zone. So this is a latch,
+  // not a clock: it is raised when an editor opens and dropped on the first
+  // press after that editor has closed. The gesture that opened the editor, and
+  // the gesture that dismisses it, are the only two it eats.
+  const panQuickClickSuppressedRef = useRef(false);
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
   // UX 2026-05-01 — runaway-pin guard. A single counter-tool click was
   // somehow firing the pointerdown handler dozens of times in the same
@@ -3769,6 +3812,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let downAt = null;
     const onDown = (e) => {
       if (e.button !== 0) return; // left button only
+      // Drop the edit-entry latch on the first press taken after the editor has
+      // actually closed, so the very next tap selects again (no fixed dead
+      // zone). openEditTargetRef mirrors the mounted editor, callouts included.
+      if (panQuickClickSuppressedRef.current && !openEditTargetRef.current) {
+        panQuickClickSuppressedRef.current = false;
+      }
       downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
     };
     const onUp = (e) => {
@@ -3776,7 +3825,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       downAt = null;
       if (!start) return;
       if (activeTool !== 'pan') return;
+      // The second click of a double-click must not re-arm Select behind the
+      // editor that just opened. This handler re-subscribes on every tool
+      // change, so it can still be holding a stale `activeTool === 'pan'`
+      // closure when that second click lands. The latch is dropped by onDown
+      // above on the first press after the editor closes — never on a timer.
+      if (panQuickClickSuppressedRef.current) return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
+      // UX 2026-09-15 — a click on a live form field fills the field and does
+      // NOTHING else: no annotation selection, no switch to Select. Without
+      // this the quick-click hit test would still find an annotation that
+      // merely overlaps the widget box and yank the user out of Pan mid-typing.
+      // (Reference behaviour: Drawboard PDF — "it does not select a widget
+      // annotation, it does not show handles, it does not change tool".)
+      if (isLiveFormWidgetTarget(e.target)) return;
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
@@ -3787,12 +3849,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // tool-switch to Select as the plain-annotation branch so followup
       // drags / edits work naturally.
       if (hit.kind === 'callout' && hit.calloutId) {
+        panQuickClickAutoSelectAtRef.current = Date.now();
         activateSelectFamilyMode('rectangle');
         setSelectedCalloutIds(new Set([hit.calloutId]));
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      panQuickClickAutoSelectAtRef.current = Date.now();
       activateSelectFamilyMode('rectangle');
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
@@ -3975,6 +4039,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const e = latestEvent;
       latestEvent = null;
       if (!e) return;
+      // UX 2026-09-15 — over a live form field the control owns the affordance:
+      // its own caret / checkbox cursor, no annotation glow and no `pointer`
+      // override, matching the click rule above (a widget click never selects).
+      if (isLiveFormWidgetTarget(e.target)) {
+        if (lastKey !== '') {
+          lastKey = '';
+          setPendingSvgHover((prev) => (prev == null ? prev : null));
+        }
+        if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
+        return;
+      }
       const hit = resolveAnnotationAt(e);
       // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
       // glow under the pan tool (same affordance the Select tool shows).
@@ -11641,7 +11716,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // annotationsByPage; instead the save-callback wrapper at the
   // FabricEditCanvas mount site detects editType === 'callout' and
   // routes the commit to setCallouts via fromFabricGroup.
-  const handleRequestCalloutEditMode = useCallback((calloutId, targetPageNumber) => {
+  // `options.caretAnchor` (where the double-click landed, expressed relative to
+  // the callout's own box) is passed straight through to TextEditOverlay so the
+  // caret lands where the user clicked instead of selecting the whole string —
+  // Drawboard parity.
+  const handleRequestCalloutEditMode = useCallback((calloutId, targetPageNumber, options = {}) => {
     const reactCallout = callouts.find((c) => c && c.id === calloutId);
     if (!reactCallout) return;
     // UX: creating a callout immediately enters text edit. At that point the
@@ -11697,6 +11776,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isNewCallout: newlyCreatedCalloutIdsRef.current.has(calloutId),
       calloutChildren: nonTextChildren,
       pageSize: pageSizeObj,
+      caretAnchor: options?.caretAnchor || null,
     });
 
     // UX diag (2026-04-19): compare SVG text rect vs Fabric textbox
@@ -11728,6 +11808,277 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     } catch (_e) {}
   }, [activeTool, callouts, pageSizes]);
+
+  // ---------------------------------------------------------------------
+  // Shared edit-mode entry (double-click on desktop, double-tap on mobile)
+  // ---------------------------------------------------------------------
+  // UX 2026-09-15 — one dispatcher for "open this annotation's editor",
+  // called from BOTH the SVG layer's native onDoubleClick (Select family,
+  // mouse) and the window-capture double-tap recogniser below (Pan, Text
+  // Select, and every touch gesture). Routing lives in
+  // utils/annotationEditRoute so the two entries can never drift apart.
+  //
+  // `caretAnchor` records where in the annotation's own box the gesture landed;
+  // TextEditOverlay re-resolves it against the mounted editor so the caret drops
+  // where the user clicked instead of selecting the whole string. Reference
+  // behaviour: Drawboard PDF opens inline text editing on a double-click with a
+  // caret, in whatever tool is armed.
+  const requestAnnotationEditEntry = useCallback((request) => {
+    const { pageNumber, annotationIndex, annotationType, caretAnchor = null } = request || {};
+    if (pageNumber == null) return false;
+    // Cooldown: prevent re-entering edit mode within 300ms of dismissal.
+    if (Date.now() - editModeCooldownRef.current < 300) {
+      appDebug(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+      return false;
+    }
+    // Re-entry guard: on a desktop double-click the pointer recogniser and the
+    // SVG layer's native dblclick can BOTH resolve the same target. Re-seeding
+    // editingAnnotation would restart the mount effect's caret placement (and
+    // discard a keystroke that squeaked in between). Whoever gets there first
+    // wins; the second call is a no-op.
+    const openEdit = openEditTargetRef.current;
+    if (openEdit
+      && openEdit.pageNumber === pageNumber
+      && openEdit.annotationIndex === annotationIndex) {
+      return false;
+    }
+    // Drawboard parity — the tool the gesture STARTED in is the tool that stays
+    // armed. INTEGRATION 2026-09-15: this used to live only in the double-tap
+    // recogniser, so an editor opened through the SVG layer's NATIVE dblclick
+    // (armed under Pan by the hit-layer slice) left the user stranded in
+    // Select. Both entries land here, so the restore lives here.
+    const noteEditEntryOpened = () => {
+      panQuickClickSuppressedRef.current = true;
+      if (Date.now() - panQuickClickAutoSelectAtRef.current >= PAN_EDIT_ENTRY_RESTORE_MS) return;
+      panQuickClickAutoSelectAtRef.current = 0;
+      // In a microtask, not inline: this runs inside a pointer/dblclick
+      // handler, and the quick-click effect may still re-run for the same
+      // gesture. A microtask is after every listener for this event.
+      queueMicrotask(() => setActiveTool('pan'));
+    };
+    if (annotationType === 'callout') {
+      openEditTargetRef.current = { pageNumber, annotationIndex };
+      handleRequestCalloutEditMode(annotationIndex, pageNumber, { caretAnchor });
+      noteEditEntryOpened();
+      return true;
+    }
+    const pageJSON = annotationsByPageRef.current?.[pageNumber]
+      || annotationsByPageRef.current?.[String(pageNumber)];
+    const annotationData = pageJSON?.objects?.[annotationIndex];
+    if (!annotationData) {
+      console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
+      return false;
+    }
+    const route = resolveEditTypeForAnnotation(annotationData, annotationType);
+    if (!route.editType) {
+      appDebug(`[App p${pageNumber}] edit SKIPPED — ${route.skipReason}, type=${route.annotationType}, idx=${annotationIndex}`);
+      return false;
+    }
+    appDebug(`[App p${pageNumber}] edit START — type=${route.annotationType}, editType=${route.editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
+    openEditTargetRef.current = { pageNumber, annotationIndex };
+    setEditingAnnotation({
+      pageNumber,
+      index: annotationIndex,
+      type: route.annotationType,
+      editType: route.editType,
+      data: annotationData,
+      caretAnchor: route.editType === 'text' ? caretAnchor : null,
+    });
+    noteEditEntryOpened();
+    return true;
+  }, [handleRequestCalloutEditMode]);
+
+  const requestAnnotationEditEntryRef = useRef(requestAnnotationEditEntry);
+  useEffect(() => { requestAnnotationEditEntryRef.current = requestAnnotationEditEntry; }, [requestAnnotationEditEntry]);
+
+  // Keep the re-entry guard honest: whatever opens or closes edit mode — the
+  // dispatcher, the toolbar's Edit text button, a dismiss, a tool switch — the
+  // ref tracks the annotation the editor is actually mounted on.
+  useEffect(() => {
+    openEditTargetRef.current = editingAnnotation
+      ? {
+        pageNumber: editingAnnotation.pageNumber,
+        annotationIndex: editingAnnotation.reactCalloutId ?? editingAnnotation.index,
+      }
+      : null;
+  }, [editingAnnotation]);
+
+  // UX 2026-09-15 — double-click / double-tap to edit, in Pan and in every
+  // Select mode, on desktop and on touch.
+  //
+  // WHY A POINTER RECOGNISER AND NOT A dblclick LISTENER: under Pan the SVG
+  // annotation layer is pointer-events:none (blank page pixels must stay
+  // grabbable) and PdfjsViewerContainer preventDefault()s pointerdown, which
+  // per the Pointer Events spec suppresses the compatibility mouse events —
+  // so no native dblclick is ever produced for a pan-mode gesture. Touch
+  // never reliably synthesises one either. Window-CAPTURE pointerup runs
+  // before the scroller's own capture handler, mirroring the pan quick-click
+  // select effect above, and it CANNOT regress pan-drag: a gesture that moved
+  // more than the slop threshold is discarded before anything is dispatched.
+  //
+  // Reference behaviour (Drawboard PDF): a double-click on a text box or a
+  // callout opens inline editing with the CURRENT tool still armed — Pan stays
+  // Pan, Select stays Select — and never starts a pan drag. Our Pan
+  // single-click auto-switches to Select (existing behaviour, see the quick-
+  // click effect above), so when the pair started in Pan we put Pan back after
+  // opening the editor, which is what the contract asks for.
+  useEffect(() => {
+    const tracker = createDoubleTapTracker();
+    // MULTI-TOUCH SAFETY (2026-09-15) — one down record PER POINTER, plus a hard
+    // bail once a second finger is down.
+    //
+    // A single shared slot was measured as a bug, not a theory: two fingers that
+    // start within the 12px touch slop — the natural beginning of a pinch-out —
+    // overwrote each other, the anchored finger's lift was measured against the
+    // OTHER finger's start, and the pinch was filed in the tracker as a tap. The
+    // user's next ordinary single tap then paired with that phantom and opened
+    // an editor nobody asked for.
+    //
+    // Intended UX: a pinch is a zoom and nothing else. It never leaves anything
+    // behind for the next tap to pair with, whatever the fingers do or in which
+    // order they lift.
+    // downPointers holds one start point per event.pointerId and nothing is
+    // dropped from it until that pointer actually lifts, so `size` is always
+    // the number of fingers still down. Clearing the map on the second
+    // pointerdown (as this did until 2026-09-15) made the FIRST lift read as
+    // "every finger is up": the bail unlatched mid-pinch, and a third finger
+    // landing while the second still rested started a fresh tap candidate —
+    // two of those opened an editor in the middle of a pinch.
+    const downPointers = createMultiTouchTapGate();
+    const onDown = (event) => {
+      if (event.button != null && event.button !== 0) return;
+      downPointers.press(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (downPointers.size > 1) {
+        // A second finger arrived: this gesture is a pinch (or a stray palm),
+        // so abandon every tap candidate AND the pending first tap. Sticky
+        // until every finger is up, so the LAST finger's lift cannot sneak
+        // through as a tap either.
+        downPointers.bail();
+        tracker.reset();
+      }
+    };
+    const onCancel = (event) => {
+      downPointers.lift(event && event.pointerId != null ? event.pointerId : null);
+      tracker.reset();
+    };
+    const onUp = (event) => {
+      const { start, bailed } = downPointers.lift(event.pointerId);
+      if (bailed) { tracker.reset(); return; }
+      if (!start) return;
+      const tool = activeToolRef.current;
+      // Creation tools own their own gestures; only the read/select family
+      // opens editors on a double gesture.
+      if (!['pan', 'select', 'text-select'].includes(tool)) { tracker.reset(); return; }
+      if (event.target?.closest?.('input, textarea, [contenteditable="true"], [data-text-edit-overlay], [data-toolbar], [role="dialog"], button')) {
+        tracker.reset();
+        return;
+      }
+      // INTEGRATION 2026-09-15 — a live PDF form widget owns its own double
+      // click (select-a-word in a text field, a fast double toggle on a
+      // checkbox). The selector above only catches the control itself; a click
+      // on the widget section's padding would fall through here and could open
+      // the editor of an annotation that merely overlaps the field's box.
+      if (isLiveFormWidgetTarget(event.target)) {
+        tracker.reset();
+        return;
+      }
+      // A gesture that moved is a pan / marquee / native text drag, never a tap.
+      const slop = event.pointerType === 'touch' ? 12 : 6;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > slop) { tracker.reset(); return; }
+      const hit = resolveAnnotationAt(event);
+      const key = editEntryKeyForHit(hit);
+      const { isDoubleTap, firstTapTool, target } = tracker.register({
+        key,
+        target: hit,
+        x: event.clientX,
+        y: event.clientY,
+        t: event.timeStamp ?? Date.now(),
+        pointerType: event.pointerType,
+        tool,
+      });
+      // Diag: one line answers "did my double-click register, and who owns it?"
+      appDebug(`[EditEntryGesture] tool=${tool} pointer=${event.pointerType} page=${hit.pageNumber} kind=${hit.kind} editEntryKind=${hit.editEntryKind} key=${key} double=${isDoubleTap} firstTapTool=${firstTapTool} firstTapTarget=${editEntryKeyForHit(target)} firstTapEditEntryKind=${target?.editEntryKind ?? null}`);
+      if (!isDoubleTap) return;
+      if (!shouldHandleDoubleTapEntry({ firstTapTool, pointerType: event.pointerType })) return;
+      // Where annotations OVERLAP, the two taps can resolve different things:
+      // under Pan the hit test hand-walks SVG geometry (the layer is
+      // pointer-events:none) while under Select it reads the real hit targets,
+      // and neither is reliably the better answer — both orders were observed
+      // live. Try them in turn and take the first that actually opens an editor;
+      // the dispatcher answers false for anything with no editor (a stamp, a
+      // pen stroke, a plain shape), so this can only ever land on a real target.
+      const candidates = [hit, target].filter((candidate, index, list) => (
+        candidate && editEntryKeyForHit(candidate)
+        && list.findIndex((other) => other && editEntryKeyForHit(other) === editEntryKeyForHit(candidate)) === index
+      ))
+        // INTEGRATION 2026-09-15 — the edit-entry hit layer stamps
+        // data-edit-entry-kind on every carrier that actually opens an editor,
+        // and resolveAnnotationAt hands it back as editEntryKind. When the two
+        // taps disagree, try the one the DOM already says is editor-bearing
+        // first, so an overlapping pen stroke or plain rectangle can never be
+        // the candidate that consumes the gesture. Ordering only — nothing is
+        // dropped, so a carrier the layer did not label (an older render, an
+        // annotation resolved purely by the pan geometry fallback) is still
+        // tried, and the dispatcher is still the one that says yes or no.
+        .sort((a, b) => (b.editEntryKind ? 1 : 0) - (a.editEntryKind ? 1 : 0));
+      let opened = false;
+      for (const candidate of candidates) {
+        // Anchor the caret to the annotation's own box, not to raw client
+        // coordinates: mounting the editor can scroll the page, and a stale
+        // client point then lands outside the editor entirely.
+        //
+        // The carrier handed over here is the whole annotation — for a callout
+        // that is arrow + knee + text box. buildCaretAnchor narrows it to the
+        // box the editor actually covers (caretAnchorHostFor); measuring
+        // against the carrier put every callout caret at the end of the string.
+        const hostSelector = candidate.kind === 'callout'
+          ? `[data-callout-id="${candidate.calloutId}"]`
+          : `[data-annotation-index="${candidate.annotationIndex}"]`;
+        const caretAnchor = buildCaretAnchor({
+          x: event.clientX,
+          y: event.clientY,
+          host: document.querySelector(`[data-diag-svg-wrapper="${candidate.pageNumber}"] ${hostSelector}`),
+        });
+        opened = candidate.kind === 'callout'
+          ? requestAnnotationEditEntryRef.current({
+            pageNumber: candidate.pageNumber,
+            annotationIndex: candidate.calloutId,
+            annotationType: 'callout',
+            caretAnchor,
+          })
+          : requestAnnotationEditEntryRef.current({
+            pageNumber: candidate.pageNumber,
+            annotationIndex: candidate.annotationIndex,
+            // No explicit type: the dispatcher reads it off the annotation
+            // itself, which is the fabric-7-safe source (see annotationEditRoute).
+            caretAnchor,
+          });
+        if (opened) break;
+      }
+      if (!opened) return;
+      // Drawboard parity: the tool the gesture STARTED in is the tool that
+      // stays armed. The pan quick-click above flipped us to Select on the
+      // first of the two taps; undo that so Pan is still armed while the
+      // editor is open and after it commits.
+      //
+      // In a MICROTASK, not inline: when the two taps land inside one React
+      // commit the quick-click effect still holds a stale activeTool === 'pan'
+      // closure and re-runs on the second tap too, and whose window-capture
+      // listener was registered last flips with every re-subscribe. A microtask
+      // runs after every listener for this pointerup, so this is always the
+      // last word on the tool (verified live: without it the restore landed
+      // first and Select won about half the time).
+      if (firstTapTool === 'pan') queueMicrotask(() => setActiveTool('pan'));
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+    };
+  }, []);
 
   // UX: auto-open newly-created callout in edit mode. handleCreateCallout
   // sets pendingAutoEditCalloutRef; this effect waits for the new callout
@@ -32207,7 +32558,19 @@ ${pageBlocks}
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
                               scale={layerScale}
-                              interactive={activeTool === 'pan' || activeTool === 'select'}
+                              /* UX 2026-09-15 — form fields are live in Pan and in EVERY
+                                 Select-family mode (Rectangle, Lasso and Text Select all
+                                 land here as 'select' / 'text-select'). Reference
+                                 behaviour: Drawboard PDF, where one click toggles a
+                                 checkbox or focuses a text field under both Pan and
+                                 Select, with no tool change and no selection chrome —
+                                 widgets are document content, not markup. Text Select was
+                                 the gap: the mode arms PDF text, and a form field is not
+                                 text, so leaving widgets dead there made the field
+                                 unfillable for no reason. Creation tools (pen, shape,
+                                 text, counter, eraser) stay excluded so a stroke started
+                                 over a field is not eaten by the control. */
+                              interactive={activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select'}
                               persistedValues={pageFormFieldValues}
                               onFieldChange={(payload) => handlePdfjsFormFieldChange(pageNumber, payload)}
                               onFieldBlur={(payload) => handlePdfjsFormFieldBlur(pageNumber, payload)}
@@ -32695,81 +33058,30 @@ ${pageBlocks}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
                                   onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)}
-                                  onRequestEditMode={(annotationIndex, annotationType) => {
-                                    // UX: Phase 14 CALL-10 — callout double-click routes
-                                    // through the adapter-backed edit path. useSVGInteraction
-                                    // fires this with (calloutId, 'callout') when the user
-                                    // double-clicks a data-callout-id subtree. Cooldown
-                                    // still applies to prevent re-entry races.
-                                    if (annotationType === 'callout') {
-                                      if (Date.now() - editModeCooldownRef.current < 300) return;
-                                      handleRequestCalloutEditMode(annotationIndex, pageNumber);
-                                      return;
-                                    }
-                                    // Cooldown: prevent re-entering edit mode within 300ms of dismissal
-                                    if (Date.now() - editModeCooldownRef.current < 300) {
-                                      appDebug(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    const annotationData = pageAnnotations?.objects?.[annotationIndex];
-                                    if (!annotationData) {
-                                      console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    // fabric 7 serializes capitalized class types ('Textbox',
-                                    // 'IText') while legacy saves store lowercase — every
-                                    // comparison below is against lowercase, so normalize or
-                                    // fabric-7-committed text silently loses double-click edit
-                                    // (the dispatch fell through to the unknown-type no-op).
-                                    annotationType = String(annotationType || '').toLowerCase();
-                                    if (annotationType === 'itext') annotationType = 'i-text';
-                                    // UX 2026-04-19 — new double-click rule:
-                                    //   - pen/highlighter (path) → no-op (handles are the
-                                    //     single-click chrome; nothing else to edit).
-                                    //   - rect / circle / ellipse / triangle (non-counter)
-                                    //     → no-op (their single-click border handles already
-                                    //     cover resize + rotate; no separate edit mode).
-                                    //   - counter → bbox edit mode (swap the rotation-only
-                                    //     chrome for the uniform resize + rotate bbox).
-                                    //   - line / arrow → bbox edit mode (swap endpoint
-                                    //     handles for the uniform resize + rotate bbox).
-                                    //   - polygon / polyline → bbox edit mode (uniform
-                                    //     resize + rotate bbox; vertex handles are the new
-                                    //     single-click chrome per task 4).
-                                    //   - text / textbox / i-text → text edit mode
-                                    //     (cursor input), unchanged.
-                                    //   - callout → callout edit mode, unchanged.
-                                    const isCounter = annotationData?.data?.type === 'counter';
-                                    if (annotationType === 'path') {
-                                      appDebug(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    if (!isCounter && (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle')) {
-                                      appDebug(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    let editType;
-                                    if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
-                                      editType = 'text';
-                                    } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
-                                      editType = 'bbox';
-                                    } else {
-                                      // KAL-125 / CD-6: unknown type (e.g. stamp/image) — explicit
-                                      // no-op. The old else→'callout' fallthrough could accidentally
-                                      // mount the orphaned callout canvas for any unrecognized type.
-                                      appDebug(`[App p${pageNumber}] edit SKIPPED — unhandled type=${annotationType}, idx=${annotationIndex}`);
-                                      return;
-                                    }
-                                    appDebug(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
-                                    setEditingAnnotation({
+                                  onRequestEditMode={(annotationIndex, annotationType, editOptions) => {
+                                    // UX: one dispatcher for every edit entry —
+                                    // this native double-click (Select family,
+                                    // mouse) and the window-capture double-tap
+                                    // recogniser that covers Pan, Text Select
+                                    // and touch. Routing (which type opens which
+                                    // editor) lives in utils/annotationEditRoute
+                                    // so the two entries cannot drift.
+                                    requestAnnotationEditEntry({
                                       pageNumber,
-                                      index: annotationIndex,
-                                      type: annotationType,
-                                      editType,
-                                      data: annotationData,
+                                      annotationIndex,
+                                      annotationType,
+                                      caretAnchor: editOptions?.caretAnchor || null,
                                     });
                                   }}
                                   activeTool={activeTool}
+                                  // UX 2026-09-15 (Drawboard parity — Pan is a selection
+                                  // mode): mount the edit-entry HIT LAYER under Pan.
+                                  // Deliberately NOT folded into `svgInteractive` above:
+                                  // that flag arms the wrapper's stopPropagation + cursor
+                                  // and would kill pan drags started over the page. This
+                                  // one only stamps data attributes inside the layer, so
+                                  // Pan keeps owning every drag.
+                                  panEditEntryEnabled={activeTool === 'pan'}
                                   selectionMode={selectionMode}
                                   lassoTouchOperation={lassoTouchOperation}
                                   lassoTouchMode={lassoTouchMode}
@@ -33298,6 +33610,10 @@ ${pageBlocks}
                                     : pageAnnotations}
                                   isNewText={editingAnnotation.isNewText || false}
                                   clickPosition={editingAnnotation.clickPosition || null}
+                                  // UX: where in the annotation's box the double-click /
+                                  // double-tap landed — the caret goes there instead of
+                                  // selecting the whole string (Drawboard parity).
+                                  caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
                                   authorId={user?.id ?? null}
