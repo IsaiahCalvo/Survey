@@ -330,6 +330,20 @@ export const hasVisiblePdfjsSpinner = (host) => {
 export const FONT_FAMILY = '"Helvetica Neue", Helvetica, Arial, sans-serif'; // design.md primary stack (DOM CSS only — never feed into Fabric)
 export const REGION_EDIT_TOOL = 'region-edit';
 
+// UX 2026-09-16 (desktop sizing pass): the glyph sizes for the document
+// chrome. The box sizes live in styles.css as --chrome-* custom properties;
+// these mirror the glyph ones because <Icon size> takes a NUMBER (some icons
+// render as an <svg width>, others as a CSS mask), so a var() string will not
+// do. Keep the two in step.
+// REFERENCE = Drawboard PDF on the web: an 18px glyph inside a 34px tool
+// button (ratio 0.53) and a ~14px glyph inside a 24px value chip. Before this
+// pass Survey's top row alone mixed 14 / 15 / 18 / 20 / 22.
+// The two glyphs still drawn larger than CHROME_GLYPH — Pan at 20 and the
+// Select cursor at 22 — under-fill their own viewBox, so they need the extra
+// size to carry the same optical weight; tests/selectModes.test.mjs pins them.
+export const CHROME_GLYPH = 18;
+export const CHROME_FIELD_GLYPH = 14;
+
 // Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)
 export const hexToRgba = (hex, opacity = 0.2) => {
   // Remove # if present

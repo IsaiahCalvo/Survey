@@ -20,6 +20,7 @@ import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
+import { CHROME_GLYPH } from './viewerShared';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -681,8 +682,14 @@ const PDFSidebar = React.forwardRef(({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  borderRadius: '6px',
-                  padding: '10px',
+                  borderRadius: 'var(--chrome-radius, 6px)',
+                  // UX 2026-09-16 (desktop sizing pass): the rail tab keeps its
+                  // 40px height — nothing moves — but the glyph drops to the
+                  // shared chrome size (18px, --chrome-glyph) and the padding
+                  // is split so the glyph FITS. At 10px padding around a 20px
+                  // glyph the content box wanted 40px inside a 31px-wide rail,
+                  // so the glyph overflowed its own button.
+                  padding: '11px 6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -703,9 +710,9 @@ const PDFSidebar = React.forwardRef(({
               >
                 <Icon
                   name={tab.icon}
-                  size={20}
+                  size={CHROME_GLYPH}
                   color="#8d96a6"
-                  style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                  style={{ width: `${CHROME_GLYPH}px`, height: `${CHROME_GLYPH}px`, flexShrink: 0 }}
                 />
               </button>
             </div>

@@ -327,6 +327,7 @@ import {
   countAnnotationPageObjects,
   createAnnotation,
   createItem,
+  CHROME_GLYPH,
   dataURLToUint8Array,
   filterAnnotationsByModule,
   generateDefaultSurveyMarkerName,
@@ -33919,7 +33920,10 @@ ${pageBlocks}
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px',
+              // UX 2026-09-16 (desktop sizing pass): one gap across the whole
+              // chrome (--chrome-gap). This row used 8px while the top bar
+              // used 6px, so the two rows read as different toolbars.
+              gap: 'var(--chrome-gap)',
               zIndex: 10,
               boxSizing: 'border-box'
             }}
@@ -33969,23 +33973,18 @@ ${pageBlocks}
                         setHighlighterCaretPopupOpen(false);
                       }}
                       {...chromeTip(isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, 'below')}
-                      className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '5px',
-                        gap: '4px',
-                        minWidth: '40px',
-                        width: '40px'
-                      }}
+                      // UX 2026-09-16 (desktop sizing pass): every tool in
+                      // the sub-row takes the shared .chrome-subcontrol box
+                      // (34x32) and the shared 18px glyph, so the row matches
+                      // the top bar instead of being 40x32 with a 20px glyph.
+                      className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip.
                       // A native title= here would fade the OS tooltip in on top
                       // of it ~1.5s later; aria-label keeps the accessible name.
                       aria-label={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
-                      <Icon name={t.iconName} size={20} />
+                      <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {hasSplitMenu && (
                         <div
                           data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
@@ -34192,25 +34191,17 @@ ${pageBlocks}
                         }
                       }}
                       {...chromeTip(t.label, 'below')}
-                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '5px',
-                        gap: '4px',
-                        minWidth: '40px',
-                        // UX: explicit width matches the eraser button in
-                        // Survey-Experimental so the chevron's
-                        // `translate(12px, -50%)` lands in the same spot.
-                        width: '40px'
-                      }}
+                      // UX 2026-09-16 (desktop sizing pass): shared
+                      // .chrome-subcontrol box + shared 18px glyph, as the
+                      // Draw row. (The split-menu chevron this button used to
+                      // size itself around is dead — showCaret is false.)
+                      className={`btn chrome-subcontrol ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.
                       aria-label={t.label}
                     >
-                      <Icon name={t.iconName} size={20} />
+                      <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {showCaret && (
                         // UX: chevronUp icon positioned just to the right
                         // of the icon center — `left:50% + translate(12px,
@@ -34608,22 +34599,16 @@ ${pageBlocks}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       onClick={onMainClick}
                       {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
-                      className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '5px',
-                        gap: '4px',
-                        minWidth: '40px',
-                        width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
-                      }}
+                      // UX 2026-09-16 (desktop sizing pass): shared
+                      // .chrome-subcontrol box + shared 18px glyph, as the
+                      // Draw and Shapes rows.
+                      className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.
                       aria-label={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
                     >
-                      <Icon name={t.iconName} size={20} />
+                      <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {(isUnderlineMenu || isStrikeMenu) && (
                         <div
                           {...{ [caretAttr]: 'true' }}

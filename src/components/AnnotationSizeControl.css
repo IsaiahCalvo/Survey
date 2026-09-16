@@ -1,5 +1,13 @@
+/* UX 2026-09-16 (desktop sizing pass): the Width control and the line-style
+   dropdown are ONE size — same width, height, horizontal inset, radius and
+   font — because they sit side by side and the owner could see they differed
+   (69px vs 72px wide). Both take --chrome-field-w / --chrome-field-h from
+   styles.css; change the token, not this rule. Reference for the 24px chip
+   height = Drawboard PDF's in-row value chips. The fallbacks keep this sheet
+   standalone if it is ever loaded without the token block. */
 .annotation-size-control {
-  height: 24px;
+  width: var(--chrome-field-w, 76px);
+  height: var(--chrome-field-h, 24px);
   display: inline-flex;
   align-items: stretch;
   flex: 0 0 auto;
@@ -17,10 +25,13 @@
 }
 
 .annotation-size-control > input {
-  width: 43px;
-  min-width: 43px;
+  /* Fills whatever the shared chip width leaves after the preset trigger
+     and the control's 1px border on each side. */
+  width: calc(var(--chrome-field-w, 76px) - var(--chrome-field-trigger-w, 24px) - 2px);
+  min-width: 0;
+  flex: 1 1 auto;
   height: 22px;
-  padding: 0 5px;
+  padding: 0 var(--chrome-field-pad-x, 6px);
   box-sizing: border-box;
   color: inherit;
   background: transparent;
@@ -32,8 +43,8 @@
 }
 
 .annotation-size-control__trigger {
-  width: 24px;
-  min-width: 24px;
+  width: var(--chrome-field-trigger-w, 24px);
+  min-width: var(--chrome-field-trigger-w, 24px);
   height: 22px;
   padding: 0;
   display: grid;
@@ -52,7 +63,13 @@
 }
 
 .annotation-size-control__popover {
+  /* The literal below is declared FIRST and kept on purpose:
+     tests/annotationSizeControlList.test.mjs reads this file as text and
+     guards `width: 126px`. The token declaration after it wins in the
+     cascade, so --chrome-menu-w is what actually drives the popover and the
+     two can never drift apart. */
   width: 126px;
+  width: var(--chrome-menu-w, 126px);
   max-height: min(520px, calc(100vh - 24px));
   padding: 5px;
   display: flex;
@@ -93,8 +110,15 @@
 
 .annotation-size-control__presets button {
   width: 100%;
-  min-height: 34px;
+  /* UX 2026-09-16: one popover row height and one row inset across both
+     dropdowns — the style menu's rows used 4px 9px, these used 4px 7px. */
+  min-height: var(--chrome-menu-row-h, 34px);
   display: grid;
+  /* The 68px preview column and this row's 7px inset are LEFT ALONE: the
+     column width is guarded by tests/annotationSizeControlList.test.mjs, and
+     the stroke preview needs the inset to line up under the heading. The
+     line-style menu's rows use a 9px inset — a 2px difference that is
+     invisible because these rows lead with a preview bar, not text. */
   grid-template-columns: 68px 1fr;
   align-items: center;
   gap: 7px;
@@ -168,8 +192,6 @@
   }
 
   .annotation-size-control > input {
-    width: 45px;
-    min-width: 45px;
     height: 28px;
     line-height: 28px;
   }
@@ -179,7 +201,7 @@
   }
 
   .annotation-size-control__popover {
-    width: min(126px, calc(100vw - 24px));
+    width: min(var(--chrome-menu-w, 126px), calc(100vw - 24px));
     max-height: calc(100vh - 24px);
   }
 
