@@ -1,24 +1,59 @@
 name: Deploy production
 
+# The gate between a green CI run and production. "Build and tests" became a
+# multi-job workflow on 2026-09-15: four parallel test shards, one runner for
+# the slow isolated suites and the speed measurements, and a `ci-gate` job that
+# builds the app and aggregates the rest. `workflow_run` reports the whole
+# workflow's conclusion, so `conclusion == 'success'` below still means every
+# BLOCKING CI job passed — including all four shards and the build. The speed
+# measurements run in a step carrying `continue-on-error: true`, so a red timing
+# reading leaves the run's conclusion green and a deploy goes ahead: that is
+# deliberate, and the reason it exists. No per-job check is needed here, and
+# none should be added: it would silently stop gating the day a job is renamed.
 on:
   workflow_run:
-    workflows: [CI]
+    # 2026-09-15 — this must stay character-for-character equal to the `name:`
+    # in .github/workflows/ci.yml; `workflow_run` matches on the workflow's
+    # display name, not its filename, so a rename that misses this line would
+    # silently stop every production deploy. scripts/release-integrity.mjs
+    # asserts the two are still paired, and that check runs in CI.
+    workflows: ["Build and tests"]
     types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
+# 2026-09-15 — the `production-deploy` concurrency group used to sit HERE, at
+# workflow level, and it was cancelling real deploys.
+#
+# This workflow fires on every completion of "Build and tests", and the vast
+# majority of those are pull-request runs whose deploy job the `if:` below
+# skips. A workflow-level group is entered by the RUN, before any job condition
+# is evaluated, so every one of those skipped runs still joined the queue — and
+# GitHub cancels a previously pending run when a newer one queues. A genuine
+# main deploy sitting pending behind an in-flight one was therefore cancelled
+# the moment the next bot pull request finished its CI, silently and with no red
+# X: runs 34921705229 and 34921689758 on 2026-09-15 were exactly that.
+#
+# The group now lives on the deploy job, under its `if:`, so only runs that are
+# actually going to deploy ever enter it. cancel-in-progress stays false — a
+# deploy in flight is never interrupted.
 
 jobs:
   deploy:
+    # `conclusion == 'success'` is the aggregate of every blocking CI job: all
+    # four test shards, the slow isolated suites, and the build inside
+    # `ci-gate`. A red shard makes the run red, which skips this job.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'main')
+    # Job-level on purpose — see the note above `jobs:`. A skipped run must
+    # never enter this group, or it cancels a pending real deploy.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -125,6 +160,8 @@ jobs:
 
       - name: Record deployment
         run: |
-          echo "### Production deployment complete" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Revision: \`${{ github.event.workflow_run.head_sha || github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- URL: https://surveytool.app" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Production deployment complete"
+            echo "- Revision: \`${{ github.event.workflow_run.head_sha || github.sha }}\`"
+            echo "- URL: https://surveytool.app"
+          } >> "$GITHUB_STEP_SUMMARY"

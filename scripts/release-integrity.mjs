@@ -172,7 +172,6 @@ export function assertStaticReleaseContract(root = process.cwd()) {
 
   const deployWorkflow = readFileSync(join(root, '.github', 'workflows', 'deploy-production.yml'), 'utf8');
   assert.match(deployWorkflow, /workflow_run:/);
-  assert.match(deployWorkflow, /workflows:\s*\[CI\]/);
   assertOrdered(deployWorkflow, [
     'supabase db push --linked --yes',
     'supabase functions deploy --project-ref',
@@ -189,6 +188,58 @@ export function assertStaticReleaseContract(root = process.cwd()) {
 
   const ciWorkflow = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.match(ciWorkflow, /node scripts\/release-integrity\.mjs --static/);
+
+  // 2026-09-15 — this used to be a hard-coded `assert.match(deployWorkflow,
+  // /workflows:\s*\[CI\]/)`. The production deploy is triggered by
+  // `workflow_run` on the CI workflow's DISPLAY NAME, not its filename, so
+  // renaming ci.yml's `name:` without editing deploy-production.yml would stop
+  // every production deploy silently — no red X anywhere. Asserting the pairing
+  // instead of the literal string is strictly stronger: it still fails if the
+  // deploy trigger drifts, and it now also fails on the rename that a literal
+  // check would have sailed straight past.
+  const ciWorkflowName = /^name:[ \t]*(.+?)[ \t]*$/m.exec(ciWorkflow)?.[1];
+  assert.ok(ciWorkflowName, 'ci.yml must declare a workflow name');
+  const quotedCiName = ciWorkflowName.replace(/^['"]|['"]$/g, '');
+  const escapedCiName = quotedCiName.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(
+    deployWorkflow,
+    new RegExp(`workflows:\\s*\\[\\s*['"]?${escapedCiName}['"]?\\s*\\]`),
+    `deploy-production.yml must trigger on the CI workflow named "${quotedCiName}" — `
+      + 'workflow_run matches the display name, so these two must be renamed together',
+  );
+
+  // 2026-09-15 — dependabot-auto-merge.yml is the SECOND workflow_run consumer
+  // of the CI workflow's display name, and it was not covered. A rename that
+  // missed it would silently stop every dependency bump from being merged, and
+  // with nothing red anywhere there would be no signal at all. Same pairing
+  // assertion, same reason.
+  const autoMergeWorkflow = readFileSync(
+    join(root, '.github', 'workflows', 'dependabot-auto-merge.yml'), 'utf8',
+  );
+  assert.match(
+    autoMergeWorkflow,
+    new RegExp(`workflows:\\s*\\[\\s*['"]?${escapedCiName}['"]?\\s*\\]`),
+    `dependabot-auto-merge.yml must trigger on the CI workflow named "${quotedCiName}" — `
+      + 'workflow_run matches the display name, so these two must be renamed together',
+  );
+
+  // The auto-merge re-runs CI on main with `gh workflow run` after it merges,
+  // because a push made with GITHUB_TOKEN creates no workflow run. That only
+  // works while ci.yml accepts a manual dispatch; drop the trigger and every
+  // auto-merged bump stops being tested on main and stops deploying, silently.
+  assert.match(
+    autoMergeWorkflow,
+    /gh workflow run ci\.yml/,
+    'dependabot-auto-merge.yml must start CI on main after a merge — a push made '
+      + 'with GITHUB_TOKEN creates no workflow run of its own',
+  );
+  assert.match(
+    ciWorkflow,
+    /^ {2}workflow_dispatch:/m,
+    'ci.yml must keep its workflow_dispatch trigger — dependabot-auto-merge.yml '
+      + 'dispatches it after a merge, and that is the only way the merge commit '
+      + 'gets tested on main and reaches production',
+  );
 
   const desktopReleaseWorkflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.match(

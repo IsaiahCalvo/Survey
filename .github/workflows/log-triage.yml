@@ -1,4 +1,26 @@
-name: Log Triage
+name: Device log triage
+
+# 2026-09-15 — This opened one GitHub Issue per uploaded log, and uploads come
+# in bursts: 100 issues between 2026-06-02 and 2026-06-26, twenty of them on a
+# single day, 34 still open. Each one emailed the owner. It now files the first
+# log of a given kind as an Issue and hangs every repeat of that same kind
+# underneath it as a comment, so a debugging session becomes one thread to read
+# instead of twenty inboxes to clear. Nothing is dropped — every log still gets
+# filed, with its own permalink, under the matching heading.
+#
+# 2026-09-15 (second pass) — the folding above is read-then-create: it lists the
+# open issues, finds no match, and creates one. Two uploads seconds apart both
+# read "no match" and both create, so a burst produced the very duplicates the
+# folding exists to prevent. The concurrency group below serialises the runs so
+# the second one sees what the first one filed.
+#
+# A queued run can be displaced: GitHub cancels a previously pending run when a
+# newer one queues, so with three near-simultaneous uploads the middle run never
+# starts. That would drop a log, so the job no longer looks only at its own
+# commit — it sweeps every .log file pushed to this branch in the last hour and
+# files the ones that are not already referenced by a device-log issue. A
+# displaced run's log is therefore picked up by the run that displaced it, and
+# re-filing is impossible because the sweep checks first.
 
 on:
   push:
@@ -9,78 +31,193 @@ permissions:
   contents: read
   issues: write
 
+# Serialise, never cancel a run that has started: a half-filed log is worse than
+# a slow one. See the note above for how a displaced pending run is covered.
+concurrency:
+  group: log-triage
+  cancel-in-progress: false
+
 jobs:
   open-issue:
+    name: File the new device log
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Open triage Issue for new log
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
-            const commit = await github.rest.repos.getCommit({
-              owner, repo, ref: context.sha
+
+            // How far back the sweep looks. Long enough to cover a run that was
+            // displaced from the queue, short enough that logs the owner has
+            // already triaged and closed are never dredged up again.
+            const WINDOW_MS = 60 * 60 * 1000;
+            const MAX_COMMITS = 20;
+            const now = Date.now();
+
+            // ---- 1. Which .log files were pushed here recently? -------------
+            const recentCommits = await github.rest.repos.listCommits({
+              owner, repo, sha: context.sha, per_page: MAX_COMMITS,
             });
-            // Take the first log file added/modified in this commit.
-            const logFile = (commit.data.files || [])
-              .filter(f => f.filename.endsWith('.log'))
-              .map(f => f.filename)[0];
-            if (!logFile) {
-              core.info('No .log file in this commit — skipping issue creation.');
+            const shas = recentCommits.data
+              .filter((c) => {
+                const when = Date.parse(
+                  c.commit?.committer?.date || c.commit?.author?.date || '',
+                );
+                return Number.isFinite(when) && now - when <= WINDOW_MS;
+              })
+              .map((c) => c.sha);
+            if (!shas.includes(context.sha)) shas.push(context.sha);
+            shas.reverse(); // oldest first, so a burst files in upload order
+
+            // First commit that touched a file wins its permalink.
+            const candidates = new Map();
+            for (const sha of shas) {
+              const commit = await github.rest.repos.getCommit({ owner, repo, ref: sha });
+              for (const file of commit.data.files || []) {
+                if (!file.filename.endsWith('.log')) continue;
+                if (file.status === 'removed') continue;
+                if (!candidates.has(file.filename)) {
+                  candidates.set(file.filename, sha);
+                }
+              }
+            }
+            if (candidates.size === 0) {
+              core.info('No .log file in the recent commits — nothing to file.');
               return;
             }
-            // Pull the first ~400 lines of the file for the issue body; full
-            // log is always accessible via the permalink.
-            const fileRes = await github.rest.repos.getContent({
-              owner, repo, path: logFile, ref: context.sha
-            });
-            const content = Buffer
-              .from(fileRes.data.content, 'base64')
-              .toString('utf-8');
-            const lines = content.split('\n');
-            // GitHub Issues cap bodies at 65536 chars. Leave ~5k for headers,
-            // leaving ~60k for the log preview. Cap both by line count AND
-            // by byte budget so long single lines can't blow past the limit.
-            const MAX_PREVIEW_CHARS = 60000;
-            let preview = lines.slice(0, 400).join('\n');
-            if (preview.length > MAX_PREVIEW_CHARS) {
-              preview = preview.slice(0, MAX_PREVIEW_CHARS) + '\n… (truncated)';
+
+            // ---- 2. What has already been filed? ----------------------------
+            // Open device-log issues are what we fold INTO. The wider "all"
+            // page only answers "has this file already been filed?", so a log
+            // whose thread the owner has since closed is never re-filed.
+            const openIssues = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'open', labels: 'device-log', per_page: 100 },
+            );
+            const recentIssues = (await github.rest.issues.listForRepo({
+              owner, repo, state: 'all', labels: 'device-log',
+              sort: 'created', direction: 'desc', per_page: 100,
+            })).data;
+
+            const known = new Map();
+            for (const issue of [...openIssues, ...recentIssues]) {
+              if (!issue.pull_request) known.set(issue.number, issue);
             }
-            const truncated = lines.length > 400 || content.length > preview.length;
 
-            // Device tag from filename: "mac-host-ts.log", "windows-host-ts.log", etc.
-            const m = logFile.match(/^(mac|windows|linux|ios|android)-([^-]+)-/);
-            const platform = m ? m[1] : 'unknown';
-            const host = m ? m[2] : 'unknown';
+            const filed = new Set();
+            const note = (text) => {
+              for (const name of candidates.keys()) {
+                if (text && text.includes(name)) filed.add(name);
+              }
+            };
+            for (const issue of known.values()) note(issue.body);
+            for (const issue of known.values()) {
+              const touched = Date.parse(issue.updated_at || '');
+              if (!Number.isFinite(touched) || now - touched > WINDOW_MS) continue;
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number: issue.number, per_page: 100 },
+              );
+              for (const comment of comments) note(comment.body);
+            }
 
-            // Error signature — grab the first error-ish line for the title.
-            const errorLine = lines.find(l =>
-              /error|fail|cannot|unable|typeerror|referenceerror|exception/i.test(l)
-            ) || '(no obvious error line)';
-            const shortError = errorLine.slice(0, 120);
+            // ---- 3. File whatever is left ------------------------------------
+            // Folding targets only OPEN issues, and the map is updated as this
+            // run files things, so several logs of one kind in one sweep land in
+            // one thread rather than one thread each.
+            const openByTitle = new Map();
+            for (const issue of openIssues) {
+              if (!issue.pull_request) openByTitle.set(issue.title, issue.number);
+            }
 
-            const title = `[${platform}] Device log triage — ${shortError}`;
-            const body = [
-              `**Platform:** ${platform}`,
-              `**Host:** ${host}`,
-              `**Log file:** [${logFile}](https://github.com/${owner}/${repo}/blob/logs/${logFile})`,
-              `**Commit:** ${context.sha.slice(0,7)}`,
-              '',
-              '### First error line',
-              '```',
-              errorLine,
-              '```',
-              '',
-              '### Log preview' + (truncated ? ' (first 400 lines)' : ''),
-              '```',
-              preview,
-              '```'
-            ].join('\n');
+            for (const [logFile, sha] of candidates) {
+              if (filed.has(logFile)) {
+                core.info(`${logFile} is already filed — skipping.`);
+                continue;
+              }
 
-            await github.rest.issues.create({
-              owner, repo,
-              title,
-              body,
-              labels: ['device-log', `platform:${platform}`]
-            });
-            core.info(`Opened triage issue for ${logFile}`);
+              const fileRes = await github.rest.repos.getContent({
+                owner, repo, path: logFile, ref: sha,
+              });
+              const content = Buffer
+                .from(fileRes.data.content, 'base64')
+                .toString('utf-8');
+              const lines = content.split('\n');
+              // GitHub Issues cap bodies at 65536 chars. Leave ~5k for headers,
+              // leaving ~60k for the log preview. Cap both by line count AND
+              // by byte budget so long single lines can't blow past the limit.
+              const MAX_PREVIEW_CHARS = 60000;
+              let preview = lines.slice(0, 400).join('\n');
+              if (preview.length > MAX_PREVIEW_CHARS) {
+                preview = preview.slice(0, MAX_PREVIEW_CHARS) + '\n… (truncated)';
+              }
+              const truncated = lines.length > 400 || content.length > preview.length;
+
+              // Device tag from filename: "mac-host-ts.log", "windows-host-ts.log", etc.
+              const m = logFile.match(/^(mac|windows|linux|ios|android)-([^-]+)-/);
+              const platform = m ? m[1] : 'unknown';
+              const host = m ? m[2] : 'unknown';
+
+              // Error signature — grab the first error-ish line for the title.
+              const errorLine = lines.find(l =>
+                /error|fail|cannot|unable|typeerror|referenceerror|exception/i.test(l)
+              ) || '(no obvious error line)';
+              const shortError = errorLine.slice(0, 120);
+
+              const title = `[${platform}] Device log triage — ${shortError}`;
+              const permalink =
+                `[${logFile}](https://github.com/${owner}/${repo}/blob/logs/${logFile})`;
+
+              // Fold repeats into one thread. Logs uploaded during a single
+              // debugging session share an error signature, so they share a title;
+              // filing the second and later ones as comments on the still-open
+              // issue keeps all the evidence together and stops a burst of uploads
+              // becoming a burst of separate notifications. Matching is on the
+              // exact title of an OPEN device-log issue, so once the owner closes
+              // a thread the next log of that kind opens a fresh one.
+              const existing = openByTitle.get(title);
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner, repo,
+                  issue_number: existing,
+                  body: [
+                    `Another log with the same signature — ${permalink} (commit ${sha.slice(0,7)}, host ${host}).`,
+                    '',
+                    '### Log preview' + (truncated ? ' (first 400 lines)' : ''),
+                    '```',
+                    preview,
+                    '```'
+                  ].join('\n')
+                });
+                core.info(`Added ${logFile} to existing triage issue #${existing}`);
+                continue;
+              }
+
+              const body = [
+                `**Platform:** ${platform}`,
+                `**Host:** ${host}`,
+                `**Log file:** ${permalink}`,
+                `**Commit:** ${sha.slice(0,7)}`,
+                '',
+                '### First error line',
+                '```',
+                errorLine,
+                '```',
+                '',
+                '### Log preview' + (truncated ? ' (first 400 lines)' : ''),
+                '```',
+                preview,
+                '```'
+              ].join('\n');
+
+              const created = await github.rest.issues.create({
+                owner, repo,
+                title,
+                body,
+                labels: ['device-log', `platform:${platform}`]
+              });
+              openByTitle.set(title, created.data.number);
+              core.info(`Opened triage issue #${created.data.number} for ${logFile}`);
+            }

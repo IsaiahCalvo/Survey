@@ -1,0 +1,291 @@
+name: Dependabot auto-merge
+
+# 2026-09-15 — Dependabot opens roughly one dependency pull request a week per
+# package and nobody merges them; ten were sitting open on 2026-09-15, some
+# since August. Every one of them re-runs the whole build-and-test gate, and
+# every red X on one of them emails the owner about a robot's housekeeping.
+#
+# This merges a bump for him, but only a safe one:
+#   * the "Build and tests" run that just finished must be green,
+#   * it must have been a pull_request run from the Dependabot bot,
+#   * the branch must live in this repository (not a fork),
+#   * the pull request must still be open, still authored by Dependabot, not a
+#     draft, and cleanly mergeable,
+#   * its head commit must be the exact commit that was tested — a bump that
+#     picked up a new commit after the green run is left alone, and
+#   * the version jump must not cross a major version (and, for a 0.x package,
+#     must not cross a minor version either). Majors like
+#     "electron from 43.0.0 to 44.3.0" stay open for a person to look at.
+# Anything that does not match is skipped quietly with `exit 0` — this workflow
+# must never turn a robot's housekeeping into another failure email.
+#
+# Why `workflow_run` rather than running on the pull request itself: a workflow
+# triggered by Dependabot gets a deliberately read-only token and no access to
+# secrets. A `workflow_run` job runs from the default branch with the ordinary
+# repository token instead, which is what a merge needs. It also means this file
+# only takes effect once it is on main.
+#
+# Note for whoever reads this next: the repository has "Allow auto-merge"
+# switched off and, on a private repository on the Free plan, no branch
+# protection is available at all (the protection API answers 403). So this does
+# a plain squash merge after the gate has already gone green, rather than
+# GitHub's queued auto-merge.
+#
+# 2026-09-15 — THE MERGE PUSH DOES NOT RE-RUN CI, and an earlier version of this
+# comment claimed it did. GitHub documents (Actions → "Trigger a workflow" →
+# "Triggering a workflow from a workflow"): "When you use the repository's
+# GITHUB_TOKEN to perform tasks, events triggered by the GITHUB_TOKEN will not
+# create a new workflow run, with the following exceptions: workflow_dispatch
+# and repository_dispatch events always create workflow runs." A squash merge
+# performed with GITHUB_TOKEN is a push by GITHUB_TOKEN, so "Build and tests"
+# never ran on the merge commit, deploy-production.yml (workflow_run on "Build
+# and tests") never fired, and the two isolated suites the bump had skipped ran
+# nowhere at all. The bump silently never shipped.
+#
+# The fix, with no personal access token anywhere: after a successful merge this
+# workflow explicitly dispatches "Build and tests" on main with `gh workflow
+# run`, which is the workflow_dispatch REST endpoint and therefore lands inside
+# the documented exception above. The resulting run is an ordinary run of that
+# workflow -- SKIP_TIMING_SUITES is empty on it, so the isolated suites DO run --
+# and workflow_run fires on its completion exactly as it does for a human push,
+# so deploy-production.yml gates the deploy as usual. (The workflow_run
+# reference lists only two restrictions: the workflow file must be on the
+# default branch, and workflow_run chains cannot be nested more than three
+# deep. It excludes nothing on the grounds of what triggered the upstream run.)
+#
+# That dispatched run has event == 'workflow_dispatch' and actor
+# 'github-actions[bot]', so the `if:` below skips it and this workflow cannot
+# loop.
+
+on:
+  workflow_run:
+    # Must match the `name:` in .github/workflows/ci.yml.
+    workflows: ["Build and tests"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  # Needed for `gh workflow run` (the workflow_dispatch REST endpoint) below.
+  actions: write
+
+jobs:
+  merge:
+    name: Merge a green dependency bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    # 2026-09-15 — serialise the merges. Dependabot opens its bumps in one
+    # batch, so several "Build and tests" runs finish within seconds of each
+    # other; every bump edits package.json and package-lock.json, so without a
+    # group the second merge races a base that the first one just moved.
+    #
+    # JOB level, under the `if:` above, NOT workflow level. This workflow is
+    # triggered by EVERY completion of "Build and tests" — every human pull
+    # request, every push to main — and all of those runs skip this job. A
+    # workflow-level group would still admit them, and GitHub cancels a
+    # previously pending run when a new one queues, so an unrelated human pull
+    # request finishing its CI could silently cancel a bump's pending merge. A
+    # job-level group is only entered by runs that got past the `if:`.
+    #
+    # cancel-in-progress: false — a merge in flight is never interrupted. If a
+    # queued merge is displaced by a newer one, its bump simply stays open;
+    # Dependabot rebases the remaining pull requests once the first lands, and
+    # each rebase starts a fresh CI run and a fresh chance to merge.
+    concurrency:
+      group: dependabot-auto-merge
+      cancel-in-progress: false
+    steps:
+      - name: Merge the bump if every guard still holds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # Every `gh` call below is guarded. The step runs under `set -euo
+          # pipefail`, so an unguarded API hiccup would exit non-zero and turn a
+          # robot's housekeeping into a red run — and failure mail on this
+          # repository is a repo-wide subscription, so a red run of ANY workflow
+          # emails the owner. Nothing in this file is worth an email.
+          pr_json=""
+          if ! pr_json="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+            --json number,title,body,headRefOid,author,isDraft,mergeable,mergeStateStatus \
+            --jq '.[0] // empty')"; then
+            echo "Could not read the pull request list — leaving this bump alone."
+            {
+              echo "## Left open for you"
+              echo
+              echo "GitHub did not answer when this checked the dependency update,"
+              echo "so nothing was merged. It will try again on the next run."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ -z "$pr_json" ]; then
+            echo "No open pull request on $HEAD_BRANCH — nothing to merge."
+            exit 0
+          fi
+
+          echo "Candidate pull request: $pr_json"
+
+          # Every guard lives in one place so a future reader can see the whole
+          # safety story at once. Any guard that does not hold exits 0.
+          # The pull request data arrives through the environment, never
+          # interpolated into the script, so a hostile title cannot become code.
+          # The node script is single-quoted ON PURPOSE: its `${...}` are
+          # JavaScript template literals and must reach node unexpanded.
+          # `|| true` on the node call for the same reason as the gh calls: an
+          # unexpected title shape must leave the bump open, never red the run.
+          decision=""
+          # shellcheck disable=SC2016
+          decision="$(PR_JSON="$pr_json" TESTED_SHA="$TESTED_SHA" node -e '
+            const pr = JSON.parse(process.env.PR_JSON);
+            const stop = (why) => { console.log("SKIP\t" + why); process.exit(0); };
+
+            const author = (pr.author && pr.author.login) || "";
+            // gh reports the bot as "app/dependabot"; the REST name is
+            // "dependabot[bot]". Accept both, reject everything else.
+            if (!["app/dependabot", "dependabot[bot]", "dependabot"].includes(author)) {
+              stop(`pull request author is "${author}", not Dependabot`);
+            }
+            if (pr.isDraft) stop("pull request is a draft");
+            if (pr.headRefOid !== process.env.TESTED_SHA) {
+              stop(`head commit ${pr.headRefOid} is not the tested commit ${process.env.TESTED_SHA}`);
+            }
+            if (pr.mergeable !== "MERGEABLE") {
+              stop(`GitHub reports mergeable=${pr.mergeable} (${pr.mergeStateStatus})`);
+            }
+
+            // Dependabot titles are formatted deterministically for a single
+            // package, e.g.
+            //   chore(deps): bump yjs from 13.6.30 to 13.6.32
+            //   chore(deps): bump actions/checkout from 4 to 7
+            //
+            // 2026-09-15 — .github/dependabot.yml now GROUPS the routine monthly
+            // updates, and a grouped title carries no versions at all:
+            //   chore(deps): bump the npm-dependencies group with 5 updates
+            // Its body does, one line per package ("Updates `yjs` from 13.6.30
+            // to 13.6.32"), so read those instead and hold the whole group to
+            // the same rule: if ANY package in it crosses a major version the
+            // group is left for a person. Anything that parses to nothing at
+            // all — a shape neither of these covers — is also left alone.
+            const bumps = [];
+            const titleMatch =
+              /\bfrom\s+v?(\d+)(?:\.(\d+))?(?:\.\S*)?\s+to\s+v?(\d+)(?:\.(\d+))?/
+                .exec(pr.title || "");
+            if (titleMatch) {
+              bumps.push({ name: "this package", m: titleMatch });
+            } else {
+              const grouped =
+                /Updates `([^`]+)` from v?(\d+)(?:\.(\d+))?(?:\.\S*)?\s+to\s+v?(\d+)(?:\.(\d+))?/g;
+              let hit;
+              while ((hit = grouped.exec(pr.body || "")) !== null) {
+                bumps.push({ name: hit[1], m: [hit[0], hit[2], hit[3], hit[4], hit[5]] });
+              }
+            }
+            if (bumps.length === 0) {
+              stop("could not read a from/to version out of the title or the body");
+            }
+
+            for (const bump of bumps) {
+              const [fromMajor, fromMinor, toMajor, toMinor] =
+                [bump.m[1], bump.m[2] ?? "0", bump.m[3], bump.m[4] ?? "0"].map(Number);
+              if (fromMajor !== toMajor) {
+                stop(`${bump.name} changes major version ${fromMajor} -> ${toMajor}; a person should look at this`);
+              }
+              if (fromMajor === 0 && fromMinor !== toMinor) {
+                stop(`${bump.name} changes pre-1.0 minor 0.${fromMinor} -> 0.${toMinor}; treated as a breaking change`);
+              }
+            }
+
+            console.log("MERGE\t" + pr.number);
+          ')" || true
+
+          verdict="${decision%%$'\t'*}"
+          detail="${decision#*$'\t'}"
+
+          if [ -z "$decision" ]; then
+            verdict="SKIP"
+            detail="the pull request could not be read"
+          fi
+
+          if [ "$verdict" != "MERGE" ]; then
+            echo "Leaving this pull request open: $detail"
+            {
+              echo "## Left open for you"
+              echo
+              echo "This dependency update passed its checks but was **not** merged"
+              echo "automatically, because: $detail"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Merging pull request #$detail"
+          # A losing merge is an ordinary outcome, not a fault: another bump can
+          # land between the green run and this call and leave package-lock.json
+          # unmergeable. Report it and stop, green.
+          merged=1
+          gh pr merge "$detail" --repo "$REPO" --squash --delete-branch || merged=0
+          if [ "$merged" -eq 0 ]; then
+            echo "Merge of #$detail did not go through — leaving it open."
+            {
+              echo "## Left open for you"
+              echo
+              echo "This dependency update passed its checks, but the merge did not"
+              echo "go through — usually because another update landed first and the"
+              echo "lock file no longer merges cleanly. Nothing is broken: the update"
+              echo "is still open, and it gets another try once the robot rebases it."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The merge push was made with GITHUB_TOKEN, so GitHub created no
+          # workflow run for it (see the note at the top of this file). Ask for
+          # one explicitly: workflow_dispatch is the documented exception, so
+          # this is the one call that can start CI on main from here without a
+          # personal access token. Dispatched by FILE NAME rather than display
+          # name -- the workflow_run trigger above already couples this file to
+          # the display name, and one such coupling is enough.
+          dispatched=0
+          for attempt in 1 2 3; do
+            if gh workflow run ci.yml --repo "$REPO" --ref main; then
+              dispatched=1
+              break
+            fi
+            echo "Dispatch attempt $attempt failed; retrying."
+            sleep 5
+          done
+
+          {
+            echo "## Merged for you"
+            echo
+            echo "Dependency update #$detail passed every check and was merged into"
+            echo "main."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$dispatched" -eq 1 ]; then
+            {
+              echo
+              echo "The full test suite — including the slow isolated tests this"
+              echo "bump skipped — has been started on main, and only a green run"
+              echo "there can reach the live site."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            # A warning annotation, not a failure: a red run here would email the
+            # owner about a robot's housekeeping, which is the thing this file
+            # exists to stop.
+            echo "::warning::Merged #$detail but could not start Build and tests on main. Run it by hand from the Actions tab so the bump gets tested and deployed."
+            {
+              echo
+              echo "**Please run \"Build and tests\" on main by hand** (Actions tab →"
+              echo "Build and tests → Run workflow). The merge itself cannot start it,"
+              echo "and until it runs this bump is neither fully tested nor deployed."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

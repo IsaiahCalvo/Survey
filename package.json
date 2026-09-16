@@ -15,6 +15,7 @@
     "check:licenses": "node scripts/check-licenses.mjs",
     "dist": "npm run build && electron-builder",
     "test": "node scripts/run-node-tests.mjs",
+    "test:perf": "node scripts/run-node-tests.mjs --only-perf",
     "env:test:configure": "node scripts/configure-main-integration-env.mjs",
     "env:analytics:configure": "node scripts/configure-hosted-analytics-env.mjs",
     "release:mobile:readiness": "node scripts/verify-mobile-rollout-readiness.mjs --remote",
