@@ -434,11 +434,16 @@ const PDFSidebar = React.forwardRef(({
                     }
                   }}
                 >
+                  {/* UX 2026-09-16: every tab icon draws in the same 16x16
+                      box with no nudge. The Pages glyph used to carry a 3px
+                      top margin, which grew its tab's centred column and
+                      pushed BOTH its icon and its label 1.5px below the other
+                      three, visibly breaking the row of labels. The glyph's
+                      own ink is already centred in its box. */}
                   <Icon
                     name={tab.icon}
                     size={16}
                     color={isActive ? '#d8a84e' : '#8d96a6'}
-                    style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                   />
                   <span style={{
                     maxWidth: '100%',
