@@ -1145,6 +1145,42 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: 44px;
 }
 
+/* UX 2026-09-16: the width control and the style dropdown next to it are the
+   same kind of control — a value plus a disclosure chevron — but the width
+   pill was 30px tall against the dropdown's 24px and sat 3px higher in the
+   strip, and its chevron carried its own dark overlay fill instead of the
+   segment's. Match the dropdown: same 24px visual, same fill, and the same
+   transparent pseudo-element that keeps the chevron's tap target full height
+   (the strip deliberately leaves vertical overflow visible). */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control {
+  height: 24px;
+  /* Both children are transparent here, so the pill's own rounded background
+     is all that paints — dropping the clip costs nothing visually and lets
+     the chevron's tap target reach past the 24px pill. */
+  overflow: visible;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control > input {
+  height: 22px;
+  line-height: 22px;
+  font-size: 12px;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger {
+  position: relative;
+  height: 22px;
+  background: transparent;
+  /* Follow the pill's outer corner when the open/pressed state paints. */
+  border-radius: 0 4px 4px 0;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -11px;
+  inset-inline: 0;
+}
+
 .mobile-styled-select__trigger > span {
   overflow: hidden;
   white-space: nowrap;
