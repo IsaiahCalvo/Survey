@@ -497,9 +497,13 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         }}
       />
       <div className="mobile-pdf-header__document">
-        {/* UX 2026-09-16: 17, the size undo/redo and the page chevrons use. At 21
-            the back chevron was a third bigger than the identical chevron glyph
-            two controls to its right. */}
+        {/* UX 2026-09-16: one glyph size for every action icon in this bar.
+            Back, the two page chevrons and undo/redo all draw at HEADER_GLYPH,
+            so the same chevron is never two different sizes side by side — back
+            used to be a third bigger than the identical page chevron two
+            controls to its right. The zoom disclosure caret stays smaller on
+            purpose: it reads as a caret beside a label, not as an action
+            icon. */}
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
@@ -527,6 +531,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) <= 1}
           onClick={bottomToolbarApi?.goToPreviousPage}
         >
+          {/* UX 2026-09-16: same HEADER_GLYPH as Back and undo/redo. */}
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
@@ -585,6 +590,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) >= (bottomToolbarApi?.numPages || 1)}
           onClick={bottomToolbarApi?.goToNextPage}
         >
+          {/* UX 2026-09-16: same HEADER_GLYPH as Back and undo/redo. */}
           <Icon name="chevronRight" size={HEADER_GLYPH} color="currentColor" />
         </button>
 

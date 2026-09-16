@@ -429,10 +429,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: var(--mobile-rail-gap);
   overflow-y: auto;
   /* Owner rule: the rail never scrolls sideways. overflow-y:auto on its own
-     computes overflow-x to auto too, which is how a 44pt rail became draggable. */
+     computes overflow-x to auto too, which is how the rail became draggable: a
+     light horizontal drag shifted the whole tool column out of alignment with
+     no spring-back. overscroll-behavior-x stops a sideways flick reaching the
+     page behind it as well. */
   overflow-x: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
+
+/* The rail's own buttons used to be stretched to the rail's content box to stop
+   them overflowing it. They no longer need to be: the chip token is 30px inside
+   a 40px rail, so every chip already clears both edges with its outline and its
+   rounded corners intact. A width:100% override here would undo that. */
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
@@ -970,6 +979,26 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   -webkit-overflow-scrolling: touch;
   overflow-x: auto;
   overflow-y: hidden;
+  /* UX 2026-09-16: this row is wider than any phone and its scrollbar is
+     hidden, so at rest it ended in a control sliced vertically by the screen
+     edge and read as a broken render. Fade the last 20px against the strip's
+     own colour so the cut edge reads as "there is more this way". The mask
+     sits on the strip's border box, so it stays at the right edge while the
+     controls scroll underneath it. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+}
+
+/* UX 2026-09-16: the strip centres its controls, and a centred flex row that
+   is wider than its box overflows equally at BOTH ends. With the Arrow and
+   Callout sets that pushed the colour swatch under the tool rail (the rail
+   paints above the strip), so on a 375px phone an arrow's or callout's
+   colour could not be tapped at all. `safe` keeps the centring while the
+   controls fit and falls back to start-aligned the moment they do not, so
+   nothing is ever painted to the left of the rail. The text strip keeps its
+   own flex-start + scroll behaviour. */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) {
+  justify-content: safe center;
 }
 
 .mobile-pdf-properties--actions,
@@ -1257,6 +1286,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control {
   width: var(--mobile-strip-dropdown-w);
   height: var(--mobile-strip-control-h);
+  /* Both children are transparent here, so the pill's own rounded background is
+     all that paints — dropping the clip costs nothing visually and lets the
+     chevron's tap target reach past the pill. */
+  overflow: visible;
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control > input {
@@ -1265,10 +1298,27 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 1 1 auto;
   height: calc(var(--mobile-strip-control-h) - 2px);
   line-height: calc(var(--mobile-strip-control-h) - 2px);
+  font-size: 12px;
 }
 
+/* The trigger used to carry its own dark overlay fill, which made the width
+   field read as a different kind of control from the style dropdown beside it.
+   It takes the segment's fill now, and the transparent pseudo-element keeps its
+   tap target full height (the strip deliberately leaves vertical overflow
+   visible). */
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger {
+  position: relative;
   height: calc(var(--mobile-strip-control-h) - 2px);
+  background: transparent;
+  /* Follow the pill's outer corner when the open/pressed state paints. */
+  border-radius: 0 4px 4px 0;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -11px;
+  inset-inline: 0;
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger::after {
@@ -3014,7 +3064,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-hub-close {
   position: absolute !important;
-  right: 12px;
+  /* UX 2026-09-16: same 16px gutter as the tab row and the page strip. */
+  right: 16px;
   top: 4px;
   width: 32px !important;
   height: 32px !important;
@@ -3113,7 +3164,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-track {
-  padding: 2px 1px !important;
+  /* UX 2026-09-16: run the sheet's own 16px gutter down the thumbnail strip.
+     At 1px the first page card — and its gold selected border — sat flush
+     against the screen edge while the segment row above it and the action row
+     below it were both inset, so the strip read as clipped. scroll-padding
+     keeps scrolled cards stopping on the same rule. */
+  padding: 2px 16px !important;
+  scroll-padding-inline: 16px;
   flex-direction: row !important;
   gap: 16px !important;
   overflow-x: auto !important;

@@ -1250,7 +1250,11 @@ const SurveySpacesRail = ({
                     borderBottom: '1px solid #2a3140',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'flex-start',
+                    // UX 2026-09-16: the collapsed rail is one icon column, so
+                    // its top toggle sits on the same centre line as Survey,
+                    // zoom, the page steppers and Fit below it. Left-aligning
+                    // it to the rail's padding edge left it 3px off-axis.
+                    justifyContent: mobileMode ? 'flex-start' : 'center',
                     background: '#12151c',
                     flexShrink: 0
                   }}>
