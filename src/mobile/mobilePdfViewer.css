@@ -362,8 +362,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
+/* width:100% rather than a hard 44: the rail is 44 wide with a 1px right border,
+   so its content box is 43. A hard 44 put every button 1px past the edge, which
+   is what clipped the active tool's gold outline and made the column scrollable. */
 .mobile-pdf-tools__button {
-  width: 44px;
+  width: 100%;
+  min-width: 0;
   height: 44px;
   min-height: 44px;
   padding: 0;
@@ -386,7 +390,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__select-family {
   position: relative;
-  width: 44px;
+  width: 100%;
   height: 44px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -408,9 +412,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-color: transparent;
 }
 
+/* right:0 rather than a hard left offset: the caret hugs the Select family's own
+   right edge whatever the rail's content box works out to, so it cannot hang past
+   it and lose its right side the way it used to. */
 .mobile-pdf-tools__select-caret {
   position: absolute;
-  left: 31px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 12px;
