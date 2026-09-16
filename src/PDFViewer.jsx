@@ -226,6 +226,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
+import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
 import { isLiveFormWidgetTarget } from './utils/formWidgetPointerTargets.js';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
@@ -11936,36 +11937,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Intended UX: a pinch is a zoom and nothing else. It never leaves anything
     // behind for the next tap to pair with, whatever the fingers do or in which
     // order they lift.
-    const downPointers = new Map();
-    let multiTouchGesture = false;
+    // downPointers holds one start point per event.pointerId and nothing is
+    // dropped from it until that pointer actually lifts, so `size` is always
+    // the number of fingers still down. Clearing the map on the second
+    // pointerdown (as this did until 2026-09-15) made the FIRST lift read as
+    // "every finger is up": the bail unlatched mid-pinch, and a third finger
+    // landing while the second still rested started a fresh tap candidate —
+    // two of those opened an editor in the middle of a pinch.
+    const downPointers = createMultiTouchTapGate();
     const onDown = (event) => {
       if (event.button != null && event.button !== 0) return;
-      downPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      downPointers.press(event.pointerId, { x: event.clientX, y: event.clientY });
       if (downPointers.size > 1) {
         // A second finger arrived: this gesture is a pinch (or a stray palm),
         // so abandon every tap candidate AND the pending first tap. Sticky
         // until every finger is up, so the LAST finger's lift cannot sneak
         // through as a tap either.
-        multiTouchGesture = true;
-        downPointers.clear();
+        downPointers.bail();
         tracker.reset();
       }
     };
     const onCancel = (event) => {
-      if (event && event.pointerId != null) downPointers.delete(event.pointerId);
-      else downPointers.clear();
-      if (downPointers.size === 0) multiTouchGesture = false;
+      downPointers.lift(event && event.pointerId != null ? event.pointerId : null);
       tracker.reset();
     };
     const onUp = (event) => {
-      const start = downPointers.get(event.pointerId);
-      downPointers.delete(event.pointerId);
-      if (downPointers.size === 0 && multiTouchGesture) {
-        multiTouchGesture = false;
-        tracker.reset();
-        return;
-      }
-      if (multiTouchGesture) { tracker.reset(); return; }
+      const { start, bailed } = downPointers.lift(event.pointerId);
+      if (bailed) { tracker.reset(); return; }
       if (!start) return;
       const tool = activeToolRef.current;
       // Creation tools own their own gestures; only the read/select family
