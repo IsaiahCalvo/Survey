@@ -324,10 +324,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--gold-bg, #2a2218);
 }
 
+/* UX 2026-09-16: no horizontal padding. The rail is 44px wide and its buttons are
+   44px wide, so a 4px side padding put every button 4px outside the rail's content
+   box: the active tool's gold outline lost its left and right edges and rendered
+   as two detached rules above and below the glyph, and the overflow made a 44pt
+   rail horizontally scrollable — a light sideways drag shifted the whole tool
+   column left and it did not spring back. Owner rule: a rail is never scrollable.
+   Everything inside .mobile-pdf-tools__main is centred by that element, so removing
+   the padding does not move any control; the footer below carries align-self so it
+   stays on the same centre line. */
 .mobile-pdf-tools {
   width: 44px;
   height: 100%;
-  padding: 7px 4px calc(var(--mobile-viewer-dock-height) + 28px);
+  padding: 7px 0 calc(var(--mobile-viewer-dock-height) + 28px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -345,6 +354,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   gap: 5px;
   overflow-y: auto;
+  /* Owner rule: the rail never scrolls sideways. overflow-y:auto on its own
+     computes overflow-x to auto too, which is how a 44pt rail became draggable. */
+  overflow-x: hidden;
   scrollbar-width: none;
 }
 
@@ -596,8 +608,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 50%;
 }
 
+/* align-self keeps the footer on the rail's centre line now that the rail has no
+   side padding to offset it. */
 .mobile-pdf-tools__footer {
   margin-top: auto;
+  align-self: center;
   width: 34px;
   padding-top: 0;
   display: flex;
@@ -608,7 +623,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   transform: translateY(34px);
 }
 
+/* UX 2026-09-16: 34 wide, matching the footer that holds it and the three buttons
+   stacked under it. At the inherited 44 it was wider than its own container and
+   was clipped on both sides, like the rail buttons above it were. */
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button {
+  width: 34px;
+  min-width: 34px;
   height: 18px;
   min-height: 18px;
 }
