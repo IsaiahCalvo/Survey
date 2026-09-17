@@ -918,7 +918,11 @@ const PagesPanel = ({
                     display: 'grid',
                     placeItems: 'center',
                     color: 'var(--text-2)',
-                    background: 'rgba(18,21,28,0.84)',
+                    /* UX: the overflow button sits ON a page thumbnail, so it needs a
+                       plate it can be read against without hiding the page. --surface-1 at
+                       the same 84% it always had; the channels used to be the retired
+                       ramp's #12151c typed out as rgba(), which the hex sweep never saw. */
+                    background: 'color-mix(in srgb, var(--surface-1) 84%, transparent)',
                     border: '1px solid var(--border-strong)',
                     borderRadius: 6,
                     zIndex: 2,

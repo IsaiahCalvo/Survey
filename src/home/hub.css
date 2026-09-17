@@ -8,7 +8,15 @@
    invisible, and its text was a warm cream over cool blue-grey surfaces.
    The hue names below (blue / rose / lilac / green / slate) are NOT chrome —
    they are the set of distinguishable colours an avatar or a tag is given,
-   the same class of thing as an ink colour, so they keep their own values. */
+   the same class of thing as an ink colour, so they keep their own values.
+
+   Where a rule needs one of those colours at partial opacity, it says
+   `color-mix(in srgb, var(--token) NN%, transparent)` rather than re-typing
+   the old ramp's channels as rgba(). Twelve phone rules did exactly that: the
+   retired --ink-800 and --ink-500 written out channel by channel, which is why
+   the sweep for hex literals walked straight past them and the phone went on
+   painting the old ramp under the new one. The alpha is unchanged in every
+   case; only the colour underneath it moved to the token. */
 .survey-hub {
   --ink-900: var(--surface-0);
   --ink-800: var(--surface-1);
@@ -761,7 +769,7 @@
     padding: 14px 14px 10px;
     flex: none;
     background: var(--ink-900);
-    border-bottom: 1px solid rgba(42,49,64,0.72);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   }
 
   html[data-native-shell="expo"] .survey-hub .header {
@@ -1616,8 +1624,8 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
     padding: 2px;
-    background: rgba(18,21,28,0.74);
-    border: 1px solid rgba(42,49,64,0.82);
+    background: color-mix(in srgb, var(--surface-1) 74%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
     border-radius: 8px;
   }
 
@@ -1773,8 +1781,8 @@
     gap: 7px;
     padding: 10px;
     border-radius: 8px;
-    background: rgba(18,21,28,0.64);
-    border: 1px solid rgba(42,49,64,0.74);
+    background: color-mix(in srgb, var(--surface-1) 64%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
   }
 
   .survey-hub .projects-mobile-folder-files.raised {
@@ -1896,7 +1904,7 @@
     min-height: 112px;
     border: 1px dashed var(--ink-500);
     border-radius: 8px;
-    background: rgba(18,21,28,0.44);
+    background: color-mix(in srgb, var(--surface-1) 44%, transparent);
     color: var(--ink-200);
     display: grid;
     gap: 8px;
@@ -1993,7 +2001,7 @@
     min-height: 360px;
     max-height: calc(100dvh - var(--mobile-header-h) - 36px);
     overflow: auto;
-    border: 1px solid rgba(42,49,64,0.86);
+    border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
     border-radius: 0 9px 9px 0;
     background: rgba(12,15,21,0.96);
     box-shadow: 14px 0 34px rgba(0,0,0,0.34);
@@ -2734,9 +2742,9 @@
     display: grid;
     gap: 7px;
     padding: 9px;
-    border: 1px solid rgba(42,49,64,0.78);
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
     border-radius: 8px;
-    background: rgba(18,21,28,0.42);
+    background: color-mix(in srgb, var(--surface-1) 42%, transparent);
     scroll-margin-top: calc(var(--mobile-header-h) + 8px);
   }
 
@@ -2860,7 +2868,7 @@
     grid-template-columns: 44px minmax(0, 1fr) 44px;
     min-height: 44px;
     padding: 6px 0;
-    border-top: 1px solid rgba(42,49,64,0.58);
+    border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   }
 
   .survey-hub .templates-mobile-item-row > button {
@@ -2904,7 +2912,7 @@
     grid-template-columns: minmax(0, 1fr) 44px;
     gap: 8px;
     align-items: center;
-    border-top: 1px dashed rgba(42,49,64,0.58);
+    border-top: 1px dashed color-mix(in srgb, var(--border) 58%, transparent);
     opacity: 0.68;
   }
 
@@ -3145,7 +3153,7 @@
     min-height: 56px;
     border: 1px dashed var(--ink-500);
     border-radius: 7px;
-    background: rgba(18,21,28,0.44);
+    background: color-mix(in srgb, var(--surface-1) 44%, transparent);
     color: var(--ink-200);
     display: grid;
     place-items: center;

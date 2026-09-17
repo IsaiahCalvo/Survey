@@ -2206,7 +2206,12 @@ export default function App({ devPreviewReturnTab = null }) {
                                     width: '4px',
                                     height: '4px',
                                     borderRadius: '1px',
-                                    background: on ? 'var(--accent)' : 'rgba(168,176,191,0.4)',
+                                    /* UX: an "off" cell in the 3x3 alignment grid is a quiet
+                                       ghost of the "on" gold. The tint is --text-3 (what the
+                                       retired #a8b0bf became everywhere else) at the same 40%
+                                       it always had, written as a color-mix so the colour comes
+                                       from the token file and not from the old ramp. */
+                                    background: on ? 'var(--accent)' : 'color-mix(in srgb, var(--text-3) 40%, transparent)',
                                     boxShadow: on ? '0 0 0 1px rgba(216,168,78,0.25)' : 'none',
                                   }} />
                                 );
@@ -3379,7 +3384,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // --rail-control-glyph 14, and a 2px radius against
               // --chrome-radius 6 — it met neither token.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'rgb(30, 30, 30)', border: '1px solid var(--border)', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;
