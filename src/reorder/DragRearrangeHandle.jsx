@@ -8,8 +8,8 @@
  */
 import Icon from '../Icons';
 
-const DEFAULT_HANDLE_COLOR = '#b8c0cc';
-const HOVER_HANDLE_COLOR = '#f2f5f8';
+const DEFAULT_HANDLE_COLOR = 'var(--text-2)';
+const HOVER_HANDLE_COLOR = 'var(--text-1)';
 
 const handleStyle = (isDragging, style = {}) => ({
   display: 'flex',

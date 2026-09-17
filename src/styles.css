@@ -1,22 +1,18 @@
+@import './styles/tokens.css';
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* The app's global design tokens. These lived in src/App.css, which was never
-   imported (deleted 2026-08-11) — so every `var(--x, fallback)` consumer only
-   ever saw its fallback. The three tokens real code and comments actually cite
-   are defined here, in the one sheet main.jsx loads, with the values the
-   fallbacks already use — no visual change, the tokens just resolve now.
-   --accent-red is the one destructive red (KAL-72, docs/ui/colors.md);
-   --overlay-scrim is the one modal scrim (KAL-62), always paired with
-   backdrop-filter: blur(8px); keep theme.js overlay in sync with it. */
+/* The app's global SIZE tokens. The COLOUR tokens moved out to
+   src/styles/tokens.css (imported at the top of this file) on 2026-09-17 when
+   the owner approved the revision-2 palette — one file decides every colour on
+   every platform, and nothing below may re-declare one. */
 :root {
   --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
     "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
-  --accent-red: #d95a56;
-  --overlay-scrim: rgba(13, 15, 20, 0.55);
 
   /* UX 2026-09-16 (desktop sizing pass): ONE size scale for the desktop
      document chrome, so every control in the top bar, the tool sub-row and
@@ -72,8 +68,8 @@
 
 
 .App {
-  background-color: #0d0f14;
-  color: #f4f1ea;
+  background-color: var(--surface-0);
+  color: var(--text-1);
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -202,64 +198,57 @@
 /* Button Variants */
 .btn-default {
   background: transparent;
-  color: #e8e2d4;
+  color: var(--text-2);
   border: 1px solid transparent;
 }
 
 .btn-default:hover:not(:disabled) {
   background: rgba(216, 168, 78, 0.14);
-  border-color: #d8a84e;
+  border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
 }
 
 .btn-primary {
-  background: #d8a84e;
-  color: #15110a;
-  border: 1px solid #d8a84e;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 1px solid var(--accent);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #b6904a;
-  border-color: #b6904a;
+  background: var(--accent-press);
+  border-color: var(--accent-press);
 }
 
 .btn-secondary {
-  background: #181c24;
-  color: #e8e2d4;
+  background: var(--surface-2);
+  color: var(--text-2);
   border: 1px solid transparent;
 }
 
 .btn-secondary:hover:not(:disabled) {
   background: rgba(216, 168, 78, 0.14);
-  border-color: #d8a84e;
+  border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
 }
 
-.btn-success {
-  background: #a6e07a;
-  color: #15110a;
-  border: 1px solid #a6e07a;
-}
-
-.btn-success:hover:not(:disabled) {
-  background: #93cf68;
-  border-color: #93cf68;
-}
+/* .btn-success (a #a6e07a green button and its #93cf68 hover) was DELETED
+   2026-09-17 with the revision-2 palette. Nothing in the app ever carried the
+   class, and there is no green button in the palette. */
 
 .btn-danger {
-  background: #d95a56;
-  color: #f4f1ea;
-  border: 1px solid #d95a56;
+  background: var(--danger);
+  color: var(--text-1);
+  border: 1px solid var(--danger);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #c84c49;
-  border-color: #c84c49;
+  background: var(--danger-press);
+  border-color: var(--danger-press);
 }
 
 .btn-ghost {
   background: transparent;
-  color: #e8e2d4;
+  color: var(--text-2);
   border: 1px solid transparent;
 }
 
@@ -273,14 +262,14 @@
   min-width: 28px;
   min-height: 28px;
   background: transparent;
-  color: #e8e2d4;
+  color: var(--text-2);
   border: 1px solid transparent;
   font-size: 14px;
 }
 
 .btn-icon:hover:not(:disabled) {
   background: rgba(216, 168, 78, 0.14);
-  border-color: #d8a84e;
+  border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
 }
 
@@ -378,7 +367,7 @@
   border: 0;
   border-bottom: 1px dashed transparent;
   border-radius: 0;
-  color: #8d96a6;
+  color: var(--text-3);
   font: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -394,15 +383,15 @@
 
 .survey-marker-name-inline:hover,
 .survey-marker-name-fit:hover .survey-marker-name-inline {
-  border-bottom-color: #5a6473;
-  color: #e8e2d4;
+  border-bottom-color: var(--border-strong);
+  color: var(--text-2);
 }
 
 .survey-marker-name-inline:focus,
 .survey-marker-name-fit:focus-within .survey-marker-name-inline,
 input[type="text"].survey-marker-name-inline:focus {
-  border-bottom-color: #d8a84e;
-  color: #f4f1ea;
+  border-bottom-color: var(--accent);
+  color: var(--text-1);
   box-shadow: none;
 }
 
@@ -440,7 +429,7 @@ input[type="text"].survey-marker-name-inline:focus {
   border: 0;
   border-bottom: 1px dashed transparent;
   border-radius: 0;
-  color: #e8e2d4;
+  color: var(--text-2);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -456,15 +445,15 @@ input[type="text"].survey-marker-name-inline:focus {
 
 .space-name-inline:hover,
 .space-name-fit:hover .space-name-inline {
-  border-bottom-color: #5a6473;
-  color: #f4f1ea;
+  border-bottom-color: var(--border-strong);
+  color: var(--text-1);
 }
 
 .space-name-inline:focus,
 .space-name-fit:focus-within .space-name-inline,
 input[type="text"].space-name-inline:focus {
-  border-bottom-color: #d8a84e;
-  color: #f4f1ea;
+  border-bottom-color: var(--accent);
+  color: var(--text-1);
   box-shadow: none;
 }
 
@@ -479,7 +468,7 @@ input[type="text"].space-name-inline:focus {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
-  color: #e8e2d4;
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -552,7 +541,7 @@ input[type="text"].space-name-inline:focus {
   background: transparent;
   border: 0;
   border-bottom: 1px dashed transparent;
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: text;
   font: inherit;
   font-size: 12px;
@@ -566,8 +555,8 @@ input[type="text"].space-name-inline:focus {
 
 .region-name-display:hover,
 .region-name-display:focus-visible {
-  border-bottom-color: #5a6473;
-  color: #f4f1ea;
+  border-bottom-color: var(--border-strong);
+  color: var(--text-1);
   outline: none;
 }
 
@@ -575,9 +564,9 @@ input[type="text"].space-name-inline:focus {
   padding: 0 0 1px;
   background: transparent;
   border: 0;
-  border-bottom: 1px dashed #d8a84e;
+  border-bottom: 1px dashed var(--accent);
   border-radius: 0;
-  color: #f4f1ea;
+  color: var(--text-1);
   font: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -613,7 +602,7 @@ input[type="text"].space-name-inline:focus {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: pointer;
   font-family: inherit;
   font-size: 11px;
@@ -626,7 +615,7 @@ input[type="text"].space-name-inline:focus {
 .region-page-pill:focus-visible {
   background: rgba(216, 168, 78, 0.18);
   border-color: rgba(216, 168, 78, 0.65);
-  color: #f4f1ea;
+  color: var(--text-1);
   outline: none;
 }
 
@@ -685,7 +674,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .region-delete-button {
-  color: #d95a56;
+  color: var(--danger);
   cursor: pointer;
 }
 
@@ -711,7 +700,7 @@ input[type="text"].space-name-inline:focus {
   max-height: 42vh;
   overflow-y: auto;
   padding: 9px 12px 10px;
-  border-bottom: 1px solid #2a3140;
+  border-bottom: 1px solid var(--border);
   background: rgba(217, 90, 86, 0.06);
   font-family: inherit;
 }
@@ -731,7 +720,7 @@ input[type="text"].space-name-inline:focus {
 .survey-unplaced-title {
   flex: 1 1 auto;
   min-width: 0;
-  color: #d95a56;
+  color: var(--danger);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.3;
@@ -741,22 +730,22 @@ input[type="text"].space-name-inline:focus {
   flex-shrink: 0;
   height: 20px;
   padding: 0 7px;
-  border: 1px solid #3a4252;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: #1f2430;
-  color: #e8e2d4;
+  background: var(--surface-3);
+  color: var(--text-2);
   font-size: 10px;
   cursor: pointer;
 }
 
 .survey-unplaced-dismiss-all:hover {
-  border-color: #d8a84e;
+  border-color: var(--accent);
   background: rgba(216, 168, 78, 0.18);
 }
 
 .survey-unplaced-notice {
   margin: 0 0 7px;
-  color: #8d96a6;
+  color: var(--text-3);
   font-size: 10.5px;
   line-height: 1.4;
 }
@@ -775,9 +764,9 @@ input[type="text"].space-name-inline:focus {
   align-items: flex-start;
   gap: 6px;
   padding: 6px 7px;
-  border: 1px solid #3a4252;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: #12151c;
+  background: var(--surface-1);
 }
 
 .survey-unplaced-row-main {
@@ -789,7 +778,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-unplaced-row-name {
-  color: #e8e2d4;
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
   overflow: hidden;
@@ -798,7 +787,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-unplaced-row-where {
-  color: #8d96a6;
+  color: var(--text-3);
   font-size: 10px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -806,7 +795,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-unplaced-row-reason {
-  color: #e8e2d4;
+  color: var(--text-2);
   font-size: 10.5px;
   line-height: 1.35;
 }
@@ -819,7 +808,7 @@ input[type="text"].space-name-inline:focus {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #8d96a6;
+  color: var(--text-3);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -828,7 +817,7 @@ input[type="text"].space-name-inline:focus {
 .survey-unplaced-row-dismiss:hover,
 .survey-unplaced-row-dismiss:focus-visible {
   background: rgba(220, 38, 38, 0.12);
-  color: #d95a56;
+  color: var(--danger);
   outline: none;
 }
 
@@ -860,7 +849,7 @@ input[type="text"].space-name-inline:focus {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #d95a56;
+  color: var(--danger);
   cursor: help;
   display: inline-flex;
   align-items: center;
@@ -890,10 +879,10 @@ input[type="text"].space-name-inline:focus {
   width: min(236px, calc(100vw - 32px));
   max-width: 236px;
   padding: 8px 9px;
-  border: 1px solid #3a4252;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #12151c;
-  color: #e8e2d4;
+  background: var(--surface-1);
+  color: var(--text-2);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
   font-size: 11px;
   line-height: 1.35;
@@ -916,9 +905,9 @@ input[type="text"].space-name-inline:focus {
   top: 100%;
   width: 8px;
   height: 8px;
-  background: #12151c;
-  border-right: 1px solid #3a4252;
-  border-bottom: 1px solid #3a4252;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
   transform: rotate(45deg);
 }
 
@@ -932,17 +921,17 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-review-tooltip-title {
-  color: #d95a56;
+  color: var(--danger);
   font-weight: 600;
 }
 
 .survey-marker-review-tooltip-body,
 .survey-marker-review-tooltip-meta {
-  color: #e8e2d4;
+  color: var(--text-2);
 }
 
 .survey-marker-review-tooltip-meta {
-  color: #8d96a6;
+  color: var(--text-3);
 }
 
 .survey-marker-review-tooltip-actions {
@@ -954,16 +943,16 @@ input[type="text"].space-name-inline:focus {
 .survey-marker-review-tooltip-actions button {
   height: 22px;
   padding: 0 7px;
-  border: 1px solid #5a6473;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: #1f2430;
-  color: #e8e2d4;
+  background: var(--surface-3);
+  color: var(--text-2);
   font-size: 11px;
   cursor: pointer;
 }
 
 .survey-marker-review-tooltip-actions button:hover {
-  border-color: #d8a84e;
+  border-color: var(--accent);
   background: rgba(216, 168, 78, 0.18);
 }
 
@@ -976,7 +965,7 @@ input[type="text"].space-name-inline:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #e8e2d4;
+  color: var(--text-2);
   line-height: 1;
   box-sizing: border-box;
 }
@@ -999,8 +988,8 @@ input[type="text"].space-name-inline:focus {
   margin: 0;
   padding: 0;
   flex: 0 0 14px;
-  border: 1.4px solid #3a4252;
-  background: #12151c;
+  border: 1.4px solid var(--border-strong);
+  background: var(--surface-1);
   border-radius: 2px;
   cursor: pointer;
   display: inline-flex;
@@ -1010,19 +999,19 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-leading-check.is-selected .survey-marker-leading-checkbox {
-  border-color: #d8a84e;
-  background: #d8a84e;
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 .survey-marker-leading-checkmark {
-  color: #15110a;
+  color: var(--accent-text);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
 }
 
 .survey-marker-leading-check:focus-visible {
-  outline: 1px solid #d8a84e;
+  outline: 1px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1049,7 +1038,7 @@ input[type="text"].space-name-inline:focus {
   margin-bottom: 0;
   background: transparent;
   border: 0;
-  color: #d8a84e;
+  color: var(--accent);
   border-radius: 2px;
   padding: 2px 4px;
   font-family: inherit;
@@ -1071,7 +1060,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-select-mode-toggle:hover {
-  color: #d8a84e;
+  color: var(--accent);
   background: rgba(216, 168, 78, 0.1);
 }
 
@@ -1080,9 +1069,9 @@ input[type="text"].space-name-inline:focus {
   flex: none;
   padding: 1px 6px;
   background: transparent;
-  border: 1px solid #5a6473;
+  border: 1px solid var(--border-strong);
   border-radius: 2px;
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: pointer;
   font-family: inherit;
   font-size: 10.5px;
@@ -1095,14 +1084,14 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-select-action:hover:not(:disabled) {
-  border-color: #d8a84e;
-  color: #f4f1ea;
+  border-color: var(--accent);
+  color: var(--text-1);
   background: rgba(216, 168, 78, 0.12);
 }
 
 .survey-marker-select-action:disabled {
-  color: #5a6473;
-  border-color: #3a4252;
+  color: var(--text-disabled);
+  border-color: var(--border-strong);
   cursor: not-allowed;
 }
 
@@ -1112,19 +1101,19 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-select-action-danger {
-  color: #c84c49;
-  border-color: #6b3a3a;
+  color: var(--danger-press);
+  border-color: var(--danger);
 }
 
 .survey-marker-select-action-danger:hover:not(:disabled) {
-  color: #d98a8a;
-  border-color: #c84c49;
+  color: var(--danger);
+  border-color: var(--danger-press);
   background: rgba(255, 102, 102, 0.12);
 }
 
 .survey-marker-select-action-danger:disabled {
-  color: #785050;
-  border-color: #4d3838;
+  color: var(--text-disabled);
+  border-color: var(--border);
 }
 
 .survey-marker-category-action-row {
@@ -1153,10 +1142,10 @@ input[type="text"].space-name-inline:focus {
   height: 24px;
   flex: none;
   padding: 0 10px;
-  background: #2a3140;
-  border: 1px solid #3a4252;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  color: #e8e2d4;
+  color: var(--text-2);
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -1166,9 +1155,9 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-category-select-button:hover {
-  border-color: #d8a84e;
-  color: #f4f1ea;
-  background: #2a3140;
+  border-color: var(--accent);
+  color: var(--text-1);
+  background: var(--surface-3);
 }
 
 .survey-marker-category-create-button {
@@ -1176,10 +1165,10 @@ input[type="text"].space-name-inline:focus {
   height: 24px;
   flex: 0 0 32px;
   padding: 0;
-  background: #d8a84e;
-  border: 1px solid #d8a84e;
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 5px;
-  color: #15110a;
+  color: var(--accent-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1187,8 +1176,8 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-category-create-button:hover {
-  background: #b6904a;
-  border-color: #b6904a;
+  background: var(--accent-press);
+  border-color: var(--accent-press);
 }
 
 /* Compact survey EXPORT control — lives at the right end of the Select row
@@ -1210,10 +1199,10 @@ input[type="text"].space-name-inline:focus {
   height: 24px;
   flex: none;
   padding: 0 12px;
-  background: #d8a84e;
-  border: 1px solid #b6904a;
+  background: var(--accent);
+  border: 1px solid var(--accent-press);
   border-radius: 5px;
-  color: #15110a;
+  color: var(--accent-text);
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -1239,11 +1228,11 @@ input[type="text"].space-name-inline:focus {
   height: 24px;
   flex: 0 0 22px;
   padding: 0;
-  background: #d8a84e;
-  border: 1px solid #b6904a;
+  background: var(--accent);
+  border: 1px solid var(--accent-press);
   border-left: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 0 5px 5px 0;
-  color: #15110a;
+  color: var(--accent-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1253,15 +1242,15 @@ input[type="text"].space-name-inline:focus {
 
 .survey-marker-export-compact-button:hover:not(:disabled),
 .survey-marker-export-compact-chevron:hover:not(:disabled) {
-  background: #b6904a;
-  border-color: #b6904a;
+  background: var(--accent-press);
+  border-color: var(--accent-press);
 }
 
 .survey-marker-export-compact-button:disabled,
 .survey-marker-export-compact-chevron:disabled {
-  background: #5a6473;
-  border-color: #5a6473;
-  color: #e8e2d4;
+  background: var(--border-strong);
+  border-color: var(--border-strong);
+  color: var(--text-2);
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -1273,8 +1262,8 @@ input[type="text"].space-name-inline:focus {
   z-index: 100;
   width: 220px;
   overflow: hidden;
-  background: #2a3140;
-  border: 1px solid #3a4252;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -1296,10 +1285,10 @@ input[type="text"].space-name-inline:focus {
   height: 24px;
   flex: 0 0 24px;
   padding: 0;
-  background: #2a3140;
-  border: 1px solid #d8a84e;
+  background: var(--surface-3);
+  border: 1px solid var(--accent);
   border-radius: 5px;
-  color: #d8a84e;
+  color: var(--accent);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1309,9 +1298,9 @@ input[type="text"].space-name-inline:focus {
 
 .spaces-header-export-button:hover,
 .spaces-header-export-button.is-active {
-  background: #d8a84e;
-  border-color: #d8a84e;
-  color: #15110a;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 .spaces-header-export-button:disabled {
@@ -1328,8 +1317,8 @@ input[type="text"].space-name-inline:focus {
   flex-direction: column;
   width: max-content;
   overflow: hidden;
-  background: #12151c;
-  border: 1px solid #2a3140;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
@@ -1338,7 +1327,7 @@ input[type="text"].space-name-inline:focus {
   padding: 8px 12px;
   background: transparent;
   border: 0;
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -1346,7 +1335,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .spaces-header-export-menu-button:hover {
-  background: #2a3140;
+  background: var(--surface-3);
 }
 
 .space-add-pages-input,
@@ -1362,7 +1351,7 @@ input[type="text"].space-add-pages-input:focus,
 input[type="text"].space-add-pages-input:focus-visible {
   outline: none;
   box-shadow: none;
-  border-color: #2a3140;
+  border-color: var(--border);
 }
 
 .space-add-pages-icon-button {
@@ -1372,10 +1361,10 @@ input[type="text"].space-add-pages-input:focus-visible {
   max-width: 24px;
   flex: 0 0 24px;
   padding: 0;
-  background: #d8a84e;
-  border: 1px solid #d8a84e;
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 5px;
-  color: #15110a;
+  color: var(--accent-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1385,8 +1374,8 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .space-add-pages-icon-button:hover {
-  background: #b6904a;
-  border-color: #b6904a;
+  background: var(--accent-press);
+  border-color: var(--accent-press);
 }
 
 .space-page-range-error {
@@ -1408,7 +1397,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .survey-marker-category-card {
-  border: 1px solid #2a3140;
+  border: 1px solid var(--border);
   border-radius: 5px;
   padding: 2px 5px;
   overflow: visible;
@@ -1416,7 +1405,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .survey-marker-category-card.is-active {
-  border-color: #d8a84e;
+  border-color: var(--accent);
   background: rgba(216, 168, 78, 0.035);
 }
 
@@ -1443,7 +1432,7 @@ input[type="text"].space-add-pages-input:focus-visible {
   border: 0;
   box-shadow: none;
   outline: none;
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: pointer;
   font-family: inherit;
   transform: none;
@@ -1508,7 +1497,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 .survey-marker-entity-label {
   flex: 1 1 auto;
   min-width: 0;
-  color: #e8e2d4;
+  color: var(--text-2);
   font-size: 12px;
   line-height: 1.2;
 }
@@ -1524,9 +1513,9 @@ input[type="text"].space-add-pages-input:focus-visible {
   width: 100%;
   height: 28px;
   padding: 0 8px;
-  background: #2a3140;
-  color: #e8e2d4;
-  border: 1px solid #5a6473;
+  background: var(--surface-3);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   outline: none;
   cursor: pointer;
@@ -1541,13 +1530,13 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .survey-marker-entity-trigger:hover {
-  background: #2a3140;
-  border-color: #5a6473;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .survey-marker-entity-trigger:focus,
 .survey-marker-entity-trigger[aria-expanded="true"] {
-  border-color: #d8a84e;
+  border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.3);
 }
 
@@ -1596,7 +1585,7 @@ input[type="text"].space-add-pages-input:focus-visible {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  color: #e8e2d4;
+  color: var(--text-2);
   transition: transform 0.14s ease;
   pointer-events: none;
 }
@@ -1612,8 +1601,8 @@ input[type="text"].space-add-pages-input:focus-visible {
   width: 100%;
   z-index: 1200;
   padding: 4px;
-  background: #1f2430;
-  border: 1px solid #5a6473;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
   isolation: isolate;
@@ -1627,7 +1616,7 @@ input[type="text"].space-add-pages-input:focus-visible {
   background: transparent;
   border: 0;
   border-radius: 4px;
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: pointer;
   font: inherit;
   font-size: 11px;
@@ -1636,20 +1625,25 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .survey-marker-entity-option:hover {
-  background: #2a3140;
-  color: #f4f1ea;
+  background: var(--hover);
+  color: var(--text-1);
 }
 
+/* UX 2026-09-17 (revision-2 palette, owner approved): a selected row is a real
+   surface step plus a 2px gold edge, never the old #2a2218 warm wash. The edge
+   is an inset shadow rather than a border so the row's box never changes size —
+   a real border here would shift every label by 2px on selection. */
 .survey-marker-entity-option.is-selected {
-  background: #2a2218;
-  color: #f4f1ea;
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 var(--accent);
+  color: var(--text-1);
 }
 
 /* Active state */
 .btn-active,
 .btn-active:hover {
   background: transparent;
-  color: #d8a84e;
+  color: var(--accent);
   /* UX: active buttons must occupy EXACTLY the same box as .btn-default
      (which carries border: 1px solid transparent). The toolbar's category
      cluster is centered, so a 2px width change on the active button
@@ -1661,8 +1655,8 @@ input[type="text"].space-add-pages-input:focus-visible {
 /* Action Card Buttons */
 .btn-card {
   padding: 16px 24px;
-  background: #12151c;
-  border: 1px solid #2a3140;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1675,10 +1669,10 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .btn-card:hover {
-  background: #181c24;
+  background: var(--surface-2);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border-color: #d8a84e;
+  border-color: var(--accent);
 }
 
 .btn-card:active {
@@ -1693,7 +1687,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 .btn-card .label {
   font-size: 13px;
   font-weight: 500;
-  color: #f4f1ea;
+  color: var(--text-1);
 }
 
 /* Remove spin buttons from number inputs */
@@ -1722,10 +1716,10 @@ input[type="text"].space-add-pages-input:focus-visible {
   inset: 0;
   border-radius: inherit;
   background-image:
-    linear-gradient(45deg, #e8e2d4 25%, transparent 25%),
-    linear-gradient(-45deg, #e8e2d4 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #e8e2d4 75%),
-    linear-gradient(-45deg, transparent 75%, #e8e2d4 75%);
+    linear-gradient(45deg, var(--text-2) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--text-2) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--text-2) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--text-2) 75%);
   background-size: 8px 8px;
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
   pointer-events: none;
@@ -1750,7 +1744,7 @@ input[type="text"].space-add-pages-input:focus-visible {
    src/App.css was never imported and was deleted 2026-08-11; its three cited
    tokens now live in this file's :root block at the top. */
 :focus-visible {
-  outline: 2px solid #d8a84e;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1772,7 +1766,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .required-input--invalid {
-  border-bottom-color: #d97766 !important;
+  border-bottom-color: var(--danger) !important;
   animation: required-input-shake 320ms ease-in-out;
 }
 
@@ -1785,7 +1779,7 @@ input[type="text"].space-add-pages-input:focus-visible {
   margin-top: 4px;
   font-size: 11px;
   line-height: 1.35;
-  color: #d97766;
+  color: var(--danger);
   animation: required-input-hint-in 140ms ease-out;
   pointer-events: none;
 }

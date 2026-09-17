@@ -2679,7 +2679,7 @@ const RegionSelectionTool = ({
           fontFamily: FONT_FAMILY
         }}
       >
-        <div style={{ fontSize: '13px', color: '#fff', marginRight: '6px' }}>
+        <div style={{ fontSize: '13px', color: 'var(--text-1)', marginRight: '6px' }}>
           Region selection
         </div>
 
@@ -2698,7 +2698,7 @@ const RegionSelectionTool = ({
           style={{
             padding: '4px 8px',
             background: toolType === 'move' ? '#4a90e2' : '#3a3a3a',
-            color: '#fff',
+            color: 'var(--text-1)',
             border: '1px solid #555',
             borderRadius: '4px',
             fontSize: '12px',
@@ -2742,7 +2742,7 @@ const RegionSelectionTool = ({
               padding: '4px 8px',
               paddingRight: '28px',
               background: (toolType === 'rectangular' || toolType === 'freehand') ? '#4a90e2' : '#555',
-              color: '#fff',
+              color: 'var(--text-1)',
               border: '1px solid #555',
               borderRadius: '4px',
               fontSize: '12px',
@@ -2820,7 +2820,7 @@ const RegionSelectionTool = ({
                     width: '100%',
                     padding: '6px 12px',
                     background: toolType === 'rectangular' ? '#4a90e2' : 'transparent',
-                    color: '#fff',
+                    color: 'var(--text-1)',
                     border: 'none',
                     fontSize: '12px',
                     cursor: 'pointer',
@@ -2850,7 +2850,7 @@ const RegionSelectionTool = ({
                     width: '100%',
                     padding: '6px 12px',
                     background: toolType === 'freehand' ? '#4a90e2' : 'transparent',
-                    color: '#fff',
+                    color: 'var(--text-1)',
                     border: 'none',
                     fontSize: '12px',
                     cursor: 'pointer',
@@ -2911,7 +2911,7 @@ const RegionSelectionTool = ({
               style={{
                 padding: '6px 12px',
                 background: '#611',
-                color: '#fff',
+                color: 'var(--text-1)',
                 border: 'none',
                 borderRadius: '4px',
                 fontSize: '12px',
@@ -2929,7 +2929,7 @@ const RegionSelectionTool = ({
               style={{
                 padding: '6px 12px',
                 background: '#555',
-                color: '#fff',
+                color: 'var(--text-1)',
                 border: 'none',
                 borderRadius: '4px',
                 fontSize: '12px',

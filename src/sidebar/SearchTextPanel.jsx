@@ -1004,7 +1004,7 @@ const highlightMatch = (text, matchIndex, queryLength) => {
   return (
     <>
       {beforeMatch}
-      <strong style={{ background: '#d8a84e', color: '#15110a', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
+      <strong style={{ background: 'var(--accent)', color: 'var(--accent-text)', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
       {afterMatch}
     </>
   );
@@ -1020,13 +1020,13 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       onClick={() => onSelect(result, index)}
       style={{
         padding: '10px 12px',
-        background: isActive ? '#3a5070' : '#181c24',
-        border: isActive ? '1px solid #d8a84e' : '1px solid #2a3140',
+        background: isActive ? 'var(--surface-3)' : 'var(--surface-2)',
+        border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
         borderRadius: '6px',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         fontSize: '12px',
-        color: '#e8e2d4',
+        color: 'var(--text-2)',
         // Off-screen result rows skip layout/paint on big searches.
         // 'auto' lets the browser remember each row's real height.
         contentVisibility: 'auto',
@@ -1034,12 +1034,12 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = '#2a3140';
+          e.currentTarget.style.background = 'var(--surface-3)';
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = '#181c24';
+          e.currentTarget.style.background = 'var(--surface-2)';
         }
       }}
     >
@@ -1052,8 +1052,8 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
         <span style={{
           fontSize: '10px',
           fontWeight: '600',
-          color: '#f4f1ea',
-          background: isActive ? '#d8a84e' : '#5a6473',
+          color: 'var(--text-1)',
+          background: isActive ? 'var(--accent)' : 'var(--border-strong)',
           padding: '2px 6px',
           borderRadius: '4px',
           minWidth: '20px',
@@ -1064,7 +1064,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
         <span style={{
           fontSize: '11px',
           fontWeight: '600',
-          color: '#d8a84e',
+          color: 'var(--accent)',
           background: 'rgba(216, 168, 78, 0.15)',
           padding: '2px 6px',
           borderRadius: '4px'
@@ -1075,7 +1075,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       <div style={{
         fontSize: '12px',
         lineHeight: '1.4',
-        color: '#8d96a6',
+        color: 'var(--text-3)',
         overflow: 'hidden',
         textOverflow: 'ellipsis'
       }}>
@@ -1679,14 +1679,14 @@ const SearchTextPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: '#12151c'
+      background: 'var(--surface-1)'
     }}>
       {/* Search Bar */}
       <div className={mobileMode ? 'mobile-search-panel__bar' : undefined} style={{
         padding: '12px',
         boxSizing: 'border-box',
-        background: '#12151c',
-        borderBottom: '1px solid #2a3140',
+        background: 'var(--surface-1)',
+        borderBottom: '1px solid var(--border)',
         flexShrink: 0
       }}>
         <div style={{
@@ -1697,7 +1697,7 @@ const SearchTextPanel = ({
           <Icon
             name="search"
             size={16}
-            color="#8d96a6"
+            color="var(--text-3)"
             style={{
               position: 'absolute',
               left: '10px',
@@ -1715,17 +1715,17 @@ const SearchTextPanel = ({
               height: '25px',
               boxSizing: 'border-box',
               padding: '0 10px 0 36px',
-              background: '#181c24',
-              border: '1px solid #2a3140',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
               borderRadius: '6px',
               fontSize: '13px',
               fontFamily: FONT_FAMILY,
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               outline: 'none',
               transition: 'border-color 0.15s ease'
             }}
-            onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-            onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+            onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
           />
           {internalSearchQuery && (
             <button
@@ -1742,10 +1742,10 @@ const SearchTextPanel = ({
                 justifyContent: 'center',
                 borderRadius: '4px'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
-              <Icon name="close" size={14} color="#8d96a6" />
+              <Icon name="close" size={14} color="var(--text-3)" />
             </button>
           )}
         </div>
@@ -1758,24 +1758,24 @@ const SearchTextPanel = ({
             justifyContent: 'space-between',
             marginTop: '10px',
             padding: '6px 8px',
-            background: '#181c24',
+            background: 'var(--surface-2)',
             borderRadius: '6px',
-            border: '1px solid #2a3140'
+            border: '1px solid var(--border)'
           }}>
             {/* Result Counter */}
             <div style={{
               fontSize: '12px',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               fontWeight: '500'
             }}>
               {currentMatchIndex >= 0 ? (
                 <span>
-                  <span style={{ color: '#d8a84e' }}>{currentMatchIndex + 1}</span>
-                  <span style={{ color: '#8d96a6' }}> of </span>
-                  <span style={{ color: '#d8a84e' }}>{searchResults.length}</span>
+                  <span style={{ color: 'var(--accent)' }}>{currentMatchIndex + 1}</span>
+                  <span style={{ color: 'var(--text-3)' }}> of </span>
+                  <span style={{ color: 'var(--accent)' }}>{searchResults.length}</span>
                 </span>
               ) : (
-                <span style={{ color: '#8d96a6' }}>{searchResults.length} results</span>
+                <span style={{ color: 'var(--text-3)' }}>{searchResults.length} results</span>
               )}
             </div>
 
@@ -1791,7 +1791,7 @@ const SearchTextPanel = ({
                 aria-label="Previous match (Shift+Enter)"
                 style={{
                   background: 'transparent',
-                  border: '1px solid #2a3140',
+                  border: '1px solid var(--border)',
                   borderRadius: '4px',
                   cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
                   padding: '4px 8px',
@@ -1802,14 +1802,14 @@ const SearchTextPanel = ({
                 }}
                 onMouseEnter={(e) => {
                   tip('Previous match (Shift+Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = '#2a3140';
+                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--surface-3)';
                 }}
                 onMouseLeave={(e) => {
                   tip('Previous match (Shift+Enter)', 'below').onMouseLeave(e);
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <Icon name="chevronUp" size={14} color="#e8e2d4" />
+                <Icon name="chevronUp" size={14} color="var(--text-2)" />
               </button>
               <button
                 onClick={goToNextMatch}
@@ -1818,7 +1818,7 @@ const SearchTextPanel = ({
                 aria-label="Next match (Enter)"
                 style={{
                   background: 'transparent',
-                  border: '1px solid #2a3140',
+                  border: '1px solid var(--border)',
                   borderRadius: '4px',
                   cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
                   padding: '4px 8px',
@@ -1829,14 +1829,14 @@ const SearchTextPanel = ({
                 }}
                 onMouseEnter={(e) => {
                   tip('Next match (Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = '#2a3140';
+                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--surface-3)';
                 }}
                 onMouseLeave={(e) => {
                   tip('Next match (Enter)', 'below').onMouseLeave(e);
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <Icon name="chevronDown" size={14} color="#e8e2d4" />
+                <Icon name="chevronDown" size={14} color="var(--text-2)" />
               </button>
             </div>
           </div>
@@ -1847,14 +1847,14 @@ const SearchTextPanel = ({
           <div style={{
             marginTop: '8px',
             height: '3px',
-            background: '#2a3140',
+            background: 'var(--surface-3)',
             borderRadius: '2px',
             overflow: 'hidden'
           }}>
             <div style={{
               width: `${(searchProgress.current / searchProgress.total) * 100}%`,
               height: '100%',
-              background: '#d8a84e',
+              background: 'var(--accent)',
               transition: 'width 0.1s ease'
             }} />
           </div>
@@ -1875,7 +1875,7 @@ const SearchTextPanel = ({
           <div style={{
             padding: '20px',
             textAlign: 'center',
-            color: '#8d96a6',
+            color: 'var(--text-3)',
             fontSize: '13px'
           }}>
             Searching... ({searchProgress.current}/{searchProgress.total} pages)
@@ -1885,7 +1885,7 @@ const SearchTextPanel = ({
         {!isSearching && internalSearchQuery && searchResults.length === 0 && (
           mobileMode ? (
             <div className="mobile-search-empty">
-              <Icon name="search" size={44} color="#58d976" />
+              <Icon name="search" size={44} color="var(--text-3)" />
               <strong>No text matches</strong>
               <span>Try another word from the PDF.</span>
             </div>
@@ -1893,7 +1893,7 @@ const SearchTextPanel = ({
             <div style={{
               padding: '40px 20px',
               textAlign: 'center',
-              color: '#8d96a6',
+              color: 'var(--text-3)',
               fontSize: '13px'
             }}>
               No results found
@@ -1904,7 +1904,7 @@ const SearchTextPanel = ({
         {!isSearching && !internalSearchQuery && (
           mobileMode ? (
             <div className="mobile-search-empty">
-              <Icon name="search" size={54} color="#58d976" />
+              <Icon name="search" size={54} color="var(--text-3)" />
               <strong>Looking for a specific word?</strong>
               <span>Search visible PDF text and jump to the matching page.</span>
             </div>
@@ -1912,7 +1912,7 @@ const SearchTextPanel = ({
             <div style={{
               padding: '40px 20px',
               textAlign: 'center',
-              color: '#8d96a6',
+              color: 'var(--text-3)',
               fontSize: '13px'
             }}>
               Enter a search term to find text in the PDF

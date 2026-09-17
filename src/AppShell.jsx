@@ -918,7 +918,7 @@ export default function App({ devPreviewReturnTab = null }) {
     { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
     { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
     { id: `entity-${Date.now()}-4`, name: '100% Complete', color: '#B2FFB2' },
-    { id: `entity-${Date.now()}-5`, name: 'Removed', color: '#BBBBBB' }
+    { id: `entity-${Date.now()}-5`, name: 'Removed', color: 'var(--text-3)' }
   ].map(entity => ({
     ...entity,
     color: hexToRgba(entity.color, 0.2)
@@ -1427,14 +1427,14 @@ export default function App({ devPreviewReturnTab = null }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0d0f14', // --ink-900 page background
+        background: 'var(--surface-0)', // --ink-900 page background
         fontFamily: FONT_FAMILY
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
             <Spinner size={22} thickness={2} />
           </div>
-          <div style={{ fontSize: '13px', color: '#8d96a6', letterSpacing: 0 }}>Loading document...</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-3)', letterSpacing: 0 }}>Loading document...</div>
         </div>
       </div>
     );
@@ -1498,7 +1498,7 @@ export default function App({ devPreviewReturnTab = null }) {
             // is Drawboard PDF's tool-button height. Same bar, Drawboard's
             // ratio inside it. Do not grow this padding — 5 + 34 + 5 = 44.
             padding: '5px 12px',
-            background: '#181c24',
+            background: 'var(--surface-2)',
             alignItems: 'center',
             justifyContent: 'center',
             flexWrap: 'wrap',
@@ -1506,7 +1506,7 @@ export default function App({ devPreviewReturnTab = null }) {
             columnGap: 'var(--chrome-gap)',
             fontSize: '13px',
             fontFamily: FONT_FAMILY,
-            color: '#e8e2d4',
+            color: 'var(--text-2)',
             position: 'relative',
             zIndex: 5500
           }}
@@ -1546,7 +1546,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 // (.chrome-control) like every other button in this row —
                 // it used to be a one-off 30x30 box with a 15px glyph.
                 className="chrome-control"
-                style={{ border: 'none', background: 'transparent', color: '#e8e2d4', cursor: 'pointer' }}
+                style={{ border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }}
               >
                 <Icon name="download" size={CHROME_GLYPH} />
               </button>
@@ -1733,7 +1733,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        color: isActive ? '#e8e2d4' : '#8d96a6',
+                        color: isActive ? 'var(--text-2)' : 'var(--text-3)',
                       }}
                     >
                       {/* UX: 7px, deliberately smaller than the 10px caret on
@@ -1767,9 +1767,14 @@ export default function App({ devPreviewReturnTab = null }) {
                       top: `${selectModeMenuAnchor.top}px`,
                       left: `${selectModeMenuAnchor.left}px`,
                       transform: 'translate(-50%, 0)',
-                      backgroundColor: '#1E1E1E',
+                      // UX 2026-09-17 (revision-2 palette): a popover is a RAISED
+                      // surface, so it takes --surface-2 even though its old
+                      // literal (#1E1E1E) sat at the --surface-1 brightness. It
+                      // has to read as lifted off the bar it opens from.
+                      // Pinned by tests/selectModes.test.mjs.
+                      backgroundColor: 'var(--surface-2)',
                       backgroundImage: 'none',
-                      border: '1px solid #2a3140',
+                      border: '1px solid var(--border)',
                       borderRadius: '6px',
                       boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                       zIndex: 999999,
@@ -1777,7 +1782,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       flexDirection: 'column',
                       padding: '4px',
                       minWidth: '168px',
-                      color: '#e8e2d4',
+                      color: 'var(--text-2)',
                       pointerEvents: 'auto',
                       cursor: 'default',
                       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
@@ -1797,11 +1802,18 @@ export default function App({ devPreviewReturnTab = null }) {
                         // was a 32px row beside their 34px ones.
                         minHeight: 'var(--chrome-menu-row-h)',
                         padding: '4px 9px',
-                        // UX: gold on warm tint matches the phone checked row, distinct from hover.
-                        background: selected ? '#2a2218' : 'transparent',
+                        // UX 2026-09-17 (revision-2 palette, owner approved):
+                        // the checked row is a real surface step plus a 2px gold
+                        // edge, matching the phone's own checked row. It was a
+                        // #2a2218 warm tint, the one brown in the app, which sat
+                        // 172 degrees of hue away from every other surface. The
+                        // edge is an inset shadow, not a border, because this
+                        // menu's rows must not change box size when checked.
+                        background: selected ? 'var(--surface-3)' : 'transparent',
+                        boxShadow: selected ? 'inset 2px 0 var(--accent)' : 'none',
                         border: 'none',
                         borderRadius: '4px',
-                        color: selected ? '#d8a84e' : '#e8e2d4',
+                        color: selected ? 'var(--accent)' : 'var(--text-2)',
                         // UX: match the phone sheet; colour and check carry selection, not a weight jump.
                         fontWeight: 600,
                         textAlign: 'left',
@@ -1827,8 +1839,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               bottomToolbarApi.setTooltip?.({ visible: false });
                             });
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = selected ? '#2a2218' : '#1f2430'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#2a2218' : 'transparent'; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = selected ? 'var(--surface-3)' : 'var(--hover)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? 'var(--surface-3)' : 'transparent'; }}
                           style={optionStyle}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1845,9 +1857,9 @@ export default function App({ devPreviewReturnTab = null }) {
                           </span>
                           {/* UX: give selection its own gold check, separate from shortcut text. */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ color: '#8d96a6', fontWeight: 400 }}>{opt.hint}</span>
+                            <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>{opt.hint}</span>
                             {/* UX: use the phone sheet's stroked tick; keep its slot on unchecked rows. */}
-                            <span aria-hidden="true" data-select-mode-check style={{ width: '14px', height: '14px', display: 'flex', color: '#d8a84e' }}>{selected ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
+                            <span aria-hidden="true" data-select-mode-check style={{ width: '14px', height: '14px', display: 'flex', color: 'var(--accent)' }}>{selected ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
                           </div>
                         </button>
                       );
@@ -1867,7 +1879,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   same 4px as every other pair of neighbouring controls.
                   Reference behaviour matched: Drawboard PDF's tool strip, which
                   holds one constant gutter across its whole width. */}
-              <div style={{ width: '1px', height: '20px', background: '#5a6473' }} />
+              <div style={{ width: '1px', height: '20px', background: 'var(--border-strong)' }} />
               </div>
 
               {/* Draw category */}
@@ -1986,7 +1998,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   same 4px as every other pair of neighbouring controls.
                   Reference behaviour matched: Drawboard PDF's tool strip, which
                   holds one constant gutter across its whole width. */}
-              <div style={{ width: '1px', height: '20px', background: '#5a6473' }} />
+              <div style={{ width: '1px', height: '20px', background: 'var(--border-strong)' }} />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
@@ -2012,7 +2024,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      attribute opts these buttons out of FabricEditCanvas's
                      document-level click-outside handler so clicks don't
                      commit-and-close the editor. */
-                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: '#181c24', borderBottom: '1px solid #2a3140', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
+                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
                     {/* 2026-05-26: Order — font color, font size, B / I / U / S,
                         alignment. Matches the user's requested left-to-right
                         sequence so the chrome reads as one cohesive row. Font
@@ -2146,8 +2158,8 @@ export default function App({ devPreviewReturnTab = null }) {
                             width: '28px',
                             height: '24px',
                             padding: 0,
-                            background: isOn ? 'rgba(216,168,78,0.18)' : '#3a4252',
-                            color: isOn ? '#d8a84e' : '#e8e2d4',
+                            background: isOn ? 'rgba(216,168,78,0.18)' : 'var(--surface-3)',
+                            color: isOn ? 'var(--accent)' : 'var(--text-2)',
                             border: '1px solid transparent',
                             borderRadius: '5px',
                             cursor: 'pointer',
@@ -2194,7 +2206,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                     width: '4px',
                                     height: '4px',
                                     borderRadius: '1px',
-                                    background: on ? '#d8a84e' : 'rgba(168,176,191,0.4)',
+                                    background: on ? 'var(--accent)' : 'rgba(168,176,191,0.4)',
                                     boxShadow: on ? '0 0 0 1px rgba(216,168,78,0.25)' : 'none',
                                   }} />
                                 );
@@ -2223,8 +2235,8 @@ export default function App({ devPreviewReturnTab = null }) {
                                         appearance: 'none',
                                         width: '26px',
                                         height: '26px',
-                                        background: on ? 'rgba(216,168,78,0.10)' : '#14171c',
-                                        border: on ? '1px solid #d8a84e' : '1px solid #2a3140',
+                                        background: on ? 'rgba(216,168,78,0.10)' : 'var(--surface-1)',
+                                        border: on ? '1px solid var(--accent)' : '1px solid var(--border)',
                                         borderRadius: '4px',
                                         cursor: 'pointer',
                                         display: 'flex',
@@ -2239,7 +2251,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                         width: '6px',
                                         height: '6px',
                                         borderRadius: '50%',
-                                        background: on ? '#d8a84e' : '#5a606a',
+                                        background: on ? 'var(--accent)' : 'var(--border-strong)',
                                       }} />
                                     </button>
                                   );
@@ -2445,7 +2457,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             {seriesList.length > 0 && (
                               <div style={{
                                 padding: '6px 8px 4px',
-                                color: '#8d96a6',
+                                color: 'var(--text-3)',
                                 fontSize: '10px',
                                 textTransform: 'uppercase',
                                 fontWeight: 600,
@@ -2509,7 +2521,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                     flexShrink: 0,
                                   }} />
                                   <span style={{ flex: 1 }}>{series.label}</span>
-                                  <span style={{ fontSize: '10px', color: '#8d96a6' }}>{series.count}</span>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-3)' }}>{series.count}</span>
                                 </button>
                               );
                             })}
@@ -2526,8 +2538,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               top: `${Math.max(8, Math.min(counterSeriesContextMenu.y, window.innerHeight - 72))}px`,
                               width: '112px',
                               padding: '3px',
-                              background: '#12161d',
-                              border: '1px solid #343b49',
+                              background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
                               borderRadius: '6px',
                               boxShadow: '0 8px 18px rgba(0,0,0,0.42)',
                               zIndex: 5700,
@@ -2550,16 +2562,16 @@ export default function App({ devPreviewReturnTab = null }) {
                                 background: 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
-                                color: '#e8e2d4',
+                                color: 'var(--text-2)',
                                 textAlign: 'left',
                                 cursor: 'pointer',
                                 font: 'inherit',
                                 fontSize: '12px',
                                 outline: 'none',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px #5b6574'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                             >
                               Continue
@@ -2584,7 +2596,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 background: 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
-                                color: '#f87171',
+                                color: 'var(--danger)',
                                 textAlign: 'left',
                                 cursor: 'pointer',
                                 font: 'inherit',
@@ -2593,7 +2605,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,113,113,0.12)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px #5b6574'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                             >
                               Delete
@@ -2643,8 +2655,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         <div style={{
                           display: 'grid',
                           gridTemplateColumns: '1fr 1fr',
-                          background: '#0d0f14',
-                          border: '1px solid #2a3140',
+                          background: 'var(--surface-0)',
+                          border: '1px solid var(--border)',
                           borderBottom: 'none',
                           borderRadius: '8px 8px 0 0',
                           overflow: 'hidden',
@@ -2664,12 +2676,12 @@ export default function App({ devPreviewReturnTab = null }) {
                                 onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                   background: on ? 'rgba(216,168,78,0.08)' : 'transparent',
-                                  color: on ? '#e8e2d4' : '#8d96a6',
+                                  color: on ? 'var(--text-2)' : 'var(--text-3)',
                                   fontWeight: 600,
                                   fontSize: 12,
                                   padding: '8px 0',
                                   border: 0,
-                                  borderRight: i === 0 ? '1px solid #2a3140' : 0,
+                                  borderRight: i === 0 ? '1px solid var(--border)' : 0,
                                   cursor: 'pointer',
                                   position: 'relative'
                                 }}
@@ -2678,7 +2690,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 {on && (
                                   <span style={{
                                     position: 'absolute', left: 0, right: 0, bottom: 0,
-                                    height: 2, background: '#d8a84e'
+                                    height: 2, background: 'var(--accent)'
                                   }} />
                                 )}
                               </button>
@@ -2824,7 +2836,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '4px',
-                          color: startLocked ? '#5a6473' : '#8d96a6',
+                          color: startLocked ? 'var(--text-disabled)' : 'var(--text-3)',
                           fontSize: '11px',
                           fontFamily: FONT_FAMILY,
                         }}
@@ -2855,8 +2867,8 @@ export default function App({ devPreviewReturnTab = null }) {
                             width: '42px',
                             height: '20px',
                             padding: '4px',
-                            background: '#3a4252',
-                            color: '#e8e2d4',
+                            background: 'var(--surface-3)',
+                            color: 'var(--text-2)',
                             border: '1px solid transparent',
                             borderRadius: '5px',
                             fontSize: '12px',
@@ -2903,7 +2915,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     (see supportsCloudStyle above). Drives how big the cloud's
                     wave bumps render. Mirrors the width input visual. */}
                 {bottomToolbarApi.supportsCloudStyle && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}>
                     Bump
                     <input
                       type="text"
@@ -2923,8 +2935,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         width: '36px',
                         height: '20px',
                         padding: '4px 4px',
-                        background: '#3a4252',
-                        color: '#e8e2d4',
+                        background: 'var(--surface-3)',
+                        color: 'var(--text-2)',
                         border: '1px solid transparent',
                         borderRadius: '5px',
                         fontSize: '12px',
@@ -2980,8 +2992,8 @@ export default function App({ devPreviewReturnTab = null }) {
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      background: bottomToolbarApi.arrowBothEnds ? 'rgba(216,168,78,0.18)' : '#3a4252',
-                      color: bottomToolbarApi.arrowBothEnds ? '#d8a84e' : '#e8e2d4',
+                      background: bottomToolbarApi.arrowBothEnds ? 'rgba(216,168,78,0.18)' : 'var(--surface-3)',
+                      color: bottomToolbarApi.arrowBothEnds ? 'var(--accent)' : 'var(--text-2)',
                       border: '1px solid transparent',
                       borderRadius: '5px',
                       cursor: 'pointer',
@@ -3010,10 +3022,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     style={{
                       height: 'var(--chrome-field-h)',
                       padding: '0 var(--chrome-field-pad-x)',
-                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : '#3a4252',
+                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : 'var(--surface-3)',
                       color: bottomToolbarApi.richTextEditor
-                        ? '#d8a84e'
-                        : bottomToolbarApi.canEnterTextEdit ? '#e8e2d4' : '#5a6473',
+                        ? 'var(--accent)'
+                        : bottomToolbarApi.canEnterTextEdit ? 'var(--text-2)' : 'var(--text-disabled)',
                       border: '1px solid transparent',
                       borderRadius: '5px',
                       fontSize: '13px',
@@ -3050,8 +3062,8 @@ export default function App({ devPreviewReturnTab = null }) {
               flexShrink: 0,
               minWidth: isMobileViewer ? '44px' : '48px',
               alignSelf: 'stretch',
-              background: isMobileViewer ? '#20242c' : '#12151c',
-              color: '#e8e2d4',
+              background: isMobileViewer ? 'var(--surface-2)' : 'var(--surface-1)',
+              color: 'var(--text-2)',
               fontFamily: FONT_FAMILY,
               overflow: 'visible',
               position: 'relative',
@@ -3096,7 +3108,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 top: 0,
                 left: 0,
                 right: 0,
-                background: '#181c24',
+                background: 'var(--surface-2)',
                 cursor: 'default',
                 zIndex: isMobileViewer && (
                   bottomToolbarApi?.activeTool === 'text-select'
@@ -3129,7 +3141,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={{
                     position: 'absolute',
                     inset: 0,
-                    background: '#12151c',
+                    background: 'var(--surface-1)',
                     zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
                     display: isVisible ? 'block' : 'none'
                   }}
@@ -3207,8 +3219,8 @@ export default function App({ devPreviewReturnTab = null }) {
               minWidth: isMobileViewer ? '0px' : '48px',
               overflow: 'visible',
               alignSelf: 'stretch',
-              background: isMobileViewer ? 'transparent' : '#12151c',
-              color: '#e8e2d4',
+              background: isMobileViewer ? 'transparent' : 'var(--surface-1)',
+              color: 'var(--text-2)',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
               alignItems: 'center',
@@ -3278,7 +3290,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 background: 'transparent',
                 border: 'none',
                 borderRadius: '4px',
-                color: '#8d96a6',
+                color: 'var(--text-3)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 opacity: disabled ? 0.35 : 1
               });
@@ -3304,7 +3316,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Zoom percentage"
-                  style={{ width: '36px', background: 'transparent', color: '#8d96a6', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ width: '36px', background: 'transparent', color: 'var(--text-3)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
               ) : (
                 <button
@@ -3313,7 +3325,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   onDoubleClick={() => setIsEditingRailZoom(true)}
                   aria-label="Edit zoom percentage"
                   {...chromeTip('Zoom level — click to type a percentage', 'left')}
-                  style={{ background: 'transparent', border: 'none', color: '#8d96a6', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
                 >
                   <RailLiveZoomText
                     fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
@@ -3342,7 +3354,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Current page"
-                  style={{ width: '28px', padding: 0, background: 'transparent', color: '#d8a84e', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
               ) : (
                 <button
@@ -3351,7 +3363,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   onDoubleClick={() => setIsEditingRailPage(true)}
                   aria-label="Edit page number"
                   {...chromeTip('Page — click to jump', 'left')}
-                  style={{ background: 'transparent', border: 'none', color: '#d8a84e', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1 }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1 }}
                 >
                   {api.pageNum}
                 </button>
@@ -3367,7 +3379,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // --rail-control-glyph 14, and a 2px radius against
               // --chrome-radius 6 — it met neither token.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'rgb(30, 30, 30)', border: '1px solid #2a3140', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                <div style={{ position: 'absolute', background: 'rgb(30, 30, 30)', border: '1px solid var(--border)', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;
@@ -3376,7 +3388,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', minHeight: 'var(--chrome-menu-row-h)', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', minHeight: 'var(--chrome-menu-row-h)', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
                       >
                         {renderFitIcon(option.id, RAIL_CONTROL_GLYPH)}
                         <span>{option.label}</span>
@@ -3393,7 +3405,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 // height with zIndex 1; transparent background lets the
                 // host/panel color (#12151c) show through.
                 return (
-                  <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid #2a3140', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                  <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
@@ -3412,7 +3424,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
                     </button>
 
-                    <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
+                    <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
 
                     {/* Page nav — chevron up/down because vertical layout. */}
                     <span {...chromeTip('Previous page', 'left')} style={{ display: 'inline-flex' }}>
@@ -3428,8 +3440,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     {pageValue}
                     {/* Middle dot between current page above and total below
                         — the Walkthru slim-rail convention. */}
-                    <span aria-hidden="true" style={{ color: '#8d96a6', fontSize: '14px', lineHeight: 0.5, fontFamily: FONT_FAMILY }}>·</span>
-                    <span style={{ color: '#8d96a6', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                    <span aria-hidden="true" style={{ color: 'var(--text-3)', fontSize: '14px', lineHeight: 0.5, fontFamily: FONT_FAMILY }}>·</span>
+                    <span style={{ color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                       {api.numPages}
                     </span>
                     <span {...chromeTip('Next page', 'left')} style={{ display: 'inline-flex' }}>
@@ -3443,7 +3455,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                     </span>
 
-                    <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
+                    <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
 
                     {/* Page-fit — Walkthru slim-rail pattern: current mode's
                         icon centered in a 36×28 cell with a small LEFT
@@ -3457,7 +3469,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
-                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6' }}
+                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)' }}
                       >
                         {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
                             hand-written <svg>. This caret was drawn inline at
@@ -3490,7 +3502,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // host column stays 48px wide; this overlay reaches leftward
               // exactly like the panel itself does.
               return (
-                <div style={{ position: 'absolute', right: 0, bottom: 0, width: '320px', boxSizing: 'border-box', zIndex: 2, background: '#12151c', borderTop: '1px solid #2a3140', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <div style={{ position: 'absolute', right: 0, bottom: 0, width: '320px', boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                   <button
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
@@ -3509,7 +3521,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
                   </button>
 
-                  <div style={{ width: '1px', height: '20px', background: '#2a3140' }} />
+                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
 
                   {/* Page nav — left/right chevrons because horizontal row. */}
                   <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex' }}>
@@ -3524,8 +3536,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
                     {pageValue}
-                    <span aria-hidden="true" style={{ color: '#8d96a6' }}>·</span>
-                    <span style={{ color: '#8d96a6' }}>{api.numPages}</span>
+                    <span aria-hidden="true" style={{ color: 'var(--text-3)' }}>·</span>
+                    <span style={{ color: 'var(--text-3)' }}>{api.numPages}</span>
                   </span>
                   <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
                     <button
@@ -3538,7 +3550,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     </button>
                   </span>
 
-                  <div style={{ width: '1px', height: '20px', background: '#2a3140' }} />
+                  <div style={{ width: '1px', height: '20px', background: 'var(--surface-3)' }} />
 
                   {/* Page-fit trigger — icon + current-mode label + chevron
                       pointing UP because the popup opens upward here. */}
@@ -3550,7 +3562,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-label="Fit options"
                       data-active={fitMode !== ZOOM_MODES.MANUAL}
                       {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}
                     >
                       {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                       <span>{api.zoomDropdownLabel}</span>

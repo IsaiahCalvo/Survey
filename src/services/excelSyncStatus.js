@@ -132,12 +132,18 @@ export const rowIdWritebackMessage = (result) => {
   }
 };
 
-// Tone → colors for a status banner (text, background, border).
+// Tone -> colors for a status banner (text, background, border).
+// UX 2026-09-17 (revision-2 palette, owner approved): this banner carried four
+// colours of its own - a flat blue, a bright green, a yellow amber and an
+// orange red - none of which appears anywhere else in the app. Informational is
+// plain subtext, good news is the gold, and red stays the only colour that
+// means trouble. The green the palette keeps belongs to the status DOT, and a
+// banner is not a dot.
 export const SYNC_TONE_COLORS = Object.freeze({
-  [SYNC_TONE.INFO]: { color: '#3498db', background: 'rgba(52, 152, 219, 0.1)', border: '1px solid rgba(52, 152, 219, 0.3)' },
-  [SYNC_TONE.SUCCESS]: { color: '#2ecc71', background: 'rgba(46, 204, 113, 0.1)', border: '1px solid rgba(46, 204, 113, 0.3)' },
-  [SYNC_TONE.WARN]: { color: '#e0a106', background: 'rgba(224, 161, 6, 0.12)', border: '1px solid rgba(224, 161, 6, 0.35)' },
-  [SYNC_TONE.ERROR]: { color: '#e74c3c', background: 'rgba(231, 76, 60, 0.1)', border: '1px solid rgba(231, 76, 60, 0.3)' }
+  [SYNC_TONE.INFO]: { color: 'var(--text-3)', background: 'var(--surface-2)', border: '1px solid var(--border)' },
+  [SYNC_TONE.SUCCESS]: { color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-press)' },
+  [SYNC_TONE.WARN]: { color: 'var(--warning)', background: 'rgba(125, 128, 61, 0.14)', border: '1px solid var(--warning)' },
+  [SYNC_TONE.ERROR]: { color: 'var(--danger)', background: 'rgba(217, 90, 86, 0.12)', border: '1px solid var(--danger)' }
 });
 
 /**

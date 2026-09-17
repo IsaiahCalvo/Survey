@@ -74,7 +74,7 @@
    colour, drawn OUTSIDE the 20px disc so it costs the disc no area — it grows
    into the 2px of hit chip that is already reserved either side. */
 .quick-style__dot.is-current .quick-style__dot-fill {
-  box-shadow: 0 0 0 2px #d8a84e;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .quick-style__dot:hover .quick-style__dot-fill {
@@ -82,7 +82,7 @@
 }
 
 .quick-style__dot.is-current:hover .quick-style__dot-fill {
-  box-shadow: 0 0 0 2px #d8a84e;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 /*
@@ -102,7 +102,7 @@
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #e8e2d4;
+  color: var(--text-2);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -133,24 +133,24 @@
    for its on state, so one pressed state reads the same across the row. */
 .quick-style__width.is-current {
   background: rgba(216, 168, 78, 0.18);
-  color: #d8a84e;
+  color: var(--accent);
 }
 
 /* The swatch beside the dots wears the same gold ring when the current colour
    is NOT one of the four — so exactly one thing in the colour cluster is ever
    ringed, and the ring always points at where the current colour came from. */
 .ctx-color-swatch.is-current-color {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 0 3px #d8a84e;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 0 3px var(--accent);
 }
 
 /* Phone: the text-markup strip's colour button, which is a plain disc rather
    than a two-colour swatch — the gold replaces its dark hairline. */
 .mobile-pdf-properties__color.is-current-color span {
-  box-shadow: 0 0 0 2px #d8a84e;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* Phone: the same ring on the strip swatch, kept outside the swatch's own inset
    ring so the swatch still shows both of its colours underneath. */
 .mobile-pdf-properties__swatch.is-current-color {
-  box-shadow: inset 0 0 0 2px var(--mobile-swatch-ring, transparent), 0 0 0 2px #d8a84e;
+  box-shadow: inset 0 0 0 2px var(--mobile-swatch-ring, transparent), 0 0 0 2px var(--accent);
 }

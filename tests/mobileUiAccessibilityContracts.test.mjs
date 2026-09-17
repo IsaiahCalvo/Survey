@@ -68,7 +68,12 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 36px tar
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1800}padding: 0 calc\(var\(--mobile-rail-w\) \+ 8px\) 8px 8px;/);
   // The painted bar is still 36px: the gradient stops there and the rest of the
   // box is transparent.
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, #202126 0 35px, #090a0d 35px 36px, transparent 36px\);/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+  // owner): the two stops are the shared --surface-1 (the bar) and --surface-0
+  // (the hairline under it) instead of #202126 and #090a0d, which were this one
+  // stylesheet's own greys. The GEOMETRY this assertion exists for — paint to
+  // 35px, a 1px rule to 36px, transparent after — is byte-for-byte unchanged.
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, var\(--surface-1\) 0 35px, var\(--surface-0\) 35px 36px, transparent 36px\);/);
   // The 8px below the painted bar belongs to the page: the bar clips itself to
   // its painted band, which removes that strip from hit testing as well as from
   // painting, while leaving the bar a scroll container.

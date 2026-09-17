@@ -32,11 +32,11 @@
   /* md vertical / lg horizontal padding per spec spacing scale (xs=4 sm=8 md=16 lg=24) */
   padding: 16px 24px;
 
-  background: var(--bg-secondary, #12151c);
+  background: var(--surface-1);
   /* 4px solid red left border signals "something is broken" without screaming —
      matches the destructive-warning convention used by Linear / Notion / Figma. */
-  border-left: 4px solid var(--accent-red, #d95a56);
-  border-bottom: 1px solid var(--border-primary, #2a3140);
+  border-left: 4px solid var(--accent-red);
+  border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
 
   /* Reuse the app font stack so banner type matches the rest of the surface. */
@@ -50,7 +50,7 @@
   flex-shrink: 0;
   margin-top: 2px;
   margin-right: 8px;
-  color: var(--accent-red, #d95a56);
+  color: var(--accent-red);
 }
 
 .storage-banner__text {
@@ -78,7 +78,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-secondary, #e8e2d4);
+  color: var(--text-2);
 }
 
 .storage-banner__secondary {
@@ -87,7 +87,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
-  color: var(--text-muted, #8d96a6);
+  color: var(--text-3);
   margin-top: 4px;
 }
 
@@ -105,7 +105,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--accent-primary, #d8a84e);
+  color: var(--accent);
   text-decoration: underline;
   font-family: inherit;
   margin-left: 8px;
@@ -135,7 +135,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted, #8d96a6);
+  color: var(--text-3);
   font-size: 20px;
   line-height: 1;
   font-family: inherit;

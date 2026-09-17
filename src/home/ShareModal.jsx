@@ -31,14 +31,14 @@ import useModalFocusTrap from './useModalFocusTrap';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
-  card: '#181c24',
-  deep: '#12151c',
-  rule: '#2a3140',
-  ink: '#f4f1ea',
-  inkSoft: '#e8e2d4',
-  muted: '#8d96a6',
-  gold: '#d8a84e',
-  danger: '#d95a56',
+  card: 'var(--surface-2)',
+  deep: 'var(--surface-1)',
+  rule: 'var(--border)',
+  ink: 'var(--text-1)',
+  inkSoft: 'var(--text-2)',
+  muted: 'var(--text-3)',
+  gold: 'var(--accent)',
+  danger: 'var(--danger)',
 };
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
@@ -265,12 +265,12 @@ export default function ShareModal({
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
             onClick={sendInvite}
-            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? 'progress' : (!emails.trim() || blockedReason ? 'not-allowed' : 'pointer'), background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? 'progress' : (!emails.trim() || blockedReason ? 'not-allowed' : 'pointer'), background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             {/* UX (KAL-73): sending an invite is a network round-trip well over
                 500ms, so it takes the shared button loading treatment — 14px ring
                 on the left, label in its present-participle form, stays disabled. */}
-            {busy && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}
+            {busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}
             {busy ? 'Sending invite…' : `Send ${role.toLowerCase()} invite`}
           </button>
         </div>

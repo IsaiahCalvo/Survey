@@ -718,14 +718,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           position: 'fixed',
           left: ctx.x,
           top: ctx.y,
-          background: '#181B20',
-          border: '1px solid #3C424D',
+          background: 'var(--surface-1)',
+          border: '1px solid var(--border)',
           borderRadius: 9,
           zIndex: 10000,
           width: mobileWidth,
           padding: 6,
           fontSize: 13,
-          color: '#f4f5f7',
+          color: 'var(--text-1)',
           letterSpacing: 0,
           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
         } : {
@@ -734,15 +734,15 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           position: 'fixed',
           left: ctx.x,
           top: ctx.y,
-          background: '#181c24',
-          border: '1px solid #2a3140',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
           borderRadius: 8,
           boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
           zIndex: 10000,
           minWidth: 160,
           padding: 4,
           fontSize: 12.5,
-          color: '#e8e2d4',
+          color: 'var(--text-2)',
           letterSpacing: 0,
           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
         }}
@@ -751,13 +751,13 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             demo FloatingContextMenu (styles.ts:872-889). Desktop stays title-less. */}
         {isMobileMenu && (
           <>
-            <div style={{ color: '#8d96a6', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{mobileTitle}</div>
-            <div style={{ height: 1, background: '#343A45' }} />
+            <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{mobileTitle}</div>
+            <div style={{ height: 1, background: 'var(--surface-3)' }} />
           </>
         )}
         {items.map((it) => (
           it.separator
-            ? <div key={it.key} style={{ height: 1, background: isMobileMenu ? '#343A45' : '#2a3140', margin: '4px 0' }} />
+            ? <div key={it.key} style={{ height: 1, background: isMobileMenu ? 'var(--surface-3)' : 'var(--surface-3)', margin: '4px 0' }} />
             : (
               <div
                 key={it.key}
@@ -787,7 +787,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   userSelect: 'none',
                   color: it.disabled ? '#5a6473' : (it.key === 'delete' ? '#d95a56' : '#e8e2d4'),
                 }}
-                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? '#22262d' : '#1f2430'; }}
+                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 {it.label}

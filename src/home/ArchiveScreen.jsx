@@ -125,7 +125,7 @@ const URGENT_DAYS = 3;
 /* The app's one destructive red (KAL-72, docs/ui/colors.md). Archive uses it
    for "Delete forever" and to tint rows inside the final days of the retention
    window, so it has to be the same red the rest of the app warns with. */
-const DANGER = '#d95a56';
+const DANGER = 'var(--danger)';
 
 const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
 
@@ -392,7 +392,7 @@ export default function ArchiveScreen({
       background: checked ? 'var(--gold)' : 'transparent',
       borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      {checked && <AppIcon name="check" size={10} color="#15110a" />}
+      {checked && <AppIcon name="check" size={10} color="var(--accent-text)" />}
     </span>
   );
 
@@ -450,7 +450,7 @@ export default function ArchiveScreen({
     <AppIcon
       name="chevronDown"
       size={size}
-      color="#8d96a6"
+      color="var(--text-3)"
       style={{
         display: 'block', flex: 'none',
         transform: open ? 'rotate(180deg)' : 'none',

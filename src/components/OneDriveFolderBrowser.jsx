@@ -434,7 +434,7 @@ const OneDriveFolderBrowser = ({
             background: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.3)',
             borderRadius: BORDERS.radius.md,
-            color: '#ef4444',
+            color: 'var(--danger)',
             fontSize: TYPOGRAPHY.fontSize.sm,
             fontFamily: TYPOGRAPHY.fontFamily.default,
           }}>

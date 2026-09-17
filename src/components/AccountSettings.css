@@ -1,11 +1,11 @@
-/* AccountSettings — restyled to the Survey Hub warm dark-and-gold palette.
+/* AccountSettings — painted from the one palette, gold on cool dark greys.
    Class names + selectors are unchanged from the original; only the visual
-   values were rewritten to match src/home/hub.css. Palette reference:
-     surfaces  #0d0f14 / #12151c / #181c24 / #1f2430
-     borders   #2a3140 / #3a4252
-     text      #f4f1ea (primary) / #8d96a6 (muted) / #5a6473 (quiet)
-     accent    gold #d8a84e, dark ink #15110a on gold
-     danger    #d95a56
+   values now come from src/styles/tokens.css. Which token plays which part:
+     surfaces  --surface-0 / --surface-1 / --surface-2 / --surface-3
+     borders   --border (hairline) / --border-strong (an edge that must be seen)
+     text      --text-1 (primary) / --text-3 (muted) / --text-disabled (quiet)
+     accent    --accent (gold); --accent-text is the dark ink ON gold
+     danger    --danger
    Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
 
 .account-settings-overlay {
@@ -30,7 +30,7 @@
 }
 
 .account-settings-modal {
-  background: #12151c;
+  background: var(--surface-1);
   border-radius: 12px;
   width: 95%;
   max-width: 900px;
@@ -43,7 +43,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border: 1px solid #2a3140;
+  border: 1px solid var(--border);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -72,11 +72,11 @@
 
 .account-settings-header {
   padding: 14px 18px;
-  border-bottom: 1px solid #2a3140;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #181c24;
+  background: var(--surface-2);
   flex-shrink: 0;
 }
 
@@ -85,17 +85,17 @@
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.03em;
-  color: #f4f1ea;
+  color: var(--text-1);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .account-settings-close {
-  background: #181c24;
-  border: 1px solid #2a3140;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  color: #8d96a6;
+  color: var(--text-3);
   padding: 0;
   width: 32px;
   height: 32px;
@@ -108,9 +108,9 @@
 }
 
 .account-settings-close:hover {
-  background: #1f2430;
-  border-color: #3a4252;
-  color: #f4f1ea;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text-1);
   transform: scale(1.05);
 }
 
@@ -126,8 +126,8 @@
   flex: 0 0 200px;
   width: 200px;
   min-width: 200px;
-  border-right: 1px solid #2a3140;
-  background: #0d0f14;
+  border-right: 1px solid var(--border);
+  background: var(--surface-0);
   display: flex;
   flex-direction: column;
   padding: 12px 8px;
@@ -140,7 +140,7 @@
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: #8d96a6;
+  color: var(--text-3);
   cursor: pointer;
   font-size: 12.5px;
   font-weight: 500;
@@ -155,14 +155,14 @@
 }
 
 .account-sidebar-btn:hover {
-  background: #181c24;
-  color: #c9c3b4;
+  background: var(--surface-2);
+  color: var(--text-3);
 }
 
 .account-sidebar-btn.active {
-  background: #1f2430;
-  color: #f4f1ea;
-  box-shadow: inset 2px 0 #d8a84e;
+  background: var(--surface-3);
+  color: var(--text-1);
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 .account-settings-content {
@@ -170,7 +170,7 @@
   overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
-  background: #12151c;
+  background: var(--surface-1);
 }
 
 .account-settings-content::-webkit-scrollbar {
@@ -183,18 +183,18 @@
 }
 
 .account-settings-content::-webkit-scrollbar-thumb {
-  background: #3a4252;
+  background: var(--surface-3);
   border-radius: 6px;
 }
 
 .account-settings-content::-webkit-scrollbar-thumb:hover {
-  background: #5a6473;
+  background: var(--border-strong);
 }
 
 .account-section {
   margin-bottom: 14px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #2a3140;
+  border-bottom: 1px solid var(--border);
 }
 
 .account-section:last-child {
@@ -207,13 +207,13 @@
   margin: 0 0 16px 0;
   font-size: 15px;
   font-weight: 700;
-  color: #f4f1ea;
+  color: var(--text-1);
   letter-spacing: -0.02em;
 }
 
 .account-section-description {
   font-size: 12.5px;
-  color: #8d96a6;
+  color: var(--text-3);
   margin: -8px 0 16px 0;
   line-height: 1.5;
 }
@@ -223,8 +223,8 @@
    body text. Red is the accent, not the text colour. Same shape as .auth-error. */
 .account-error {
   background: rgba(217, 90, 86, 0.10);
-  border-left: 3px solid #d95a56;
-  color: #f4f1ea;
+  border-left: 3px solid var(--danger);
+  color: var(--text-1);
   border-radius: 8px;
   padding: 9px 12px;
   font-size: 12.5px;
@@ -235,7 +235,7 @@
 .account-message {
   background: rgba(216, 168, 78, 0.1);
   border: 1px solid rgba(216, 168, 78, 0.28);
-  color: #d8a84e;
+  color: var(--accent);
   border-radius: 6px;
   padding: 9px 12px;
   font-size: 12.5px;
@@ -260,80 +260,80 @@
 .account-form-group label {
   font-size: 10.5px;
   font-weight: 700;
-  color: #8d96a6;
+  color: var(--text-3);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .account-form-group input {
   padding: 8px 10px;
-  border: 1px solid #2a3140;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
-  background: #181c24;
-  color: #f4f1ea;
+  background: var(--surface-2);
+  color: var(--text-1);
   transition: all 0.2s ease;
   font-family: inherit;
 }
 
 .account-form-group input::placeholder {
-  color: #5a6473;
+  color: var(--text-disabled);
 }
 
 .account-form-group input:hover:not(:disabled) {
-  border-color: #3a4252;
-  background: #1f2430;
+  border-color: var(--border-strong);
+  background: var(--surface-3);
 }
 
 .account-form-group input:focus {
   outline: none;
-  border-color: #d8a84e;
-  background: #1f2430;
+  border-color: var(--accent);
+  background: var(--surface-3);
   box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.18);
 }
 
 .account-form-group input:disabled {
-  background: #12151c;
-  border-color: #2a3140;
-  color: #8d96a6;
+  background: var(--surface-1);
+  border-color: var(--border);
+  color: var(--text-3);
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .account-field-display {
   padding: 8px 10px;
-  background: #181c24;
-  border: 1px solid #2a3140;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
-  color: #e8e2d4;
+  color: var(--text-2);
   min-height: 34px;
   display: flex;
   align-items: center;
 }
 
 .account-field-display-empty {
-  color: #5a6473;
+  color: var(--text-disabled);
   font-style: italic;
 }
 
 .account-field-hint {
   font-size: 11px;
-  color: #5a6473;
+  color: var(--text-disabled);
   margin-top: 4px;
 }
 
 .account-divider {
   border: none;
-  border-top: 1px solid #2a3140;
+  border-top: 1px solid var(--border);
   margin: 12px 0;
 }
 
 .account-subsection {
-  background: #181c24;
+  background: var(--surface-2);
   border-radius: 10px;
   padding: 16px;
-  border: 1px solid #2a3140;
+  border: 1px solid var(--border);
 }
 
 .account-subsection-header {
@@ -343,13 +343,13 @@
 .account-subsection-title {
   font-size: 13px;
   font-weight: 600;
-  color: #f4f1ea;
+  color: var(--text-1);
   margin: 0 0 2px 0;
 }
 
 .account-subsection-description {
   font-size: 11px;
-  color: #8d96a6;
+  color: var(--text-3);
   margin: 0;
 }
 
@@ -361,8 +361,8 @@
 
 .account-btn-primary {
   padding: 8px 16px;
-  background: #d8a84e;
-  color: #15110a;
+  background: var(--accent);
+  color: var(--accent-text);
   border: 1px solid transparent;
   border-radius: 6px;
   font-size: 13px;
@@ -385,7 +385,7 @@
 }
 
 .account-btn-primary:hover:not(:disabled) {
-  background: #e3b863;
+  background: var(--accent);
   transform: translateY(-1px);
 }
 
@@ -396,9 +396,9 @@
 
 .account-btn-secondary {
   padding: 8px 16px;
-  background: #1f2430;
-  color: #f4f1ea;
-  border: 1px solid #2a3140;
+  background: var(--surface-3);
+  color: var(--text-1);
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
@@ -408,8 +408,8 @@
 }
 
 .account-btn-secondary:hover:not(:disabled) {
-  background: #2a3140;
-  border-color: #3a4252;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
@@ -425,7 +425,7 @@
 .account-btn-danger {
   padding: 8px 16px;
   background: rgba(217, 90, 86, 0.1);
-  color: #d95a56;
+  color: var(--danger);
   border: 1px solid rgba(217, 90, 86, 0.26);
   border-radius: 6px;
   font-size: 13px;
@@ -451,14 +451,14 @@
 }
 
 .account-danger-zone h3 {
-  color: #d95a56;
+  color: var(--danger);
   margin-bottom: 8px;
   font-size: 14px;
 }
 
 .account-danger-zone-description {
   font-size: 12px;
-  color: #8d96a6;
+  color: var(--text-3);
   margin-bottom: 0;
   line-height: 1.45;
 }
@@ -473,13 +473,13 @@
 .account-delete-confirm-title {
   font-size: 13px;
   font-weight: 600;
-  color: #f4f1ea;
+  color: var(--text-1);
   margin: 0 0 6px 0;
 }
 
 .account-delete-confirm-description {
   font-size: 12px;
-  color: #8d96a6;
+  color: var(--text-3);
   margin: 0 0 12px 0;
   line-height: 1.45;
 }
@@ -496,16 +496,16 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  background: #181c24;
-  border: 1px solid #2a3140;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
   transition: all 0.2s ease;
   margin-bottom: 12px;
 }
 
 .account-connected-account:hover {
-  background: #1f2430;
-  border-color: #3a4252;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .account-connected-account-info {
@@ -520,25 +520,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1f2430;
-  border: 1px solid #2a3140;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 
 .account-connected-account-name {
   font-size: 14px;
   font-weight: 600;
-  color: #f4f1ea;
+  color: var(--text-1);
   margin-bottom: 2px;
 }
 
 .account-connected-account-status {
   font-size: 12px;
-  color: #8d96a6;
+  color: var(--text-3);
 }
 
+/* UX 2026-09-17 (revision-2 palette): "Connected as ..." was green, the only
+   green text in the app. Gold says "this is fine" without a second brand
+   colour appearing. */
 .account-connected-account-status-connected {
-  color: #a6e07a;
+  color: var(--accent);
 }
 
 /* Subscription Grid */
@@ -550,8 +553,8 @@
 }
 
 .account-subscription-card {
-  background: #181c24;
-  border: 1px solid #2a3140;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
   display: flex;
@@ -563,13 +566,13 @@
 .account-subscription-header {
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #2a3140;
+  border-bottom: 1px solid var(--border);
 }
 
 .account-plan-name {
   font-size: 14px;
   font-weight: 700;
-  color: #f4f1ea;
+  color: var(--text-1);
   margin-bottom: 4px;
 }
 
@@ -583,7 +586,7 @@
 .account-plan-badge-text {
   font-size: 11px;
   font-weight: 600;
-  color: #d8a84e;
+  color: var(--accent);
 }
 
 .account-subscription-price {
@@ -596,13 +599,13 @@
 .price-amount {
   font-size: 24px;
   font-weight: 800;
-  color: #f4f1ea;
+  color: var(--text-1);
   letter-spacing: -0.03em;
 }
 
 .price-period {
   font-size: 12px;
-  color: #8d96a6;
+  color: var(--text-3);
 }
 
 .account-subscription-features {
@@ -621,14 +624,14 @@
   align-items: flex-start;
   gap: 8px;
   font-size: 12px;
-  color: #c9c3b4;
+  color: var(--text-3);
   margin-bottom: 8px;
   line-height: 1.4;
 }
 
 .account-subscription-features li::before {
   content: "•";
-  color: #d8a84e;
+  color: var(--accent);
 }
 
 .account-subscription-actions button {
@@ -636,8 +639,8 @@
 }
 
 .account-btn-purple {
-  background: #d8a84e;
-  color: #15110a;
+  background: var(--accent);
+  color: var(--accent-text);
   border: none;
   padding: 8px;
   border-radius: 6px;
@@ -648,13 +651,15 @@
 }
 
 .account-btn-purple:hover {
-  background: #e3b863;
+  background: var(--accent);
 }
 
+/* The plan you are ON gets the gold outline; the plan you could buy gets the
+   solid gold button. The class name is historical - there is no green here. */
 .account-btn-outline-green {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  color: #22c55e;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
+  color: var(--accent);
   padding: 8px;
   border-radius: 6px;
   font-size: 12px;
@@ -664,9 +669,12 @@
 }
 
 .account-btn-outline-blue {
-  background: rgba(74, 144, 226, 0.1);
-  border: 1px solid rgba(74, 144, 226, 0.35);
-  color: #4A90E2;
+  /* Class name kept so the markup does not churn; the colour is the app's own
+     accent. UX 2026-09-17: this was the last blue control in the account
+     screen, and it sat beside gold ones doing the same job. */
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
+  color: var(--accent);
   padding: 8px;
   border-radius: 6px;
   font-size: 12px;
@@ -678,7 +686,7 @@
 .account-btn-outline-gold {
   background: rgba(216, 168, 78, 0.1);
   border: 1px solid rgba(216, 168, 78, 0.35);
-  color: #d8a84e;
+  color: var(--accent);
   padding: 8px;
   border-radius: 6px;
   font-size: 12px;
@@ -691,7 +699,7 @@
 .account-subscription-tabs {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid #2a3140;
+  border-bottom: 1px solid var(--border);
   margin-top: 4px;
 }
 
@@ -700,7 +708,7 @@
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #8d96a6;
+  color: var(--text-3);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -711,13 +719,13 @@
 }
 
 .account-subscription-tab:hover {
-  color: #c9c3b4;
-  background: #181c24;
+  color: var(--text-3);
+  background: var(--surface-2);
 }
 
 .account-subscription-tab.active {
-  color: #f4f1ea;
-  border-bottom-color: #d8a84e;
+  color: var(--text-1);
+  border-bottom-color: var(--accent);
 }
 
 /* Mobile */
@@ -744,7 +752,7 @@
     align-items: stretch;
     justify-content: center;
     border-right: none;
-    border-bottom: 1px solid #2a3140;
+    border-bottom: 1px solid var(--border);
     overflow: hidden;
     padding: 0;
     gap: 0;
@@ -765,7 +773,7 @@
   }
 
   .account-sidebar-btn.active {
-    box-shadow: inset 0 -2px #d8a84e;
+    box-shadow: inset 0 -2px var(--accent);
   }
 
   .account-subscription-grid {

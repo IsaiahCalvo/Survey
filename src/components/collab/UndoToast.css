@@ -37,8 +37,8 @@
 
   /* Same surface palette as the storage-failure banner so the toast reads
      as part of the same status family. */
-  background: var(--bg-secondary, #12151c);
-  border: 1px solid var(--border-primary, #2a3140);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
 
@@ -80,7 +80,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.4;
-  color: var(--accent-primary, #d8a84e);
+  color: var(--accent);
   text-decoration: underline;
   font-family: inherit;
 }
@@ -88,8 +88,10 @@
 .undo-toast__action:hover {
   /* UX: subtle text-color lift on hover. Matches the link convention used
      elsewhere — no background change so the toast doesn't feel like a card
-     with a button on it. */
-  color: var(--accent-primary-hover, #6FA8E8);
+     with a button on it. UX 2026-09-17: the link is gold, so its hover is the
+     palette's lighter gold. It used to fall back to a #6FA8E8 blue, because the
+     --accent-primary-hover it asked for was never defined. */
+  color: var(--accent-light);
 }
 
 .undo-toast__action:focus {

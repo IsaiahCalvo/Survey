@@ -88,9 +88,9 @@ export default function FormFieldPropertiesPanel({
         right: '24px',
         zIndex: 1200,
         width: '260px',
-        background: '#1f2430',
-        color: '#e8e2d4',
-        border: '1px solid #3a4252',
+        background: 'var(--surface-3)',
+        color: 'var(--text-2)',
+        border: '1px solid var(--border-strong)',
         borderRadius: '8px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
         padding: '12px',
@@ -99,7 +99,7 @@ export default function FormFieldPropertiesPanel({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <div style={{ fontWeight: 600, fontSize: '13px', color: '#fff' }}>
+        <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-1)' }}>
           {deriveTypeLabel(fieldType)} properties
         </div>
         <button
@@ -109,7 +109,7 @@ export default function FormFieldPropertiesPanel({
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#8d96a6',
+            color: 'var(--text-3)',
             cursor: 'pointer',
             fontSize: '14px',
             padding: '2px 6px'
@@ -120,7 +120,7 @@ export default function FormFieldPropertiesPanel({
       </div>
 
       <label style={{ display: 'block', marginBottom: '8px' }}>
-        <div style={{ color: '#8d96a6', marginBottom: '4px' }}>Name</div>
+        <div style={{ color: 'var(--text-3)', marginBottom: '4px' }}>Name</div>
         <input
           type="text"
           value={name}
@@ -128,9 +128,9 @@ export default function FormFieldPropertiesPanel({
           onBlur={() => apply({ name })}
           style={{
             width: '100%',
-            background: '#12151c',
-            color: '#e8e2d4',
-            border: '1px solid #3a4252',
+            background: 'var(--surface-1)',
+            color: 'var(--text-2)',
+            border: '1px solid var(--border-strong)',
             borderRadius: '4px',
             padding: '4px 6px',
             fontFamily: PANEL_FONT,
@@ -142,7 +142,7 @@ export default function FormFieldPropertiesPanel({
 
       {showValueField && (
         <label style={{ display: 'block', marginBottom: '8px' }}>
-          <div style={{ color: '#8d96a6', marginBottom: '4px' }}>Default value</div>
+          <div style={{ color: 'var(--text-3)', marginBottom: '4px' }}>Default value</div>
           <input
             type="text"
             value={value}
@@ -150,9 +150,9 @@ export default function FormFieldPropertiesPanel({
             onBlur={() => apply({ value })}
             style={{
               width: '100%',
-              background: '#12151c',
-              color: '#e8e2d4',
-              border: '1px solid #3a4252',
+              background: 'var(--surface-1)',
+              color: 'var(--text-2)',
+              border: '1px solid var(--border-strong)',
               borderRadius: '4px',
               padding: '4px 6px',
               fontFamily: PANEL_FONT,
@@ -164,7 +164,7 @@ export default function FormFieldPropertiesPanel({
       )}
 
       <label style={{ display: 'block', marginBottom: '8px' }}>
-        <div style={{ color: '#8d96a6', marginBottom: '4px' }}>Tooltip</div>
+        <div style={{ color: 'var(--text-3)', marginBottom: '4px' }}>Tooltip</div>
         <input
           type="text"
           value={tooltip}
@@ -172,9 +172,9 @@ export default function FormFieldPropertiesPanel({
           onBlur={() => apply({ tooltip })}
           style={{
             width: '100%',
-            background: '#12151c',
-            color: '#e8e2d4',
-            border: '1px solid #3a4252',
+            background: 'var(--surface-1)',
+            color: 'var(--text-2)',
+            border: '1px solid var(--border-strong)',
             borderRadius: '4px',
             padding: '4px 6px',
             fontFamily: PANEL_FONT,
@@ -214,9 +214,9 @@ export default function FormFieldPropertiesPanel({
         style={{
           width: '100%',
           padding: '6px',
-          background: '#5a1d1d',
-          color: '#FCD',
-          border: '1px solid #7a2a2a',
+          background: 'var(--danger-press)',
+          color: 'var(--text-1)',
+          border: '1px solid var(--danger-press)',
           borderRadius: '4px',
           fontFamily: PANEL_FONT,
           fontSize: '12px',

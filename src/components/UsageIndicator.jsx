@@ -14,9 +14,12 @@ import { useAuth } from '../contexts/AuthContext';
 // Module scope so these keep stable component identity across UsageIndicator
 // renders (defining them in the body remounted every metric row each render).
 const getProgressBarColor = (percentage) => {
-  if (percentage >= 90) return '#ef4444'; // Red
-  if (percentage >= 75) return '#f59e0b'; // Orange
-  return '#8b5cf6'; // Purple
+  if (percentage >= 90) return 'var(--danger)';
+  if (percentage >= 75) return 'var(--warning)';
+  // UX 2026-09-17 (revision-2 palette): the healthy bar was a #8b5cf6 purple,
+  // the only purple in the app and a hue the palette has no other use for. A
+  // meter that is fine is just the accent; danger and warning still take over.
+  return 'var(--accent)';
 };
 
 const ProgressBar = ({ percentage, color }) => (
@@ -50,7 +53,7 @@ const MetricRow = ({ label, current, limit, unlimited, percentage, showBar = tru
       <span style={{ fontWeight: 500 }}>{label}</span>
       <span style={{
         fontWeight: 600,
-        color: percentage >= 90 ? '#ef4444' : 'rgba(255, 255, 255, 0.95)'
+        color: percentage >= 90 ? 'var(--danger)' : 'rgba(255, 255, 255, 0.95)'
       }}>
         {current} / {unlimited ? '∞' : limit}
       </span>

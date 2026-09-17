@@ -24,11 +24,11 @@
 .confirm-delete-modal__card {
   width: 380px;
   max-width: 92vw;
-  background: #181c24;
-  border: 1px solid #2a3140;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
-  color: #f4f1ea;
+  color: var(--text-1);
   overflow: hidden;
 }
 
@@ -49,7 +49,7 @@
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.015em;
-  color: #f4f1ea;
+  color: var(--text-1);
   margin: 0;
 }
 
@@ -57,7 +57,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  color: #8d96a6;
+  color: var(--text-3);
   margin: 8px 0 0;
 }
 
@@ -65,7 +65,7 @@
   font-size: 11.5px;
   font-weight: 400;
   line-height: 1.5;
-  color: #8d96a6;
+  color: var(--text-3);
   margin: 8px 0 0;
 }
 
@@ -75,8 +75,8 @@
   border-radius: 6px;
   padding: 0;
   background: transparent;
-  border: 1px solid #2a3140;
-  color: #8d96a6;
+  border: 1px solid var(--border);
+  color: var(--text-3);
   cursor: pointer;
   line-height: 1;
   display: grid;
@@ -86,7 +86,7 @@
 }
 
 .confirm-delete-modal__close:hover {
-  color: #f4f1ea;
+  color: var(--text-1);
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -95,8 +95,8 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #2a3140;
-  background: #12151c;
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
 }
 
 .confirm-delete-modal__btn {
@@ -108,28 +108,28 @@
 .confirm-delete-modal__btn--cancel {
   background: transparent;
   border: 0;
-  color: #8d96a6;
+  color: var(--text-3);
   padding: 6px 10px;
   font-size: 12px;
   border-radius: 6px;
 }
 
 .confirm-delete-modal__btn--cancel:hover {
-  color: #f4f1ea;
+  color: var(--text-1);
   background: rgba(255, 255, 255, 0.04);
 }
 
 .confirm-delete-modal__btn--danger {
   height: 28px;
-  background: #d95a56;
+  background: var(--danger);
   border: 0;
   border-radius: 6px;
-  color: #fff;
+  color: var(--text-1);
   padding: 5px 14px;
   font-size: 11.5px;
   font-weight: 600;
 }
 
 .confirm-delete-modal__btn--danger:hover {
-  background: #c84c49;
+  background: var(--danger-press);
 }

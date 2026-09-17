@@ -1,27 +1,38 @@
-/* Survey Hub — home redesign shared styles.
-   Warm dark-and-gold palette. Everything is scoped under `.survey-hub` so it
-   cannot leak into or collide with the rest of the app's styles. */
+/* Survey Hub — home redesign shared styles. Everything is scoped under
+   `.survey-hub` so it cannot leak into or collide with the rest of the app.
+
+   UX 2026-09-17 (revision-2 palette, owner approved): the ink-* / bone-* /
+   gold names stay, because every rule below speaks them, but they are ALIASES
+   of src/styles/tokens.css now instead of their own ramp. The old ramp was
+   three brightness steps apart where the new one is five, its borders were
+   invisible, and its text was a warm cream over cool blue-grey surfaces.
+   The hue names below (blue / rose / lilac / green / slate) are NOT chrome —
+   they are the set of distinguishable colours an avatar or a tag is given,
+   the same class of thing as an ink colour, so they keep their own values. */
 .survey-hub {
-  --ink-900: #0d0f14;
-  --ink-800: #12151c;
-  --ink-700: #181c24;
-  --ink-600: #1f2430;
-  --ink-500: #2a3140;
-  --ink-400: #3a4252;
-  --ink-300: #5a6473;
-  --ink-200: #8d96a6;
-  --bone-100: #f4f1ea;
-  --bone-200: #e8e2d4;
-  --bone-300: #c9c3b4;
-  --bone-400: #ebe3d1;
-  --gold:    #d8a84e;
-  --gold-soft: #b6904a;
-  --gold-bg: #2a2218;
+  --ink-900: var(--surface-0);
+  --ink-800: var(--surface-1);
+  --ink-700: var(--surface-2);
+  --ink-600: var(--surface-3);
+  --ink-500: var(--border);
+  --ink-400: var(--border-strong);
+  --ink-300: var(--text-disabled);
+  --ink-200: var(--text-3);
+  --bone-100: var(--text-1);
+  --bone-200: var(--text-2);
+  --bone-300: var(--text-3);
+  --bone-400: var(--text-1);
+  --gold:    var(--accent);
+  --gold-soft: var(--accent-press);
+  /* --gold-bg (the #2a2218 brown) was DELETED 2026-09-17 with the revision-2
+     palette. Nothing inside .survey-hub ever read it, yet the phone viewer
+     asked for `var(--gold-bg, #2a2218)` from OUTSIDE this scope and so always
+     painted the fallback brown. The active-state fill is --accent-soft now. */
   --blue:    #7ab7e6;
   --green:   #a6e07a;
   --rose:    #e69a7a;
   --lilac:   #c293e6;
-  --slate:   #9aa3b2;
+  --slate:   var(--text-3);
 }
 
 .survey-hub, .survey-hub * { box-sizing: border-box; }
@@ -95,7 +106,7 @@
 }
 .survey-hub .actions { margin-left: auto; display: flex; gap: 6px; }
 .survey-hub .btn { background: var(--ink-700); color: var(--bone-100); border: 1px solid var(--ink-500); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; }
-.survey-hub .btn.primary { background: var(--gold); color: #15110a; border-color: transparent; font-weight: 600; }
+.survey-hub .btn.primary { background: var(--gold); color: var(--accent-text); border-color: transparent; font-weight: 600; }
 .survey-hub .btn.ghost { background: transparent; }
 
 .survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -111,7 +122,7 @@
 
 /* PDF page placeholder thumbnail */
 .survey-hub .pdf-thumb {
-  background: linear-gradient(180deg, #ebe3d1 0 28%, #ffffff 28% 100%);
+  background: linear-gradient(180deg, var(--accent-light) 0 28%, #ffffff 28% 100%);
   border-radius: 4px;
   position: relative;
   overflow: hidden;
@@ -124,6 +135,9 @@
     repeating-linear-gradient(0deg, transparent 0 8px, rgba(20,20,20,0.04) 8px 9px),
     repeating-linear-gradient(90deg, transparent 0 11px, rgba(20,20,20,0.05) 11px 12px);
 }
+/* The little fake document thumbnail is an ILLUSTRATION of a drawing, not
+   chrome: its paper, its title block and its revision stamp keep their own
+   colours, exactly as a real page would. */
 .survey-hub .pdf-thumb .ribbon { position: absolute; top: 0; left: 0; right: 0; height: 18%; background: #1f4a7a; }
 .survey-hub .pdf-thumb .ribbon-line { position: absolute; top: 22%; left: 8%; right: 8%; height: 4%; background: rgba(20,20,20,0.6); }
 .survey-hub .pdf-thumb .stamp { position: absolute; bottom: 6%; right: 6%; width: 28px; height: 14px; border: 1.4px solid #b03a3a; color: #b03a3a; border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 8px; display: grid; place-items: center; }
@@ -493,8 +507,8 @@
 
 .survey-hub .profile-signout-buttons button.danger {
   border-color: rgba(217, 90, 86,0.42);
-  background: #d95a56;
-  color: #fff;
+  background: var(--danger);
+  color: var(--text-1);
 }
 
 .survey-hub .mobile-home-tabs,
@@ -1405,7 +1419,7 @@
       max(var(--native-safe-area-left, env(safe-area-inset-left, 0px)), var(--mobile-tab-corner-inset));
     box-sizing: border-box;
     align-items: end;
-    background: #0d0f14;
+    background: var(--surface-0);
     border-top: 1px solid var(--ink-500);
     box-shadow: none;
   }
@@ -1442,7 +1456,7 @@
   }
 
   .survey-hub .mobile-home-tabs button.active {
-    background: #1f2430;
+    background: var(--surface-3);
     color: var(--bone-100);
     box-shadow: inset 0 2px var(--gold);
   }
@@ -1946,7 +1960,7 @@
     border-radius: 3px;
     display: grid;
     place-items: center;
-    color: #15110a;
+    color: var(--accent-text);
     font-size: 11px;
     font-weight: 900;
   }
@@ -2457,7 +2471,7 @@
     border-radius: 3px;
     display: grid;
     place-items: center;
-    color: #15110a;
+    color: var(--accent-text);
     font-size: 11px;
     font-style: normal;
     font-weight: 900;
@@ -2582,7 +2596,7 @@
   .survey-hub .templates-mobile-save-row button.primary {
     background: var(--gold);
     border-color: var(--gold);
-    color: #15110a;
+    color: var(--accent-text);
   }
 
   .survey-hub .templates-mobile-section {
@@ -2909,7 +2923,7 @@
     height: 44px;
     border: 0;
     background: transparent;
-    color: #d95a56;
+    color: var(--danger);
     font: inherit;
     font-size: 16px;
   }

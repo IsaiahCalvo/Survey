@@ -48,9 +48,9 @@ import { tooltipForLabel } from '../utils/toolShortcuts.js';
  * never over the PDF page content, so the colors are fixed.
  */
 export const TOOLTIP_SURFACE = {
-  background: '#181c24',
-  color: '#e8e2d4',
-  border: '1px solid #2a3140',
+  background: 'var(--surface-2)',
+  color: 'var(--text-2)',
+  border: '1px solid var(--border)',
   padding: '4px 8px',
   borderRadius: '6px',
   fontSize: '11.5px',

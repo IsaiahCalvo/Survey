@@ -43,7 +43,7 @@ if (typeof document !== 'undefined' && !document.getElementById(KEYFRAMES_ID)) {
 export default function Spinner({
   size = 14,
   thickness = 2,
-  color = '#d8a84e', // --gold (docs/design/design.md)
+  color = 'var(--accent)', // --gold (docs/design/design.md)
   trackColor = 'rgba(141,150,166,0.25)', // --ink-200 at low opacity
   style,
 }) {

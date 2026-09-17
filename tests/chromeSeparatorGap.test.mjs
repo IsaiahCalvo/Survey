@@ -44,10 +44,15 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP_SHELL = readFileSync(path.join(repoRoot, 'src/AppShell.jsx'), 'utf8');
 
-// The thin vertical rules inside the desktop top bar. #5a6473 is that row's own
+// The thin vertical rules inside the desktop top bar. --border-strong is that
+// row's own rule colour.
+// DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+// owner): the rules were the literal #5a6473 and are the shared --border-strong
+// token now. The old literal's own comment said it was "that row's own rule
+// colour", which is exactly the drift the palette removes: a rule is a rule.
 // rule colour — the #2a3140 rules further down the file belong to other
 // surfaces and are not part of this row.
-const CHROME_RULES = [...APP_SHELL.matchAll(/<div style=\{\{[^}]*background: '#5a6473'[^}]*\}\} \/>/g)]
+const CHROME_RULES = [...APP_SHELL.matchAll(/<div style=\{\{[^}]*background: 'var\(--border-strong\)'[^}]*\}\} \/>/g)]
   .map((m) => m[0]);
 
 test('the desktop top bar still has the separators this test is about', () => {

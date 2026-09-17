@@ -653,9 +653,16 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
      app, not this." It rendered the literal "▾" character; src/Icons.jsx has
      had a real chevronDown SVG all along. */
   assert.match(SCREEN, /import AppIcon from '\.\.\/Icons'/);
+  /* DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+     owner): this line and the PDFViewer one below pinned the literal #8d96a6.
+     That colour no longer exists in the app — the whole chrome now paints from
+     src/styles/tokens.css and the muted-icon role is --text-3. What the
+     assertion guards is unchanged: the disclosure chevron is the real icon at
+     the SAME muted colour as the reference chevron in the viewer, not a text
+     glyph and not a one-off colour. Only the spelling of that colour moved. */
   assert.match(
     SCREEN,
-    /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="#8d96a6"/,
+    /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="var\(--text-3\)"/,
   );
   assert.match(SCREEN, /const CHEVRON_SIZE = 16;/);
   assert.match(SCREEN, /const MOBILE_CHEVRON_SIZE = 18;/);
@@ -676,7 +683,9 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
   const ICONS = read('../src/Icons.jsx');
   assert.match(ICONS, /chevronDown: \(size, color, style, className\) => \(/);
   const VIEWER = read('../src/PDFViewer.jsx');
-  assert.match(VIEWER, /<Icon name="chevronDown" size=\{12\} color="#8d96a6" \/>/, 'PDFViewer is the reference');
+  // Same ruled change as above: the reference colour is the --text-3 token now,
+  // not the #8d96a6 literal it resolved from.
+  assert.match(VIEWER, /<Icon name="chevronDown" size=\{12\} color="var\(--text-3\)" \/>/, 'PDFViewer is the reference');
 
   // Both trees and the mobile card go through the same helper.
   assert.match(SCREEN, /const disclosureButton = \(open, onToggle, label = 'documents'\) => \([\s\S]*?\{chevron\(open\)\}<\/button>/);
