@@ -3666,14 +3666,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-search-panel__results {
   padding: 0 16px 8px !important;
   background: var(--surface-2);
+  /* A flex column so the empty state can grow to fill the shared hub-tray
+     height (see .mobile-search-empty). Percentage min-height against a flex
+     item is shaky in WebKit, and this viewer also ships as an iOS webview. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* UX (owner ruling 2026-09-17): the hub tray is one fixed height for Pages /
    Search / Bookmarks, so an empty Search has to fill that tray rather than sit
-   as a 142px block at the top of it. min-height:100% resolves against the
-   flex:1 results container, so the message lands dead-centre of the tray. */
+   as a 142px block at the top of it. flex:1 inside the flex-column results
+   container centres the message in the tray. */
 .mobile-search-empty {
-  min-height: 100%;
+  flex: 1;
+  min-height: 142px;
   display: flex;
   flex-direction: column;
   align-items: center;

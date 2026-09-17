@@ -52,7 +52,8 @@ test('Pages, Search and Bookmarks share one hub tray height', () => {
   assert.match(selector, /return MOBILE_HUB_TRAY_HEIGHT;/);
 
   // Empty states fill the shared tray instead of leaving a stub sheet.
-  assert.match(mobileCss, /\.mobile-search-empty \{[\s\S]{0,120}min-height: 100%/);
+  assert.match(mobileCss, /\.mobile-search-panel__results \{[\s\S]{0,320}flex-direction: column;/);
+  assert.match(mobileCss, /\.mobile-search-empty \{[\s\S]{0,120}flex: 1;/);
   assert.match(mobileCss, /\.mobile-bookmark-empty \{[\s\S]{0,120}flex: 1;/);
 });
 
