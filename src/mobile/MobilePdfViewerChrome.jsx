@@ -1119,8 +1119,10 @@ export function MobileToolProperties({ api }) {
           opens the full picker. One shared constant drives both platforms
           (src/utils/quickStylePresets.js) so a red on the phone is the red on
           the desktop. A tap applies straight away — armed tool and selected
-          mark — and changes the same channel the swatch's sheet opens on:
-          the fill for a fillable shape, the stroke for everything else. */}
+          mark — to the stroke for every tool but the counter, which takes the
+          fill because a pin's colour IS its fill. The swatch beside them shows
+          that same channel and its sheet opens on that same section, so the
+          dots, the gold ring and the swatch never show two colours. */}
       {!isEraser && showStroke && (
         <QuickColourDots
           platform="phone"
