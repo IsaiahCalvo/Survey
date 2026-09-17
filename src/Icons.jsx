@@ -779,6 +779,24 @@ const ICON_RENDERERS = {
         <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><path d="M12 8V13M12 17H12.01" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    /*
+     * UX: the destructive-alert triangle. warningCircle is the quiet caution
+     * ("heads up"); this one is "something failed and it needs you", which is why
+     * the collab storage-failure banner leads with it. Reference behaviour
+     * matched: that banner's own hand-drawn glyph, traced here vertex for vertex
+     * so the shape is unchanged — only the weight moved, from 2 to the house
+     * 1.5, so it no longer out-weighs the dismiss cross 8px to its right. Added
+     * 2026-09-16 (r5-icons) when that glyph moved into the shared set.
+     *
+     * aria-hidden: the banner this leads always spells the failure out in text
+     * right beside it, so the glyph is decoration. Carried over from the
+     * hand-drawn original rather than dropped in the move.
+     */
+    warningTriangle: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={style} className={className}>
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 9V13M12 17H12.01" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     infoCircle: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" /><circle cx="12" cy="8" r="1" fill={color} /><path d="M12 11V16" stroke={color} strokeWidth="1.5" strokeLinecap="round" />

@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { HOUSE_STROKE, offHouseWeight, stripComments } from './helpers/inlineIconStrokes.mjs';
+import { HOUSE_STROKE, stripComments } from './helpers/inlineIconStrokes.mjs';
 
 /*
  * ADVERSARIAL VERIFICATION, 2026-09-16 (verify-r3-desktop), fixed 2026-09-16
- * (r4-desktop).
+ * (r4-desktop), LIST RETIRED 2026-09-16 (r5-icons).
  *
  * Owner ruling: ONE icon set, one stroke weight — the house 1.5 on the 24 grid.
  *
@@ -41,49 +41,44 @@ import { HOUSE_STROKE, offHouseWeight, stripComments } from './helpers/inlineIco
  * shared <Icon> — 'close' and 'check' at one 12px box for the pair, 'chevronDown'
  * at 14px in the rail. Nothing is hand-drawn in either file any more.
  *
- * RULED DECISION — why the assertions below are not the ones this file shipped
- * with. It shipped asserting (a) `checked >= 3`, that the parser had found at
- * least three inline glyphs to measure, and (b) that the inline <svg width/height>
- * pairs in TextEditOverlay.jsx were all "12x12". Both assertions described the
- * broken tree: they can only hold while the glyphs are still hand-drawn, and the
- * fix the file itself demanded is to stop hand-drawing them. Asserting on inline
- * <svg> in these files would now be an assertion that they must keep their
- * bespoke glyphs, which is the opposite of the ruling. So each assertion follows
- * its glyph: (a) becomes "these two files hand-draw no glyph at all", the
- * stronger statement, and (b) becomes "the tick and the cross are shared icons
- * at ONE box size". The parser they proved necessary is not thrown away — it is
- * now the shared guard in tests/helpers/inlineIconStrokes.mjs, which
- * chromeInlineIconConsistency runs over the whole chrome list, this file's first
- * test runs over these two, and a fixture there keeps honest.
+ * RULED DECISION 1 (r4-desktop) — why the assertions below are not the ones this
+ * file shipped with. It shipped asserting (a) `checked >= 3`, that the parser had
+ * found at least three inline glyphs to measure, and (b) that the inline
+ * <svg width/height> pairs in TextEditOverlay.jsx were all "12x12". Both
+ * assertions described the broken tree: they can only hold while the glyphs are
+ * still hand-drawn, and the fix the file itself demanded is to stop hand-drawing
+ * them. Asserting on inline <svg> in these files would now be an assertion that
+ * they must keep their bespoke glyphs, which is the opposite of the ruling. So
+ * each assertion follows its glyph: (a) becomes "these two files hand-draw no
+ * glyph at all", the stronger statement, and (b) becomes "the tick and the cross
+ * are shared icons at ONE box size".
+ *
+ * RULED DECISION 2 (r5-icons) — the FIXED_FILES weight scan is gone. It asked the
+ * house-weight question of two named files through the shared helper, which is
+ * exactly what tests/chromeInlineIconWholeTree.test.mjs now asks of every .jsx
+ * under src/, these two included. verify-r4-final proved a two-file list is not
+ * worth keeping: eight glyphs in five files were off the weight, and the list
+ * named none of them. Two copies of one question, one of them narrower, is not
+ * two guards.
+ *
+ * What is left is everything the whole-tree walk CANNOT say, and only that. The
+ * walk measures weights; it does not know that these two files were fixed by
+ * DELETING their glyphs rather than retuning them, that the tick and the cross
+ * are a matched pair that must share one size, or that one particular path string
+ * is the shared chevron's. Those are per-defect facts, so they are asserted
+ * against the files they are facts about, by name, rather than through a list
+ * that pretends to be coverage.
  */
 
-const FIXED_FILES = [
-  'src/components/TextEditOverlay.jsx',
-  'src/SurveySpacesRail.jsx',
-];
-
 const readSource = (file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
-
-test('an inline chrome icon is on the house weight wherever the weight is declared', async () => {
-  const offenders = [];
-  for (const file of FIXED_FILES) {
-    offenders.push(...offHouseWeight(await readSource(file), file));
-  }
-  assert.deepEqual(
-    offenders,
-    [],
-    'the owner ruled ONE stroke weight across the set. These chrome glyphs draw '
-    + 'their weight on a child element, where the original inline-icon test could '
-    + `not see it:\n  ${offenders.join('\n  ')}`,
-  );
-});
 
 test('the two files that hand-drew glyphs draw none', async () => {
   // The three offenders here were all fixed by DELETING the inline <svg>, not by
   // retuning its numbers. So the regression guard is the absence: an inline <svg>
-  // reappearing in either file is a glyph that escaped the shared set again.
+  // reappearing in either file is a glyph that escaped the shared set again, and
+  // the whole-tree walk would wave a correctly-weighted one through.
   const strays = [];
-  for (const file of FIXED_FILES) {
+  for (const file of ['src/components/TextEditOverlay.jsx', 'src/SurveySpacesRail.jsx']) {
     const source = stripComments(await readSource(file));
     for (const match of source.matchAll(/<svg\b/g)) {
       strays.push(`${file}:${source.slice(0, match.index).split('\n').length}`);
@@ -127,4 +122,39 @@ test('the shared chevron in the spaces rail is the shared Icon', async () => {
     /M6 9L12 15L18 9/,
     `the rail must not redraw the shared chevron's path at its own weight (house ${HOUSE_STROKE})`,
   );
+});
+
+test('the shared chevron path belongs to src/Icons.jsx and nowhere else', async () => {
+  // The r4 pass fixed this path in SurveySpacesRail and verify-r4-final found it
+  // again, byte for byte, in RegionSelectionTool at a heavier weight. Both render
+  // <Icon> now. A third copy at the RIGHT weight would be invisible to the
+  // whole-tree weight walk and still be a second chevron to maintain, so the
+  // copies are counted across the tree, not just measured.
+  const { readdir } = await import('node:fs/promises');
+  const src = new URL('../src/', import.meta.url);
+  const walk = async (dir, prefix = '') => {
+    const out = [];
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) out.push(...await walk(new URL(`${entry.name}/`, dir), rel));
+      else if (/\.(jsx?|css)$/.test(entry.name)) out.push(rel);
+    }
+    return out;
+  };
+  const files = await walk(src);
+  assert.ok(files.length > 100, `the walk found only ${files.length} files - it is not walking src/`);
+
+  const copies = [];
+  for (const file of files) {
+    const source = stripComments(await readFile(new URL(file, src), 'utf8'));
+    for (const match of source.matchAll(/M6 9L12 15L18 9/g)) {
+      copies.push(`src/${file}:${source.slice(0, match.index).split('\n').length}`);
+    }
+  }
+  assert.deepEqual(
+    copies.length,
+    1,
+    `the set holds exactly one chevronDown; found ${copies.length}: ${copies.join(', ')}`,
+  );
+  assert.match(copies[0], /^src\/Icons\.jsx:/, `the one copy must be the shared set's, not ${copies[0]}`);
 });

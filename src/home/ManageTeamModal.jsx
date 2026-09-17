@@ -677,8 +677,21 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     </div>
                     {editMode && !m.isCreator ? (
                       <div style={{ position: "relative", minWidth: 0 }}>
+                        {/* UX: the role trigger's caret is the app's shared
+                            chevron, rendered as a child rather than painted as a
+                            background image. It used to be a bespoke 10x6 SVG
+                            data URI stroked at 1.4, which resolves to 3.36 on
+                            the house 24 grid — over twice the 1.5 every other
+                            caret in the hub paints, so this one control carried
+                            the heaviest glyph on the surface. Reference
+                            behaviour matched: the archive tree's disclosure
+                            caret, the same Icon in the same #8d96a6.
+                            The 14px glyph replaces the 14px right padding the
+                            background image sat in, so the button's box, its hit
+                            area and the text's position are all unchanged.
+                            Fixed 2026-09-16 (r5-icons). */}
                         <button data-kal31-role-trigger="true" onClick={(e) => { e.stopPropagation(); setOpenRoleSel(openRoleSel === m.id ? null : m.id); }}
-                          style={{ background: "transparent", border: 0, padding: "0 14px 0 0", color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238d96a6' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>\")", backgroundRepeat: "no-repeat", backgroundPosition: "right center" }}>{m.role}</button>
+                          style={{ background: "transparent", border: 0, padding: 0, color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}>{m.role}<Icon name="chevronDown" size={14} color="#8d96a6" style={{ display: "block", flex: "none" }} /></button>
                         {openRoleSel === m.id && (
                           <div data-kal31-role-menu="true" data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                             {ROLES.map(r => (

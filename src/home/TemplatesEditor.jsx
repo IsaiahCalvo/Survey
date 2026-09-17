@@ -95,18 +95,18 @@ import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
-   one shared glyph so mobile cannot drift to a different arrow treatment. */
+   one shared glyph so mobile cannot drift to a different arrow treatment.
+
+   UX: it is the app's own chevron now, not a local tracing of it. This drew the
+   chevron-right shape by hand on an 18-unit grid at stroke 2, which resolves to
+   2.67 on the house 24 grid — nearly twice the 1.5 every other chevron in the
+   hub paints, so the category carets read bolder than the archive tree's carets
+   two screens over. Reference behaviour matched: ArchiveScreen's disclosure
+   chevron, the same <Icon> rotated by its button rather than a swapped
+   down/right pair. The box stays 18px and the rotation stays on the button, so
+   nothing about the control moves. Weight fixed 2026-09-16 (r5-icons). */
 const CategoryDisclosureGlyph = () => (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 18 18"
-    width="18"
-    height="18"
-    fill="none"
-    style={{ display: 'block', flex: 'none' }}
-  >
-    <path d="M6.75 3.75 12 9l-5.25 5.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
+  <Icon name="chevronRight" size={18} style={{ display: 'block', flex: 'none' }} />
 );
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';

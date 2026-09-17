@@ -32090,10 +32090,12 @@ ${pageBlocks}
                 }}
                 onClick={() => setPendingLocationItem(null)}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+                {/* UX: the shared dismiss cross, at the house weight. It sits
+                    8px from the banner's own <Icon name="search" /> and used to
+                    be hand-drawn at stroke 2 against that icon's 1.5, so the
+                    cross read heavier than the glyph beside it. Reference
+                    behaviour matched: every other dismiss control in the app. */}
+                <Icon name="close" size={14} />
               </button>
             </div>
           )}
