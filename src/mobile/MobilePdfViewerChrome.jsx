@@ -738,7 +738,7 @@ export function MobileToolProperties({ api }) {
     motionStyle: textSheetMotionStyle,
     dragHandlers: textSheetDragHandlers,
     requestClose: requestTextSheetClose,
-  } = useMobileSheetMotion(() => setTextDefaultsOpen(false));
+  } = useMobileSheetMotion(() => setTextDefaultsOpen(false), { open: textDefaultsOpen });
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
   const counterMenuRef = useRef(null);
@@ -1683,7 +1683,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     motionStyle: usersSheetMotionStyle,
     dragHandlers: usersSheetDragHandlers,
     requestClose: requestUsersSheetClose,
-  } = useMobileSheetMotion(() => setPresenceOpen(false));
+  } = useMobileSheetMotion(() => setPresenceOpen(false), { open: presenceOpen });
   const popoverRef = useRef(null);
   const selectModeButtonRef = useRef(null);
   const selectModeCaretRef = useRef(null);
@@ -2098,14 +2098,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                   Save log
                 </button>
               )}
-              <button type="button" onClick={() => { bottomToolbarApi?.zoomOut?.(); setMoreOpen(false); }}>
-                <Icon name="minus" size={16} color="currentColor" />
-                Zoom out
-              </button>
-              <button type="button" onClick={() => { bottomToolbarApi?.zoomIn?.(); setMoreOpen(false); }}>
-                <Icon name="plus" size={16} color="currentColor" />
-                Zoom in
-              </button>
+              {/* UX (owner ruling 2026-09-17): zoom lives in exactly ONE place on
+                  phone — the header's zoom menu behind the % pill. The two
+                  duplicate zoom rows that used to sit here were removed so the
+                  kebab stays a short document-actions list (export, and Save log
+                  on native) instead of a second zoom control. Guarded by
+                  tests/mobilePhoneSheetAndMoreMenuGuard.test.mjs. */}
             </div>
           )}
 
