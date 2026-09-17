@@ -54,7 +54,34 @@ function ruleBody(selector) {
   return css.slice(open + 1, close);
 }
 
-test('the phone tool-properties bar fits its widest tool at 375px', () => {
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-17, quick styles).
+ *
+ * This test used to assert that the Arrow row FITS the 279px band with no
+ * scrolling at all. The owner's quick-styles ruling of 2026-09-17 adds four
+ * default colour dots and three default line widths to the front of this row
+ * and says of the phone: "same order in the 36px strip at 24px controls - if it
+ * overflows 279px the strip already scrolls; measure and report the total
+ * width." So overflowing the band is now the sanctioned behaviour, not the
+ * defect, and "fits" is no longer the thing to assert.
+ *
+ * What stays load-bearing, and what this file now asserts instead:
+ *   - the row is measured, and its widest tool stays inside a stated budget,
+ *     so nobody can widen it further without reading this number and taking a
+ *     new measurement on a phone;
+ *   - the row can always be scrolled back to whatever it pushes off (the test
+ *     below, unchanged) - which is the ONLY reason overflow is acceptable.
+ *
+ * Measured in the app at 375x812 on 2026-09-17, Arrow armed, on this branch:
+ *   quick colours  95.0   swatch 24.0   quick widths 84.0
+ *   Width field    80.0   Border style 80.0   Arrowhead 80.0
+ *   Arrowhead on both ends 74.7
+ *   content 547.7 in a 279px band -> 269px of scroll, last control reachable,
+ *   first dot at rest at x=48 (clear of the 40px rail).
+ */
+const SCROLL_BUDGET = 560;
+
+test('the phone tool-properties bar measures its widest tool and stays inside its scroll budget', () => {
   const railWidth = tokenPx('--mobile-rail-w');
   const controlHeight = tokenPx('--mobile-strip-control-h');
   const dropdownWidth = tokenPx('--mobile-strip-dropdown-w');
@@ -71,15 +98,34 @@ test('the phone tool-properties bar fits its widest tool at 375px', () => {
     jsx.match(/ariaLabel="Arrowhead style"\s*\n\s*minWidth=\{(\d+)\}/)[1],
   );
 
+  // The quick styles that now open the row, read off their own stylesheet.
+  const quickCss = readFileSync(path.join(here, '..', 'src', 'components', 'QuickStyleControls.css'), 'utf8');
+  const quickPx = (selector, property) => {
+    const index = quickCss.indexOf(`\n${selector} {`);
+    assert.ok(index !== -1, `expected a "${selector}" rule in QuickStyleControls.css`);
+    const body = quickCss.slice(quickCss.indexOf('{', index) + 1, quickCss.indexOf('}', quickCss.indexOf('{', index)));
+    const match = body.match(new RegExp(`${property}:[^;]*?(\\d+(?:\\.\\d+)?)px`));
+    assert.ok(match, `expected a px ${property} on ${selector}`);
+    return Number(match[1]);
+  };
+  const dot = quickPx('.quick-style__dot', 'width');
+  const dotGap = quickPx('.quick-style--colours.quick-style--phone', 'gap');
+  const widthChip = quickPx('.quick-style__width', 'width');
+  const quickColours = dot * 4 + dotGap * 3;
+  const quickWidths = widthChip * 3; // flush: the trio reads as one control
+
   // The strip spans the viewport minus the rail; its own padding is what the
   // controls actually get.
   const band = (PHONE_WIDTH - railWidth) - padLeft - padRight;
 
-  // Arrow's controls, using only sizes the stylesheet/JSX declare. The
+  // Arrow's controls, using only sizes the stylesheets/JSX declare. The
   // "Arrowhead on both ends" toggle is a text button whose width is not
-  // declared here, so it is LEFT OUT - the row already overflows without it.
+  // declared anywhere, so it is LEFT OUT of the arithmetic - it was measured
+  // at 74.7 and is inside the budget's headroom.
   const controls = [
+    quickColours,
     controlHeight, // colour swatch is a square of the shared control height
+    quickWidths,
     dropdownWidth, // Width field
     dropdownWidth, // Border style
     arrowheadMinWidth, // Arrowhead style
@@ -87,10 +133,17 @@ test('the phone tool-properties bar fits its widest tool at 375px', () => {
   const needed = controls.reduce((sum, w) => sum + w, 0) + gap * (controls.length - 1);
 
   assert.ok(
-    needed <= band,
-    `the Arrow tool-properties row needs ${needed}px but only ${band}px is available at `
-    + `${PHONE_WIDTH}px wide; a centred row loses ${((needed - band) / 2).toFixed(1)}px off each `
-    + 'end, which puts the colour swatch behind the tool rail',
+    needed > band,
+    `the Arrow row now needs ${needed}px against a ${band}px band; if it has come back `
+    + 'inside the band, take a new measurement and simplify this test rather than leaving '
+    + 'a scroll budget guarding a row that no longer scrolls',
+  );
+  assert.ok(
+    needed <= SCROLL_BUDGET,
+    `the Arrow tool-properties row needs ${needed}px, past its ${SCROLL_BUDGET}px budget. `
+    + `The band at ${PHONE_WIDTH}px wide is ${band}px, so the user would have to scroll `
+    + `${(needed - band).toFixed(1)}px to reach the last control. Widen the budget only after `
+    + 'driving the row on a real phone and finding the far end still comfortable to reach.',
   );
 });
 
