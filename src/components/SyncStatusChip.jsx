@@ -47,16 +47,25 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing);
   const compactMessage = getCompactSyncStatusMessage(status, queueSize);
 
-// UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status dot
+// UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status DOT
 // keeps green / yellow / red. Everything else green in the chrome went gold,
 // but a person has to tell "saved" from "broken" at a glance and gold already
 // means "selected". These are the palette's --success / --warning / --danger.
-  const colors = {
+//
+// The status colour paints the dot (and, while syncing, the spinner that
+// stands in for it) and NOTHING else. tokens.css is explicit that --success
+// "appears on status dots and NOTHING else: never a button, never a border,
+// never text", and it is the right call on contrast as well: the words
+// "Up to date" in #548c71 on the chip's own plate measured 4.02:1, under the
+// 4.50:1 WCAG AA wants at 12px. The label reads in --text-2 (9.3:1) in every
+// state, so "Up to date", "Saving…" and "Offline" are all equally legible and
+// the dot beside them carries the meaning.
+  const dotColors = {
     synced:  'var(--success)',
     syncing: 'var(--warning)',
     offline: 'var(--danger)'
   };
-  const color = colors[state];
+  const dotColor = dotColors[state];
 
   // UX: chip is always clickable when a retry handler is provided, regardless of
   // state. Even when "Up to date", a user typing rapidly may want to manually
@@ -130,8 +139,8 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
         onDismiss={() => setDetailsOpen(false)}
       />
       {compact
-        ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />
-        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />}
+        ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} dotColor={dotColor} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />
+        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} dotColor={dotColor} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />}
       {detailsOpen && state !== 'synced' && (
         <div
           id="sync-status-details"
@@ -176,7 +185,10 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
                 border: 0,
                 borderRadius: '50%',
                 background: 'transparent',
-                color,
+                /* UX: a button glyph is chrome, not a status dot, so it reads
+                   in --text-2 like the message beside it. tokens.css forbids
+                   the status greens/ambers on a button outright. */
+                color: 'var(--text-2)',
                 padding: 0,
                 cursor: 'pointer',
               }}
@@ -190,7 +202,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   );
 }
 
-function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onActivate }) {
+function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detailsOpen, onActivate }) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -211,18 +223,20 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOp
         justifyContent: 'center',
         width: '28px',
         height: '28px',
-        color,
+        /* UX: the container inherits neutral ink; only the dot (or the spinner
+           standing in for it) carries the status colour. */
+        color: 'var(--text-2)',
         cursor: 'pointer'
       }}
     >
       {state === 'syncing' ? (
-        <Spinner size={14} color="currentColor" />
+        <Spinner size={14} color={dotColor} />
       ) : (
         <span aria-hidden="true" style={{
           width: '10px',
           height: '10px',
           borderRadius: '50%',
-          background: 'currentColor'
+          background: dotColor
         }} />
       )}
       {/* KAL-65: the sync status hover hint is drawn by the ONE shared tooltip
@@ -235,7 +249,7 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOp
   );
 }
 
-function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onActivate }) {
+function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detailsOpen, onActivate }) {
   return (
     <div
       role="button"
@@ -255,7 +269,9 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsO
         borderRadius: '999px',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
-        color,
+        /* UX: the LABEL is plain information, so it reads in --text-2 in every
+           state; the dot next to it is what turns green / amber / red. */
+        color: 'var(--text-2)',
         fontSize: '12px',
         fontWeight: 500,
         userSelect: 'none',
@@ -264,13 +280,13 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsO
       }}
     >
       {state === 'syncing' ? (
-        <Spinner size={12} color="currentColor" />
+        <Spinner size={12} color={dotColor} />
       ) : (
         <span aria-hidden="true" style={{
           width: '8px',
           height: '8px',
           borderRadius: '50%',
-          background: 'currentColor'
+          background: dotColor
         }} />
       )}
       <span>{label}</span>
