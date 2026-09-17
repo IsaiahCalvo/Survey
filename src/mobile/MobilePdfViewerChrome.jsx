@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
-import { matchedQuickColour } from '../utils/quickStylePresets';
+import { matchedQuickColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
 import { QuickColourDots, QuickWidthPresets } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
@@ -123,17 +123,20 @@ const MOBILE_ARROWHEAD_STYLE_LABELS = {
   horizontalLine: 'Horizontal Line',
 };
 
-const MOBILE_ANNOTATION_COLORS = [
-  '#ff0000',
-  '#4A90E2',
-  '#27C07D',
+// UX 2026-09-17 (owner): the settings sheet's palette opens with the same four
+// quick colours the strip's dots offer, then its own longer tail. Its old first
+// three were a red that matched, a blue that did not (#4A90E2 against the dot's
+// #0000FF) and a green that did not (#27C07D against #00FF00) — three
+// near-misses a single tap apart from the dots above them. Those two are gone;
+// the tail keeps the colours the dots do not carry, and the count is unchanged
+// at nine, so the sheet's grid still fills.
+const MOBILE_ANNOTATION_COLORS = withQuickColoursFirst([
   '#F4D35E',
   '#ffffff',
   '#1e293b',
   '#C7A7FF',
   '#FF8A3D',
-  '#000000',
-];
+]);
 
 // Mirrors zoomController's clampScale bounds (MIN_SCALE 0.01, MAX_SCALE 40) so
 // the phone steppers grey out at exactly the limits the desktop toolbar hits.
