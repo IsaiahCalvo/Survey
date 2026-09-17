@@ -962,6 +962,14 @@ export default function TextEditOverlay({
           </div>
         </div>
       </div>
+      {/* UX 2026-09-17 (revision-2 palette): the tick/cross pair below is the
+          app's ONE light-surface control — a white disc and a blue disc drawn on
+          the page, not on app chrome. tokens.css is a dark-surface set: its
+          lightest ink is 1.8:1 on white and --text-disabled "fails contrast on
+          purpose", so neither can ring or fill a control a user must see and tap.
+          The rings and the cross therefore keep their literals (#cbd5e1 ring and
+          #475569 cross on white, #1d4ed8 ring on the #2563eb tick). Guarded by
+          tests/textEditActionDiscPalette.test.mjs. */}
       {actionAnchor && typeof document !== 'undefined' && createPortal(
         (
           <div
@@ -1004,8 +1012,8 @@ export default function TextEditOverlay({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelRef.current(); }}
               style={ACTION_TAP_PAD_STYLE}
             >
-              <span style={actionDiscStyle('#ffffff', 'var(--text-2)')}>
-                <Icon name="close" size={ACTION_GLYPH_SIZE} color="var(--text-disabled)" />
+              <span style={actionDiscStyle('#ffffff', '#cbd5e1')}>
+                <Icon name="close" size={ACTION_GLYPH_SIZE} color="#475569" />
               </span>
             </button>
             <button
@@ -1018,7 +1026,7 @@ export default function TextEditOverlay({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); commitRef.current({ flush: true }); }}
               style={ACTION_TAP_PAD_STYLE}
             >
-              <span style={actionDiscStyle('#2563eb', 'var(--text-disabled)')}>
+              <span style={actionDiscStyle('#2563eb', '#1d4ed8')}>
                 <Icon name="check" size={ACTION_GLYPH_SIZE} color="#ffffff" />
               </span>
             </button>
