@@ -44,6 +44,7 @@ import {
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
+import Icon from '../Icons';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -65,6 +66,14 @@ const ACTION_BUTTON_VISUAL = 24;
 const ACTION_TOUCH_TARGET = 44;
 const ACTION_PAIR_GAP = 8;
 const ACTION_PAIR_WIDTH = ACTION_TOUCH_TARGET * 2 + ACTION_PAIR_GAP;
+// UX 2026-09-16 — the tick and the cross are the SHARED Icon set's 'check' and
+// 'close', not hand-drawn glyphs. They were first shipped hand-drawn on 12x12
+// and 13x13 boxes at stroke 1.8 / 1.9 (3.6 and 3.8 once normalised onto the
+// house 24 grid) — over twice the house 1.5 weight, and the matched pair did not
+// even match itself. Drawing them through <Icon> puts them on the one grid and
+// the one weight every other glyph in the app uses, at ONE box size, so the pair
+// reads as part of the set. Never inline these two again.
+const ACTION_GLYPH_SIZE = 12;
 // Gap between the bottom of the text box and the top of the tap targets. The
 // visible circle is centred in its 44px pad, so the ink-to-ink gap reads as
 // ACTION_BOX_GAP + 10, close to Drawboard's ~18px.
@@ -996,9 +1005,7 @@ export default function TextEditOverlay({
               style={ACTION_TAP_PAD_STYLE}
             >
               <span style={actionDiscStyle('#ffffff', '#cbd5e1')}>
-                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                  <path d="M3 3 L9 9 M9 3 L3 9" stroke="#475569" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-                </svg>
+                <Icon name="close" size={ACTION_GLYPH_SIZE} color="#475569" />
               </span>
             </button>
             <button
@@ -1012,9 +1019,7 @@ export default function TextEditOverlay({
               style={ACTION_TAP_PAD_STYLE}
             >
               <span style={actionDiscStyle('#2563eb', '#1d4ed8')}>
-                <svg width="13" height="13" viewBox="0 0 12 12" aria-hidden="true">
-                  <path d="M2.8 6.3 L4.9 8.5 L9.2 3.6" stroke="#ffffff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </svg>
+                <Icon name="check" size={ACTION_GLYPH_SIZE} color="#ffffff" />
               </span>
             </button>
           </div>
