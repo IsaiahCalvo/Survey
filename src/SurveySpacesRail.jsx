@@ -3164,22 +3164,15 @@ const SurveySpacesRail = ({
                                                     transition: 'transform 0.2s ease'
                                                   }}
                                                 >
-                                                  <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    style={{ width: '14px', height: '14px' }}
-                                                  >
-                                                    <path
-                                                      d="M6 9L12 15L18 9"
-                                                      stroke="currentColor"
-                                                      strokeWidth="2.5"
-                                                      strokeLinecap="round"
-                                                      strokeLinejoin="round"
-                                                    />
-                                                  </svg>
+                                                  {/* UX 2026-09-16 (desktop sweep): the shared
+                                                      <Icon name="chevronDown" />, not a hand-written
+                                                      <svg>. The path data was already byte-identical
+                                                      to the shared chevron, but it drew at stroke 2.5
+                                                      on the 24 grid — 167% of the house 1.5 — so the
+                                                      SAME chevron painted at two weights in one app
+                                                      (the Width and Line-style dropdowns render the
+                                                      shared one). Same shape, house weight. */}
+                                                  <Icon name="chevronDown" size={14} color="currentColor" />
                                                 </span>
                                               </button>
                                             )}
