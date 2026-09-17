@@ -214,9 +214,12 @@
   border: 1px solid var(--accent);
 }
 
+/* UX: a gold control hovers UP to --accent-light and presses DOWN to
+   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
+   hover, which reads as already-pressed; .auth-submit-btn had it right. */
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-press);
-  border-color: var(--accent-press);
+  background: var(--accent-light);
+  border-color: var(--accent-light);
 }
 
 .btn-secondary {
@@ -1180,9 +1183,12 @@ input[type="text"].space-name-inline:focus {
   justify-content: center;
 }
 
+/* UX: a gold control hovers UP to --accent-light and presses DOWN to
+   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
+   hover, which reads as already-pressed; .auth-submit-btn had it right. */
 .survey-marker-category-create-button:hover {
-  background: var(--accent-press);
-  border-color: var(--accent-press);
+  background: var(--accent-light);
+  border-color: var(--accent-light);
 }
 
 /* Compact survey EXPORT control — lives at the right end of the Select row
@@ -1245,10 +1251,13 @@ input[type="text"].space-name-inline:focus {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+/* UX: a gold control hovers UP to --accent-light and presses DOWN to
+   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
+   hover, which reads as already-pressed; .auth-submit-btn had it right. */
 .survey-marker-export-compact-button:hover:not(:disabled),
 .survey-marker-export-compact-chevron:hover:not(:disabled) {
-  background: var(--accent-press);
-  border-color: var(--accent-press);
+  background: var(--accent-light);
+  border-color: var(--accent-light);
 }
 
 .survey-marker-export-compact-button:disabled,
@@ -1378,9 +1387,12 @@ input[type="text"].space-add-pages-input:focus-visible {
   outline-offset: -2px;
 }
 
+/* UX: a gold control hovers UP to --accent-light and presses DOWN to
+   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
+   hover, which reads as already-pressed; .auth-submit-btn had it right. */
 .space-add-pages-icon-button:hover {
-  background: var(--accent-press);
-  border-color: var(--accent-press);
+  background: var(--accent-light);
+  border-color: var(--accent-light);
 }
 
 .space-page-range-error {

@@ -386,8 +386,11 @@
   cursor: progress;
 }
 
+/* UX: a gold control hovers UP to --accent-light and presses DOWN to
+   --accent-press (tokens.css "HOW STATES ARE BUILT"). This rule repeated the
+   rest colour, so the only hover feedback was the 1px lift. */
 .account-btn-primary:hover:not(:disabled) {
-  background: var(--accent);
+  background: var(--accent-light);
   transform: translateY(-1px);
 }
 

@@ -1758,7 +1758,10 @@ const BookmarksPanel = ({
               gap: '6px',
               fontFamily: FONT_FAMILY
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-press)'}
+            /* UX: a gold control hovers UP to --accent-light and only presses
+               DOWN to --accent-press (tokens.css "HOW STATES ARE BUILT"). This
+               used to darken on hover, which reads as already-pressed. */
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
           >
             <Icon name="plus" size={14} color="var(--accent-text)" />
@@ -1879,7 +1882,9 @@ const BookmarksPanel = ({
                     width: '100%',
                     padding: '6px 12px',
                     background: 'var(--accent)',
-                    color: 'var(--text-1)',
+                    /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                       --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                    color: 'var(--accent-text)',
                     border: 'none',
                     borderRadius: '4px',
                     fontSize: '12px',
@@ -1887,7 +1892,7 @@ const BookmarksPanel = ({
                     cursor: 'pointer',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-press)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
                 >
                   Create bookmark
@@ -2274,7 +2279,9 @@ const BookmarksPanel = ({
                 style={{
                   padding: '8px 16px',
                   background: 'var(--accent)',
-                  color: 'var(--text-1)',
+                  /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                     --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
@@ -2282,7 +2289,7 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-press)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
               >
                 Create group
@@ -2673,7 +2680,9 @@ const BookmarksPanel = ({
                 style={{
                   padding: '8px 16px',
                   background: 'var(--accent)',
-                  color: 'var(--text-1)',
+                  /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                     --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
@@ -2681,7 +2690,7 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-press)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
               >
                 Add bookmarks

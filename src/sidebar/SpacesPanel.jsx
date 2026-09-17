@@ -298,7 +298,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 if (!isActive) {
                   e.currentTarget.style.background = 'var(--surface-3)';
                 } else {
-                  e.currentTarget.style.background = 'var(--accent-press)';
+                  // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
+                  e.currentTarget.style.background = 'var(--accent-light)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -521,7 +522,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     if (!isOverlayEnabled) {
                                       e.currentTarget.style.background = 'var(--surface-3)';
                                     } else {
-                                      e.currentTarget.style.background = 'var(--accent-press)';
+                                      // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
+                  e.currentTarget.style.background = 'var(--accent-light)';
                                     }
                                   }}
                                   onMouseLeave={(e) => {
