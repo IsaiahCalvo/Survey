@@ -693,7 +693,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   className="region-visibility-button"
                                   style={{
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                    color: isDisabled ? '#5a6473' : (visibilityState ? '#d8a84e' : '#8d96a6'),
+                                    color: isDisabled ? 'var(--text-disabled)' : (visibilityState ? 'var(--accent)' : 'var(--text-3)'),
                                     opacity: isDisabled ? 0.5 : 1,
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}

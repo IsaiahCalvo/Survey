@@ -12,7 +12,7 @@ import { passwordRequirements } from './authFlow';
 import Icon from '../Icons';
 
 const DEFAULT_THEME = {
-  ink: '#f4f1ea', muted: '#8d96a6', card: '#181c24', rule: '#2a3140',
+  ink: 'var(--text-1)', muted: 'var(--text-3)', card: 'var(--surface-1)', rule: 'var(--border)',
   danger: 'var(--danger)', good: 'var(--accent)',
 };
 

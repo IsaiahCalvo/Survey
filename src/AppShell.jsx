@@ -2722,7 +2722,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     title="Layered keeps editable native PDF highlights. Uniform keeps one visual strength and exports as a flat mask so other PDF viewers match Survey."
                     value={bottomToolbarApi.textMarkupOverlapMode || 'layered'}
                     onChange={(event) => bottomToolbarApi.setTextMarkupOverlapMode(event.target.value)}
-                    style={{ height: 28, border: '1px solid #3a4252', borderRadius: 4, background: '#181b20', color: '#e8e2d4', fontSize: 11 }}
+                    style={{ height: 28, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-1)', color: 'var(--text-1)', fontSize: 11 }}
                   >
                     <option value="layered">Layered</option>
                     <option value="uniform">Uniform</option>

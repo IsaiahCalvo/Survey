@@ -302,7 +302,10 @@ export default function PdfPageThumb({
         ref={hostRef}
         style={{
         ...box,
-        background: 'rgba(244,241,234,0.05)',
+        /* The loading box is a well on the card, so it takes the well surface
+           (--ink-700 is the hub's alias of --surface-2) rather than the
+           retired warm cream at 5% alpha. */
+        background: 'var(--ink-700)',
         border: '1px solid var(--ink-500)',
         boxSizing: 'border-box',
         }}

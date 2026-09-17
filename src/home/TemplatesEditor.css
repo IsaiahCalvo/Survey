@@ -46,13 +46,13 @@
 
 /* Buttons */
 .ed-scope .btn-ink {
-  background: #d8a84e; color: #15110a; border: 1px solid #d8a84e;
+  background: var(--accent); color: var(--accent-text); border: 1px solid var(--accent);
   border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;
   height: 28px; box-sizing: border-box; cursor: pointer; font-family: inherit;
   display: inline-flex; align-items: center; gap: 4px;
 }
 .ed-scope .btn-line {
-  background: #181c24; color: #f4f1ea; border: 1px solid #2a3140;
+  background: var(--surface-1); color: var(--text-1); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 8px; font-size: 11px;
   cursor: pointer; font-family: inherit;
 }

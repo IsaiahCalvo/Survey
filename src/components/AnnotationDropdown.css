@@ -146,7 +146,8 @@
   box-shadow: inset 2px 0 var(--accent);
 }
 
-.annotation-dropdown__arrow { fill: #3a4252; }
+/* The arrow continues the panel's own edge, so it takes that edge's token. */
+.annotation-dropdown__arrow { fill: var(--border-strong); }
 
 @keyframes annotation-dropdown-in {
   from { opacity: 0; transform: translateY(-5px) scale(0.98); }

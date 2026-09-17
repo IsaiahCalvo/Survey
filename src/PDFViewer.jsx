@@ -32585,7 +32585,7 @@ ${pageBlocks}
                                   type="button"
                                   onClick={() => recognizeTextOnPage(pageNumber)}
                                   title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`}
-                                  style={{ padding: '7px 10px', border: '1px solid #3a4252', borderRadius: 5, background: '#181b20', color: '#e8e2d4', cursor: 'pointer' }}
+                                  style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--text-1)', cursor: 'pointer' }}
                                 >
                                   Recognize text on this page
                                 </button>

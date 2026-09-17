@@ -153,6 +153,10 @@ const EXCEPTIONS = [
     why: 'a one-off light-grey outline on the keep-changes box; edges are --border / --border-strong by rule' },
   { file: 'src/components/revisions/RevisionsPanel.jsx', token: '--surface-3', hex: '#243044',
     why: 'the selected revision is a surface step plus a gold edge, never a blue wash' },
+  { file: 'src/components/AnnotationSizeControl.css', token: '--border-strong', hex: '#3a4252',
+    why: 'the popover arrow is the panel edge continued as a triangle, so it takes that edge token; `fill` reads as a surface role here, but the shape is a hairline turning a corner' },
+  { file: 'src/components/AnnotationDropdown.css', token: '--border-strong', hex: '#3a4252',
+    why: 'the same arrow on the other popover, for the same reason' },
 ];
 const excepted = (file, token, hex) => EXCEPTIONS.find((e) => e.file === file
   && e.token === token && expand(e.hex) === expand(hex));

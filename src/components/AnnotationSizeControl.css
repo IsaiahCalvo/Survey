@@ -172,8 +172,9 @@
   color: inherit;
 }
 
+/* The arrow continues the panel's own edge, so it takes that edge's token. */
 .annotation-size-control__arrow {
-  fill: #3a4252;
+  fill: var(--border-strong);
 }
 
 .annotation-size-control input:disabled,

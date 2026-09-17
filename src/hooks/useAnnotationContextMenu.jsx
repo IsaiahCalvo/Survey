@@ -779,13 +779,13 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   fontSize: 13,
                   fontWeight: 800,
                   opacity: it.disabled ? 0.45 : 1,
-                  color: it.disabled ? '#5a6473' : (it.key === 'delete' ? '#F08A8A' : '#f4f5f7'),
+                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger)' : 'var(--text-1)'),
                 } : {
                   padding: '7px 12px',
                   borderRadius: 5,
                   cursor: it.disabled ? 'default' : 'pointer',
                   userSelect: 'none',
-                  color: it.disabled ? '#5a6473' : (it.key === 'delete' ? '#d95a56' : '#e8e2d4'),
+                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger)' : 'var(--text-1)'),
                 }}
                 onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
