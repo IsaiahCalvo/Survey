@@ -23,8 +23,10 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import { QuickColourDots, QuickWidthPresets } from './components/QuickStyleControls';
 import BodyPortal from './components/BodyPortal.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
+import { matchedQuickColour } from './utils/quickStylePresets';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import {
@@ -93,6 +95,113 @@ const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'))
 if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__) {
   console.info(`[build] ${__BUILD_STAMP__}`);
 }
+
+/**
+ * The colour channel the tool-properties colour controls write to, and the one
+ * function that writes it.
+ *
+ * UX 2026-09-17 (quick styles): the quick colour dots and the swatch's picker
+ * are two ways into the SAME paint, so they resolve it here rather than each
+ * working it out for itself. Press a dot and you change exactly what the
+ * picker's current tab would have changed; the dot the gold ring sits on is
+ * always the colour the picker would open showing. Before this, the picker's
+ * rules (the shape fill/border tab, the text-markup palette's own handler, the
+ * "one side of a shape must stay visible" rule) lived inside the picker's own
+ * render block, where a second caller could not reach them without copying
+ * them — and a copy is how the two would eventually disagree.
+ */
+const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
+  if (!bottomToolbarApi) return null;
+  const tool = bottomToolbarApi.contextTool;
+  const isShape = (tool === 'rect' || tool === 'ellipse' || tool === 'polygon' || tool === 'text' || tool === 'callout' || tool === 'counter')
+    && !!bottomToolbarApi.handleFillColorChange;
+  const isTextMarkupPalette = ['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool);
+  const onFillTab = isShape && colorPickerTab === 'fill';
+  // 2026-05-25: rectangle / ellipse / polygon keep one side visible — either
+  // the fill or the border may be transparent, never both at once.
+  const shapeOneVisibleRule = tool === 'rect' || tool === 'ellipse' || tool === 'polygon';
+
+  // One channel — the fill side or the stroke side — with the colour it holds,
+  // the opacity it holds, and the write that changes it.
+  const channel = (useFill) => ({
+    color: useFill ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor,
+    opacity: useFill ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : ((bottomToolbarApi.strokeOpacity ?? 100) / 100),
+    apply: (hex, alpha) => {
+      if (isTextMarkupPalette && bottomToolbarApi.handleTextMarkupPaintChange) {
+        bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100));
+        return;
+      }
+      if (useFill) {
+        const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
+        if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
+          bottomToolbarApi.handleStrokeOpacityChange(100);
+        }
+        bottomToolbarApi.handleFillColorChange(hex);
+        bottomToolbarApi.handleFillOpacityChange(Math.round(alpha * 100));
+      } else {
+        const otherAlpha = (bottomToolbarApi.fillOpacity ?? 100) / 100;
+        if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
+          bottomToolbarApi.handleFillOpacityChange(100);
+        }
+        bottomToolbarApi.handleStrokeColorChange(hex);
+        bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+      }
+    },
+  });
+
+  const picker = channel(onFillTab);
+  // UX 2026-09-17: WHICH COLOUR A QUICK DOT CHANGES. The dots change the paint
+  // you can see, which for every tool but one is the line: the stroke of a pen
+  // or an arrow, the border of a rectangle, ellipse, polygon, text box or
+  // callout. That is also the paint the two controls standing beside them act
+  // on — the line width and the line type — so the whole quick cluster reads
+  // as one idea. The counter is the exception and takes the fill, because a
+  // pin's colour IS its fill and its stroke is only the number printed on it.
+  // Deliberately NOT the picker's current tab: that tab defaults to Fill, and
+  // a new rectangle's fill is white at 0% opacity, so on the tab default every
+  // dot would have set an invisible colour and read as a dead control.
+  const quick = tool === 'counter' && isShape ? channel(true) : channel(false);
+
+  return {
+    isShape,
+    isTextMarkupPalette,
+    onFillTab,
+    shapeOneVisibleRule,
+    color: picker.color,
+    opacity: picker.opacity,
+    apply: picker.apply,
+    quick,
+  };
+};
+
+/**
+ * Whether the tool-properties row is showing a colour control at all, i.e.
+ * whether the quick colour dots have a swatch to stand beside. The three arms
+ * are the three swatch variants rendered below — stroke-only, counter,
+ * fill+border — so a dot can never appear beside a row with no colour to
+ * change. Rich-text edit mode is the one deliberate exception: the swatch
+ * there paints the text box's own fill and border while the sub-row owns the
+ * font colour, and four dots that look like font colours but are not would be
+ * a trap.
+ */
+const showsColorSwatch = (api) => {
+  if (!api || api.activeTool === 'eraser' || api.richTextEditor) return false;
+  const tool = api.contextTool;
+  if (['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(tool)) return true;
+  if (tool === 'counter') return !!api.handleFillColorChange;
+  return ['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(tool) && !!api.handleFillColorChange;
+};
+
+/**
+ * Whether the row's size field is a LINE WIDTH — the only thing the three
+ * quick widths mean. Counter Size and Eraser Size take the same field but are
+ * not line weights (a 22px rule drawn at "pin size 24" would be nonsense), so
+ * they keep the field and its preset list and skip the quick trio.
+ */
+const showsQuickWidths = (api) => {
+  if (!api || api.activeTool === 'eraser' || api.contextTool === 'counter') return false;
+  return ['pen', 'highlighter', 'arrow', 'line', 'rect', 'ellipse', 'polygon', 'polyline', 'text', 'callout'].includes(api.contextTool);
+};
 
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
@@ -536,6 +645,17 @@ export default function App({ devPreviewReturnTab = null }) {
   // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
   const [colorPickerTab, setColorPickerTab] = useState('fill');
   const annotationColorPickerRef = useRef(null);
+  // The one resolved paint the colour controls in the tool-properties row all
+  // read and write: the quick colour dots, the swatch's ring, and the picker
+  // itself. See resolveAnnotationPaint above.
+  const annotationPaint = resolveAnnotationPaint(bottomToolbarApi, colorPickerTab);
+  // UX 2026-09-17: exactly ONE thing in the colour cluster wears the gold ring
+  // at a time, and it is always where the current colour came from — the dot
+  // when the colour is one of the four, the swatch when it is anything else
+  // (a hex the user typed, a colour off the picker's grid, a colour carried in
+  // from a selected mark). A ring that were always on the swatch as well would
+  // stop meaning "current" and start reading as decoration.
+  const quickColourOnSwatch = !!annotationPaint && !matchedQuickColour(annotationPaint.quick.color);
 
   const [showFontColorPicker, setShowFontColorPicker] = useState(false);
   useEffect(() => {
@@ -2105,6 +2225,21 @@ export default function App({ devPreviewReturnTab = null }) {
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
                   <>
+                {/* UX 2026-09-17 (owner): the four default colours open the
+                    row, with the swatch that opens the full picker standing
+                    immediately to their right. Pressing a dot applies the
+                    colour straight away — to the armed tool and to a selected
+                    mark — through the very same paint path the picker uses, so
+                    the dot and the picker can never mean different things.
+                    They sit BEFORE the swatch because the common case is one
+                    of the four, and the swatch is the way out to everything
+                    else (hex, opacity, the full grid, the spectrum). */}
+                {showsColorSwatch(bottomToolbarApi) && annotationPaint && (
+                  <QuickColourDots
+                    value={annotationPaint.quick.color}
+                    onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
+                  />
+                )}
                 {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text-markup' || bottomToolbarApi.contextTool === 'text-select') ? (
                   /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
                      line). Checker pattern shows through low-opacity strokes
@@ -2114,7 +2249,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     data-annotation-color-trigger
                     onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="ctx-color-swatch"
+                    className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
                     style={{
                       width: 'var(--chrome-field-h)',
                       height: 'var(--chrome-field-h)',
@@ -2148,7 +2283,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="ctx-color-swatch"
+                    className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
                     style={{
                       width: 'var(--chrome-field-h)',
                       height: 'var(--chrome-field-h)',
@@ -2192,7 +2327,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="ctx-color-swatch"
+                    className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
                     style={{
                       width: 'var(--chrome-field-h)',
                       height: 'var(--chrome-field-h)',
@@ -2428,27 +2563,16 @@ export default function App({ devPreviewReturnTab = null }) {
                   })()}
 
                 {bottomToolbarApi.showAnnotationColorPicker && (() => {
-                  const isShape = (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || bottomToolbarApi.contextTool === 'counter')
-                    && bottomToolbarApi.handleFillColorChange;
+                  // 2026-05-25 / UX 2026-09-17: the fill-vs-border tab, the
+                  // "one side of a shape stays visible" rule and the write
+                  // itself all live in resolveAnnotationPaint above, because
+                  // the quick colour dots at the head of this row go through
+                  // exactly the same paint. They used to be written out here,
+                  // which is fine for one caller and a drift waiting to happen
+                  // for two.
+                  const { isShape, onFillTab, shapeOneVisibleRule, isTextMarkupPalette, color: currentColor, opacity: currentOpacity, apply: applyChange } = annotationPaint;
                   const isCounter = bottomToolbarApi.contextTool === 'counter';
                   const secondTabLabel = isCounter ? 'Number' : 'Border';
-                  const onFillTab = isShape && colorPickerTab === 'fill';
-                  // 2026-05-25: Shapes (rectangle + ellipse) follow one rule —
-                  // at least one side must stay visible. Either the fill or
-                  // the border can be transparent, but never both at the same
-                  // time. When the user takes the side they're editing to 0
-                  // while the other side is already at 0, the other side gets
-                  // bumped to fully opaque so the shape stays visible. Text
-                  // and Callout opt out (their borders + fills are optional).
-                  // UX: a polygon is a closed, fillable shape like the
-                  // other two, so it opts INTO the same rule — you can make
-                  // its fill or its border invisible, never both at once.
-                  const shapeOneVisibleRule = bottomToolbarApi.contextTool === 'rect'
-                    || bottomToolbarApi.contextTool === 'ellipse'
-                    || bottomToolbarApi.contextTool === 'polygon';
-                  const currentColor = onFillTab ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor;
-                  const currentOpacity = onFillTab ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : (bottomToolbarApi.strokeOpacity / 100);
-                  const isTextMarkupPalette = ['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool);
                   const textMarkupPaletteHostRect = isTextMarkupPalette
                     ? document.getElementById('chrome-sub-toolbar-host')?.getBoundingClientRect?.()
                     : null;
@@ -2459,27 +2583,6 @@ export default function App({ devPreviewReturnTab = null }) {
                         hostBottom: textMarkupPaletteHostRect?.bottom || 35,
                       })
                     : null;
-                  const applyChange = (hex, alpha) => {
-                    if (isTextMarkupPalette && bottomToolbarApi.handleTextMarkupPaintChange) {
-                      bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100));
-                      return;
-                    }
-                    if (onFillTab) {
-                      const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
-                      if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
-                        bottomToolbarApi.handleStrokeOpacityChange(100);
-                      }
-                      bottomToolbarApi.handleFillColorChange(hex);
-                      bottomToolbarApi.handleFillOpacityChange(Math.round(alpha * 100));
-                    } else {
-                      const otherAlpha = (bottomToolbarApi.fillOpacity ?? 100) / 100;
-                      if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
-                        bottomToolbarApi.handleFillOpacityChange(100);
-                      }
-                      bottomToolbarApi.handleStrokeColorChange(hex);
-                      bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
-                    }
-                  };
                   const picker = (
                     /* UX 2026-09-16: the colour popover fades and slides down
                        5px as it opens (140ms), matching Drawboard's 100ms
@@ -2587,6 +2690,25 @@ export default function App({ devPreviewReturnTab = null }) {
                     onSelect={bottomToolbarApi.setEraserMode}
                     contentWidth="150px"
                     dataMarker="data-eraser-type-menu"
+                  />
+                )}
+
+                {/* UX 2026-09-17 (owner): the three default line widths, drawn
+                    as real lines at the weight they apply, standing
+                    immediately to the LEFT of the field that takes any other
+                    number and the dropdown that lists the rest. Pressing one
+                    commits it exactly as typing it into the field and pressing
+                    Enter does — armed tool and selected mark both. They are
+                    members of the field's own preset list, so the dropdown
+                    shows the pressed width as its selected row. */}
+                {showsQuickWidths(bottomToolbarApi) && (
+                  <QuickWidthPresets
+                    value={bottomToolbarApi.strokeWidthInputValue}
+                    onPick={(width) => {
+                      const value = String(width);
+                      bottomToolbarApi.handleStrokeWidthInputChange?.({ target: { value } });
+                      bottomToolbarApi.handleStrokeWidthInputBlur?.({ currentTarget: { value } });
+                    }}
                   />
                 )}
 

@@ -15,7 +15,6 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
-import { toolCursorCss } from './utils/toolCursors.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -3143,13 +3142,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      // UX: on a tool switch the pointer must change SHAPE before the user
-      // moves the mouse, otherwise the new tool is invisible until they twitch.
-      // Tools that own a badge cursor get the same image the page surface uses
-      // (see src/utils/toolCursors.js), so the switch and the hover agree.
-      const armedCursor = toolCursorCss(activeTool);
-      if (armedCursor) forcedCursor = armedCursor;
-      else if (activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
+      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
@@ -33328,20 +33321,13 @@ ${pageBlocks}
                                     // UX 2026-04-19: only hand off pointer events to the
                                     // Fabric edit surface when it's actually mounted (not
                                     // bbox mode, which keeps the SVG layer interactive).
-                                    // UX 2026-09-16: with the Text tool armed but no
-                                    // editor open, this surface is where you DRAG OUT a
-                                    // new text box — so it wears the armed-tool cursor
-                                    // (crosshair + a neutral "T" badge — the badge
-                                    // never takes the stroke colour, owner ruling
-                                    // 2026-09-16) like every other creation tool.
-                                    // The I-beam belongs
-                                    // to the editor: once one is open this overlay hands
-                                    // its pointer events over and the editor's own
-                                    // `cursor: text` takes the caret work. Falls back to
-                                    // the old I-beam if the image cursor is refused.
-                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox')
-                                      ? undefined
-                                      : (toolCursorCss('text') || 'text'),
+                                    // UX (owner ruling 2026-09-17): with the Text tool
+                                    // armed this surface shows the plain text I-beam, the
+                                    // way it always did — the floating tool badge beside
+                                    // the pointer is gone for good. Once an editor is open
+                                    // this overlay hands its pointer events over and the
+                                    // editor's own `cursor: text` takes the caret work.
+                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? undefined : 'text',
                                     zIndex: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 100 : 102,
                                     pointerEvents: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 'none' : 'auto',
                                   }}

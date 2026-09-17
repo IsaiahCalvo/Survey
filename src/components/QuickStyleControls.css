@@ -1,0 +1,150 @@
+/*
+ * QuickStyleControls.css — the quick colour dots and the quick line widths.
+ *
+ * SIZES COME FROM THE SHARED TOKENS, never from new numbers: the desktop tier
+ * is --chrome-field-h / --chrome-gap (24px value chips, 4px gutter) and the
+ * phone tier is --mobile-strip-control-h and the strip's own 5px pitch.
+ *
+ * WHY THE DOT IS 20px AND ITS BUTTON IS 24px (owner, 2026-09-17: "dots 20px
+ * visible in 24px hit chips at the shared 4px gap; Drawboard measures
+ * 20-in-22"): the dot you SEE is 20px and the gutter you see between two dots
+ * is the row's own 4px, so the colour cluster reads at the same rhythm as the
+ * rest of the bar. The area you can HIT is the full 24px — a transparent
+ * ::after bleeds 2px into each half of the gutter, the same trick the phone
+ * tool rail uses to keep a small chip and a big target. Laying the dots out at
+ * a 24px box PLUS a 4px gap instead would have shown an 8px gutter between
+ * neighbouring dots — double the bar's gutter — and made the colour cluster
+ * 16px wider than the desktop row can spare at 1280 with Callout armed.
+ */
+
+.quick-style {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* The colour cluster: 20px dots on the row's own gutter. */
+.quick-style--colours {
+  gap: var(--chrome-gap, 4px);
+}
+
+.quick-style--colours.quick-style--phone {
+  /* The phone strip's pitch gap, as its neighbours use. */
+  gap: 5px;
+}
+
+.quick-style__dot {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  /* The button paints nothing itself; .quick-style__dot-fill is the disc, so
+     the gold ring can sit outside the disc and inside the hit area. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The 24px finger / pointer target, transparent, bleeding 2px into each half
+   of the 4px gutter. Two neighbouring targets meet and never overlap. */
+.quick-style__dot::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+}
+
+.quick-style__dot-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--quick-style-dot, #ff0000);
+  /* The same faint hairline .ctx-color-swatch uses to lift pure black off the
+     dark bar. Replaced by the gold ring when this dot is the current colour. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+
+/* "This is the colour you are on." Brand gold, the chrome's own current-state
+   colour, drawn OUTSIDE the 20px disc so it costs the disc no area — it grows
+   into the 2px of hit chip that is already reserved either side. */
+.quick-style__dot.is-current .quick-style__dot-fill {
+  box-shadow: 0 0 0 2px #d8a84e;
+}
+
+.quick-style__dot:hover .quick-style__dot-fill {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.quick-style__dot.is-current:hover .quick-style__dot-fill {
+  box-shadow: 0 0 0 2px #d8a84e;
+}
+
+/*
+ * The width trio. The three chips sit flush against each other and read as ONE
+ * width control rather than three loose buttons — which is what they are: one
+ * choice with three answers, standing next to the field that takes any other
+ * answer. Flush also buys the desktop row 8px it does not have at 1280.
+ */
+.quick-style--widths {
+  gap: 0;
+}
+
+.quick-style__width {
+  width: 28px;
+  height: var(--chrome-field-h, 24px);
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #e8e2d4;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.quick-style--widths.quick-style--phone .quick-style__width {
+  height: var(--mobile-strip-control-h, 24px);
+}
+
+/* The chip shows the line it applies, at the weight it applies: a 22px rule
+   whose height IS the width in question. Not an icon — the shared icon set is
+   drawn at one house stroke, which cannot tell 1 from 4. */
+.quick-style__width-line {
+  width: 22px;
+  height: var(--quick-style-width, 1px);
+  border-radius: 1px;
+  background: currentColor;
+  pointer-events: none;
+}
+
+.quick-style__width:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Current width — the same treatment the "Arrowhead on both ends" toggle uses
+   for its on state, so one pressed state reads the same across the row. */
+.quick-style__width.is-current {
+  background: rgba(216, 168, 78, 0.18);
+  color: #d8a84e;
+}
+
+/* The swatch beside the dots wears the same gold ring when the current colour
+   is NOT one of the four — so exactly one thing in the colour cluster is ever
+   ringed, and the ring always points at where the current colour came from. */
+.ctx-color-swatch.is-current-color {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 0 3px #d8a84e;
+}
+
+/* Phone: the same ring on the strip swatch, kept outside its inset stroke ring
+   so the swatch still shows the mark's border colour underneath. */
+.mobile-pdf-properties__swatch.is-current-color {
+  box-shadow: inset 0 0 0 2px var(--mobile-swatch-stroke, transparent), 0 0 0 2px #d8a84e;
+}
