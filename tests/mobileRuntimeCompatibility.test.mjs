@@ -467,7 +467,7 @@ test('mobile viewer exposes the preserved dynamic tool and page controls', () =>
   assert.match(PAGES_PANEL_SOURCE, /mobileSelectMode \? 'Done' : 'Select'/);
 });
 
-test('mobile live text formatting stays scroll-reachable with 44px touch targets', () => {
+test('mobile live text formatting stays scroll-reachable with 36px touch targets', () => {
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text \{[\s\S]{0,420}justify-content: flex-start;[\s\S]{0,160}touch-action: pan-x;/);
   // RULED CHANGE 2026-09-16 (phone sweep; owner ruling "sizing follows
   // Drawboard's ratios uniformly ... everything reads a little big"): the
@@ -477,7 +477,13 @@ test('mobile live text formatting stays scroll-reachable with 44px touch targets
   // shape strips have always done it. The target is unchanged; only what is
   // drawn changed, so the assertion moved from the painted box to the pad.
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text > button,[\s\S]{0,240}min-height: var\(--mobile-strip-control-h\);[\s\S]{0,80}height: var\(--mobile-strip-control-h\);/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties__format::after,[\s\S]{0,400}inset-block: -6px -14px;/);
+  // RULED CHANGE 2026-09-16 (r5 phone pass): the pad is -6px/-6px - the painted
+  // bar's full 36px - where it was -6px/-14px. The extra 8px hung below the bar
+  // over the page, and since the bar has to stay hit-testable to scroll, that
+  // strip stole the page's taps across the whole width. The bar clips itself to
+  // its painted band now, so no pad can reach past 36px; declaring -14px would
+  // claim a target the clip does not give.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties__format::after,[\s\S]{0,400}inset-block: -8px;/);
   // RULED CHANGE 2026-09-16 (r4 phone pass): the formatting buttons keep the
   // editor focused through keepTextEditFocus, which preventDefaults for a mouse
   // and deliberately does NOT for a finger. A prevented pointerdown stops the

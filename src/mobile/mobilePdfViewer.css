@@ -436,7 +436,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools {
   width: var(--mobile-rail-w);
   height: 100%;
-  padding: 7px 0 calc(var(--mobile-viewer-dock-height) + 28px);
+  /* UX 2026-09-16 (r5 phone pass): the bottom inset is the dock's height less
+     6px, where it was the dock plus 28px while the footer carried
+     `transform: translateY(34px)`. Both numbers changed together and NOTHING
+     moves: the footer's painted box was 34px below its layout box, so the rail
+     reserved 34px of space no control ever occupied and the tool column above it
+     was capped 34px short of where it could actually grow (measured at 375x812:
+     main ended at y 588, the footer began painting at 622). Taking the 34px off
+     the padding and off the transform lands the footer's layout box exactly
+     where it was painting - verified chip by chip on the simulator, same four y
+     positions to the pixel - and hands the column back 34px before it has to
+     scroll. The remaining -6px is what the stack's own -5px/-3px nudges already
+     lift the last chip by, so its 2px clearance over the dock is unchanged, and
+     the inset still tracks the safe area through the dock token. */
+  padding: 7px 0 calc(var(--mobile-viewer-dock-height) - 6px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -455,7 +468,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--mobile-rail-gap);
+  /* UX 2026-09-16 (r5 phone pass): the column's pitch is four tokens rather than
+     four literals, so the one state that cannot fit can tighten all of it at
+     once (see the dense rule below) without any control changing size. At rest
+     every token is the value that was hard-coded here before. */
+  --rail-pitch-gap: var(--mobile-rail-gap);
+  --rail-divider-margin: 3px;
+  --rail-sub-gap: var(--mobile-rail-sub-gap);
+  --rail-sub-pad: 3px;
+  gap: var(--rail-pitch-gap);
   overflow-y: auto;
   /* Owner rule: the rail never scrolls sideways. overflow-y:auto on its own
      computes overflow-x to auto too, which is how the rail became draggable: a
@@ -471,6 +492,36 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    them overflowing it. They no longer need to be: the chip token is 30px inside
    a 40px rail, so every chip already clears both edges with its outline and its
    rounded corners intact. A width:100% override here would undo that. */
+
+/* UX 2026-09-16 (r5 phone pass): the ONE rail state that cannot fit a 375x812
+   screen at the normal pitch, tightened rather than scrolled. Owner rule: a rail
+   is never scrollable.
+   The state is a tool group's sub-strip open at the same time as the survey
+   category and entity strips - 19 chips in three stacked strips. Measured with
+   the Security / Instillation module (2 categories, 5 entities) and Shapes open,
+   the column wanted 643px where a 375x812 screen gives it 581px and an iPhone
+   17 Pro gives it 557px (874px tall, but 34px of that is the home-indicator
+   reserve under the dock instead of 10px). It scrolled 96px on
+   claude/ux-polish. These four values bring it to 552px, which fits both.
+   Only spacing tightens. Every chip keeps its painted size, and each chip's own
+   hit pad tracks the tightened gap (half of it, as always) so two pads still
+   never overlap and steal each other's taps. The cost is a visibly tight rail
+   while three strips are stacked - 2px between chips, and a 24px sub-chip is a
+   24px target rather than 26 - which is the trade the owner's "a rail is never
+   scrollable" asks for, and it is paid in this state only.
+   What this does NOT do: guarantee a fit for any survey template. The category
+   and entity lists are data - each extra row is another 26px - so past about
+   eight rows the column overflows again and `overflow-y: auto` on it is the
+   safety valve that keeps the far end reachable. `:has()` is WebKit 15.4+, well
+   inside the iOS this app ships to; where it is missing the rail simply keeps
+   the normal pitch and scrolls, which is the behaviour it has today. */
+.mobile-pdf-tools__main:has(.mobile-pdf-tools__subtools):has(.mobile-pdf-tools__survey-categories),
+.mobile-pdf-tools__main:has(.mobile-pdf-tools__subtools):has(.mobile-pdf-tools__survey-entities) {
+  --rail-pitch-gap: 2px;
+  --rail-divider-margin: 0px;
+  --rail-sub-gap: 2px;
+  --rail-sub-pad: 1px;
+}
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
@@ -504,7 +555,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__footer-stack > .mobile-pdf-tools__button::after {
   content: '';
   position: absolute;
-  inset-block: calc(var(--mobile-rail-gap) / -2);
+  inset-block: calc(var(--rail-pitch-gap, var(--mobile-rail-gap)) / -2);
   inset-inline: -4px;
 }
 
@@ -667,7 +718,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 26px;
   height: 1px;
   min-height: 1px;
-  margin: 3px 0;
+  margin: var(--rail-divider-margin, 3px) 0;
   background: #4a4f59;
 }
 
@@ -680,11 +731,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      grow in). It unmounts on close, so only the "in" half exists. */
   animation: mobilePdfStripIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
   width: var(--mobile-rail-sub-w);
-  padding: 3px 0;
+  padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--mobile-rail-sub-gap);
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
@@ -701,17 +752,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__subtools .mobile-pdf-tools__button::after {
   content: '';
   position: absolute;
-  inset-block: calc(var(--mobile-rail-sub-gap) / -2);
+  inset-block: calc(var(--rail-sub-gap, var(--mobile-rail-sub-gap)) / -2);
   inset-inline: -3px;
 }
 
 .mobile-pdf-tools__survey-categories {
   width: var(--mobile-rail-sub-w);
-  padding: 3px 0;
+  padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--mobile-rail-sub-gap);
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
@@ -737,11 +788,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__survey-entities {
   width: var(--mobile-rail-sub-w);
-  padding: 3px 0;
+  padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--mobile-rail-sub-gap);
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
@@ -774,9 +825,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    — "More", sync, history and the active-users avatar are rail buttons like any
    other, so they take the rail chip token instead of three private sizes.
    align-self keeps the footer on the rail's centre line now that the rail has no
-   side padding to offset it. The translate offsets are the existing hand-set
-   nudges; they are untouched, so the bottom of the stack still lands exactly
-   where it did. */
+   side padding to offset it. The stack's -5px/-3px nudges are the existing
+   hand-set ones and are untouched.
+   2026-09-16 (r5): the footer's own translateY(34px) is gone, traded for 34px
+   off the rail's bottom inset (see .mobile-pdf-tools). The painted result is
+   identical; what changed is that the rail no longer reserves 34px that nothing
+   paints in, which was capping the tool column above it 34px early. */
 .mobile-pdf-tools__footer {
   margin-top: auto;
   align-self: center;
@@ -787,7 +841,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   gap: 0;
   position: relative;
-  transform: translateY(34px);
 }
 
 /* UX 2026-09-16: the rail chip token, matching the footer that holds it and the
@@ -975,9 +1028,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      so the old `overflow: visible` escape hatch a 24px control used to hang a
      44px finger target off itself is gone. Giving the box the extra 8px puts
      that target back inside the element, where nothing clips it. The 8px is
-     painted transparent by the gradient further down and only a hit pad ever
-     reaches into it, so the bar's look is unchanged and the owner's "never grow
-     a bar" holds: the bar did not grow, its touch area did. */
+     painted transparent by the gradient further down, so the bar's look is
+     unchanged and the owner's "never grow a bar" holds: the bar did not grow.
+     2026-09-16 (r5): nor did its touch area. The box keeps the extra 8px because
+     that is what makes `align-items: center` centre a 24px control in the
+     painted 36px band, but clip-path (below) hit-tests only the painted band, so
+     the strip over the page is the page's again and a pad stops at 36px. */
   height: 44px;
   min-height: 44px;
   /* The 8px bottom padding leaves a 36px content band, so `align-items: center`
@@ -1027,6 +1083,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      scroll underneath it. */
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  /* UX 2026-09-16 (r5 phone pass): the bar hit-tests ONLY the 36px it paints.
+     The box is still 44px - that is what centres a 24px control in the painted
+     band and keeps the control's own pad inside the element - but the bottom
+     8px of that box lies over the top of the page, and because this bar must
+     stay hit-testable to scroll (see below) every tap and every pan that
+     started in those 8px, across the whole width, went to the bar instead of to
+     the document. clip-path removes that strip from hit testing as well as from
+     painting - it is a clip, not a mask - and a clipped element is still a
+     scroll container, so the row still scrolls sideways under a finger. What it
+     costs: a pad can no longer reach past 36px, so every control on this bar is
+     a 36px target, not 44px. That is the trade, taken deliberately: a 44px
+     control cannot coexist with a page that gets its own taps back, and the
+     page wins. */
+  clip-path: inset(0 0 8px 0);
   /* DO NOT set `pointer-events: none` on this element. Tried and reverted
      2026-09-16 (r4 phone pass), A/B'd in the iOS Simulator on an iPhone 17 Pro:
      WebKit will not scroll a scroll container that is not hit-testable, even
@@ -1035,12 +1105,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      this one declaration to `auto` and repeating the identical drag scrolled the
      row to its last control. The bottom dock can afford `pointer-events: none`
      precisely because it never scrolls.
-     What that costs: the box is 8px taller than the painted bar and it overlays
-     the top of the page, so a touch in those 8px goes to the bar, not the page.
-     It is a narrow cost - swept at 375x812, 310 of the 333 columns in that strip
-     are a control's own 44px pad, which has to reach there whatever this
-     property says - and horizontal reach, which two tests exist to protect, is
-     worth more than the 5px lanes between controls. */
+     What that used to cost: the box is 8px taller than the painted bar and it
+     overlays the top of the page, so a touch in those 8px went to the bar, not
+     the page - the whole width of it, not just the lanes between controls.
+     2026-09-16 (r5): that cost is gone without touching this declaration. The
+     clip-path above takes the 8px out of hit testing, so the element is still
+     hit-testable exactly where it paints - enough for WebKit to scroll it - and
+     the page answers every touch below the bar's bottom rule. */
   pointer-events: auto;
 }
 
@@ -1101,9 +1172,23 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 /* UX 2026-09-16 (phone sweep): ONE finger target for every compact control on
    the bar, whatever variant the bar is. The control paints 24px tall and is
-   centred in the 36px band, so a pad of -6px above and -14px below runs from the
-   very top of the bar to the bottom of the 44px box: 44px of target, none of it
-   clipped, nothing painted differently.
+   centred in the 36px band, so -8px on both sides reaches past the painted bar
+   in each direction and the bar's clip-path (base rule) trims it back to
+   exactly the band it paints: 36px of target on every control, top rule to
+   bottom rule.
+   RULED CHANGE 2026-09-16 (r5): -8px, not -14px below. The old pad reached 44px
+   by hanging 8px PAST the painted bar, over the page, and the bar has to stay
+   hit-testable down there to keep scrolling - so that strip stole the page's
+   taps across the full width. The bar clips itself to its painted 36px now,
+   which caps every pad here at 36 and hands the page its 8px back.
+   Why over-reach instead of an exact -6px: `inset-block` is measured from the
+   control's PADDING box, so an exact number lands differently on a control that
+   has a 1px border (the region Confirm / Delete / Full page / Cancel buttons,
+   and Keep) than on one that does not (the swatch, the colour dot). Measured at
+   375x812 with -6px, the bordered buttons hit-tested 35..69 - 34px - while the
+   swatch got the full 34..70. One number that overshoots every box makes the
+   clip the single authority for the vertical target, so every control on the
+   bar is the same 36px whatever its border.
    Sideways the pads stop at half the 5px gap. Two pads that overlap steal each
    other's taps, and with a 5px gap the bar is already a continuous run of
    targets - there is no dead lane between two controls to miss into. */
@@ -1130,7 +1215,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__keep::after {
   content: '';
   position: absolute;
-  inset-block: -6px -14px;
+  inset-block: -8px;
   inset-inline: -2px;
 }
 
@@ -1423,15 +1508,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      the bar's scroll container clipped the top 4px away, leaving 40px of target
      (`overflow-x: auto` forces the `overflow-y: visible` beside it to compute as
      auto, so this strip does clip vertically whatever its old comment claimed).
-     -6px/-14px lands the same 44px box at 0..44 instead, the same numbers every
-     ::after pad on this bar uses. padding-bottom: 8px then keeps the digit where
-     it already paints: the box is 44px but its content band is the pill's 36px,
-     so the value still reads centred on the pill rather than 4px below it. */
-  height: 44px;
-  margin-block: -6px -14px;
-  padding-bottom: 8px;
+     RULED CHANGE 2026-09-16 (r5): a 40px box at -8px, where this was 44px at
+     -6px/-14px. The bar clips itself to the 36px it paints now, so the 8px below
+     belong to the page again and a box that reaches further is simply trimmed to
+     the band - which is the point: -8px overshoots in both directions, so the
+     clip, not this number, decides the target, and the field measures the same
+     36px as every ::after pad on the bar. line-height matches the box height, so
+     the digit still centres on the 24px pill (pill centre 52px, box 32..72,
+     centre 52px) and paints exactly where it did. */
+  height: 40px;
+  margin-block: -8px;
   align-self: center;
-  line-height: 36px;
+  line-height: 40px;
   font-size: 12px;
 }
 
@@ -1449,25 +1537,29 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* The preset trigger is 22px tall inside the 24px pill, which is centred in the
-   36px band: -7px / -15px is the top of the bar to the bottom of its 44px box. */
+   36px band. -8px overshoots the painted bar in both directions and the bar's
+   clip trims it to the band, the same way every pad on this bar works.
+   RULED CHANGE 2026-09-16 (r5): -8px, not -7px/-15px - the bar clips itself to
+   its painted 36px now, so no pad can reach the old 44px box (base rule). */
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger::after {
   content: '';
   position: absolute;
-  inset-block: -7px -15px;
+  inset-block: -8px;
   inset-inline: 0;
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger::after {
   content: '';
   position: absolute;
-  inset-block: -6px -14px;
+  inset-block: -8px;
   inset-inline: 0;
 }
 
 /* UX 2026-09-16 (phone sweep, ruled change): 24px, the shared strip control
    height, where this used to be the only 44px-tall dropdown on any tool bar.
-   The 44px is now a transparent pad instead of a painted box - see the pad rule
-   below, and the base strip rule for why the box can afford it. */
+   The target is a transparent pad instead of a painted box - see the pad rule
+   below; it reaches the painted bar's full 36px (r5: the bar clips the 8px
+   under that so the page keeps those taps). */
 .mobile-pdf-properties--text > .mobile-styled-select,
 .mobile-pdf-properties--text > .mobile-styled-select .mobile-styled-select__trigger {
   height: var(--mobile-strip-control-h);
@@ -1481,7 +1573,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties--text > .mobile-styled-select .mobile-styled-select__trigger::after {
   content: '';
   position: absolute;
-  inset-block: -6px -14px;
+  inset-block: -8px;
   inset-inline: 0;
 }
 

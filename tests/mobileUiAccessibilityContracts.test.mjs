@@ -47,8 +47,21 @@ test('live text formatting uses only app-styled menus', () => {
  *     and takes the same transparent pads.
  * What this test exists to protect - a 24px visual with a full 44px target - is
  * still exactly what is asserted.
+ *
+ * RULED CHANGE 2026-09-16 (r5 phone pass; owner brief "the page must get every
+ * tap below the painted bar"): the target is 36px, not 44px, and the assertions
+ * that pinned 44 say 36 now. Why: the 44px came from pads hanging 8px BELOW the
+ * painted bar, and that 8px strip lies over the top of the page. The bar cannot
+ * give it up by going `pointer-events: none` - A/B'd on the simulator in r4,
+ * WebKit will not scroll a scroll container that is not hit-testable - so every
+ * tap and every pan that began in those 8px, across the full width, went to the
+ * bar instead of the document. The bar now clips itself (`clip-path`) to the
+ * 36px it paints, which hands that strip back to the page and caps every pad at
+ * 36px. 36px of control against a page that answers its own taps: the page
+ * wins. Apple's 44px is a floor for a control in open space, and 36px with
+ * 5px lanes and no neighbour overlap still clears every control by a finger.
  */
-test('compact eraser and shape selects keep 24px visuals with unclipped 44px targets', () => {
+test('compact eraser and shape selects keep 24px visuals with unclipped 36px targets', () => {
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1600}height: 44px;[\s\S]{0,60}min-height: 44px/);
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,2600}overflow-x: auto/);
   assert.match(mobileCss, /--mobile-strip-control-h: 24px;/);
@@ -56,6 +69,17 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 44px tar
   // The painted bar is still 36px: the gradient stops there and the rest of the
   // box is transparent.
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, #202126 0 35px, #090a0d 35px 36px, transparent 36px\);/);
+  // The 8px below the painted bar belongs to the page: the bar clips itself to
+  // its painted band, which removes that strip from hit testing as well as from
+  // painting, while leaving the bar a scroll container.
+  const barRule = /\.mobile-pdf-properties \{([\s\S]*?)\n\}/.exec(mobileCss);
+  assert.notEqual(barRule, null, '.mobile-pdf-properties rule not found');
+  const barDeclarations = barRule[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(barDeclarations, /clip-path: inset\(0 0 8px 0\);/);
+  // ... and it does NOT get there with pointer-events: none, which stops WebKit
+  // scrolling the row at all (A/B'd on the simulator, r4).
+  assert.doesNotMatch(barDeclarations, /pointer-events:\s*none/);
+  assert.match(barDeclarations, /pointer-events: auto;/);
   // RULED CHANGE 2026-09-16 (r4 phone pass): 20px, not 8. The bar fades its last
   // 20px so a control sliced by the screen edge reads as "there is more this
   // way"; with only 8px of runway the fade still lay over the Text-alignment
@@ -71,9 +95,9 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 44px tar
     + 'trailing fade, so its last control still looks cut off at the end of the scroll',
   );
   assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,140}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -6px -14px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -8px/);
   assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select,[\s\S]{0,180}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
-  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select \.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -6px -14px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select \.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -8px/);
 });
 
 test('shared color picker uses captured pointer gestures for touch and mouse', () => {
