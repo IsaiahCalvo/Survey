@@ -494,17 +494,33 @@ const ICON_RENDERERS = {
     ),
 
     // Survey icon — the 2026-08-30 mark re-derived onto the 24 grid at the
-    // icon set's own 1.5 stroke (two bars; protruding ticks). Not the brand
-    // 48-weight proportions — this must sit beside its rail siblings.
+    // icon set's own 1.5 stroke (two bars; four ticks inside the ring). Not the
+    // brand 48-weight proportions — this must sit beside its rail siblings.
+    //
+    // UX 2026-09-17 (owner: "make Survey and Spaces match — same box, same ink
+    // extent within 1px, house stroke"). Survey and Spaces (`layers`) sit at
+    // opposite ends of the phone's bottom dock as two identical 30px circles,
+    // so any size difference between the marks is unmissable. This one was
+    // drawn to a smaller box than the rest of the set: r 9 put its ink at 19.5
+    // of the 24 grid where layers, Text and the shapes glyphs are 20.5-21.5, so
+    // at the shared 17px dock glyph it read ~9% small and ~14% light (rasterised
+    // ink coverage 20.58% against Spaces' 23.83%) — and a circle needs a few
+    // percent MORE than an edge-filling diamond to read the same size, so it
+    // looked worse than it measured. r 10 puts the ink box at exactly 21.5,
+    // matching layers; the two bars widen with it so the mark scales rather
+    // than just its ring. The ticks stay: their round caps still land inside
+    // the ring's stroke band (the band is 1.25..2.75 at the top, the cap reaches
+    // 2.65), so they read as touching the ring exactly as before.
+    // Pinned by tests/dockGlyphParity.test.mjs.
     survey: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" fill="none" />
+        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.5" fill="none" />
         <path d="M12 3.4V5.4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M12 18.6V20.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M3.4 12H5.4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M18.6 12H20.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.2 9.8H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.2 14.2H12.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M7.7 9.8H15.8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M7.7 14.2H13.2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
 
