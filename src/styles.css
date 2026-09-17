@@ -1,22 +1,18 @@
+@import './styles/tokens.css';
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* The app's global design tokens. These lived in src/App.css, which was never
-   imported (deleted 2026-08-11) — so every `var(--x, fallback)` consumer only
-   ever saw its fallback. The three tokens real code and comments actually cite
-   are defined here, in the one sheet main.jsx loads, with the values the
-   fallbacks already use — no visual change, the tokens just resolve now.
-   --accent-red is the one destructive red (KAL-72, docs/ui/colors.md);
-   --overlay-scrim is the one modal scrim (KAL-62), always paired with
-   backdrop-filter: blur(8px); keep theme.js overlay in sync with it. */
+/* The app's global SIZE tokens. The COLOUR tokens moved out to
+   src/styles/tokens.css (imported at the top of this file) on 2026-09-17 when
+   the owner approved the revision-2 palette — one file decides every colour on
+   every platform, and nothing below may re-declare one. */
 :root {
   --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
     "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
-  --accent-red: #d95a56;
-  --overlay-scrim: rgba(13, 15, 20, 0.55);
 
   /* UX 2026-09-16 (desktop sizing pass): ONE size scale for the desktop
      document chrome, so every control in the top bar, the tool sub-row and
@@ -72,8 +68,8 @@
 
 
 .App {
-  background-color: #0d0f14;
-  color: #f4f1ea;
+  background-color: var(--surface-0);
+  color: var(--text-1);
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -1636,13 +1632,18 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .survey-marker-entity-option:hover {
-  background: #2a3140;
-  color: #f4f1ea;
+  background: var(--hover);
+  color: var(--text-1);
 }
 
+/* UX 2026-09-17 (revision-2 palette, owner approved): a selected row is a real
+   surface step plus a 2px gold edge, never the old #2a2218 warm wash. The edge
+   is an inset shadow rather than a border so the row's box never changes size —
+   a real border here would shift every label by 2px on selection. */
 .survey-marker-entity-option.is-selected {
-  background: #2a2218;
-  color: #f4f1ea;
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 var(--accent);
+  color: var(--text-1);
 }
 
 /* Active state */

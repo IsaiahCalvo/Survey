@@ -14,7 +14,10 @@
   --paper: #0d0f14; --paper-deep: #12151c; --paper-card: #181c24;
   --ink: #f4f1ea; --ink-soft: #e8e2d4; --ink-muted: #8d96a6; --ink-quiet: #5a6473;
   --rule: #2a3140; --rule-strong: #3a4252;
-  --accent: #d8a84e; --accent-soft: #b6904a;
+  --accent: #d8a84e;
+  /* A local `--accent-soft: #b6904a` was DELETED 2026-09-17: nothing in this
+     scope read it, and the name SHADOWED the shared --accent-soft (the gold
+     wash) with a solid darker gold. The shared token means one thing now. */
   /* warm-dark aliases used by some prototype inline styles */
   --ink-700: #181c24; --ink-600: #232834; --ink-500: #2a3140;
   --ink-300: #5a6473; --ink-200: #8d96a6; --bone-100: #f4f1ea;
