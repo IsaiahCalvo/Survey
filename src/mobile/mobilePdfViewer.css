@@ -1027,6 +1027,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      scroll underneath it. */
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  /* DO NOT set `pointer-events: none` on this element. Tried and reverted
+     2026-09-16 (r4 phone pass), A/B'd in the iOS Simulator on an iPhone 17 Pro:
+     WebKit will not scroll a scroll container that is not hit-testable, even
+     when the finger lands on a child that IS. With `none` here, a drag along
+     the rich-text bar that began on the Font dropdown moved nothing; flipping
+     this one declaration to `auto` and repeating the identical drag scrolled the
+     row to its last control. The bottom dock can afford `pointer-events: none`
+     precisely because it never scrolls.
+     What that costs: the box is 8px taller than the painted bar and it overlays
+     the top of the page, so a touch in those 8px goes to the bar, not the page.
+     It is a narrow cost - swept at 375x812, 310 of the 333 columns in that strip
+     are a control's own 44px pad, which has to reach there whatever this
+     property says - and horizontal reach, which two tests exist to protect, is
+     worth more than the 5px lanes between controls. */
+  pointer-events: auto;
 }
 
 .mobile-pdf-properties::-webkit-scrollbar { display: none; }
@@ -1040,7 +1055,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    tests/mobileToolSettingsReachable.test.mjs) but every number now comes from
    the base rule. */
 .mobile-pdf-properties--text {
-  padding-right: 8px;
+  /* 20px of runway, not 8: the bar fades its last 20px so a sliced control
+     reads as "there is more this way", and with 8px the fade still lay over
+     the Text-alignment dropdown at the very end of the scroll, which made a
+     fully-reached control look half-rendered. Every other variant clears it
+     already - the base rule's right inset is the 40px rail plus 8px. */
+  padding-right: 20px;
   justify-content: flex-start;
   scroll-padding-inline: 8px;
   touch-action: pan-x;
@@ -1394,13 +1414,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* UX 2026-09-16 (phone sweep): the value field is 44px of target inside a 24px
      pill. An <input> cannot carry a transparent ::after pad the way a button
      can, so the input itself is the pad: it is transparent and borderless (the
-     wrapper paints the pill), so a 44px box with a matching line-height is
-     invisible, centred on the pill, and reaches the full height of the bar's
-     44px box. The negative margin keeps the wrapper 24px. */
+     wrapper paints the pill), so a 44px box is invisible and reaches the full
+     height of the bar's 44px box. The negative margins keep the wrapper 24px.
+
+     The margins are lopsided on purpose. Centring the 44px box on the 24px pill
+     (`margin-block: -10px`) centred it on the PAINTED band, not on the bar's
+     box: the pill sits 6px down a 36px band, so the box ran -4px to 40px and
+     the bar's scroll container clipped the top 4px away, leaving 40px of target
+     (`overflow-x: auto` forces the `overflow-y: visible` beside it to compute as
+     auto, so this strip does clip vertically whatever its old comment claimed).
+     -6px/-14px lands the same 44px box at 0..44 instead, the same numbers every
+     ::after pad on this bar uses. padding-bottom: 8px then keeps the digit where
+     it already paints: the box is 44px but its content band is the pill's 36px,
+     so the value still reads centred on the pill rather than 4px below it. */
   height: 44px;
-  margin-block: -10px;
+  margin-block: -6px -14px;
+  padding-bottom: 8px;
   align-self: center;
-  line-height: 44px;
+  line-height: 36px;
   font-size: 12px;
 }
 

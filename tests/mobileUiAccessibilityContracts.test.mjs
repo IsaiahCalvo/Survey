@@ -56,7 +56,20 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 44px tar
   // The painted bar is still 36px: the gradient stops there and the rest of the
   // box is transparent.
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,3000}background: linear-gradient\(to bottom, #202126 0 35px, #090a0d 35px 36px, transparent 36px\);/);
-  assert.match(mobileCss, /\.mobile-pdf-properties--text \{[\s\S]{0,350}padding-right: 8px;/);
+  // RULED CHANGE 2026-09-16 (r4 phone pass): 20px, not 8. The bar fades its last
+  // 20px so a control sliced by the screen edge reads as "there is more this
+  // way"; with only 8px of runway the fade still lay over the Text-alignment
+  // dropdown once the row was scrolled all the way, so a control the user had
+  // successfully reached looked half-rendered. Every other variant already
+  // clears the fade (the base right inset is the 40px rail plus 8px). The
+  // assertion moved from "8px" to "enough runway to clear the fade".
+  const textPad = mobileCss.match(/\.mobile-pdf-properties--text \{[\s\S]{0,650}?padding-right: (\d+)px;/);
+  assert.notEqual(textPad, null, '.mobile-pdf-properties--text must declare padding-right');
+  assert.ok(
+    Number(textPad[1]) >= 20,
+    `the rich-text strip ends ${textPad[1]}px from its edge, inside the bar's own 20px `
+    + 'trailing fade, so its last control still looks cut off at the end of the scroll',
+  );
   assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,140}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
   assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -6px -14px/);
   assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select,[\s\S]{0,180}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
