@@ -1076,13 +1076,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-shadow: none;
   scrollbar-width: none;
   z-index: 5700;
-  /* The scrollbar is hidden, so at rest an overflowing row ended in a control
-     sliced by the screen edge and read as a broken render. Fade the last 20px
-     against the bar so the cut edge reads as "there is more this way". The mask
-     sits on the border box, so it stays at the right edge while the controls
-     scroll underneath it. */
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
-  mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  /* RULED CHANGE 2026-09-17 (owner ruling: "remove the right-edge gradient mask
+     on .mobile-pdf-properties, all variants. The bar must paint to the screen
+     edge with no fade; no overflow hint is required - just let it scroll").
+     There is deliberately NO mask-image on this bar.
+     What the fade cost: the mask sat on the BORDER box, but the box carries
+     48px of empty right padding (the tool rail plus the left inset), so the
+     fade landed 28px past anywhere a control can be drawn. Eleven of the twelve
+     tool strips never overflow at all - measured at 375x812 with Partial erase
+     armed, scrollWidth 335 == clientWidth 335 - so the gradient bleached
+     nothing but the bar's own fill and its 1px bottom rule, and the bar lost
+     its bottom edge and went translucent for the last 20px before the screen
+     edge. That reads as a notch cut out of the strip, not as "there is more
+     this way". The row still scrolls (overflow-x: auto above); reaching a
+     control that has scrolled off is what the scroll is for.
+     Do not reintroduce this, gated or otherwise, without an owner ruling.
+     Pinned by tests/mobileStripEdgeFade.test.mjs. */
   /* UX 2026-09-16 (r5 phone pass): the bar hit-tests ONLY the 36px it paints.
      The box is still 44px - that is what centres a 24px control in the painted
      band and keeps the control's own pad inside the element - but the bottom

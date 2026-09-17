@@ -80,13 +80,17 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 36px tar
   // scrolling the row at all (A/B'd on the simulator, r4).
   assert.doesNotMatch(barDeclarations, /pointer-events:\s*none/);
   assert.match(barDeclarations, /pointer-events: auto;/);
-  // RULED CHANGE 2026-09-16 (r4 phone pass): 20px, not 8. The bar fades its last
-  // 20px so a control sliced by the screen edge reads as "there is more this
+  // RULED CHANGE 2026-09-16 (r4 phone pass): 20px, not 8. The bar faded its last
+  // 20px so a control sliced by the screen edge read as "there is more this
   // way"; with only 8px of runway the fade still lay over the Text-alignment
   // dropdown once the row was scrolled all the way, so a control the user had
   // successfully reached looked half-rendered. Every other variant already
-  // clears the fade (the base right inset is the 40px rail plus 8px). The
+  // cleared the fade (the base right inset is the 40px rail plus 8px). The
   // assertion moved from "8px" to "enough runway to clear the fade".
+  // 2026-09-17 (owner ruling): the fade itself is GONE - the bar paints to the
+  // screen edge, pinned by tests/mobileStripEdgeFade.test.mjs. The assertion
+  // below is unchanged and still earns its keep as trailing runway: it is what
+  // keeps the rich-text strip's last control off the screen edge.
   const textPad = mobileCss.match(/\.mobile-pdf-properties--text \{[\s\S]{0,650}?padding-right: (\d+)px;/);
   assert.notEqual(textPad, null, '.mobile-pdf-properties--text must declare padding-right');
   assert.ok(
