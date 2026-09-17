@@ -4008,6 +4008,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--surface-3);
 }
 
+/* UX 2026-09-17 (owner ruling: the phone bookmarks list drags and drops like the
+   web one) — while a bookmark drag is live the list must not pan underneath the
+   finger. dnd-kit's TouchSensor already preventDefaults touchmove; `touch-action:
+   none` is the belt-and-braces so the browser never starts a native scroll
+   mid-drag. Left as `auto` when idle so a plain swipe still scrolls, and
+   overflow stays `auto` so dnd-kit's programmatic auto-scroll still works when
+   you drag a row to the top/bottom edge. */
+.mobile-bookmark-list.is-dragging-active {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+/* Depth indent lives on the slot so the row itself can carry the drag transform
+   without the two fighting. */
+.mobile-bookmark-slot {
+  transition: margin-left 120ms ease-out;
+}
+
 .mobile-bookmark-row {
   min-height: 38px;
   display: flex;
@@ -4018,6 +4036,45 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* Lifted row while dragging — the phone equivalent of the desktop clone's
+   shadow + lighter surface, so the finger has something that looks picked up. */
+.mobile-bookmark-row.is-dragging {
+  background: #242a33;
+  border-color: #d8a84e;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
+}
+
+/* Same ☰ affordance as the desktop row. 26px wide keeps the row height at 38px;
+   the ::before pad grows the touch target to 44x44 without changing layout. */
+.mobile-bookmark-grip {
+  position: relative;
+  flex: 0 0 26px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  color: #8d96a6;
+  font-size: 14px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mobile-bookmark-grip::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.mobile-bookmark-row.is-dragging .mobile-bookmark-grip {
+  color: #d8a84e;
+  cursor: grabbing;
 }
 
 .mobile-bookmark-open {

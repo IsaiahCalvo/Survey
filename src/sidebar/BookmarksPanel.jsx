@@ -11,7 +11,9 @@ import {
   DndContext,
   KeyboardSensor,
   MeasuringStrategy,
+  MouseSensor,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -45,6 +47,24 @@ const bookmarkTreeMeasuring = {
     strategy: MeasuringStrategy.Always,
   },
 };
+
+// Mobile row indent per tree depth (demo BookmarkRow.tsx / styles.ts:1306-1391).
+// Narrower than the desktop BOOKMARK_INDENTATION_WIDTH because the phone row is
+// only ~315px wide; the drag PROJECTION still uses the desktop width so the
+// nesting maths is identical on both.
+const MOBILE_BOOKMARK_INDENT_PX = 14;
+
+/*
+ * UX 2026-09-17 — owner ruling: "The bookmarks section on the phone is not like
+ * it is in the web version, where you can drag and drop." Touch drag must start
+ * on a long press, never immediately: the phone rows live inside a scrolling
+ * bottom sheet, so an immediate touch activation would swallow the plain
+ * vertical swipe that scrolls the list and the plain tap that jumps to the page.
+ * 250ms / 5px is the iOS "lift to reorder" feel. Reference behaviour matched:
+ * the desktop tree's drag result (reorder + reparent-into-folder projection),
+ * only the activation gesture differs. Desktop keeps its immediate PointerSensor.
+ */
+export const MOBILE_BOOKMARK_DRAG_ACTIVATION = { delay: 250, tolerance: 5 };
 
 // Helper to generate unique IDs
 const generateId = () => crypto.randomUUID();
@@ -421,6 +441,150 @@ const BookmarkTreeRow = ({
   );
 };
 
+/*
+ * MobileBookmarkRow — the phone sheet's bookmark/folder row.
+ *
+ * UX 2026-09-17 (owner ruling: the phone bookmarks list must drag and drop the
+ * way the web one does): this is the SAME @dnd-kit sortable row as the desktop
+ * tree — same item ids, same SortableContext, same projection, so a drag ends
+ * with the same reorder / reparent-into-folder result — wearing the demo's
+ * touch-sized mobile skin. Only two things differ from desktop:
+ *   1. activation is a long press on the grip (MOBILE_BOOKMARK_DRAG_ACTIVATION),
+ *      so a plain vertical swipe still scrolls the sheet list and a plain tap
+ *      still jumps to the page;
+ *   2. the row indents by MOBILE_BOOKMARK_INDENT_PX per depth instead of the
+ *      desktop width, because the phone row is only ~315px wide.
+ * The grip is deliberately the same ☰ affordance the desktop row uses, and its
+ * hit area is padded out to 44px via ::before so the row height never changes.
+ *
+ * The sheet's own drag-to-dismiss cannot fight this: useMobileSheetMotion's
+ * touch handlers are attached only to the 35px grab-handle strip at the top of
+ * the sheet (PDFSidebar.jsx), never to the panel content, so a touch that
+ * starts on a bookmark row never reaches them. No opt-out hook is needed.
+ */
+const MobileBookmarkRow = ({
+  item,
+  depth,
+  projectedDepth,
+  isDraggingAny,
+  isFirst,
+  isLast,
+  onToggle,
+  onNavigate,
+  onEdit,
+  onMove,
+  onDelete,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setDraggableNodeRef,
+    setDroppableNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: item.id,
+    animateLayoutChanges: ({ isSorting, wasDragging }) => !(isSorting || wasDragging),
+  });
+
+  const isFolder = item.type === 'folder';
+  const rowDepth = projectedDepth ?? depth;
+  const pageLabel = isFolder
+    ? 'Folder'
+    : (item.pageIds?.[0] ? `Page ${item.pageIds[0]}` : 'Bookmark');
+
+  return (
+    <div
+      ref={setDroppableNodeRef}
+      data-bookmark-row-id={item.id}
+      className="mobile-bookmark-slot"
+      style={{ marginLeft: rowDepth * MOBILE_BOOKMARK_INDENT_PX }}
+    >
+      <div
+        ref={setDraggableNodeRef}
+        className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
+        style={{
+          transform: CSS.Translate.toString(transform),
+          transition,
+        }}
+      >
+        <div
+          className="mobile-bookmark-grip"
+          aria-label={`Drag to reorder ${item.name}`}
+          {...attributes}
+          {...listeners}
+          // touch-action stays `manipulation` while idle so a swipe that happens
+          // to start on the grip still scrolls the list; it flips to `none` for
+          // the duration of a drag so the browser cannot pan underneath it.
+          style={{ touchAction: isDraggingAny ? 'none' : 'manipulation' }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          ☰
+        </div>
+        <button
+          type="button"
+          className="mobile-bookmark-open"
+          aria-label={isFolder ? `Toggle ${item.name}` : `Open bookmark ${item.name}`}
+          onClick={() => {
+            if (isFolder) {
+              onToggle?.(item.id);
+              return;
+            }
+            onNavigate?.(item);
+          }}
+        >
+          <span className="mobile-bookmark-bubble">
+            <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? '#8fb7ff' : '#a8b0bf'} />
+          </span>
+          <span className="mobile-bookmark-copy">
+            <span className="mobile-bookmark-title">{item.name}</span>
+            <span className="mobile-bookmark-meta">{pageLabel} · PDF outline</span>
+          </span>
+        </button>
+        <div className="mobile-bookmark-moves">
+          {!isFolder && (
+            <button
+              type="button"
+              className="mobile-bookmark-move"
+              aria-label={`Edit bookmark ${item.name}`}
+              onClick={() => onEdit?.(item)}
+            >
+              <Icon name="edit" size={13} color="currentColor" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="mobile-bookmark-move"
+            aria-label="Move bookmark up"
+            disabled={isFirst}
+            onClick={() => onMove?.(item.id, -1)}
+          >
+            <Icon name="chevronUp" size={13} color="currentColor" />
+          </button>
+          <button
+            type="button"
+            className="mobile-bookmark-move"
+            aria-label="Move bookmark down"
+            disabled={isLast}
+            onClick={() => onMove?.(item.id, 1)}
+          >
+            <Icon name="chevronDown" size={13} color="currentColor" />
+          </button>
+          <button
+            type="button"
+            className="mobile-bookmark-move mobile-bookmark-delete"
+            aria-label={`Delete bookmark ${item.name}`}
+            onClick={() => onDelete?.(item.id)}
+          >
+            <Icon name="trash" size={13} color="currentColor" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BookmarksPanel = ({
   bookmarks,
   onBookmarkCreate,
@@ -478,7 +642,17 @@ const BookmarksPanel = ({
   const pointerMoveListenerRef = useRef(null);
   const collapsedDragFolderIdRef = useRef(null);
 
+  // Desktop: pointer drag engages immediately (unchanged).
   const sensors = useSensors(useSensor(PointerSensor, {}), useSensor(KeyboardSensor, {}));
+  // Phone: a single PointerSensor cannot hold a touch-only activation
+  // constraint (a delay there would also lag the mouse), so the mobile sheet
+  // uses the Mouse + Touch pair instead — mouse stays immediate (a desktop
+  // browser sitting in the phone layout), touch waits for the long press.
+  const mobileSensors = useSensors(
+    useSensor(MouseSensor, {}),
+    useSensor(TouchSensor, { activationConstraint: MOBILE_BOOKMARK_DRAG_ACTIVATION }),
+    useSensor(KeyboardSensor, {}),
+  );
 
   // Build hierarchical tree from flat bookmarks array
   const buildTree = useCallback((items) => {
@@ -770,14 +944,26 @@ const BookmarksPanel = ({
     setOverId(active.id);
     setDragMotionTick(0);
     autoExpandedFoldersRef.current.clear();
+    // The TouchSensor's activator is a TouchEvent, which carries no clientX/Y of
+    // its own — read the first touch so hover-to-auto-expand works on the phone
+    // exactly as it does under the mouse.
+    const activatorTouch = activatorEvent?.touches?.[0] ?? activatorEvent?.changedTouches?.[0] ?? null;
     if (typeof activatorEvent?.clientX === 'number' && typeof activatorEvent?.clientY === 'number') {
       pointerPositionRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
+    } else if (activatorTouch) {
+      pointerPositionRef.current = { x: activatorTouch.clientX, y: activatorTouch.clientY };
     }
     pointerMoveListenerRef.current = (event) => {
+      const touch = event.touches?.[0];
+      if (touch) {
+        pointerPositionRef.current = { x: touch.clientX, y: touch.clientY };
+        return;
+      }
       pointerPositionRef.current = { x: event.clientX, y: event.clientY };
     };
     window.addEventListener('pointermove', pointerMoveListenerRef.current, { passive: true });
     window.addEventListener('mousemove', pointerMoveListenerRef.current, { passive: true });
+    window.addEventListener('touchmove', pointerMoveListenerRef.current, { passive: true });
     document.body.style.setProperty('cursor', 'grabbing');
   }, [expandedFolders, flattenedItems]);
 
@@ -795,6 +981,7 @@ const BookmarksPanel = ({
     if (pointerMoveListenerRef.current) {
       window.removeEventListener('pointermove', pointerMoveListenerRef.current);
       window.removeEventListener('mousemove', pointerMoveListenerRef.current);
+      window.removeEventListener('touchmove', pointerMoveListenerRef.current);
       pointerMoveListenerRef.current = null;
     }
     pointerPositionRef.current = null;
@@ -1415,7 +1602,21 @@ const BookmarksPanel = ({
     // no survey-open handler threaded to this panel, so page navigation is the
     // correct real behavior.
     return (
-      <div className="mobile-bookmark-list">
+      <DndContext
+        sensors={mobileSensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictBookmarkTreeDrag]}
+        measuring={bookmarkTreeMeasuring}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+      <div
+        className={`mobile-bookmark-list${activeId ? ' is-dragging-active' : ''}`}
+        data-bookmark-tree-list
+      >
         <div className="mobile-bookmark-toolbar">
           <button
             type="button"
@@ -1455,7 +1656,8 @@ const BookmarksPanel = ({
             <span>No bookmarks yet</span>
           </div>
         ) : (
-          flattenedItems.map((item) => {
+          <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
+          {flattenedItems.map((item) => {
             const isFolder = item.type === 'folder';
             const siblings = (bookmarks || [])
               .filter((b) => (b.parentId ?? null) === (item.parentId ?? null))
@@ -1464,9 +1666,6 @@ const BookmarksPanel = ({
             const isFirst = posIndex <= 0;
             const isLast = posIndex === siblings.length - 1;
             const depth = item.depth || 0;
-            const pageLabel = isFolder
-              ? 'Folder'
-              : (item.pageIds?.[0] ? `Page ${item.pageIds[0]}` : 'Bookmark');
             return (
               mobileEditingBookmarkId === item.id && !isFolder ? (
                 <div
@@ -1493,74 +1692,28 @@ const BookmarksPanel = ({
                   <button type="button" onClick={() => saveMobileBookmarkEdit(item)}>Save</button>
                   <button type="button" className="secondary" onClick={() => setMobileEditingBookmarkId(null)}>Cancel</button>
                 </div>
-              ) : <div
-                key={item.id}
-                className="mobile-bookmark-row"
-                style={{ marginLeft: depth * 14 }}
-              >
-                <button
-                  type="button"
-                  className="mobile-bookmark-open"
-                  aria-label={isFolder ? `Toggle ${item.name}` : `Open bookmark ${item.name}`}
-                  onClick={() => {
-                    if (isFolder) {
-                      toggleExpand(item.id);
-                      return;
-                    }
-                    handleNavigate(item);
-                  }}
-                >
-                  <span className="mobile-bookmark-bubble">
-                    <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? 'var(--text-2)' : 'var(--text-3)'} />
-                  </span>
-                  <span className="mobile-bookmark-copy">
-                    <span className="mobile-bookmark-title">{item.name}</span>
-                    <span className="mobile-bookmark-meta">{pageLabel} · PDF outline</span>
-                  </span>
-                </button>
-                <div className="mobile-bookmark-moves">
-                  {!isFolder && (
-                    <button
-                      type="button"
-                      className="mobile-bookmark-move"
-                      aria-label={`Edit bookmark ${item.name}`}
-                      onClick={() => beginMobileBookmarkEdit(item)}
-                    >
-                      <Icon name="edit" size={13} color="currentColor" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="mobile-bookmark-move"
-                    aria-label="Move bookmark up"
-                    disabled={isFirst}
-                    onClick={() => handleMobileMoveBookmark(item.id, -1)}
-                  >
-                    <Icon name="chevronUp" size={13} color="currentColor" />
-                  </button>
-                  <button
-                    type="button"
-                    className="mobile-bookmark-move"
-                    aria-label="Move bookmark down"
-                    disabled={isLast}
-                    onClick={() => handleMobileMoveBookmark(item.id, 1)}
-                  >
-                    <Icon name="chevronDown" size={13} color="currentColor" />
-                  </button>
-                  <button
-                    type="button"
-                    className="mobile-bookmark-move mobile-bookmark-delete"
-                    aria-label={`Delete bookmark ${item.name}`}
-                    onClick={() => handleDelete(item.id)}
-                  >
-                    <Icon name="trash" size={13} color="currentColor" />
-                  </button>
-                </div>
-              </div>
+              ) : (
+                <MobileBookmarkRow
+                  key={item.id}
+                  item={item}
+                  depth={depth}
+                  projectedDepth={item.id === activeId && projected ? projected.depth : null}
+                  isDraggingAny={Boolean(activeId)}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                  onToggle={toggleExpand}
+                  onNavigate={handleNavigate}
+                  onEdit={beginMobileBookmarkEdit}
+                  onMove={handleMobileMoveBookmark}
+                  onDelete={handleDelete}
+                />
+              )
             );
-          })
+          })}
+          </SortableContext>
         )}
       </div>
+      </DndContext>
     );
   }
 
