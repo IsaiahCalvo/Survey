@@ -23,7 +23,6 @@
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
-import { toolCursorCss } from '../utils/toolCursors.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
   renderPath,
@@ -843,24 +842,6 @@ const SVGAnnotationLayer = memo(({
     || isFreehandCreationTool
     || isPolyCreationTool;
   const isInteractive = isSelectTool || isCreationTool;
-
-  // UX: the armed tool wears its own cursor over the page — a crosshair with a
-  // small badge of that tool. See src/utils/toolCursors.js for the geometry and
-  // the reasoning.
-  // Reference behavior matched: Drawboard PDF's 42px crosshair + 18px tool glyph
-  // (measured 2026-09-16). The glyph is a fixed neutral colour and deliberately
-  // does NOT follow the stroke colour — owner ruling 2026-09-16.
-  // Recomputed only on tool changes; toolCursorCss caches the data URL so a
-  // drag never re-parses the same SVG.
-  const armedToolCursor = useMemo(() => {
-    if (!isInteractive) return null;
-    if (isCreationTool) return toolCursorCss(activeTool);
-    // Text Select is the PDF's own text, not a mark: it keeps the I-beam.
-    if (activeTool === 'select' && selectionMode !== 'lasso') {
-      return toolCursorCss('select');
-    }
-    return null;
-  }, [isInteractive, isCreationTool, activeTool, selectionMode]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)
@@ -5422,15 +5403,14 @@ const SVGAnnotationLayer = memo(({
         // One-finger creation strokes must not scroll the page on touch
         // devices — the fabric upper canvas used to set this implicitly.
         touchAction: (isCreationTool || (activeTool === 'select' && selectionMode === 'lasso')) ? 'none' : undefined,
-        // UX: while a drag is actually happening the gesture outranks the tool
-        // — you are moving something, so the hand shows. The armed-tool cursor
-        // only speaks when the pointer is idle and the question is "what will
-        // this draw?". `.tool-crosshair` stays on as the last-resort fallback
-        // if a platform refuses the image cursor entirely.
+        // UX (owner ruling 2026-09-17): no floating tool badge beside the
+        // pointer. A drawing tool is a plain crosshair (the `.tool-crosshair`
+        // class above), a drag shows the closed hand, and everything else keeps
+        // the cursor it inherits. This is exactly what the app did before the
+        // 2026-09-16 badge cursor, and the owner asked for it back.
         cursor: interactionState === 'dragging' ? 'grabbing'
-              : interactionState === 'rotating' ? 'crosshair'
-              : (activeTool === 'select' && selectionMode === 'lasso') ? 'crosshair'
-              : armedToolCursor || undefined,
+              : interactionState === 'rotating' || (activeTool === 'select' && selectionMode === 'lasso') ? 'crosshair'
+              : undefined,
       }}
       preserveAspectRatio="none"
       onPointerDown={(e) => {
