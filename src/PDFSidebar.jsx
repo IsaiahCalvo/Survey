@@ -262,8 +262,14 @@ const PDFSidebar = React.forwardRef(({
   // of the screen so you can see far more page thumbnails at once, the way
   // Drawboard PDF's phone page list does. Spaces and Version history are
   // content-measured standalone sheets and keep their single height.
+  // 2026-09-17: the hook now also owns the slide-UP entrance (the CSS keyframe
+  // that used to do it fought this transform), so it needs the sheet's open
+  // state — this element stays mounted and only toggles .is-collapsed.
   const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose, expanded: sheetExpanded } =
-    useMobileSheetMotion(closePanel, { expandable: mobileMode && !mobileStandalonePanel });
+    useMobileSheetMotion(closePanel, {
+      expandable: mobileMode && !mobileStandalonePanel,
+      open: mobileMode && !isCollapsed,
+    });
   const expandedNavigationTabs = mobileMode
     ? tabs.filter((tab) => tab.id !== 'spaces')
     : tabs.concat(
@@ -271,6 +277,17 @@ const PDFSidebar = React.forwardRef(({
         ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
         : []
     );
+  // UX (owner ruling 2026-09-17): the dock hub is ONE tray with three tabs, so
+  // Pages / Search / Bookmarks all stand at the same height — the Pages height.
+  // Before this, search sized itself to 232/292 and bookmarks to
+  // min(286, 84 + n*42), so tapping between tabs made the tray jump up and down
+  // and an empty bookmarks tab came up as a stub sheet. The panels inside are
+  // all flex:1, so the shared height simply lets each one fill the tray (their
+  // empty states centre themselves — see .mobile-bookmark-empty /
+  // .mobile-search-empty). Spaces and Version history are NOT part of this tray
+  // (mobile filters Spaces out of the tab row and History opens standalone), so
+  // they keep their own sizing.
+  const MOBILE_HUB_TRAY_HEIGHT = 310;
   const mobilePanelBaseHeight = (() => {
     if (activeTab === 'history') return 264;
     if (activeTab === 'spaces') {
@@ -287,12 +304,12 @@ const PDFSidebar = React.forwardRef(({
       }
       return Math.max(238, 106 + (spaces?.length || 0) * 54 + mobileSpacesPageRows * 50);
     }
-    if (activeTab === 'search') return searchResults?.length ? 232 : 292;
-    // 2026-07-12 (demo parity defect #5): drop the 238px floor — the demo
-    // sizes bookmarks as min(286, 84 + max(n,1)*42) so one bookmark gets a
-    // snug 126px sheet instead of a mostly-empty 238px one.
-    if (activeTab === 'bookmarks') return Math.min(286, 84 + Math.max(bookmarks?.length || 0, 1) * 42);
-    return 310;
+    // Pages, Search and Bookmarks share one tray height (see above). This
+    // supersedes the old per-tab sizing (search 232/292, bookmarks
+    // min(286, 84 + max(n,1)*42)), which was 2026-07-12 demo-parity content
+    // hugging — the owner ruled on 2026-09-17 that one steady tray beats three
+    // snug ones.
+    return MOBILE_HUB_TRAY_HEIGHT;
   })();
 
   return (

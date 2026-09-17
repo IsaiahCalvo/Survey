@@ -54,12 +54,27 @@ test('the hub sheet has a second taller detent at 70% of the screen', () => {
   assert.match(sidebar, /sheetExpanded \? SHEET_EXPANDED_HEIGHT :/);
 });
 
-test('the existing sheet timings and drag-to-dismiss are unchanged', () => {
+// RULED CHANGE 2026-09-17 (owner: "the animation of it panning up and coming
+// down sucks"). This test used to pin SHEET_CLOSE_MS = 170 and the
+// `animation: mobilePdfSheetIn 180ms ease-out` keyframe as "unchanged". Those
+// two were the defect: a CSS keyframe owned the entrance while
+// useMobileSheetMotion owned drag and close, and a running keyframe outranks an
+// inline transform, so a grab or a close inside the first 180ms was swallowed.
+// The keyframe is gone and the hook owns one transform timeline. The
+// drag-to-dismiss thresholds this test also guards are genuinely unchanged, so
+// they stay exactly as they were; only the two retired constants moved.
+test('drag-to-dismiss thresholds hold and the sheet has one motion source', () => {
   assert.match(sheetMotion, /export const SHEET_DISMISS_DY = 82/);
   assert.match(sheetMotion, /export const SHEET_DISMISS_VY = 0\.65/);
-  assert.match(sheetMotion, /export const SHEET_CLOSE_MS = 170/);
   assert.match(sheetMotion, /export const SHEET_SPRING_MS = 260/);
-  assert.match(css, /animation: mobilePdfSheetIn 180ms ease-out/);
+  // Open and close are now the hook's, in the owner's 240-280ms window for the
+  // entrance and a close that finishes before the unmount fires.
+  assert.match(sheetMotion, /export const SHEET_OPEN_MS = 260/);
+  assert.match(sheetMotion, /export const SHEET_CLOSE_MS = 220/);
+  assert.match(sheetMotion, /export const SHEET_CLOSE_UNMOUNT_MS = SHEET_CLOSE_MS \+ \d+/);
+  // No second engine: the retired keyframe must not come back.
+  assert.doesNotMatch(css, /@keyframes mobilePdfSheetIn/);
+  assert.doesNotMatch(css, /^\s*animation: mobilePdfSheetIn/m);
 });
 
 test('the zoom menu has minus/plus steppers and a live percentage', () => {
