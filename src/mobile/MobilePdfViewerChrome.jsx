@@ -35,6 +35,30 @@ const HEADER_GLYPH = 15;
 const STRIP_GLYPH = 14;
 const DOCK_GLYPH = 17;
 
+/**
+ * Keeps the live text editor focused while one of its formatting buttons is
+ * pressed, without killing touch scrolling on the bar those buttons sit in.
+ *
+ * UX 2026-09-16 (r4 phone pass). With a mouse, preventDefault on pointerdown is
+ * the standard trick: the caret and selection inside the contenteditable never
+ * move, so Bold applies to exactly what was selected. On a touch screen it is a
+ * trap - a prevented pointerdown tells the engine the page is handling this
+ * gesture, so the browser never starts its own pan. Measured in the iOS
+ * Simulator: a drag that began on any of Bold / Italic / Underline / Strike (or
+ * the colour swatch) did not scroll the formatting bar at all, which left the
+ * Text-alignment dropdown at the far end unreachable on a 375pt screen, because
+ * those five buttons are most of the bar's width.
+ *
+ * Coarse pointers therefore let the default run. Focus survives anyway: the bar
+ * carries the data-rich-text-toolbar opt-out, so a touch on it does not commit
+ * and close the editor, and every style call ends by re-focusing the editable
+ * (TextEditOverlay's applyStyle -> focus({ preventScroll: true })).
+ */
+const keepTextEditFocus = (event) => {
+  if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+  event.preventDefault();
+};
+
 // Group icons stay shared with the desktop toolbar. Sub-tools keep their own
 // glyphs, so the Text group can differ from its Text Box option.
 const TOOL_GROUPS = {
@@ -632,7 +656,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                 disabled={zoomPercent <= MOBILE_ZOOM_MIN_PERCENT}
                 onClick={() => bottomToolbarApi.zoomOut?.()}
               >
-                <Icon name="minus" size={15} color="currentColor" />
+                <Icon name="minus" size={HEADER_GLYPH} color="currentColor" />
               </button>
               <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
               <button
@@ -641,7 +665,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                 disabled={zoomPercent >= MOBILE_ZOOM_MAX_PERCENT}
                 onClick={() => bottomToolbarApi.zoomIn?.()}
               >
-                <Icon name="plus" size={15} color="currentColor" />
+                <Icon name="plus" size={HEADER_GLYPH} color="currentColor" />
               </button>
             </div>
             <div className="mobile-pdf-header__zoom-fits" role="listbox" aria-label="Zoom and fit mode">
@@ -792,7 +816,12 @@ export function MobileToolProperties({ api }) {
     const alignment = `${state.verticalAlign || 'top'}|${state.textAlign || 'left'}`;
     return (
       <>
-      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" role="toolbar" aria-label="Text formatting">
+      {/* data-rich-text-toolbar is TextEditOverlay's opt-out contract: a
+          pointerdown anywhere inside it must not commit-and-close the editor.
+          The desktop sub-row has always carried it; the phone bar did not, so a
+          tap on Bold committed the text and then styled an editor that was
+          already unmounting. */}
+      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" data-rich-text-toolbar role="toolbar" aria-label="Text formatting">
         {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
             app's shared CompactColorPicker takeover, not an OS colour input. */}
         <button
@@ -800,7 +829,7 @@ export function MobileToolProperties({ api }) {
           className="mobile-pdf-properties__color"
           aria-label="Font color"
           title="Font color"
-          onPointerDown={(event) => event.preventDefault()}
+          onPointerDown={keepTextEditFocus}
           onClick={() => setColorPicker('fontColorLive')}
         >
           <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
@@ -834,7 +863,7 @@ export function MobileToolProperties({ api }) {
             className={`mobile-pdf-properties__format${state[stateKey] ? ' is-active' : ''}`}
             aria-label={title}
             aria-pressed={Boolean(state[stateKey])}
-            onPointerDown={(event) => event.preventDefault()}
+            onPointerDown={keepTextEditFocus}
             onClick={() => editorApi[method]?.()}
           >
             <Icon name={iconName} size={STRIP_GLYPH} />

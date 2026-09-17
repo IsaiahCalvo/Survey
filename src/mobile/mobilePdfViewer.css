@@ -328,10 +328,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* UX 2026-09-16: minus / live percentage / plus, above the fit modes. The
-   steppers take the same 34px square the fit rows below them already use, so
-   the whole pill reads as one control — a bespoke size here would only fight
-   the sizing pass that sets every control's height from Drawboard's ratios.
-   The reading between them is the live scale, so you always know where you are. */
+   reading between them is the live scale, so you always know where you are.
+
+   RULED CHANGE 2026-09-16 (r4 phone pass): the steppers are header controls, so
+   they take the header control height — 26px with the 15px HEADER_GLYPH, the
+   same 15-in-26 every other control in the top row uses. They were built to the
+   fit rows' 34px menu-row square instead, which is not one of the five phone
+   size tokens and left a 15px glyph floating in a 34px box: 0.441 of its
+   control where every other phone tier runs 0.55-0.60, so the pair read
+   noticeably lighter than the rail and dock chips above them. The fit rows keep
+   their 34px — they are context-menu rows with labels, not icon buttons, and
+   34px rows are the demo's menu chrome. Pinned by
+   tests/mobilePhoneGlyphRatioComplete.test.mjs.
+
+   The finger target does not shrink with the paint: the transparent ::after
+   below holds it at the 34x34 the buttons offered before. */
 .mobile-pdf-header__zoom-steppers {
   display: flex;
   align-items: center;
@@ -343,8 +354,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__zoom-steppers > button {
-  width: 34px;
-  height: 34px;
+  position: relative;
+  /* The literal repeats --mobile-control-h so the phone-sizing tests can read a
+     px number straight off this rule; the var below is what actually applies,
+     which keeps the token the single source of truth. */
+  width: 26px;
+  width: var(--mobile-control-h);
+  height: 26px;
+  height: var(--mobile-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -353,6 +370,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
   border: 0;
   border-radius: 6px;
+}
+
+/* The chip you see is 26px; the area a finger hits is the 34px square these
+   buttons had before the ratio fix, so nothing got harder to tap. There is no
+   border here, so the pad counts straight off the 26px box: 26 + 4 + 4 = 34.
+   The live percentage flexes between the two buttons, so the pads never meet,
+   and 4px below stays inside the row's 3px margin + 3px padding + 1px rule -
+   it cannot reach the first fit row. */
+.mobile-pdf-header__zoom-steppers > button::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .mobile-pdf-header__zoom-steppers > button:disabled { color: #6f7785; opacity: 0.5; }
@@ -998,6 +1027,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      scroll underneath it. */
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  /* DO NOT set `pointer-events: none` on this element. Tried and reverted
+     2026-09-16 (r4 phone pass), A/B'd in the iOS Simulator on an iPhone 17 Pro:
+     WebKit will not scroll a scroll container that is not hit-testable, even
+     when the finger lands on a child that IS. With `none` here, a drag along
+     the rich-text bar that began on the Font dropdown moved nothing; flipping
+     this one declaration to `auto` and repeating the identical drag scrolled the
+     row to its last control. The bottom dock can afford `pointer-events: none`
+     precisely because it never scrolls.
+     What that costs: the box is 8px taller than the painted bar and it overlays
+     the top of the page, so a touch in those 8px goes to the bar, not the page.
+     It is a narrow cost - swept at 375x812, 310 of the 333 columns in that strip
+     are a control's own 44px pad, which has to reach there whatever this
+     property says - and horizontal reach, which two tests exist to protect, is
+     worth more than the 5px lanes between controls. */
+  pointer-events: auto;
 }
 
 .mobile-pdf-properties::-webkit-scrollbar { display: none; }
@@ -1011,7 +1055,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    tests/mobileToolSettingsReachable.test.mjs) but every number now comes from
    the base rule. */
 .mobile-pdf-properties--text {
-  padding-right: 8px;
+  /* 20px of runway, not 8: the bar fades its last 20px so a sliced control
+     reads as "there is more this way", and with 8px the fade still lay over
+     the Text-alignment dropdown at the very end of the scroll, which made a
+     fully-reached control look half-rendered. Every other variant clears it
+     already - the base rule's right inset is the 40px rail plus 8px. */
+  padding-right: 20px;
   justify-content: flex-start;
   scroll-padding-inline: 8px;
   touch-action: pan-x;
@@ -1365,13 +1414,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* UX 2026-09-16 (phone sweep): the value field is 44px of target inside a 24px
      pill. An <input> cannot carry a transparent ::after pad the way a button
      can, so the input itself is the pad: it is transparent and borderless (the
-     wrapper paints the pill), so a 44px box with a matching line-height is
-     invisible, centred on the pill, and reaches the full height of the bar's
-     44px box. The negative margin keeps the wrapper 24px. */
+     wrapper paints the pill), so a 44px box is invisible and reaches the full
+     height of the bar's 44px box. The negative margins keep the wrapper 24px.
+
+     The margins are lopsided on purpose. Centring the 44px box on the 24px pill
+     (`margin-block: -10px`) centred it on the PAINTED band, not on the bar's
+     box: the pill sits 6px down a 36px band, so the box ran -4px to 40px and
+     the bar's scroll container clipped the top 4px away, leaving 40px of target
+     (`overflow-x: auto` forces the `overflow-y: visible` beside it to compute as
+     auto, so this strip does clip vertically whatever its old comment claimed).
+     -6px/-14px lands the same 44px box at 0..44 instead, the same numbers every
+     ::after pad on this bar uses. padding-bottom: 8px then keeps the digit where
+     it already paints: the box is 44px but its content band is the pill's 36px,
+     so the value still reads centred on the pill rather than 4px below it. */
   height: 44px;
-  margin-block: -10px;
+  margin-block: -6px -14px;
+  padding-bottom: 8px;
   align-self: center;
-  line-height: 44px;
+  line-height: 36px;
   font-size: 12px;
 }
 
@@ -2160,13 +2220,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    from 44x44 down to 30x30 and shrank the target with them, so on the simulator
    a tap 13px below a button, still inside the bar, did nothing at all.
    The bar is 36px + the home-indicator reserve. The buttons sit 3px inside the
-   top of that 36px band, so `-3px` on top and `-3px - reserve` underneath makes
-   the pad exactly as tall as the bar: 70px on an iPhone 17 Pro, and never less
-   than 46px (the reserve has a 10px floor), so the 44px minimum holds on every
-   phone. Sideways the round buttons grow to 44px; the centre pill is 124px
-   already. The gaps between the three buttons stay transparent, so a touch
-   there still reaches the page, exactly as the dock's pointer-events rule
-   above intends. */
+   top of that 36px band, so `-3px` on top and `-3px - reserve` underneath all
+   but fills the bar: 68px on an iPhone 17 Pro, and never less than 44px (the
+   reserve has a 10px floor), so the 44px minimum holds on every phone.
+   Every one of these numbers counts from the button's PADDING box, not its
+   border box - that is where an absolutely positioned ::after is laid out, and
+   these buttons carry a 1px border, so a 30px chip offers a 28px box to pad
+   out. 28 + 3 + 3 + reserve is the 44/68 above, and sideways 28 + 8 + 8 is the
+   44px the round buttons need (`-7px` here read as 44 but measured 42 - see
+   tests/mobileDockTouchTargetWidth.test.mjs); the centre pill is 124px already.
+   The gaps between the three buttons stay transparent, so a touch there still
+   reaches the page, exactly as the dock's pointer-events rule above intends. */
 .mobile-pdf-dock__side::after,
 .mobile-pdf-dock__center::after {
   content: '';
@@ -2176,7 +2240,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-dock__side::after {
-  inset-inline: -7px;
+  inset-inline: -8px;
 }
 
 /* Every dock button is one height — Drawboard's bottom-bar controls run
