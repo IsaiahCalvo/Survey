@@ -49,11 +49,13 @@ const HEX = {
 
 /* Inline pin icon — HubShell's Icon set has no `pin` glyph, so a small
    self-contained SVG is used for the "Pin project" menu item and the
-   pinned-row grabber replacement. Stroke inherits the caller's color. */
+   pinned-row grabber replacement. Stroke inherits the caller's color.
+   Stroke weight is the house 1.5 (owner ruling 2026-09-16: one stroke
+   weight for every chrome glyph; guarded by chromeInlineIconStyleStroke). */
 const PinIcon = ({ size = 12, color = 'currentColor' }) => (
   <svg
     viewBox="0 0 24 24" width={size} height={size}
-    style={{ fill: 'none', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }}
+    style={{ fill: 'none', stroke: color, strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }}
   >
     <path d="M12 17v5" />
     <path d="M9 10.76V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v5.76l2 3.24H7z" />
