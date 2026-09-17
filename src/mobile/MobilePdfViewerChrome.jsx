@@ -902,6 +902,19 @@ export function MobileToolProperties({ api }) {
   if (textMarkup.active) {
     const markupColor = toHexColor(textMarkup.color, '#f4d35e');
     const markupOpacity = textMarkup.opacity / 100;
+    // The one write this strip's colour controls share — the quick dots and the
+    // picker the colour button opens. A highlight keeps its own strength unless
+    // the picker's slider is what moved, so a dot passes no alpha and the mark
+    // keeps the opacity it had; 5% is the floor below which a highlight stops
+    // marking anything at all.
+    const applyMarkupPaint = (hex, alpha) => {
+      const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
+      if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+      else {
+        api.handleStrokeColorChange?.(hex);
+        api.handleStrokeOpacityChange?.(opacity);
+      }
+    };
     if (textMarkup.sharedToolbarActive) {
       return api.showAnnotationColorPicker ? (
         <MobileColorPickerSurface
@@ -909,14 +922,7 @@ export function MobileToolProperties({ api }) {
           color={markupColor}
           opacity={markupOpacity}
           minOpacity={0.05}
-          onChange={(hex, alpha) => {
-            const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
-            if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
-            else {
-              api.handleStrokeColorChange?.(hex);
-              api.handleStrokeOpacityChange?.(opacity);
-            }
-          }}
+          onChange={applyMarkupPaint}
           onClose={() => api.setShowAnnotationColorPicker?.(false)}
         />
       ) : null;
@@ -930,9 +936,21 @@ export function MobileToolProperties({ api }) {
           role="toolbar"
           aria-label={textMarkup.editingSelection ? 'Edit text markup' : 'Text markup defaults'}
         >
+          {/* UX 2026-09-17 (owner): the same four quick colours the desktop
+              text-markup row leads with. The phone strip had the colour
+              button but no dots, which made highlighting the one place on
+              the phone where changing colour still cost a sheet — and the
+              one place the two platforms disagreed about what a tool row
+              looks like. A tap repaints the armed markup and the selected
+              one at the strength they already have. */}
+          <QuickColourDots
+            platform="phone"
+            value={markupColor}
+            onPick={(hex) => applyMarkupPaint(hex)}
+          />
           <button
             type="button"
-            className="mobile-pdf-properties__color"
+            className={`mobile-pdf-properties__color${matchedQuickColour(markupColor) ? '' : ' is-current-color'}`}
             aria-label="Text markup color and opacity"
             title="Text markup color and opacity"
             aria-expanded={Boolean(api.showAnnotationColorPicker)}
@@ -957,14 +975,7 @@ export function MobileToolProperties({ api }) {
             color={markupColor}
             opacity={markupOpacity}
             minOpacity={0.05}
-            onChange={(hex, alpha) => {
-              const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
-              if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
-              else {
-                api.handleStrokeColorChange?.(hex);
-                api.handleStrokeOpacityChange?.(opacity);
-              }
-            }}
+            onChange={applyMarkupPaint}
             onClose={() => api.setShowAnnotationColorPicker?.(false)}
           />
         )}

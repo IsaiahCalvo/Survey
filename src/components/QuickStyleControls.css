@@ -143,6 +143,12 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 0 3px #d8a84e;
 }
 
+/* Phone: the text-markup strip's colour button, which is a plain disc rather
+   than a two-colour swatch — the gold replaces its dark hairline. */
+.mobile-pdf-properties__color.is-current-color span {
+  box-shadow: 0 0 0 2px #d8a84e;
+}
+
 /* Phone: the same ring on the strip swatch, kept outside the swatch's own inset
    ring so the swatch still shows both of its colours underneath. */
 .mobile-pdf-properties__swatch.is-current-color {

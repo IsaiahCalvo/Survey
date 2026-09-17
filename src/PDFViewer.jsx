@@ -8007,6 +8007,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     strokeOpacityStateRef.current = normalizedOpacity;
     setStrokeColor(color);
     setStrokeOpacity(normalizedOpacity);
+    // 2026-09-17: remember the new paint against the markup type it was picked
+    // for. With Text Select armed, the per-tool sync effect re-reads
+    // textMarkupPaintByType every time tool preferences change - and the line
+    // below changes them - so a paint that was not written here was restored to
+    // the old colour the moment it was set. That only ever worked because a
+    // second effect wrote this map WHILE THE PICKER WAS OPEN, which left every
+    // control that paints without opening the picker (the quick colour dots on
+    // both platforms) looking dead.
+    setTextMarkupPaintByType((current) => (
+      TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]
+        ? { ...current, [focusedTextMarkupPaint]: { color, opacity: normalizedOpacity } }
+        : current
+    ));
     if (pdfId && activeTool !== 'select') {
       updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
     }
