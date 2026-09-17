@@ -11,10 +11,10 @@
 .apply-redactions-modal {
   width: min(460px, 100%);
   padding: 22px;
-  border: 1px solid #3b424f;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #171b22;
-  color: #ece8df;
+  background: var(--surface-1);
+  color: var(--text-1);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.52);
 }
 
@@ -26,14 +26,14 @@
 
 .apply-redactions-modal p {
   margin: 0;
-  color: #b9c0cc;
+  color: var(--text-3);
   font-size: 13px;
   line-height: 1.55;
 }
 
 .apply-redactions-original-note {
   margin-top: 12px !important;
-  color: #e0b24f !important;
+  color: var(--accent) !important;
 }
 
 .apply-redactions-progress,
@@ -42,7 +42,7 @@
 }
 
 .apply-redactions-error {
-  color: #ff8f8f !important;
+  color: var(--danger) !important;
 }
 
 .apply-redactions-actions {
@@ -63,15 +63,15 @@
 }
 
 .apply-redactions-cancel {
-  border: 1px solid #474f5d;
-  background: #262c35;
-  color: #e1e4e9;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
 }
 
 .apply-redactions-confirm {
-  border: 1px solid #c93d3d;
-  background: #b83232;
-  color: #fff;
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: var(--text-1);
 }
 
 .apply-redactions-actions button:disabled {

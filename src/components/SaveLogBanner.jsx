@@ -503,7 +503,7 @@ export default function SaveLogBanner() {
                 onClick={handleSubmit}
                 style={{
                   background: colors.accent,
-                  color: '#0b1220',
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: 6,
                   padding: '6px 14px',
@@ -575,8 +575,8 @@ export default function SaveLogBanner() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#1a1f2e',
-              color: '#e8eefb',
+              background: 'var(--surface-2)',
+              color: 'var(--text-1)',
               padding: '20px 22px',
               borderRadius: 12,
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
@@ -596,7 +596,7 @@ export default function SaveLogBanner() {
                 onClick={handleConfirmEmptyNo}
                 style={{
                   background: 'transparent',
-                  color: '#e8eefb',
+                  color: 'var(--text-1)',
                   border: '1px solid rgba(255,255,255,0.18)',
                   borderRadius: 6,
                   padding: '7px 14px',
@@ -611,8 +611,8 @@ export default function SaveLogBanner() {
                 type="button"
                 onClick={handleConfirmEmptyYes}
                 style={{
-                  background: '#60a5fa',
-                  color: '#0b1220',
+                  background: 'var(--text-3)',
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: 6,
                   padding: '7px 14px',

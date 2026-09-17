@@ -37,12 +37,12 @@ import { Icon } from '../home/HubShell';
 // scope. Keep in sync with that file's `C` map.
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
-  card: '#181c24',
-  deep: '#12151c',
-  rule: '#2a3140',
-  ink: '#f4f1ea',
-  muted: '#8d96a6',
-  gold: '#d8a84e',
+  card: 'var(--accent-text)',
+  deep: 'var(--accent-text)',
+  rule: 'var(--accent-text)',
+  ink: 'var(--text-1)',
+  muted: 'var(--text-3)',
+  gold: 'var(--accent)',
 };
 
 const overlay = {
@@ -150,7 +150,7 @@ export function PromptModal({
           <button onClick={onCancel} style={cancelButtonStyle}>Cancel</button>
           <button
             onClick={submit}
-            style={{ background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
             {confirmLabel}
           </button>

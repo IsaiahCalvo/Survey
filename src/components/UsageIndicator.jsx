@@ -14,8 +14,8 @@ import { useAuth } from '../contexts/AuthContext';
 // Module scope so these keep stable component identity across UsageIndicator
 // renders (defining them in the body remounted every metric row each render).
 const getProgressBarColor = (percentage) => {
-  if (percentage >= 90) return '#ef4444'; // Red
-  if (percentage >= 75) return '#f59e0b'; // Orange
+  if (percentage >= 90) return 'var(--danger)'; // Red
+  if (percentage >= 75) return 'var(--warning)'; // Orange
   return '#8b5cf6'; // Purple
 };
 
@@ -50,7 +50,7 @@ const MetricRow = ({ label, current, limit, unlimited, percentage, showBar = tru
       <span style={{ fontWeight: 500 }}>{label}</span>
       <span style={{
         fontWeight: 600,
-        color: percentage >= 90 ? '#ef4444' : 'rgba(255, 255, 255, 0.95)'
+        color: percentage >= 90 ? 'var(--danger)' : 'rgba(255, 255, 255, 0.95)'
       }}>
         {current} / {unlimited ? '∞' : limit}
       </span>

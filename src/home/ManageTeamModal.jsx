@@ -41,15 +41,15 @@ import {
 } from '../services/shareEmailService';
 
 /* Hub palette — literal hex, see header note. */
-const INK_800 = '#12151c';
-const INK_700 = '#181c24';
-const INK_500 = '#2a3140';
-const INK_300 = '#5a6473';
-const INK_200 = '#8d96a6';
-const BONE_100 = '#f4f1ea';
-const BONE_200 = '#e8e2d4';
-const GOLD = '#d8a84e';
-const DANGER = '#d95a56';
+const INK_800 = 'var(--accent-text)';
+const INK_700 = 'var(--accent-text)';
+const INK_500 = 'var(--accent-text)';
+const INK_300 = 'var(--text-disabled)';
+const INK_200 = 'var(--text-3)';
+const BONE_100 = 'var(--text-1)';
+const BONE_200 = 'var(--text-2)';
+const GOLD = 'var(--accent)';
+const DANGER = 'var(--danger)';
 
 const ROLES = ["Owner", "Editor", "Viewer"];
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
@@ -148,7 +148,7 @@ const ActivityModal = ({ member, onClose }) => {
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>{items.length} event{items.length === 1 ? "" : "s"}</span>
-          <button onClick={onClose} style={{ background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+          <button onClick={onClose} style={{ background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
         </div>
       </div>
     </div>
@@ -291,7 +291,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           {/* UX (KAL-73): invite sends are a network round-trip over 500ms, so the
               button takes the shared loading treatment — 14px ring on the left,
               present-participle label, disabled until the request resolves. */}
-          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? "progress" : (!emails.trim() || blockedReason ? "not-allowed" : "pointer"), background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
+          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? "progress" : (!emails.trim() || blockedReason ? "not-allowed" : "pointer"), background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
         </div>
       </div>
     </div>
@@ -595,7 +595,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Manage Team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
-            <button onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
               <Icon name="plus" size={11}/>Invite
             </button>
           </div>
@@ -670,7 +670,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               return (
                 <div key={m.id} data-kal31-project-member={m.userId || m.id} style={{ position: "relative" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "#15110a", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.isCreator ? " · creator" : ""}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
@@ -685,13 +685,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                             caret in the hub paints, so this one control carried
                             the heaviest glyph on the surface. Reference
                             behaviour matched: the archive tree's disclosure
-                            caret, the same Icon in the same #8d96a6.
+                            caret, the same Icon in the same var(--text-3).
                             The 14px glyph replaces the 14px right padding the
                             background image sat in, so the button's box, its hit
                             area and the text's position are all unchanged.
                             Fixed 2026-09-16 (r5-icons). */}
                         <button data-kal31-role-trigger="true" onClick={(e) => { e.stopPropagation(); setOpenRoleSel(openRoleSel === m.id ? null : m.id); }}
-                          style={{ background: "transparent", border: 0, padding: 0, color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}>{m.role}<Icon name="chevronDown" size={14} color="#8d96a6" style={{ display: "block", flex: "none" }} /></button>
+                          style={{ background: "transparent", border: 0, padding: 0, color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}>{m.role}<Icon name="chevronDown" size={14} color="var(--text-3)" style={{ display: "block", flex: "none" }} /></button>
                         {openRoleSel === m.id && (
                           <div data-kal31-role-menu="true" data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                             {ROLES.map(r => (
@@ -708,7 +708,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       m.isCreator ? <span /> : (
                         <span onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
                           style={{ width: 18, height: 18, border: `1.4px solid ${checked ? GOLD : INK_500}`, background: checked ? GOLD : "transparent", borderRadius: 3, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", justifySelf: "center" }}>
-                          {checked && <Icon name="check" size={11} color="#15110a" />}
+                          {checked && <Icon name="check" size={11} color="var(--accent-text)" />}
                         </span>
                       )
                     ) : (
@@ -746,7 +746,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               return (
                 <div key={inv.id} data-kal31-project-invite={inv.id} style={{ position: "relative" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box", background: "rgba(216,168,78,0.03)" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: isLink ? '#3b4252' : INK_200, color: isLink ? BONE_100 : "#15110a", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{isLink ? 'L' : initialsOf(inv.target_email)}</div>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: isLink ? 'var(--surface-3)' : INK_200, color: isLink ? BONE_100 : "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{isLink ? 'L' : initialsOf(inv.target_email)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isLink ? buildInviteUrl(inv) : `expires ${fmtDate(inv.expires_at)}`}</div>
@@ -791,7 +791,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
             <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>
               {memberList.length} member{memberList.length === 1 ? "" : "s"}{pendingInvites.length ? ` · ${pendingInvites.length} pending` : ""}
             </span>
-            <button onClick={onClose} style={{ background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+            <button onClick={onClose} style={{ background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
           </div>
         </div>
       </div>

@@ -655,7 +655,7 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
   assert.match(SCREEN, /import AppIcon from '\.\.\/Icons'/);
   assert.match(
     SCREEN,
-    /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="#8d96a6"/,
+    /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="var\(--text-3\)"/,
   );
   assert.match(SCREEN, /const CHEVRON_SIZE = 16;/);
   assert.match(SCREEN, /const MOBILE_CHEVRON_SIZE = 18;/);
@@ -676,7 +676,7 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
   const ICONS = read('../src/Icons.jsx');
   assert.match(ICONS, /chevronDown: \(size, color, style, className\) => \(/);
   const VIEWER = read('../src/PDFViewer.jsx');
-  assert.match(VIEWER, /<Icon name="chevronDown" size=\{12\} color="#8d96a6" \/>/, 'PDFViewer is the reference');
+  assert.match(VIEWER, /<Icon name="chevronDown" size=\{12\} color="var\(--text-3\)" \/>/, 'PDFViewer is the reference');
 
   // Both trees and the mobile card go through the same helper.
   assert.match(SCREEN, /const disclosureButton = \(open, onToggle, label = 'documents'\) => \([\s\S]*?\{chevron\(open\)\}<\/button>/);

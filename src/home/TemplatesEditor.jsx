@@ -172,7 +172,7 @@ const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#9aa3b2
 /* Entity colours cycled through when a brand-new entity is created. */
 const ENTITY_COLORS = [
   '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#ec8a9a',
-  '#5fc7b0', '#9aa3b2',
+  '#5fc7b0', 'var(--text-3)',
 ];
 
 /* Monotonic id generator — every new module/category/item/entity gets a
@@ -561,7 +561,7 @@ function MoreMenu({ anchorRect, items, onClose }) {
    Palette / font are hard hex/literal because the popup renders
    outside the .ed-scope CSS-variable root:
      card #181c24 · deep #12151c · rule #2a3140 · ink #f4f1ea
-     muted #8d96a6 · gold #d8a84e · font Helvetica Neue stack
+     muted var(--text-3) · gold var(--accent) · font Helvetica Neue stack
    ============================================================ */
 function CustomSelect({ value, options, onChange, placeholder = 'Select…', disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -605,9 +605,9 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
         onClick={() => { if (!disabled) setOpen((v) => !v); }}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          width: '100%', background: '#12151c', border: '1px solid #2a3140',
+          width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border)',
           borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
-          color: selected ? '#f4f1ea' : '#8d96a6',
+          color: selected ? 'var(--text-1)' : 'var(--text-3)',
           font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.5 : 1,
           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'left',
@@ -617,7 +617,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {selected ? selected.label : placeholder}
         </span>
-        <span style={{ color: '#8d96a6', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
+        <span style={{ color: 'var(--text-3)', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
       </button>
       {open && pos && createPortal(
         <div
@@ -625,14 +625,14 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
           style={{
             position: 'fixed', zIndex: 4100,
             left: pos.left, top: pos.top, width: pos.width,
-            background: '#181c24', border: '1px solid #3a4252', borderRadius: 8,
+            background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 8,
             padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
             maxHeight: 240, overflowY: 'auto',
             fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
           }}
         >
           {options.length === 0 && (
-            <div style={{ padding: '7px 10px', fontSize: 12, color: '#8d96a6' }}>No options</div>
+            <div style={{ padding: '7px 10px', fontSize: 12, color: 'var(--text-3)' }}>No options</div>
           )}
           {options.map((o) => {
             const isSel = o.value === value;
@@ -643,16 +643,16 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
                 onClick={() => { onChange(o.value); setOpen(false); }}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                  width: '100%', textAlign: 'left', background: isSel ? '#232834' : 'transparent',
-                  border: 0, color: isSel ? '#d8a84e' : '#f4f1ea',
+                  width: '100%', textAlign: 'left', background: isSel ? 'var(--surface-2)' : 'transparent',
+                  border: 0, color: isSel ? 'var(--accent)' : 'var(--text-1)',
                   padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
-                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = '#232834'; }}
+                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--accent-text)'; }}
                 onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
-                {isSel && <Icon name="check" size={11} color="#d8a84e" />}
+                {isSel && <Icon name="check" size={11} color="var(--accent)" />}
               </button>
             );
           })}
@@ -1808,7 +1808,7 @@ export default function TemplatesEditor({
         {/* KAL-72: unified error-banner pattern (docs/ui/colors.md) — red is
             the accent edge, not the text colour. */}
         {persistenceError ? (
-          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red, #d95a56)', background: 'rgba(217, 90, 86, 0.10)', color: '#f4f1ea', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red)', background: 'rgba(217, 90, 86, 0.10)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
             {persistenceError}
           </div>
         ) : null}
@@ -1819,7 +1819,7 @@ export default function TemplatesEditor({
           {/* ---------- LEFT: Templates ---------- */}
           <aside style={{
             overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%',
-            background: '#181c24', border: '1px solid #2a3140', borderRadius: 10, padding: 8,
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 8,
           }}>
             <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <button
@@ -1952,7 +1952,7 @@ export default function TemplatesEditor({
           {/* ---------- MIDDLE: Modules + expandable category checklists ---------- */}
           <section style={{
             minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-            background: '#181c24', border: '1px solid #2a3140', borderRadius: 10,
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
           }}>
             {!tpl ? (
               /* `tpl` is only null when there are zero templates (selection
@@ -2206,7 +2206,7 @@ export default function TemplatesEditor({
                                 <button
                                   title="Delete item" aria-label="Delete item"
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                   style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                 ><Icon name="close" size={11} /></button>
@@ -2263,7 +2263,7 @@ export default function TemplatesEditor({
                                     <button
                                       title="Permanently delete (orphans historical responses)" aria-label="Permanently delete (orphans historical responses)"
                                       onClick={(e) => { e.stopPropagation(); hardDeleteItem(i, it.id); }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
                                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                       style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                     ><Icon name="close" size={11} /></button>
@@ -3003,21 +3003,21 @@ export default function TemplatesEditor({
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 440, maxWidth: 'calc(100vw - 32px)',
-            background: '#181c24', border: '1px solid #2a3140', borderRadius: 10,
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
             padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
-            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', color: '#f4f1ea',
+            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', color: 'var(--text-1)',
           }}
         >
-          <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: '#f4f1ea' }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>
             Archive checklist item?
           </h3>
-          <p style={{ margin: '0 0 6px', fontSize: 12.5, lineHeight: 1.55, color: '#c7cdda' }}>
-            <strong style={{ color: '#f4f1ea' }}>{archiveConfirm.usage}</strong>
+          <p style={{ margin: '0 0 6px', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-2)' }}>
+            <strong style={{ color: 'var(--text-1)' }}>{archiveConfirm.usage}</strong>
             {' '}
             {archiveConfirm.usage === 1 ? 'survey marker has' : 'survey markers have'}
-            {' '}responses for <em style={{ color: '#f4f1ea' }}>{archiveConfirm.label || 'this item'}</em>.
+            {' '}responses for <em style={{ color: 'var(--text-1)' }}>{archiveConfirm.label || 'this item'}</em>.
           </p>
-          <p style={{ margin: '0 0 16px', fontSize: 12.5, lineHeight: 1.55, color: '#8d96a6' }}>
+          <p style={{ margin: '0 0 16px', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-3)' }}>
             Archiving keeps those responses as historical data, but the item won't appear for new markers. You can permanently delete the archived item later from the Archived section.
           </p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -3025,7 +3025,7 @@ export default function TemplatesEditor({
               type="button"
               data-testid="archive-confirm-cancel"
               onClick={() => setArchiveConfirm(null)}
-              style={{ background: 'transparent', border: '1px solid #3a4252', color: '#c7cdda', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+              style={{ background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-2)', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
             >
               Cancel
             </button>
@@ -3066,23 +3066,23 @@ export default function TemplatesEditor({
           <div
             className="templates-module-edit-modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
+            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
           >
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid #2a3140', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: '#f4f1ea', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0d0f14', border: '1px solid #2a3140', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
-                <Icon name="search" size={12} color="#8d96a6" />
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-0)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
+                <Icon name="search" size={12} color="var(--text-3)" />
                 <input
                   value={modSearch}
                   onChange={(e) => setModSearch(e.currentTarget.value)}
                   placeholder="Search modules..."
-                  style={{ background: 'transparent', border: 0, outline: 'none', color: '#f4f1ea', fontFamily: 'inherit', fontSize: 11.5, flex: 1, width: '100%', padding: 0 }}
+                  style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 11.5, flex: 1, width: '100%', padding: 0 }}
                 />
               </div>
             </div>
             <div className="slim-scroll" style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 420, overflowY: 'auto', flex: '0 1 auto', minHeight: 0 }}>
               {visibleMods.length === 0 && (
-                <div className="meta" style={{ padding: '14px 4px', fontSize: 11.5, color: '#8d96a6' }}>
+                <div className="meta" style={{ padding: '14px 4px', fontSize: 11.5, color: 'var(--text-3)' }}>
                   {mods.length === 0 ? 'No modules yet.' : 'No modules match your search.'}
                 </div>
               )}
@@ -3105,8 +3105,8 @@ export default function TemplatesEditor({
                         style={{
                           display: 'grid', gridTemplateColumns: '24px 14px 1fr auto', gap: 10,
                           alignItems: 'center', padding: '7px 8px', borderRadius: 6,
-                          background: isSel ? '#181c24' : '#12151c',
-                          border: '1px solid #2a3140',
+                          background: isSel ? 'var(--surface-2)' : 'var(--surface-1)',
+                          border: '1px solid var(--border)',
                           transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                         }}
                       >
@@ -3116,16 +3116,16 @@ export default function TemplatesEditor({
                           isDragging={isDragging}
                         />
                         <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? '#d8a84e' : '#3a4252'}`, background: isSel ? '#d8a84e' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {isSel && <Icon name="check" size={10} color="#0d0f14" />}
+                          {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                         <input
                           defaultValue={mod.name}
                           key={mod.id + ':' + mod.name}
                           onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
-                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: '#f4f1ea', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
+                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: 'var(--text-1)', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                         />
-                        <span style={{ fontSize: 10, color: '#5a6473', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-disabled)', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
                       </div>
                     )}
                   </SortableRearrangeRow>
@@ -3134,12 +3134,12 @@ export default function TemplatesEditor({
               </SortableRearrangeList>
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
-              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed #3a4252', background: 'transparent', color: '#8d96a6', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-3)', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Icon name="plus" size={13} /> New module
               </button>
             </div>
-            <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
-              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
+            <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
+              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} style={{ background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-2)', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
               <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
               <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
@@ -3166,14 +3166,14 @@ export default function TemplatesEditor({
           data-modal-focus-layer="true"
           tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
-          style={{ width: 420, overflow: 'hidden', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
+          style={{ width: 420, overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }}
         >
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #2a3140', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8d96a6', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
-              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: '#f4f1ea', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
+              <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}><Icon name="close" size={13} /></button>
+            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: 'var(--border)', color: 'var(--text-3)' })}><Icon name="close" size={13} /></button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination
@@ -3185,7 +3185,7 @@ export default function TemplatesEditor({
               There is never a "Destination Category" — nothing lives
               inside a checklist category. */}
           <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12, color: '#8d96a6' }}>Destination template</label>
+            <label style={{ fontSize: 12, color: 'var(--text-3)' }}>Destination template</label>
             <CustomSelect
               value={moveDestTpl}
               onChange={setMoveDestTpl}
@@ -3197,7 +3197,7 @@ export default function TemplatesEditor({
               const mods = destT ? destT.modules : [];
               return (
                 <>
-                  <label style={{ fontSize: 12, color: '#8d96a6', marginTop: 8 }}>Destination module</label>
+                  <label style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>Destination module</label>
                   <CustomSelect
                     value={moveDestMod}
                     onChange={setMoveDestMod}
@@ -3209,9 +3209,9 @@ export default function TemplatesEditor({
               );
             })()}
           </div>
-          <div style={{ padding: '12px 14px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={closeMoveModal} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={closeMoveModal} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
+          <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={closeMoveModal} style={{ background: 'transparent', color: 'var(--text-3)', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={closeMoveModal} style={{ background: 'transparent', color: 'var(--text-3)', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
             <button onClick={closeMoveModal} style={{ background: '#d8a84e', color: '#15110a', border: '1px solid #d8a84e', borderRadius: 6, fontSize: 12, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Move</button>
           </div>
         </div>

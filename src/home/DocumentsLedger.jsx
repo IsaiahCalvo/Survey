@@ -30,11 +30,11 @@ const ledgerHeader = {
 
 const RIBBON = ['#d8a84e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
 const MENU_HEX = {
-  card: '#181c24',
-  rule: '#2a3140',
-  ink: '#f4f1ea',
-  muted: '#8d96a6',
-  danger: '#d95a56',
+  card: 'var(--accent-text)',
+  rule: 'var(--accent-text)',
+  ink: 'var(--text-1)',
+  muted: 'var(--text-3)',
+  danger: 'var(--danger)',
 };
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
@@ -370,7 +370,7 @@ export default function DocumentsLedger({
     const isChecked = selDocs.has(d.id);
     return (
       <span style={{ width: size, height: size, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {isChecked && <Icon name="check" size={11} color="#15110a" />}
+        {isChecked && <Icon name="check" size={11} color="var(--accent-text)" />}
       </span>
     );
   };
@@ -483,7 +483,7 @@ export default function DocumentsLedger({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
                       {docSelectMode ? (
                         <span style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {isChecked && <Icon name="check" size={10} color="#15110a" />}
+                          {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                       ) : (
                         <button
@@ -574,7 +574,7 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="#d8a84e" />
+                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
                 </div>
               </div>
@@ -652,7 +652,7 @@ export default function DocumentsLedger({
                 <div>
                   <span>Team</span>
                   <div className="documents-mobile-detail-owner">
-                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="#d8a84e" />
+                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="var(--accent)" />
                     <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
                   </div>
                 </div>

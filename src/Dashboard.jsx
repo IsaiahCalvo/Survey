@@ -1572,7 +1572,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#BBBBBB', 0.2) }
+      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('var(--text-3)', 0.2) }
     ]);
   };
 
@@ -1589,7 +1589,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
-      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#BBBBBB', 0.2) }
+      { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('var(--text-3)', 0.2) }
     ];
     const loadedEntities = template.entities || defaultEntities;
     // Ensure all loaded entities have rgba format with 20% opacity
@@ -2337,8 +2337,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             left: '50%',
             transform: 'translateX(-50%)',
             maxWidth: 520,
-            background: '#1f1f1f',
-            color: '#fff',
+            background: 'var(--surface-1)',
+            color: 'var(--text-1)',
             border: '1px solid rgba(249, 115, 115, 0.65)',
             borderRadius: 8,
             padding: '12px 14px 12px 16px',
@@ -2361,7 +2361,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             style={{
               flex: 'none',
               background: 'transparent',
-              color: '#bbb',
+              color: 'var(--text-3)',
               border: 'none',
               cursor: 'pointer',
               fontSize: 16,

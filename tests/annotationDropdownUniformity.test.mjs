@@ -28,8 +28,16 @@ test('annotation dropdowns share the Width preset surface and Radix behavior', (
   assert.match(component, /document\.activeElement\?\.closest\?\.\('\.annotation-dropdown, \.annotation-dropdown__popover'\)/);
   assert.match(component, /onPointerDownOutside/);
   assert.match(component, /onFocusOutside/);
-  assert.match(css, /background: #0d0f14/);
-  assert.match(css, /border: 1px solid #3a4252/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+  // owner): the popover's fill and edge are the shared --surface-2 /
+  // --border-strong tokens now, not literal hexes. The fill also MOVED: it was
+  // #0d0f14, darker than the bar the dropdown opens from and a different grey
+  // from the Select menu beside it. Every popover in the app paints the same
+  // surface now. What this test guards — that the two dropdowns share ONE
+  // popover surface, edge, radius, shadow and row height — is unchanged, and
+  // pinning the token rather than a hex is what makes them unable to drift.
+  assert.match(css, /background: var\(--surface-2\)/);
+  assert.match(css, /border: 1px solid var\(--border-strong\)/);
   assert.match(css, /border-radius: 8px/);
   assert.match(css, /box-shadow: 0 10px 30px rgba\(0, 0, 0, 0\.48\)/);
   assert.match(css, /min-height: 34px/);

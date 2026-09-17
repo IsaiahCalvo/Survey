@@ -111,8 +111,8 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         right: isMobile ? 12 : DESKTOP_RIGHT_RAIL_WIDTH + DESKTOP_RAIL_GAP,
         width: isMobile && isExpanded ? 'calc(100vw - 116px)' : 'auto',
         maxWidth: isMobile ? (isExpanded ? 340 : 248) : 400,
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #2a3140',
+        backgroundColor: 'var(--surface-1)',
+        border: '1px solid var(--border)',
         borderRadius: 8,
         padding: isMobile ? '10px 12px' : '12px 16px',
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
@@ -139,7 +139,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           justifyContent: 'center',
         }}
       >
-        <Icon name="infoCircle" size={20} color="#d8a84e" />
+        <Icon name="infoCircle" size={20} color="var(--accent)" />
       </div>
 
       {/* Message */}
@@ -148,7 +148,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           style={{
             fontSize: 13,
             fontWeight: 500,
-            color: '#e8e2d4',
+            color: 'var(--text-2)',
             marginBottom: !isMobile || isExpanded ? 4 : 0,
             whiteSpace: isMobile && !isExpanded ? 'nowrap' : 'normal',
           }}
@@ -161,7 +161,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           <div
             style={{
               fontSize: 12,
-              color: '#8d96a6',
+              color: 'var(--text-3)',
               lineHeight: 1.4,
             }}
           >
@@ -179,7 +179,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           border: 'none',
           padding: 4,
           cursor: 'pointer',
-          color: '#5a6473',
+          color: 'var(--text-disabled)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

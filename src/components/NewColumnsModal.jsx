@@ -274,7 +274,7 @@ const NewColumnsModal = ({
                   <div style={{
                     fontSize: TYPOGRAPHY.fontSize.xs,
                     fontWeight: TYPOGRAPHY.fontWeight.medium,
-                    color: '#ef4444',
+                    color: 'var(--danger)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                     textTransform: 'uppercase',
@@ -304,7 +304,7 @@ const NewColumnsModal = ({
               {hasReordering && (
                 <div style={{
                   fontSize: TYPOGRAPHY.fontSize.sm,
-                  color: '#f59e0b',
+                  color: 'var(--warning)',
                   padding: '6px 8px',
                   background: 'rgba(245, 158, 11, 0.1)',
                   border: '1px solid rgba(245, 158, 11, 0.3)',
@@ -398,7 +398,7 @@ const NewColumnsModal = ({
                     width: '100%',
                     padding: '8px 12px',
                     borderRadius: BORDERS.radius.md,
-                    border: `1px solid ${nameError ? '#ef4444' : COLORS.border.default}`,
+                    border: `1px solid ${nameError ? 'var(--danger)' : COLORS.border.default}`,
                     background: COLORS.background.dark,
                     color: COLORS.text.secondary,
                     fontSize: TYPOGRAPHY.fontSize.md,
@@ -412,7 +412,7 @@ const NewColumnsModal = ({
                   <div style={{
                     marginTop: '6px',
                     fontSize: TYPOGRAPHY.fontSize.sm,
-                    color: '#ef4444',
+                    color: 'var(--danger)',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                   }}>
                     {nameError}
@@ -478,7 +478,7 @@ const NewColumnsModal = ({
                 <div style={{
                   fontSize: TYPOGRAPHY.fontSize.sm,
                   fontWeight: TYPOGRAPHY.fontWeight.medium,
-                  color: '#f59e0b',
+                  color: 'var(--warning)',
                   marginBottom: '6px',
                   fontFamily: TYPOGRAPHY.fontFamily.default,
                 }}>

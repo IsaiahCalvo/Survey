@@ -230,7 +230,7 @@ const CreateCategoryModal = ({
               width: '100%',
               padding: '8px 12px',
               borderRadius: BORDERS.radius.md,
-              border: `1px solid ${categoryError ? '#ef4444' : COLORS.border.default}`,
+              border: `1px solid ${categoryError ? 'var(--danger)' : COLORS.border.default}`,
               background: COLORS.background.dark,
               color: COLORS.text.secondary,
               fontSize: TYPOGRAPHY.fontSize.md,
@@ -244,7 +244,7 @@ const CreateCategoryModal = ({
             <div style={{
               marginTop: '6px',
               fontSize: TYPOGRAPHY.fontSize.sm,
-              color: '#ef4444',
+              color: 'var(--danger)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
               {categoryError}
@@ -321,7 +321,7 @@ const CreateCategoryModal = ({
                 <div style={{
                   fontSize: TYPOGRAPHY.fontSize.sm,
                   fontWeight: TYPOGRAPHY.fontWeight.medium,
-                  color: '#f59e0b',
+                  color: 'var(--warning)',
                   marginBottom: '6px',
                   fontFamily: TYPOGRAPHY.fontFamily.default,
                 }}>
@@ -425,7 +425,7 @@ const CreateCategoryModal = ({
                     width: '100%',
                     padding: '8px 12px',
                     borderRadius: BORDERS.radius.md,
-                    border: `1px solid ${nameError ? '#ef4444' : COLORS.border.default}`,
+                    border: `1px solid ${nameError ? 'var(--danger)' : COLORS.border.default}`,
                     background: COLORS.background.dark,
                     color: COLORS.text.secondary,
                     fontSize: TYPOGRAPHY.fontSize.md,
@@ -439,7 +439,7 @@ const CreateCategoryModal = ({
                   <div style={{
                     marginTop: '6px',
                     fontSize: TYPOGRAPHY.fontSize.sm,
-                    color: '#ef4444',
+                    color: 'var(--danger)',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                   }}>
                     {nameError}

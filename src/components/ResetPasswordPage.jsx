@@ -22,14 +22,14 @@ import PasswordRequirements from './PasswordRequirements';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 
 const C = {
-  bg: '#12151c',
-  card: '#181c24',
-  rule: '#2a3140',
-  ink: '#f4f1ea',
-  inkSoft: '#e8e2d4',
-  muted: '#8d96a6',
-  gold: '#d8a84e',
-  danger: '#d95a56',
+  bg: 'var(--accent-text)',
+  card: 'var(--accent-text)',
+  rule: 'var(--accent-text)',
+  ink: 'var(--text-1)',
+  inkSoft: 'var(--text-2)',
+  muted: 'var(--text-3)',
+  gold: 'var(--accent)',
+  danger: 'var(--danger)',
   good: 'var(--accent)',
 };
 
@@ -288,7 +288,7 @@ function inputStyle() {
 
 function btnPrimary(color) {
   return {
-    background: color, color: '#15110a', border: 0, borderRadius: 6,
+    background: color, color: 'var(--accent-text)', border: 0, borderRadius: 6,
     padding: '6px 14px', height: 30, fontSize: 12, fontWeight: 700, cursor: 'pointer',
     fontFamily: 'inherit',
   };

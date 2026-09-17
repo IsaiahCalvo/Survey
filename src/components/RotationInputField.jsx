@@ -570,8 +570,8 @@ function RotationInputField({
         gap: 4,
         padding: '0 8px',
         // UI-SPEC LOCKED tokens — DO NOT change without re-running the UI checker.
-        background: '#181c24',
-        border: isFocused ? '1px solid #4A9EFF' : '1px solid #2a3140',
+        background: 'var(--surface-2)',
+        border: isFocused ? '1px solid var(--border-strong)' : '1px solid var(--border)',
         borderRadius: 6,
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
         // UX: zIndex 101 is one above the overlay div's 100 (App.jsx) so the
@@ -614,7 +614,7 @@ function RotationInputField({
           // (#2a3140 → #4A9EFF), not the browser default outline. Matches the
           // zoom-input precedent at App.jsx:26468-26470.
           outline: 'none',
-          color: '#e8e2d4',
+          color: 'var(--text-2)',
           fontFamily: FONT_FAMILY,
           fontSize: 13,
           fontWeight: 500,
@@ -628,7 +628,7 @@ function RotationInputField({
           fontFamily: FONT_FAMILY,
           fontSize: 12,
           fontWeight: 400,
-          color: '#8d96a6',
+          color: 'var(--text-3)',
           // UX: ° suffix is decorative — pointerEvents none so clicks pass
           // through to the input below it; userSelect none prevents accidental
           // text-selection drag on the symbol.

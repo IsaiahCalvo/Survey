@@ -1004,8 +1004,8 @@ export default function TextEditOverlay({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelRef.current(); }}
               style={ACTION_TAP_PAD_STYLE}
             >
-              <span style={actionDiscStyle('#ffffff', '#cbd5e1')}>
-                <Icon name="close" size={ACTION_GLYPH_SIZE} color="#475569" />
+              <span style={actionDiscStyle('#ffffff', 'var(--text-2)')}>
+                <Icon name="close" size={ACTION_GLYPH_SIZE} color="var(--text-disabled)" />
               </span>
             </button>
             <button
@@ -1018,7 +1018,7 @@ export default function TextEditOverlay({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); commitRef.current({ flush: true }); }}
               style={ACTION_TAP_PAD_STYLE}
             >
-              <span style={actionDiscStyle('#2563eb', '#1d4ed8')}>
+              <span style={actionDiscStyle('#2563eb', 'var(--text-disabled)')}>
                 <Icon name="check" size={ACTION_GLYPH_SIZE} color="#ffffff" />
               </span>
             </button>

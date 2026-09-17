@@ -53,7 +53,7 @@ export const miniButtonStyle = ({
   background: 'transparent',
   border: `1px solid ${borderColor}`,
   borderRadius: 2,
-  color: disabled ? DEFAULT_DISABLED : (danger ? '#d95a56' : color),
+  color: disabled ? DEFAULT_DISABLED : (danger ? 'var(--danger)' : color),
   cursor: disabled ? 'not-allowed' : 'pointer',
   fontFamily: 'inherit',
   fontSize: 10.5,

@@ -24679,7 +24679,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         overflow: 'hidden',
         overflowAnchor: 'none',
         cursor: shouldShowGrabCursor ? 'grab' : 'default',
-        background: '#181c24',
+        background: 'var(--surface-2)',
         position: 'relative',
         fontFamily: FONT_FAMILY,
         minHeight: 0,
@@ -24703,7 +24703,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       overflow: 'auto',
       overflowAnchor: 'none',
       cursor: cursorStyle,
-      background: '#181c24',
+      background: 'var(--surface-2)',
       padding: '20px',
       position: 'relative',
       fontFamily: FONT_FAMILY,
@@ -27534,7 +27534,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Flash effect
         element.style.transition = 'box-shadow 0.5s';
-        element.style.boxShadow = '0 0 0 2px #d8a84e';
+        element.style.boxShadow = '0 0 0 2px var(--accent)';
         setTimeout(() => {
           element.style.boxShadow = 'none';
         }, 2000);
@@ -31744,8 +31744,8 @@ ${pageBlocks}
         height: '100vh',
         display: 'flex',
         flexDirection: 'row',
-        background: '#181c24',
-        color: '#e8e2d4',
+        background: 'var(--surface-2)',
+        color: 'var(--text-2)',
         fontFamily: FONT_FAMILY
       }}>
         <div style={{
@@ -31757,8 +31757,8 @@ ${pageBlocks}
         }}>
           <div style={{
             maxWidth: '480px',
-            background: '#12151c',
-            border: '1px solid #2a3140',
+            background: 'var(--surface-1)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '32px',
             textAlign: 'center',
@@ -31767,13 +31767,13 @@ ${pageBlocks}
             <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
               <Icon name="document" size={48} />
             </div>
-            <div style={{ fontSize: '18px', color: '#e8e2d4', marginBottom: '8px', fontWeight: 500 }}>
+            <div style={{ fontSize: '18px', color: 'var(--text-2)', marginBottom: '8px', fontWeight: 500 }}>
               Couldn’t open this PDF
             </div>
-            <div style={{ fontSize: '13px', color: '#8d96a6', marginBottom: '8px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '8px' }}>
               {docName}
             </div>
-            <div style={{ fontSize: '13px', color: '#8d96a6', marginBottom: '24px', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '24px', lineHeight: 1.5 }}>
               {pdfLoadError.kind === 'pdfjs'
                 ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
                 : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
@@ -31789,8 +31789,8 @@ ${pageBlocks}
                   setLoadRetryToken((t) => t + 1);
                 }}
                 style={{
-                  background: '#d8a84e',
-                  color: '#15110a',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: '6px',
                   padding: '10px 18px',
@@ -31825,8 +31825,8 @@ ${pageBlocks}
                 }}
                 style={{
                   background: 'transparent',
-                  color: '#e8e2d4',
-                  border: '1px solid #3a4252',
+                  color: 'var(--text-2)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '6px',
                   padding: '10px 18px',
                   fontSize: '13px',
@@ -31854,8 +31854,8 @@ ${pageBlocks}
         height: '100vh',
         display: 'flex',
         flexDirection: 'row',
-        background: '#181c24',
-        color: '#e8e2d4',
+        background: 'var(--surface-2)',
+        color: 'var(--text-2)',
         fontFamily: FONT_FAMILY
       }}>
         {/* Loading content */}
@@ -31864,7 +31864,7 @@ ${pageBlocks}
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#8d96a6',
+          color: 'var(--text-3)',
           fontSize: '15px',
           letterSpacing: '-0.2px'
         }}>
@@ -31873,8 +31873,8 @@ ${pageBlocks}
               <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
                 <Icon name="document" size={48} />
               </div>
-              <div style={{ fontSize: '18px', color: '#8d96a6' }}>Loading PDF...</div>
-              <div style={{ fontSize: '14px', color: '#5a6473', marginTop: '10px' }}>
+              <div style={{ fontSize: '18px', color: 'var(--text-3)' }}>Loading PDF...</div>
+              <div style={{ fontSize: '14px', color: 'var(--text-disabled)', marginTop: '10px' }}>
                 {pdfFile?.name || 'document.pdf'}
               </div>
             </div>
@@ -32002,8 +32002,8 @@ ${pageBlocks}
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#181c24',
-        color: '#e8e2d4',
+        background: 'var(--surface-2)',
+        color: 'var(--text-2)',
         fontFamily: FONT_FAMILY,
         position: 'relative'
       }}>
@@ -32140,7 +32140,7 @@ ${pageBlocks}
                     background: 'rgba(15, 15, 15, 0.86)',
                     border: '1px solid rgba(255,255,255,0.16)',
                     borderRadius: 8,
-                    color: '#e8e2d4',
+                    color: 'var(--text-2)',
                     fontFamily: FONT_FAMILY,
                     fontSize: 11,
                     lineHeight: 1.4,
@@ -32149,7 +32149,7 @@ ${pageBlocks}
                     pointerEvents: 'none'
                   }}
                 >
-                  <div style={{ color: '#8be9fd', fontWeight: 600, marginBottom: 4 }}>
+                  <div style={{ color: 'var(--text-3)', fontWeight: 600, marginBottom: 4 }}>
                     PDF Debug #{tick}
                   </div>
                   <div>Page: {pageNum}/{numPages || 0}</div>
@@ -32194,7 +32194,7 @@ ${pageBlocks}
                     {snapshot.data?.historyEventReason ? ` (${snapshot.data.historyEventReason})` : ''}
                   </div>
                   {rateEntries.length > 0 && (
-                    <div style={{ marginTop: 4, color: '#8d96a6' }}>
+                    <div style={{ marginTop: 4, color: 'var(--text-3)' }}>
                       {rateEntries.map(([name, rate]) => (
                         <div key={name}>{name}: {rate}/s</div>
                       ))}
@@ -32575,7 +32575,7 @@ ${pageBlocks}
                             <div style={{ position: 'absolute', left: 12, top: 12, zIndex: 45, pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
                               {ocrStateByPage[pageNumber]?.status === 'running' ? (
                                 <>
-                                  <span style={{ padding: '6px 9px', borderRadius: 5, background: '#181b20', color: '#e8e2d4', fontSize: 12 }}>
+                                  <span style={{ padding: '6px 9px', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--text-2)', fontSize: 12 }}>
                                     Recognizing… {Math.round((ocrStateByPage[pageNumber]?.progress || 0) * 100)}%
                                   </span>
                                   <button type="button" onClick={() => cancelTextRecognition(pageNumber)}>Cancel</button>
@@ -32590,11 +32590,11 @@ ${pageBlocks}
                                   Recognize text on this page
                                 </button>
                               )}
-                              <span style={{ color: '#9ca3af', fontSize: 10 }}>
+                              <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
                                 Local {OCR_ENGINE_NAME} - {OCR_ENGINE_LICENSE}. Works offline.
                               </span>
                               {ocrStateByPage[pageNumber]?.status === 'error' && (
-                                <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: '#181b20', color: '#fca5a5', fontSize: 11 }}>
+                                <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--danger)', fontSize: 11 }}>
                                   {ocrStateByPage[pageNumber].message}
                                 </span>
                               )}
@@ -33914,8 +33914,8 @@ ${pageBlocks}
             style={{
               width: '100%',
               height: '34px',
-              background: '#181c24',
-              borderBottom: '1px solid #2a3140',
+              background: 'var(--surface-2)',
+              borderBottom: '1px solid var(--border)',
               borderTop: 'none',
               cursor: 'default',
               display: 'flex',
@@ -34007,7 +34007,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronDown" size={12} color="#8d96a6" />
+                          <Icon name="chevronDown" size={12} color="var(--text-3)" />
                         </div>
                       )}
                     </button>
@@ -34045,10 +34045,10 @@ ${pageBlocks}
                     justifyContent: 'flex-start',
                     gap: '8px',
                     padding: '6px 10px',
-                    background: selected ? '#1f2430' : 'transparent',
+                    background: selected ? 'var(--surface-3)' : 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#e8e2d4',
+                    color: 'var(--text-2)',
                     textAlign: 'left',
                     cursor: 'pointer',
                     fontSize: '12px',
@@ -34071,7 +34071,7 @@ ${pageBlocks}
                             transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
-                            border: '1px solid #2a3140',
+                            border: '1px solid var(--border)',
                             borderRadius: '6px',
                             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                             zIndex: 999999,
@@ -34079,7 +34079,7 @@ ${pageBlocks}
                             flexDirection: 'column',
                             padding: '4px',
                             minWidth: '150px',
-                            color: '#e8e2d4',
+                            color: 'var(--text-2)',
                             pointerEvents: 'auto',
                             cursor: 'default',
                             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
@@ -34089,10 +34089,10 @@ ${pageBlocks}
                           <div style={{
                             padding: '4px 8px',
                             fontSize: '10px',
-                            color: '#8d96a6',
+                            color: 'var(--text-3)',
                             textTransform: 'uppercase',
                             fontWeight: 600,
-                            borderBottom: '1px solid #2a3140',
+                            borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
                             SurveyMarker Type
@@ -34103,8 +34103,8 @@ ${pageBlocks}
                               setActiveTool('highlighter');
                               setHighlighterCaretPopupOpen(false);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? 'var(--accent-text)' : 'transparent'; }}
                             style={optionStyle(activeTool === 'highlighter')}
                           >
                             Freehand highlight
@@ -34115,8 +34115,8 @@ ${pageBlocks}
                               setActiveTool('text-highlight');
                               setHighlighterCaretPopupOpen(false);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? 'var(--accent-text)' : 'transparent'; }}
                             style={optionStyle(activeTool === 'text-highlight')}
                           >
                             Text highlight
@@ -34243,7 +34243,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronDown" size={12} color="#8d96a6" />
+                          <Icon name="chevronDown" size={12} color="var(--text-3)" />
                         </div>
                       )}
                     </button>
@@ -34338,7 +34338,7 @@ ${pageBlocks}
                             transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
-                            border: '1px solid #2a3140',
+                            border: '1px solid var(--border)',
                             borderRadius: '6px',
                             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                             zIndex: 999999,
@@ -34346,7 +34346,7 @@ ${pageBlocks}
                             flexDirection: 'column',
                             padding: '4px',
                             minWidth: '140px',
-                            color: '#e8e2d4',
+                            color: 'var(--text-2)',
                             pointerEvents: 'auto',
                             cursor: 'default',
                             // UX: portaled popup lives at body level.
@@ -34367,10 +34367,10 @@ ${pageBlocks}
                           <div style={{
                             padding: '4px 8px',
                             fontSize: '10px',
-                            color: '#8d96a6',
+                            color: 'var(--text-3)',
                             textTransform: 'uppercase',
                             fontWeight: 600,
-                            borderBottom: '1px solid #2a3140',
+                            borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
                             Counter Series
@@ -34378,18 +34378,18 @@ ${pageBlocks}
                           {/* UX: popup rows are inline-styled, NOT using
                               the project's `.btn` class. Reason: `.btn`
                               has a translateY(-1px) hover lift and
-                              `.btn-active` paints text #d8a84e (blue),
+                              `.btn-active` paints text var(--accent) (blue),
                               which together created a "blue haze" that
                               doesn't match the eraser reference. Inline
                               styles give us full color control: muted
-                              gray text (#e8e2d4), subtle white-tint hover
+                              gray text (var(--text-2)), subtle white-tint hover
                               (#1f2430), no transform, no blue. */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleNewCounterSeries();
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             style={{
                               display: 'flex',
@@ -34400,7 +34400,7 @@ ${pageBlocks}
                               background: 'transparent',
                               border: 'none',
                               borderRadius: '4px',
-                              color: '#e8e2d4',
+                              color: 'var(--text-2)',
                               textAlign: 'left',
                               cursor: 'pointer',
                               fontSize: '12px',
@@ -34417,7 +34417,7 @@ ${pageBlocks}
                             }}
                             onMouseEnter={(e) => {
                               setCounterCaretSubmenu('continue');
-                              e.currentTarget.style.background = '#1f2430';
+                              e.currentTarget.style.background = 'var(--accent-text)';
                             }}
                             onMouseLeave={(e) => {
                               if (counterCaretSubmenu !== 'continue') {
@@ -34430,10 +34430,10 @@ ${pageBlocks}
                               justifyContent: 'space-between',
                               gap: '8px',
                               padding: '6px 10px',
-                              background: counterCaretSubmenu === 'continue' ? '#1f2430' : 'transparent',
+                              background: counterCaretSubmenu === 'continue' ? 'var(--surface-3)' : 'transparent',
                               border: 'none',
                               borderRadius: '4px',
-                              color: '#e8e2d4',
+                              color: 'var(--text-2)',
                               textAlign: 'left',
                               cursor: 'pointer',
                               fontSize: '12px',
@@ -34442,7 +34442,7 @@ ${pageBlocks}
                             }}
                           >
                             <span>Continue count</span>
-                            <span style={{ fontSize: '10px', color: '#8d96a6' }}>{'\u25B6'}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-3)' }}>{'\u25B6'}</span>
                           </button>
                           {counterCaretSubmenu === 'continue' && (
                             <div
@@ -34476,7 +34476,7 @@ ${pageBlocks}
                                 marginLeft: '4px',
                                 backgroundColor: 'rgb(30, 30, 30)',
                                 backgroundImage: 'none',
-                                border: '1px solid #2a3140',
+                                border: '1px solid var(--border)',
                                 borderRadius: '6px',
                                 boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                                 padding: '4px',
@@ -34485,7 +34485,7 @@ ${pageBlocks}
                                 flexDirection: 'column',
                                 maxHeight: '60vh',
                                 overflowY: 'auto',
-                                color: '#e8e2d4',
+                                color: 'var(--text-2)',
                                 pointerEvents: 'auto',
                                 cursor: 'default',
                                 fontFamily: 'inherit',
@@ -34501,17 +34501,17 @@ ${pageBlocks}
                                       e.stopPropagation();
                                       handleSwitchCounterSeries(s.seriesId);
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#1f2430' : 'transparent'; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? 'var(--accent-text)' : 'transparent'; }}
                                     style={{
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: '8px',
                                       padding: '6px 10px',
-                                      background: isActive ? '#1f2430' : 'transparent',
+                                      background: isActive ? 'var(--surface-3)' : 'transparent',
                                       border: 'none',
                                       borderRadius: '4px',
-                                      color: '#e8e2d4',
+                                      color: 'var(--text-2)',
                                       textAlign: 'left',
                                       cursor: 'pointer',
                                       fontSize: '12px',
@@ -34536,7 +34536,7 @@ ${pageBlocks}
                                       }}
                                     />
                                     <span style={{ flex: 1 }}>{s.label}</span>
-                                    <span style={{ fontSize: '10px', color: '#8d96a6' }}>{s.count}</span>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-3)' }}>{s.count}</span>
                                   </button>
                                 );
                               })}
@@ -34627,7 +34627,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronDown" size={12} color="#8d96a6" />
+                          <Icon name="chevronDown" size={12} color="var(--text-3)" />
                         </div>
                       )}
                     </button>
@@ -34655,10 +34655,10 @@ ${pageBlocks}
                     justifyContent: 'flex-start',
                     gap: '8px',
                     padding: '6px 10px',
-                    background: selected ? '#1f2430' : 'transparent',
+                    background: selected ? 'var(--surface-3)' : 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: disabled ? '#5a6473' : '#e8e2d4',
+                    color: disabled ? 'var(--text-disabled)' : 'var(--text-2)',
                     textAlign: 'left',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     fontSize: '12px',
@@ -34678,8 +34678,8 @@ ${pageBlocks}
                         setUnderlineCaretPopupOpen(false);
                         setStrikeCaretPopupOpen(false);
                       }}
-                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = '#1f2430'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? '#1f2430' : 'transparent'; }}
+                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--accent-text)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? 'var(--accent-text)' : 'transparent'; }}
                       style={optionStyle(activeTool === tool, disabled)}
                     >
                       {label}
@@ -34701,7 +34701,7 @@ ${pageBlocks}
                             transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
-                            border: '1px solid #2a3140',
+                            border: '1px solid var(--border)',
                             borderRadius: '6px',
                             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                             zIndex: 999999,
@@ -34709,7 +34709,7 @@ ${pageBlocks}
                             flexDirection: 'column',
                             padding: '4px',
                             minWidth: isUnderlineMenu ? '150px' : '166px',
-                            color: '#e8e2d4',
+                            color: 'var(--text-2)',
                             pointerEvents: 'auto',
                             cursor: 'default',
                             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
@@ -34719,10 +34719,10 @@ ${pageBlocks}
                           <div style={{
                             padding: '4px 8px',
                             fontSize: '10px',
-                            color: '#8d96a6',
+                            color: 'var(--text-3)',
                             textTransform: 'uppercase',
                             fontWeight: 600,
-                            borderBottom: '1px solid #2a3140',
+                            borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
                             {isUnderlineMenu ? 'Underline Type' : 'Strike Type'}
@@ -34772,9 +34772,9 @@ ${pageBlocks}
 	                        width: '160px',
 	                        maxWidth: '220px',
 	                        padding: '2px 28px 2px 10px',
-	                        background: '#2a3140',
-	                        color: '#e8e2d4',
-	                        border: '1px solid #3a4252',
+	                        background: 'var(--surface-3)',
+	                        color: 'var(--text-2)',
+	                        border: '1px solid var(--border-strong)',
 	                        borderRadius: '6px',
 	                        fontSize: '12px',
 	                        fontFamily: FONT_FAMILY,
@@ -34793,7 +34793,7 @@ ${pageBlocks}
 	                  </div>
 
 	                  <div style={{ position: 'relative', minWidth: '154px', minHeight: '30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', boxSizing: 'border-box' }}>
-	                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: '#5a6473' }} />
+	                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: 'var(--border-strong)' }} />
 	                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
 	                      {categories.length > 0 ? categories.map((category) => {
 	                        const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
@@ -34825,9 +34825,9 @@ ${pageBlocks}
 	                              letterSpacing: 0,
 	                              lineHeight: 1,
 	                              fontFamily: FONT_FAMILY,
-	                              border: isActive ? '1px solid #d8a84e' : '1px solid #5a6473',
-	                              background: isActive ? '#d8a84e' : '#2a3140',
-	                              color: isActive ? '#15110a' : '#e8e2d4',
+	                              border: isActive ? '1px solid var(--accent)' : '1px solid var(--border-strong)',
+	                              background: isActive ? 'var(--accent)' : 'var(--surface-3)',
+	                              color: isActive ? 'var(--accent-text)' : 'var(--text-2)',
 	                              cursor: 'pointer'
 	                            }}
 	                          >
@@ -34835,12 +34835,12 @@ ${pageBlocks}
 	                          </button>
 	                        );
 	                      }) : (
-	                        <span style={{ color: '#8d96a6', fontSize: '12px', padding: '0 6px' }}>
+	                        <span style={{ color: 'var(--text-3)', fontSize: '12px', padding: '0 6px' }}>
 	                          No categories
 	                        </span>
 	                      )}
 	                    </div>
-	                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: '#5a6473' }} />
+	                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: 'var(--border-strong)' }} />
 	                  </div>
 
 	                  <div style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingLeft: '12px', whiteSpace: 'nowrap' }}>
@@ -34850,7 +34850,7 @@ ${pageBlocks}
 	                        display: 'flex',
 	                        alignItems: 'center',
 	                        gap: '6px',
-	                        color: '#e8e2d4',
+	                        color: 'var(--text-2)',
 	                        fontSize: '12px',
 	                        fontFamily: FONT_FAMILY,
 	                        cursor: 'pointer',
@@ -34862,7 +34862,7 @@ ${pageBlocks}
 	                        type="checkbox"
 	                        checked={surveyKeepCategoryActive}
 	                        onChange={(e) => setSurveyKeepCategoryActive(e.target.checked)}
-	                        style={{ margin: 0, accentColor: '#d8a84e', cursor: 'pointer' }}
+	                        style={{ margin: 0, accentColor: 'var(--accent)', cursor: 'pointer' }}
 	                      />
 	                      Keep active
 	                    </label>
@@ -34964,7 +34964,7 @@ ${pageBlocks}
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#8d96a6'
+                      color: 'var(--text-3)'
                     }}
                   >
                     <Icon name="close" size={18} />
@@ -35667,7 +35667,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#8d96a6'
+                        color: 'var(--text-3)'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -35841,7 +35841,7 @@ ${pageBlocks}
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#8d96a6'
+                          color: 'var(--text-3)'
                         }}
                       >
                         <Icon name="close" size={18} />
@@ -36182,7 +36182,7 @@ ${pageBlocks}
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#8d96a6'
+                          color: 'var(--text-3)'
                         }}
                       >
                         <Icon name="close" size={18} />
@@ -36285,7 +36285,7 @@ ${pageBlocks}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        background: '#0d0f14',
+                        background: 'var(--surface-0)',
                         border: `1px solid ${COLORS.modal.borderStrong}`,
                         borderRadius: '6px',
                         color: COLORS.modal.textPrimary,
@@ -36632,7 +36632,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#8d96a6'
+                        color: 'var(--text-3)'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -36960,7 +36960,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#8d96a6'
+                        color: 'var(--text-3)'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -37282,7 +37282,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#8d96a6'
+                        color: 'var(--text-3)'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -37501,7 +37501,7 @@ ${pageBlocks}
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#8d96a6'
+                    color: 'var(--text-3)'
                   }}
                 >
                   <Icon name="close" size={18} />
@@ -37518,7 +37518,7 @@ ${pageBlocks}
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: '#0d0f14',
+                    background: 'var(--surface-0)',
                     border: `1px solid ${COLORS.modal.borderStrong}`,
                     borderRadius: '6px',
                     color: COLORS.modal.textPrimary,
@@ -37627,7 +37627,7 @@ ${pageBlocks}
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             // Flash effect
                             element.style.transition = 'box-shadow 0.5s';
-                            element.style.boxShadow = '0 0 0 2px #d8a84e';
+                            element.style.boxShadow = '0 0 0 2px var(--accent)';
                             setTimeout(() => {
                               element.style.boxShadow = 'none';
                             }, 2000);

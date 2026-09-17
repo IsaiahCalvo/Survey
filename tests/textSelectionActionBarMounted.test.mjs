@@ -143,13 +143,17 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(highlightSwatch.style.background, 'rgb(245, 194, 41)');
     assert.equal(highlightSwatch.style.opacity, '1');
     assert.deepEqual(actions, []);
-    assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
-    assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
+    assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), 'var(--accent)' /* DELIBERATE ASSERTION CHANGE 2026-09-17, revision-2 palette:
+      #e5ad18 was a SECOND gold, a shade off the app's own #d8a84e, living only in
+      this one action bar. It is the shared --accent token now, so there is one gold. */);
+    assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-color]')?.getAttribute('data-icon-color'), 'var(--text-2)');
     assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-name]')?.style.opacity, '1');
     await act(async () => document.querySelector('button[aria-label="Remove Highlight"]').click());
-    assert.equal(document.querySelector('button[aria-label="Apply Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
+    assert.equal(document.querySelector('button[aria-label="Apply Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), 'var(--text-2)');
     await act(async () => document.querySelector('button[aria-label="Apply Highlight"]').click());
-    assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
+    assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), 'var(--accent)' /* DELIBERATE ASSERTION CHANGE 2026-09-17, revision-2 palette:
+      #e5ad18 was a SECOND gold, a shade off the app's own #d8a84e, living only in
+      this one action bar. It is the shared --accent token now, so there is one gold. */);
     // 2026-09-07 polish pass (A5): Redact used to render at 21 in a row of 18s,
     // which made it the widest glyph there and, with its old solid slab, read
     // about half again as heavy as its neighbours. The row now has ONE size.

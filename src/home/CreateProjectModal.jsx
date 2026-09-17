@@ -4,12 +4,12 @@ import Spinner from '../components/Spinner';
 import Icon from '../Icons';
 
 const COLORS = {
-  card: '#181c24',
-  deep: '#12151c',
-  gold: '#d8a84e',
-  ink: '#f4f1ea',
-  muted: '#8d96a6',
-  rule: '#2a3140',
+  card: 'var(--accent-text)',
+  deep: 'var(--accent-text)',
+  gold: 'var(--accent)',
+  ink: 'var(--text-1)',
+  muted: 'var(--text-3)',
+  rule: 'var(--accent-text)',
   scrim: 'rgba(13,15,20,0.72)',
 };
 
@@ -118,7 +118,7 @@ export default function CreateProjectModal({
 
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: `1px solid ${COLORS.rule}`, background: COLORS.deep }}>
           <button type="button" disabled={busy} onClick={onCancel} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 14px', background: 'transparent', color: COLORS.muted, font: 'inherit', cursor: 'pointer' }}>Cancel</button>
-          <button type="button" disabled={!canSubmit} onClick={onConfirm} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 16px', background: COLORS.gold, color: '#15110a', opacity: canSubmit ? 1 : 0.45, font: 'inherit', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" disabled={!canSubmit} onClick={onConfirm} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 16px', background: COLORS.gold, color: 'var(--accent-text)', opacity: canSubmit ? 1 : 0.45, font: 'inherit', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             {/* KAL-73: ring + participle while the project (and any PDFs) persist. */}
             {busy && <Spinner size={14} color="currentColor" />}
             {busy ? 'Creating project…' : 'Create project'}

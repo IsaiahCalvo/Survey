@@ -37,14 +37,14 @@ const TAB_HEIGHT = 32;
 const HOME_TAB_WIDTH = 148;
 const PDF_TAB_MIN_WIDTH = 168;
 const PDF_TAB_MAX_WIDTH = 280;
-const TAB_BAR_BG = '#0d0f14';
-const TAB_IDLE_BG = '#0f1218';
-const TAB_ACTIVE_BG = '#181c24';
-const TAB_HOVER_BG = '#151922';
-const TAB_BORDER = '#2a3140';
-const TAB_TEXT = '#8d96a6';
-const TAB_TEXT_ACTIVE = '#f4f1ea';
-const TAB_ACCENT = '#d8a84e';
+const TAB_BAR_BG = 'var(--accent-text)';
+const TAB_IDLE_BG = 'var(--accent-text)';
+const TAB_ACTIVE_BG = 'var(--accent-text)';
+const TAB_HOVER_BG = 'var(--accent-text)';
+const TAB_BORDER = 'var(--accent-text)';
+const TAB_TEXT = 'var(--text-3)';
+const TAB_TEXT_ACTIVE = 'var(--text-1)';
+const TAB_ACCENT = 'var(--accent)';
 
 const restrictTabsToHorizontalAxis = ({ transform }) => ({
   ...transform,
@@ -216,7 +216,7 @@ function TabItem({
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            background: '#d95a56',
+            background: 'var(--danger)',
             display: 'inline-block',
             marginRight: '7px',
             flexShrink: 0
@@ -238,7 +238,7 @@ function TabItem({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#5a6473',
+            color: 'var(--text-disabled)',
             transition: 'all 0.15s ease',
             flexShrink: 0
           }}
@@ -396,7 +396,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
           border-radius: 3px;
         }
         .tab-bar::-webkit-scrollbar-thumb:hover {
-          background: #3a4252;
+          background: var(--surface-3);
         }
       `}</style>
       <div

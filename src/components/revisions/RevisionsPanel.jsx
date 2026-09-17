@@ -103,7 +103,7 @@ function isDeleteHistoryEvent(event) {
 
 function originBadge(origin) {
   if (origin === 'auto-pre-restore') {
-    return { label: 'auto', color: '#8a8a8a' };
+    return { label: 'auto', color: 'var(--text-disabled)' };
   }
   if (origin === 'sign-off') {
     return { label: 'sign-off', color: '#7ea8ff' };
@@ -473,7 +473,7 @@ export default function RevisionsPanel({
     const strokeWidth = Math.max(6, Number(annotation.strokeWidth || 2) + 4);
     const addGlowAttrs = (node) => {
       node.setAttribute('fill', 'none');
-      node.setAttribute('stroke', '#d8a84e');
+      node.setAttribute('stroke', 'var(--accent)');
       node.setAttribute('stroke-opacity', '0.4');
       node.setAttribute('stroke-width', `${strokeWidth}`);
       node.setAttribute('stroke-linecap', 'round');
@@ -587,7 +587,7 @@ export default function RevisionsPanel({
     if (!svg) return false;
     clone.removeAttribute('fill');
     clone.setAttribute('fill', 'none');
-    clone.setAttribute('stroke', '#d8a84e');
+    clone.setAttribute('stroke', 'var(--accent)');
     clone.setAttribute('stroke-opacity', '0.4');
     clone.setAttribute('stroke-width', `${Math.max(6, Number(path.getAttribute('stroke-width') || 2) + 4)}`);
     clone.setAttribute('stroke-linecap', 'round');
@@ -809,19 +809,19 @@ export default function RevisionsPanel({
         bottom: embedded ? 'auto' : 0,
         width: embedded ? '100%' : DRAWER_WIDTH,
         height: embedded ? '100%' : 'auto',
-        background: embedded ? '#12151c' : '#1a1a1a',
-        color: '#e9e6df',
+        background: embedded ? 'var(--surface-1)' : 'var(--surface-1)',
+        color: 'var(--text-2)',
         zIndex: embedded ? 'auto' : 9050,
         boxShadow: embedded ? 'none' : '-4px 0 16px rgba(0,0,0,0.5)',
         display: 'flex',
         flexDirection: 'column',
-        borderLeft: embedded ? 0 : '1px solid #2a3140',
+        borderLeft: embedded ? 0 : '1px solid var(--border)',
       }}
     >
       <div
         style={{
           padding: 14,
-          borderBottom: '1px solid #2a3140',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -837,8 +837,8 @@ export default function RevisionsPanel({
             }}
             style={{
               background: 'transparent',
-              color: '#8d96a6',
-              border: '1px solid #3a4252',
+              color: 'var(--text-3)',
+              border: '1px solid var(--border-strong)',
               borderRadius: 4,
               padding: '2px 8px',
               cursor: 'pointer',
@@ -851,10 +851,10 @@ export default function RevisionsPanel({
       </div>
 
       <div className={mobileMode ? 'mobile-revisions-panel' : undefined} style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-        {loading && <div style={{ padding: 10, fontSize: 12, color: '#8d96a6' }}>Loading…</div>}
-        {err && <div style={{ padding: 10, color: '#ff8a8a', fontSize: 12 }}>Error: {err}</div>}
+        {loading && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>Loading…</div>}
+        {err && <div style={{ padding: 10, color: 'var(--danger)', fontSize: 12 }}>Error: {err}</div>}
         {!loading && !err && timelineItems.length === 0 && (
-          <div style={{ padding: 10, color: '#8d96a6', fontSize: 12 }}>
+          <div style={{ padding: 10, color: 'var(--text-3)', fontSize: 12 }}>
             No history yet. Edit the document or save a named version to start the timeline.
           </div>
         )}
@@ -891,8 +891,8 @@ export default function RevisionsPanel({
                   padding: 10,
                   marginBottom: 6,
                   borderRadius: 6,
-                  border: isSelected ? '1px solid #6f8fcb' : '1px solid #1f2430',
-                  background: isSelected ? '#243044' : '#202020',
+                  border: isSelected ? '1px solid var(--border-strong)' : '1px solid var(--border)',
+                  background: isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
                   cursor: 'pointer',
                   outline: 'none',
                   contentVisibility: 'auto',
@@ -900,10 +900,10 @@ export default function RevisionsPanel({
                 }}
                 title={event.page_number ? `Go to page ${event.page_number}` : 'History item'}
               >
-                <div style={{ fontSize: 12, color: '#e0ddd6', lineHeight: 1.35 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.35 }}>
                   {event.summary}
                 </div>
-                <div style={{ fontSize: 11, color: '#8d96a6', marginTop: 5 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
                   {formatDate(event.occurred_at || event.created_at)}
                   {event.is_undoable ? ' · undoable edit' : ''}
                   {event.page_number ? ` · page ${event.page_number}` : ''}
@@ -911,7 +911,7 @@ export default function RevisionsPanel({
                 </div>
                 {isDeleted && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10, color: canRestoreDeleted ? '#d8c28a' : '#9b8b8b' }}>
+                    <span style={{ fontSize: 10, color: canRestoreDeleted ? 'var(--accent)' : 'var(--text-3)' }}>
                       {canRestoreDeleted ? 'Restorable deleted item' : 'Restore unavailable'}
                     </span>
                     {canRestoreDeleted && (
@@ -925,9 +925,9 @@ export default function RevisionsPanel({
                         }}
                         style={{
                           fontSize: 11,
-                          background: '#3a3220',
-                          color: '#ffe0a3',
-                          border: '1px solid #6f5624',
+                          background: 'var(--surface-3)',
+                          color: 'var(--accent-light)',
+                          border: '1px solid var(--accent-press)',
                           borderRadius: 4,
                           padding: '3px 8px',
                           cursor: busy ? 'wait' : 'pointer',
@@ -945,7 +945,7 @@ export default function RevisionsPanel({
                       paddingTop: 8,
                       borderTop: '1px solid rgba(255,255,255,0.08)',
                       fontSize: 11,
-                      color: '#aeb8ca',
+                      color: 'var(--text-3)',
                       display: 'grid',
                       gap: 3,
                     }}
@@ -986,8 +986,8 @@ export default function RevisionsPanel({
                 padding: 10,
                 marginBottom: 6,
                 borderRadius: 6,
-                border: '1px solid #3c4b3c',
-                background: '#222820',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-1)',
                 cursor: busy ? 'wait' : 'pointer',
                 contentVisibility: 'auto',
                 containIntrinsicSize: '0 60px',
@@ -1000,7 +1000,7 @@ export default function RevisionsPanel({
                   style={{
                     fontSize: 10,
                     background: badge.color,
-                    color: '#111',
+                    color: 'var(--accent-text)',
                     padding: '1px 6px',
                     borderRadius: 3,
                     fontWeight: 600,
@@ -1008,9 +1008,9 @@ export default function RevisionsPanel({
                 >
                   {badge.label}
                 </span>
-                {rev.label && <span style={{ fontSize: 12, color: '#e8e2d4' }}>{rev.label}</span>}
+                {rev.label && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{rev.label}</span>}
               </div>
-              <div style={{ fontSize: 11, color: '#8d96a6', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>
                 {formatDate(rev.createdAt)} · restore point · {rev.annotationCount} annotation(s)
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1024,9 +1024,9 @@ export default function RevisionsPanel({
                   disabled={busy}
                   style={{
                     fontSize: 11,
-                    background: '#181c24',
-                    color: '#e9e6df',
-                    border: '1px solid #3a4252',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
+                    border: '1px solid var(--border-strong)',
                     borderRadius: 4,
                     padding: '3px 8px',
                     cursor: busy ? 'wait' : 'pointer',
@@ -1045,9 +1045,9 @@ export default function RevisionsPanel({
                     disabled={busy}
                     style={{
                       fontSize: 11,
-                      background: '#3a2e2e',
-                      color: '#ffdada',
-                      border: '1px solid #6e3e3e',
+                      background: 'var(--surface-3)',
+                      color: 'var(--danger)',
+                      border: '1px solid var(--border-strong)',
                       borderRadius: 4,
                       padding: '3px 8px',
                       cursor: busy ? 'wait' : 'pointer',
@@ -1062,9 +1062,9 @@ export default function RevisionsPanel({
         })}
       </div>
 
-      <div style={{ borderTop: '1px solid #2a3140', padding: 10 }}>
+      <div style={{ borderTop: '1px solid var(--border)', padding: 10 }}>
         {statusMsg && (
-          <div data-testid="kal48-status" style={{ fontSize: 11, color: '#9ec', marginBottom: 6 }}>
+          <div data-testid="kal48-status" style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>
             {statusMsg}
           </div>
         )}
@@ -1076,9 +1076,9 @@ export default function RevisionsPanel({
             disabled={busy}
             style={{
               width: '100%',
-              background: '#d8a84e',
-              color: '#15110a',
-              border: '1px solid #b6904a',
+              background: 'var(--accent)',
+              color: 'var(--accent-text)',
+              border: '1px solid var(--accent-press)',
               borderRadius: 6,
               padding: '8px 12px',
               fontSize: 12,
@@ -1090,7 +1090,7 @@ export default function RevisionsPanel({
           </button>
         )}
         {!isOwner && (
-          <div style={{ fontSize: 11, color: '#8d96a6' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
             Only the document owner can save or restore versions.
           </div>
         )}
@@ -1125,8 +1125,8 @@ export default function RevisionsPanel({
     >
       <div
         style={{
-          background: 'var(--bg-secondary, #12151c)',
-          border: '1px solid var(--border-primary, #2a3140)',
+          background: 'var(--surface-1)',
+          border: '1px solid var(--border)',
           borderRadius: 8,
           boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.5))',
           width: '100%',
@@ -1137,16 +1137,16 @@ export default function RevisionsPanel({
           display: 'flex',
           flexDirection: 'column',
           gap: 12,
-          color: '#e9e6df',
+          color: 'var(--text-2)',
         }}
       >
         <h2
           id="cascade-restore-heading"
-          style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#e9e6df' }}
+          style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-2)' }}
         >
           Restore this region?
         </h2>
-        <p style={{ margin: 0, fontSize: 14, color: '#c8c4bc', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--text-3)', lineHeight: 1.5 }}>
           {"This region's space was deleted too. Restore both?"}
           {cascadePending.spaceEvent?.payload?.spaceName
             ? ` (Space: "${cascadePending.spaceEvent.payload.spaceName}")`
@@ -1160,8 +1160,8 @@ export default function RevisionsPanel({
             style={{
               fontSize: 13,
               background: 'transparent',
-              color: '#c8c4bc',
-              border: '1px solid #5a6473',
+              color: 'var(--text-3)',
+              border: '1px solid var(--border-strong)',
               borderRadius: 4,
               padding: '6px 14px',
               cursor: 'pointer',
@@ -1175,9 +1175,9 @@ export default function RevisionsPanel({
             onClick={handleCascadeConfirm}
             style={{
               fontSize: 13,
-              background: '#3a3220',
-              color: '#ffe0a3',
-              border: '1px solid #6f5624',
+              background: 'var(--surface-3)',
+              color: 'var(--accent-light)',
+              border: '1px solid var(--accent-press)',
               borderRadius: 4,
               padding: '6px 14px',
               cursor: 'pointer',
@@ -1203,7 +1203,7 @@ export default function RevisionsPanel({
         top: 0,
         left: 0,
         right: 0,
-        background: '#5e4a1f',
+        background: 'var(--accent-press)',
         color: '#fff8dd',
         padding: '8px 16px',
         zIndex: 9100,
@@ -1211,7 +1211,7 @@ export default function RevisionsPanel({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        borderBottom: '1px solid #7e6630',
+        borderBottom: '1px solid var(--accent-press)',
       }}
     >
       <span>
@@ -1251,9 +1251,9 @@ export default function RevisionsPanel({
           right: 14,
           bottom: 80,
           zIndex: 9000,
-          background: '#181c24',
-          color: '#e9e6df',
-          border: '1px solid #3a4252',
+          background: 'var(--surface-2)',
+          color: 'var(--text-2)',
+          border: '1px solid var(--border-strong)',
           borderRadius: 8,
           padding: '8px 12px',
           fontSize: 12,
