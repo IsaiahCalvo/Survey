@@ -2772,9 +2772,13 @@ const RegionSelectionTool = ({
                 height: '14px'
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '14px', height: '14px' }}>
-                <path d="M6 9L12 15L18 9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              {/* UX: the shared dropdown chevron. This hand-drew the SAME path
+                  data as <Icon name="chevronDown" /> at stroke 2.5 against the
+                  house 1.5, so the Rectangular/Freehand caret read 167% heavier
+                  than the Width and Line-style carets in the same toolbar.
+                  Reference behaviour matched: those carets, and the spaces
+                  rail's, which are both this Icon at 14px. */}
+              <Icon name="chevronDown" size={14} color="#fff" style={{ width: '14px', height: '14px' }} />
             </span>
           </button>
 

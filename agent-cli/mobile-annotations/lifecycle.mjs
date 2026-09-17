@@ -138,7 +138,7 @@ async function mobileMenuPoint(locator, toolId, label) {
     const targetCalloutId = target.closest?.('[data-callout-id]')?.getAttribute('data-callout-id');
     for (const [x, y] of candidates) {
       const top = document.elementFromPoint(x, y);
-      if (!top || top.closest?.('[data-resize-handle], [data-rotation-handle]')) continue;
+      if (!top || top.closest?.('[data-resize-handle], [data-rotation-handle], [data-handle-hit-pad]')) continue;
       const belongsToTarget = top === target
         || target.contains?.(top)
         || (targetAnnotationId && top.closest?.('[data-anno-id]')?.getAttribute('data-anno-id') === targetAnnotationId)

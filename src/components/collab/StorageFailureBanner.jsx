@@ -233,27 +233,23 @@ const SECONDARY_BY_CODE = {
   viewer_access: 'Ask the document owner for edit access if you need to make changes',
 };
 
-// Inline 16x16 warning icon — matches existing project pattern (AuthModal.jsx,
-// UserMenu.jsx use inline SVGs rather than an icon library). Stroke color
-// inherits from CSS (.storage-banner__icon { color: var(--accent-red) })
-// so theming stays in the stylesheet.
+/*
+ * The banner's 16x16 alert triangle.
+ *
+ * UX: it is the first thing in the banner and the dismiss cross is the last, and
+ * the two are the only glyphs on the surface, so they have to read as one set.
+ * Until 2026-09-16 this was hand-drawn here at stroke 2 while that cross was the
+ * shared <Icon name="close" /> at the house 1.5 — the triangle came out a third
+ * heavier than the cross in the same 16px row. The artwork moved into
+ * src/Icons.jsx as `warningTriangle`, unchanged except for its weight; nothing
+ * in this file is hand-drawn any more.
+ *
+ * Keeps the .storage-banner__icon class, so the accent-red colour and the 2px
+ * baseline nudge still live in the stylesheet and reach the glyph through
+ * `currentColor`. Reference behaviour matched: the dismiss cross below.
+ */
 const WarningIcon = () => (
-  <svg
-    className="storage-banner__icon"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" />
-    <line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
+  <Icon name="warningTriangle" size={16} className="storage-banner__icon" />
 );
 
 /**

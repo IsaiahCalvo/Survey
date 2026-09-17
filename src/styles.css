@@ -17,7 +17,59 @@
     "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
   --accent-red: #d95a56;
   --overlay-scrim: rgba(13, 15, 20, 0.55);
+
+  /* UX 2026-09-16 (desktop sizing pass): ONE size scale for the desktop
+     document chrome, so every control in the top bar, the tool sub-row and
+     the rails reads the same numbers instead of carrying its own.
+     REFERENCE = Drawboard PDF on the web, measured live at 1440x900: a 40px
+     tool strip holding 34x34 icon buttons whose glyph is 18px
+     (glyph:button = 0.53), 24px-tall value chips, and 2px gaps. Survey's top
+     bar stays 44px tall — the same 34/18 control simply sits in 5px of
+     breathing space instead of Drawboard's 3px, so the RATIO is Drawboard's
+     while the bar height is unchanged.
+     Before this pass the top row alone mixed glyph sizes 14 / 15 / 18 / 20 /
+     22 and control heights 26 / 28 / 30, and the sub-row used a third pair.
+     CARETS are NOT one size: the Width / Style dropdown caret is 10px, the
+     Select split button's is 7px. Drawboard does the same (its split-button
+     caret measures 6px) — a caret that hangs beside a full-size glyph has to
+     stay out of its way.
+     GAPS are 4px rather than Drawboard's 2px because Survey's hover state
+     paints a 1px border plus a 1px ring: at a 2px gap two neighbouring rings
+     would touch. 4px is the smallest gap that keeps a visible gutter.
+     Any control added to the chrome later should take these tokens rather
+     than inventing a number. */
+  --chrome-control-h: 34px;        /* top-bar icon button height (Drawboard: 34) */
+  --chrome-control-w: 34px;        /* top-bar icon button width — square, as Drawboard */
+  --chrome-control-split-w: 40px;  /* icon + caret (the Select mode button) */
+  --chrome-sub-control-h: 32px;    /* tool sub-row button, inside the 34px strip */
+  --chrome-sub-control-w: 34px;
+  --chrome-glyph: 18px;            /* every chrome control glyph (Drawboard: 18) */
+  --chrome-field-glyph: 14px;      /* glyph inside a 24px value chip */
+  --chrome-gap: 4px;               /* gap between neighbouring chrome controls */
+  --chrome-radius: 6px;
+  --chrome-field-h: 24px;          /* value chips: colour, width, line style (Drawboard: 24) */
+  --chrome-field-w: 76px;          /* the width control and the line-style dropdown are ONE size */
+  --chrome-field-trigger-w: 24px;  /* the width control's preset-list trigger */
+  --chrome-field-pad-x: 6px;
+  --chrome-menu-w: 126px;          /* dropdown popover width */
+  --chrome-menu-row-h: 34px;       /* dropdown popover row height */
+
+  /* UX 2026-09-16 (desktop sweep): the RAIL tier — the left document rail and
+     the right Survey rail. One control box and one glyph size per kind, so a
+     48px rail column never mixes its own numbers (it used to show 14, 16, 17,
+     18 and 20 at once, with 24px, 28px and 36x28 boxes in one footer).
+     The small pair is the chrome's own value-chip pair rather than new numbers:
+     a rail footer button and a value chip are the same size of thing.
+     The JS mirrors of these live in src/viewerShared.js as RAIL_* — <Icon size>
+     takes a NUMBER, so a var() string will not do there. Keep the two in step. */
+  --rail-tab-h: 40px;              /* Pages / Search / Bookmarks / Spaces / Survey */
+  --rail-glyph: 18px;              /* the glyph inside a rail tab */
+  --rail-control: 24px;            /* every other rail button, square */
+  --rail-control-glyph: 14px;      /* the glyph inside one */
+  --rail-split-control-w: 36px;    /* the one that hangs a caret beside its glyph (Fit) */
+  --rail-caret: 10px;              /* that caret — the dropdown caret size, not the glyph size */
 }
+
 
 .App {
   background-color: #0d0f14;
@@ -82,7 +134,19 @@
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* UX 2026-09-16: hover/press feedback is a COLOUR change only, and a fast
+     one. Reference = Drawboard PDF, whose buttons transition
+     `color, background-color, border-color, fill, stroke` over 100ms
+     cubic-bezier(.4,0,.2,1) and nothing else. Survey used `all 0.2s`, which
+     animated the 1px hover lift and the shadow too, so a button visibly slid
+     and took twice as long to acknowledge the pointer. Listing the properties
+     means transform/box-shadow now land in one frame (no slide) while the
+     colour still eases. Do not put `all` back here. */
+  transition:
+    color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -240,6 +304,44 @@
   min-width: 24px;
   width: 24px;
   height: 24px;
+}
+
+/* UX 2026-09-16 (desktop sizing pass): the two chrome control shapes.
+   `.chrome-control` is a top-bar button, `.chrome-subcontrol` a tool sub-row
+   button. Reference = Drawboard PDF's square 34x34 tool buttons. Scoped to
+   their own classes rather than to `#chrome-top-host button` so the colour
+   picker and the other popovers that render INSIDE the top bar keep their
+   own sizes. */
+.chrome-control,
+.chrome-subcontrol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--chrome-radius);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
+.chrome-control {
+  width: var(--chrome-control-w);
+  min-width: var(--chrome-control-w);
+  height: var(--chrome-control-h);
+  min-height: var(--chrome-control-h);
+}
+
+/* A control that carries a caret beside its glyph (the Select mode button)
+   needs the extra width; its height still comes from the shared token. */
+.chrome-control--split {
+  width: var(--chrome-control-split-w);
+  min-width: var(--chrome-control-split-w);
+}
+
+.chrome-subcontrol {
+  width: var(--chrome-sub-control-w);
+  min-width: var(--chrome-sub-control-w);
+  height: var(--chrome-sub-control-h);
+  min-height: var(--chrome-sub-control-h);
 }
 
 .survey-marker-name-fit {
@@ -1729,3 +1831,51 @@ input[type="text"].space-add-pages-input:focus-visible {
 /* UX: both label copies share a cell; the hidden bold copy reserves menu width. */
 .select-mode-label { display: inline-grid; }
 .select-mode-label > span { grid-area: 1 / 1; }
+
+/* ===========================================================================
+   Shared "open" motion for popovers, menus, the tool sub-row and side panels
+   UX 2026-09-16.
+
+   Reference = Drawboard PDF, whose popovers and menus fade + grow in over
+   100ms and fade out over 150ms. Survey's popovers, colour picker, tool
+   sub-row and Pages panel all measured `transition: 0s / animation: none` —
+   they appeared in a single frame with no cue about where they came from.
+
+   These classes give every one of them the same short fade + small slide:
+   140ms in (inside Drawboard's 100-150ms band), 4-6px of travel from the
+   direction the surface is anchored, and an ease that settles rather than
+   overshoots. Surfaces that stay mounted and toggle a class (the mobile zoom
+   menu) also get a 130ms fade OUT; surfaces that unmount on close only get
+   the "in" half, because there is nothing left in the DOM to animate out.
+
+   `translate` (the standalone property) is used instead of `transform` on
+   purpose: several of these popovers already carry an inline
+   `transform: translate(-50%, 0)` for centring, and animating `transform`
+   would wipe it out mid-flight.
+   =========================================================================== */
+@keyframes surveySurfaceIn {
+  from { opacity: 0; translate: 0 -5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes surveySurfaceInFromLeft {
+  from { opacity: 0; translate: -6px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* Anchored below its trigger: slides down into place. */
+.survey-surface-in {
+  animation: surveySurfaceIn 140ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* Anchored to the left edge of the window: slides in from the left. */
+.survey-surface-in-left {
+  animation: surveySurfaceInFromLeft 140ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survey-surface-in,
+  .survey-surface-in-left {
+    animation: none;
+  }
+}

@@ -26,6 +26,7 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -1250,7 +1251,11 @@ const SurveySpacesRail = ({
                     borderBottom: '1px solid #2a3140',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'flex-start',
+                    // UX 2026-09-16: the collapsed rail is one icon column, so
+                    // its top toggle sits on the same centre line as Survey,
+                    // zoom, the page steppers and Fit below it. Left-aligning
+                    // it to the rail's padding edge left it 3px off-axis.
+                    justifyContent: mobileMode ? 'flex-start' : 'center',
                     background: '#12151c',
                     flexShrink: 0
                   }}>
@@ -1261,11 +1266,17 @@ const SurveySpacesRail = ({
                       }}
                       aria-label="Expand Survey panel"
                       {...tip('Expand Survey panel', 'left')}
-                      style={{ background: 'transparent', border: 'none', color: '#8d96a6', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+                      // UX 2026-09-16 (desktop sweep): the shared rail control box
+                      // and glyph. It was a 16px chevron in a padding-derived 24px
+                      // box, so the top of the rail carried a glyph size nothing
+                      // else in the column used. The box measures the same 24 as
+                      // before, so the strip's 35px height and the rail's centre
+                      // line are unchanged — nothing moves.
+                      style={{ background: 'transparent', border: 'none', color: '#8d96a6', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = '#2a3140'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
                     >
-                      <Icon name="chevronLeft" size={16} color="#8d96a6" />
+                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="#8d96a6" />
                     </button>
                   </div>
                   <div style={{
@@ -1291,12 +1302,19 @@ const SurveySpacesRail = ({
                         }}
                         aria-label="Survey"
                         {...tip('Survey', 'left')}
+                        // UX 2026-09-16 (desktop sweep): the Survey tab is a rail
+                        // TAB, so it takes the rail tab glyph (18) like Pages,
+                        // Search, Bookmarks and Spaces in the left rail — it was
+                        // the one 20 in either rail. The padding is split 11/6 the
+                        // way the left rail's tabs are, which keeps the button the
+                        // same 40px tall around the smaller glyph: 18 + 22 = 40,
+                        // exactly what 20 + 20 came to. Nothing moves.
                         style={{
                           background: 'transparent',
                           border: 'none',
                           color: showSurveyPanel ? '#d8a84e' : '#8d96a6',
                           cursor: 'pointer',
-                          padding: '10px',
+                          padding: '11px 6px',
                           borderRadius: '6px',
                           display: 'flex',
                           alignItems: 'center',
@@ -1318,9 +1336,9 @@ const SurveySpacesRail = ({
                       >
                         <Icon
                           name="survey"
-                          size={20}
+                          size={RAIL_GLYPH}
                           color="currentColor"
-                          style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                          style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
                         />
                       </button>
                     </div>
@@ -1361,12 +1379,19 @@ const SurveySpacesRail = ({
                         });
                       }}
                       aria-label="Collapse Survey panel"
+                      // UX 2026-09-16 (desktop sweep): the shared rail control box
+                      // and glyph, the same as its twin "Expand Survey panel" — it
+                      // is the same control in the other state, so it cannot be a
+                      // different size. The phone keeps its own 16px sheet handle
+                      // chevron; mobile sizing is not this pass's lane.
                       style={{
                         background: 'transparent',
                         border: 'none',
                         color: 'rgb(153, 153, 153)',
                         cursor: 'pointer',
-                        padding: '4px',
+                        ...(mobileMode
+                          ? { padding: '4px' }
+                          : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
@@ -1376,7 +1401,7 @@ const SurveySpacesRail = ({
                       onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={16} color="#8d96a6" />
+                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="#8d96a6" />
                     </button>
                   </div>
 
@@ -1758,19 +1783,14 @@ const SurveySpacesRail = ({
                     const fallbackName = `${baseCategoryName} ${siblingIndex >= 0 ? siblingIndex + 1 : siblingMarkers.length + 1}`;
                     const detailMarkerName = mobileDetailMarker.name || fallbackName;
                     const hasNoteText = Boolean(surveyMarkers[annotationId]?.note?.text);
-                    const imageGlyph = (
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <circle cx="9" cy="9" r="2" />
-                        <path d="m21 15-3.5-3.5L6 23" />
-                      </svg>
-                    );
-                    const videoGlyph = (
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <rect x="2" y="6" width="14" height="12" rx="2" />
-                        <path d="m22 8-6 4 6 4V8Z" />
-                      </svg>
-                    );
+                    // UX 2026-09-16 (desktop sweep): the shared <Icon>, not two
+                    // hand-written <svg>s. Both drew at stroke 2 on a 24 grid, a
+                    // third heavier than every icon in the set, and the icon-set
+                    // test could not see them because they never went through
+                    // <Icon>. The glyphs are the same shapes, redrawn on the house
+                    // rules in src/Icons.jsx.
+                    const imageGlyph = <Icon name="image" size={15} color="currentColor" />;
+                    const videoGlyph = <Icon name="video" size={15} color="currentColor" />;
 
                     if (mobileNotesEditorOpen) {
                       // UX (mobile demo parity): full-sheet notes takeover instead of
@@ -3144,22 +3164,15 @@ const SurveySpacesRail = ({
                                                     transition: 'transform 0.2s ease'
                                                   }}
                                                 >
-                                                  <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    style={{ width: '14px', height: '14px' }}
-                                                  >
-                                                    <path
-                                                      d="M6 9L12 15L18 9"
-                                                      stroke="currentColor"
-                                                      strokeWidth="2.5"
-                                                      strokeLinecap="round"
-                                                      strokeLinejoin="round"
-                                                    />
-                                                  </svg>
+                                                  {/* UX 2026-09-16 (desktop sweep): the shared
+                                                      <Icon name="chevronDown" />, not a hand-written
+                                                      <svg>. The path data was already byte-identical
+                                                      to the shared chevron, but it drew at stroke 2.5
+                                                      on the 24 grid — 167% of the house 1.5 — so the
+                                                      SAME chevron painted at two weights in one app
+                                                      (the Width and Line-style dropdowns render the
+                                                      shared one). Same shape, house weight. */}
+                                                  <Icon name="chevronDown" size={14} color="currentColor" />
                                                 </span>
                                               </button>
                                             )}

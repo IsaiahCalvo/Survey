@@ -15,6 +15,8 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { toolCursorCss } from './utils/toolCursors.js';
+import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
@@ -155,6 +157,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVi
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
+import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
@@ -324,6 +327,7 @@ import {
   countAnnotationPageObjects,
   createAnnotation,
   createItem,
+  CHROME_GLYPH,
   dataURLToUint8Array,
   filterAnnotationsByModule,
   generateDefaultSurveyMarkerName,
@@ -3139,7 +3143,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
+      // UX: on a tool switch the pointer must change SHAPE before the user
+      // moves the mouse, otherwise the new tool is invisible until they twitch.
+      // Tools that own a badge cursor get the same image the page surface uses
+      // (see src/utils/toolCursors.js), so the switch and the hover agree.
+      const armedCursor = toolCursorCss(activeTool);
+      if (armedCursor) forcedCursor = armedCursor;
+      else if (activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
@@ -3876,7 +3886,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!['select', 'text-select'].includes(activeTool)) return undefined;
     const clear = (event) => {
-      if (event.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      // UX 2026-09-16 — the text editor owns Escape while it is open.
+      //
+      // Two bugs lived in the old selector. It matched only
+      // [contenteditable="true"], but TextEditOverlay's editable is
+      // contenteditable="plaintext-only", so a keystroke inside a live text box
+      // fell straight through to the clear-everything branch below — which
+      // calls setEditingAnnotation(null) and unmounts the editor from under the
+      // typing. Escape then raced the editor's own handler, and the typed text
+      // could be lost. Matching any contenteditable flavour (and the overlay
+      // wrapper itself) keeps this listener off the editor entirely: the first
+      // Escape closes the editor and commits, exactly as Drawboard does, and a
+      // second Escape at rest clears the selection — the same two-step rule the
+      // selection bands already follow.
+      if (event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-text-edit-overlay], [role="dialog"]')) return;
       if (event.type === 'keydown' && event.key !== 'Escape') return;
       // UX: modifier-held empty-space clicks preserve the selection in every mode; only plain clicks clear.
       if (event.type === 'pointerdown' && (event.button !== 0 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
@@ -3920,6 +3943,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         && !event.target?.closest?.('.survey-pdfjs-page-div')) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
       if (event.target?.closest?.('[data-resize-handle]')) return;
+      // UX 2026-09-16: same rule for the invisible pad behind each grabber —
+      // a press there is a press on the handle, not the start of a text drag.
+      if (event.target?.closest?.('[data-handle-hit-pad]')) return;
       // UX: keep the prior selection until this text gesture commits so
       // Escape can cancel it without discarding the selected annotation.
       textSelectGestureActiveRef.current = true;
@@ -24274,7 +24300,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (
         document.body.getAttribute('data-readonly') === 'true' &&
         !isFormField && !e.metaKey && !e.ctrlKey && !e.altKey &&
-        ['p', 'h', 'e', 't', 'q', 'l', 'a', 'c', 'g', 'k'].includes(e.key.toLowerCase())
+        // UX: the blocked set is derived from the one shortcut map
+        // (src/utils/toolShortcuts.js) rather than retyped here, so adding a
+        // drawing tool can never quietly leave its letter live on a document
+        // the user is not allowed to draw on.
+        READ_ONLY_BLOCKED_KEYS.includes(e.key.toLowerCase())
       ) {
         return;
       }
@@ -24430,6 +24460,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         e.preventDefault();
         setActiveTool('polyline');
+        return;
+      }
+
+      // 'R' key to switch to the Rectangle Tool (only when no modifiers).
+      // UX: R is the letter Drawboard PDF gives the rectangle, so anyone
+      // arriving from Drawboard finds it where they left it. The full map,
+      // and why each letter is what it is, lives in src/utils/toolShortcuts.js.
+      if ((e.key === 'r' || e.key === 'R') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('rect');
+        return;
+      }
+
+      // 'O' key to switch to the Ellipse Tool (only when no modifiers).
+      // UX: Drawboard uses E for the ellipse, but E has been Survey's Eraser
+      // for far longer (and Shift+E its Partial erase — a pair that only reads
+      // right while E is the eraser). O is the oval's letter in Figma and
+      // Sketch, so it still lands where a designer's finger expects.
+      if ((e.key === 'o' || e.key === 'O') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('ellipse');
+        return;
+      }
+
+      // 'M' key to put the tools down and switch to Pan (only when no
+      // modifiers). UX: "M for move the page". Holding Space already pans
+      // momentarily without disarming the current tool; M is for when you want
+      // the tool put down for good. H would be the usual hand-tool letter but
+      // the Highlighter owns it here.
+      if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('pan');
         return;
       }
 
@@ -27329,6 +27400,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         tool: 'counter',
       });
     });
+    // UX 2026-09-16 (Drawboard PDF contract): the counter you just dropped is
+    // already selected, so its rotate grabber is there to aim the nub without
+    // switching to Select first. The counter tool stays armed, so the next drag
+    // on empty page drops the next pin in the series. The pin was appended, so
+    // it is the last index in the page's object list.
+    if (shouldAutoSelectAfterCommit('counter')) {
+      setPendingSvgSelection({
+        pageNumber: drag.pageKey,
+        annotationIndex: (currentPage.objects?.length || 0),
+        tick: Date.now(),
+      });
+    }
     removeCounterDragPreview(drag);
 
     counterDragRef.current = null;
@@ -32007,10 +32090,12 @@ ${pageBlocks}
                 }}
                 onClick={() => setPendingLocationItem(null)}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+                {/* UX: the shared dismiss cross, at the house weight. It sits
+                    8px from the banner's own <Icon name="search" /> and used to
+                    be hand-drawn at stroke 2 against that icon's 1.5, so the
+                    cross read heavier than the glyph beside it. Reference
+                    behaviour matched: every other dismiss control in the app. */}
+                <Icon name="close" size={14} />
               </button>
             </div>
           )}
@@ -33243,7 +33328,20 @@ ${pageBlocks}
                                     // UX 2026-04-19: only hand off pointer events to the
                                     // Fabric edit surface when it's actually mounted (not
                                     // bbox mode, which keeps the SVG layer interactive).
-                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? undefined : 'text',
+                                    // UX 2026-09-16: with the Text tool armed but no
+                                    // editor open, this surface is where you DRAG OUT a
+                                    // new text box — so it wears the armed-tool cursor
+                                    // (crosshair + a neutral "T" badge — the badge
+                                    // never takes the stroke colour, owner ruling
+                                    // 2026-09-16) like every other creation tool.
+                                    // The I-beam belongs
+                                    // to the editor: once one is open this overlay hands
+                                    // its pointer events over and the editor's own
+                                    // `cursor: text` takes the caret work. Falls back to
+                                    // the old I-beam if the image cursor is refused.
+                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox')
+                                      ? undefined
+                                      : (toolCursorCss('text') || 'text'),
                                     zIndex: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 100 : 102,
                                     pointerEvents: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 'none' : 'auto',
                                   }}
@@ -33808,6 +33906,12 @@ ${pageBlocks}
         {isActive && pdfFile && activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
           <div
             data-chrome-strip="true"
+            /* UX 2026-09-16: the tool sub-row fades and slides down 5px as it
+               opens (140ms), the same cue Drawboard gives its own second row.
+               It used to appear in a single frame with no transition at all,
+               which read as a flicker over the top of the page. Honours
+               prefers-reduced-motion via the shared class in styles.css. */
+            className="survey-surface-in"
             style={{
               width: '100%',
               height: '34px',
@@ -33818,7 +33922,10 @@ ${pageBlocks}
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px',
+              // UX 2026-09-16 (desktop sizing pass): one gap across the whole
+              // chrome (--chrome-gap). This row used 8px while the top bar
+              // used 6px, so the two rows read as different toolbars.
+              gap: 'var(--chrome-gap)',
               zIndex: 10,
               boxSizing: 'border-box'
             }}
@@ -33868,23 +33975,18 @@ ${pageBlocks}
                         setHighlighterCaretPopupOpen(false);
                       }}
                       {...chromeTip(isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, 'below')}
-                      className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '5px',
-                        gap: '4px',
-                        minWidth: '40px',
-                        width: '40px'
-                      }}
+                      // UX 2026-09-16 (desktop sizing pass): every tool in
+                      // the sub-row takes the shared .chrome-subcontrol box
+                      // (34x32) and the shared 18px glyph, so the row matches
+                      // the top bar instead of being 40x32 with a 20px glyph.
+                      className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip.
                       // A native title= here would fade the OS tooltip in on top
                       // of it ~1.5s later; aria-label keeps the accessible name.
                       aria-label={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
-                      <Icon name={t.iconName} size={20} />
+                      <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {hasSplitMenu && (
                         <div
                           data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
@@ -34091,25 +34193,17 @@ ${pageBlocks}
                         }
                       }}
                       {...chromeTip(t.label, 'below')}
-                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '5px',
-                        gap: '4px',
-                        minWidth: '40px',
-                        // UX: explicit width matches the eraser button in
-                        // Survey-Experimental so the chevron's
-                        // `translate(12px, -50%)` lands in the same spot.
-                        width: '40px'
-                      }}
+                      // UX 2026-09-16 (desktop sizing pass): shared
+                      // .chrome-subcontrol box + shared 18px glyph, as the
+                      // Draw row. (The split-menu chevron this button used to
+                      // size itself around is dead — showCaret is false.)
+                      className={`btn chrome-subcontrol ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.
                       aria-label={t.label}
                     >
-                      <Icon name={t.iconName} size={20} />
+                      <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {showCaret && (
                         // UX: chevronUp icon positioned just to the right
                         // of the icon center — `left:50% + translate(12px,
@@ -34507,22 +34601,16 @@ ${pageBlocks}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       onClick={onMainClick}
                       {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
-                      className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                      style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '5px',
-                        gap: '4px',
-                        minWidth: '40px',
-                        width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
-                      }}
+                      // UX 2026-09-16 (desktop sizing pass): shared
+                      // .chrome-subcontrol box + shared 18px glyph, as the
+                      // Draw and Shapes rows.
+                      className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.
                       aria-label={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
                     >
-                      <Icon name={t.iconName} size={20} />
+                      <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {(isUnderlineMenu || isStrikeMenu) && (
                         <div
                           {...{ [caretAttr]: 'true' }}

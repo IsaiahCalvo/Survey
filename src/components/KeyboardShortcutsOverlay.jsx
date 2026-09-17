@@ -12,6 +12,7 @@ import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 import { useKeyPress } from '../utils/hooks';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { TOOL_SHORTCUTS } from '../utils/toolShortcuts';
 
 /**
  * KeyboardShortcutsOverlay - Display keyboard shortcuts in an overlay
@@ -60,23 +61,15 @@ const KeyboardShortcutsOverlay = () => {
     // would have been undiscoverable from the keyboard. Intended UX: every
     // single-key tool shortcut the viewer listens for is documented in one place,
     // with the two Select modes shown together so the pairing is obvious.
-    { category: 'Tools', items: [
-      { keys: ['V'], description: 'Select annotations' },
-      { keys: ['Alt', 'V'], description: 'Lasso Select' },
-      { keys: ['Shift', 'V'], description: 'Select text on the page' },
-      { keys: ['P'], description: 'Pen' },
-      { keys: ['H'], description: 'Highlighter' },
-      { keys: ['E'], description: 'Eraser' },
-      { keys: ['T'], description: 'Text' },
-      { keys: ['Q'], description: 'Callout' },
-      { keys: ['L'], description: 'Line' },
-      { keys: ['A'], description: 'Arrow' },
-      // UX: Polygon wanted 'P' (taken by Pen) and Polyline wanted 'L' (taken
-      // by Line), so they take 'G' (polyGon) and 'K' (the free key beside L).
-      { keys: ['G'], description: 'Polygon' },
-      { keys: ['K'], description: 'Polyline' },
-      { keys: ['C'], description: 'Counter' },
-    ]},
+    // UX 2026-09-16: this list is GENERATED from src/utils/toolShortcuts.js —
+    // the same map the keyboard handler obeys and the tool tooltips print. A
+    // hand-copied list drifts the first time a tool is added, and a help sheet
+    // that lies is worse than no help sheet. Every letter's reasoning lives at
+    // its entry in that module.
+    { category: 'Tools', items: TOOL_SHORTCUTS.map((shortcut) => ({
+      keys: shortcut.badge.split('+'),
+      description: shortcut.label,
+    })) },
     // UX: these keys only act while a polygon or polyline is being placed —
     // documented separately so they read as part of that flow, not as global
     // shortcuts.

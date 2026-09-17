@@ -20,12 +20,16 @@ const ACCEPTED_ICON_HASHES = {
   'text-underline.svg': '55c5967c981f7ccaf9389884ccde723f1cd3334564424f10b83a8c12d89c9f88',
   'text-squiggle.svg': '5d758e7ceef171af4c6a20d10844dec95860144d93e6fa6a0225c95ba9fa6c40',
   'text-strikethrough.svg': 'b159301bb729612e95870d663bc2fbae256ee3022f94ff89354a923f93a173ba',
-  'text-hyperlink.svg': 'bea3b7fc712ed3c0729016b565c9392769dd4a697a1eae63b1dc0418ba127020',
-  // Round 7 required a redrawn, optically balanced Redact glyph; the 2026-09-07
-  // polish pass (A5) redrew it again onto the house 24-unit grid at the row's
-  // stroke weight, so this fixture moves with it. See
-  // tests/redactIconSource.test.mjs for the properties that must hold.
-  'text-redact.svg': '807cd4bd4490a80a07b7bce7667998892d05f6a7a6f364f3bbdb2db28c246704',
+  // DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): the hyperlink and
+  // redact hashes were both re-taken after their stroke weights came onto the
+  // house 1.5 — hyperlink from 2.375, redact from 1.75. Those two were the last
+  // glyphs in this row off the house weight, and at 2.375 against 1.5 the row
+  // carried a 58% weight spread. Owner ruling of this pass: ONE stroke weight
+  // across the set, and a sha256 pin is not a reason to stay off it — the pin is
+  // here to stop an asset drifting silently, which this is not. Nothing else in
+  // either file changed; the geometry each test guards is untouched.
+  'text-hyperlink.svg': '280e7f2bbee751b53c1f9cc8f36a33f996cfac5abe8ee7c82f6e68a7abe744a8',
+  'text-redact.svg': '6401406a0fe104977cbf9f991628095e9ff65ac150575a91898e63498f7b0484',
 };
 
 test('shared accepted icons stay byte-exact to the accepted icon lineup', async () => {
@@ -62,7 +66,11 @@ async function loadActionBar() {
   const tooltipPath = path.join(repoRoot, 'src/components/Tooltip.jsx');
   let tooltipSource = await readFile(tooltipPath, 'utf8');
   for (const specifier of ['react', 'react-dom']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(require.resolve(specifier)).href}'`);
-  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
+  // Harness plumbing, not an assertion: every relative import the real
+  // Tooltip.jsx makes has to be rewritten to an absolute URL, because the
+  // transpiled copy is written to a temp directory where '../utils/…' means
+  // nothing. Add new Tooltip.jsx dependencies here.
+  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js', '../utils/toolShortcuts.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
   const tooltipCode = (await transformWithOxc(tooltipSource, tooltipPath, { lang: 'jsx' })).code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   await writeFile(path.join(tempDir, 'Tooltip.mjs'), tooltipCode);
   executable = executable.replace('"./Tooltip"', '"./Tooltip.mjs"');

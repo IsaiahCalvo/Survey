@@ -9,8 +9,55 @@ import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
+
+// UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
+// ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
+// desktop glyph fills 0.53 of its button and its phone rail chip is about 28pt.
+// Ours were drawn at two thirds of the chip, which is why the whole phone read
+// heavy - rail 20-in-30 (0.67), sub-tool 16-in-24 (0.67), header 17-in-26
+// (0.65), dock 18-in-30 (0.60). Every tier is 0.55-0.60 now: rail 17-in-30,
+// sub-tool 14-in-24, header 15-in-26, dock 17-in-30. The CSS tokens still set
+// the chips; these set what is drawn inside them, and the hit pads are
+// untouched, so nothing got harder to tap.
+// RULED CHANGE: tests/mobilePhoneSizing.test.mjs pinned the old three.
+const RAIL_GLYPH = 17;
+// The line-style dropdown and the width field are one control size (owner
+// ruling 2026-09-16). Both read the same token, so neither can drift.
+const STRIP_DROPDOWN_WIDTH = 'var(--mobile-strip-dropdown-w)';
+const SUBTOOL_GLYPH = 14;
+const HEADER_GLYPH = 15;
+// The four rich-text format toggles are 28x24 strip controls, so they take the
+// strip's own glyph rather than the 18 they were drawn at (0.75 of their box -
+// the heaviest glyph on the phone).
+const STRIP_GLYPH = 14;
+const DOCK_GLYPH = 17;
+
+/**
+ * Keeps the live text editor focused while one of its formatting buttons is
+ * pressed, without killing touch scrolling on the bar those buttons sit in.
+ *
+ * UX 2026-09-16 (r4 phone pass). With a mouse, preventDefault on pointerdown is
+ * the standard trick: the caret and selection inside the contenteditable never
+ * move, so Bold applies to exactly what was selected. On a touch screen it is a
+ * trap - a prevented pointerdown tells the engine the page is handling this
+ * gesture, so the browser never starts its own pan. Measured in the iOS
+ * Simulator: a drag that began on any of Bold / Italic / Underline / Strike (or
+ * the colour swatch) did not scroll the formatting bar at all, which left the
+ * Text-alignment dropdown at the far end unreachable on a 375pt screen, because
+ * those five buttons are most of the bar's width.
+ *
+ * Coarse pointers therefore let the default run. Focus survives anyway: the bar
+ * carries the data-rich-text-toolbar opt-out, so a touch on it does not commit
+ * and close the editor, and every style call ends by re-focusing the editable
+ * (TextEditOverlay's applyStyle -> focus({ preventScroll: true })).
+ */
+const keepTextEditFocus = (event) => {
+  if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+  event.preventDefault();
+};
 
 // Group icons stay shared with the desktop toolbar. Sub-tools keep their own
 // glyphs, so the Text group can differ from its Text Box option.
@@ -85,6 +132,11 @@ const MOBILE_ANNOTATION_COLORS = [
   '#FF8A3D',
   '#000000',
 ];
+
+// Mirrors zoomController's clampScale bounds (MIN_SCALE 0.01, MAX_SCALE 40) so
+// the phone steppers grey out at exactly the limits the desktop toolbar hits.
+const MOBILE_ZOOM_MIN_PERCENT = 1;
+const MOBILE_ZOOM_MAX_PERCENT = 4000;
 
 const MOBILE_FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -338,17 +390,30 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
 
-const RailButton = ({ active = false, disabled = false, icon, label, onClick, children, ...buttonProps }) => (
+/* UX 2026-09-16 (icon-set pass + sizing pass, merged): ONE glyph size per rail
+   tier, and no per-glyph exceptions inside a tier. The rail used to run 19 with
+   the Select cursor at 21, so Select was visibly the odd one out down a column
+   where everything else lined up. The size now comes from RAIL_GLYPH for a rail
+   tool and SUBTOOL_GLYPH for a sub-tool, because those are the two chip sizes
+   (30px and 24px) and each glyph sits at the same fill inside its own chip -
+   0.57 since the 2026-09-16 phone sweep, where it used to be two thirds.
+   Do not pass a bare number here. */
+const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
   <button
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
     aria-label={label}
-    title={label}
+    // UX 2026-09-16: on a tablet or a narrow desktop window this shell gets a
+    // real pointer, so the hover hint names the key that arms the tool
+    // ("Rectangle  R") exactly as the desktop chip does. A finger never sees
+    // it, and the aria-label stays the plain name so a screen reader never
+    // reads the keycap as part of the control's name.
+    title={tooltipForLabel(label)}
     disabled={disabled}
     onClick={onClick}
     {...buttonProps}
   >
-    {children || <Icon name={icon} size={19} color="currentColor" />}
+    {children || <Icon name={icon} size={glyph} color="currentColor" />}
   </button>
 );
 
@@ -434,6 +499,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   const pagesRef = useRef(null);
   const dismissInsideRefs = useMemo(() => [pagesRef], []);
   const title = documentName || 'Document';
+  // Live scale, straight off the same state the desktop zoom field shows.
+  const rawZoomPercent = Number.parseInt(bottomToolbarApi?.zoomInputValue, 10);
+  const zoomPercent = Number.isFinite(rawZoomPercent) && rawZoomPercent > 0 ? rawZoomPercent : 100;
 
   const revealTitle = () => {
     // Only long titles marquee (demo gates on length > 18). The is-revealing
@@ -464,8 +532,15 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         }}
       />
       <div className="mobile-pdf-header__document">
+        {/* UX 2026-09-16: one glyph size for every action icon in this bar.
+            Back, the two page chevrons and undo/redo all draw at HEADER_GLYPH,
+            so the same chevron is never two different sizes side by side — back
+            used to be a third bigger than the identical page chevron two
+            controls to its right. The zoom disclosure caret stays smaller on
+            purpose: it reads as a caret beside a label, not as an action
+            icon. */}
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
-          <Icon name="chevronLeft" size={21} color="currentColor" />
+          <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
         <button
           type="button"
@@ -491,7 +566,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) <= 1}
           onClick={bottomToolbarApi?.goToPreviousPage}
         >
-          <Icon name="chevronLeft" size={16} color="currentColor" />
+          {/* UX 2026-09-16: same HEADER_GLYPH as Back and undo/redo. */}
+          <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
         <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}`}>
@@ -549,7 +625,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={(bottomToolbarApi?.pageNum || 1) >= (bottomToolbarApi?.numPages || 1)}
           onClick={bottomToolbarApi?.goToNextPage}
         >
-          <Icon name="chevronRight" size={16} color="currentColor" />
+          {/* UX 2026-09-16: same HEADER_GLYPH as Back and undo/redo. */}
+          <Icon name="chevronRight" size={HEADER_GLYPH} color="currentColor" />
         </button>
 
         {/* Phase F: the zoom/fit dropdown stays mounted so it can animate BOTH
@@ -560,26 +637,55 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         {bottomToolbarApi && (
           <div
             className={`mobile-pdf-header__zoom-menu${zoomOpen ? ' is-open' : ''}`}
-            role="listbox"
-            aria-label="Zoom and fit mode"
             aria-hidden={!zoomOpen}
           >
-            {ZOOM_FIT_OPTIONS.map((option) => (
+            {/* UX 2026-09-16 (phone reach pass): the phone could only pick a fit
+                mode here — there was no way to step the zoom by hand and no
+                number telling you where you were, so the only manual zoom on a
+                phone was a pinch. Minus and plus step by exactly the desktop's
+                1.25x per tap and honour the same 1%-4000% limits (they call the
+                very same zoomOut/zoomIn the desktop toolbar uses), and the
+                reading between them is the live scale. The menu deliberately
+                stays open so you can tap up or down repeatedly. Reference:
+                Drawboard PDF's phone zoom control pairs steppers with a live
+                percentage rather than fit modes alone. */}
+            <div className="mobile-pdf-header__zoom-steppers" role="group" aria-label="Zoom level">
               <button
                 type="button"
-                key={option.id}
-                role="option"
-                aria-selected={bottomToolbarApi.zoomMode === option.id}
-                className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
-                onClick={() => {
-                  bottomToolbarApi.handleZoomModeSelect(option.id);
-                  setZoomOpen(false);
-                }}
+                aria-label="Zoom out"
+                disabled={zoomPercent <= MOBILE_ZOOM_MIN_PERCENT}
+                onClick={() => bottomToolbarApi.zoomOut?.()}
               >
-                <span>{option.label}</span>
-                {bottomToolbarApi.zoomMode === option.id && <Icon name="check" size={14} color="currentColor" />}
+                <Icon name="minus" size={HEADER_GLYPH} color="currentColor" />
               </button>
-            ))}
+              <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                disabled={zoomPercent >= MOBILE_ZOOM_MAX_PERCENT}
+                onClick={() => bottomToolbarApi.zoomIn?.()}
+              >
+                <Icon name="plus" size={HEADER_GLYPH} color="currentColor" />
+              </button>
+            </div>
+            <div className="mobile-pdf-header__zoom-fits" role="listbox" aria-label="Zoom and fit mode">
+              {ZOOM_FIT_OPTIONS.map((option) => (
+                <button
+                  type="button"
+                  key={option.id}
+                  role="option"
+                  aria-selected={bottomToolbarApi.zoomMode === option.id}
+                  className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
+                  onClick={() => {
+                    bottomToolbarApi.handleZoomModeSelect(option.id);
+                    setZoomOpen(false);
+                  }}
+                >
+                  <span>{option.label}</span>
+                  {bottomToolbarApi.zoomMode === option.id && <Icon name="check" size={14} color="currentColor" />}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -593,7 +699,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           onClick={topToolbarApi?.onUndo || undefined}
         >
           {/* UX: share the desktop undo arrow without changing the phone touch target. */}
-          <Icon name="undo" size={17} color="currentColor" />
+          <Icon name="undo" size={HEADER_GLYPH} color="currentColor" />
         </button>
         <button
           type="button"
@@ -603,7 +709,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           onClick={topToolbarApi?.onRedo || undefined}
         >
           {/* UX: share the desktop redo arrow without changing the phone touch target. */}
-          <Icon name="redo" size={17} color="currentColor" />
+          <Icon name="redo" size={HEADER_GLYPH} color="currentColor" />
         </button>
       </div>
     </header>
@@ -710,7 +816,12 @@ export function MobileToolProperties({ api }) {
     const alignment = `${state.verticalAlign || 'top'}|${state.textAlign || 'left'}`;
     return (
       <>
-      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" role="toolbar" aria-label="Text formatting">
+      {/* data-rich-text-toolbar is TextEditOverlay's opt-out contract: a
+          pointerdown anywhere inside it must not commit-and-close the editor.
+          The desktop sub-row has always carried it; the phone bar did not, so a
+          tap on Bold committed the text and then styled an editor that was
+          already unmounting. */}
+      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" data-rich-text-toolbar role="toolbar" aria-label="Text formatting">
         {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
             app's shared CompactColorPicker takeover, not an OS colour input. */}
         <button
@@ -718,7 +829,7 @@ export function MobileToolProperties({ api }) {
           className="mobile-pdf-properties__color"
           aria-label="Font color"
           title="Font color"
-          onPointerDown={(event) => event.preventDefault()}
+          onPointerDown={keepTextEditFocus}
           onClick={() => setColorPicker('fontColorLive')}
         >
           <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
@@ -752,10 +863,10 @@ export function MobileToolProperties({ api }) {
             className={`mobile-pdf-properties__format${state[stateKey] ? ' is-active' : ''}`}
             aria-label={title}
             aria-pressed={Boolean(state[stateKey])}
-            onPointerDown={(event) => event.preventDefault()}
+            onPointerDown={keepTextEditFocus}
             onClick={() => editorApi[method]?.()}
           >
-            <Icon name={iconName} size={18} />
+            <Icon name={iconName} size={STRIP_GLYPH} />
           </button>
         ))}
         <MobileStyledSelect
@@ -1068,7 +1179,7 @@ export function MobileToolProperties({ api }) {
       {showBorderStyle && (
         <MobileStyledSelect
           ariaLabel="Border style"
-          minWidth={82}
+          minWidth={STRIP_DROPDOWN_WIDTH}
           value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
           options={[
             { value: 'solid', label: 'Solid' },
@@ -1101,9 +1212,18 @@ export function MobileToolProperties({ api }) {
         </label>
       )}
       {showArrowhead && (
+        /* UX 2026-09-16 (phone sweep): 80px, the same width as the Width field
+           and the Border style dropdown beside it (--mobile-strip-dropdown-w).
+           It was 124 - half again as wide as its neighbours - and it is what
+           pushed Arrow's row 53px past a 375px screen, taking the colour swatch
+           off the left edge entirely. The literal is deliberate: the number is
+           read out of this file by tests/mobileToolPropertiesReach.test.mjs,
+           which proves the row fits a 375px phone. It must stay on the line
+           directly after ariaLabel for that test to find it. Long values
+           ellipsize in the trigger and read in full in the menu. */
         <MobileStyledSelect
           ariaLabel="Arrowhead style"
-          minWidth={124}
+          minWidth={80}
           value={api.arrowheadStyle || 'solidTriangle'}
           options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
           onChange={(value) => api.setArrowheadStyle(value)}
@@ -1636,6 +1756,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   const toggleCategory = (groupId) => {
     const group = TOOL_GROUPS[groupId];
+    // UX 2026-09-16 (phone chrome pass): a second tap on the group that is
+    // already open closes its strip and gives the rail its height back. The
+    // armed tool is deliberately left alone — closing the strip is a view
+    // change, not a tool change. Reference: Drawboard PDF's phone rail
+    // collapses an expanded group on a repeat tap. Opening a group still arms
+    // its last-used tool (unchanged).
+    if (openCategory === groupId) {
+      setOpenCategory(null);
+      return;
+    }
     setOpenCategory(groupId);
     if (activeGroup !== groupId) {
       const preferred = groupId === 'draw'
@@ -1679,7 +1809,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             >
               {/* UX: centre the glyph on the phone rail axis; the desktop
                   horizontal pair's -3px shift does not fit a vertical rail. */}
-              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" />
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={RAIL_GLYPH} color="currentColor" />
             </RailButton>
             <button
               ref={selectModeCaretRef}
@@ -1693,12 +1823,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
               }}
             >
-              {/* UX: 8px full-contrast caret keeps the phone's only mode
-                  disclosure legible at 1x in both active and idle states. */}
+              {/* UX: the caret keeps the phone's only mode disclosure legible at
+                  1x in both active and idle states.
+                  2026-09-16: currentColor, not a hard-coded cream. The colour was
+                  a literal, so when the Select family went active and its glyph
+                  turned gold the caret stayed cream — one control showing two
+                  different active colours.
+                  2026-09-16 (phone sweep): 7px, the shared split-button caret
+                  size the desktop uses (AppShell's Select button, whose comment
+                  cites Drawboard's 6px). This is the same kind of caret for the
+                  same reason - it hangs beside a full-size glyph, so it has to
+                  stay out of its way - and it was the last phone caret still
+                  carrying its own number. */}
               <Icon
                 name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
-                size={8}
-                color="#e8e2d4"
+                size={7}
+                color="currentColor"
               />
             </button>
           </div>
@@ -1721,6 +1861,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     key={tool.id}
                     active={activeTool === tool.id}
                     icon={tool.icon}
+                    glyph={SUBTOOL_GLYPH}
                     label={tool.label}
                     disabled={tool.disabled}
                     onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
@@ -2066,7 +2207,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open spaces"
         onClick={() => onOpenPanel?.('spaces')}
       >
-        <Icon name="layers" size={21} color="currentColor" />
+        <Icon name="layers" size={DOCK_GLYPH} color="currentColor" />
       </button>
       <button
         type="button"
@@ -2074,7 +2215,10 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open pages, search, and bookmarks"
         onClick={onToggleHub}
       >
-        <Icon name={hubIcons[hubMode] || 'pages'} size={18} color="currentColor" />
+        {/* UX 2026-09-16: one size across all three dock controls; they ran
+            21 / 18 / 22. DOCK_GLYPH is that size, 0.57 of the 30px dock
+            chip the sizing pass settled on. */}
+        <Icon name={hubIcons[hubMode] || 'pages'} size={DOCK_GLYPH} color="currentColor" />
         <span>{hubLabels[hubMode] || 'Pages'}</span>
         <Icon name="chevronDown" size={12} color="currentColor" />
       </button>
@@ -2084,7 +2228,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-label="Open survey"
         onClick={onOpenSurvey}
       >
-        <Icon name="survey" size={22} color="currentColor" />
+        <Icon name="survey" size={DOCK_GLYPH} color="currentColor" />
       </button>
     </nav>
   );

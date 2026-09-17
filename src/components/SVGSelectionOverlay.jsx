@@ -21,6 +21,8 @@ import {
 } from '../utils/selectionHandleVisibility.js';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 import { HANDLE_FILL, HANDLE_RING } from '../utils/handleStyle';
+import { resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
+import useCoarsePointer from '../hooks/useCoarsePointer.js';
 
 const SVGSelectionOverlay = memo(({
   bbox,             // { left, top, width, height, angle }
@@ -72,6 +74,10 @@ const SVGSelectionOverlay = memo(({
   // along the frame normal so no two grabbers can ever overlap.
   alwaysShowResizeHandles = false,
 }) => {
+  // UX 2026-09-16: hit pads grow on a finger (44 pt) and stay tight on a mouse
+  // (32 px; Drawboard PDF measures 34 x 34). Read before the bbox early-return
+  // because hooks cannot run conditionally.
+  const isCoarsePointer = useCoarsePointer();
   if (!bbox) return null;
 
   const { left, top, width, height, angle } = bbox;
@@ -197,6 +203,77 @@ const SVGSelectionOverlay = memo(({
   const pillRx = handleMetrics.pillRx;
   const textRangeHitSize = 44 * visualInverseScale;
 
+  // --- Invisible hit pads -------------------------------------------------
+  // UX 2026-09-16 (Drawboard PDF parity): the dot you SEE keeps exactly the
+  // size it has today; a transparent square behind it catches the click. Before
+  // this, a corner was grabbable only to +-5.5 px and an edge pill was 8 px
+  // thick, so a mouse that missed by 6 px hit the page and started a new mark.
+  // Drawboard puts a 34 x 34 px pad on every one of its eight handles (measured
+  // 2026-09-16); we use 32 on a mouse and 44 on a finger.
+  //
+  // Screen-constant: sized in page units from the CLAMPED inverse scale, so it
+  // covers the same screen area at 50 % and at 400 % zoom, and stops growing on
+  // extreme zoom-out exactly like the visible handles do.
+  //
+  // Crowding: on a small mark two full pads would overlap and the wrong handle
+  // would win in the overlap. The spacing below is the centre-to-centre gap to
+  // the nearest other grabber (corners are a frame apart; with the edge
+  // grabbers showing, half a frame), and the pad shrinks to it so pads tile
+  // instead of stacking. It never goes below the visible dot's own size.
+  const resizeHandleSpacing = (() => {
+    const shortestSide = Math.min(boxW, boxH);
+    if (!Number.isFinite(shortestSide) || shortestSide <= 0) return undefined;
+    if (visibleResizeHandles.size >= 8) return shortestSide / 2;
+    if (visibleResizeHandles.size >= 2) return shortestSide;
+    return undefined; // lone 'br' grabber has no neighbour to crowd
+  })();
+  const resizeHitPad = resolveHandleHitPadPageSize({
+    isCoarsePointer,
+    inverseScale: visualInverseScale,
+    neighbourSpacingPageUnits: resizeHandleSpacing,
+    minPadPageUnits: handleMetrics.cornerR * 2,
+  });
+  // The rotation grabber sits `rotationOffset` clear of the top edge, so its
+  // only close neighbour is whatever grabber is on that edge.
+  const rotationHitPad = resolveHandleHitPadPageSize({
+    isCoarsePointer,
+    inverseScale: visualInverseScale,
+    neighbourSpacingPageUnits: handleSpec.rotationOffset,
+    minPadPageUnits: handleMetrics.rotationR * 2,
+  });
+  // One shape for every pad: a rounded square centred on the grabber. Rendered
+  // BEFORE the visible dot so the dot still wins where the two overlap, and
+  // carrying the same data-resize-handle id so the drag dispatcher and the
+  // hit-test resolver treat a pad hit exactly like a hit on the dot.
+  //
+  // The pad carries `data-handle-hit-pad`, NOT `data-resize-handle`: the
+  // visible dot stays the one element that answers "is this a handle?" for
+  // anything counting them, and the touch / pan guards that have to treat a pad
+  // press as a handle press match on the pad attribute instead (see
+  // PdfjsViewerContainer and PDFViewer's long-press guard).
+  const renderHitPad = (id, pos, size, cursor) => (
+    <rect
+      key={`hit-${id}`}
+      data-handle-hit-pad={id}
+      x={pos.x - size / 2}
+      y={pos.y - size / 2}
+      width={size}
+      height={size}
+      rx={size / 4}
+      fill="transparent"
+      stroke="none"
+      style={{
+        cursor,
+        pointerEvents: 'auto',
+        touchAction: 'none',
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onHandleDrag?.(e, id);
+      }}
+    />
+  );
+
   return (
     <g
       className="svg-selection-overlay"
@@ -234,6 +311,18 @@ const SVGSelectionOverlay = memo(({
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
       {!isGroupSelection && !moveOnly && (
         <>
+          {/* Invisible hit pads, drawn first so every visible grabber sits on
+              top of its own pad and still wins a direct hit. */}
+          {!horizontalResizeOnly && !hideResizeHandles && cornerHandles
+            .filter((id) => visibleResizeHandles.has(id))
+            .map((id) => renderHitPad(id, handles[id], resizeHitPad, getCursorForHandle(id, angle || 0)))}
+          {!horizontalResizeOnly && !hideResizeHandles && ['mt', 'mb']
+            .filter((id) => visibleResizeHandles.has(id))
+            .map((id) => renderHitPad(id, edgeHandlePos(id), resizeHitPad, getCursorForHandle(id, angle || 0)))}
+          {!horizontalResizeOnly && !hideResizeHandles && ['ml', 'mr']
+            .filter((id) => visibleResizeHandles.has(id))
+            .map((id) => renderHitPad(id, edgeHandlePos(id), resizeHitPad, getCursorForHandle(id, angle || 0)))}
+
           {/* Corner handles (tl, tr, bl, br) - circles */}
           {!horizontalResizeOnly && !hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
@@ -350,6 +439,9 @@ const SVGSelectionOverlay = memo(({
           {/* Rotation handle (mtr) */}
           {!horizontalResizeOnly && !hideRotationHandle && (
           <g className="rotation-handle" data-rotation-handle="mtr">
+            {/* Invisible hit pad — same Drawboard-size grab area as the resize
+                grabbers, drawn under the visible circle. */}
+            {renderHitPad('mtr', handles.mtr, rotationHitPad, 'crosshair')}
             {/* Connector line from top-center of bbox to rotation handle */}
             <line
               x1={rotationArmAnchor.x}

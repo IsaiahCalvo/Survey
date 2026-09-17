@@ -54,7 +54,7 @@ import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 
-import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
+import { CHROME_FIELD_GLYPH, CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 function RailLiveZoomText({ fallback, viewerId }) {
@@ -1340,13 +1340,18 @@ export default function App({ devPreviewReturnTab = null }) {
           style={{
             display: isViewerVisible ? 'flex' : 'none',
             flexShrink: 0,
-            padding: '8px 12px',
+            // UX 2026-09-16 (desktop sizing pass): the bar is still 44px tall.
+            // It used to be 8px of padding around a 28px control; it is now
+            // 5px around the shared 34px control (--chrome-control-h), which
+            // is Drawboard PDF's tool-button height. Same bar, Drawboard's
+            // ratio inside it. Do not grow this padding — 5 + 34 + 5 = 44.
+            padding: '5px 12px',
             background: '#181c24',
             alignItems: 'center',
             justifyContent: 'center',
             flexWrap: 'wrap',
             rowGap: '6px',
-            columnGap: '8px',
+            columnGap: 'var(--chrome-gap)',
             fontSize: '13px',
             fontFamily: FONT_FAMILY,
             color: '#e8e2d4',
@@ -1385,9 +1390,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"
-                style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: 'pointer' }}
+                // UX 2026-09-16: Export takes the shared top-bar control size
+                // (.chrome-control) like every other button in this row —
+                // it used to be a one-off 30x30 box with a 15px glyph.
+                className="chrome-control"
+                style={{ border: 'none', background: 'transparent', color: '#e8e2d4', cursor: 'pointer' }}
               >
-                <Icon name="download" size={15} />
+                <Icon name="download" size={CHROME_GLYPH} />
               </button>
             </div>
           )}
@@ -1411,46 +1420,47 @@ export default function App({ devPreviewReturnTab = null }) {
               : { position: 'absolute', left: '12px', top: 0, bottom: 0 }),
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: 'var(--chrome-gap)'
           }}>
             <span {...chromeTip('Undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi.onUndo || (() => {})}
                 disabled={!topToolbarApi.canUndo}
-                className="btn btn-default btn-sm"
+                // UX 2026-09-16: Undo/Redo take the shared top-bar control
+                // size and glyph like every other button in this row. They
+                // were a one-off 32x26 with a 14px glyph — the smallest pair
+                // in a row that also held 30px and 28px controls.
+                className="btn btn-default chrome-control"
                 aria-label="Undo"
                 style={{
-                  padding: '4px 8px',
                   opacity: topToolbarApi.canUndo ? 1 : 0.4,
                   cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
-                  pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
+                  pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none'
                 }}
               >
-                <Icon name="undo" size={14} />
+                <Icon name="undo" size={CHROME_GLYPH} />
               </button>
             </span>
             <span {...chromeTip('Redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi.onRedo || (() => {})}
                 disabled={!topToolbarApi.canRedo}
-                className="btn btn-default btn-sm"
+                // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
+                className="btn btn-default chrome-control"
                 aria-label="Redo"
                 style={{
-                  padding: '4px 8px',
                   opacity: topToolbarApi.canRedo ? 1 : 0.4,
                   cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
-                  pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  // UX: retain the measured desktop ink-centre nudge; the shared Redo owns its flip.
-                  transform: 'translateY(-0.591158px)'
+                  pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none'
+                  // UX 2026-09-16: the old -0.591158px ink-centre nudge is
+                  // gone. It was measured against the 14px Redo glyph; at the
+                  // shared 18px size the Undo and Redo glyphs share an ink
+                  // centre exactly (both 1.125px below their button centre,
+                  // measured in the live page), so the nudge was now the only
+                  // thing putting Redo on a different baseline from Undo.
                 }}
               >
-                <Icon name="redo" size={14} />
+                <Icon name="redo" size={CHROME_GLYPH} />
               </button>
             </span>
           </div>
@@ -1465,7 +1475,7 @@ export default function App({ devPreviewReturnTab = null }) {
               tool cluster sits centered while Undo/Redo float on the
               left edge. */}
           {bottomToolbarApi && (
-            <div data-tool-toolbar="true" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div data-tool-toolbar="true" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
               {/* 2026-05-26: Pan + Select sit in their own absolute block to
                   the LEFT of the centered annotation cluster. This mirrors
                   the right-side tool properties block so the annotation
@@ -1478,8 +1488,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   : { position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)' }),
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                paddingRight: '8px',
+                gap: 'var(--chrome-gap)',
+                paddingRight: 'var(--chrome-gap)',
                 whiteSpace: 'nowrap'
               }}>
               {[
@@ -1534,21 +1544,28 @@ export default function App({ devPreviewReturnTab = null }) {
                     setSelectModeMenuOpen(true);
                   }}
                   {...chromeTip(label, 'below')}
-                  className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
-                  style={isSelect ? {
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '40px',
-                    minWidth: '40px',
-                    height: '28px',
-                    padding: 0,
-                  } : undefined}
+                  // UX 2026-09-16 (desktop sizing pass): Pan and Select take
+                  // the shared top-bar control size. Select keeps the extra
+                  // width its caret needs (.chrome-control--split) but is now
+                  // the same HEIGHT as Pan — the two used to be 28x28 and
+                  // 40x28 with 20px and 22px glyphs respectively.
+                  className={`btn chrome-control${isSelect ? ' chrome-control--split' : ''} ${isActive ? 'btn-active' : 'btn-default'}`}
+                  style={isSelect ? { position: 'relative' } : undefined}
                 >
+                  {/* UX 2026-09-16: ONE glyph size for the whole top tool row.
+                      Pan rendered at 20 and Select at 22 while Draw, Shapes and
+                      Text rendered at 18 — a 22% spread in the single
+                      most-looked-at row, so it never read as one set. 18 is the
+                      row size because three of the five already used it and
+                      because growing the others would grow the bar. The control
+                      BOX around it is the shared desktop-sizing one
+                      (.chrome-control / .chrome-control--split), so Pan and
+                      Select are the same height as their neighbours too.
+                      Pinned by tests/selectModes.test.mjs and
+                      tests/iconSetConsistency.test.mjs. */}
                   <Icon
                     name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
-                    size={isSelect ? 22 : 20}
+                    size={18}
                     style={isSelect ? { transform: 'translateX(-3px)' } : undefined}
                   />
                   {isSelect && (
@@ -1567,6 +1584,12 @@ export default function App({ devPreviewReturnTab = null }) {
                         color: isActive ? '#e8e2d4' : '#8d96a6',
                       }}
                     >
+                      {/* UX: 7px, deliberately smaller than the 10px caret on
+                          the Width / Style dropdowns. Reference = Drawboard
+                          PDF, whose split-button caret measures 6px — a
+                          split button hangs its caret beside a full-size
+                          glyph, so it has to stay small. At 10px it collided
+                          with this button's 22px glyph. */}
                       <Icon name="chevronDown" size={7} color="currentColor" />
                     </span>
                   )}
@@ -1616,7 +1639,12 @@ export default function App({ devPreviewReturnTab = null }) {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '12px',
-                        padding: '6px 10px',
+                        // UX 2026-09-16 (desktop sizing pass): the selection-mode
+                        // menu takes the same row height and row inset as the
+                        // Width and line-style menus (--chrome-menu-row-h); it
+                        // was a 32px row beside their 34px ones.
+                        minHeight: 'var(--chrome-menu-row-h)',
+                        padding: '4px 9px',
                         // UX: gold on warm tint matches the phone checked row, distinct from hover.
                         background: selected ? '#2a2218' : 'transparent',
                         border: 'none',
@@ -1652,6 +1680,9 @@ export default function App({ devPreviewReturnTab = null }) {
                           style={optionStyle}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {/* UX: 20, the same optical size the Select trigger
+                                uses for these glyphs (see above); pinned by
+                                tests/selectModes.test.mjs. */}
                             <Icon name={getSelectModeIconName(opt.mode)} size={20} color="currentColor" />
                             {/* UX: use the same mode name in the menu, trigger and phone sheet. */}
                             {/* UX: reserve bold label width so changing the checked row never shifts menu edges. */}
@@ -1676,7 +1707,15 @@ export default function App({ devPreviewReturnTab = null }) {
                 );
               })}
 
-              <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
+              {/* Intended UX: the thin rule reads as part of ONE gutter, not as a
+                  wider break that makes the row look like two toolbars pushed
+                  together. It carries no margin of its own — the row's
+                  gap: var(--chrome-gap) and the side block's matching padding
+                  do all the spacing, so the gutter beside the rule measures the
+                  same 4px as every other pair of neighbouring controls.
+                  Reference behaviour matched: Drawboard PDF's tool strip, which
+                  holds one constant gutter across its whole width. */}
+              <div style={{ width: '1px', height: '20px', background: '#5a6473' }} />
               </div>
 
               {/* Draw category */}
@@ -1691,8 +1730,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
-                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
                 aria-label="Draw"
               >
@@ -1711,8 +1749,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Shapes', 'below')}
-                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
                 aria-label="Shapes"
               >
@@ -1731,8 +1768,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Text', 'below')}
-                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 data-tool-group="true"
                 aria-label="Text"
               >
@@ -1766,8 +1802,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Forms', 'below')}
-                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'forms' || FORM_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'forms' || FORM_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 aria-label="Forms"
               >
                 <Icon name="edit" size={18} />
@@ -1787,11 +1822,19 @@ export default function App({ devPreviewReturnTab = null }) {
                   : { position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)' }),
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                paddingLeft: '8px',
+                gap: 'var(--chrome-gap)',
+                paddingLeft: 'var(--chrome-gap)',
                 whiteSpace: 'nowrap'
               }}>
-              <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
+              {/* Intended UX: the thin rule reads as part of ONE gutter, not as a
+                  wider break that makes the row look like two toolbars pushed
+                  together. It carries no margin of its own — the row's
+                  gap: var(--chrome-gap) and the side block's matching padding
+                  do all the spacing, so the gutter beside the rule measures the
+                  same 4px as every other pair of neighbouring controls.
+                  Reference behaviour matched: Drawboard PDF's tool strip, which
+                  holds one constant gutter across its whole width. */}
+              <div style={{ width: '1px', height: '20px', background: '#5a6473' }} />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
@@ -1802,7 +1845,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   context-aware strip contract — visual reference is
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)', position: 'relative' }}>
                 {bottomToolbarApi.richTextEditor && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
                   /* 2026-05-26: Rich-text edit mode — the formatting controls
                      drop into the sub-row beneath the top strip (mirrors the
@@ -1833,8 +1876,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={() => setShowFontColorPicker((v) => !v)}
                         className="ctx-color-swatch"
                         style={{
-                          width: '24px',
-                          height: '24px',
+                          width: 'var(--chrome-field-h)',
+                          height: 'var(--chrome-field-h)',
                           padding: 0,
                           borderRadius: '50%',
                           border: 'none',
@@ -1852,7 +1895,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         />
                       </button>
                       {showFontColorPicker && (
-                        <div style={{
+                        /* UX 2026-09-16: same 140ms fade-and-slide as every
+                           other popover (Drawboard's 100ms fade+grow in). */
+                        <div className="survey-surface-in" style={{
                           position: 'absolute',
                           top: '100%',
                           left: '50%',
@@ -2071,8 +2116,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     className="ctx-color-swatch"
                     style={{
-                      width: '24px',
-                      height: '24px',
+                      width: 'var(--chrome-field-h)',
+                      height: 'var(--chrome-field-h)',
                       padding: 0,
                       borderRadius: '50%',
                       border: 'none',
@@ -2105,8 +2150,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     className="ctx-color-swatch"
                     style={{
-                      width: '24px',
-                      height: '24px',
+                      width: 'var(--chrome-field-h)',
+                      height: 'var(--chrome-field-h)',
                       padding: 0,
                       borderRadius: '50%',
                       border: 'none',
@@ -2149,8 +2194,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     className="ctx-color-swatch"
                     style={{
-                      width: '24px',
-                      height: '24px',
+                      width: 'var(--chrome-field-h)',
+                      height: 'var(--chrome-field-h)',
                       padding: 0,
                       borderRadius: '50%',
                       border: `2px solid ${bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
@@ -2436,7 +2481,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   };
                   const picker = (
-                    <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
+                    /* UX 2026-09-16: the colour popover fades and slides down
+                       5px as it opens (140ms), matching Drawboard's 100ms
+                       fade-and-grow. It used to pop in with transition 0s.
+                       The shared class animates `translate`, not `transform`,
+                       so the inline translate(-50%) centring below survives. */
+                    <div ref={annotationColorPickerRef} data-annotation-color-picker className="survey-surface-in" style={{
                       position: isTextMarkupPalette ? 'fixed' : 'absolute',
                       top: isTextMarkupPalette ? textMarkupPickerPosition.top : '100%',
                       left: isTextMarkupPalette ? textMarkupPickerPosition.left : '50%',
@@ -2760,7 +2810,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={() => bottomToolbarApi.setArrowBothEnds(!bottomToolbarApi.arrowBothEnds)}
                     onMouseDown={(e) => e.stopPropagation()}
                     style={{
-                      height: '24px',
+                      height: 'var(--chrome-field-h)',
                       width: '28px',
                       padding: 0,
                       display: 'inline-flex',
@@ -2777,7 +2827,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     aria-label="Arrowhead on both ends"
                     aria-pressed={!!bottomToolbarApi.arrowBothEnds}
                   >
-                    <Icon name="arrowBothEnds" size={16} color="currentColor" />
+                    <Icon name="arrowBothEnds" size={CHROME_FIELD_GLYPH} color="currentColor" />
                   </button>
                 )}
                 {/* 2026-05-25: Rich-text edit entry button. Only renders when
@@ -2794,8 +2844,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     disabled={!bottomToolbarApi.canEnterTextEdit}
                     style={{
-                      height: '24px',
-                      padding: '0 8px',
+                      height: 'var(--chrome-field-h)',
+                      padding: '0 var(--chrome-field-pad-x)',
                       background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : '#3a4252',
                       color: bottomToolbarApi.richTextEditor
                         ? '#d8a84e'
@@ -3042,11 +3092,24 @@ export default function App({ devPreviewReturnTab = null }) {
               const fitMode = api.zoomMode;
               // Fall back to fit-page icon when mode is MANUAL or unknown.
               const fitIconMode = (fitMode === ZOOM_MODES.FIT_WIDTH || fitMode === ZOOM_MODES.FIT_HEIGHT) ? fitMode : ZOOM_MODES.FIT_PAGE;
-              // Shared icon-button chassis; variants spread size on top.
+              // Shared icon-button chassis.
+              // UX 2026-09-16 (desktop sweep): the BOX is part of the chassis now,
+              // at the shared rail size (--rail-control / RAIL_CONTROL). Variants
+              // used to spread their own width/height on top, which is how one
+              // footer ended up with 28px zoom buttons beside 24px page steppers
+              // beside a 36x28 Fit cell. Intended UX: one control box and one
+              // glyph size for the whole rail footer, the way the Pages tabs above
+              // it are one box and one glyph. Reference behaviour matched:
+              // Drawboard PDF, whose status bar holds one button size end to end.
+              // Only the Fit button, which hangs a caret beside its glyph, takes a
+              // wider box (RAIL_SPLIT_CONTROL_W) — the same exception the top
+              // bar's Select split button takes.
               const footerBtn = (disabled = false) => ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                width: `${RAIL_CONTROL}px`,
+                height: `${RAIL_CONTROL}px`,
                 padding: 0,
                 background: 'transparent',
                 border: 'none',
@@ -3165,18 +3228,18 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
                       aria-label="Zoom in"
-                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
+                      style={footerBtn()}
                     >
-                      <Icon name="plus" size={14} />
+                      <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
                     </button>
                     {zoomValue}
                     <button
                       onClick={api.zoomOut}
                       {...chromeTip('Zoom out', 'left')}
                       aria-label="Zoom out"
-                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
+                      style={footerBtn()}
                     >
-                      <Icon name="minus" size={14} />
+                      <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
                     </button>
 
                     <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
@@ -3187,9 +3250,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={api.goToPreviousPage}
                         disabled={atFirstPage}
                         aria-label="Previous page"
-                        style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px', pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                        style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
                       >
-                        <Icon name="chevronUp" size={14} />
+                        <Icon name="chevronUp" size={RAIL_CONTROL_GLYPH} />
                       </button>
                     </span>
                     {pageValue}
@@ -3204,9 +3267,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={api.goToNextPage}
                         disabled={atLastPage}
                         aria-label="Next page"
-                        style={{ ...footerBtn(atLastPage), width: '24px', height: '24px', pointerEvents: atLastPage ? 'none' : 'auto' }}
+                        style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
                       >
-                        <Icon name="chevronDown" size={14} />
+                        <Icon name="chevronDown" size={RAIL_CONTROL_GLYPH} />
                       </button>
                     </span>
 
@@ -3224,13 +3287,26 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
-                        style={{ position: 'relative', width: '36px', height: '28px', padding: 0, background: 'transparent', border: 'none', borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', cursor: 'pointer' }}
+                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6' }}
                       >
-                        <svg viewBox="0 0 12 12" aria-hidden="true" style={{ position: 'absolute', left: '2px', top: '50%', width: '12px', height: '12px', transform: 'translateY(-50%)', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.8 }}>
-                          <path d="M7.5 2.5 4 6l3.5 3.5" />
-                        </svg>
+                        {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
+                            hand-written <svg>. This caret was drawn inline at
+                            stroke 1.8 in a 12px box — 3.6 units on the house 24
+                            grid, 140% over the house 1.5 — so it was the heaviest
+                            mark in the rail, sitting between Zoom out and the page
+                            steppers. It still points LEFT: the popup flies out
+                            leftward over the PDF, and the direction is the thing
+                            this caret says. RAIL_CARET (10) is the dropdown caret
+                            size, deliberately smaller than the glyph beside it —
+                            see the CARETS note in styles.css. */}
+                        <Icon
+                          name="chevronLeft"
+                          size={RAIL_CARET}
+                          color="currentColor"
+                          style={{ position: 'absolute', left: '2px', top: '50%', transform: 'translateY(-50%)' }}
+                        />
                         <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {renderFitIcon(fitIconMode, 16)}
+                          {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                         </span>
                       </button>
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
@@ -3249,18 +3325,18 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
                     aria-label="Zoom out"
-                    style={{ ...footerBtn(), width: '24px', height: '24px' }}
+                    style={footerBtn()}
                   >
-                    <Icon name="minus" size={14} />
+                    <Icon name="minus" size={RAIL_CONTROL_GLYPH} />
                   </button>
                   {zoomValue}
                   <button
                     onClick={api.zoomIn}
                     {...chromeTip('Zoom in', 'above')}
                     aria-label="Zoom in"
-                    style={{ ...footerBtn(), width: '24px', height: '24px' }}
+                    style={footerBtn()}
                   >
-                    <Icon name="plus" size={14} />
+                    <Icon name="plus" size={RAIL_CONTROL_GLYPH} />
                   </button>
 
                   <div style={{ width: '1px', height: '20px', background: '#2a3140' }} />
@@ -3271,9 +3347,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
                       aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px', pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                      style={{ ...footerBtn(atFirstPage), pointerEvents: atFirstPage ? 'none' : 'auto' }}
                     >
-                      <Icon name="chevronLeft" size={14} />
+                      <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
                     </button>
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
@@ -3286,9 +3362,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.goToNextPage}
                       disabled={atLastPage}
                       aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), width: '24px', height: '24px', pointerEvents: atLastPage ? 'none' : 'auto' }}
+                      style={{ ...footerBtn(atLastPage), pointerEvents: atLastPage ? 'none' : 'auto' }}
                     >
-                      <Icon name="chevronRight" size={14} />
+                      <Icon name="chevronRight" size={RAIL_CONTROL_GLYPH} />
                     </button>
                   </span>
 
@@ -3304,13 +3380,22 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-label="Fit options"
                       data-active={fitMode !== ZOOM_MODES.MANUAL}
                       {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      style={{ height: '26px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 8px', border: 'none', background: 'transparent', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
+                      style={{ ...footerBtn(), width: 'auto', height: `${RAIL_CONTROL}px`, gap: '6px', padding: '0 8px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
                     >
-                      {renderFitIcon(fitIconMode, 15)}
+                      {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                       <span>{api.zoomDropdownLabel}</span>
-                      <svg viewBox="0 0 12 12" aria-hidden="true" style={{ width: '11px', height: '11px', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.8 }}>
-                        <path d={api.isZoomMenuOpen ? 'M2.5 4.5 6 8 9.5 4.5' : 'M2.5 7.5 6 4 9.5 7.5'} />
-                      </svg>
+                      {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
+                          hand-written <svg>. This caret was drawn inline at stroke
+                          1.8 in an 11px box — 3.6 units on the house 24 grid, 140%
+                          over the house 1.5 — so it read heavier than every glyph
+                          beside it in the same footer. It keeps flipping with the
+                          menu: the popup opens upward here, so the resting state
+                          points up and the open state points down. */}
+                      <Icon
+                        name={api.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'}
+                        size={RAIL_CARET}
+                        color="currentColor"
+                      />
                     </button>
                     {api.isZoomMenuOpen && fitMenu({ right: 0, bottom: '100%', marginBottom: '6px' })}
                   </div>

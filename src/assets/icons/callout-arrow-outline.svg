@@ -1,37 +1,54 @@
 <!--
-  Callout tool glyph. 2026-09-07 polish pass: redrawn as stroke artwork on the
-  house 24-unit grid.
+  Callout tool glyph. Stroke artwork on the house 24-unit grid.
 
-  Why: the supplied asset was a single filled outline path on a 1095-unit
-  viewBox whose ink only occupied 802x867 of it, so beside the text-box icon in
-  the same sub-toolbar it rendered 14x16 against 18x18 — about 20% small — and
-  its leader arrowhead was a filled wedge that collapsed into an unreadable nub
-  at deviceScaleFactor 1.
+  2026-09-16 (owner ruling): the bubble now carries a T, drawn the same way the
+  text-box glyph beside it in the same sub-toolbar draws its T — a bar with a
+  stem hung from its middle. The earlier rule in this file was the opposite
+  ("nothing inside the bubble — no underscore, no T") and it is superseded: an
+  empty rounded box with a leader did not read as a TEXT callout, and it was
+  indistinguishable in kind from the plain Rectangle tool glyph.
 
-  Now: 1.5-unit strokes, the same weight as the owner's text-box icon it sits
-  next to, round caps and joins, ink envelope 20/24 = 83% of the box — the same
-  optical margin and the same rendered size as the text-box icon — and centred
-  on its own ink so the row needs no nudge. Measured at the 20px sub-toolbar
-  size the callout went 15x16 -> 17x17 against the text-box's 18x18.
+  The T is sized off the bubble the way the text-box icon's T is sized off its own
+  box: 37.5% of the box's shorter side, because that glyph's T is 6 units in a
+  16-unit box. On this 11-unit-tall bubble that is 4.125 x 4.125 units, centred in
+  the bubble with an even 2.69-unit margin above and below.
 
-  The arrowhead barbs are 5 units long and open a full 90 degrees, which is
-  wider than a typographic arrow would normally be. That is deliberate: at 90
-  degrees on this leader angle one barb lands near-horizontal and the other
+  2026-09-16 (desktop sweep): it was 4.8 x 4.8 = 43.6% of the bubble, which is a
+  sixth again bigger than the fraction it is supposed to be copying — so the two
+  Ts sitting side by side in the same sub-toolbar read as two different letters.
+  4.125 is the same fraction as the text-box T, which is what the rule says.
+
+  2026-09-16: the corner radius is 1.22, a ninth of the bubble's shorter side —
+  ICON_CORNER_RADIUS_RATIO in src/Icons.jsx, the same roundness as the Rectangle
+  tool's rx 2 on an 18-unit box. It was 2.5, which made this the roundest box in
+  the set by a wide margin.
+
+  2026-09-07 polish pass notes, still true:
+
+  Why it was redrawn from the supplied artwork: that was a single filled outline
+  path on a 1095-unit viewBox whose ink only occupied 802x867 of it, so beside
+  the text-box icon in the same sub-toolbar it rendered 14x16 against 18x18 —
+  about 20% small — and its leader arrowhead was a filled wedge that collapsed
+  into an unreadable nub at deviceScaleFactor 1.
+
+  1.5-unit strokes, the same weight as the owner's text-box icon it sits next to,
+  round caps and joins, ink envelope 20/24 = 83% of the box — the same optical
+  margin and the same rendered size as the text-box icon — and centred on its own
+  ink so the row needs no nudge.
+
+  The arrowhead barbs are 5 units long and open a full 90 degrees, which is wider
+  than a typographic arrow would normally be. That is deliberate: at 90 degrees
+  on this leader angle one barb lands near-horizontal and the other
   near-vertical, so both sit on the pixel grid and the head still reads as an
   arrow at deviceScaleFactor 1. A conventional 60-degree head put two 45-degree
   diagonals on top of each other and rasterised into the same nub the filled
   original produced.
-
-  Owner rule kept: nothing inside the bubble — no underscore, no "T".
-
-  Note the two glyphs keep different ink totals (68 px2 against 109 at 20px):
-  the text-box icon spends roughly half of its ink on four stroked corner
-  handles that a callout has no equivalent for. Size and weight are what match;
-  giving the callout matching ink would mean inventing decoration for it.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="6.75" y="2.95" width="14.5" height="11" rx="2.5"/>
+  <rect x="6.75" y="2.95" width="14.5" height="11" rx="1.22"/>
+  <path d="M11.9375 6.3875H16.0625"/>
+  <path d="M14 6.3875V10.5125"/>
   <path d="M9.6 13.95 2.95 21.05"/>
   <path d="M7.95 20.89 2.95 21.05 2.79 16.05"/>
 </svg>

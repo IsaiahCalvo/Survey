@@ -18,8 +18,9 @@ import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
-import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
+import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -35,9 +36,13 @@ const HistoryButton = ({ isActive, onClick }) => {
     {...tip('Version history', 'right')}
     aria-label="Version history"
     onClick={onClick}
+    // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph. It
+    // was a 17px glyph in a 28px box, so the one button in the left rail's
+    // collaboration footer used a size nothing else in that rail used — a 48px
+    // column showing 14, 16, 17 and 18 at once.
     style={{
-      width: '28px',
-      height: '28px',
+      width: `${RAIL_CONTROL}px`,
+      height: `${RAIL_CONTROL}px`,
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -53,7 +58,7 @@ const HistoryButton = ({ isActive, onClick }) => {
       whiteSpace: 'nowrap'
     }}
   >
-    <Icon name="history" size={17} color="currentColor" />
+    <Icon name="history" size={RAIL_CONTROL_GLYPH} color="currentColor" />
   </button>
   );
 };
@@ -247,14 +252,18 @@ const PDFSidebar = React.forwardRef(({
   // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
   // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
   // touchend delta. Demo SurveySetupSheet.tsx:51-96 / inv-demo §17.
-  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose } =
-    useMobileSheetMotion(closePanel);
-
   const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
     ? { label: 'Spaces', icon: 'layers' }
     : mobileMode && activeTab === 'history'
       ? { label: 'Version history', icon: 'history' }
       : null;
+  // UX 2026-09-16 (phone reach pass): only the hub tray (Pages / Search /
+  // Bookmarks) gets the taller second detent — drag it up and it grows to 70%
+  // of the screen so you can see far more page thumbnails at once, the way
+  // Drawboard PDF's phone page list does. Spaces and Version history are
+  // content-measured standalone sheets and keep their single height.
+  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose, expanded: sheetExpanded } =
+    useMobileSheetMotion(closePanel, { expandable: mobileMode && !mobileStandalonePanel });
   const expandedNavigationTabs = mobileMode
     ? tabs.filter((tab) => tab.id !== 'spaces')
     : tabs.concat(
@@ -296,9 +305,12 @@ const PDFSidebar = React.forwardRef(({
         onClick={requestSheetClose}
       />
     )}
-    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+      // The tall detent overrides the content-measured height. It has to be
+      // written here, not from the stylesheet: this inline custom property
+      // always wins over a rule, so a CSS-only override would be ignored.
       '--mobile-sheet-height': mobileMode
-        ? `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`
+        ? (sheetExpanded ? SHEET_EXPANDED_HEIGHT : `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`)
         : undefined,
       width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
       height: '100%',
@@ -306,7 +318,9 @@ const PDFSidebar = React.forwardRef(({
       borderRight: mobileMode ? 'none' : '1px solid #2a3140',
       display: 'flex',
       flexDirection: 'column',
-      transition: 'width 0.2s ease',
+      // The height leg eases the step between the compact and tall detents
+      // with the same 260ms spring curve the sheet's spring-back uses.
+      transition: 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
       flexShrink: 0,
       // Phase F: finger-follow / spring-back / slide-down exit (mobile only).
       ...(mobileMode ? sheetMotionStyle : null)
@@ -323,17 +337,29 @@ const PDFSidebar = React.forwardRef(({
         borderBottom: '1px solid #2a3140',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        // UX 2026-09-16: when the rail is collapsed to its 48px strip, the
+        // toggle is the top icon of a single icon column, so it sits on that
+        // column's centre line like everything below it. Right-aligning it
+        // there left it 3.5px off-axis from Pages / Search / Bookmarks /
+        // Spaces. Expanded, it keeps its right-edge home.
+        justifyContent: (!mobileMode && isCollapsed) ? 'center' : 'flex-end',
         background: '#12151c'
       }}>
         <button
           onClick={toggleCollapse}
+          // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph.
+          // It was a 16px chevron in a padding-derived 24px box — a fourth glyph
+          // size in a rail that already ran 17 and 18. The box measures the same
+          // 24 as before, so the 35px strip and the icon column's centre line are
+          // unchanged; nothing moves.
           style={{
             background: 'transparent',
             border: 'none',
             color: '#8d96a6',
             cursor: 'pointer',
-            padding: '4px',
+            ...(mobileMode
+              ? { padding: '4px' }
+              : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
             borderRadius: '4px',
             display: 'flex',
             alignItems: 'center',
@@ -343,7 +369,7 @@ const PDFSidebar = React.forwardRef(({
           onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
-          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={16} color="#8d96a6" />
+          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="#8d96a6" />
         </button>
       </div>
 
@@ -434,11 +460,16 @@ const PDFSidebar = React.forwardRef(({
                     }
                   }}
                 >
+                  {/* UX 2026-09-16: every tab icon draws in the same 16x16
+                      box with no nudge. The Pages glyph used to carry a 3px
+                      top margin, which grew its tab's centred column and
+                      pushed BOTH its icon and its label 1.5px below the other
+                      three, visibly breaking the row of labels. The glyph's
+                      own ink is already centred in its box. */}
                   <Icon
                     name={tab.icon}
                     size={16}
                     color={isActive ? '#d8a84e' : '#8d96a6'}
-                    style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                   />
                   <span style={{
                     maxWidth: '100%',
@@ -463,7 +494,14 @@ const PDFSidebar = React.forwardRef(({
           )}
 
           {/* Panel Content */}
-          <div style={{
+          {/* UX 2026-09-16: the panel body fades and slides in 6px from the
+              left edge it is anchored to (140ms), so opening Pages reads as
+              the panel arriving rather than the page jumping. Drawboard's own
+              panel opens with a short fade. Desktop only — on mobile the sheet
+              already owns its slide-up motion (useMobileSheetMotion), and
+              stacking a second animation on top would fight it. The shared
+              class in styles.css honours prefers-reduced-motion. */}
+          <div className={mobileMode ? undefined : 'survey-surface-in-left'} style={{
             flex: 1,
             overflow: 'hidden',
             display: 'flex',
@@ -665,8 +703,14 @@ const PDFSidebar = React.forwardRef(({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  borderRadius: '6px',
-                  padding: '10px',
+                  borderRadius: 'var(--chrome-radius, 6px)',
+                  // UX 2026-09-16 (desktop sizing pass): the rail tab keeps its
+                  // 40px height — nothing moves — but the glyph drops to the
+                  // shared chrome size (18px, --chrome-glyph) and the padding
+                  // is split so the glyph FITS. At 10px padding around a 20px
+                  // glyph the content box wanted 40px inside a 31px-wide rail,
+                  // so the glyph overflowed its own button.
+                  padding: '11px 6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -687,9 +731,9 @@ const PDFSidebar = React.forwardRef(({
               >
                 <Icon
                   name={tab.icon}
-                  size={20}
+                  size={RAIL_GLYPH}
                   color="#8d96a6"
-                  style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                  style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
                 />
               </button>
             </div>

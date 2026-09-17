@@ -467,10 +467,35 @@ test('mobile viewer exposes the preserved dynamic tool and page controls', () =>
   assert.match(PAGES_PANEL_SOURCE, /mobileSelectMode \? 'Done' : 'Select'/);
 });
 
-test('mobile live text formatting stays scroll-reachable with 44px touch targets', () => {
+test('mobile live text formatting stays scroll-reachable with 36px touch targets', () => {
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text \{[\s\S]{0,420}justify-content: flex-start;[\s\S]{0,160}touch-action: pan-x;/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text > button,[\s\S]{0,180}min-width: 44px;[\s\S]{0,80}min-height: 44px;/);
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Font color"[\s\S]{0,120}onPointerDown=\{\(event\) => event\.preventDefault\(\)\}[\s\S]{0,100}setColorPicker\('fontColorLive'\)/);
+  // RULED CHANGE 2026-09-16 (phone sweep; owner ruling "sizing follows
+  // Drawboard's ratios uniformly ... everything reads a little big"): the
+  // rich-text controls no longer PAINT 44px - that is why this was the only tool
+  // bar in the app 52px tall instead of 36. They paint the shared 24px strip
+  // height and the 44px is a transparent ::after pad, the same way the eraser and
+  // shape strips have always done it. The target is unchanged; only what is
+  // drawn changed, so the assertion moved from the painted box to the pad.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text > button,[\s\S]{0,240}min-height: var\(--mobile-strip-control-h\);[\s\S]{0,80}height: var\(--mobile-strip-control-h\);/);
+  // RULED CHANGE 2026-09-16 (r5 phone pass): the pad is -6px/-6px - the painted
+  // bar's full 36px - where it was -6px/-14px. The extra 8px hung below the bar
+  // over the page, and since the bar has to stay hit-testable to scroll, that
+  // strip stole the page's taps across the whole width. The bar clips itself to
+  // its painted band now, so no pad can reach past 36px; declaring -14px would
+  // claim a target the clip does not give.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties__format::after,[\s\S]{0,400}inset-block: -8px;/);
+  // RULED CHANGE 2026-09-16 (r4 phone pass): the formatting buttons keep the
+  // editor focused through keepTextEditFocus, which preventDefaults for a mouse
+  // and deliberately does NOT for a finger. A prevented pointerdown stops the
+  // engine starting its own pan, so on iOS a drag begun on any of these five
+  // buttons could not scroll the bar and the Text-alignment dropdown at the far
+  // end was unreachable. Focus is held instead by the data-rich-text-toolbar
+  // opt-out (a touch on the bar no longer commits the editor) plus the
+  // re-focus TextEditOverlay's applyStyle already does. The assertion moved from
+  // "always preventDefault" to that contract.
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Font color"[\s\S]{0,120}onPointerDown=\{keepTextEditFocus\}[\s\S]{0,100}setColorPicker\('fontColorLive'\)/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /const keepTextEditFocus = \(event\) => \{\s*if \(event\.pointerType === 'touch' \|\| event\.pointerType === 'pen'\) return;\s*event\.preventDefault\(\);/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /mobile-pdf-properties--text"[^>]*data-rich-text-toolbar/);
 });
 
 test('mobile annotation settings retain the preserved app geometry and controls', () => {

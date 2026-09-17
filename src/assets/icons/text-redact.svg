@@ -7,11 +7,19 @@
   strokes — which is what made it read about half again as heavy as its
   neighbours.
 
-  Now: the house 24-unit grid, one 1.75-unit stroke weight (1.31px at 18; the
-  row runs strike 1.42, underline 1.61, squiggle 1.72, hyperlink 1.78), ink
-  envelope 18.6 x 19.95 of 24 centred on its own ink, and the size override in
+  Now: the house 24-unit grid, the house 1.5-unit stroke weight, ink envelope
+  18.5 x 19.7 of 24 centred on its own ink, and the size override in
   TextSelectionActionBar.jsx removed so it renders at 18 with the rest. It
   lands at 14x15px in an 18px box, inside the row's 12-17px band.
+
+  2026-09-16 (desktop sweep): the letter strokes are 1.5, down from 1.75. The
+  1.75 was tuned against a row that then ran 1.42-1.78; hyperlink has since come
+  down to 1.5 too, so 1.75 became the one heavy glyph left. Owner ruling of this
+  pass: ONE stroke weight across the set, and "the asset is sha256-pinned" is no
+  longer a reason to stay off it — the pins in
+  tests/textSelectionActionBarMounted.test.mjs and tests/redactIconSource.test.mjs
+  were re-taken for this weight. The solid bar below is UNCHANGED (see 1 below):
+  it is the mark, not an outline stroke, and its weight is the glyph's meaning.
 
   Two judgement calls worth knowing about, both reversible in one line:
 
@@ -30,7 +38,7 @@
      but the glyph will go wide again.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+     stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <path d="M3.6 21.1 12 2.9 20.4 21.1"/>
   <rect x="2.75" y="13.4" width="18.5" height="3.6" fill="#000" stroke="none"/>
 </svg>

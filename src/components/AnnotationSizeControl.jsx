@@ -5,6 +5,7 @@ import {
   normalizeAnnotationSize,
   sanitizeAnnotationSizeDraft,
 } from '../utils/annotationSize';
+import Icon from '../Icons';
 import './AnnotationSizeControl.css';
 
 export const ANNOTATION_SIZE_PRESETS = Object.freeze({
@@ -148,9 +149,12 @@ export default function AnnotationSizeControl({
             title={`${label} presets`}
             disabled={disabled}
           >
-            <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
-              <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            {/* UX 2026-09-16: this control sits beside Style / Arrowhead /
+                Edit text, which all disclose with the shared 10x10 chevron.
+                A bespoke 10x6 chevron here made the width control read as a
+                different kind of control in the same row, so reuse the shared
+                one. */}
+            <Icon name="chevronDown" size={10} color="currentColor" />
           </button>
         </Popover.Trigger>
       </div>

@@ -1,6 +1,27 @@
 :root {
   --mobile-bottom-inset: max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   --mobile-viewer-dock-height: calc(52px + var(--mobile-bottom-inset));
+
+  /* PHONE SIZE TOKENS (owner ruling 2026-09-16 — "everything is a little big;
+     use Drawboard's ratios as the page, uniformly"). Reference = Drawboard PDF
+     on an iPhone, measured 2026-09-16: tool rail 40.4pt wide with a 34.7pt
+     pitch and ~28pt chips; top-bar control row 27-30pt; bottom bar 59-70pt
+     with 24-33pt controls. Every phone control takes its height, glyph and gap
+     from these tokens — no control invents its own size.
+
+     The chip you SEE is smaller than the area you can HIT: each rail chip
+     carries a transparent ::after that fills its whole slot, so the visible
+     square follows Drawboard while the finger target stays the full pitch. */
+  --mobile-rail-w: 40px;           /* Drawboard 40.4pt */
+  --mobile-rail-chip: 30px;        /* the square you see; Drawboard ~28pt */
+  --mobile-rail-gap: 5px;          /* 30 + 5 = 35px pitch; Drawboard 34.7pt */
+  --mobile-rail-sub-w: 32px;       /* the open sub-tool strip */
+  --mobile-rail-sub-chip: 24px;
+  --mobile-rail-sub-gap: 4px;      /* 28px sub pitch */
+  --mobile-control-h: 26px;        /* every header control, one height */
+  --mobile-strip-control-h: 24px;  /* every tool-properties control, one height */
+  --mobile-strip-dropdown-w: 80px; /* EVERY strip dropdown and the width field */
+  --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
 }
 
 html.survey-viewer-open,
@@ -70,12 +91,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__document,
 .mobile-pdf-header__history {
   position: absolute;
-  bottom: 4px;
+  bottom: 6px;
   display: flex;
   align-items: center;
   z-index: 2;
 }
 
+/* UX 2026-09-16 (sizing pass): all three header groups share one baseline —
+   6px above the header's bottom rule — so the back button, the title, the page
+   cluster and undo/redo read as one row. 6px is where undo and redo already
+   sat, so the pair the owner asked to leave alone does not move at all. */
 .mobile-pdf-header__document {
   left: 7px;
   /* UX 2026-07-12 (matrix §9 title-pill overlap fix): cap the title group so it
@@ -92,8 +117,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__icon {
-  width: 30px;
-  height: 30px;
+  width: var(--mobile-control-h);
+  height: var(--mobile-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -104,16 +129,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 5px;
 }
 
-.mobile-pdf-header__history .mobile-pdf-header__icon {
-  width: 26px;
-  height: 26px;
-}
 
 .mobile-pdf-header__icon:disabled { color: #6f7785; opacity: 0.56; }
 .mobile-pdf-header__icon:not(:disabled):active { background: #2a2b31; }
 
 .mobile-pdf-header__title {
-  height: 25px;
+  height: var(--mobile-control-h);
   min-width: 0;
   max-width: 100%;
   padding: 0 12px;
@@ -164,7 +185,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__pages {
   position: absolute;
   left: 50%;
-  bottom: 5px;
+  bottom: 6px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -173,8 +194,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-nav {
-  width: 24px;
-  height: 24px;
+  width: var(--mobile-control-h);
+  height: var(--mobile-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -188,10 +209,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-header__page-nav:disabled { color: #535b68; }
 .mobile-pdf-header__page-nav:not(:disabled):active { background: #2a2b31; }
 
-/* Demo pill geometry: 68x24, radius 5, tabular-nums, gold active border. */
+/* Demo pill geometry: 68 wide, radius 5, tabular-nums, gold active border.
+   Its height comes from the shared header control token so the pill lines up
+   with the back button, the title and undo/redo. */
 .mobile-pdf-header__page-pill {
   width: 68px;
-  height: 24px;
+  height: var(--mobile-control-h);
   padding: 0 4px;
   display: flex;
   align-items: center;
@@ -304,7 +327,83 @@ html[data-native-shell="expo"] .mobile-pdf-header {
     visibility 0s;
 }
 
-.mobile-pdf-header__zoom-menu > button {
+/* UX 2026-09-16: minus / live percentage / plus, above the fit modes. The
+   reading between them is the live scale, so you always know where you are.
+
+   RULED CHANGE 2026-09-16 (r4 phone pass): the steppers are header controls, so
+   they take the header control height — 26px with the 15px HEADER_GLYPH, the
+   same 15-in-26 every other control in the top row uses. They were built to the
+   fit rows' 34px menu-row square instead, which is not one of the five phone
+   size tokens and left a 15px glyph floating in a 34px box: 0.441 of its
+   control where every other phone tier runs 0.55-0.60, so the pair read
+   noticeably lighter than the rail and dock chips above them. The fit rows keep
+   their 34px — they are context-menu rows with labels, not icon buttons, and
+   34px rows are the demo's menu chrome. Pinned by
+   tests/mobilePhoneGlyphRatioComplete.test.mjs.
+
+   The finger target does not shrink with the paint: the transparent ::after
+   below holds it at the 34x34 the buttons offered before. */
+.mobile-pdf-header__zoom-steppers {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  margin-bottom: 3px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #3c424d;
+}
+
+.mobile-pdf-header__zoom-steppers > button {
+  position: relative;
+  /* The literal repeats --mobile-control-h so the phone-sizing tests can read a
+     px number straight off this rule; the var below is what actually applies,
+     which keeps the token the single source of truth. */
+  width: 26px;
+  width: var(--mobile-control-h);
+  height: 26px;
+  height: var(--mobile-control-h);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #e8e2d4;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+/* The chip you see is 26px; the area a finger hits is the 34px square these
+   buttons had before the ratio fix, so nothing got harder to tap. There is no
+   border here, so the pad counts straight off the 26px box: 26 + 4 + 4 = 34.
+   The live percentage flexes between the two buttons, so the pads never meet,
+   and 4px below stays inside the row's 3px margin + 3px padding + 1px rule -
+   it cannot reach the first fit row. */
+.mobile-pdf-header__zoom-steppers > button::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+.mobile-pdf-header__zoom-steppers > button:disabled { color: #6f7785; opacity: 0.5; }
+.mobile-pdf-header__zoom-steppers > button:not(:disabled):active { background: #2a2b31; }
+
+.mobile-pdf-header__zoom-percent {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #f2f2f2;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.mobile-pdf-header__zoom-fits {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-pdf-header__zoom-fits > button {
   min-height: 34px;
   padding: 0 8px;
   display: flex;
@@ -319,15 +418,38 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-align: left;
 }
 
-.mobile-pdf-header__zoom-menu > button.is-active {
+.mobile-pdf-header__zoom-fits > button.is-active {
   color: var(--accent-primary, #d8a84e);
   background: var(--gold-bg, #2a2218);
 }
 
+/* UX 2026-09-16 (sizing pass + rail-defect pass, merged): the rail is
+   Drawboard's 40pt-wide rail, and it has NO horizontal padding. Both matter for
+   the same defect: at 44px wide with 4px of side padding every 44px button sat
+   outside the rail's content box, so the active tool's gold outline lost its left
+   and right edges and rendered as two detached rules, and the overflow made a
+   40pt rail horizontally scrollable — a light sideways drag shifted the whole
+   tool column left and it did not spring back. Owner rule: a rail is never
+   scrollable. Everything inside .mobile-pdf-tools__main is centred by that
+   element, so removing the padding moves no control; the footer below carries
+   align-self so it stays on the same centre line. */
 .mobile-pdf-tools {
-  width: 44px;
+  width: var(--mobile-rail-w);
   height: 100%;
-  padding: 7px 4px calc(var(--mobile-viewer-dock-height) + 28px);
+  /* UX 2026-09-16 (r5 phone pass): the bottom inset is the dock's height less
+     6px, where it was the dock plus 28px while the footer carried
+     `transform: translateY(34px)`. Both numbers changed together and NOTHING
+     moves: the footer's painted box was 34px below its layout box, so the rail
+     reserved 34px of space no control ever occupied and the tool column above it
+     was capped 34px short of where it could actually grow (measured at 375x812:
+     main ended at y 588, the footer began painting at 622). Taking the 34px off
+     the padding and off the transform lands the footer's layout box exactly
+     where it was painting - verified chip by chip on the simulator, same four y
+     positions to the pixel - and hands the column back 34px before it has to
+     scroll. The remaining -6px is what the stack's own -5px/-3px nudges already
+     lift the last chip by, so its 2px clearance over the dock is unchanged, and
+     the inset still tracks the safe area through the dock token. */
+  padding: 7px 0 calc(var(--mobile-viewer-dock-height) - 6px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -338,30 +460,103 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 5750;
 }
 
+/* The half-gap padding is what the chips' transparent hit areas hang into, so
+   the column never reports a stray pixel or two of scroll. */
 .mobile-pdf-tools__main {
   min-height: 0;
+  padding-block: 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  /* UX 2026-09-16 (r5 phone pass): the column's pitch is four tokens rather than
+     four literals, so the one state that cannot fit can tighten all of it at
+     once (see the dense rule below) without any control changing size. At rest
+     every token is the value that was hard-coded here before. */
+  --rail-pitch-gap: var(--mobile-rail-gap);
+  --rail-divider-margin: 3px;
+  --rail-sub-gap: var(--mobile-rail-sub-gap);
+  --rail-sub-pad: 3px;
+  gap: var(--rail-pitch-gap);
   overflow-y: auto;
+  /* Owner rule: the rail never scrolls sideways. overflow-y:auto on its own
+     computes overflow-x to auto too, which is how the rail became draggable: a
+     light horizontal drag shifted the whole tool column out of alignment with
+     no spring-back. overscroll-behavior-x stops a sideways flick reaching the
+     page behind it as well. */
+  overflow-x: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
+}
+
+/* The rail's own buttons used to be stretched to the rail's content box to stop
+   them overflowing it. They no longer need to be: the chip token is 30px inside
+   a 40px rail, so every chip already clears both edges with its outline and its
+   rounded corners intact. A width:100% override here would undo that. */
+
+/* UX 2026-09-16 (r5 phone pass): the ONE rail state that cannot fit a 375x812
+   screen at the normal pitch, tightened rather than scrolled. Owner rule: a rail
+   is never scrollable.
+   The state is a tool group's sub-strip open at the same time as the survey
+   category and entity strips - 19 chips in three stacked strips. Measured with
+   the Security / Instillation module (2 categories, 5 entities) and Shapes open,
+   the column wanted 643px where a 375x812 screen gives it 581px and an iPhone
+   17 Pro gives it 557px (874px tall, but 34px of that is the home-indicator
+   reserve under the dock instead of 10px). It scrolled 96px on
+   claude/ux-polish. These four values bring it to 552px, which fits both.
+   Only spacing tightens. Every chip keeps its painted size, and each chip's own
+   hit pad tracks the tightened gap (half of it, as always) so two pads still
+   never overlap and steal each other's taps. The cost is a visibly tight rail
+   while three strips are stacked - 2px between chips, and a 24px sub-chip is a
+   24px target rather than 26 - which is the trade the owner's "a rail is never
+   scrollable" asks for, and it is paid in this state only.
+   What this does NOT do: guarantee a fit for any survey template. The category
+   and entity lists are data - each extra row is another 26px - so past about
+   eight rows the column overflows again and `overflow-y: auto` on it is the
+   safety valve that keeps the far end reachable. `:has()` is WebKit 15.4+, well
+   inside the iOS this app ships to; where it is missing the rail simply keeps
+   the normal pitch and scrolls, which is the behaviour it has today. */
+.mobile-pdf-tools__main:has(.mobile-pdf-tools__subtools):has(.mobile-pdf-tools__survey-categories),
+.mobile-pdf-tools__main:has(.mobile-pdf-tools__subtools):has(.mobile-pdf-tools__survey-entities) {
+  --rail-pitch-gap: 2px;
+  --rail-divider-margin: 0px;
+  --rail-sub-gap: 2px;
+  --rail-sub-pad: 1px;
 }
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
+/* The chip token, never a hard pixel width: the rail is 40 wide with a 1px right
+   border, so its content box is 39. A 44px button put every chip past that edge,
+   which is what clipped the active tool's gold outline and made the column
+   scrollable. A 30px chip leaves clearance on both sides. */
 .mobile-pdf-tools__button {
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
+  min-height: var(--mobile-rail-chip);
+  min-width: 0;
   padding: 0;
   display: grid;
   place-items: center;
+  position: relative;
   /* UX: tool glyphs share desktop cream; active gold stays distinct. */
   color: #e8e2d4;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
+}
+
+/* UX 2026-09-16: the chip you see is 30px, the area a finger hits is the whole
+   35px slot across the 40px rail — Drawboard's rail reads the same way (28pt
+   chip inside a 34.7pt pitch). Without this the smaller chip would also be a
+   smaller target, which is the one thing the phone research said not to do. */
+.mobile-pdf-tools__main > .mobile-pdf-tools__button::after,
+.mobile-pdf-tools__select-family > .mobile-pdf-tools__button::after,
+.mobile-pdf-tools__footer > .mobile-pdf-tools__button::after,
+.mobile-pdf-tools__footer-stack > .mobile-pdf-tools__button::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(var(--rail-pitch-gap, var(--mobile-rail-gap)) / -2);
+  inset-inline: -4px;
 }
 
 .mobile-pdf-tools__button.is-active {
@@ -374,8 +569,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__select-family {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
   border: 1px solid transparent;
   border-radius: 6px;
 }
@@ -396,13 +591,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-color: transparent;
 }
 
+/* The mode caret hugs the Select family's own right edge (right:0, not a hard
+   left offset), so it follows the chip down to 30px and can never hang past the
+   rail and lose its right side the way it used to. Its own ::after keeps a
+   finger-sized target over a deliberately small glyph. */
 .mobile-pdf-tools__select-caret {
   position: absolute;
-  left: 31px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 18px;
+  width: 8px;
+  height: 14px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -412,9 +611,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 1;
 }
 
+.mobile-pdf-tools__select-caret::after {
+  content: '';
+  position: absolute;
+  inset-block: -8px;
+  inset-inline: -6px 0;
+}
+
 .mobile-pdf-lasso-controls {
   position: fixed;
-  left: 52px;
+  left: calc(var(--mobile-rail-w) + 12px);
   bottom: calc(var(--mobile-viewer-dock-height) + 12px);
   z-index: 5751;
   display: flex;
@@ -460,6 +666,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-select-mode__menu {
+  /* UX 2026-09-16: the selection-mode flyout used to appear in a single frame
+     with no transition. It now fades and slides down 5px over 150ms — the
+     same in-motion the zoom menu above already uses (Drawboard: 100ms fade +
+     grow in). It unmounts on close, so only the "in" half exists. */
+  animation: mobilePdfFlyoutIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
   position: fixed;
   z-index: 8999;
   width: min(180px, calc(100vw - 16px));
@@ -507,45 +718,59 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 26px;
   height: 1px;
   min-height: 1px;
-  margin: 3px 0;
+  margin: var(--rail-divider-margin, 3px) 0;
   background: #4a4f59;
 }
 
 .mobile-pdf-tools__divider.is-short { width: 20px; }
 
 .mobile-pdf-tools__subtools {
-  width: 34px;
-  padding: 4px 0;
+  /* UX 2026-09-16: the rail's sub-tool strip used to pop in with no
+     transition. It now fades and slides in 6px from the rail it hangs off
+     over 150ms, matching the zoom menu's in-motion (Drawboard: 100ms fade +
+     grow in). It unmounts on close, so only the "in" half exists. */
+  animation: mobilePdfStripIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
+  width: var(--mobile-rail-sub-w);
+  padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
 }
 
 .mobile-pdf-tools__subtools .mobile-pdf-tools__button {
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
+  min-height: var(--mobile-rail-sub-chip);
+}
+
+/* Sub-tool chips get the same treatment one tier down: a 24px square inside a
+   28px slot that fills the strip's width. */
+.mobile-pdf-tools__subtools .mobile-pdf-tools__button::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(var(--rail-sub-gap, var(--mobile-rail-sub-gap)) / -2);
+  inset-inline: -3px;
 }
 
 .mobile-pdf-tools__survey-categories {
-  width: 34px;
-  padding: 4px 0;
+  width: var(--mobile-rail-sub-w);
+  padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
 }
 
 .mobile-pdf-tools__survey-categories button {
-  width: 28px;
-  height: 28px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
   padding: 0;
   color: #f2f2f2;
   background: #2a2d34;
@@ -562,20 +787,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-entities {
-  width: 34px;
-  padding: 4px 0;
+  width: var(--mobile-rail-sub-w);
+  padding: var(--rail-sub-pad, 3px) 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--rail-sub-gap, var(--mobile-rail-sub-gap));
   background: #1a1e25;
   border: 1px solid #323844;
   border-radius: 8px;
 }
 
 .mobile-pdf-tools__survey-entities button {
-  width: 28px;
-  height: 24px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
   padding: 0;
   display: grid;
   place-items: center;
@@ -590,27 +815,42 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-entities button span {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   border: 1px solid #0c0f13;
   border-radius: 50%;
 }
 
+/* UX 2026-09-16: the footer column is the same rail chip as the column above it
+   — "More", sync, history and the active-users avatar are rail buttons like any
+   other, so they take the rail chip token instead of three private sizes.
+   align-self keeps the footer on the rail's centre line now that the rail has no
+   side padding to offset it. The stack's -5px/-3px nudges are the existing
+   hand-set ones and are untouched.
+   2026-09-16 (r5): the footer's own translateY(34px) is gone, traded for 34px
+   off the rail's bottom inset (see .mobile-pdf-tools). The painted result is
+   identical; what changed is that the rail no longer reserves 34px that nothing
+   paints in, which was capping the tool column above it 34px early. */
 .mobile-pdf-tools__footer {
   margin-top: auto;
-  width: 34px;
+  align-self: center;
+  width: var(--mobile-rail-chip);
   padding-top: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0;
   position: relative;
-  transform: translateY(34px);
 }
 
+/* UX 2026-09-16: the rail chip token, matching the footer that holds it and the
+   three buttons stacked under it. At the inherited 44 it was wider than its own
+   container and was clipped on both sides, like the rail buttons above it. */
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button {
-  height: 18px;
-  min-height: 18px;
+  width: var(--mobile-rail-chip);
+  min-width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
+  min-height: var(--mobile-rail-chip);
 }
 
 .mobile-pdf-tools__footer-stack {
@@ -618,21 +858,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: var(--mobile-rail-gap);
   transform: translateY(-5px);
 }
 
 .mobile-pdf-tools__footer-stack .mobile-pdf-tools__button {
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
+  min-height: var(--mobile-rail-chip);
   position: relative;
   transform: translateY(-3px);
 }
 
 .mobile-pdf-tools__sync {
-  width: 34px;
-  height: 34px;
+  width: var(--mobile-rail-chip);
+  height: var(--mobile-rail-chip);
   padding: 0;
   display: grid;
   place-items: center;
@@ -690,8 +930,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__avatar {
-  width: 28px;
-  height: 28px;
+  width: var(--mobile-rail-sub-chip);
+  height: var(--mobile-rail-sub-chip);
   display: grid;
   place-items: center;
   color: #e8e2d4;
@@ -722,8 +962,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__popover {
   position: fixed;
-  left: 47px;
-  width: min(245px, calc(100vw - 58px));
+  left: calc(var(--mobile-rail-w) + 3px);
+  width: min(245px, calc(100vw - var(--mobile-rail-w) - 14px));
   padding: 6px;
   color: #e8e2d4;
   background: #181c24;
@@ -780,59 +1020,146 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties {
   position: absolute;
   top: 0;
-  left: 44px;
-  width: calc(100vw - 44px);
+  left: var(--mobile-rail-w);
+  width: calc(100vw - var(--mobile-rail-w));
   max-width: none;
-  height: 36px;
-  min-height: 36px;
-  /* The strip starts after the 44px tool rail, but its controls align with
-     the page navigation in the full-width header above. The extra right
-     padding cancels half of that rail offset. */
-  padding: 0 52px 0 8px;
+  /* UX 2026-09-16 (phone sweep). The bar you SEE is still 36px; the BOX is 44px.
+     The row scrolls sideways now (below) and a scroll container clips both axes,
+     so the old `overflow: visible` escape hatch a 24px control used to hang a
+     44px finger target off itself is gone. Giving the box the extra 8px puts
+     that target back inside the element, where nothing clips it. The 8px is
+     painted transparent by the gradient further down, so the bar's look is
+     unchanged and the owner's "never grow a bar" holds: the bar did not grow.
+     2026-09-16 (r5): nor did its touch area. The box keeps the extra 8px because
+     that is what makes `align-items: center` centre a 24px control in the
+     painted 36px band, but clip-path (below) hit-tests only the painted band, so
+     the strip over the page is the page's again and a pad stops at 36px. */
+  height: 44px;
+  min-height: 44px;
+  /* The 8px bottom padding leaves a 36px content band, so `align-items: center`
+     centres every control in the painted bar rather than in the taller box -
+     the same trick the bottom dock uses. Right padding is rail + left inset; it
+     used to be what centred the row on the viewport and is now scroll runway,
+     kept because the region / survey / text-markup strips are still centred by
+     it. */
+  padding: 0 calc(var(--mobile-rail-w) + 8px) 8px 8px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  /* Compact strips are only 36px tall. Keep vertical overflow visible so a
-     control can expose a 44px hit target without painting a 44px-tall visual
-     or having that target clipped by the strip's scroll container. The
-     combinations used by eraser/shapes/arrows fit this width at 390px. */
-  overflow: visible;
+  /* UX 2026-09-16 (phone sweep): start-aligned and scrollable. Centred was the
+     bug. A centred flex row wider than its box loses HALF the excess off the
+     LEFT end - under the tool rail, which paints above this strip (z 5750 vs
+     5700) - and then off the screen, with no way back. Measured at 375x812 with
+     Arrow armed, the colour swatch sat at x -19.8: entirely gone. `safe center`
+     (the previous fix) only moved the loss to the far end; it did not make it
+     reachable, so "Both ends" and "Text formatting" were still unusable. The
+     rich-text variant had already solved this with flex-start + its own scroll;
+     every variant does it now. */
+  justify-content: flex-start;
+  /* 5px, the same pitch gap the tool rail uses. It is also what lets Arrow's
+     four sized controls - swatch, Width, Border style, Arrowhead - fit a 375px
+     screen with no scrolling at all, so only its two label buttons scroll into
+     reach. Pinned by tests/mobileToolPropertiesReach.test.mjs. */
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 8px;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
   color: #f2f2f2;
-  background: #202126;
+  /* The bar's fill and its bottom rule are one gradient rather than a
+     background plus a border, because the box is 8px taller than the bar. */
+  background: linear-gradient(to bottom, #202126 0 35px, #090a0d 35px 36px, transparent 36px);
   border: 0;
-  border-bottom: 1px solid #090a0d;
   border-radius: 0;
   box-shadow: none;
   scrollbar-width: none;
   z-index: 5700;
+  /* The scrollbar is hidden, so at rest an overflowing row ended in a control
+     sliced by the screen edge and read as a broken render. Fade the last 20px
+     against the bar so the cut edge reads as "there is more this way". The mask
+     sits on the border box, so it stays at the right edge while the controls
+     scroll underneath it. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  /* UX 2026-09-16 (r5 phone pass): the bar hit-tests ONLY the 36px it paints.
+     The box is still 44px - that is what centres a 24px control in the painted
+     band and keeps the control's own pad inside the element - but the bottom
+     8px of that box lies over the top of the page, and because this bar must
+     stay hit-testable to scroll (see below) every tap and every pan that
+     started in those 8px, across the whole width, went to the bar instead of to
+     the document. clip-path removes that strip from hit testing as well as from
+     painting - it is a clip, not a mask - and a clipped element is still a
+     scroll container, so the row still scrolls sideways under a finger. What it
+     costs: a pad can no longer reach past 36px, so every control on this bar is
+     a 36px target, not 44px. That is the trade, taken deliberately: a 44px
+     control cannot coexist with a page that gets its own taps back, and the
+     page wins. */
+  clip-path: inset(0 0 8px 0);
+  /* DO NOT set `pointer-events: none` on this element. Tried and reverted
+     2026-09-16 (r4 phone pass), A/B'd in the iOS Simulator on an iPhone 17 Pro:
+     WebKit will not scroll a scroll container that is not hit-testable, even
+     when the finger lands on a child that IS. With `none` here, a drag along
+     the rich-text bar that began on the Font dropdown moved nothing; flipping
+     this one declaration to `auto` and repeating the identical drag scrolled the
+     row to its last control. The bottom dock can afford `pointer-events: none`
+     precisely because it never scrolls.
+     What that used to cost: the box is 8px taller than the painted bar and it
+     overlays the top of the page, so a touch in those 8px went to the bar, not
+     the page - the whole width of it, not just the lanes between controls.
+     2026-09-16 (r5): that cost is gone without touching this declaration. The
+     clip-path above takes the 8px out of hit testing, so the element is still
+     hit-testable exactly where it paints - enough for WebKit to scroll it - and
+     the page answers every touch below the bar's bottom rule. */
+  pointer-events: auto;
 }
 
+.mobile-pdf-properties::-webkit-scrollbar { display: none; }
+
+/* UX 2026-09-16 (phone sweep): the rich-text bar is the same bar as every other
+   tool's now - 24px controls on the shared 36px band - where it was the only
+   strip in the app with its own geometry: 44px controls in a 52px band, so
+   arming Text made the whole row under the top bar jump taller and heavier. It
+   keeps its own declarations (its scroll contract is pinned by
+   tests/mobileRuntimeCompatibility.test.mjs and
+   tests/mobileToolSettingsReachable.test.mjs) but every number now comes from
+   the base rule. */
 .mobile-pdf-properties--text {
-  /* A centred overflowing flex row clips equal width from both ends; on a
-     390px phone that put Font color left of the rail with no scroll path back
-     to it. Anchor the row at its scroll origin so every control is reachable. */
-  height: 52px;
-  min-height: 52px;
-  padding-right: 8px;
+  /* 20px of runway, not 8: the bar fades its last 20px so a sliced control
+     reads as "there is more this way", and with 8px the fade still lay over
+     the Text-alignment dropdown at the very end of the scroll, which made a
+     fully-reached control look half-rendered. Every other variant clears it
+     already - the base rule's right inset is the 40px rail plus 8px. */
+  padding-right: 20px;
   justify-content: flex-start;
   scroll-padding-inline: 8px;
   touch-action: pan-x;
   -webkit-overflow-scrolling: touch;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
+}
+
+/* These three hold two or three wide labelled buttons that always fit, so they
+   stay centred rather than moving to the bar's left edge - the owner's "never
+   move an existing control" applies to them because nothing about them was
+   broken. `safe` still falls back to start-aligned if a label ever grows past
+   the bar, which is what keeps the scroll reachable. */
+.mobile-pdf-properties--actions,
+.mobile-pdf-properties--survey,
+.mobile-pdf-properties--text-markup {
+  justify-content: safe center;
 }
 
 .mobile-pdf-properties--actions,
 .mobile-pdf-properties--survey {
-  gap: 8px;
+  gap: 5px;
 }
 
 .mobile-pdf-properties--actions > button,
 .mobile-pdf-properties__keep {
-  height: 30px;
-  min-height: 30px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
   padding: 0 9px;
   flex: 0 0 auto;
   color: #f2f2f2;
@@ -843,17 +1170,53 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 800;
 }
 
+/* UX 2026-09-16 (phone sweep): ONE finger target for every compact control on
+   the bar, whatever variant the bar is. The control paints 24px tall and is
+   centred in the 36px band, so -8px on both sides reaches past the painted bar
+   in each direction and the bar's clip-path (base rule) trims it back to
+   exactly the band it paints: 36px of target on every control, top rule to
+   bottom rule.
+   RULED CHANGE 2026-09-16 (r5): -8px, not -14px below. The old pad reached 44px
+   by hanging 8px PAST the painted bar, over the page, and the bar has to stay
+   hit-testable down there to keep scrolling - so that strip stole the page's
+   taps across the full width. The bar clips itself to its painted 36px now,
+   which caps every pad here at 36 and hands the page its 8px back.
+   Why over-reach instead of an exact -6px: `inset-block` is measured from the
+   control's PADDING box, so an exact number lands differently on a control that
+   has a 1px border (the region Confirm / Delete / Full page / Cancel buttons,
+   and Keep) than on one that does not (the swatch, the colour dot). Measured at
+   375x812 with -6px, the bordered buttons hit-tested 35..69 - 34px - while the
+   swatch got the full 34..70. One number that overshoots every box makes the
+   clip the single authority for the vertical target, so every control on the
+   bar is the same 36px whatever its border.
+   Sideways the pads stop at half the 5px gap. Two pads that overlap steal each
+   other's taps, and with a 5px gap the bar is already a continuous run of
+   targets - there is no dead lane between two controls to miss into. */
+.mobile-pdf-properties__color,
+.mobile-pdf-properties__swatch,
+.mobile-pdf-properties__format,
+.mobile-pdf-properties__edit,
+.mobile-pdf-properties__text-button,
 .mobile-pdf-properties--actions > button,
 .mobile-pdf-properties__keep {
   position: relative;
 }
 
+/* The pad goes on the BUTTON, never on a wrapper: a pad on the colour anchor
+   covers the swatch inside it and swallows every tap on the control it was
+   meant to enlarge (seen on the simulator - the settings sheet stopped
+   opening). */
+.mobile-pdf-properties__color::after,
+.mobile-pdf-properties__swatch::after,
+.mobile-pdf-properties__format::after,
+.mobile-pdf-properties__edit::after,
+.mobile-pdf-properties__text-button::after,
 .mobile-pdf-properties--actions > button::after,
 .mobile-pdf-properties__keep::after {
   content: '';
   position: absolute;
-  inset-block: calc((44px - 100%) / -2);
-  inset-inline: 0;
+  inset-block: -8px;
+  inset-inline: -2px;
 }
 
 .mobile-pdf-properties--actions > button:disabled { opacity: 0.4; }
@@ -906,11 +1269,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-color: var(--accent-primary, #d8a84e);
 }
 
-.mobile-pdf-properties::-webkit-scrollbar { display: none; }
-
 .mobile-pdf-properties__color {
-  width: 24px;
-  height: 24px;
+  width: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
   padding: 0;
   flex: 0 0 auto;
   display: grid;
@@ -936,8 +1297,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__swatch {
-  width: 24px;
-  height: 24px;
+  width: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -956,9 +1317,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* 2026-07-12 (Phase E): the strip swatch is a plain button opening the edit
-   sheet — the old inline OS colour input + fill/stroke popover are gone. */
+   sheet — the old inline OS colour input + fill/stroke popover are gone.
+   2026-09-16 (phone sweep): overflow is visible so the swatch's own transparent
+   hit pad is not clipped away. The round paint does not need the clip - a
+   border-radius already rounds the background - and nothing else lives inside
+   the button but a centred digit. */
 .mobile-pdf-properties__swatch {
   cursor: pointer;
+  overflow: visible;
 }
 
 .mobile-pdf-properties__number {
@@ -1016,7 +1382,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__width {
-  height: 27px;
+  height: var(--mobile-strip-control-h);
   padding-left: 6px;
   display: flex;
   align-items: center;
@@ -1048,7 +1414,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties select,
 .mobile-pdf-properties__text-button,
 .mobile-pdf-properties__edit {
-  height: 24px;
+  height: var(--mobile-strip-control-h);
   padding: 0 8px;
   flex: 0 0 auto;
   color: #ddd;
@@ -1090,27 +1456,125 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    the button's transparent pseudo-element supplies the full 44px target. The
    parent strip deliberately leaves vertical overflow visible above. */
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select {
-  height: 24px;
-  min-height: 24px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger {
   position: relative;
-  height: 24px;
-  min-height: 24px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
+}
+
+/* UX 2026-09-16 (phone sweep): every dropdown on a tool strip is exactly the one
+   shared control width. A min-width alone let a trigger grow to its longest
+   value - Arrowhead measured 111.7px showing "Solid Triangle" - so the row put
+   three dropdowns at three widths side by side and ran 55px past a 375px screen.
+   A long value ellipsizes in the trigger and reads in full in the menu, which is
+   what the Border style trigger has always done. */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select,
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger {
+  max-width: var(--mobile-strip-dropdown-w);
+}
+
+/* UX 2026-09-16 (owner ruling): the width field and the line-style dropdown are
+   one control size — same height, same width — so the strip reads as a row of
+   equals instead of one tall box beside a short one. 80px is the widest label
+   either of them has to show ("Dashed" needs 78.4px with its chevron). The
+   width field's own stylesheet still sets a taller mobile box for the edit
+   sheet, which is a different surface; this only governs the strip. */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control {
+  width: var(--mobile-strip-dropdown-w);
+  height: var(--mobile-strip-control-h);
+  /* Both children are transparent here, so the pill's own rounded background is
+     all that paints — dropping the clip costs nothing visually and lets the
+     chevron's tap target reach past the pill. */
+  overflow: visible;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control > input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  /* UX 2026-09-16 (phone sweep): the value field is 44px of target inside a 24px
+     pill. An <input> cannot carry a transparent ::after pad the way a button
+     can, so the input itself is the pad: it is transparent and borderless (the
+     wrapper paints the pill), so a 44px box is invisible and reaches the full
+     height of the bar's 44px box. The negative margins keep the wrapper 24px.
+
+     The margins are lopsided on purpose. Centring the 44px box on the 24px pill
+     (`margin-block: -10px`) centred it on the PAINTED band, not on the bar's
+     box: the pill sits 6px down a 36px band, so the box ran -4px to 40px and
+     the bar's scroll container clipped the top 4px away, leaving 40px of target
+     (`overflow-x: auto` forces the `overflow-y: visible` beside it to compute as
+     auto, so this strip does clip vertically whatever its old comment claimed).
+     RULED CHANGE 2026-09-16 (r5): a 40px box at -8px, where this was 44px at
+     -6px/-14px. The bar clips itself to the 36px it paints now, so the 8px below
+     belong to the page again and a box that reaches further is simply trimmed to
+     the band - which is the point: -8px overshoots in both directions, so the
+     clip, not this number, decides the target, and the field measures the same
+     36px as every ::after pad on the bar. line-height matches the box height, so
+     the digit still centres on the 24px pill (pill centre 52px, box 32..72,
+     centre 52px) and paints exactly where it did. */
+  height: 40px;
+  margin-block: -8px;
+  align-self: center;
+  line-height: 40px;
+  font-size: 12px;
+}
+
+/* The trigger used to carry its own dark overlay fill, which made the width
+   field read as a different kind of control from the style dropdown beside it.
+   It takes the segment's fill now, and the transparent pseudo-element keeps its
+   tap target full height (the strip deliberately leaves vertical overflow
+   visible). */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger {
+  position: relative;
+  height: calc(var(--mobile-strip-control-h) - 2px);
+  background: transparent;
+  /* Follow the pill's outer corner when the open/pressed state paints. */
+  border-radius: 0 4px 4px 0;
+}
+
+/* The preset trigger is 22px tall inside the 24px pill, which is centred in the
+   36px band. -8px overshoots the painted bar in both directions and the bar's
+   clip trims it to the band, the same way every pad on this bar works.
+   RULED CHANGE 2026-09-16 (r5): -8px, not -7px/-15px - the bar clips itself to
+   its painted 36px now, so no pad can reach the old 44px box (base rule). */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) .annotation-size-control__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -8px;
+  inset-inline: 0;
 }
 
 .mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger::after {
   content: '';
   position: absolute;
-  inset-block: -10px;
+  inset-block: -8px;
   inset-inline: 0;
 }
 
+/* UX 2026-09-16 (phone sweep, ruled change): 24px, the shared strip control
+   height, where this used to be the only 44px-tall dropdown on any tool bar.
+   The target is a transparent pad instead of a painted box - see the pad rule
+   below; it reaches the painted bar's full 36px (r5: the bar clips the 8px
+   under that so the page keeps those taps). */
 .mobile-pdf-properties--text > .mobile-styled-select,
 .mobile-pdf-properties--text > .mobile-styled-select .mobile-styled-select__trigger {
-  height: 44px;
-  min-height: 44px;
+  height: var(--mobile-strip-control-h);
+  min-height: var(--mobile-strip-control-h);
+}
+
+.mobile-pdf-properties--text > .mobile-styled-select .mobile-styled-select__trigger {
+  position: relative;
+}
+
+.mobile-pdf-properties--text > .mobile-styled-select .mobile-styled-select__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -8px;
+  inset-inline: 0;
 }
 
 .mobile-styled-select__trigger > span {
@@ -1162,9 +1626,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--gold-bg, #2a2218);
 }
 
+/* UX 2026-09-16 (phone sweep): 44px wide. This one control is a bare <input>
+   that paints its own pill, so it can neither host a transparent ::after nor be
+   made taller without the pill growing with it; its target is its own box, and
+   the width is what carries it. Vertically it is the bar's own 24px, between two
+   neighbours whose pads cover the full 44px. */
 .mobile-pdf-properties__font-size {
-  width: 40px;
-  height: 27px;
+  width: 44px;
+  height: var(--mobile-strip-control-h);
   padding: 0 4px;
   box-sizing: border-box;
   flex: 0 0 auto;
@@ -1178,7 +1647,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties__format {
   width: 28px;
-  height: 24px;
+  height: var(--mobile-strip-control-h);
   padding: 0;
   flex: 0 0 auto;
   color: #ddd;
@@ -1194,15 +1663,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--gold-bg, #2a2218);
 }
 
-/* Live text formatting is intentionally a single horizontal strip. Keep its
-   compact visuals, but give every direct interactive control an iOS-sized hit
-   target while the strip itself supplies horizontal scrolling. */
+/* Live text formatting is intentionally a single horizontal strip. RULED CHANGE
+   2026-09-16 (phone sweep; owner ruling "sizing follows Drawboard's ratios
+   uniformly ... everything reads a little big"): these controls used to paint at
+   44px, which is why this bar was 52px tall while every other tool's bar was 36.
+   They paint 24px now, the shared strip control height, and the 44px lives in
+   the transparent ::after pads above - same visual as the rest of the app, same
+   finger target as before. The strip still supplies the horizontal scrolling. */
 .mobile-pdf-properties--text > button,
 .mobile-pdf-properties--text > select,
 .mobile-pdf-properties--text > input {
-  min-width: 44px;
-  min-height: 44px;
-  height: 44px;
+  min-width: 0;
+  min-height: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
 }
 
 .mobile-pdf-properties__menu-anchor {
@@ -1585,11 +2058,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__pane > .mobile-styled-select,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select { width: 100%; }
 
+/* NOTE the min-height: a bare `height: 32px` here never took effect, because the
+   shared .mobile-styled-select__trigger rule sets min-height: 44px and a
+   min-height always beats a height. That is why the sheet's Stroke style
+   dropdown measured 44px tall beside a 30px Width field. */
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger,
 .mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger {
+  position: relative;
   width: 100%;
   height: 32px;
+  min-height: 32px;
   color: #f2f2f2;
   background: #242a33;
   border: 1px solid #3a4250;
@@ -1603,6 +2082,65 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger.is-open {
   background: var(--gold-bg, #2a2218);
   border-color: var(--gold-soft, #b6904a);
+}
+
+/* UX 2026-09-16 (phone sweep, owner: "make them the same size, keep the sheet
+   compact"). In the annotation settings sheet the Stroke style dropdown and the
+   Width field sit side by side in one split card and were plainly two different
+   kinds of control: 148x44 against 76x30, different fill, different radius,
+   different type. They are ONE control size now - each fills its own pane, both
+   32px tall, both wearing the card's #242a33 / #3a4250 / radius-6 / 13-900
+   chrome. No card grew, so the sheet is exactly as compact as it was.
+   Nothing lost a target either: the dropdown's 44px was its wrapper div, which
+   is not the thing you tap - the trigger inside it was 32px before and after. */
+.mobile-pdf-text-card__pane > .mobile-styled-select,
+.mobile-pdf-text-card__style-row > .mobile-styled-select,
+.mobile-pdf-text-card--arrowhead > .mobile-styled-select {
+  min-height: 32px;
+}
+
+/* Nothing here loses a finger target: both controls keep a transparent 44px pad
+   over their 32px paint - the dropdown through an ::after, the value field by
+   being a transparent 44px input inside the wrapper that paints the pill. */
+.mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger::after,
+.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger::after,
+.mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -7px;
+  inset-inline: 0;
+}
+
+.mobile-pdf-text-card__size .annotation-size-control {
+  width: 100%;
+  height: 32px;
+  overflow: visible;
+  color: #f2f2f2;
+  background: #242a33;
+  border-color: #3a4250;
+  border-radius: 6px;
+}
+
+.mobile-pdf-text-card__size .annotation-size-control > input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 44px;
+  margin-block: -6px;
+  align-self: center;
+  font: 900 13px/44px Helvetica, Arial, sans-serif;
+}
+
+.mobile-pdf-text-card__size .annotation-size-control__trigger {
+  position: relative;
+  height: 30px;
+}
+
+.mobile-pdf-text-card__size .annotation-size-control__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -7px;
+  inset-inline: 0;
 }
 
 .mobile-pdf-text-card--alignment {
@@ -1705,10 +2243,23 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   pointer-events: auto;
 }
 
+/* UX 2026-09-16 (owner: "the dock buttons are not sitting in the dock"). The
+   dock box is taller than the bar you can see: its top 16px is a transparent
+   gutter over the page, and the bottom strip is the home-indicator reserve.
+   Padding the box by exactly those two amounts leaves a 36px content band that
+   is the TOP of the painted bar, not the whole of it - the bar itself is
+   `36px + the home-indicator reserve` (70px on an iPhone 17 Pro, whose reserve
+   is 34px), and the buttons are centred in the 36px band that sits above the
+   reserve. That is where a bottom-bar control belongs: the reserve is clearance
+   for the system's home indicator, not room for chrome. `align-items: center`
+   therefore centres the buttons in the band rather than in the box; before this
+   they hung 4px above the bar's top edge and stopped 6px short of its bottom.
+   The finger target is a separate thing again - see the ::after pads below,
+   which cover the painted bar's full height. */
 .mobile-pdf-dock {
   height: var(--mobile-viewer-dock-height);
   min-height: var(--mobile-viewer-dock-height);
-  padding: 2px 20px 4px;
+  padding: 16px 20px var(--mobile-bottom-inset);
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -1753,12 +2304,42 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: #181a1f;
   border: 1px solid #2e333c;
   box-shadow: none;
-  transform: translateY(4px);
 }
 
+/* UX 2026-09-16 (phone sweep): the chip you see is 30px; the area a finger hits
+   is the whole painted bar. This is the same transparent ::after the rail chips
+   carry, for the same reason - the 2026-09-16 sizing pass took these buttons
+   from 44x44 down to 30x30 and shrank the target with them, so on the simulator
+   a tap 13px below a button, still inside the bar, did nothing at all.
+   The bar is 36px + the home-indicator reserve. The buttons sit 3px inside the
+   top of that 36px band, so `-3px` on top and `-3px - reserve` underneath all
+   but fills the bar: 68px on an iPhone 17 Pro, and never less than 44px (the
+   reserve has a 10px floor), so the 44px minimum holds on every phone.
+   Every one of these numbers counts from the button's PADDING box, not its
+   border box - that is where an absolutely positioned ::after is laid out, and
+   these buttons carry a 1px border, so a 30px chip offers a 28px box to pad
+   out. 28 + 3 + 3 + reserve is the 44/68 above, and sideways 28 + 8 + 8 is the
+   44px the round buttons need (`-7px` here read as 44 but measured 42 - see
+   tests/mobileDockTouchTargetWidth.test.mjs); the centre pill is 124px already.
+   The gaps between the three buttons stay transparent, so a touch there still
+   reaches the page, exactly as the dock's pointer-events rule above intends. */
+.mobile-pdf-dock__side::after,
+.mobile-pdf-dock__center::after {
+  content: '';
+  position: absolute;
+  inset-block: -3px calc(-3px - var(--mobile-bottom-inset));
+  inset-inline: 0;
+}
+
+.mobile-pdf-dock__side::after {
+  inset-inline: -8px;
+}
+
+/* Every dock button is one height — Drawboard's bottom-bar controls run
+   24-33pt, and 30px clears the bar's 36px band by 3px top and bottom. */
 .mobile-pdf-dock__side {
-  width: 44px;
-  height: 44px;
+  width: var(--mobile-dock-control-h);
+  height: var(--mobile-dock-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -1774,7 +2355,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-dock__center {
   min-width: 124px;
-  height: 38px;
+  height: var(--mobile-dock-control-h);
   padding: 0 12px;
   display: flex;
   align-items: center;
@@ -1782,18 +2363,31 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 6px;
   background: #20242c;
   border-color: #3a4250;
-  border-radius: 19px;
+  border-radius: calc(var(--mobile-dock-control-h) / 2);
   font-size: 12px;
   font-weight: 900;
 }
 
+/* UX 2026-09-16 (phone reach pass): the sheet backdrop actually dims now. It
+   used to be rgba(0,0,0,0.01) — invisible — so a raised sheet read as part of
+   the page instead of something laid over it, and there was no signal that a
+   tap outside would dismiss it. 30% black is the same weight Drawboard PDF
+   puts behind its phone sheets. Fades in over the sheet's own 180ms entrance.
+   (The shared colour picker keeps its own never-dim overlay: it sits ABOVE a
+   sheet, and dimming twice would black the page out.) */
 .mobile-pdf-sheet-backdrop {
   position: fixed;
   inset: 0;
   padding: 0;
-  background: rgba(0, 0, 0, 0.01);
+  background: rgba(0, 0, 0, 0.3);
   border: 0;
   z-index: 6400;
+  animation: mobilePdfBackdropIn 180ms ease-out;
+}
+
+@keyframes mobilePdfBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .mobile-pdf-sheet {
@@ -1823,6 +2417,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding-bottom: calc(12px + var(--mobile-bottom-inset));
   z-index: 6500 !important;
   animation: mobilePdfSheetIn 180ms ease-out !important;
+}
+
+/* UX 2026-09-16 (phone reach pass): the hub tray's second, taller detent.
+   Drag the grab handle UP and the tray grows from its content-measured height
+   (Pages was 320px — 39% of a 812px screen) to 70% of the screen, so you can
+   scan far more page thumbnails without scrolling. Drag down and it steps back
+   to the compact height before a further pull dismisses it. Reference:
+   Drawboard PDF's phone page list opens to about two thirds of the screen. */
+.mobile-pdf-sheet.is-expanded {
+  --mobile-sheet-height: 70dvh;
 }
 
 .mobile-pdf-sheet.is-collapsed { display: none !important; }
@@ -2812,7 +3416,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-hub-close {
   position: absolute !important;
-  right: 12px;
+  /* UX 2026-09-16: same 16px gutter as the tab row and the page strip. */
+  right: 16px;
   top: 4px;
   width: 32px !important;
   height: 32px !important;
@@ -2911,7 +3516,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-track {
-  padding: 2px 1px !important;
+  /* UX 2026-09-16: run the sheet's own 16px gutter down the thumbnail strip.
+     At 1px the first page card — and its gold selected border — sat flush
+     against the screen edge while the segment row above it and the action row
+     below it were both inset, so the strip read as clipped. scroll-padding
+     keeps scrolled cards stopping on the same rule. */
+  padding: 2px 16px !important;
+  scroll-padding-inline: 16px;
   flex-direction: row !important;
   gap: 16px !important;
   overflow-x: auto !important;
@@ -3071,6 +3682,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   .mobile-pdf-header__zoom-menu.is-open {
     transition: visibility 0s !important;
   }
+  .mobile-pdf-select-mode__menu,
+  .mobile-pdf-tools__subtools {
+    animation: none !important;
+  }
+}
+
+@keyframes mobilePdfFlyoutIn {
+  from { opacity: 0; translate: 0 -5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes mobilePdfStripIn {
+  from { opacity: 0; translate: -6px 0; }
+  to { opacity: 1; translate: 0 0; }
 }
 
 @media (max-width: 340px) {
