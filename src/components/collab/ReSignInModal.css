@@ -199,11 +199,13 @@
 }
 
 .re-signin-modal__cta {
-  /* UX: full-width primary CTA in accent-primary blue. Single-color
+  /* UX: full-width primary CTA in the one gold accent. Single-color
    * destination button — interactivity signaled by background color, not
    * weight (still 400 to keep the modal at the 2-weights-total contract).
-   * Hover lifts to a slightly brighter blue (#5A9FE8) — perceptible
-   * without screaming. */
+   * Hover lifts to --accent-light, the palette's lighter gold hover step
+   * (tokens.css "HOW STATES ARE BUILT") — perceptible without screaming.
+   * It used to lift to a brighter blue (#5A9FE8); the 2026-09-17 palette
+   * has one accent, so the lift is gold now. */
   width: 100%;
   background: var(--accent);
   color: #FFFFFF;
@@ -219,8 +221,11 @@
 }
 
 .re-signin-modal__cta:hover:not(:disabled) {
-  /* UX: hover slightly lighter — Linear / Notion convention. */
-  background: var(--accent);
+  /* UX: hover slightly lighter — Linear / Notion convention. A gold control's
+   * hover step is --accent-light and its pressed step is --accent-press; this
+   * rule must never repeat the rest state or the button stops answering the
+   * pointer. */
+  background: var(--accent-light);
 }
 
 .re-signin-modal__cta:focus {
