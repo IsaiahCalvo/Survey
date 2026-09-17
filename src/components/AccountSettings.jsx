@@ -835,8 +835,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             fontSize: '11px',
                             marginLeft: '6px',
                             padding: '2px 6px',
-                            background: 'rgba(34, 197, 94, 0.2)',
-                            color: '#22c55e',
+                            background: 'var(--accent-soft)',
+                            color: 'var(--accent)',
                             borderRadius: '4px',
                             fontWeight: '600'
                           }}>
@@ -849,7 +849,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'free' ? '2px solid #22c55e' : '1px solid #333',
+                        border: subscription?.tier === 'free' ? '2px solid var(--accent)' : '1px solid var(--border)',
                         opacity: subscription?.tier === 'free' ? 1 : 0.7
                       }}>
                         <div className="account-subscription-header">

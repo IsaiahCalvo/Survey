@@ -345,9 +345,13 @@ export default function SaveLogBanner() {
 
   const colors = isResult
     ? (isError
-      ? { bg: 'rgba(46, 22, 22, 0.96)', border: '#ef4444', accent: '#ef4444', text: '#fde2e2' }
-      : { bg: 'rgba(22, 44, 32, 0.96)', border: '#22c55e', accent: '#22c55e', text: '#e2f5ea' })
-    : { bg: 'rgba(24, 28, 40, 0.97)', border: '#60a5fa', accent: '#60a5fa', text: '#e8eefb' };
+      ? { bg: 'rgba(46, 22, 22, 0.96)', border: 'var(--danger)', accent: 'var(--danger)', text: 'var(--text-1)' }
+      /* UX 2026-09-17 (revision-2 palette): the "saved" banner was green and the
+         "working" banner was blue, neither of which is a colour in this app.
+         Gold carries the good news; the neutral surface carries the in-progress
+         one, so red stays the only colour that means trouble. */
+      : { bg: 'var(--surface-2)', border: 'var(--accent)', accent: 'var(--accent)', text: 'var(--text-1)' })
+    : { bg: 'var(--surface-2)', border: 'var(--border)', accent: 'var(--text-3)', text: 'var(--text-1)' };
 
   // UX: slide from the LEFT — user specifically asked to flip the direction
   // so the new submit banner is visually distinct from the old right-side

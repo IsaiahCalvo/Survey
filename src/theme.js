@@ -51,8 +51,12 @@ export const COLORS = {
 
   // Status colors
   status: {
-    success: '#a6e07a',
-    successHover: '#93cf68',
+    // UX 2026-09-17 (revision-2 palette): there is no green button in this app.
+    // `success` is the gold - it says "this is fine" without a second brand
+    // colour. The one surviving green is the sync status DOT, which carries
+    // --success from src/styles/tokens.css and does not come through here.
+    // `successHover` was read by nothing and is gone.
+    success: 'var(--accent)',
     danger: '#d95a56',
     dangerHover: '#c84c49',
     dangerText: '#d95a56',

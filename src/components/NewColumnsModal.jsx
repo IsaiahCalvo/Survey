@@ -243,7 +243,7 @@ const NewColumnsModal = ({
                   <div style={{
                     fontSize: TYPOGRAPHY.fontSize.xs,
                     fontWeight: TYPOGRAPHY.fontWeight.medium,
-                    color: '#22c55e',
+                    color: 'var(--accent)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                     textTransform: 'uppercase',

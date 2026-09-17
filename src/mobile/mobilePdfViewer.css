@@ -3508,8 +3508,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab.is-active {
-  color: #28a745 !important;
-  background: #1a3328 !important;
+  color: var(--accent) !important;
+  background: var(--accent-soft) !important;
 }
 
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
@@ -3658,12 +3658,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   top: 40px;
   bottom: 40px;
   width: 5px;
-  background: #58d976;
+  background: var(--accent);
   border-radius: 3px;
 }
 
 .mobile-page-card.is-selected {
-  border-color: #58d976 !important;
+  border-color: var(--accent) !important;
 }
 
 .mobile-page-select-indicator {
@@ -3683,8 +3683,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-page-select-indicator.is-selected {
-  background: #58d976;
-  border-color: #58d976;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .mobile-pages-actions {
@@ -3721,8 +3721,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-actions > button[aria-pressed="true"] {
-  color: #58d976;
-  background: #17281f;
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .mobile-pages-actions > i {
@@ -3824,10 +3824,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  background: #132a20;
-  border: 1px solid #2e8f5a;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
   border-radius: 50%;
 }
+
+/* UX 2026-09-17 (revision-2 palette, owner approved): green is not a colour
+   in this app. Gold already marks the active/selected thing, so the phone's
+   greens - the page card's current bar, the select tick, the pressed page
+   action, the hub tab - are gold now, matching the desktop. The one green
+   that survives is the SYNC STATUS DOT, and it lives in JS. */
 
 /* --- Bookmarks: mobile rows (demo BookmarkRow.tsx / styles.ts:1306-1391) --- */
 .mobile-bookmark-list {
@@ -4030,7 +4036,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 9px;
   height: 9px;
   border-radius: 5px;
-  background: #58d976;
+  background: var(--accent);
 }
 
 .mobile-revisions-panel > div[role="button"] > div:first-child {

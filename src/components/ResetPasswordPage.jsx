@@ -30,7 +30,7 @@ const C = {
   muted: '#8d96a6',
   gold: '#d8a84e',
   danger: '#d95a56',
-  good: '#5fbf83',
+  good: 'var(--accent)',
 };
 
 function goHome() {

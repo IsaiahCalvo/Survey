@@ -1224,7 +1224,7 @@ export default function ProjectsFolderTree({
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--green)' : 'var(--ink-300)', flex: 'none' }}></span>
+                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--success)' : 'var(--text-disabled)', flex: 'none' }}></span>
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || 'Member'}</span>
                                 </div>
                               </div>

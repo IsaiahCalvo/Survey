@@ -108,7 +108,7 @@ function originBadge(origin) {
   if (origin === 'sign-off') {
     return { label: 'sign-off', color: '#7ea8ff' };
   }
-  return { label: 'manual', color: '#5fbf7f' };
+  return { label: 'manual', color: 'var(--accent)' };
 }
 
 function formatDate(iso) {

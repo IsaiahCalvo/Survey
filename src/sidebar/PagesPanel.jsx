@@ -898,7 +898,7 @@ const PagesPanel = ({
                   aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
                   {...tip(clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste', 'below')}
                 >
-                  <Icon name="copy" size={12} color="#58d976" />
+                  <Icon name="copy" size={12} color="var(--accent)" />
                 </div>
               )}
 

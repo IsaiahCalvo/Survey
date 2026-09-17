@@ -1885,7 +1885,7 @@ const SearchTextPanel = ({
         {!isSearching && internalSearchQuery && searchResults.length === 0 && (
           mobileMode ? (
             <div className="mobile-search-empty">
-              <Icon name="search" size={44} color="#58d976" />
+              <Icon name="search" size={44} color="var(--text-3)" />
               <strong>No text matches</strong>
               <span>Try another word from the PDF.</span>
             </div>
@@ -1904,7 +1904,7 @@ const SearchTextPanel = ({
         {!isSearching && !internalSearchQuery && (
           mobileMode ? (
             <div className="mobile-search-empty">
-              <Icon name="search" size={54} color="#58d976" />
+              <Icon name="search" size={54} color="var(--text-3)" />
               <strong>Looking for a specific word?</strong>
               <span>Search visible PDF text and jump to the matching page.</span>
             </div>

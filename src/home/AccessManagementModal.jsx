@@ -275,7 +275,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   >
                     {ROLES.map((role) => <option key={role}>{role}</option>)}
                   </select>
-                  <div style={{ fontSize: 11.5, color: '#5fbf83', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
                   <button
                     disabled={busy || isLastOwner}
                     onClick={() => handleRemove(m)}

@@ -569,6 +569,13 @@ test('mobile Survey and Spaces drawers follow their content', () => {
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,1200}padding-bottom: calc\(12px \+ var\(--mobile-bottom-inset\)\)/);
 });
 
+// DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+// owner): the three sync colours are the shared --warning / --danger / --success
+// tokens now, not literal hexes, so the phone and the desktop chip cannot drift
+// apart. The owner's amendment (b) keeps this signal green / yellow / red while
+// every other green in the chrome went gold. What the assertion guards - that
+// each sync STAGE maps to the right state, label, detail and colour slot - is
+// unchanged.
 test('mobile viewer sync presentation consumes the structured sync state', () => {
   assert.deepEqual(
     getMobileSyncPresentation({ stage: 'syncing' }, 0, true),
@@ -578,7 +585,7 @@ test('mobile viewer sync presentation consumes the structured sync state', () =>
       detail: 'Survey is loading and backing up this document’s cloud changes.',
       retryLabel: 'Keep this document open while backup finishes.',
       compactMessage: 'Loading and backing up this document.',
-      color: '#f5a524',
+      color: 'var(--warning)',
     },
   );
   assert.deepEqual(
@@ -589,7 +596,7 @@ test('mobile viewer sync presentation consumes the structured sync state', () =>
       detail: 'Your changes are safe on this device and are waiting for cloud backup.',
       retryLabel: 'Backup is retrying automatically.',
       compactMessage: '3 changes are safe locally and waiting to back up.',
-      color: '#ef4444',
+      color: 'var(--danger)',
     },
   );
 });

@@ -231,16 +231,9 @@
   box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
 }
 
-.btn-success {
-  background: #a6e07a;
-  color: #15110a;
-  border: 1px solid #a6e07a;
-}
-
-.btn-success:hover:not(:disabled) {
-  background: #93cf68;
-  border-color: #93cf68;
-}
+/* .btn-success (a #a6e07a green button and its #93cf68 hover) was DELETED
+   2026-09-17 with the revision-2 palette. Nothing in the app ever carried the
+   class, and there is no green button in the palette. */
 
 .btn-danger {
   background: #d95a56;

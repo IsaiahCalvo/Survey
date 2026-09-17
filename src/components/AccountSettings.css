@@ -537,8 +537,11 @@
   color: #8d96a6;
 }
 
+/* UX 2026-09-17 (revision-2 palette): "Connected as ..." was green, the only
+   green text in the app. Gold says "this is fine" without a second brand
+   colour appearing. */
 .account-connected-account-status-connected {
-  color: #a6e07a;
+  color: var(--accent);
 }
 
 /* Subscription Grid */
@@ -651,10 +654,12 @@
   background: #e3b863;
 }
 
+/* The plan you are ON gets the gold outline; the plan you could buy gets the
+   solid gold button. The class name is historical - there is no green here. */
 .account-btn-outline-green {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  color: #22c55e;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
+  color: var(--accent);
   padding: 8px;
   border-radius: 6px;
   font-size: 12px;

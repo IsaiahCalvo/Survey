@@ -1,9 +1,13 @@
 import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 
+// UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status dot
+// keeps green / yellow / red. Everything else green in the chrome went gold,
+// but a person has to tell "saved" from "broken" at a glance and gold already
+// means "selected". These are the palette's --success / --warning / --danger.
 const SYNC_COLORS = {
-  synced: '#2bbd7e',
-  syncing: '#f5a524',
-  offline: '#ef4444',
+  synced: 'var(--success)',
+  syncing: 'var(--warning)',
+  offline: 'var(--danger)',
 };
 
 const initialsOf = (value) => {

@@ -140,7 +140,7 @@ const TemplateOverwriteWarningModal = ({
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
-              color: '#22c55e',
+              color: 'var(--accent)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
             }}>
