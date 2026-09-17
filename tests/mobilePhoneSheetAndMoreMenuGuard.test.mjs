@@ -77,5 +77,19 @@ test('one motion source: the hook owns open, drag and close; no sheet keyframe',
 
   // Sheets that stay mounted must tell the hook when they are open, or the
   // slide-up never runs.
-  assert.match(sidebar, /useMobileSheetMotion\(closePanel, \{ open: mobileMode && !isCollapsed \}\)/);
+  assert.match(sidebar, /useMobileSheetMotion\(closePanel, \{[\s\S]{0,200}open: mobileMode && !isCollapsed,/);
+});
+
+test('the hub tray keeps its taller second detent alongside the new motion', () => {
+  // Drag up past 48px -> 70dvh; drag down from there steps back to compact
+  // before a further pull can dismiss. This must survive the motion rewrite.
+  assert.match(sheetMotion, /export const SHEET_EXPAND_DY = 48;/);
+  assert.match(sheetMotion, /export const SHEET_EXPANDED_HEIGHT = '70dvh';/);
+  assert.match(sheetMotion, /if \(expandable && travel < 0\)/);
+  assert.match(sheetMotion, /if \(expanded\) \{\s*setExpanded\(false\);/);
+  assert.match(mobileCss, /\.mobile-pdf-sheet\.is-expanded \{[\s\S]{0,120}--mobile-sheet-height: 70dvh;/);
+  assert.match(sidebar, /expandable: mobileMode && !mobileStandalonePanel,/);
+  // ...and the taller detent still comes out of CSS height, never the hook's
+  // transform, so it cannot compete with the pdf.js render.
+  assert.doesNotMatch(sheetMotion, /motionStyle = \{[\s\S]{0,200}(height|top):/);
 });
