@@ -117,8 +117,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, []);
 
   const isHighlighted = isSelected || isActive;
-  const headerBackground = isHighlighted ? 'var(--accent-text)' : 'transparent';
-  const headerHoverBackground = isHighlighted ? 'var(--accent-text)' : 'var(--accent-text)';
+  const headerBackground = isHighlighted ? 'var(--surface-3)' : 'transparent';
+  const headerHoverBackground = isHighlighted ? 'var(--surface-3)' : 'var(--surface-2)';
   const regionCountText = String(regionCount);
   const regionCountDigits = regionCountText.length;
   const regionCountFontSize = regionCountDigits >= 4 ? '6px' : (regionCountDigits >= 3 ? '7.5px' : '10px');
@@ -218,7 +218,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
               onMouseEnter={(e) => {
                 tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'var(--accent-text)';
+                e.currentTarget.style.background = 'var(--surface-3)';
               }}
               onMouseLeave={(e) => {
                 tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseLeave(e);
@@ -296,14 +296,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               onMouseEnter={(e) => {
                 tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseEnter(e);
                 if (!isActive) {
-                  e.currentTarget.style.background = 'var(--accent-text)';
+                  e.currentTarget.style.background = 'var(--surface-3)';
                 } else {
                   e.currentTarget.style.background = 'var(--accent-press)';
                 }
               }}
               onMouseLeave={(e) => {
                 tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = isActive ? 'var(--accent)' : 'var(--accent-text)';
+                e.currentTarget.style.background = isActive ? 'var(--accent)' : 'var(--surface-3)';
               }}
             >
               <div
@@ -519,7 +519,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     tip(overlayTooltipText, 'below').onMouseEnter(e);
                                     if (!isToggleEnabled) return;
                                     if (!isOverlayEnabled) {
-                                      e.currentTarget.style.background = 'var(--accent-text)';
+                                      e.currentTarget.style.background = 'var(--surface-3)';
                                     } else {
                                       e.currentTarget.style.background = 'var(--accent-press)';
                                     }
@@ -527,7 +527,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   onMouseLeave={(e) => {
                                     tip(overlayTooltipText, 'below').onMouseLeave(e);
                                     if (!isToggleEnabled) return;
-                                    e.currentTarget.style.background = isOverlayEnabled ? 'var(--accent)' : 'var(--accent-text)';
+                                    e.currentTarget.style.background = isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)';
                                   }}
                                 >
                                   <div

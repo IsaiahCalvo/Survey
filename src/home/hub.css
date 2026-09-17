@@ -26,7 +26,7 @@
   --gold-soft: var(--accent-press);
   /* --gold-bg (the #2a2218 brown) was DELETED 2026-09-17 with the revision-2
      palette. Nothing inside .survey-hub ever read it, yet the phone viewer
-     asked for `var(--accent-text)` from OUTSIDE this scope and so always
+     asked for `var(--gold-bg, #2a2218)` from OUTSIDE this scope and so always
      painted the fallback brown. The active-state fill is --accent-soft now. */
   --blue:    #7ab7e6;
   --green:   #a6e07a;

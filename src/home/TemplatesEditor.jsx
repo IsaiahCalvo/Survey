@@ -648,7 +648,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
                   padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
-                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--accent-text)'; }}
+                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--surface-2)'; }}
                 onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>

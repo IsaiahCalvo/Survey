@@ -946,7 +946,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 12px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--accent-text);
+  box-shadow: 0 0 0 2px var(--surface-2);
 }
 
 .mobile-pdf-tools__sync-details {
@@ -1028,7 +1028,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 6px;
   color: var(--text-2);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 7px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   z-index: 7200;
@@ -1355,9 +1355,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__color span {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--border-strong);
+  border: 2px solid var(--text-1);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px var(--accent-text);
+  box-shadow: 0 0 0 1px var(--surface-0);
 }
 
 .mobile-pdf-properties__color-anchor {
@@ -1451,7 +1451,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-size: 13px;
   color: var(--text-1);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 
@@ -1475,7 +1475,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-sizing: border-box;
   color: var(--text-2);
   background: var(--surface-0);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   font-size: 11px;
   text-align: center;
@@ -1502,7 +1502,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* OWNER DECISION 3 (2026-07-12): app-styled dropdown replacing the OS <select>
    rollers (eraser mode, line style, arrowhead, survey module). Trigger mirrors
    the sibling strip controls; open menu below uses the demo dark context-menu
-   chrome (var(--accent-text) / var(--accent-text) / radius 8 / 34px rows / gold active — Phase D). */
+   chrome (#181B20 / #3C424D / radius 8 / 34px rows / gold active — Phase D). */
 .mobile-styled-select {
   position: relative;
   min-height: 44px;
@@ -1714,7 +1714,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 auto;
   color: var(--text-2);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   font-size: 10px;
   text-align: center;
@@ -1770,7 +1770,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 2px;
   color: var(--text-2);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 7px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
   z-index: 7300;
@@ -1886,7 +1886,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   grid-template-columns: 1fr 1px 1fr;
   align-items: center;
   overflow: hidden;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 17px;
 }
@@ -1948,7 +1948,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -2121,7 +2121,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-sizing: border-box;
   color: var(--text-1);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 900;
@@ -2146,7 +2146,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: 32px;
   color: var(--text-1);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 900;
@@ -2164,7 +2164,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    Width field sit side by side in one split card and were plainly two different
    kinds of control: 148x44 against 76x30, different fill, different radius,
    different type. They are ONE control size now - each fills its own pane, both
-   32px tall, both wearing the card's var(--accent-text) / var(--accent-text) / radius-6 / 13-900
+   32px tall, both wearing the card's #242a33 / #3a4250 / radius-6 / 13-900
    chrome. No card grew, so the sheet is exactly as compact as it was.
    Nothing lost a target either: the dropdown's 44px was its wrapper div, which
    is not the thing you tap - the trigger inside it was 32px before and after. */
@@ -2192,7 +2192,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overflow: visible;
   color: var(--text-1);
   background: var(--surface-2);
-  border-color: var(--border);
+  border-color: var(--border-strong);
   border-radius: 6px;
 }
 
@@ -2461,7 +2461,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   justify-content: center;
   gap: 6px;
   background: var(--surface-2);
-  border-color: var(--border);
+  border-color: var(--border-strong);
   border-radius: calc(var(--mobile-dock-control-h) / 2);
   font-size: 12px;
   font-weight: 900;
@@ -2615,7 +2615,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 7px;
 }
@@ -2706,8 +2706,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   gap: 2px;
   color: var(--text-1);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
   border-radius: 7px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
@@ -2790,7 +2790,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 6px;
   display: grid;
   gap: 5px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
@@ -2837,7 +2837,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    opacity .45 when disabled instead of swapping to darker inline colors
    (styles.ts moduleArrowDisabled). */
 .mobile-survey-module-row > div > button:nth-child(2) {
-  background: var(--surface-1) !important;
+  background: var(--surface-2) !important;
   border-color: var(--border-strong) !important;
   border-radius: 16px !important;
 }
@@ -2851,7 +2851,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* UX 2026-07-12 (Phase C, demo parity): category cards inside the mobile
-   survey sheet get the demo's touch metrics — radius 8 on the var(--accent-text)/var(--accent-text)
+   survey sheet get the demo's touch metrics — radius 8 on the #1B1F25/#343A45
    card, 38px-min rows, and a 36x38 expand chevron cell with a 16px glyph
    (demo styles.ts:3102-3147) — overriding the desktop rail's compact card
    (radius 5 / 24px rows / 14px chevron, styles.css:1049-1102) inside
@@ -2860,7 +2860,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-sheet .survey-marker-category-card {
   border-radius: 8px;
   border-color: var(--border);
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .mobile-pdf-sheet .survey-marker-category-row {
@@ -2887,14 +2887,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* UX 2026-07-12 (Phase C, demo parity): template picker rows at the demo's
-   42px touch height, radius 8, var(--accent-text)/var(--accent-text) surface, with a :active
+   42px touch height, radius 8, #1B1F25/#343A45 surface, with a :active
    pressed state replacing the desktop hover affordance (dead on touch)
    (demo styles.ts:2694-2705). !important beats the inline desktop styles. */
 .mobile-survey-template-row {
   min-height: 42px !important;
   border-radius: 8px !important;
   border-color: var(--border) !important;
-  background: var(--surface-1) !important;
+  background: var(--surface-2) !important;
 }
 
 .mobile-survey-template-row:active {
@@ -2939,7 +2939,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 100%;
   height: 32px;
   color: var(--danger);
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 7px;
   font-size: 13px;
@@ -2949,7 +2949,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* UX 2026-07-12 (Phase C stage 2, demo parity): expanded-category Survey
    Marker rows on mobile are plain tap rows — 10px entity dot + name — that
    open the detail view (demo styles.ts:3155-3172: minH 30, radius 6,
-   var(--accent-text)/var(--accent-text)). */
+   #171B22/#303743). */
 .mobile-survey-item-row {
   width: 100%;
   min-height: 30px;
@@ -3010,7 +3010,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: 30px;
   margin-top: 4px;
   border-radius: 7px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   padding: 0 10px;
   display: flex;
@@ -3043,7 +3043,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 30px;
   flex: 0 0 30px;
   border-radius: 7px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   display: grid;
   place-items: center;
@@ -3064,7 +3064,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 14px;
   height: 14px;
   border-radius: 7px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--text-2);
 }
 
 .mobile-survey-detail-name-wrap {
@@ -3076,7 +3076,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   overflow: visible;
   border-radius: 7px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
 }
 
@@ -3231,7 +3231,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 24px;
   border-radius: 5px;
   background: var(--surface-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   color: var(--text-3);
   font-size: 9px;
   font-weight: 900;
@@ -3265,7 +3265,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 /* UX 2026-07-12 (Phase C stage 2, demo parity): in-sheet notes takeover —
    replaces the 600px desktop Note modal on mobile (demo SurveySheet.tsx:191-283,
-   styles.ts:3183-3313): 88px multiline input on var(--accent-text), var(--accent-text) cards,
+   styles.ts:3183-3313): 88px multiline input on #15181D, #1B1F25 cards,
    Photo/Video pickers, 40px attachment rows, Cancel/Save footer. Save uses the
    app's gold accent (never demo blue). */
 .mobile-survey-notes {
@@ -3301,7 +3301,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-survey-notes-card {
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--surface-1);
+  background: var(--surface-2);
   padding: 10px;
   display: grid;
   gap: 8px;
@@ -3310,7 +3310,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-survey-notes-card textarea {
   min-height: 88px;
   border-radius: 7px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--surface-1);
   color: var(--text-1);
   padding: 9px 10px;
@@ -3426,8 +3426,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-survey-notes-cancel {
-  border: 1px solid var(--border);
-  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
   color: var(--text-1);
 }
 
@@ -3474,7 +3474,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 100%;
   height: 32px;
   color: var(--danger);
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 7px;
   font-size: 13px;
@@ -3696,7 +3696,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0 8px;
   box-sizing: border-box;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 21px;
 }
@@ -3874,7 +3874,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 6px;
   align-items: center;
   padding: 7px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -3907,7 +3907,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 7px;
   padding: 6px 7px 6px 5px;
   box-sizing: border-box;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -3998,7 +3998,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 7px;
 }

@@ -30,8 +30,8 @@ const ledgerHeader = {
 
 const RIBBON = ['#d8a84e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
 const MENU_HEX = {
-  card: 'var(--accent-text)',
-  rule: 'var(--accent-text)',
+  card: 'var(--surface-2)',
+  rule: 'var(--border)',
   ink: 'var(--text-1)',
   muted: 'var(--text-3)',
   danger: 'var(--danger)',

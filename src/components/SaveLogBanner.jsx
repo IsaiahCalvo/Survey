@@ -611,7 +611,7 @@ export default function SaveLogBanner() {
                 type="button"
                 onClick={handleConfirmEmptyYes}
                 style={{
-                  background: 'var(--text-3)',
+                  background: 'var(--accent)',
                   color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: 6,

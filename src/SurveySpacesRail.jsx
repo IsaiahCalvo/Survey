@@ -1273,7 +1273,7 @@ const SurveySpacesRail = ({
                       // before, so the strip's 35px height and the rail's centre
                       // line are unchanged — nothing moves.
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
                     >
                       <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
@@ -1327,7 +1327,7 @@ const SurveySpacesRail = ({
                         onMouseEnter={(e) => {
                           // UX: use the shared rail hint, including press dismissal.
                           tip('Survey', 'left').onMouseEnter(e);
-                          e.currentTarget.style.background = 'var(--accent-text)';
+                          e.currentTarget.style.background = 'var(--surface-2)';
                         }}
                         onMouseLeave={(e) => {
                           tip('Survey', 'left').onMouseLeave(e);
@@ -1398,7 +1398,7 @@ const SurveySpacesRail = ({
                         justifyContent: 'center',
                         transition: 'background 0.15s'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
@@ -1687,7 +1687,7 @@ const SurveySpacesRail = ({
                               right: '38px',
                               zIndex: 20,
                               background: 'var(--surface-1)',
-                              border: '1px solid var(--border)',
+                              border: '1px solid var(--border-strong)',
                               borderRadius: '6px',
                               padding: '4px',
                               boxShadow: '0 10px 24px rgba(0, 0, 0, 0.32)',
@@ -2478,7 +2478,7 @@ const SurveySpacesRail = ({
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="document" size={16} />
@@ -2499,7 +2499,7 @@ const SurveySpacesRail = ({
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="upload" size={16} />
@@ -2524,7 +2524,7 @@ const SurveySpacesRail = ({
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="download" size={16} />
@@ -2548,7 +2548,7 @@ const SurveySpacesRail = ({
                               style={{
                                 padding: '12px 16px',
                                 color: liveSyncEnabled && liveSyncStatus === 'connected'
-                                  ? 'var(--text-disabled)'
+                                  ? 'var(--accent)'
                                   : liveSyncStatus === 'connecting' || gateChecking
                                     ? 'var(--warning)'
                                     : liveSyncStatus === 'error' || liveSyncSupported === false
@@ -2563,7 +2563,7 @@ const SurveySpacesRail = ({
                               }}
                               onMouseEnter={(e) => {
                                 if (liveSyncSupported !== false) {
-                                  e.currentTarget.style.background = 'var(--accent-text)';
+                                  e.currentTarget.style.background = 'var(--surface-3)';
                                 }
                               }}
                               onMouseLeave={(e) => {
@@ -2621,7 +2621,7 @@ const SurveySpacesRail = ({
                                 alignItems: 'center',
                                 gap: '8px'
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                               {...tip(
                                 verifying
@@ -3647,7 +3647,7 @@ const SurveySpacesRail = ({
                                                     }}
                                                     onMouseEnter={(e) => {
                                                       e.currentTarget.style.opacity = '1';
-                                                      e.currentTarget.style.background = 'var(--accent-text)';
+                                                      e.currentTarget.style.background = 'var(--surface-3)';
                                                     }}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.opacity = '0.78';
@@ -3681,7 +3681,7 @@ const SurveySpacesRail = ({
                                                       color: (surveyMarker.bounds && surveyMarker.pageNumber) ? 'var(--accent)' : 'var(--warning)', // Blue if located, Orange if not
                                                     }}
                                                     onMouseEnter={(e) => {
-                                                      e.currentTarget.style.background = 'var(--accent-text)';
+                                                      e.currentTarget.style.background = 'var(--surface-3)';
                                                     }}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
@@ -3860,7 +3860,7 @@ const SurveySpacesRail = ({
                                                                   cursor: 'pointer',
                                                                   background: isSelected === option
                                                                     ? option === 'Y'
-                                                                      ? 'var(--text-2)'
+                                                                      ? 'var(--success)'
                                                                       : option === 'N'
                                                                         ? 'var(--danger)'
                                                                         : 'var(--text-disabled)'
@@ -3956,12 +3956,12 @@ const SurveySpacesRail = ({
                                                                   fontWeight: 600,
                                                                   borderRadius: '3px',
                                                                   background: sel === 'Y'
-                                                                    ? 'var(--text-3)'
+                                                                    ? 'var(--success)'
                                                                     : sel === 'N'
-                                                                      ? 'var(--text-3)'
+                                                                      ? 'var(--danger)'
                                                                       : sel
                                                                         ? 'var(--text-disabled)'
-                                                                        : 'var(--accent-text)',
+                                                                        : 'var(--surface-3)',
                                                                   color: sel ? '#FFFFFF' : 'var(--text-3)',
                                                                   textAlign: 'center',
                                                                 }}
@@ -4028,11 +4028,11 @@ const SurveySpacesRail = ({
                                       transition: 'background 0.2s ease, border-color 0.2s ease'
                                     }}
                                     onMouseEnter={(event) => {
-                                      event.currentTarget.style.background = 'var(--accent-text)';
-                                      event.currentTarget.style.borderColor = 'var(--text-3)';
+                                      event.currentTarget.style.background = 'var(--surface-3)';
+                                      event.currentTarget.style.borderColor = 'var(--accent)';
                                     }}
                                     onMouseLeave={(event) => {
-                                      event.currentTarget.style.background = 'var(--accent-text)';
+                                      event.currentTarget.style.background = 'var(--surface-3)';
                                       event.currentTarget.style.borderColor = 'var(--accent)';
                                     }}
                                   >
@@ -4156,12 +4156,12 @@ const SurveySpacesRail = ({
                                     transition: 'background 0.15s ease, border-color 0.15s ease'
                                   }}
                                   onMouseEnter={mobileMode ? undefined : (event) => {
-                                    event.currentTarget.style.background = 'var(--accent-text)';
+                                    event.currentTarget.style.background = 'var(--surface-3)';
                                     event.currentTarget.style.borderColor = 'var(--accent)';
                                   }}
                                   onMouseLeave={mobileMode ? undefined : (event) => {
-                                    event.currentTarget.style.background = 'var(--accent-text)';
-                                    event.currentTarget.style.borderColor = 'var(--accent-text)';
+                                    event.currentTarget.style.background = 'var(--surface-2)';
+                                    event.currentTarget.style.borderColor = 'var(--border-strong)';
                                   }}
                                 >
                                   <Icon name="template" size={18} color="var(--text-2)" />

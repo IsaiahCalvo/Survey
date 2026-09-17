@@ -15,9 +15,9 @@ import Spinner from '../components/Spinner';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
-  card: 'var(--accent-text)',
-  deep: 'var(--accent-text)',
-  rule: 'var(--accent-text)',
+  card: 'var(--surface-2)',
+  deep: 'var(--surface-1)',
+  rule: 'var(--border)',
   ink: 'var(--text-1)',
   inkSoft: 'var(--text-2)',
   muted: 'var(--text-3)',

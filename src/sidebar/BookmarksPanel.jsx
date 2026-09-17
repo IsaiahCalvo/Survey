@@ -217,10 +217,10 @@ const BookmarkTreeRow = ({
           boxSizing: 'border-box',
         }}
         onMouseEnter={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--accent-text)';
+          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-2)';
         }}
         onMouseLeave={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--accent-text)';
+          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-1)';
         }}
       >
         <div
@@ -1511,7 +1511,7 @@ const BookmarksPanel = ({
                   }}
                 >
                   <span className="mobile-bookmark-bubble">
-                    <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? 'var(--text-3)' : 'var(--text-3)'} />
+                    <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? 'var(--text-2)' : 'var(--text-3)'} />
                   </span>
                   <span className="mobile-bookmark-copy">
                     <span className="mobile-bookmark-title">{item.name}</span>
@@ -1612,14 +1612,14 @@ const BookmarksPanel = ({
             }}
             onMouseEnter={(e) => {
               if (!isEditMode) {
-                e.currentTarget.style.background = 'var(--accent-text)';
+                e.currentTarget.style.background = 'var(--surface-3)';
               } else {
                 e.currentTarget.style.background = 'var(--accent-press)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isEditMode) {
-                e.currentTarget.style.background = 'var(--accent-text)';
+                e.currentTarget.style.background = 'var(--surface-3)';
               } else {
                 e.currentTarget.style.background = 'var(--accent)';
               }
@@ -1789,7 +1789,7 @@ const BookmarksPanel = ({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <Icon name="folder" size={14} color="var(--text-3)" />
@@ -1815,7 +1815,7 @@ const BookmarksPanel = ({
                     transition: 'border-color 0.15s ease'
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                 />
                 <input
                   type="text"
@@ -1836,7 +1836,7 @@ const BookmarksPanel = ({
                     transition: 'border-color 0.15s ease'
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                   inputMode="numeric"
                   pattern="[0-9]*"
                 />
@@ -1852,7 +1852,7 @@ const BookmarksPanel = ({
                   style={{
                     width: '100%',
                     padding: '6px 12px',
-                    background: 'var(--surface-3)',
+                    background: 'var(--surface-2)',
                     color: 'var(--text-2)',
                     border: '1px solid var(--border-strong)',
                     borderRadius: '6px',
@@ -1863,8 +1863,8 @@ const BookmarksPanel = ({
                     marginBottom: '8px',
                     transition: 'background 0.15s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   Current page
                 </button>
@@ -1956,7 +1956,7 @@ const BookmarksPanel = ({
                   borderRadius: '4px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--accent-text)';
+                  e.currentTarget.style.background = 'var(--surface-3)';
                   e.currentTarget.style.color = 'var(--text-2)';
                 }}
                 onMouseLeave={(e) => {
@@ -1996,7 +1996,7 @@ const BookmarksPanel = ({
                   transition: 'border-color 0.15s ease'
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                 autoFocus
               />
             </div>
@@ -2018,7 +2018,7 @@ const BookmarksPanel = ({
                 <button
                   onClick={handleAddNewBookmark}
                   style={{
-                    background: 'var(--surface-3)',
+                    background: 'var(--surface-2)',
                     color: 'var(--text-2)',
                     border: 'none',
                     borderRadius: '6px',
@@ -2031,8 +2031,8 @@ const BookmarksPanel = ({
                     gap: '6px',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   <Icon name="plus" size={12} />
                   New bookmark
@@ -2100,7 +2100,7 @@ const BookmarksPanel = ({
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                             />
                             <input
                               type="text"
@@ -2132,7 +2132,7 @@ const BookmarksPanel = ({
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                               inputMode="numeric"
                               pattern="[0-9]*"
                             />
@@ -2157,7 +2157,7 @@ const BookmarksPanel = ({
                         aria-label="Remove"
                         onMouseEnter={(e) => {
                           tip('Remove', 'below').onMouseEnter(e);
-                          e.currentTarget.style.background = 'var(--accent-text)';
+                          e.currentTarget.style.background = 'var(--danger-soft)';
                         }}
                         onMouseLeave={(e) => {
                           tip('Remove', 'below').onMouseLeave(e);
@@ -2223,7 +2223,7 @@ const BookmarksPanel = ({
                             alignItems: 'center',
                             marginBottom: '4px'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <span>{bookmark.name}</span>
@@ -2250,7 +2250,7 @@ const BookmarksPanel = ({
                 }}
                 style={{
                   padding: '8px 16px',
-                  background: 'var(--surface-3)',
+                  background: 'var(--surface-2)',
                   color: 'var(--text-2)',
                   border: 'none',
                   borderRadius: '6px',
@@ -2259,8 +2259,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 Cancel
               </button>
@@ -2353,7 +2353,7 @@ const BookmarksPanel = ({
                   borderRadius: '4px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--accent-text)';
+                  e.currentTarget.style.background = 'var(--surface-3)';
                   e.currentTarget.style.color = 'var(--text-2)';
                 }}
                 onMouseLeave={(e) => {
@@ -2410,7 +2410,7 @@ const BookmarksPanel = ({
                 <button
                   onClick={handleAddNewBookmarkToGroup}
                   style={{
-                    background: 'var(--surface-3)',
+                    background: 'var(--surface-2)',
                     color: 'var(--text-2)',
                     border: 'none',
                     borderRadius: '6px',
@@ -2423,8 +2423,8 @@ const BookmarksPanel = ({
                     gap: '6px',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   <Icon name="plus" size={12} />
                   New bookmark
@@ -2492,7 +2492,7 @@ const BookmarksPanel = ({
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                             />
                             <input
                               type="text"
@@ -2524,7 +2524,7 @@ const BookmarksPanel = ({
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                               inputMode="numeric"
                               pattern="[0-9]*"
                             />
@@ -2549,7 +2549,7 @@ const BookmarksPanel = ({
                         aria-label="Remove"
                         onMouseEnter={(e) => {
                           tip('Remove', 'below').onMouseEnter(e);
-                          e.currentTarget.style.background = 'var(--accent-text)';
+                          e.currentTarget.style.background = 'var(--danger-soft)';
                         }}
                         onMouseLeave={(e) => {
                           tip('Remove', 'below').onMouseLeave(e);
@@ -2622,7 +2622,7 @@ const BookmarksPanel = ({
                             alignItems: 'center',
                             marginBottom: '4px'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <span>{bookmark.name}</span>
@@ -2649,7 +2649,7 @@ const BookmarksPanel = ({
                 }}
                 style={{
                   padding: '8px 16px',
-                  background: 'var(--surface-3)',
+                  background: 'var(--surface-2)',
                   color: 'var(--text-2)',
                   border: 'none',
                   borderRadius: '6px',
@@ -2658,8 +2658,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 Cancel
               </button>

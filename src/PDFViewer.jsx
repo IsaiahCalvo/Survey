@@ -32149,7 +32149,7 @@ ${pageBlocks}
                     pointerEvents: 'none'
                   }}
                 >
-                  <div style={{ color: 'var(--text-3)', fontWeight: 600, marginBottom: 4 }}>
+                  <div style={{ color: 'var(--text-2)', fontWeight: 600, marginBottom: 4 }}>
                     PDF Debug #{tick}
                   </div>
                   <div>Page: {pageNum}/{numPages || 0}</div>
@@ -34103,8 +34103,8 @@ ${pageBlocks}
                               setActiveTool('highlighter');
                               setHighlighterCaretPopupOpen(false);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? 'var(--accent-text)' : 'transparent'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? 'var(--surface-3)' : 'transparent'; }}
                             style={optionStyle(activeTool === 'highlighter')}
                           >
                             Freehand highlight
@@ -34115,8 +34115,8 @@ ${pageBlocks}
                               setActiveTool('text-highlight');
                               setHighlighterCaretPopupOpen(false);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? 'var(--accent-text)' : 'transparent'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? 'var(--surface-3)' : 'transparent'; }}
                             style={optionStyle(activeTool === 'text-highlight')}
                           >
                             Text highlight
@@ -34389,7 +34389,7 @@ ${pageBlocks}
                               e.stopPropagation();
                               handleNewCounterSeries();
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             style={{
                               display: 'flex',
@@ -34417,7 +34417,7 @@ ${pageBlocks}
                             }}
                             onMouseEnter={(e) => {
                               setCounterCaretSubmenu('continue');
-                              e.currentTarget.style.background = 'var(--accent-text)';
+                              e.currentTarget.style.background = 'var(--surface-3)';
                             }}
                             onMouseLeave={(e) => {
                               if (counterCaretSubmenu !== 'continue') {
@@ -34501,8 +34501,8 @@ ${pageBlocks}
                                       e.stopPropagation();
                                       handleSwitchCounterSeries(s.seriesId);
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? 'var(--accent-text)' : 'transparent'; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? 'var(--surface-3)' : 'transparent'; }}
                                     style={{
                                       display: 'flex',
                                       alignItems: 'center',
@@ -34678,8 +34678,8 @@ ${pageBlocks}
                         setUnderlineCaretPopupOpen(false);
                         setStrikeCaretPopupOpen(false);
                       }}
-                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--accent-text)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? 'var(--accent-text)' : 'transparent'; }}
+                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--surface-3)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? 'var(--surface-3)' : 'transparent'; }}
                       style={optionStyle(activeTool === tool, disabled)}
                     >
                       {label}

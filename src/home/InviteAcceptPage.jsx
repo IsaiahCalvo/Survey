@@ -30,9 +30,9 @@ import { buildAppDestination } from '../utils/accountPlatform';
 const PENDING_KEY = 'kal31_pending_invite_token';
 
 const C = {
-  bg: 'var(--accent-text)',
-  card: 'var(--accent-text)',
-  rule: 'var(--accent-text)',
+  bg: 'var(--surface-1)',
+  card: 'var(--surface-2)',
+  rule: 'var(--border)',
   ink: 'var(--text-1)',
   inkSoft: 'var(--text-2)',
   muted: 'var(--text-3)',

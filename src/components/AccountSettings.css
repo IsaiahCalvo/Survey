@@ -1,11 +1,11 @@
-/* AccountSettings — restyled to the Survey Hub warm dark-and-gold palette.
+/* AccountSettings — painted from the one palette, gold on cool dark greys.
    Class names + selectors are unchanged from the original; only the visual
-   values were rewritten to match src/home/hub.css. Palette reference:
-     surfaces  #0d0f14 / #12151c / #181c24 / #1f2430
-     borders   var(--accent-text) / var(--accent-text)
-     text      #f4f1ea (primary) / #8d96a6 (muted) / #5a6473 (quiet)
-     accent    gold var(--accent), dark ink var(--accent-text) on gold
-     danger    var(--danger)
+   values now come from src/styles/tokens.css. Which token plays which part:
+     surfaces  --surface-0 / --surface-1 / --surface-2 / --surface-3
+     borders   --border (hairline) / --border-strong (an edge that must be seen)
+     text      --text-1 (primary) / --text-3 (muted) / --text-disabled (quiet)
+     accent    --accent (gold); --accent-text is the dark ink ON gold
+     danger    --danger
    Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
 
 .account-settings-overlay {

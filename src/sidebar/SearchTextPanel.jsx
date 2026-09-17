@@ -1020,7 +1020,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       onClick={() => onSelect(result, index)}
       style={{
         padding: '10px 12px',
-        background: isActive ? 'var(--border-strong)' : 'var(--surface-2)',
+        background: isActive ? 'var(--surface-3)' : 'var(--surface-2)',
         border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
         borderRadius: '6px',
         cursor: 'pointer',
@@ -1034,12 +1034,12 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = 'var(--accent-text)';
+          e.currentTarget.style.background = 'var(--surface-3)';
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = 'var(--accent-text)';
+          e.currentTarget.style.background = 'var(--surface-2)';
         }
       }}
     >
@@ -1725,7 +1725,7 @@ const SearchTextPanel = ({
               transition: 'border-color 0.15s ease'
             }}
             onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--accent-text)'}
+            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
           />
           {internalSearchQuery && (
             <button
@@ -1742,7 +1742,7 @@ const SearchTextPanel = ({
                 justifyContent: 'center',
                 borderRadius: '4px'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               <Icon name="close" size={14} color="var(--text-3)" />
@@ -1802,7 +1802,7 @@ const SearchTextPanel = ({
                 }}
                 onMouseEnter={(e) => {
                   tip('Previous match (Shift+Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--accent-text)';
+                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--surface-3)';
                 }}
                 onMouseLeave={(e) => {
                   tip('Previous match (Shift+Enter)', 'below').onMouseLeave(e);
@@ -1829,7 +1829,7 @@ const SearchTextPanel = ({
                 }}
                 onMouseEnter={(e) => {
                   tip('Next match (Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--accent-text)';
+                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--surface-3)';
                 }}
                 onMouseLeave={(e) => {
                   tip('Next match (Enter)', 'below').onMouseLeave(e);

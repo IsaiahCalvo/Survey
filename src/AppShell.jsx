@@ -1767,6 +1767,11 @@ export default function App({ devPreviewReturnTab = null }) {
                       top: `${selectModeMenuAnchor.top}px`,
                       left: `${selectModeMenuAnchor.left}px`,
                       transform: 'translate(-50%, 0)',
+                      // UX 2026-09-17 (revision-2 palette): a popover is a RAISED
+                      // surface, so it takes --surface-2 even though its old
+                      // literal (#1E1E1E) sat at the --surface-1 brightness. It
+                      // has to read as lifted off the bar it opens from.
+                      // Pinned by tests/selectModes.test.mjs.
                       backgroundColor: 'var(--surface-2)',
                       backgroundImage: 'none',
                       border: '1px solid var(--border)',
@@ -2564,7 +2569,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 fontSize: '12px',
                                 outline: 'none',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-text)'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                               onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}

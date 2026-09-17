@@ -41,9 +41,9 @@ import {
 } from '../services/shareEmailService';
 
 /* Hub palette — literal hex, see header note. */
-const INK_800 = 'var(--accent-text)';
-const INK_700 = 'var(--accent-text)';
-const INK_500 = 'var(--accent-text)';
+const INK_800 = 'var(--surface-1)';
+const INK_700 = 'var(--surface-2)';
+const INK_500 = 'var(--border)';
 const INK_300 = 'var(--text-disabled)';
 const INK_200 = 'var(--text-3)';
 const BONE_100 = 'var(--text-1)';

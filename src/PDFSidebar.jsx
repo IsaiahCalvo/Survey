@@ -366,7 +366,7 @@ const PDFSidebar = React.forwardRef(({
             justifyContent: 'center',
             transition: 'background 0.15s ease'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-text)'}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
           <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
@@ -455,7 +455,7 @@ const PDFSidebar = React.forwardRef(({
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) {
-                      e.currentTarget.style.background = 'var(--accent-text)';
+                      e.currentTarget.style.background = 'var(--surface-2)';
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -737,7 +737,7 @@ const PDFSidebar = React.forwardRef(({
                 }}
                 onMouseEnter={(e) => {
                   tabTip.onMouseEnter(e);
-                  e.currentTarget.style.background = 'var(--accent-text)';
+                  e.currentTarget.style.background = 'var(--surface-2)';
                 }}
                 onMouseLeave={(e) => {
                   tabTip.onMouseLeave(e);

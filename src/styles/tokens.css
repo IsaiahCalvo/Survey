@@ -93,6 +93,12 @@
   --warning: #7d803d;         /* quieter than danger, and far from the gold */
   /* Status DOTS only (owner amendment b). Never a button, border or text. */
   --success: #548c71;
+  /* The destructive twin of --accent-soft, derived from --danger the same way
+     (the base colour at 14-16% alpha) rather than invented: the hover wash on a
+     small remove/delete control, which used to be a #3a1f1f dark-red literal.
+     Small controls only, for the same reason --accent-soft is: a large warm
+     wash is how the rejected brown happened. */
+  --danger-soft: rgba(217, 90, 86, 0.16);
   --info: var(--text-3);      /* "informational" is just subtext */
 
   /* --- Derived states --------------------------------------------------- */

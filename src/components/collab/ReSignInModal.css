@@ -220,7 +220,7 @@
 
 .re-signin-modal__cta:hover:not(:disabled) {
   /* UX: hover slightly lighter — Linear / Notion convention. */
-  background: var(--text-3);
+  background: var(--accent);
 }
 
 .re-signin-modal__cta:focus {

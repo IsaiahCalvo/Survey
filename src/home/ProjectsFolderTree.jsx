@@ -38,9 +38,9 @@ import DismissBarrier from '../components/DismissBarrier';
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
 const HEX = {
-  card: 'var(--accent-text)',   // --ink-700  popup surface
-  deep: 'var(--accent-text)',   // --ink-800
-  rule: 'var(--accent-text)',   // --ink-500  borders
+  card: 'var(--surface-2)',   // --ink-700  popup surface
+  deep: 'var(--surface-1)',   // --ink-800
+  rule: 'var(--border)',   // --ink-500  borders
   ink: 'var(--text-1)',    // --bone-100 primary text
   muted: 'var(--text-3)',  // --ink-200  secondary text
   gold: 'var(--accent)',   // --gold     accent

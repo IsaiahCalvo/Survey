@@ -571,7 +571,7 @@ function RotationInputField({
         padding: '0 8px',
         // UI-SPEC LOCKED tokens — DO NOT change without re-running the UI checker.
         background: 'var(--surface-2)',
-        border: isFocused ? '1px solid var(--border-strong)' : '1px solid var(--border)',
+        border: isFocused ? '1px solid var(--accent)' : '1px solid var(--border)',
         borderRadius: 6,
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
         // UX: zIndex 101 is one above the overlay div's 100 (App.jsx) so the

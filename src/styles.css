@@ -1102,7 +1102,7 @@ input[type="text"].space-name-inline:focus {
 
 .survey-marker-select-action-danger {
   color: var(--danger-press);
-  border-color: var(--border-strong);
+  border-color: var(--danger);
 }
 
 .survey-marker-select-action-danger:hover:not(:disabled) {
@@ -1630,7 +1630,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 /* UX 2026-09-17 (revision-2 palette, owner approved): a selected row is a real
-   surface step plus a 2px gold edge, never the old var(--accent-text) warm wash. The edge
+   surface step plus a 2px gold edge, never the old #2a2218 warm wash. The edge
    is an inset shadow rather than a border so the row's box never changes size —
    a real border here would shift every label by 2px on selection. */
 .survey-marker-entity-option.is-selected {
