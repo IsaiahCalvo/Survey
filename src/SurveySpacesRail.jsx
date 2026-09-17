@@ -3862,14 +3862,21 @@ const SurveySpacesRail = ({
                                                                   border: 'none',
                                                                   borderRadius: '3px',
                                                                   cursor: 'pointer',
+                                                                  /* UX 2026-09-17 (revision-2 palette): tokens.css reserves
+                                                                     --success for status DOTS - "never a button". A Y/N answer
+                                                                     button is a button, so "yes" takes the gold accent with its
+                                                                     own label ink (--accent-text; white on gold is 2.0:1) and
+                                                                     "no" takes --danger with white. Never green on a button. */
                                                                   background: isSelected === option
                                                                     ? option === 'Y'
-                                                                      ? 'var(--success)'
+                                                                      ? 'var(--accent)'
                                                                       : option === 'N'
                                                                         ? 'var(--danger)'
                                                                         : 'var(--text-disabled)'
                                                                     : 'var(--text-2)',
-                                                                  color: isSelected === option ? '#FFFFFF' : 'var(--accent-text)',
+                                                                  color: isSelected === option
+                                                                    ? (option === 'Y' ? 'var(--accent-text)' : '#FFFFFF')
+                                                                    : 'var(--accent-text)',
                                                                   transition: 'all 0.2s ease'
                                                                 }}
                                                               >
@@ -3959,14 +3966,21 @@ const SurveySpacesRail = ({
                                                                   fontSize: '10px',
                                                                   fontWeight: 600,
                                                                   borderRadius: '3px',
+                                                                  /* Same rule as the Y/N buttons above: the answered-value pill
+                                                                     is a filled control, so "yes" is gold and "no" is --danger.
+                                                                     --success stays on status dots only. */
                                                                   background: sel === 'Y'
-                                                                    ? 'var(--success)'
+                                                                    ? 'var(--accent)'
                                                                     : sel === 'N'
                                                                       ? 'var(--danger)'
                                                                       : sel
                                                                         ? 'var(--text-disabled)'
                                                                         : 'var(--surface-3)',
-                                                                  color: sel ? '#FFFFFF' : 'var(--text-3)',
+                                                                  color: sel === 'Y'
+                                                                    ? 'var(--accent-text)'
+                                                                    : sel
+                                                                      ? '#FFFFFF'
+                                                                      : 'var(--text-3)',
                                                                   textAlign: 'center',
                                                                 }}
                                                               >
