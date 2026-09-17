@@ -531,8 +531,11 @@ const SurveySpacesRail = ({
     setIsSurveyPanelCollapsed(true);
     requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
   }, [applyLayoutDrivenZoom]);
+  // 2026-09-17: the hook owns the slide-up too now (see useMobileSheetMotion),
+  // so it needs the real open state — this element stays mounted and only
+  // toggles .is-collapsed.
   const { motionStyle: surveySheetMotionStyle, dragHandlers: surveySheetDragHandlers, requestClose: requestSurveySheetClose } =
-    useMobileSheetMotion(collapseSurveySheet);
+    useMobileSheetMotion(collapseSurveySheet, { open: mobileMode && !isSurveyPanelCollapsed });
 
   const selectSurveyModule = (moduleId) => {
     if (!moduleId || moduleId === selectedModuleId) {
@@ -1232,11 +1235,13 @@ const SurveySpacesRail = ({
                 zIndex: mobileMode ? 6500 : 1,
                 display: 'flex',
                 flexDirection: 'column',
-	                animation: 'slideInRight 0.3s ease-out',
+                // 2026-09-17: the desktop rail keeps its horizontal slide-in; on
+                // phone the sheet rises from the bottom, so a right-edge
+                // keyframe here would fight useMobileSheetMotion's transform.
+                animation: mobileMode ? 'none' : 'slideInRight 0.3s ease-out',
                 transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease',
-                // Phase F: finger-follow / spring-back / slide-down exit (mobile
-                // sheet only; the .mobile-pdf-sheet CSS !important keyframe still
-                // owns the slide-in, this only drives drag/close transforms).
+                // Phase F: finger-follow / spring-back / slide-down exit, plus
+                // (2026-09-17) the slide-up entrance — one transform timeline.
                 ...(mobileMode ? surveySheetMotionStyle : null)
               }}
             >
