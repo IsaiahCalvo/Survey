@@ -328,10 +328,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 /* UX 2026-09-16: minus / live percentage / plus, above the fit modes. The
-   steppers take the same 34px square the fit rows below them already use, so
-   the whole pill reads as one control — a bespoke size here would only fight
-   the sizing pass that sets every control's height from Drawboard's ratios.
-   The reading between them is the live scale, so you always know where you are. */
+   reading between them is the live scale, so you always know where you are.
+
+   RULED CHANGE 2026-09-16 (r4 phone pass): the steppers are header controls, so
+   they take the header control height — 26px with the 15px HEADER_GLYPH, the
+   same 15-in-26 every other control in the top row uses. They were built to the
+   fit rows' 34px menu-row square instead, which is not one of the five phone
+   size tokens and left a 15px glyph floating in a 34px box: 0.441 of its
+   control where every other phone tier runs 0.55-0.60, so the pair read
+   noticeably lighter than the rail and dock chips above them. The fit rows keep
+   their 34px — they are context-menu rows with labels, not icon buttons, and
+   34px rows are the demo's menu chrome. Pinned by
+   tests/mobilePhoneGlyphRatioComplete.test.mjs.
+
+   The finger target does not shrink with the paint: the transparent ::after
+   below holds it at the 34x34 the buttons offered before. */
 .mobile-pdf-header__zoom-steppers {
   display: flex;
   align-items: center;
@@ -343,8 +354,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__zoom-steppers > button {
-  width: 34px;
-  height: 34px;
+  position: relative;
+  /* The literal repeats --mobile-control-h so the phone-sizing tests can read a
+     px number straight off this rule; the var below is what actually applies,
+     which keeps the token the single source of truth. */
+  width: 26px;
+  width: var(--mobile-control-h);
+  height: 26px;
+  height: var(--mobile-control-h);
   padding: 0;
   display: grid;
   place-items: center;
@@ -353,6 +370,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
   border: 0;
   border-radius: 6px;
+}
+
+/* The chip you see is 26px; the area a finger hits is the 34px square these
+   buttons had before the ratio fix, so nothing got harder to tap. There is no
+   border here, so the pad counts straight off the 26px box: 26 + 4 + 4 = 34.
+   The live percentage flexes between the two buttons, so the pads never meet,
+   and 4px below stays inside the row's 3px margin + 3px padding + 1px rule -
+   it cannot reach the first fit row. */
+.mobile-pdf-header__zoom-steppers > button::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .mobile-pdf-header__zoom-steppers > button:disabled { color: #6f7785; opacity: 0.5; }

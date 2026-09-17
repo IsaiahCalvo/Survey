@@ -632,7 +632,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                 disabled={zoomPercent <= MOBILE_ZOOM_MIN_PERCENT}
                 onClick={() => bottomToolbarApi.zoomOut?.()}
               >
-                <Icon name="minus" size={15} color="currentColor" />
+                <Icon name="minus" size={HEADER_GLYPH} color="currentColor" />
               </button>
               <span className="mobile-pdf-header__zoom-percent" aria-live="polite">{`${zoomPercent}%`}</span>
               <button
@@ -641,7 +641,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                 disabled={zoomPercent >= MOBILE_ZOOM_MAX_PERCENT}
                 onClick={() => bottomToolbarApi.zoomIn?.()}
               >
-                <Icon name="plus" size={15} color="currentColor" />
+                <Icon name="plus" size={HEADER_GLYPH} color="currentColor" />
               </button>
             </div>
             <div className="mobile-pdf-header__zoom-fits" role="listbox" aria-label="Zoom and fit mode">

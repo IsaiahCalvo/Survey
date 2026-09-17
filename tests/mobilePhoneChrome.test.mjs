@@ -74,12 +74,20 @@ test('the zoom menu has minus/plus steppers and a live percentage', () => {
   assert.match(chrome, /const MOBILE_ZOOM_MAX_PERCENT = 4000;/);
   // The three fit modes are still there, in their own listbox.
   assert.match(chrome, /className="mobile-pdf-header__zoom-fits" role="listbox"/);
-  // The steppers share the fit rows' square rather than inventing a size.
+  // RULED CHANGE 2026-09-16 (r4 phone pass): the steppers take the header
+  // control token, not the fit rows' menu-row square. They used to be pinned to
+  // the fit rows (34px), which is not one of the five phone size tokens and left
+  // the 15px glyph at 0.441 of its control where every other phone tier runs
+  // 0.55-0.60 - see tests/mobilePhoneGlyphRatioComplete.test.mjs, which pins the
+  // ratio over every phone control and failed on the 34px square. The fit rows
+  // keep 34px: they are labelled context-menu rows, and 34px rows are the demo's
+  // menu chrome. The assertion moved from "same as the fit rows" to "the header
+  // control token", which is the size rule the pass actually claims.
   const steppers = block(css, '.mobile-pdf-header__zoom-steppers > button');
-  const fitRow = block(css, '.mobile-pdf-header__zoom-fits > button');
-  const square = fitRow.match(/min-height: (\d+)px/)[1];
-  assert.match(steppers, new RegExp(`width: ${square}px`));
-  assert.match(steppers, new RegExp(`height: ${square}px`));
+  assert.match(steppers, /width: var\(--mobile-control-h\)/);
+  assert.match(steppers, /height: var\(--mobile-control-h\)/);
+  // The 26px paint keeps the 34px finger target it had, as a transparent pad.
+  assert.match(css, /\.mobile-pdf-header__zoom-steppers > button::after \{[\s\S]{0,160}inset: -4px;/);
 });
 
 test('zoomIn and zoomOut still step by the shared 1.25x factor', () => {

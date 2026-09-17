@@ -53,13 +53,20 @@ const pxValue = (declarations, property) => {
   return Number(match[1]);
 };
 
+// `size={15}` or `size={HEADER_GLYPH}`. Resolving a named constant as well as a
+// literal is what lets the glyph read its tier's token instead of repeating the
+// number - the ratio this file asserts is unchanged either way, and a control
+// that names a constant can no longer slip past the check.
 const glyphSizeInside = (source, marker, iconName) => {
   const at = source.indexOf(marker);
   assert.notEqual(at, -1, `missing marker ${marker}`);
   const window = source.slice(at, at + 2000);
-  const match = window.match(new RegExp(`<Icon name="${iconName}" size=\\{(\\d+)\\}`));
+  const match = window.match(new RegExp(`<Icon name="${iconName}" size=\\{(\\d+|[A-Z][A-Z0-9_]*)\\}`));
   assert.notEqual(match, null, `missing <Icon name="${iconName}" size={n}> after ${marker}`);
-  return Number(match[1]);
+  if (/^\d+$/.test(match[1])) return Number(match[1]);
+  const constant = source.match(new RegExp(`const ${match[1]} = (\\d+);`));
+  assert.notEqual(constant, null, `missing const ${match[1]} for ${iconName} after ${marker}`);
+  return Number(constant[1]);
 };
 
 const PHONE_SIZE_TOKENS = [
