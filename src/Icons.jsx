@@ -722,10 +722,23 @@ const ICON_RENDERERS = {
         <path d="M19 10H8C5.79086 10 4 11.7909 4 14C4 16.2091 5.79086 18 8 18H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
-    formatBold: (size, color, style, className) => renderMaskIcon(textBoldUrl, size, color, style, className, size * 0.8),
-    formatItalic: (size, color, style, className) => renderMaskIcon(textItalicUrl, size, color, style, className, size * 0.66),
-    formatUnderline: (size, color, style, className) => renderMaskIcon(textUnderlineUrl, size, color, style, className, size * 0.89),
-    formatStrikethrough: (size, color, style, className) => renderMaskIcon(textStrikethroughUrl, size, color, style, className, size * 1.04),
+    // UX 2026-09-17 (owner, phone build: "Bold, italics, underline and
+    // strikethrough don't look centred in their buttons"). These four used to
+    // pass a per-icon width - 0.8, 0.66, 0.89, 1.04 of the requested size - to
+    // stop `mask-size: contain` letterboxing a non-square asset. That gave the
+    // row four different glyph boxes AND four different optical sizes: measured
+    // at STRIP_GLYPH 14 the ink came out 12.05, 9.89, 11.35 and 10.95 px tall,
+    // a 22% spread, and italic's ink sat 0.42px right of its own box because the
+    // slanted stroke is not centred in a letterform's bounds.
+    // The four assets are now normalised onto the house 24 grid - square
+    // viewBox, ink centred on (12, 12), ink exactly 20 units tall - so a square
+    // box is the correct box and one `size` serves all four: one glyph box, one
+    // optical height, ink dead centre. Do not reintroduce a width factor here;
+    // fix the asset's viewBox instead.
+    formatBold: (size, color, style, className) => renderMaskIcon(textBoldUrl, size, color, style, className),
+    formatItalic: (size, color, style, className) => renderMaskIcon(textItalicUrl, size, color, style, className),
+    formatUnderline: (size, color, style, className) => renderMaskIcon(textUnderlineUrl, size, color, style, className),
+    formatStrikethrough: (size, color, style, className) => renderMaskIcon(textStrikethroughUrl, size, color, style, className),
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
     highlighterTool: (size, color, style, className) => renderMaskIcon(highlighterToolUrl, size, color, style, className),
     selectCursor: (size, color, style, className) => renderMaskIcon(selectionCursorUrl, size, color, style, className),

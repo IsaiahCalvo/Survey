@@ -140,3 +140,59 @@ export const inkBox = (name) => {
     source,
   };
 };
+
+/**
+ * The ink box of a standalone SVG ASSET (src/assets/icons/*.svg), in the file's
+ * own viewBox units, with every <g> and <path> transform applied.
+ *
+ * inkBox() above reads the inline renderers in src/Icons.jsx, which are drawn
+ * straight onto the 24 grid. The mask assets are traced artwork on their own
+ * grid, so their placement lives in the viewBox instead — this returns both, so
+ * a test can say "ink centred on the grid, 20 units tall" about either kind.
+ */
+const transformChain = (points, transform) => {
+  if (!transform) return points;
+  const ops = [...transform.matchAll(/(translate|scale)\(\s*(-?[\d.]+)(?:[\s,]+(-?[\d.]+))?\s*\)/g)];
+  let out = points;
+  // Right-most operation applies first, exactly as SVG composes them.
+  for (let i = ops.length - 1; i >= 0; i -= 1) {
+    const [, op, rawA, rawB] = ops[i];
+    const a = Number(rawA);
+    const b = rawB === undefined ? (op === 'scale' ? a : 0) : Number(rawB);
+    out = out.map(([x, y]) => (op === 'translate' ? [x + a, y + b] : [x * a, y * b]));
+  }
+  return out;
+};
+
+export const assetInk = (fileUrl) => {
+  const source = readFileSync(fileUrl, 'utf8');
+  const svgTag = /<svg[^>]*>/.exec(source);
+  assert.notEqual(svgTag, null, `${fileUrl} has no <svg>`);
+  const viewBox = attr(svgTag[0], 'viewBox').split(/[\s,]+/).map(Number);
+  const groupTag = /<g[^>]*\btransform="([^"]*)"/.exec(source);
+
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const [, body] of source.matchAll(/<path\b([^>]*)>/g)) {
+    const stroke = attr(body, 'stroke-width');
+    const half = stroke === null ? 0 : Number(stroke) / 2;
+    let points = pathPoints(attr(body, 'd'));
+    points = transformChain(points, attr(body, 'transform'));
+    points = transformChain(points, groupTag ? groupTag[1] : null);
+    for (const [px, py] of points) {
+      x0 = Math.min(x0, px - half); y0 = Math.min(y0, py - half);
+      x1 = Math.max(x1, px + half); y1 = Math.max(y1, py + half);
+    }
+  }
+  assert.notEqual(x1, -Infinity, `${fileUrl} drew nothing`);
+
+  // Re-expressed on the house 24 grid, which is what the viewBox maps onto.
+  const unitX = (v) => ((v - viewBox[0]) / viewBox[2]) * ICON_GRID;
+  const unitY = (v) => ((v - viewBox[1]) / viewBox[3]) * ICON_GRID;
+  return {
+    viewBox,
+    square: Math.abs(viewBox[2] - viewBox[3]) < 0.001,
+    width: +(unitX(x1) - unitX(x0)).toFixed(3),
+    height: +(unitY(y1) - unitY(y0)).toFixed(3),
+    centre: [+((unitX(x0) + unitX(x1)) / 2).toFixed(3), +((unitY(y0) + unitY(y1)) / 2).toFixed(3)],
+  };
+};
