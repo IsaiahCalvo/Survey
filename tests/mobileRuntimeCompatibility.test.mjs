@@ -286,7 +286,22 @@ test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_SCALE = 8/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 3 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_BASE_MAX_SCALE = 1\.25/);
-  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 1/);
+  // RULED DECISION 2026-09-17 (flicker fix): this was `= 1`. A one-page overscan
+  // is spent entirely BELOW the visible pages (beforeCount = floor(1/2) = 0), so
+  // scrolling UP always mounted a page cold at the instant it became visible —
+  // and on the owner's 22 MB drawing that page was an undrawn white slab for up
+  // to seconds while its annotations floated on top. Measured on the mobile
+  // surface over an identical scripted 6 s sweep across already-read pages:
+  // overscan 1 without the raster cache = 2072 ms blank, overscan 1 WITH the
+  // cache = 1643 ms blank, overscan 2 with the cache = 0 ms. Both changes are
+  // needed; neither alone fixes it. The budget this test guards is unharmed:
+  // mobile rasters stay area-clamped by MOBILE_MAX_CANVAS_AREA (~12 MiB each),
+  // so the second overscan page costs one clamped raster, and the deep-zoom
+  // window still holds at most three pages.
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 2/);
+  // The raster cache is now shared by every surface, under a surface-aware
+  // ceiling that must stay well below the desktop one.
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_PAGE_RASTER_CACHE_MAX_BYTES = 48 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /target = document\.createElement\('canvas'\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(target && !targetRetained\) releaseRasterCanvas\(target\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /finally \{\s*releaseRasterCanvas\(off\)/);
