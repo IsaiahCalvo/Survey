@@ -101,15 +101,21 @@ export default function TextSelectionActionBar({
         <form className="text-selection-action-bar__link-form" data-text-link-editor="true" aria-label="Hyperlink controls" onSubmit={(event) => { event.preventDefault(); onLinkSubmit?.(); }}>
           <div className="text-selection-action-bar__link-modes">
             {[['web', 'Web address'], ['page', 'Page in document']].map(([mode, label]) => (
-              <button key={mode} data-text-link-control="true" type="button" aria-pressed={linkMode === mode} onClick={() => onLinkModeChange?.(mode)} style={{ height: 30, padding: '0 12px', border: 0, borderRadius: 5, background: linkMode === mode ? '#343a45' : 'transparent', color: linkMode === mode ? '#fff' : '#b9bec7', boxShadow: linkMode === mode ? '0 1px 3px rgba(0,0,0,.5)' : 'none', fontSize: 12, cursor: 'pointer' }}>{label}</button>
+              <button key={mode} data-text-link-control="true" type="button" aria-pressed={linkMode === mode} onClick={() => onLinkModeChange?.(mode)} style={{ height: 30, padding: '0 12px', border: 0, borderRadius: 5, background: linkMode === mode ? 'var(--surface-3)' : 'transparent', color: linkMode === mode ? 'var(--text-1)' : 'var(--text-2)', boxShadow: linkMode === mode ? '0 1px 3px rgba(0,0,0,.5)' : 'none', fontSize: 12, cursor: 'pointer' }}>{label}</button>
             ))}
           </div>
           <input className="text-selection-action-bar__link-input" autoFocus aria-label={linkMode === 'page' ? 'Page number' : 'Web address'} inputMode={linkMode === 'page' ? 'numeric' : 'url'} value={linkValue} onChange={(event) => onLinkValueChange?.(event.target.value)} placeholder={linkMode === 'page' ? '1' : 'https://example.com'} style={{ borderColor: linkError ? 'var(--danger)' : 'var(--border-strong)' }} />
+          {/* UX 2026-09-17 (revision-2 palette): the hyperlink editor's own chrome
+              comes from the token file by role — Apply is the one gold primary with
+              --accent-text on it, Open link and Cancel are raised neutral buttons,
+              and Remove link is the destructive pair (--danger-soft wash inside a
+              --danger-press edge, --danger ink). The mark swatches above keep their
+              literals: those show the user's ink, not the theme. */}
           <div className="text-selection-action-bar__link-actions" data-text-link-actions="true">
-            <button data-text-link-control="true" type="submit" aria-label="Apply hyperlink" style={{ height: 34, padding: '0 16px', border: '1px solid #d1a125', borderRadius: 6, background: '#d4a11e', color: '#16191e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
-            {linkActive && <button data-text-link-control="true" type="button" aria-label="Open link" onClick={onLinkOpen} style={{ height: 34, padding: '0 12px', border: '1px solid #4d535e', borderRadius: 6, background: '#343a45', color: '#f2f4f7', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Open link</button>}
-            {linkActive && <button data-text-link-control="true" type="button" aria-label="Remove link" onClick={onLinkRemove} style={{ height: 34, padding: '0 12px', border: '1px solid #7c4545', borderRadius: 6, background: '#3a2528', color: '#ffb4b4', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Remove link</button>}
-            <button data-text-link-control="true" type="button" aria-label="Cancel hyperlink" onClick={onLinkCancel} style={{ height: 34, padding: '0 16px', border: '1px solid #4d535e', borderRadius: 6, background: '#2b3039', color: '#d9dce2', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+            <button data-text-link-control="true" type="submit" aria-label="Apply hyperlink" style={{ height: 34, padding: '0 16px', border: '1px solid var(--accent-press)', borderRadius: 6, background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
+            {linkActive && <button data-text-link-control="true" type="button" aria-label="Open link" onClick={onLinkOpen} style={{ height: 34, padding: '0 12px', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface-3)', color: 'var(--text-1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Open link</button>}
+            {linkActive && <button data-text-link-control="true" type="button" aria-label="Remove link" onClick={onLinkRemove} style={{ height: 34, padding: '0 12px', border: '1px solid var(--danger-press)', borderRadius: 6, background: 'var(--danger-soft)', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Remove link</button>}
+            <button data-text-link-control="true" type="button" aria-label="Cancel hyperlink" onClick={onLinkCancel} style={{ height: 34, padding: '0 16px', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface-3)', color: 'var(--text-1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
           </div>
           {linkError && <span role="alert" style={{ width: '100%', color: 'var(--danger)', fontSize: 11, textAlign: 'center' }}>{linkError}</span>}
         </form>
