@@ -2160,13 +2160,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    from 44x44 down to 30x30 and shrank the target with them, so on the simulator
    a tap 13px below a button, still inside the bar, did nothing at all.
    The bar is 36px + the home-indicator reserve. The buttons sit 3px inside the
-   top of that 36px band, so `-3px` on top and `-3px - reserve` underneath makes
-   the pad exactly as tall as the bar: 70px on an iPhone 17 Pro, and never less
-   than 46px (the reserve has a 10px floor), so the 44px minimum holds on every
-   phone. Sideways the round buttons grow to 44px; the centre pill is 124px
-   already. The gaps between the three buttons stay transparent, so a touch
-   there still reaches the page, exactly as the dock's pointer-events rule
-   above intends. */
+   top of that 36px band, so `-3px` on top and `-3px - reserve` underneath all
+   but fills the bar: 68px on an iPhone 17 Pro, and never less than 44px (the
+   reserve has a 10px floor), so the 44px minimum holds on every phone.
+   Every one of these numbers counts from the button's PADDING box, not its
+   border box - that is where an absolutely positioned ::after is laid out, and
+   these buttons carry a 1px border, so a 30px chip offers a 28px box to pad
+   out. 28 + 3 + 3 + reserve is the 44/68 above, and sideways 28 + 8 + 8 is the
+   44px the round buttons need (`-7px` here read as 44 but measured 42 - see
+   tests/mobileDockTouchTargetWidth.test.mjs); the centre pill is 124px already.
+   The gaps between the three buttons stay transparent, so a touch there still
+   reaches the page, exactly as the dock's pointer-events rule above intends. */
 .mobile-pdf-dock__side::after,
 .mobile-pdf-dock__center::after {
   content: '';
@@ -2176,7 +2180,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-dock__side::after {
-  inset-inline: -7px;
+  inset-inline: -8px;
 }
 
 /* Every dock button is one height — Drawboard's bottom-bar controls run
