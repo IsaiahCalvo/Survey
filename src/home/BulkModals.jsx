@@ -115,7 +115,10 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
                   style={{
                     display: 'block', width: '100%', padding: '9px 12px', fontSize: 12.5,
                     cursor: 'pointer', color: C.ink, textAlign: 'left', fontFamily: 'inherit',
-                    background: destId === p.id ? 'rgba(216,168,78,0.12)' : 'transparent',
+                    // UX 2026-09-17 (owner ruling: no warm fill on a selected thing).
+                    // A destination is a ROW, so it takes the approved row cue — a
+                    // surface step plus the 2px gold left edge below.
+                    background: destId === p.id ? 'var(--surface-3)' : 'transparent',
                     border: 0, borderLeft: `2px solid ${destId === p.id ? C.gold : 'transparent'}`,
                   }}
                 >

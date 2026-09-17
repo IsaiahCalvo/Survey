@@ -2105,7 +2105,9 @@ export default function TemplatesEditor({
                           width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
                           alignItems: 'center', padding: '3px 10px',
                           cursor: catEdit ? 'pointer' : 'default',
-                          background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
+                          // UX 2026-09-17 (owner ruling): a ticked row lifts a surface
+                          // step; it does not take a warm gold wash.
+                          background: catEdit && isSel ? 'var(--surface-3)' : 'transparent',
                         }}
                       >
                         <DragRearrangeHandle

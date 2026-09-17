@@ -2158,7 +2158,12 @@ export default function App({ devPreviewReturnTab = null }) {
                             width: '28px',
                             height: '24px',
                             padding: 0,
-                            background: isOn ? 'rgba(216,168,78,0.18)' : 'var(--surface-3)',
+                            // UX 2026-09-17 (owner ruling): a pressed control turns
+                            // its GLYPH gold and changes nothing else — the desktop
+                            // tool rail's .btn-active is the house reference. The
+                            // rgba(216,168,78,.18) wash that used to sit here is the
+                            // banned gold-brown; the chip keeps its resting fill.
+                            background: 'var(--surface-3)',
                             color: isOn ? 'var(--accent)' : 'var(--text-2)',
                             border: '1px solid transparent',
                             borderRadius: '5px',
@@ -2212,7 +2217,11 @@ export default function App({ devPreviewReturnTab = null }) {
                                        it always had, written as a color-mix so the colour comes
                                        from the token file and not from the old ramp. */
                                     background: on ? 'var(--accent)' : 'color-mix(in srgb, var(--text-3) 40%, transparent)',
-                                    boxShadow: on ? '0 0 0 1px rgba(216,168,78,0.25)' : 'none',
+                                    /* UX 2026-09-17 (owner ruling): the dot itself IS the
+                                       gold glyph; the 25%-alpha gold halo that used to ring
+                                       it added a second, blurrier gold edge on a 4px square
+                                       and read as the banned wash at a glance. */
+                                    boxShadow: 'none',
                                   }} />
                                 );
                               }))}
@@ -2240,8 +2249,12 @@ export default function App({ devPreviewReturnTab = null }) {
                                         appearance: 'none',
                                         width: '26px',
                                         height: '26px',
-                                        background: on ? 'rgba(216,168,78,0.10)' : 'var(--surface-1)',
-                                        border: on ? '1px solid var(--accent)' : '1px solid var(--border)',
+                                        /* UX 2026-09-17 (owner ruling): the chosen cell in the
+                                           3x3 alignment grid is marked by its DOT turning gold
+                                           (below), not by a gold wash and a gold outline around
+                                           the cell. Same rule as the desktop tool rail. */
+                                        background: 'var(--surface-1)',
+                                        border: '1px solid var(--border)',
                                         borderRadius: '4px',
                                         cursor: 'pointer',
                                         display: 'flex',
@@ -2680,7 +2693,10 @@ export default function App({ devPreviewReturnTab = null }) {
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                                 style={{
-                                  background: on ? 'rgba(216,168,78,0.08)' : 'transparent',
+                                  /* UX 2026-09-17 (owner ruling): the chosen Fill / Border tab
+                                     is marked by the 2px gold underline below plus brighter
+                                     ink, never by a warm wash behind the label. */
+                                  background: 'transparent',
                                   color: on ? 'var(--text-2)' : 'var(--text-3)',
                                   fontWeight: 600,
                                   fontSize: 12,
@@ -2997,7 +3013,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      background: bottomToolbarApi.arrowBothEnds ? 'rgba(216,168,78,0.18)' : 'var(--surface-3)',
+                      // UX 2026-09-17 (owner ruling): on = gold glyph, nothing else.
+                      // The old rgba(216,168,78,.18) wash is the banned gold-brown.
+                      background: 'var(--surface-3)',
                       color: bottomToolbarApi.arrowBothEnds ? 'var(--accent)' : 'var(--text-2)',
                       border: '1px solid transparent',
                       borderRadius: '5px',
@@ -3027,7 +3045,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     style={{
                       height: 'var(--chrome-field-h)',
                       padding: '0 var(--chrome-field-pad-x)',
-                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : 'var(--surface-3)',
+                      // UX 2026-09-17 (owner ruling): in text-edit mode the "Aa"
+                      // label turns gold; the chip keeps its resting fill.
+                      background: 'var(--surface-3)',
                       color: bottomToolbarApi.richTextEditor
                         ? 'var(--accent)'
                         : bottomToolbarApi.canEnterTextEdit ? 'var(--text-2)' : 'var(--text-disabled)',

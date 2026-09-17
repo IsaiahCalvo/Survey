@@ -104,7 +104,12 @@ export const COLORS = {
     primaryButtonDisabled: 'var(--surface-1)',
     secondaryButton: 'var(--surface-2)',
     secondaryButtonHover: 'var(--accent-soft)',
-    optionSelectedBg: 'var(--accent-soft)',
+    /* UX 2026-09-17 (owner ruling: no warm fill on a selected thing). A modal's
+       chosen option is a ROW, so it takes the approved row cue — a surface step
+       plus the gold edge below — not --accent-soft washed across the whole row.
+       Read by CreateCategoryModal, NewColumnsModal, ExcelSyncConfirmModal and
+       OneDriveFolderBrowser; changing it here fixes all four at once. */
+    optionSelectedBg: 'var(--surface-3)',
     optionSelectedBorder: 'var(--accent)',
     hoverGlow: '0 0 0 1px var(--focus)',
   },

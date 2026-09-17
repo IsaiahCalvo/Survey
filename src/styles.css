@@ -1421,9 +1421,13 @@ input[type="text"].space-add-pages-input:focus-visible {
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
+/* UX 2026-09-17 (owner ruling: a selected thing does not get a warm fill). A
+   category card is a ROW, not a tool button, so it keeps the approved row cue —
+   the gold edge it already carries in its resting 1px border — and drops the
+   warm wash behind it. tokens.css: "--accent-soft ... never on a whole row or
+   panel, because a large warm wash is how the rejected brown happened." */
 .survey-marker-category-card.is-active {
   border-color: var(--accent);
-  background: rgba(216, 168, 78, 0.035);
 }
 
 .survey-marker-category-row {

@@ -323,17 +323,19 @@ const CompactColorPicker = ({
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-1)', fontSize: '13px', fontWeight: 600 }}>Color</span>
-                {/* UX: a segmented control is a well (--surface-2) on the panel with the
-                    chosen segment raised one step (--surface-3) and its glyph in gold,
-                    the palette's own "this is the one you are on". The unchosen glyph is
-                    --text-3 so the pair differ by ink as well as by fill. */}
+                {/* UX 2026-09-17 (owner ruling): a segmented control is a well
+                    (--surface-2) on the panel, and the chosen segment is marked by its
+                    GLYPH turning gold — no raised fill behind it. "When we select a
+                    tool, the icon turns gold, not everything else around it. It doesn't
+                    need a fill, and it doesn't need a border." The unchosen glyph stays
+                    --text-3. This matches the desktop tool rail's .btn-active exactly. */}
                 <div style={{ display: 'flex', gap: '4px', background: 'var(--surface-2)', padding: '2px', borderRadius: '4px' }}>
                     <button
                         type="button"
                         aria-label="Preset colors"
                         onClick={() => setMode('grid')}
                         style={{
-                            background: mode === 'grid' ? 'var(--surface-3)' : 'transparent',
+                            background: 'transparent',
                             border: 'none',
                             borderRadius: '2px',
                             padding: '4px',
@@ -354,7 +356,7 @@ const CompactColorPicker = ({
                         aria-label="Color spectrum"
                         onClick={() => setMode('spectrum')}
                         style={{
-                            background: mode === 'spectrum' ? 'var(--surface-3)' : 'transparent',
+                            background: 'transparent',
                             border: 'none',
                             borderRadius: '2px',
                             padding: '4px',

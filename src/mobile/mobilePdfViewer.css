@@ -77,11 +77,23 @@
 }
 
 /* UX 2026-09-17 (revision-2 palette, owner approved). The #2a2218 brown is
-   gone from the app. A SELECTED ROW is now a real surface step plus a 2px gold
+   gone from the app. A SELECTED ROW is a real surface step plus a 2px gold
    edge (painted as an inset shadow so the row's box never changes size and the
-   list cannot jiggle on selection); a SMALL active control — a chip, a pill, a
-   tab, a dropdown trigger — gets --accent-soft, the one sanctioned gold wash.
-   A large warm wash on a row is what made the brown read as a different app.
+   list cannot jiggle on selection).
+
+   AMENDED the same day, owner ruling: "When we select a tool, the icon turns
+   gold, not everything else around it. It doesn't need a fill, and it doesn't
+   need a border. You're not being consistent with the initial app, the desktop
+   and web version." A SMALL active control — a chip, a pill, a tab, a tool
+   button, a dropdown trigger — therefore turns its GLYPH var(--accent) and
+   changes NOTHING else: no --accent-soft wash, no gold border, no gold ring.
+   The house reference is the desktop tool rail's `.btn-active`
+   (src/styles.css), measured live on a Pan button as colour rgb(216,168,78),
+   background rgba(0,0,0,0), border 1px solid rgba(0,0,0,0), box-shadow none,
+   in a 34x34 box identical to its idle siblings. Where a control carried a 1px
+   border only while active, the border stays at `1px solid transparent` when
+   idle so nothing moves. Hovers are untouched — a hover is still a hover.
+
    These rules also used to ask for `var(--gold-bg, ...)`, `var(--accent-primary,
    ...)` and `var(--gold-soft, ...)`, none of which are defined outside
    .survey-hub — so the phone always painted the fallback. They take the shared
@@ -312,9 +324,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-variant-numeric: tabular-nums;
 }
 
+/* UX 2026-09-17 (owner ruling): no wash and no gold outline on an open pill.
+   Opening it swaps the "n / N" fraction for a live page input with a caret, so
+   the state is already unmistakable. The numerals stay white (owner amendment:
+   the page pill keeps white text), so there is no glyph here to turn gold. */
 .mobile-pdf-header__page-pill.is-open {
-  border-color: var(--accent-press);
-  background: var(--accent-soft);
+  border-color: var(--border);
 }
 
 /* Tap zone 1 — the whole "n / N" fraction → inline page-jump input.
@@ -377,9 +392,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-left: 1px solid var(--border);
 }
 
-.mobile-pdf-header__page-pill.is-open .mobile-pdf-header__page-chevron {
-  border-left-color: var(--accent-press);
-}
+/* UX 2026-09-17 (owner ruling): the divider inside the pill used to turn gold
+   in sympathy with the pill's gold outline. Both are gone; the hairline stays
+   --border whether the pill is open or shut. */
 
 .mobile-pdf-header__zoom-menu {
   position: absolute;
@@ -516,7 +531,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-header__zoom-fits > button.is-active {
   color: var(--accent);
-  background: var(--accent-soft);
 }
 
 /* UX 2026-09-16 (sizing pass + rail-defect pass, merged): the rail is
@@ -655,10 +669,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   inset-inline: -4px;
 }
 
+/* The phone tool rail — the control the owner pointed at. Same as desktop's
+   .btn-active: gold glyph on the plain rail, the resting 1px transparent border
+   kept so the 30px chip never changes size when a tool is picked. */
 .mobile-pdf-tools__button.is-active {
   color: var(--accent);
-  background: var(--surface-1);
-  border-color: var(--accent-press);
 }
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
@@ -762,11 +777,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 650;
 }
 
-.mobile-pdf-lasso-controls > button.is-active,
-.mobile-pdf-lasso-controls > button:active {
+.mobile-pdf-lasso-controls > button.is-active {
   color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent-press);
+}
+
+/* The finger-down feedback is the phone's hover: a faint neutral wash, the same
+   one .quick-style__width:hover uses. It was grouped with .is-active above and
+   so painted the banned gold wash on every tap. */
+.mobile-pdf-lasso-controls > button:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .mobile-pdf-lasso-controls > button:focus-visible {
@@ -898,10 +917,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 800;
 }
 
+/* The active category's LETTER turns gold; the disc it sits on does not fill.
+   (Owner ruling 2026-09-17.) */
 .mobile-pdf-tools__survey-categories button.is-active {
-  color: var(--accent-text);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .mobile-pdf-tools__survey-entities {
@@ -927,8 +946,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
+/* DELIBERATE EXCEPTION to the gold-glyph rule (owner, 2026-09-17): this
+   button's glyph IS the entity's own colour disc, and a colour disc cannot
+   turn gold without lying about the colour. So it keeps the gold RING — the
+   same exception the quick-colour dots and the colour swatch hold. The ring is
+   the resting `1px solid transparent` border recoloured, so nothing moves; the
+   --surface-1 plate behind it is gone. */
 .mobile-pdf-tools__survey-entities button.is-active {
-  background: var(--surface-1);
   border-color: var(--accent);
 }
 
@@ -1390,10 +1414,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties__keep.is-active {
   color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent-press);
 }
 
+/* DELIBERATE EXCEPTION: `> span` is the CHECKBOX box, and a ticked checkbox is
+   a filled box with a dark tick everywhere in this app and every other. There
+   is no glyph outside the box to turn gold. */
 .mobile-pdf-properties__keep.is-active > span {
   color: var(--accent-text);
   background: var(--accent);
@@ -1720,7 +1745,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-styled-select__trigger.is-open {
   color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .mobile-styled-select__trigger:disabled { color: var(--text-3); opacity: 0.7; }
@@ -1807,9 +1831,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 800;
 }
 
+/* B / I / U / S on the phone's live text strip: the letter turns gold, the chip
+   keeps its resting --surface-3. */
 .mobile-pdf-properties__format.is-active {
   color: var(--accent);
-  background: var(--accent-soft);
 }
 
 /* Live text formatting is intentionally a single horizontal strip. RULED CHANGE
@@ -1879,7 +1904,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__menu b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-properties__menu em { color: var(--text-3); font-style: normal; }
 
-.mobile-pdf-properties__edit.is-active { color: var(--accent); background: var(--accent-soft); }
+.mobile-pdf-properties__edit.is-active { color: var(--accent); }
 .mobile-pdf-properties__edit:disabled { opacity: 0.4; }
 
 .mobile-pdf-text-defaults {
@@ -1977,8 +2002,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-defaults__tabs > button.is-active {
-  color: var(--text-1);
-  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .mobile-pdf-text-defaults__tabs > button:focus {
@@ -2107,8 +2131,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 50%;
 }
 
+/* DELIBERATE EXCEPTION, as the rail's entity dots: this button's glyph is a
+   colour disc, so it keeps the gold RING instead of turning gold. The wash
+   behind it is gone. */
 .mobile-pdf-text-card__colors > button.is-active {
-  background: var(--accent-soft);
   border-color: var(--accent);
 }
 
@@ -2187,9 +2213,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-defaults__format > button.strike { text-decoration: line-through; }
 
 .mobile-pdf-text-defaults__format > button.is-active {
-  color: var(--text-1);
-  background: var(--accent-soft);
-  border-color: var(--accent-press);
+  color: var(--accent);
 }
 
 .mobile-pdf-text-card__size > input {
@@ -2233,8 +2257,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger.is-open,
 .mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger.is-open,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger.is-open {
-  background: var(--accent-soft);
-  border-color: var(--accent-press);
+  color: var(--accent);
 }
 
 /* UX 2026-09-16 (phone sweep, owner: "make them the same size, keep the sheet
@@ -2321,8 +2344,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-defaults__alignments > button.is-active {
   color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent-press);
 }
 
 .mobile-pdf-text-card__color-tabs {
@@ -2350,7 +2371,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid var(--border); }
-.mobile-pdf-text-card__color-tabs > button.is-active { color: var(--text-1); background: var(--accent-soft); }
+.mobile-pdf-text-card__color-tabs > button.is-active { color: var(--accent); }
 
 .mobile-pdf-text-card__color-tabs i {
   width: 11px;
@@ -2523,11 +2544,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 50%;
 }
 
+/* The bottom dock. Same as the rail and the desktop bar: the glyph goes gold,
+   the button keeps its resting --surface-1 plate and --border hairline. */
 .mobile-pdf-dock__side.is-active,
 .mobile-pdf-dock__center.is-active {
   color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent-press);
 }
 
 .mobile-pdf-dock__center {
@@ -2853,8 +2874,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-survey-sheet-export.is-open {
   color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent);
 }
 
 .mobile-survey-sheet-export:disabled { opacity: 0.45; }
@@ -2999,10 +3018,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   white-space: nowrap;
 }
 
+/* UX 2026-09-17 (owner ruling). This rule was the inconsistency he named: it
+   took the desktop's own `.btn-active` — gold ink on nothing — and, inside the
+   mobile survey sheet only, repainted it as a solid gold slab with a gold
+   outline. The same button therefore read one way on desktop and another on
+   the phone. It now inherits the shared rule, so there is one active state in
+   the app; only the !important needed to survive the sheet's own overrides
+   stays. */
 .mobile-pdf-sheet .btn-active {
-  color: var(--accent-text) !important;
-  background: var(--accent) !important;
-  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  background: transparent !important;
 }
 
 .mobile-survey-exit-footer {
@@ -3587,7 +3612,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab.is-active {
   color: var(--accent) !important;
-  background: var(--accent-soft) !important;
 }
 
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
@@ -3800,7 +3824,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pages-actions > button[aria-pressed="true"] {
   color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .mobile-pages-actions > i {
