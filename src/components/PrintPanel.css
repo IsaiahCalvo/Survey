@@ -174,9 +174,11 @@
   cursor: pointer; font-family: inherit;
 }
 .pp-quick:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
-/* UX 2026-04-24: active state for the Pages-to-print shortcut pills. */
+/* UX 2026-04-24: active state for the Pages-to-print shortcut pills.
+   AMENDED 2026-09-17 (owner ruling): the chosen pill's LABEL turns gold; it no
+   longer fills solid gold. Same rule as the desktop tool rail's .btn-active. */
 .pp-quick.is-active {
-  background: var(--pp-accent); border-color: var(--pp-accent); color: var(--pp-accent-ink);
+  color: var(--pp-accent);
 }
 /* UX 2026-04-24: soft-red state for range inputs when the user types
    a page that falls outside the top-row selection. Non-blocking — we
@@ -367,7 +369,13 @@
   white-space: nowrap; text-transform: none;
 }
 .pp-ppicker-opt:hover { background: rgba(255,255,255,0.08); }
-.pp-ppicker-opt.is-active { background: var(--pp-accent); color: var(--pp-accent-ink); }
+/* A row inside a dropdown menu, so it takes the app's menu-row cue: a surface
+   step plus a 2px gold left edge and gold ink — the same as
+   .annotation-dropdown__option.is-active and the phone's menus. Not a gold
+   slab (owner ruling 2026-09-17). */
+.pp-ppicker-opt.is-active {
+  background: var(--surface-3); color: var(--pp-accent); box-shadow: inset 2px 0 var(--pp-accent);
+}
 .pp-preview-stage {
   flex: 1 1 0;
   min-height: 180px;
@@ -447,7 +455,9 @@
 .pp-pager-dot:hover { background: var(--pp-ink-2); color: var(--text-1); transform: translateY(-1px); }
 .pp-pager-dot:focus-visible { outline: none; border-color: var(--pp-accent); }
 .pp-pager-dot.is-landscape { min-width: 26px; }
-.pp-pager-dot.is-current { background: var(--pp-accent); color: var(--pp-accent-ink); }
+/* The page you are on: the number turns gold on the pager's own plate. The
+   1px border is already transparent at rest, so nothing moves. */
+.pp-pager-dot.is-current { color: var(--pp-accent); }
 
 .pp-bigprev-btn {
   box-sizing: border-box;
@@ -517,7 +527,7 @@
 }
 .pp-scope-tab:hover { background: var(--pp-panel-elev); color: var(--pp-ink-2); }
 .pp-scope-tab.is-active {
-  background: var(--pp-accent); color: var(--pp-accent-ink);
+  color: var(--pp-accent);
 }
 .pp-scope-tab small {
   font-size: 10px; opacity: 0.9; font-weight: 400;
@@ -578,7 +588,7 @@
   border: 0; border-radius: 4px;
   padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: inherit;
 }
-.pp-seg button.is-active { background: var(--pp-accent); color: var(--pp-accent-ink); }
+.pp-seg button.is-active { color: var(--pp-accent); }
 
 /* Orientation row */
 .pp-orient-row { display: flex; gap: 8px; align-items: center; }

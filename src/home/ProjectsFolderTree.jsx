@@ -1143,7 +1143,9 @@ export default function ProjectsFolderTree({
                             data-document-id={f.id}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
-                              background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
+                              // UX 2026-09-17 (owner ruling): a ticked row lifts a
+                              // surface step, never a warm gold wash.
+                              background: fileSelect && isChecked ? 'var(--ink-600)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
                               display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
@@ -1793,7 +1795,8 @@ export default function ProjectsFolderTree({
                       border: '1px solid var(--ink-500)',
                       borderRadius: 7,
                       padding: '9px 10px',
-                      background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : 'var(--ink-800)',
+                      // UX 2026-09-17 (owner ruling): the same surface step, not a wash.
+                      background: fileSelect && isChecked ? 'var(--ink-600)' : 'var(--ink-800)',
                     }}
                   >
                     <div style={{ minWidth: 0 }}>

@@ -129,10 +129,16 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* Current width — the same treatment the "Arrowhead on both ends" toggle uses
-   for its on state, so one pressed state reads the same across the row. */
+/* Current width. UX 2026-09-17 (owner ruling): "When we select a tool, the icon
+   turns gold, not everything else around it. It doesn't need a fill, and it
+   doesn't need a border." The house reference is the desktop tool rail's
+   `.btn-active` (src/styles.css): ink var(--accent), background transparent,
+   border 1px solid transparent, no shadow — measured on a live Pan button as
+   rgb(216,168,78) on rgba(0,0,0,0) in a 34x34 box identical to its idle
+   siblings. This chip used to paint rgba(216,168,78,.18), the muddy gold-brown
+   wash the owner had already banned. The rule (the 22px line) IS the glyph, so
+   it is what turns gold. The hover above stays: a hover is still a hover. */
 .quick-style__width.is-current {
-  background: rgba(216, 168, 78, 0.18);
   color: var(--accent);
 }
 

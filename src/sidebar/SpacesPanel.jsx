@@ -633,8 +633,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     }
                                   }}
                                   style={{
-                                    background: isActiveRegionEdit ? 'rgba(216, 168, 78, 0.18)' : 'transparent',
-                                    border: isActiveRegionEdit ? '1px solid rgba(216, 168, 78, 0.55)' : '1px solid transparent',
+                                    /* UX 2026-09-17 (owner ruling): region-edit ON turns the
+                                       pencil gold and leaves its chrome alone — no wash, no
+                                       gold outline. The 1px transparent border stays so the
+                                       button's box never changes size. */
+                                    background: 'transparent',
+                                    border: '1px solid transparent',
                                     borderRadius: '4px',
                                     padding: '2px',
                                     display: 'inline-flex',

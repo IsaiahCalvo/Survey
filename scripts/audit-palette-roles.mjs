@@ -157,8 +157,11 @@ const EXCEPTIONS = [
     why: 'the popover arrow is the panel edge continued as a triangle, so it takes that edge token; `fill` reads as a surface role here, but the shape is a hairline turning a corner' },
   { file: 'src/components/AnnotationDropdown.css', token: '--border-strong', hex: '#3a4252',
     why: 'the same arrow on the other popover, for the same reason' },
-  { file: 'src/components/CompactColorPicker.jsx', token: '--surface-3', hex: '#5a6473',
-    why: 'the chosen segment of the picker\'s presets/spectrum toggle. The owner-approved 2026-09-17 palette builds a selected state as --surface-3 raised on the well under it PLUS gold, not as a light-grey pill: the old #5a6473 chip only read because the well beneath it was the retired #2a3140, and both moved in the same commit. The segment now takes --surface-3 and its glyph --accent, so the pair differ by hue as well as by one surface step - 22 brightness points below the old chip on purpose' },
+  /* REMOVED 2026-09-17: the CompactColorPicker --surface-3 departure. The owner
+     ruled that same day that a selected control turns its GLYPH gold and takes
+     no fill at all ("It doesn't need a fill, and it doesn't need a border"), so
+     the chosen segment is now `background: 'transparent'` with an --accent
+     glyph. There is no surface token on that line any more to judge. */
 ];
 const excepted = (file, token, hex) => EXCEPTIONS.find((e) => e.file === file
   && e.token === token && expand(e.hex) === expand(hex));
