@@ -75,6 +75,22 @@ export const matchedQuickColour = (value) => {
 };
 
 /**
+ * A longer palette that OPENS with the quick four, with any colour the four
+ * already hold dropped from the tail.
+ *
+ * WHY: the phone's settings sheet shows a nine-cell palette of its own, and its
+ * blue was #4A90E2 while the quick dot one tap away was #0000FF. Two blues a
+ * tap apart is a colour a user cannot get back to, and a row of "defaults" that
+ * disagrees with the row above it. The sheet now starts with the same four, out
+ * of the same list, so one blue is one blue everywhere in the app.
+ */
+export const withQuickColoursFirst = (rest = []) => Object.freeze([
+  ...QUICK_COLOURS,
+  ...rest.filter((colour) => !QUICK_COLOURS
+    .some((quick) => normaliseQuickColour(quick) === normaliseQuickColour(colour))),
+]);
+
+/**
  * Width comparison. Widths keep one decimal (the Cloud style's 2.5 default),
  * so a committed "2.0" and the preset 2 are the same width.
  */

@@ -1105,10 +1105,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      rich-text variant had already solved this with flex-start + its own scroll;
      every variant does it now. */
   justify-content: flex-start;
-  /* 5px, the same pitch gap the tool rail uses. It is also what lets Arrow's
-     four sized controls - swatch, Width, Border style, Arrowhead - fit a 375px
-     screen with no scrolling at all, so only its two label buttons scroll into
-     reach. Pinned by tests/mobileToolPropertiesReach.test.mjs. */
+  /* 5px, the rail's own pitch gap. Arrow's row used to fit 375px outright; the
+     quick styles push it past the band and it SCROLLS, as the owner ruled -
+     547.7px of controls in a 279px band, 269px of scroll at 375x812. Budget
+     and scroll back pinned by tests/mobileToolPropertiesReach.test.mjs. */
   gap: 5px;
   overflow-x: auto;
   overflow-y: visible;
@@ -1361,13 +1361,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   overflow: hidden;
-  color: var(--mobile-swatch-stroke, #1e293b);
+  /* UX 2026-09-17: --core is the channel the quick dots act on (the disc) and
+     --ring is the other one (the 2px inset ring, and the counter's digit). The
+     variables used to be named fill / stroke, which stopped being the truth
+     once the disc started showing a shape's border. */
+  color: var(--mobile-swatch-ring, #1e293b);
   background:
-    linear-gradient(var(--mobile-swatch-fill, #ff0000), var(--mobile-swatch-fill, #ff0000)) padding-box,
+    linear-gradient(var(--mobile-swatch-core, #ff0000), var(--mobile-swatch-core, #ff0000)) padding-box,
     conic-gradient(#cfcfcf 0 25%, #fff 0 50%, #cfcfcf 0 75%, #fff 0) border-box;
   border: 0;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 2px var(--mobile-swatch-stroke, transparent);
+  box-shadow: inset 0 0 0 2px var(--mobile-swatch-ring, transparent);
   font-size: 12px;
   font-weight: 800;
   line-height: 1;

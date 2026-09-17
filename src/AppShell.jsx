@@ -124,6 +124,9 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
   // One channel — the fill side or the stroke side — with the colour it holds,
   // the opacity it holds, and the write that changes it.
   const channel = (useFill) => ({
+    // The picker tab this channel IS, so the swatch can open the picker on the
+    // channel the dots act on without a second copy of the rule below.
+    tab: useFill ? 'fill' : 'border',
     color: useFill ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor,
     opacity: useFill ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : ((bottomToolbarApi.strokeOpacity ?? 100) / 100),
     apply: (hex, alpha) => {
@@ -157,9 +160,13 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
   // on — the line width and the line type — so the whole quick cluster reads
   // as one idea. The counter is the exception and takes the fill, because a
   // pin's colour IS its fill and its stroke is only the number printed on it.
-  // Deliberately NOT the picker's current tab: that tab defaults to Fill, and
-  // a new rectangle's fill is white at 0% opacity, so on the tab default every
-  // dot would have set an invisible colour and read as a dead control.
+  // Deliberately NOT the picker's current tab: a tab defaulting to Fill would
+  // have pointed the dots at a new rectangle's fill, which is white at 0%
+  // opacity, so every dot press would have been invisible and the row would
+  // have read as a dead control. The traffic runs the other way instead — the
+  // picker OPENS on this channel's tab (quick.tab, applied where the tab state
+  // lives) and the swatch beside the dots SHOWS this channel, so the dots, the
+  // gold ring and the swatch are three views of one colour.
   const quick = tool === 'counter' && isShape ? channel(true) : channel(false);
 
   return {
@@ -654,7 +661,12 @@ export default function App({ devPreviewReturnTab = null }) {
   const setShowEraserTypeMenu = useCallback((next) => setDropdownOpen('eraser-type', next), [setDropdownOpen]);
   // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
   // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
-  const [colorPickerTab, setColorPickerTab] = useState('fill');
+  // UX 2026-09-17: it opens on 'border', not 'fill', because that is the channel
+  // the four quick dots beside it act on (see resolveAnnotationPaint). It used
+  // to open on Fill while the dots set the border, so two neighbouring controls
+  // showed two different colours of the same shape — and on a fresh rectangle
+  // the tab showed white at 0% opacity, i.e. nothing at all.
+  const [colorPickerTab, setColorPickerTab] = useState('border');
   const annotationColorPickerRef = useRef(null);
   // The one resolved paint the colour controls in the tool-properties row all
   // read and write: the quick colour dots, the swatch's ring, and the picker
@@ -667,6 +679,15 @@ export default function App({ devPreviewReturnTab = null }) {
   // from a selected mark). A ring that were always on the swatch as well would
   // stop meaning "current" and start reading as decoration.
   const quickColourOnSwatch = !!annotationPaint && !matchedQuickColour(annotationPaint.quick.color);
+  // UX 2026-09-17: and it goes back to that channel's tab whenever the armed
+  // tool changes which channel the dots act on — Counter takes the fill (a
+  // pin's colour IS its fill), every other tool takes the border. Only that
+  // switch resets it: a user who reaches for the Fill tab on a rectangle keeps
+  // Fill while they stay on shapes.
+  const quickPaintTab = annotationPaint?.quick?.tab;
+  useEffect(() => {
+    if (quickPaintTab) setColorPickerTab(quickPaintTab);
+  }, [quickPaintTab]);
 
   const [showFontColorPicker, setShowFontColorPicker] = useState(false);
   useEffect(() => {
@@ -2330,8 +2351,17 @@ export default function App({ devPreviewReturnTab = null }) {
                     }}>1</span>
                   </button>
                 ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
-                  /* 2026-05-25: Fill + border swatch. Checker shows through
-                     low-opacity fills, faint hairline lifts black borders. */
+                  /* 2026-05-25: Border + fill swatch. Checker shows through
+                     low-opacity paint, faint hairline lifts black off the bar.
+                     UX 2026-09-17: the DISC is the border and the 2px ring
+                     around it is the fill — the disc side and the four dots
+                     beside it are the same channel, so a gold ring on this
+                     swatch points at a colour the user can actually see on it.
+                     It used to be the other way up, which meant a fresh
+                     rectangle showed a 0%-opacity white disc next to four dots
+                     setting its red border. backgroundClip keeps the white
+                     checker behind the disc only, so a transparent fill reads
+                     as no ring rather than as a white one. */
                   <button
                     data-annotation-color-trigger
                     onClick={() => {
@@ -2344,7 +2374,8 @@ export default function App({ devPreviewReturnTab = null }) {
                       height: 'var(--chrome-field-h)',
                       padding: 0,
                       borderRadius: '50%',
-                      border: `2px solid ${bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
+                      border: `2px solid ${bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)}`,
+                      backgroundClip: 'padding-box',
                       boxSizing: 'border-box',
                       position: 'relative',
                       overflow: 'hidden',
@@ -2356,7 +2387,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
                       }}
                     />
                   </button>

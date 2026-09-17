@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
-import { matchedQuickColour } from '../utils/quickStylePresets';
+import { matchedQuickColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
 import { QuickColourDots, QuickWidthPresets } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
@@ -123,17 +123,20 @@ const MOBILE_ARROWHEAD_STYLE_LABELS = {
   horizontalLine: 'Horizontal Line',
 };
 
-const MOBILE_ANNOTATION_COLORS = [
-  '#ff0000',
-  '#4A90E2',
-  '#27C07D',
+// UX 2026-09-17 (owner): the settings sheet's palette opens with the same four
+// quick colours the strip's dots offer, then its own longer tail. Its old first
+// three were a red that matched, a blue that did not (#4A90E2 against the dot's
+// #0000FF) and a green that did not (#27C07D against #00FF00) — three
+// near-misses a single tap apart from the dots above them. Those two are gone;
+// the tail keeps the colours the dots do not carry, and the count is unchanged
+// at nine, so the sheet's grid still fills.
+const MOBILE_ANNOTATION_COLORS = withQuickColoursFirst([
   '#F4D35E',
   '#ffffff',
   '#1e293b',
   '#C7A7FF',
   '#FF8A3D',
-  '#000000',
-];
+]);
 
 // Mirrors zoomController's clampScale bounds (MIN_SCALE 0.01, MAX_SCALE 40) so
 // the phone steppers grey out at exactly the limits the desktop toolbar hits.
@@ -902,6 +905,19 @@ export function MobileToolProperties({ api }) {
   if (textMarkup.active) {
     const markupColor = toHexColor(textMarkup.color, '#f4d35e');
     const markupOpacity = textMarkup.opacity / 100;
+    // The one write this strip's colour controls share — the quick dots and the
+    // picker the colour button opens. A highlight keeps its own strength unless
+    // the picker's slider is what moved, so a dot passes no alpha and the mark
+    // keeps the opacity it had; 5% is the floor below which a highlight stops
+    // marking anything at all.
+    const applyMarkupPaint = (hex, alpha) => {
+      const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
+      if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+      else {
+        api.handleStrokeColorChange?.(hex);
+        api.handleStrokeOpacityChange?.(opacity);
+      }
+    };
     if (textMarkup.sharedToolbarActive) {
       return api.showAnnotationColorPicker ? (
         <MobileColorPickerSurface
@@ -909,14 +925,7 @@ export function MobileToolProperties({ api }) {
           color={markupColor}
           opacity={markupOpacity}
           minOpacity={0.05}
-          onChange={(hex, alpha) => {
-            const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
-            if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
-            else {
-              api.handleStrokeColorChange?.(hex);
-              api.handleStrokeOpacityChange?.(opacity);
-            }
-          }}
+          onChange={applyMarkupPaint}
           onClose={() => api.setShowAnnotationColorPicker?.(false)}
         />
       ) : null;
@@ -930,9 +939,21 @@ export function MobileToolProperties({ api }) {
           role="toolbar"
           aria-label={textMarkup.editingSelection ? 'Edit text markup' : 'Text markup defaults'}
         >
+          {/* UX 2026-09-17 (owner): the same four quick colours the desktop
+              text-markup row leads with. The phone strip had the colour
+              button but no dots, which made highlighting the one place on
+              the phone where changing colour still cost a sheet — and the
+              one place the two platforms disagreed about what a tool row
+              looks like. A tap repaints the armed markup and the selected
+              one at the strength they already have. */}
+          <QuickColourDots
+            platform="phone"
+            value={markupColor}
+            onPick={(hex) => applyMarkupPaint(hex)}
+          />
           <button
             type="button"
-            className="mobile-pdf-properties__color"
+            className={`mobile-pdf-properties__color${matchedQuickColour(markupColor) ? '' : ' is-current-color'}`}
             aria-label="Text markup color and opacity"
             title="Text markup color and opacity"
             aria-expanded={Boolean(api.showAnnotationColorPicker)}
@@ -957,14 +978,7 @@ export function MobileToolProperties({ api }) {
             color={markupColor}
             opacity={markupOpacity}
             minOpacity={0.05}
-            onChange={(hex, alpha) => {
-              const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
-              if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
-              else {
-                api.handleStrokeColorChange?.(hex);
-                api.handleStrokeOpacityChange?.(opacity);
-              }
-            }}
+            onChange={applyMarkupPaint}
             onClose={() => api.setShowAnnotationColorPicker?.(false)}
           />
         )}
@@ -1119,8 +1133,10 @@ export function MobileToolProperties({ api }) {
           opens the full picker. One shared constant drives both platforms
           (src/utils/quickStylePresets.js) so a red on the phone is the red on
           the desktop. A tap applies straight away — armed tool and selected
-          mark — and changes the same channel the swatch's sheet opens on:
-          the fill for a fillable shape, the stroke for everything else. */}
+          mark — to the stroke for every tool but the counter, which takes the
+          fill because a pin's colour IS its fill. The swatch beside them shows
+          that same channel and its sheet opens on that same section, so the
+          dots, the gold ring and the swatch never show two colours. */}
       {!isEraser && showStroke && (
         <QuickColourDots
           platform="phone"
@@ -1139,12 +1155,19 @@ export function MobileToolProperties({ api }) {
           <button
             type="button"
             className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}${matchedQuickColour(quickColourValue) ? '' : ' is-current-color'}`}
-            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Fill and border colors') : 'Stroke color'}
+            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Border and fill colors') : 'Stroke color'}
             style={{
-              '--mobile-swatch-fill': showFill ? toHexColor(api.fillColor, '#ff0000') : toHexColor(api.strokeColor, '#ff0000'),
-              '--mobile-swatch-stroke': toHexColor(api.strokeColor, '#ff0000'),
+              // UX 2026-09-17: the disc is the channel the four dots act on and
+              // the 2px ring is the other one. On a fillable shape that used to
+              // be the wrong way up — a 0%-opacity white fill filled the disc
+              // while the dots beside it set the red border — so the two
+              // neighbours showed two different colours of one shape.
+              '--mobile-swatch-core': quickColourValue,
+              '--mobile-swatch-ring': showFill && tool !== 'counter'
+                ? toHexColor(api.fillColor, '#ffffff')
+                : toHexColor(api.strokeColor, '#ff0000'),
             }}
-            onClick={() => openSheet(showFill ? 'fill' : 'stroke')}
+            onClick={() => openSheet(tool === 'counter' ? 'fill' : 'stroke')}
           >
             {tool === 'counter' ? '1' : null}
           </button>
