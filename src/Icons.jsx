@@ -673,18 +673,38 @@ const ICON_RENDERERS = {
       </svg>
     ),
     // Undo icon
+    //
+    // UX 2026-09-17 (desktop sweep): the arrow is drawn off-centre on the 24
+    // grid and then mirrored by the CSS transform below, which put its ink LOW
+    // in the button - the two leftmost controls in the viewer's top row read as
+    // sitting under the tool group beside them. Measured at 1440x900 in a 34px
+    // button with an 18px glyph: ink centre 1.13px below the button's centre,
+    // against Draw at -0.37 and Export at 0.00 in the same row - a 1.5px
+    // disagreement between neighbours.
+    // The paths' own ink (including half the stroke) spans x 2.25..20.75 and
+    // y 1.25..19.75, so its centre is 11.5, 10.5 where the grid's is 12, 12.
+    // The <g> translate is exactly that difference. It is applied in the glyph's
+    // own coordinates, BEFORE the mirror, and a mark centred on the grid stays
+    // centred under any flip about that centre - so both arrows now sit on the
+    // row's centre line whichever way they point.
     undo: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(180deg) scaleX(-1)' }} className={className}>
-        <path d="M9 14H14C17.3137 14 20 11.3137 20 8C20 4.68629 17.3137 2 14 2H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M9 14V19L3 14L9 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g transform="translate(0.5 1.5)">
+          <path d="M9 14H14C17.3137 14 20 11.3137 20 8C20 4.68629 17.3137 2 14 2H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 14V19L3 14L9 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
     ),
 
-    // UX: history arrows must mirror, not rotate; keep the flip here for every surface.
+    // UX: history arrows must mirror, not rotate; keep the flip here for every
+    // surface. The translate is the mirror image of undo's, for the same reason
+    // (this mark's ink centre is 12.5, 10.5 on the grid).
     redo: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(180deg) scaleX(-1)' }} className={className}>
-        <path d="M15 14H10C6.68629 14 4 11.3137 4 8C4 4.68629 6.68629 2 10 2H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M15 14V19L21 14L15 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g transform="translate(-0.5 1.5)">
+          <path d="M15 14H10C6.68629 14 4 11.3137 4 8C4 4.68629 6.68629 2 10 2H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M15 14V19L21 14L15 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
     ),
 
