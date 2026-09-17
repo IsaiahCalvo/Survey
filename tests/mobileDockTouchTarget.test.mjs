@@ -61,8 +61,17 @@ const declaredHeight = (selector) => {
 
 // A transparent pad counts only if it is attached to the button itself and
 // reaches outwards, the way the rail chips' pads do.
+// RULED CHANGE 2026-09-17 (owner ruling: "make each button's glyph the vertical
+// centre of the painted bar region ... keep the 44px hit pads"). Centring the
+// chips in the whole perceived bar drops each one by half the reserve the dock
+// stopped honouring, so both inset-block values now subtract that drop back out
+// to keep the pad on the bar rather than on the chip - which makes the first
+// value a calc(), where it used to be a bare -3px. The pad still reaches
+// outwards, and it still covers the same absolute pixels (44px at the 10px
+// floor, 68px at a 34px inset); this matcher just has to read a calc. What the
+// pad actually measures is pinned by tests/mobileDockBarCentring.test.mjs.
 const hasHitPad = (selector) => rulesFor(`${selector}::after`)
-  .some((body) => /inset(?:-block)?:\s*-/.test(body));
+  .some((body) => /inset(?:-block)?:\s*(?:-|calc\(\s*-)/.test(body));
 
 // Only the round side buttons are pinned here: those are the two that were a
 // full 44x44 on main, so 30px is an outright regression. The centre pill went

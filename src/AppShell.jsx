@@ -606,14 +606,25 @@ export default function App({ devPreviewReturnTab = null }) {
   // in the top-right pill and the retired vertical strip. `m` is a
   // ZOOM_MODES id; anything that isn't fit-width/fit-height (incl. MANUAL)
   // falls back to the fit-page glyph.
+  // UX 2026-09-17 (desktop sweep): the glyph keeps its own square, whatever the
+  // label beside it does. The footer's Fit control is a flex row of glyph +
+  // variable-length label, and an <svg> is a flex item with flex-shrink 1 and
+  // min-width auto, so a long label squeezed the icon horizontally and nothing
+  // else: measured at 1280x800 with the label "Manual 88%", the 14x14 glyph
+  // rendered 12.34 x 14.00 — 12% narrower than it is tall, the only glyph in the
+  // app that changed aspect ratio with content. Same guard the rail tab already
+  // carries (PDFSidebar.jsx). Applied here, at the one place all three Fit call
+  // sites share, so the menu rows and the right-edge strip cannot pick it up
+  // later either.
   const renderFitIcon = (m, size = 15) => {
+    const squared = { width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, flexShrink: 0 };
     if (m === ZOOM_MODES.FIT_WIDTH) {
-      return <Icon name="fitWidth" size={size} />;
+      return <Icon name="fitWidth" size={size} style={squared} />;
     }
     if (m === ZOOM_MODES.FIT_HEIGHT) {
-      return <Icon name="fitHeight" size={size} />;
+      return <Icon name="fitHeight" size={size} style={squared} />;
     }
-    return <Icon name="fitPage" size={size} />;
+    return <Icon name="fitPage" size={size} style={squared} />;
   };
 
   // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
@@ -3318,8 +3329,14 @@ export default function App({ devPreviewReturnTab = null }) {
               // changes (LEFTWARD over the PDF when collapsed, UPWARD above
               // the footer when expanded). Outside-click close comes from
               // zoomMenuRef on the wrapper (PDFViewer's zoom-menu machinery).
+              // UX 2026-09-17 (desktop sweep): this menu is the same kind of
+              // thing as the line-style popover and the Select split menu, so it
+              // takes their numbers. It was the outlier of the three: 28px rows
+              // (pad 6px 8px) against their 34, a literal 16px glyph against
+              // --rail-control-glyph 14, and a 2px radius against
+              // --chrome-radius 6 — it met neither token.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'rgb(30, 30, 30)', border: '1px solid #2a3140', borderRadius: '2px', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                <div style={{ position: 'absolute', background: 'rgb(30, 30, 30)', border: '1px solid #2a3140', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;
@@ -3328,9 +3345,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'transparent', border: 'none', borderRadius: '2px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', minHeight: 'var(--chrome-menu-row-h)', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
                       >
-                        {renderFitIcon(option.id, 16)}
+                        {renderFitIcon(option.id, RAIL_CONTROL_GLYPH)}
                         <span>{option.label}</span>
                       </button>
                     );

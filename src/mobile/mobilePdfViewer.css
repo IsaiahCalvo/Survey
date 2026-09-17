@@ -2,6 +2,25 @@
   --mobile-bottom-inset: max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   --mobile-viewer-dock-height: calc(52px + var(--mobile-bottom-inset));
 
+  /* UX 2026-09-17 (owner ruling: "the dock icons sit too high against the
+     painted bar on web mobile and iOS"). The dock reserves clearance for the
+     home indicator, and the indicator's OWN footprint is what needs reserving -
+     not the whole safe-area inset. On an iPhone 17 Pro the inset is 34pt while
+     the indicator itself lives in the bottom ~21pt, and in a browser there is
+     no indicator at all: the raw inset is 0 there and --mobile-bottom-inset is
+     showing its 10px floor, which is padding, not clearance.
+     So: reserve = min(21px, the RAW inset). 0 on the web (the whole painted bar
+     is the bar the user sees, and the chips centre in all of it), 21px on iOS
+     (the chips centre in the bar ABOVE the indicator). Everything that must
+     still clear the physical inset - sheets, the rail's bottom padding, the
+     dock box itself - keeps using --mobile-bottom-inset. */
+  --mobile-dock-reserve: min(21px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  /* How far a dock chip drops once the band is the perceived bar rather than
+     its top 36px: half the reserve the dock stopped honouring. 5px on the web,
+     6.5px at a 34px inset, 0 on a phone whose inset is 21px or less. The hit
+     pads below subtract it back out so the finger target does not move. */
+  --mobile-dock-band-drop: calc((var(--mobile-bottom-inset) - var(--mobile-dock-reserve)) / 2);
+
   /* PHONE SIZE TOKENS (owner ruling 2026-09-16 — "everything is a little big;
      use Drawboard's ratios as the page, uniformly"). Reference = Drawboard PDF
      on an iPhone, measured 2026-09-16: tool rail 40.4pt wide with a 34.7pt
@@ -105,8 +124,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   left: 7px;
   /* UX 2026-07-12 (matrix §9 title-pill overlap fix): cap the title group so it
      stops short of the centred page cluster (its left edge is ~50% - 60px), no
-     matter the device width. Prevents the title colliding with "1 / 1" at 390px. */
-  max-width: calc(50% - 68px);
+     matter the device width. Prevents the title colliding with "1 / 1" at 390px.
+     2026-09-17 (phone sweep): 76, not 68. The cap was one pixel too generous, so
+     with a long filename the two groups did not meet - they OVERLAPPED, and the
+     page cluster (z 3) painted over the title's last column. The cluster is
+     124px wide and centred, so its left edge is 50% - 62; the title group starts
+     at 7px, so a cap of 50% - 68 put its right edge at 50% - 61, a 1px overlap
+     at every width. Measured at 402: title x 7..140 against a cluster starting
+     at 139; at 375: 7..126.5 against 125.5. 69 buys zero overlap; the extra 7
+     gives a gutter matching the group's own 7px left inset. Only the clamped
+     long-filename case changes. */
+  max-width: calc(50% - 76px);
   gap: 4px;
 }
 
@@ -567,11 +595,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
 
+/* UX 2026-09-17 (phone sweep): the wrapper carries NO border. It used to carry
+   `1px solid transparent` with box-sizing: border-box, which left a 28px content
+   box for a 30px chip: the chip started 1px in on both axes and ran 1px past the
+   wrapper's right edge. Measured at 375x812, it was the only chip in the rail
+   that did not sit on the column's centre line - every sibling paints at x 4.5
+   (Pan, Draw, Shapes, Text, the kebab, Version history) while this one painted
+   at 5.5, 80 inside a wrapper correctly placed at 4.5, 79. Its hover /
+   focus-within / active outline is an inset box-shadow now, which paints in the
+   same place a 1px border did, on the same 6px radius, without taking a pixel
+   off the content box. */
 .mobile-pdf-tools__select-family {
   position: relative;
   width: var(--mobile-rail-chip);
   height: var(--mobile-rail-chip);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
 }
 
@@ -583,7 +621,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__select-family:hover,
 .mobile-pdf-tools__select-family:focus-within,
 .mobile-pdf-tools__select-family[data-active='true'] {
-  border-color: var(--gold-soft, #b6904a);
+  box-shadow: inset 0 0 0 1px var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button,
@@ -611,11 +649,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 1;
 }
 
+/* UX 2026-09-17 (phone sweep): the caret's pad starts INSIDE its own glyph's
+   column, not 6px to the left of it. With `-6px 0` the pad spanned x 19.5..33.5
+   across the chip's full height, which put the dead centre of the Text Select
+   chip inside the caret's target: document.elementFromPoint at the chip's centre
+   (20.5, 95) answered "Selection mode", and a 7x4 probe grid found the caret
+   owning 16 of the chip's 30px at every y. A tap on the middle of the tool's own
+   icon opened the selection-mode menu instead of arming the tool.
+   `-2px -4px` moves the pad to x 23.5..37.5 - the same 14px of width, still
+   inside the 40px rail - so the chip keeps its centre and its left 18px. The
+   vertical reach is untouched at 30px. Nothing paints differently; only hit
+   ownership changes. */
 .mobile-pdf-tools__select-caret::after {
   content: '';
   position: absolute;
   inset-block: -8px;
-  inset-inline: -6px 0;
+  inset-inline: -2px -4px;
 }
 
 .mobile-pdf-lasso-controls {
@@ -1076,13 +1125,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-shadow: none;
   scrollbar-width: none;
   z-index: 5700;
-  /* The scrollbar is hidden, so at rest an overflowing row ended in a control
-     sliced by the screen edge and read as a broken render. Fade the last 20px
-     against the bar so the cut edge reads as "there is more this way". The mask
-     sits on the border box, so it stays at the right edge while the controls
-     scroll underneath it. */
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
-  mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0, 0, 0, 0.15) 100%);
+  /* RULED CHANGE 2026-09-17 (owner ruling: "remove the right-edge gradient mask
+     on .mobile-pdf-properties, all variants. The bar must paint to the screen
+     edge with no fade; no overflow hint is required - just let it scroll").
+     There is deliberately NO mask-image on this bar.
+     What the fade cost: the mask sat on the BORDER box, but the box carries
+     48px of empty right padding (the tool rail plus the left inset), so the
+     fade landed 28px past anywhere a control can be drawn. Eleven of the twelve
+     tool strips never overflow at all - measured at 375x812 with Partial erase
+     armed, scrollWidth 335 == clientWidth 335 - so the gradient bleached
+     nothing but the bar's own fill and its 1px bottom rule, and the bar lost
+     its bottom edge and went translucent for the last 20px before the screen
+     edge. That reads as a notch cut out of the strip, not as "there is more
+     this way". The row still scrolls (overflow-x: auto above); reaching a
+     control that has scrolled off is what the scroll is for.
+     Do not reintroduce this, gated or otherwise, without an owner ruling.
+     Pinned by tests/mobileStripEdgeFade.test.mjs. */
   /* UX 2026-09-16 (r5 phone pass): the bar hit-tests ONLY the 36px it paints.
      The box is still 44px - that is what centres a 24px control in the painted
      band and keeps the control's own pad inside the element - but the bottom
@@ -2246,20 +2304,36 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* UX 2026-09-16 (owner: "the dock buttons are not sitting in the dock"). The
    dock box is taller than the bar you can see: its top 16px is a transparent
    gutter over the page, and the bottom strip is the home-indicator reserve.
-   Padding the box by exactly those two amounts leaves a 36px content band that
-   is the TOP of the painted bar, not the whole of it - the bar itself is
-   `36px + the home-indicator reserve` (70px on an iPhone 17 Pro, whose reserve
-   is 34px), and the buttons are centred in the 36px band that sits above the
-   reserve. That is where a bottom-bar control belongs: the reserve is clearance
-   for the system's home indicator, not room for chrome. `align-items: center`
-   therefore centres the buttons in the band rather than in the box; before this
-   they hung 4px above the bar's top edge and stopped 6px short of its bottom.
-   The finger target is a separate thing again - see the ::after pads below,
-   which cover the painted bar's full height. */
+   Padding the box by exactly those two amounts leaves a content band that
+   starts at the painted bar's top edge, so `align-items: center` centres the
+   buttons in the BAR rather than in the box; before this they hung 4px above
+   the bar's top edge and stopped 6px short of its bottom.
+
+   RULED CHANGE 2026-09-17 (owner: "the bottom-dock icons sit too high against
+   the painted bar on web mobile and iOS. Make each button's glyph the vertical
+   centre of the painted bar region a user perceives as the bar - the bar above
+   the home-indicator reserve on iOS, the whole bar on web - and make the
+   painted bar's own padding symmetric so the chips are centred in it").
+   The bottom padding is --mobile-dock-reserve now, not the whole inset. It was
+   the whole inset, which left a 36px band at the TOP of a bar that is
+   `36px + inset` tall, so the chips sat exactly inset/2 above the bar's centre:
+   -5px in a browser, and -17px on an iPhone 17 Pro, where 37px of the 70px bar
+   was empty below them and 3px above. That is the "not sitting in the dock" the
+   owner saw on the phone and could not see in a browser.
+   Measured at 375x812 (inset 10, reserve 0): the band is 46px - the whole
+   painted bar - and the chips land y 774..804 in a bar painted 766..812, 8px
+   clear top and bottom, centre offset 0.00. Simulated at 402x874 with a 34px
+   inset (reserve 21): the band is 49px, the chips land y 751.5..781.5 in a bar
+   painted 742..812, 9.5px clear above and 9.5px below inside the perceived bar,
+   with the indicator's 21px untouched beneath them.
+   Nothing grows: the dock box is still 52px + inset and the painted surface
+   still 36px + inset. The finger target is a separate thing again - see the
+   ::after pads below, which cover the painted bar's full height and do not
+   move. */
 .mobile-pdf-dock {
   height: var(--mobile-viewer-dock-height);
   min-height: var(--mobile-viewer-dock-height);
-  padding: 16px 20px var(--mobile-bottom-inset);
+  padding: 16px 20px var(--mobile-dock-reserve);
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -2311,10 +2385,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    carry, for the same reason - the 2026-09-16 sizing pass took these buttons
    from 44x44 down to 30x30 and shrank the target with them, so on the simulator
    a tap 13px below a button, still inside the bar, did nothing at all.
-   The bar is 36px + the home-indicator reserve. The buttons sit 3px inside the
-   top of that 36px band, so `-3px` on top and `-3px - reserve` underneath all
-   but fills the bar: 68px on an iPhone 17 Pro, and never less than 44px (the
-   reserve has a 10px floor), so the 44px minimum holds on every phone.
+   The bar is 36px + the home-indicator reserve. The buttons sat 3px inside the
+   top of that 36px band, so `-3px` on top and `-3px - inset` underneath all but
+   filled the bar: 68px on an iPhone 17 Pro, and never less than 44px (the inset
+   has a 10px floor), so the 44px minimum holds on every phone.
+   2026-09-17: the chips now centre in the whole perceived bar, which drops each
+   one by --mobile-dock-band-drop (5px in a browser, 6.5px at a 34px inset), so
+   both numbers subtract that drop back out. The pad is pinned to the bar, not
+   to the chip: it still spans the same absolute pixels it did before the chips
+   moved - 767..811 at 375x812, 743..811 at a 34px inset - which is 44px and
+   68px of target, exactly as before. Measured both, in the pane.
    Every one of these numbers counts from the button's PADDING box, not its
    border box - that is where an absolutely positioned ::after is laid out, and
    these buttons carry a 1px border, so a 30px chip offers a 28px box to pad
@@ -2327,7 +2407,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-dock__center::after {
   content: '';
   position: absolute;
-  inset-block: -3px calc(-3px - var(--mobile-bottom-inset));
+  inset-block:
+    calc(-3px - var(--mobile-dock-band-drop))
+    calc(-3px - var(--mobile-bottom-inset) + var(--mobile-dock-band-drop));
   inset-inline: 0;
 }
 

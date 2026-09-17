@@ -430,7 +430,11 @@ const PDFSidebar = React.forwardRef(({
                     flex: '1 1 0',
                     minWidth: 0,
                     maxWidth: 'none',
-                    padding: '10px 2px',
+                    // UX 2026-09-17: 9px on the desktop, where the glyph above
+                    // is 2px bigger (RAIL_GLYPH). 9 + 18 = 10 + 16, so the tab
+                    // strip keeps the height it has and the panel's content
+                    // starts exactly where it did.
+                    padding: mobileMode ? '10px 2px' : '9px 2px',
                     background: isActive ? '#181c24' : 'transparent',
                     border: 'none',
                     borderBottom: isActive ? '2px solid #d8a84e' : '2px solid transparent',
@@ -460,15 +464,26 @@ const PDFSidebar = React.forwardRef(({
                     }
                   }}
                 >
-                  {/* UX 2026-09-16: every tab icon draws in the same 16x16
-                      box with no nudge. The Pages glyph used to carry a 3px
-                      top margin, which grew its tab's centred column and
-                      pushed BOTH its icon and its label 1.5px below the other
-                      three, visibly breaking the row of labels. The glyph's
-                      own ink is already centred in its box. */}
+                  {/* UX 2026-09-16: every tab icon draws in the same box with
+                      no nudge. The Pages glyph used to carry a 3px top margin,
+                      which grew its tab's centred column and pushed BOTH its
+                      icon and its label 1.5px below the other three, visibly
+                      breaking the row of labels. The glyph's own ink is already
+                      centred in its box.
+                      UX 2026-09-17 (desktop sweep): that box is RAIL_GLYPH on
+                      the desktop, not a literal 16. Pages / Search / Bookmarks /
+                      Spaces are the same four tabs whether the panel is open or
+                      collapsed, and the collapsed rail already draws them at
+                      RAIL_GLYPH (--rail-glyph 18) — so the same control changed
+                      glyph size by 2px (11%) when the panel opened. The tab's
+                      own height does not move with it: the vertical padding
+                      below drops by the 2px the glyph gains, so the strip is the
+                      same height it was and nothing under it shifts. The phone
+                      keeps 16: its glyph sizes come from the phone tier's own
+                      tokens, not the desktop rail's. */}
                   <Icon
                     name={tab.icon}
-                    size={16}
+                    size={mobileMode ? 16 : RAIL_GLYPH}
                     color={isActive ? '#d8a84e' : '#8d96a6'}
                   />
                   <span style={{

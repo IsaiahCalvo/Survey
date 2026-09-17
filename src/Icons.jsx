@@ -494,17 +494,33 @@ const ICON_RENDERERS = {
     ),
 
     // Survey icon — the 2026-08-30 mark re-derived onto the 24 grid at the
-    // icon set's own 1.5 stroke (two bars; protruding ticks). Not the brand
-    // 48-weight proportions — this must sit beside its rail siblings.
+    // icon set's own 1.5 stroke (two bars; four ticks inside the ring). Not the
+    // brand 48-weight proportions — this must sit beside its rail siblings.
+    //
+    // UX 2026-09-17 (owner: "make Survey and Spaces match — same box, same ink
+    // extent within 1px, house stroke"). Survey and Spaces (`layers`) sit at
+    // opposite ends of the phone's bottom dock as two identical 30px circles,
+    // so any size difference between the marks is unmissable. This one was
+    // drawn to a smaller box than the rest of the set: r 9 put its ink at 19.5
+    // of the 24 grid where layers, Text and the shapes glyphs are 20.5-21.5, so
+    // at the shared 17px dock glyph it read ~9% small and ~14% light (rasterised
+    // ink coverage 20.58% against Spaces' 23.83%) — and a circle needs a few
+    // percent MORE than an edge-filling diamond to read the same size, so it
+    // looked worse than it measured. r 10 puts the ink box at exactly 21.5,
+    // matching layers; the two bars widen with it so the mark scales rather
+    // than just its ring. The ticks stay: their round caps still land inside
+    // the ring's stroke band (the band is 1.25..2.75 at the top, the cap reaches
+    // 2.65), so they read as touching the ring exactly as before.
+    // Pinned by tests/dockGlyphParity.test.mjs.
     survey: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" fill="none" />
+        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.5" fill="none" />
         <path d="M12 3.4V5.4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M12 18.6V20.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M3.4 12H5.4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M18.6 12H20.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.2 9.8H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.2 14.2H12.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M7.7 9.8H15.8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M7.7 14.2H13.2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
 
@@ -657,18 +673,38 @@ const ICON_RENDERERS = {
       </svg>
     ),
     // Undo icon
+    //
+    // UX 2026-09-17 (desktop sweep): the arrow is drawn off-centre on the 24
+    // grid and then mirrored by the CSS transform below, which put its ink LOW
+    // in the button - the two leftmost controls in the viewer's top row read as
+    // sitting under the tool group beside them. Measured at 1440x900 in a 34px
+    // button with an 18px glyph: ink centre 1.13px below the button's centre,
+    // against Draw at -0.37 and Export at 0.00 in the same row - a 1.5px
+    // disagreement between neighbours.
+    // The paths' own ink (including half the stroke) spans x 2.25..20.75 and
+    // y 1.25..19.75, so its centre is 11.5, 10.5 where the grid's is 12, 12.
+    // The <g> translate is exactly that difference. It is applied in the glyph's
+    // own coordinates, BEFORE the mirror, and a mark centred on the grid stays
+    // centred under any flip about that centre - so both arrows now sit on the
+    // row's centre line whichever way they point.
     undo: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(180deg) scaleX(-1)' }} className={className}>
-        <path d="M9 14H14C17.3137 14 20 11.3137 20 8C20 4.68629 17.3137 2 14 2H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M9 14V19L3 14L9 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g transform="translate(0.5 1.5)">
+          <path d="M9 14H14C17.3137 14 20 11.3137 20 8C20 4.68629 17.3137 2 14 2H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 14V19L3 14L9 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
     ),
 
-    // UX: history arrows must mirror, not rotate; keep the flip here for every surface.
+    // UX: history arrows must mirror, not rotate; keep the flip here for every
+    // surface. The translate is the mirror image of undo's, for the same reason
+    // (this mark's ink centre is 12.5, 10.5 on the grid).
     redo: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(180deg) scaleX(-1)' }} className={className}>
-        <path d="M15 14H10C6.68629 14 4 11.3137 4 8C4 4.68629 6.68629 2 10 2H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M15 14V19L21 14L15 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g transform="translate(-0.5 1.5)">
+          <path d="M15 14H10C6.68629 14 4 11.3137 4 8C4 4.68629 6.68629 2 10 2H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M15 14V19L21 14L15 9V14Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
     ),
 

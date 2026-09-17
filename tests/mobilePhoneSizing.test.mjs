@@ -90,7 +90,18 @@ test('every dock button sits inside the bar, centred, at one size', () => {
   const dock = block(css, '.mobile-pdf-dock');
   // Pad the box by its transparent top gutter and its home-indicator reserve;
   // what is left is the visible bar, so align-items: center centres in the bar.
-  assert.match(dock, /padding: 16px 20px var\(--mobile-bottom-inset\)/);
+  // RULED CHANGE 2026-09-17 (owner ruling: "the bottom-dock icons sit too high
+  // against the painted bar on web mobile and iOS. Make each button's glyph the
+  // vertical centre of the painted bar region a user perceives as the bar").
+  // The bottom pad was var(--mobile-bottom-inset) - the WHOLE safe-area inset -
+  // which left the chips centred in the top 36px of a bar that is 36px + inset
+  // tall: 5px high in a browser, 17px high on an iPhone 17 Pro. It is
+  // var(--mobile-dock-reserve) now: the home indicator's own footprint, 0 in a
+  // browser and 21px at a 34px inset. The assertion moved with the token; what
+  // it guards - the padding is what centres the chips in the bar - is the same.
+  // The arithmetic behind both insets is pinned by
+  // tests/mobileDockBarCentring.test.mjs.
+  assert.match(dock, /padding: 16px 20px var\(--mobile-dock-reserve\)/);
   assert.match(dock, /align-items: center/);
   const side = block(css, '.mobile-pdf-dock__side');
   assert.match(side, /width: var\(--mobile-dock-control-h\)/);
