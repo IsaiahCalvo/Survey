@@ -776,16 +776,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           style={{
                             padding: '10px 20px',
                             background: 'transparent',
-                            border: '1px solid #4A90E2',
+                            border: '1px solid var(--accent)',
                             borderRadius: '6px',
-                            color: '#4A90E2',
+                            color: 'var(--accent)',
                             cursor: 'pointer',
                             fontSize: '13px',
                             fontWeight: '500',
                             transition: 'all 0.2s'
                           }}
                           onMouseEnter={(e) => {
-                            e.target.style.background = 'rgba(74, 144, 226, 0.1)';
+                            e.target.style.background = 'var(--accent-soft)';
                           }}
                           onMouseLeave={(e) => {
                             e.target.style.background = 'transparent';
@@ -805,8 +805,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'monthly' ? '#4A90E2' : 'transparent',
-                            color: billingPeriod === 'monthly' ? '#fff' : 'var(--text-3)',
+                            background: billingPeriod === 'monthly' ? 'var(--accent)' : 'transparent',
+                            // A label sitting ON gold is --accent-text; white on gold is 2.0:1.
+                            color: billingPeriod === 'monthly' ? 'var(--accent-text)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: '500',
@@ -821,8 +822,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'annual' ? '#4A90E2' : 'transparent',
-                            color: billingPeriod === 'annual' ? '#fff' : 'var(--text-3)',
+                            background: billingPeriod === 'annual' ? 'var(--accent)' : 'transparent',
+                            color: billingPeriod === 'annual' ? 'var(--accent-text)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: '500',
@@ -887,7 +888,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       {/* Pro Plan */}
                       <div className="account-subscription-card" style={{
-                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid #4A90E2' : '1px solid var(--border)',
+                        // UX 2026-09-17: the current plan is marked with a gold edge, the
+                        // same mark the Free and Enterprise cards use. Pro alone wore a
+                        // #4A90E2 blue, so "this is your plan" looked like two different
+                        // things depending on which plan you were on.
+                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid var(--accent)' : '1px solid var(--border)',
                         opacity: (subscription?.tier === 'free' || subscription?.tier === 'enterprise' || subscription?.tier === 'developer') ? (subscription?.tier === 'free' ? 1 : 0.7) : 1
                       }}>
                         <div className="account-subscription-header">

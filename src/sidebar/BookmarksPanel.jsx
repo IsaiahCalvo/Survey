@@ -202,7 +202,7 @@ const BookmarkTreeRow = ({
           height: 31,
           padding: '3px 4px',
           borderRadius: 5,
-          background: isClone ? '#181c24' : isSelected ? '#30343a' : '#12151c',
+          background: isClone ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
           border: '1px solid var(--border)',
           color: 'var(--text-2)',
           boxShadow: isClone ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
