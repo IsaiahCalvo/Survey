@@ -47,6 +47,7 @@ import {
   normalizeWheelDelta,
 } from '../utils/pdfZoomMath';
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
+import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 
@@ -117,7 +118,16 @@ const MAX_CANVAS_DIM = 16384;
 const DESKTOP_MAX_CANVAS_AREA = 80 * 1024 * 1024; // ~80 MP
 const MOBILE_MAX_CANVAS_AREA = 3 * 1024 * 1024; // ~12 MiB RGBA per mobile raster buffer
 const DESKTOP_MAX_OVERSCAN_PAGES = 3;
-const MOBILE_MAX_OVERSCAN_PAGES = 1;
+// Two, not one. A single overscan page is spent entirely BELOW the visible set
+// (recomputeWindow gives it to `beforeCount = floor(budget / 2)` = 0 first), so
+// scrolling UP always mounted a page cold at the very instant it came on screen
+// — an undrawn white slab on a large drawing, with its annotations still
+// floating on top. Measured on the mobile surface over an identical 6 s scripted
+// sweep across pages already read: 1 page + no raster cache = 2072 ms blank,
+// 1 page + cache = 1643 ms, 2 pages + cache = 0 ms. The extra page costs one
+// MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
+// still tops out at three pages.
+const MOBILE_MAX_OVERSCAN_PAGES = 2;
 function isMobilePdfSurfaceViewport() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   return window.matchMedia('(max-width: 720px), (pointer: coarse)').matches;
@@ -177,6 +187,20 @@ function clampToBudget(backingW, backingH, isMobileSurface = false) {
 const PAGE_RASTER_CACHE = new Map(); // key -> { canvas, bytes }
 let pageRasterCacheBytes = 0;
 const PAGE_RASTER_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+// The mobile surface caches too. Its rasters are already area-clamped by
+// MOBILE_MAX_CANVAS_AREA (~3 MP => ~12 MiB RGBA each) and the cache key folds
+// every zoom above MOBILE_BASE_MAX_SCALE into ONE entry per page, so this
+// ceiling holds about four pages: more than the mobile mount window can ever
+// contain, and far below the WKWebView budget the area clamp exists to protect.
+// Without a cache on mobile, every page that scrolled out of the mount window
+// had to re-rasterize from scratch on the way back, leaving the page an undrawn
+// white slab for up to seconds on a large drawing while its annotations still
+// floated on top — the owner's "elements vanish and come back". Desktop never
+// showed it precisely because desktop cached.
+const MOBILE_PAGE_RASTER_CACHE_MAX_BYTES = 48 * 1024 * 1024;
+function pageRasterCacheMaxBytes(isMobileSurface) {
+  return isMobileSurface ? MOBILE_PAGE_RASTER_CACHE_MAX_BYTES : PAGE_RASTER_CACHE_MAX_BYTES;
+}
 function releaseRasterCanvas(canvas) {
   if (!canvas) return;
   canvas.width = 0;
@@ -187,7 +211,7 @@ function pageRasterCacheGet(key) {
   if (v) { PAGE_RASTER_CACHE.delete(key); PAGE_RASTER_CACHE.set(key, v); } // touch = most-recent
   return v ? v.canvas : null;
 }
-function pageRasterCacheSet(key, canvas) {
+function pageRasterCacheSet(key, canvas, maxBytes = PAGE_RASTER_CACHE_MAX_BYTES) {
   const bytes = (canvas.width * canvas.height * 4) || 0;
   const existing = PAGE_RASTER_CACHE.get(key);
   if (existing) {
@@ -195,13 +219,13 @@ function pageRasterCacheSet(key, canvas) {
     PAGE_RASTER_CACHE.delete(key);
     releaseRasterCanvas(existing.canvas);
   }
-  if (!bytes || bytes > PAGE_RASTER_CACHE_MAX_BYTES) {
+  if (!bytes || bytes > maxBytes) {
     releaseRasterCanvas(canvas);
     return;
   }
   PAGE_RASTER_CACHE.set(key, { canvas, bytes });
   pageRasterCacheBytes += bytes;
-  while (pageRasterCacheBytes > PAGE_RASTER_CACHE_MAX_BYTES && PAGE_RASTER_CACHE.size > 0) {
+  while (pageRasterCacheBytes > maxBytes && PAGE_RASTER_CACHE.size > 0) {
     const oldestKey = PAGE_RASTER_CACHE.keys().next().value;
     const oldest = PAGE_RASTER_CACHE.get(oldestKey);
     PAGE_RASTER_CACHE.delete(oldestKey);
@@ -263,7 +287,15 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
   const baseScale = Math.min(renderScale, baseScaleLimit);
   const tiled = renderScale > baseScaleLimit;
 
-  useEffect(() => {
+  // useLayoutEffect, not useEffect: a mounting <canvas> is 300x150 and empty
+  // until something draws into it, and a plain effect runs AFTER the browser has
+  // already painted that empty default. During a fast scroll, pages mount and
+  // unmount every few frames, so that one post-paint frame was a white flash on
+  // every single page — even on a cache hit, where the bitmap was sitting right
+  // there. Blitting before paint removes the flash entirely. Only the cache-hit
+  // branch below is synchronous; the raster path still returns immediately into
+  // an async task, so this costs nothing when there is nothing to blit.
+  useLayoutEffect(() => {
     let cancelled = false;
     const myGen = ++genRef.current;
 
@@ -271,7 +303,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
     // no re-raster, no "loading" flash on scroll-return.
     const docKey = (pdf?.fingerprints && pdf.fingerprints[0]) || pdf?.fingerprint || 'doc';
     const cacheKey = `${docKey}:${pageIndex}:${baseScale.toFixed(3)}:${DPR}:${rotation}`;
-    const cachedCanvas = isMobileSurface ? null : pageRasterCacheGet(cacheKey);
+    const cachedCanvas = pageRasterCacheGet(cacheKey);
     if (cachedCanvas) {
       const c = canvasRef.current;
       if (c) {
@@ -325,11 +357,12 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         c.width = target.width;
         c.height = target.height;
         c.getContext('2d', { alpha: false }).drawImage(target, 0, 0);
-        if (!isMobileSurface) {
-          // Desktop keeps the rendered bitmap so a scroll-return repaints instantly.
-          pageRasterCacheSet(cacheKey, target);
-          targetRetained = true;
-        }
+        // Keep the rendered bitmap so a scroll-return repaints instantly on
+        // EVERY surface. Mobile used to release it here, which is why a page
+        // leaving the mount window came back as an undrawn white canvas; the
+        // byte ceiling is surface-aware instead.
+        pageRasterCacheSet(cacheKey, target, pageRasterCacheMaxBytes(isMobileSurface));
+        targetRetained = true;
         onRaster?.(pageIndex, { ms: Math.round(performance.now() - t0), clamped: tiled });
       } catch (error) {
         postNativePdfDiagnostic('raster-error', {
@@ -358,6 +391,21 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
   );
 }
 
+// Write the tile's box straight to the DOM in the SAME synchronous block that
+// copies the new bitmap in. React commits state a frame or more later, and a
+// paint landing in between would stretch the fresh bitmap across the previous
+// box. The values written here are exactly what the next React render writes,
+// so the two can never disagree.
+function applyDetailTileStyle(canvas, box, atScale, atRotation) {
+  if (!canvas) return;
+  const next = resolveDetailTileStyle(box, atScale, atRotation);
+  canvas.style.left = `${next.left}px`;
+  canvas.style.top = `${next.top}px`;
+  canvas.style.width = `${next.width}px`;
+  canvas.style.height = `${next.height}px`;
+  canvas.style.display = next.display;
+}
+
 // --- deep-zoom detail tile: crisp visible slice over the soft base -----------
 function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef, isMobileSurface }) {
   const hostRef = useRef(null);
@@ -371,6 +419,13 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
   const wasLiveZoomRef = useRef(1);
   const [tile, setTile] = useState(null);
 
+  // Retire the tile: hide it and hand its backing store back. Used only where no
+  // tile should be visible at all.
+  const dropTile = useCallback(() => {
+    releaseRasterCanvas(canvasRef.current);
+    setTile(null);
+  }, []);
+
   const render = useCallback(async () => {
     const host = hostRef.current;
     const scroller = scrollerRef.current;
@@ -379,14 +434,22 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
     // Zoom-out already has more source detail than the destination needs.
     // Rendering another temporary tile here only duplicates large canvases
     // during the exact slow-pinch path that is tightest on iPhone memory.
-    if (isMobileSurface && liveZoom < 1) { setTile(null); return; }
+    // Skip the RENDER — but keep whatever tile is already on screen. Dropping it
+    // was pure loss: the held bitmap is only ever downscaled while the fingers
+    // pinch out, so it stays sharper than the base canvas and costs not one byte
+    // more than it already occupied.
+    if (isMobileSurface && liveZoom < 1) return;
     // Ordinary one-finger panning waits until momentum settles. A pinch is
     // different: periodically refresh the visible tile while fingers remain
     // down so a slow deep zoom does not stay blurry until release.
     if (interactionRef?.current && liveZoom === 1) return;
     const baseScaleLimit = isMobileSurface ? MOBILE_BASE_MAX_SCALE : BASE_MAX_SCALE;
     const targetScale = scale * liveZoom;
-    if (targetScale <= baseScaleLimit) { setTile(null); return; }
+    // Below the base-canvas ceiling the base is already sharp enough, so there is
+    // no tile to keep: drop it AND free its bitmap. Releasing is right wherever a
+    // tile is deliberately retired — it is only the gesture boundary, where the
+    // tile stays on screen, that must hold on to it.
+    if (targetScale <= baseScaleLimit) { dropTile(); return; }
     lastRenderStartedAtRef.current = performance.now();
 
     const hr = host.getBoundingClientRect();
@@ -395,7 +458,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
     const vy = Math.max(0, sr.top - hr.top);
     const vw = Math.min(hr.width, sr.right - hr.left) - vx;
     const vh = Math.min(hr.height, sr.bottom - hr.top) - vy;
-    if (vw <= 1 || vh <= 1) { setTile(null); return; }
+    if (vw <= 1 || vh <= 1) { dropTile(); return; }
 
     const myGen = ++genRef.current;
     let off = null;
@@ -418,43 +481,47 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
       if (myGen !== genRef.current) return;
       const c = canvasRef.current;
       if (!c) return;
+      // Page-unit box: independent of both `scale` and `liveZoom`, so this very
+      // bitmap stays on the same page region through the rest of the gesture AND
+      // through the commit that ends it (where scale becomes scale * liveZoom,
+      // the exact resolution this tile was rasterized at).
+      const nextTile = computeDetailTileBox({ vx, vy, vw, vh, scale, liveZoom, rotation });
       c.width = cw; c.height = ch;
       c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
-      const cssZoom = Math.max(0.001, liveZoom);
+      applyDetailTileStyle(c, nextTile, scale, rotation);
       lastSharpAtRef.current = performance.now();
-      setTile({
-        left: vx / cssZoom,
-        top: vy / cssZoom,
-        w: vw / cssZoom,
-        h: vh / cssZoom,
-        liveZoom: cssZoom,
-      });
+      setTile(nextTile);
     } catch {
       /* never throw out of the engine */
     } finally {
       releaseRasterCanvas(off);
     }
-  }, [pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef, isMobileSurface]);
+  }, [pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef, isMobileSurface, dropTile]);
 
   latestRenderRef.current = render;
   useEffect(() => {
     const enteringLiveZoom = liveZoom !== 1 && wasLiveZoomRef.current === 1;
     wasLiveZoomRef.current = liveZoom;
     if (isMobileSurface && liveZoom < 1) {
+      // Same contract as above: no new raster on the memory-tightest path, and
+      // the in-flight one is abandoned. The visible tile is NOT destroyed — that
+      // is what made a pinch-out go soft for the whole gesture.
       if (progressiveTimerRef.current) clearTimeout(progressiveTimerRef.current);
       progressiveTimerRef.current = 0;
       genRef.current += 1;
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* settled */ } }
       taskRef.current = null;
-      releaseRasterCanvas(canvasRef.current);
-      setTile(null);
       return;
     }
     if (enteringLiveZoom) {
+      // Abandon the in-flight raster (its slice is already out of date), but KEEP
+      // the tile that is currently on screen. Releasing it here is what produced
+      // the sharp -> blurry -> sharp pop on the first frame of every pinch: the
+      // crisp layer was destroyed before a replacement existed, dropping the view
+      // onto the intentionally soft base canvas. A held tile is always at least as
+      // sharp as that base (see pdfDetailTileGeometry), so holding is never worse.
       genRef.current += 1;
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* settled */ } }
-      releaseRasterCanvas(canvasRef.current);
-      setTile(null);
     }
     if (liveZoom === 1) {
       if (progressiveTimerRef.current) clearTimeout(progressiveTimerRef.current);
@@ -508,13 +575,18 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
     releaseRasterCanvas(canvasRef.current);
   }, []);
 
-  const tileIsCurrent = tile && Math.abs(Math.log(Math.max(0.001, liveZoom) / tile.liveZoom)) < 0.2;
+  // No staleness cutoff. The old gate hid the tile whenever liveZoom drifted
+  // ~22% from capture — which a commit (liveZoom snapping back to 1) always
+  // trips — so the crisp layer vanished at the end of every gesture. The box is
+  // now in page units, so it stays geometrically correct at any scale/zoom, and
+  // it is provably never blurrier than the base canvas underneath it.
+  const tileStyle = resolveDetailTileStyle(tile, scale, rotation);
 
   return (
     <div ref={hostRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       <canvas
         ref={canvasRef}
-        style={{ position: 'absolute', left: tile ? tile.left : 0, top: tile ? tile.top : 0, width: tile ? tile.w : 0, height: tile ? tile.h : 0, display: tileIsCurrent ? 'block' : 'none' }}
+        style={{ position: 'absolute', left: tileStyle.left, top: tileStyle.top, width: tileStyle.width, height: tileStyle.height, display: tileStyle.display }}
       />
     </div>
   );
