@@ -945,7 +945,7 @@ export default function RevisionsPanel({
                       paddingTop: 8,
                       borderTop: '1px solid rgba(255,255,255,0.08)',
                       fontSize: 11,
-                      color: 'var(--text-3)',
+                      color: 'var(--text-2)',
                       display: 'grid',
                       gap: 3,
                     }}

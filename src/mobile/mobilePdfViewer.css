@@ -780,7 +780,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 1px;
   min-height: 1px;
   margin: var(--rail-divider-margin, 3px) 0;
-  background: var(--surface-3);
+  background: var(--border);
 }
 
 .mobile-pdf-tools__divider.is-short { width: 20px; }
@@ -878,7 +878,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__survey-entities button span {
   width: 14px;
   height: 14px;
-  border: 1px solid var(--border);
+  /* A cutout edge, not a hairline: the ring is the surface BEHIND the rail, so
+     the entity's own colour reads as a clean dot. It was a #0c0f13 literal. */
+  border: 1px solid var(--surface-0);
   border-radius: 50%;
 }
 
@@ -1015,7 +1017,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   place-items: center;
   color: var(--accent-text);
   background: var(--accent);
-  border: 1px solid var(--border);
+  /* Another cutout edge: a dark ring so the gold badge reads against whatever
+     it overlaps. It was a #20242c literal, a surface colour, not a hairline. */
+  border: 1px solid var(--surface-2);
   border-radius: 9px;
   font-size: 9px;
   font-weight: 900;

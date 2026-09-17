@@ -8,7 +8,7 @@
  */
 import Icon from '../Icons';
 
-const DEFAULT_HANDLE_COLOR = 'var(--text-3)';
+const DEFAULT_HANDLE_COLOR = 'var(--text-2)';
 const HOVER_HANDLE_COLOR = 'var(--text-1)';
 
 const handleStyle = (isDragging, style = {}) => ({
