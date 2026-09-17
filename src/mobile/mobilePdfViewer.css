@@ -3018,10 +3018,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   white-space: nowrap;
 }
 
+/* UX 2026-09-17 (owner ruling). This rule was the inconsistency he named: it
+   took the desktop's own `.btn-active` — gold ink on nothing — and, inside the
+   mobile survey sheet only, repainted it as a solid gold slab with a gold
+   outline. The same button therefore read one way on desktop and another on
+   the phone. It now inherits the shared rule, so there is one active state in
+   the app; only the !important needed to survive the sheet's own overrides
+   stays. */
 .mobile-pdf-sheet .btn-active {
-  color: var(--accent-text) !important;
-  background: var(--accent) !important;
-  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  background: transparent !important;
 }
 
 .mobile-survey-exit-footer {

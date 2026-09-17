@@ -70,7 +70,9 @@ const walkJs = (dir, out = []) => {
 };
 
 /* A selector that names a selected / current / pressed state. */
-const SELECTED = /(\.is-active|\.is-current\b|\.is-selected|\.is-open|\.active\b|\[aria-pressed\s*=\s*"true"\])/;
+/* `.btn-active` is in here on purpose: it IS the reference, so it has to be
+   held to the reference too. */
+const SELECTED = /(\.is-active|\.is-current\b|\.is-selected|\.is-open|[.-]active\b|\[aria-pressed\s*=\s*"true"\])/;
 /* ...but not when the same selector is really a pointer or keyboard state. */
 const INTERACTION = /:(hover|focus|focus-visible|focus-within|active)\b/;
 
