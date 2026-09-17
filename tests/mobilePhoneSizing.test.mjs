@@ -51,15 +51,32 @@ test('one token per tier drives every phone control size', () => {
   // 30px chip + 5px gap = a 35px pitch, against Drawboard's 34.7pt.
   assert.match(block(css, '.mobile-pdf-tools'), /width: var\(--mobile-rail-w\)/);
   assert.match(block(css, '.mobile-pdf-tools__button'), /width: var\(--mobile-rail-chip\)/);
-  assert.match(block(css, '.mobile-pdf-tools__main'), /gap: var\(--mobile-rail-gap\)/);
-  assert.match(block(css, '.mobile-pdf-tools__subtools'), /gap: var\(--mobile-rail-sub-gap\)/);
+  // RULED CHANGE 2026-09-16 (r5 phone pass): the column reads its pitch through
+  // one indirection - --rail-pitch-gap / --rail-sub-gap - whose default IS the
+  // tier token, so "one token per tier" is unchanged. The indirection exists so
+  // the single rail state that cannot fit a phone (a tool sub-strip open beside
+  // the survey rows) can tighten the whole pitch in one rule instead of
+  // scrolling; see tests/mobileRailFitsEveryState.test.mjs. Both halves are
+  // asserted: the column reads the indirection, and the indirection defaults to
+  // the tier token.
+  assert.match(block(css, '.mobile-pdf-tools__main'), /gap: var\(--rail-pitch-gap\)/);
+  assert.match(block(css, '.mobile-pdf-tools__main'), /--rail-pitch-gap: var\(--mobile-rail-gap\)/);
+  assert.match(block(css, '.mobile-pdf-tools__main'), /--rail-sub-gap: var\(--mobile-rail-sub-gap\)/);
+  assert.match(block(css, '.mobile-pdf-tools__subtools'), /gap: var\(--rail-sub-gap, var\(--mobile-rail-sub-gap\)\)/);
 });
 
 test('the rail cannot scroll sideways: no chip is wider than the rail', () => {
   // The rail has no side padding and the chip is 10px narrower than the rail,
   // so nothing sticks out past its edge. Before this pass a 44px chip sat in a
   // 44px rail with 4px of padding and the column reported 6px of side scroll.
-  assert.match(block(css, '.mobile-pdf-tools'), /padding: 7px 0 calc\(var\(--mobile-viewer-dock-height\) \+ 28px\)/);
+  // RULED CHANGE 2026-09-16 (r5 phone pass): the bottom inset is the dock less
+  // 6px, not the dock plus 28px. The footer used to be pushed down 34px by its
+  // own transform, so the rail reserved 34px that nothing painted in and capped
+  // the tool column 34px short. The transform is gone and the inset lost the
+  // same 34px: the footer paints at exactly the same four y positions (checked
+  // chip by chip on the simulator) and the column gets its 34px back. What this
+  // test is about - no side scroll - is untouched.
+  assert.match(block(css, '.mobile-pdf-tools'), /padding: 7px 0 calc\(var\(--mobile-viewer-dock-height\) - 6px\)/);
   // The hit area is the slot, not the chip, so a smaller square is not a
   // smaller target.
   assert.match(css, /\.mobile-pdf-tools__main > \.mobile-pdf-tools__button::after[\s\S]{0,400}inset-inline: -4px/);
