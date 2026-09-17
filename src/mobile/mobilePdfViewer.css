@@ -1922,7 +1922,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-top: 1px solid var(--border-strong);
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
-  animation: mobilePdfSheetIn 180ms ease-out;
+  /* Entrance comes from useMobileSheetMotion (see .mobile-pdf-sheet above) —
+     one transform timeline for open, drag and close. */
 }
 
 .mobile-pdf-text-defaults.is-shape:not(.is-callout) {
@@ -2614,7 +2615,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      keeps its own equivalent padding override below (css order wins). */
   padding-bottom: calc(12px + var(--mobile-bottom-inset));
   z-index: 6500 !important;
-  animation: mobilePdfSheetIn 180ms ease-out !important;
+  /* UX (owner ruling 2026-09-17): NO keyframe here. The entrance used to be
+     `animation: mobilePdfSheetIn 180ms ease-out !important`, a 24px nudge +
+     fade that also outranked useMobileSheetMotion's inline transform — so a
+     drag or a close inside the first 180ms was swallowed, and the two clocks
+     read as a stutter. useMobileSheetMotion now owns open, drag and close as
+     one transform timeline. Do not reintroduce an animation on this class. */
 }
 
 /* UX 2026-09-16 (phone reach pass): the hub tray's second, taller detent.
@@ -3662,8 +3668,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--surface-2);
 }
 
+/* UX (owner ruling 2026-09-17): the hub tray is one fixed height for Pages /
+   Search / Bookmarks, so an empty Search has to fill that tray rather than sit
+   as a 142px block at the top of it. min-height:100% resolves against the
+   flex:1 results container, so the message lands dead-centre of the tray. */
 .mobile-search-empty {
-  min-height: 142px;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3859,27 +3869,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
-/* Phase F: the sheet slide-in also serves as the lightweight panel-swap
-   crossfade — when one sheet replaces another (e.g. spaces -> survey), the
-   incoming sheet fades+slides in (opacity 0->1) over the outgoing one, reading
-   as a soft cross-dissolve rather than a hard cut. A true simultaneous
-   two-sheet dissolve is intentionally NOT wired: the outgoing sheet collapses
-   through AppShell's mutual-exclusivity state, and threading a deferred unmount
-   through that would risk the Phase B content-measured height logic. */
-@keyframes mobilePdfSheetIn {
-  from { transform: translateY(24px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
+/* 2026-09-17: the old `mobilePdfSheetIn` keyframe (24px nudge + fade) is gone.
+   useMobileSheetMotion slides every bottom sheet up from fully offscreen and
+   back down again on one transform timeline, so a second engine here would
+   only fight it (it literally outranked the hook's inline transform for the
+   first 180ms). When one sheet replaces another (e.g. spaces -> survey) the
+   incoming sheet's slide-up doubles as the swap; the outgoing one still
+   collapses through AppShell's mutual-exclusivity state. */
 
-/* Phase F: honour prefers-reduced-motion — drop the sheet slide-in, the zoom
-   dropdown easing, and (with JS short-circuiting the drag/close transitions in
-   useMobileSheetMotion) every decorative bottom-sheet transition. Direct-
-   manipulation finger-follow drag stays; only the easings are removed. */
+/* Phase F: honour prefers-reduced-motion — drop the zoom dropdown easing. The
+   sheet transitions are short-circuited in JS (useMobileSheetMotion), which
+   keeps direct-manipulation finger-follow drag while removing every easing. */
 @media (prefers-reduced-motion: reduce) {
-  .mobile-pdf-sheet,
-  .mobile-pdf-text-defaults {
-    animation: none !important;
-  }
   .mobile-pdf-header__zoom-menu,
   .mobile-pdf-header__zoom-menu.is-open {
     transition: visibility 0s !important;
@@ -4091,9 +4092,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--danger);
 }
 
+/* UX (owner ruling 2026-09-17): matches .mobile-search-empty — with one shared
+   hub-tray height, "No bookmarks yet" grows to fill the tray (flex:1 inside the
+   flex-column .mobile-bookmark-list) and centres itself, instead of leaving a
+   short card above a big empty gap. */
 .mobile-bookmark-empty {
+  flex: 1;
   min-height: 76px;
-  margin: 8px 16px;
+  margin: 8px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
