@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
+import { matchedQuickColour } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
+import { QuickColourDots, QuickWidthPresets } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
@@ -1035,6 +1037,22 @@ export function MobileToolProperties({ api }) {
     if (shapeSection === 'fill') api.handleFillColorChange?.(color);
     else api.handleStrokeColorChange?.(color);
   };
+  // UX 2026-09-17: WHICH COLOUR A QUICK DOT CHANGES — the same rule as the
+  // desktop bar (see resolveAnnotationPaint in src/AppShell.jsx). The dots
+  // change the paint you can see, which for every tool but one is the line:
+  // the stroke of a pen or an arrow, the border of a rectangle, ellipse,
+  // polygon, text box or callout. That is also what the two controls beside
+  // them act on — the line width and the line type. The counter is the
+  // exception and takes the fill, because a pin's colour IS its fill and its
+  // stroke is only the number printed on it. Opacity is untouched: it belongs
+  // to the sheet's slider, not to a dot.
+  const quickColourValue = tool === 'counter'
+    ? toHexColor(api.fillColor, '#ef4444')
+    : toHexColor(api.strokeColor, '#ff0000');
+  const applyQuickColour = (hex) => {
+    if (tool === 'counter') api.handleFillColorChange?.(hex);
+    else api.handleStrokeColorChange?.(hex);
+  };
   // Open the edit sheet from a strip swatch, focused on the tapped colour
   // section (demo: swatch → AnnotationEditPanel focused on that colour).
   const openSheet = (section) => {
@@ -1096,6 +1114,20 @@ export function MobileToolProperties({ api }) {
           onChange={(value) => api.setEraserMode(value)}
         />
       )}
+      {/* UX 2026-09-17 (owner): the same four default colours the desktop bar
+          leads with, in the same order, immediately before the swatch that
+          opens the full picker. One shared constant drives both platforms
+          (src/utils/quickStylePresets.js) so a red on the phone is the red on
+          the desktop. A tap applies straight away — armed tool and selected
+          mark — and changes the same channel the swatch's sheet opens on:
+          the fill for a fillable shape, the stroke for everything else. */}
+      {!isEraser && showStroke && (
+        <QuickColourDots
+          platform="phone"
+          value={quickColourValue}
+          onPick={applyQuickColour}
+        />
+      )}
       {!isEraser && showStroke && (
         <div className="mobile-pdf-properties__color-anchor">
           {/* UX 2026-07-12 (Phase E, demo parity — matrix §6 "Stroke color
@@ -1106,7 +1138,7 @@ export function MobileToolProperties({ api }) {
               colour picker, never the native OS picker). */}
           <button
             type="button"
-            className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}`}
+            className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}${matchedQuickColour(quickColourValue) ? '' : ' is-current-color'}`}
             aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Fill and border colors') : 'Stroke color'}
             style={{
               '--mobile-swatch-fill': showFill ? toHexColor(api.fillColor, '#ff0000') : toHexColor(api.strokeColor, '#ff0000'),
@@ -1117,6 +1149,22 @@ export function MobileToolProperties({ api }) {
             {tool === 'counter' ? '1' : null}
           </button>
         </div>
+      )}
+      {/* UX 2026-09-17 (owner): the three default line widths, drawn at the
+          weight they apply, immediately before the field that takes any other
+          number and the dropdown that lists the rest — the desktop order, on
+          the phone's own control size. Counter Size and Eraser Size keep the
+          field alone: they are not line weights. */}
+      {showWidth && !isEraser && tool !== 'counter' && (
+        <QuickWidthPresets
+          platform="phone"
+          value={sizeValue}
+          onPick={(width) => {
+            const value = String(width);
+            handleSizeDraft(value);
+            handleSizeCommit(value);
+          }}
+        />
       )}
       {showWidth && tool !== 'counter' && (
         <AnnotationSizeControl
