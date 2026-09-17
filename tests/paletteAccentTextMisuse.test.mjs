@@ -60,55 +60,85 @@ test('the tab bar keeps a distinct bar, idle, active, hover and border colour', 
 });
 
 /**
- * The balanced {...} body of the JSX prop that starts at `at`, so a scan reads
- * ONE handler and stops - never the props that follow it.
+ * Every place `name` appears as a JSX PROP (`name={`), never as a method call
+ * (`tip(...).onMouseEnter(e)` inside another handler's body).
  */
-const handlerBody = (source, at) => {
-  const open = source.indexOf('{', source.indexOf('=', at));
-  if (open === -1) return '';
+const propAt = (name) => new RegExp(`(?<![.\\w])${name}\\s*=\\s*\\{`, 'g');
+
+/** The balanced {...} body that starts at the brace `open`. */
+const bodyFrom = (source, open) => {
   let depth = 0;
   for (let i = open; i < source.length; i += 1) {
     if (source[i] === '{') depth += 1;
     else if (source[i] === '}') {
       depth -= 1;
-      if (depth === 0) return source.slice(open, i + 1);
+      if (depth === 0) return { text: source.slice(open, i + 1), end: i };
     }
   }
-  return '';
+  return { text: '', end: open };
 };
 
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+ * owner). This case used to pass while the branch shipped three hover handlers
+ * that give no feedback at all, because the old version had three holes:
+ *
+ *   1. it compared only `background`, `backgroundColor` and `borderColor`, so a
+ *      dead `color` hover (the copy-mode Delete label) was invisible to it;
+ *   2. it flagged a handler only when EVERY setter matched, so a handler with
+ *      one dead branch and one live branch escaped (the Bookmarks "Edit"
+ *      button);
+ *   3. its proximity window counted RAW CHARACTERS, indentation included, and
+ *      measured from the wrong end, so a deeply indented pair was skipped whole
+ *      (the "Create category" button, 50 characters at a 40-character gate).
+ *
+ * It is stricter now, in the three matching ways: it watches every paint
+ * property, it flags a pair when ANY property repeats its value, and it measures
+ * proximity in LINES so no amount of indentation can exempt a control.
+ */
+const PAINT_PROPS = ['background', 'backgroundColor', 'borderColor', 'borderTopColor',
+  'borderBottomColor', 'borderLeftColor', 'borderRightColor', 'border', 'color', 'fill',
+  'stroke', 'boxShadow', 'outline', 'outlineColor', 'opacity', 'filter', 'textDecorationColor'];
+const SETTER = new RegExp(`style\\.(${PAINT_PROPS.join('|')})\\s*=\\s*(?:'([^']*)'|"([^"]*)"|\`([^\`]*)\`)`, 'g');
+/** Every (property, value) the handler can paint, in source order, one entry per branch. */
+const paints = (body) => [...body.matchAll(SETTER)]
+  .map((m) => `${m[1]}=${m[2] ?? m[3] ?? m[4]}`);
+
 test('no hover handler paints the same value on enter and on leave', () => {
-  const setterRe = /style\.(background|backgroundColor|borderColor)\s*=\s*'([^']+)'/g;
   const offenders = [];
 
   for (const file of walk(path.join(repoRoot, 'src'))) {
     const source = readFileSync(file, 'utf8');
-    let at = source.indexOf('onMouseEnter');
-    while (at !== -1) {
-      const enterBody = handlerBody(source, at);
-      const leaveAt = source.indexOf('onMouseLeave', at + enterBody.length);
-      // The leave must be the very next prop, not one several elements later.
-      if (leaveAt !== -1 && leaveAt - (at + enterBody.length) < 40) {
-        const leaveBody = handlerBody(source, leaveAt);
-        const enters = [...enterBody.matchAll(setterRe)].map((m) => `${m[1]}:${m[2]}`);
-        const leaves = [...leaveBody.matchAll(setterRe)].map((m) => `${m[1]}:${m[2]}`);
-        // A conditional leave (`... ? a : b`) restores per state; only an
-        // unconditional one can be compared value for value.
-        if (enters.length && !/ \? /.test(leaveBody)
-          && enters.length === leaves.length && enters.every((v, i) => v === leaves[i])) {
-          const line = source.slice(0, at).split('\n').length;
-          offenders.push(`${path.relative(repoRoot, file)}:${line} -> ${enters.join(', ')}`);
-        }
+    for (const enterProp of [...source.matchAll(propAt('onMouseEnter'))]) {
+      const enter = bodyFrom(source, enterProp.index + enterProp[0].length - 1);
+      const after = source.slice(enter.end);
+      const leaveProp = propAt('onMouseLeave').exec(after);
+      if (!leaveProp) continue;
+      // Proximity in LINES, not characters: the leave has to be on the same
+      // element, and indentation must never buy a handler an exemption.
+      const linesBetween = after.slice(0, leaveProp.index).split('\n').length - 1;
+      if (linesBetween > 4) continue;
+      const leave = bodyFrom(source, enter.end + leaveProp.index + leaveProp[0].length - 1);
+      const enters = paints(enter.text);
+      const leaves = paints(leave.text);
+      // Branch i of the enter against branch i of the leave. ANY property that
+      // repeats its value means that branch of the control has no hover.
+      const dead = enters.filter((value, i) => leaves[i] === value);
+      if (dead.length) {
+        const line = source.slice(0, enterProp.index).split('\n').length;
+        offenders.push(
+          `${path.relative(repoRoot, file)}:${line} -> ${dead.join(', ')} `
+          + `(enter [${enters.join(' | ')}] / leave [${leaves.join(' | ')}])`,
+        );
       }
-      at = source.indexOf('onMouseEnter', at + 1);
     }
   }
 
   assert.deepEqual(
     offenders,
     [],
-    `${offenders.length} hover handlers set the SAME value on enter and on leave, so the `
-    + `control never reverts:\n  ${offenders.join('\n  ')}`,
+    `${offenders.length} hover handler branch(es) paint the resting value on enter, so the `
+    + `control gives no hover feedback:\n  ${offenders.join('\n  ')}`,
   );
 });
 

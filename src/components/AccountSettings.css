@@ -154,9 +154,11 @@
   text-overflow: ellipsis;
 }
 
+/* UX: the nav row lifts a surface step AND brightens its label under the
+   pointer. Repainting the resting --text-3 here left the label dead. */
 .account-sidebar-btn:hover {
   background: var(--surface-2);
-  color: var(--text-3);
+  color: var(--text-1);
 }
 
 .account-sidebar-btn.active {
@@ -650,8 +652,11 @@
   transition: background 0.2s;
 }
 
+/* UX: a gold control's hover step is --accent-light and its pressed step is
+   --accent-press (tokens.css). Repainting --accent here gave the primary
+   button in account settings no hover at all. */
 .account-btn-purple:hover {
-  background: var(--accent);
+  background: var(--accent-light);
 }
 
 /* The plan you are ON gets the gold outline; the plan you could buy gets the
@@ -718,8 +723,10 @@
   margin-bottom: -1px;
 }
 
+/* UX: same as the sidebar nav - the tab lifts a surface step and brightens
+   its label; --text-3 on both sides was no hover. */
 .account-subscription-tab:hover {
-  color: var(--text-3);
+  color: var(--text-1);
   background: var(--surface-2);
 }
 

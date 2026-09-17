@@ -1597,7 +1597,12 @@ const BookmarksPanel = ({
             onClick={() => setIsEditMode(!isEditMode)}
             style={{
               height: '26px',
-              background: isEditMode ? 'var(--accent)' : 'var(--surface-3)',
+              /* UX: this button must answer the pointer. It rests one step
+                 below its own hover (--surface-2 -> --surface-3), exactly like
+                 the five secondary buttons further down this panel; the gold
+                 "Done" state rests on --accent and hovers to --accent-light,
+                 the gold hover step tokens.css defines. */
+              background: isEditMode ? 'var(--accent)' : 'var(--surface-2)',
               color: isEditMode ? 'var(--accent-text)' : 'var(--text-2)',
               border: 'none',
               borderRadius: '6px',
@@ -1614,12 +1619,12 @@ const BookmarksPanel = ({
               if (!isEditMode) {
                 e.currentTarget.style.background = 'var(--surface-3)';
               } else {
-                e.currentTarget.style.background = 'var(--accent-press)';
+                e.currentTarget.style.background = 'var(--accent-light)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isEditMode) {
-                e.currentTarget.style.background = 'var(--surface-3)';
+                e.currentTarget.style.background = 'var(--surface-2)';
               } else {
                 e.currentTarget.style.background = 'var(--accent)';
               }

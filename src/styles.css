@@ -1059,8 +1059,10 @@ input[type="text"].space-name-inline:focus {
   margin-bottom: 0;
 }
 
+/* UX: the hover IS the warm wash. The `color: var(--accent)` this rule used to
+   repeat is the resting colour, so it painted nothing; a declaration that
+   cannot change anything is dead weight in a hover rule. */
 .survey-marker-select-mode-toggle:hover {
-  color: var(--accent);
   background: rgba(216, 168, 78, 0.1);
 }
 
@@ -1142,7 +1144,10 @@ input[type="text"].space-name-inline:focus {
   height: 24px;
   flex: none;
   padding: 0 10px;
-  background: var(--surface-3);
+  /* UX: rests one surface step below its own hover, so the fill lifts
+     --surface-2 -> --surface-3 under the pointer. It used to declare
+     --surface-3 on both sides, which painted nothing. */
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   color: var(--text-2);
@@ -1513,7 +1518,10 @@ input[type="text"].space-add-pages-input:focus-visible {
   width: 100%;
   height: 28px;
   padding: 0 8px;
-  background: var(--surface-3);
+  /* UX: same as the category button above - rest is one step below the hover
+     so the trigger answers the pointer. Its hover rule used to repaint both
+     the resting fill AND the resting border, so it had no hover at all. */
+  background: var(--surface-2);
   color: var(--text-2);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
@@ -1531,7 +1539,6 @@ input[type="text"].space-add-pages-input:focus-visible {
 
 .survey-marker-entity-trigger:hover {
   background: var(--surface-3);
-  border-color: var(--border-strong);
 }
 
 .survey-marker-entity-trigger:focus,
@@ -1639,7 +1646,13 @@ input[type="text"].space-add-pages-input:focus-visible {
   color: var(--text-1);
 }
 
-/* Active state */
+/* Active state.
+   UX: the :hover selector is DELIBERATELY grouped with the base here, so the
+   active button looks identical under the pointer. Gold already says "this is
+   the tool you are using"; a hover plate on top of that reads as a second
+   state. Sub-toolbar buttons get their neutral plate from
+   #chrome-sub-toolbar-host .btn-active:hover further down. Because both
+   selectors share one block, the dead-hover guard treats this as intended. */
 .btn-active,
 .btn-active:hover {
   background: transparent;

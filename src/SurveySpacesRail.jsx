@@ -2934,9 +2934,13 @@ const SurveySpacesRail = ({
                                   fontWeight: '400',
                                   cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
                                 }}
+                                /* UX: the enabled label rests on --danger-press
+                                   and brightens to --danger under the pointer.
+                                   It painted --danger-press in both directions
+                                   before, so it never answered at all. */
                                 onMouseEnter={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = 'var(--danger-press)';
+                                    e.currentTarget.style.color = 'var(--danger)';
                                   }
                                 }}
                                 onMouseLeave={(e) => {
@@ -4015,8 +4019,14 @@ const SurveySpacesRail = ({
                                       marginTop: '12px',
                                       padding: '10px 18px',
                                       borderRadius: '20px',
+                                      /* UX: rests one surface step below its
+                                         own hover so the pointer gets an
+                                         answer on both properties - the fill
+                                         lifts --surface-2 -> --surface-3 and
+                                         the gold edge lifts --accent ->
+                                         --accent-light. */
                                       border: '1px solid var(--accent)',
-                                      background: 'var(--surface-3)',
+                                      background: 'var(--surface-2)',
                                       color: 'var(--text-1)',
                                       fontSize: '13px',
                                       fontWeight: 500,
@@ -4029,10 +4039,10 @@ const SurveySpacesRail = ({
                                     }}
                                     onMouseEnter={(event) => {
                                       event.currentTarget.style.background = 'var(--surface-3)';
-                                      event.currentTarget.style.borderColor = 'var(--accent)';
+                                      event.currentTarget.style.borderColor = 'var(--accent-light)';
                                     }}
                                     onMouseLeave={(event) => {
-                                      event.currentTarget.style.background = 'var(--surface-3)';
+                                      event.currentTarget.style.background = 'var(--surface-2)';
                                       event.currentTarget.style.borderColor = 'var(--accent)';
                                     }}
                                   >
