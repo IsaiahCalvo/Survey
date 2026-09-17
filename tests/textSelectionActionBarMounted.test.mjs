@@ -17,9 +17,27 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const ACCEPTED_ICON_HASHES = {
   'pan-hand-closed.svg': 'fad3b440787ce0d89d718c2a849fb102ec48a584bc4392d04f8e221065f0a00e',
   'text-highlight.svg': 'bfe4a937890f2bd90e59aa3eb8d2f9e3e0224bd77c9c7a2f3e75919f21e6e932',
-  'text-underline.svg': '55c5967c981f7ccaf9389884ccde723f1cd3334564424f10b83a8c12d89c9f88',
+  // DELIBERATE ASSERTION CHANGE (2026-09-17, phone header pass): the underline
+  // and strikethrough hashes were re-taken after both assets were normalised
+  // onto the house 24 grid. Owner ruling, testing the phone build: "Bold,
+  // italics, underline and strikethrough don't look centred in their buttons."
+  // They were not - each of the four letterforms carried its own off-square
+  // viewBox with the ink sitting wherever the tracing left it, which the module
+  // papered over with a per-icon width factor. Measured in the pane at 375x812
+  // their ink came out 12.05, 9.89, 11.35 and 10.95px tall at one requested
+  // glyph size, none of them on the button's centre line.
+  // WHAT CHANGED IN EACH FILE: the root viewBox, so the ink is centred on the
+  // grid and exactly 20 units tall; and, on the strikethrough only, the strike
+  // BAR is narrowed to the same overhang the underline's rule already uses
+  // (1.25x the letter's width, where it was 1.58x) so the mark fits the shared
+  // square envelope instead of forcing the whole glyph to render 18% short.
+  // The letterforms themselves are untouched. A sha256 pin is here to stop an
+  // asset drifting silently, which this is not.
+  // Geometry is now asserted directly, not just pinned:
+  // tests/mobileHeaderGeometry.test.mjs.
+  'text-underline.svg': 'd2b8f32e48729139c09c5325a3cf48d8e0d6a581cf748b567cc9472d0a587f26',
   'text-squiggle.svg': '5d758e7ceef171af4c6a20d10844dec95860144d93e6fa6a0225c95ba9fa6c40',
-  'text-strikethrough.svg': 'b159301bb729612e95870d663bc2fbae256ee3022f94ff89354a923f93a173ba',
+  'text-strikethrough.svg': 'c2d5c43ec3c9804c8f60a9ca892389b93682dd5045d9916ba7ea86d198f9593a',
   // DELIBERATE ASSERTION CHANGE (2026-09-16, desktop sweep): the hyperlink and
   // redact hashes were both re-taken after their stroke weights came onto the
   // house 1.5 — hyperlink from 2.375, redact from 1.75. Those two were the last

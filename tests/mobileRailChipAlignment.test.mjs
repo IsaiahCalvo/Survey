@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { pxToken } from './helpers/cssTokens.mjs';
+
 const css = readFileSync(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -99,20 +101,40 @@ const declaredBase = (selector, property) => {
   return null;
 };
 
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-17, phone header pass). Owner ruling,
+ * testing the phone build: "The page navigation, '2 / 99', doesn't fit
+ * properly; it needs to fit 3 digits, a slash, and 3 digits perfectly." The
+ * page pill is now sized from "999 / 999" rather than from 68px, so the cluster
+ * this test measures against is 152px wide, not the 124px the old constant
+ * named - and the title cap is a calc over the cluster token rather than a
+ * literal, precisely so the two can never disagree again.
+ *
+ * What the test guards is unchanged and is now stricter: a clamped title must
+ * still stop short of the cluster's left edge, AT WHATEVER WIDTH the pill is,
+ * because the cluster half and the cap are both resolved from the stylesheet's
+ * own tokens instead of being repeated here. The literal-only shape of the cap
+ * is the one assertion that had to go; it was never the contract.
+ */
 test('the title group stops short of the centred page cluster', () => {
-  // The cluster is centred and measured 124px wide at 375 and 402; its left
-  // edge is therefore 50% - 62. The title group starts at its own left inset.
-  const CLUSTER_HALF = 62;
+  const root = /:root\s*\{([^}]*)\}/.exec(css)[1];
+  // prev + gap + pill + gap + next, centred, so its left edge is 50% - half.
+  const clusterHalf = pxToken(root, '--mobile-page-cluster-w') / 2;
   const left = Number(/^(\d+(?:\.\d+)?)px$/.exec(declaredBase('.mobile-pdf-header__document', 'left'))?.[1]);
-  const cap = declaredBase('.mobile-pdf-header__document', 'max-width');
-  const inset = Number(/calc\(50% - (\d+(?:\.\d+)?)px\)/.exec(String(cap))?.[1]);
-  assert.equal(Number.isFinite(inset), true, `the title cap must be calc(50% - Npx) (got ${cap})`);
+  const cap = String(declaredBase('.mobile-pdf-header__document', 'max-width'));
 
-  const gap = inset - left - CLUSTER_HALF;
+  // calc(50% - <inset>), where the inset may itself be a calc over tokens.
+  const insetSource = /^calc\(50% - (.+)\)$/.exec(cap)?.[1];
+  assert.notEqual(insetSource, undefined, `the title cap must be calc(50% - <inset>) (got ${cap})`);
+  const inset = pxToken(`--probe: ${insetSource};\n${root}`, '--probe');
+
+  const gap = inset - left - clusterHalf;
   assert.ok(
     gap >= 0,
     `a clamped title ends ${-gap}px INSIDE the page cluster, which paints over it (z 3 vs 2). `
-    + `The cap is calc(50% - ${inset}px) and the group starts at ${left}px, against a cluster `
-    + `whose left edge is 50% - ${CLUSTER_HALF}px.`,
+    + `The cap resolves to 50% - ${inset}px and the group starts at ${left}px, against a cluster `
+    + `whose left edge is 50% - ${clusterHalf}px.`,
   );
+  // The gutter the owner asked for is the group's own left inset, both sides.
+  assert.equal(gap, left, `the title should keep a ${left}px gutter before the cluster, not ${gap}px`);
 });

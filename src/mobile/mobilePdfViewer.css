@@ -41,6 +41,39 @@
   --mobile-strip-control-h: 24px;  /* every tool-properties control, one height */
   --mobile-strip-dropdown-w: 80px; /* EVERY strip dropdown and the width field */
   --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
+
+  /* HEADER PAGE PILL (owner ruling 2026-09-17, phone build: "The page
+     navigation, '2 / 99', doesn't fit properly; it needs to fit 3 digits, a
+     slash, and 3 digits perfectly"). On a 99-page document the pill's 68px
+     WRAPPED - the "/ 99" span broke after the slash and painted "2 /" over
+     "99", two 11px lines in a 26px control.
+     So the pill is sized from the widest string it can ever show, "999 / 999",
+     never from the document in front of it. Measured in the pill's own face
+     (SF Pro Text 800 11px, font-variant-numeric: tabular-nums) at both 375 and
+     402 wide: every digit 7.602px, the slash 3.852px, the one space inside the
+     "/ N" span 2.82px. The fraction is a flex row of two children - the ordinal
+     and that span - so a 2px gap sits between them:
+        6 digits + slash + space + gap = 45.612 + 3.852 + 2.82 + 2 = 54.284px.
+     Tapping the fraction swaps the ordinal for a 3-digit input, and THAT is the
+     wider of the two states, so it is the one the pill is sized from: the input
+     carries half a pixel over its own three digits so a sub-pixel rounding can
+     never shave the last one.
+     Around the text: the fraction's own 6px of padding, the pill's 2px flex
+     gap, the 22px chevron zone, the pill's 8px of padding and 2px of border
+     = 40px of chrome. 54.784 + 40 = 94.784px, and the slack below rounds that
+     to a whole 96px - 1.2px of headroom for metric drift between WebKit and
+     Blink, verified on the iOS Simulator and in the pane. */
+  --mobile-page-digit-w: 7.602px;
+  --mobile-page-input-w: calc((3 * var(--mobile-page-digit-w)) + 0.5px);
+  --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.852px + 2.82px + (3 * var(--mobile-page-digit-w)));
+  --mobile-page-pill-chrome: 40px;
+  --mobile-page-pill-slack: 1.216px;
+  --mobile-page-pill-w: calc(var(--mobile-page-pill-text) + var(--mobile-page-pill-chrome) + var(--mobile-page-pill-slack));
+
+  /* The centred page cluster: prev chevron, pill, next chevron, 2px apart.
+     Everything that has to clear the cluster reads it from here, so growing
+     the pill can never leave a neighbour overlapping it again. */
+  --mobile-page-cluster-w: calc((2 * var(--mobile-control-h)) + 4px + var(--mobile-page-pill-w));
 }
 
 html.survey-viewer-open,
@@ -134,7 +167,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      at 139; at 375: 7..126.5 against 125.5. 69 buys zero overlap; the extra 7
      gives a gutter matching the group's own 7px left inset. Only the clamped
      long-filename case changes. */
-  max-width: calc(50% - 76px);
+  /* 2026-09-17: derived, not a literal. The cluster is centred, so its left
+     edge is 50% - cluster/2; this group starts at 7px and keeps a 7px gutter
+     before that edge, which is exactly 50% - (cluster/2 + 14). With the old
+     68px pill the cluster was 124px and this read `calc(50% - 76px)` - the
+     same number this calc produces for a 124px cluster. Now that the pill is
+     sized from "999 / 999" the cluster is 152px and the cap follows it, so the
+     title still stops 7px short of the page chevron instead of sliding under
+     it. Only the already-clamped long-filename case is affected. */
+  max-width: calc(50% - (var(--mobile-page-cluster-w) / 2 + 14px));
   gap: 4px;
 }
 
@@ -241,7 +282,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    Its height comes from the shared header control token so the pill lines up
    with the back button, the title and undo/redo. */
 .mobile-pdf-header__page-pill {
-  width: 68px;
+  /* Sized from "999 / 999" - see --mobile-page-pill-w. min-width as well as
+     width so a future flex parent cannot squeeze the fraction back into a
+     wrap. */
+  width: var(--mobile-page-pill-w);
+  min-width: var(--mobile-page-pill-w);
   height: var(--mobile-control-h);
   padding: 0 4px;
   display: flex;
@@ -277,10 +322,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 0;
   font: inherit;
   font-variant-numeric: tabular-nums;
+  /* Belt as well as braces: the pill is wide enough for "999 / 999", and this
+     makes a wrap impossible even if a font ever measures wider than the
+     numbers above. A too-narrow pill would then clip rather than paint two
+     lines over each other, which is the failure the owner reported. */
+  white-space: nowrap;
 }
 
 .mobile-pdf-header__page-input {
-  width: 22px;
+  /* Three tabular digits, plus half a pixel so rounding cannot clip the last
+     one. 22px held two: typing a third page number into a 99-page document
+     used to run the digit under the "/". */
+  width: var(--mobile-page-input-w);
   height: 20px;
   padding: 0;
   color: #f2f2f2;
@@ -293,14 +346,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-header__page-input:focus { outline: none; }
 
-.mobile-pdf-header__page-total { color: #a8b0bf; }
+.mobile-pdf-header__page-total { color: #a8b0bf; white-space: nowrap; }
 
 /* Tap zone 2 — chevron → zoom/fit dropdown only. Widened hit area (min 22px)
    so it isn't a cramped edge target next to the fraction zone. */
 .mobile-pdf-header__page-chevron {
   height: 100%;
   min-width: 22px;
-  padding: 0 5px;
+  /* 4px left, 5px right: the 1px border-left is part of this box, so an even
+     5/5 padding centred the caret on the CONTENT box and left it 0.5px right
+     of the box the user sees. 4 + 1px border = 5 on both sides, and the caret
+     lands on the button's own centre line. */
+  padding: 0 5px 0 4px;
   display: grid;
   place-items: center;
   color: inherit;
@@ -1707,10 +1764,23 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-align: center;
 }
 
+/* UX 2026-09-17 (owner, phone build: "Bold, italics, underline and
+   strikethrough don't look centred in their buttons"). They were not. The
+   button was a plain block, so its icon was an inline-block on a TEXT
+   BASELINE: the line box reserved the 11px font's descender under the glyph,
+   which pushed all four marks 1.5px above the button's centre - measured at
+   375x812, glyph centre y 50.5 in a button centred on 52. `display: grid` with
+   `place-items: center` centres the glyph geometrically, with no font metric
+   in the sum, exactly as the header icons and the colour button already do.
+   The other half of the fix is in the artwork: the four assets are normalised
+   onto the house 24 grid so one square glyph box serves all four - see
+   src/Icons.jsx. */
 .mobile-pdf-properties__format {
   width: 28px;
   height: var(--mobile-strip-control-h);
   padding: 0;
+  display: grid;
+  place-items: center;
   flex: 0 0 auto;
   color: #ddd;
   background: #444;
@@ -2079,10 +2149,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 5px;
 }
 
+/* Same baseline fault, same fix as the live strip's format buttons above: a
+   block button centres its icon on a font baseline, not on its box. */
 .mobile-pdf-text-defaults__format > button {
   width: 31px;
   height: 31px;
   padding: 0;
+  display: grid;
+  place-items: center;
   color: #f2f2f2;
   background: #242a33;
   border: 1px solid #343a45;

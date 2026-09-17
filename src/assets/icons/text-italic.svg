@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 222 340" width="222" height="340">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-23.072 25.862 288.276 288.276" width="24" height="24">
+  <!-- House 24-unit grid: the viewBox is the ink box grown to a square whose
+       side is the ink HEIGHT x 24/20, so this glyph's ink is centred on the
+       grid and exactly 20 units tall - the same envelope its three siblings
+       use. Normalised 2026-09-17; the artwork itself is untouched. -->
   <path d="M161.83 48.01C145.14 128 128.44 208 111.75 287.99C101.22 287.99 90.69 287.99 80.17 287.99C96.94 208 113.72 128 130.5 48.01C140.94 48.01 151.39 48.01 161.83 48.01Z" transform="translate(0.06563 2.00001)" fill="#FFFFFF" fill-rule="evenodd" stroke="#FFFFFF" stroke-width="0.25" stroke-linejoin="round"/>
 </svg>
