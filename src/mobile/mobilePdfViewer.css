@@ -124,8 +124,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   left: 7px;
   /* UX 2026-07-12 (matrix §9 title-pill overlap fix): cap the title group so it
      stops short of the centred page cluster (its left edge is ~50% - 60px), no
-     matter the device width. Prevents the title colliding with "1 / 1" at 390px. */
-  max-width: calc(50% - 68px);
+     matter the device width. Prevents the title colliding with "1 / 1" at 390px.
+     2026-09-17 (phone sweep): 76, not 68. The cap was one pixel too generous, so
+     with a long filename the two groups did not meet - they OVERLAPPED, and the
+     page cluster (z 3) painted over the title's last column. The cluster is
+     124px wide and centred, so its left edge is 50% - 62; the title group starts
+     at 7px, so a cap of 50% - 68 put its right edge at 50% - 61, a 1px overlap
+     at every width. Measured at 402: title x 7..140 against a cluster starting
+     at 139; at 375: 7..126.5 against 125.5. 69 buys zero overlap; the extra 7
+     gives a gutter matching the group's own 7px left inset. Only the clamped
+     long-filename case changes. */
+  max-width: calc(50% - 76px);
   gap: 4px;
 }
 
@@ -586,11 +595,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
 
+/* UX 2026-09-17 (phone sweep): the wrapper carries NO border. It used to carry
+   `1px solid transparent` with box-sizing: border-box, which left a 28px content
+   box for a 30px chip: the chip started 1px in on both axes and ran 1px past the
+   wrapper's right edge. Measured at 375x812, it was the only chip in the rail
+   that did not sit on the column's centre line - every sibling paints at x 4.5
+   (Pan, Draw, Shapes, Text, the kebab, Version history) while this one painted
+   at 5.5, 80 inside a wrapper correctly placed at 4.5, 79. Its hover /
+   focus-within / active outline is an inset box-shadow now, which paints in the
+   same place a 1px border did, on the same 6px radius, without taking a pixel
+   off the content box. */
 .mobile-pdf-tools__select-family {
   position: relative;
   width: var(--mobile-rail-chip);
   height: var(--mobile-rail-chip);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
 }
 
@@ -602,7 +621,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__select-family:hover,
 .mobile-pdf-tools__select-family:focus-within,
 .mobile-pdf-tools__select-family[data-active='true'] {
-  border-color: var(--gold-soft, #b6904a);
+  box-shadow: inset 0 0 0 1px var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button,
@@ -630,11 +649,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 1;
 }
 
+/* UX 2026-09-17 (phone sweep): the caret's pad starts INSIDE its own glyph's
+   column, not 6px to the left of it. With `-6px 0` the pad spanned x 19.5..33.5
+   across the chip's full height, which put the dead centre of the Text Select
+   chip inside the caret's target: document.elementFromPoint at the chip's centre
+   (20.5, 95) answered "Selection mode", and a 7x4 probe grid found the caret
+   owning 16 of the chip's 30px at every y. A tap on the middle of the tool's own
+   icon opened the selection-mode menu instead of arming the tool.
+   `-2px -4px` moves the pad to x 23.5..37.5 - the same 14px of width, still
+   inside the 40px rail - so the chip keeps its centre and its left 18px. The
+   vertical reach is untouched at 30px. Nothing paints differently; only hit
+   ownership changes. */
 .mobile-pdf-tools__select-caret::after {
   content: '';
   position: absolute;
   inset-block: -8px;
-  inset-inline: -6px 0;
+  inset-inline: -2px -4px;
 }
 
 .mobile-pdf-lasso-controls {
