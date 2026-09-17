@@ -131,6 +131,19 @@ test('callout preview matches renderer defaults and nested opacity', () => {
   assert.match(viewerSource, /effectivePreviewColor\(fill, borderOpacity \* fillOpacityValue\)/);
 });
 
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-17, quick styles).
+ *
+ * What this test is for has NOT changed: every swatch in the tool-properties
+ * row must show the selected mark's exact colour when there is one, and fall
+ * back to the armed tool's default otherwise. Two of its five lines named the
+ * CSS property each channel is painted with, and on the shape swatch those two
+ * swapped: the DISC is now the border and the 2px ring around it is the fill,
+ * so that the disc and the four quick colour dots beside it are the same
+ * channel (see the swatch's own comment in AppShell). The `?? ensureRgbaOpacity`
+ * contract each line guards is untouched — only which side of the swatch it is
+ * read off.
+ */
 test('every annotation swatch prefers exact selected colors over tool defaults', () => {
   assert.match(
     appShellSource,
@@ -144,12 +157,14 @@ test('every annotation swatch prefers exact selected colors over tool defaults',
     appShellSource,
     /color: bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#ffffff'/,
   );
+  // The shape swatch's ring — the fill.
   assert.match(
     appShellSource,
-    /border: `2px solid \$\{bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity/,
+    /border: `2px solid \$\{bottomToolbarApi\.selectedFillColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.fillColor \|\| '#ffffff'/,
   );
+  // The shape swatch's disc — the border, the channel the quick dots act on.
   assert.match(
     appShellSource,
-    /background: bottomToolbarApi\.selectedFillColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.fillColor \|\| '#ffffff'/,
+    /background: bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#000000'/,
   );
 });

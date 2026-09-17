@@ -1303,13 +1303,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   overflow: hidden;
-  color: var(--mobile-swatch-stroke, #1e293b);
+  /* UX 2026-09-17: --core is the channel the quick dots act on (the disc) and
+     --ring is the other one (the 2px inset ring, and the counter's digit). The
+     variables used to be named fill / stroke, which stopped being the truth
+     once the disc started showing a shape's border. */
+  color: var(--mobile-swatch-ring, #1e293b);
   background:
-    linear-gradient(var(--mobile-swatch-fill, #ff0000), var(--mobile-swatch-fill, #ff0000)) padding-box,
+    linear-gradient(var(--mobile-swatch-core, #ff0000), var(--mobile-swatch-core, #ff0000)) padding-box,
     conic-gradient(#cfcfcf 0 25%, #fff 0 50%, #cfcfcf 0 75%, #fff 0) border-box;
   border: 0;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 2px var(--mobile-swatch-stroke, transparent);
+  box-shadow: inset 0 0 0 2px var(--mobile-swatch-ring, transparent);
   font-size: 12px;
   font-weight: 800;
   line-height: 1;

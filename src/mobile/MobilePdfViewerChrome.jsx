@@ -1139,12 +1139,19 @@ export function MobileToolProperties({ api }) {
           <button
             type="button"
             className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}${matchedQuickColour(quickColourValue) ? '' : ' is-current-color'}`}
-            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Fill and border colors') : 'Stroke color'}
+            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Border and fill colors') : 'Stroke color'}
             style={{
-              '--mobile-swatch-fill': showFill ? toHexColor(api.fillColor, '#ff0000') : toHexColor(api.strokeColor, '#ff0000'),
-              '--mobile-swatch-stroke': toHexColor(api.strokeColor, '#ff0000'),
+              // UX 2026-09-17: the disc is the channel the four dots act on and
+              // the 2px ring is the other one. On a fillable shape that used to
+              // be the wrong way up — a 0%-opacity white fill filled the disc
+              // while the dots beside it set the red border — so the two
+              // neighbours showed two different colours of one shape.
+              '--mobile-swatch-core': quickColourValue,
+              '--mobile-swatch-ring': showFill && tool !== 'counter'
+                ? toHexColor(api.fillColor, '#ffffff')
+                : toHexColor(api.strokeColor, '#ff0000'),
             }}
-            onClick={() => openSheet(showFill ? 'fill' : 'stroke')}
+            onClick={() => openSheet(tool === 'counter' ? 'fill' : 'stroke')}
           >
             {tool === 'counter' ? '1' : null}
           </button>
