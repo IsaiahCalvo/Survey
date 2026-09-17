@@ -43,6 +43,17 @@
   --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
 }
 
+/* UX 2026-09-17 (revision-2 palette, owner approved). The #2a2218 brown is
+   gone from the app. A SELECTED ROW is now a real surface step plus a 2px gold
+   edge (painted as an inset shadow so the row's box never changes size and the
+   list cannot jiggle on selection); a SMALL active control — a chip, a pill, a
+   tab, a dropdown trigger — gets --accent-soft, the one sanctioned gold wash.
+   A large warm wash on a row is what made the brown read as a different app.
+   These rules also used to ask for `var(--gold-bg, ...)`, `var(--accent-primary,
+   ...)` and `var(--gold-soft, ...)`, none of which are defined outside
+   .survey-hub — so the phone always painted the fallback. They take the shared
+   tokens directly now. */
+
 html.survey-viewer-open,
 html.survey-viewer-open body,
 html.survey-viewer-open #root {
@@ -257,8 +268,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-pill.is-open {
-  border-color: var(--gold-soft, #b6904a);
-  background: var(--gold-bg, #2a2218);
+  border-color: var(--accent-press);
+  background: var(--accent-soft);
 }
 
 /* Tap zone 1 — the whole "n / N" fraction → inline page-jump input.
@@ -310,7 +321,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-pill.is-open .mobile-pdf-header__page-chevron {
-  border-left-color: var(--gold-soft, #b6904a);
+  border-left-color: var(--accent-press);
 }
 
 .mobile-pdf-header__zoom-menu {
@@ -447,8 +458,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__zoom-fits > button.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* UX 2026-09-16 (sizing pass + rail-defect pass, merged): the rail is
@@ -588,9 +599,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__button.is-active {
-  color: var(--accent-primary, #d8a84e);
+  color: var(--accent);
   background: #111820;
-  border-color: var(--gold-soft, #b6904a);
+  border-color: var(--accent-press);
 }
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
@@ -621,7 +632,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__select-family:hover,
 .mobile-pdf-tools__select-family:focus-within,
 .mobile-pdf-tools__select-family[data-active='true'] {
-  box-shadow: inset 0 0 0 1px var(--gold-soft, #b6904a);
+  box-shadow: inset 0 0 0 1px var(--accent-press);
 }
 
 .mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button,
@@ -696,13 +707,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-lasso-controls > button.is-active,
 .mobile-pdf-lasso-controls > button:active {
-  color: var(--accent-primary, #d8a84e);
-  background: #2a2218;
-  border-color: var(--gold-soft, #b6904a);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
 }
 
 .mobile-pdf-lasso-controls > button:focus-visible {
-  outline: 2px solid var(--accent-primary, #d8a84e);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -754,13 +765,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-select-mode__menu > button:focus-visible,
 .mobile-pdf-tools__select-caret:focus-visible {
-  outline: 2px solid var(--accent-primary, #d8a84e);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
 .mobile-pdf-select-mode__menu > button.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: #2a2218;
+  color: var(--accent);
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 .mobile-pdf-tools__divider {
@@ -831,8 +843,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__survey-categories button.is-active {
   color: #17120a;
-  background: var(--accent-primary, #d8a84e);
-  border-color: var(--accent-primary, #d8a84e);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .mobile-pdf-tools__survey-entities {
@@ -860,7 +872,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__survey-entities button.is-active {
   background: #111820;
-  border-color: var(--accent-primary, #d8a84e);
+  border-color: var(--accent);
 }
 
 .mobile-pdf-tools__survey-entities button span {
@@ -984,8 +996,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #e8e2d4;
-  background: var(--gold-bg, #2a2218);
-  border: 1px solid var(--accent-primary, #d8a84e);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
   border-radius: 50%;
   font-size: 10px;
   font-weight: 800;
@@ -1002,7 +1014,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #17120a;
-  background: var(--accent-primary, #d8a84e);
+  background: var(--accent);
   border: 1px solid #20242c;
   border-radius: 9px;
   font-size: 9px;
@@ -1295,8 +1307,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties--actions > .mobile-pdf-properties__primary {
   color: #17120a;
-  background: var(--accent-primary, #d8a84e);
-  border-color: var(--accent-primary, #d8a84e);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .mobile-pdf-properties__keep {
@@ -1316,15 +1328,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__keep.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--gold-soft, #b6904a);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
 }
 
 .mobile-pdf-properties__keep.is-active > span {
   color: #17120a;
-  background: var(--accent-primary, #d8a84e);
-  border-color: var(--accent-primary, #d8a84e);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .mobile-pdf-properties__color {
@@ -1646,8 +1658,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-styled-select__trigger.is-open {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .mobile-styled-select__trigger:disabled { color: #8a8f98; opacity: 0.7; }
@@ -1684,8 +1696,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-styled-select__menu > button.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent);
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 /* UX 2026-09-16 (phone sweep): 44px wide. This one control is a bare <input>
@@ -1721,8 +1734,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__format.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* Live text formatting is intentionally a single horizontal strip. RULED CHANGE
@@ -1787,12 +1800,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__menu > button:first-of-type { grid-template-columns: 1fr; }
-.mobile-pdf-properties__menu > button.is-active { color: var(--accent-primary, #d8a84e); background: var(--gold-bg, #2a2218); }
+.mobile-pdf-properties__menu > button.is-active { color: var(--accent); background: var(--surface-3); box-shadow: inset 2px 0 var(--accent); }
 .mobile-pdf-properties__menu i { width: 9px; height: 9px; border-radius: 50%; }
 .mobile-pdf-properties__menu b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-properties__menu em { color: #919aa8; font-style: normal; }
 
-.mobile-pdf-properties__edit.is-active { color: var(--accent-primary, #d8a84e); background: var(--gold-bg, #2a2218); }
+.mobile-pdf-properties__edit.is-active { color: var(--accent); background: var(--accent-soft); }
 .mobile-pdf-properties__edit:disabled { opacity: 0.4; }
 
 .mobile-pdf-text-defaults {
@@ -1891,7 +1904,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-defaults__tabs > button.is-active {
   color: #f2f2f2;
-  background: var(--gold-bg, #2a2218);
+  background: var(--accent-soft);
 }
 
 .mobile-pdf-text-defaults__tabs > button:focus {
@@ -2021,8 +2034,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__colors > button.is-active {
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--accent-primary, #d8a84e);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .mobile-pdf-text-card__colors > button > span {
@@ -2097,8 +2110,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-defaults__format > button.is-active {
   color: #f2f2f2;
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--gold-soft, #b6904a);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
 }
 
 .mobile-pdf-text-card__size > input {
@@ -2142,8 +2155,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger.is-open,
 .mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger.is-open,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger.is-open {
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--gold-soft, #b6904a);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
 }
 
 /* UX 2026-09-16 (phone sweep, owner: "make them the same size, keep the sheet
@@ -2229,9 +2242,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-defaults__alignments > button.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--gold-soft, #b6904a);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
 }
 
 .mobile-pdf-text-card__color-tabs {
@@ -2259,7 +2272,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid #343a45; }
-.mobile-pdf-text-card__color-tabs > button.is-active { color: #f2f2f2; background: var(--gold-bg, #2a2218); }
+.mobile-pdf-text-card__color-tabs > button.is-active { color: #f2f2f2; background: var(--accent-soft); }
 
 .mobile-pdf-text-card__color-tabs i {
   width: 11px;
@@ -2434,9 +2447,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-dock__side.is-active,
 .mobile-pdf-dock__center.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--gold-soft, #b6904a);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
 }
 
 .mobile-pdf-dock__center {
@@ -2613,8 +2626,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: var(--gold-bg, #2a2218);
-  border: 1px solid var(--accent-primary, #d8a84e);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
   border-radius: 50%;
   font-size: 10px;
   font-weight: 900;
@@ -2623,7 +2636,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-users-sheet__row p { min-width: 0; margin: 0; display: grid; gap: 2px; }
 .mobile-pdf-users-sheet__row p strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-users-sheet__row p span { color: #a8b0bf; font-size: 10px; }
-.mobile-pdf-users-sheet__row em { color: var(--accent-primary, #d8a84e); font-size: 10px; font-style: normal; font-weight: 800; }
+.mobile-pdf-users-sheet__row em { color: var(--accent); font-size: 10px; font-style: normal; font-weight: 800; }
 
 .mobile-survey-sheet-header,
 .mobile-survey-picker-header,
@@ -2715,8 +2728,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-survey-template-menu > button.is-active {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent);
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 .mobile-survey-sheet-header-actions {
@@ -2760,9 +2774,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-survey-sheet-export.is-open {
-  color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
-  border-color: var(--accent-primary, #d8a84e);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .mobile-survey-sheet-export:disabled { opacity: 0.45; }
@@ -2885,7 +2899,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-survey-template-row:active {
   background: #2a3140 !important;
-  border-color: var(--accent-primary, #d8a84e) !important;
+  border-color: var(--accent) !important;
 }
 
 .mobile-survey-categories-heading {
@@ -2909,8 +2923,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-sheet .btn-active {
   color: #17120a !important;
-  background: var(--accent-primary, #d8a84e) !important;
-  border-color: var(--accent-primary, #d8a84e) !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
 }
 
 .mobile-survey-exit-footer {
@@ -3039,11 +3053,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-survey-detail-icon-btn {
-  color: var(--accent-primary, #d8a84e);
+  color: var(--accent);
 }
 
 .mobile-survey-detail-icon-btn.has-note {
-  border-color: var(--accent-primary, #d8a84e);
+  border-color: var(--accent);
 }
 
 .mobile-survey-detail-swatch {
@@ -3357,8 +3371,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 28px;
   border-radius: 6px;
   background: #1f2430;
-  border: 1px solid var(--accent-primary, #d8a84e);
-  color: var(--accent-primary, #d8a84e);
+  border: 1px solid var(--accent);
+  color: var(--accent);
   display: grid;
   place-items: center;
 }
@@ -3419,7 +3433,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-survey-notes-save {
   border: 0;
-  background: var(--accent-primary, #d8a84e);
+  background: var(--accent);
   color: #17120a;
 }
 
@@ -3632,8 +3646,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-page-card.is-active {
-  background: var(--gold-bg, #2a2218) !important;
-  border-color: var(--accent-primary, #d8a84e) !important;
+  background: var(--surface-3) !important;
+  border-color: var(--accent) !important;
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 .mobile-page-card.is-active::before {

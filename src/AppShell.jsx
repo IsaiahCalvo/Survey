@@ -1767,9 +1767,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       top: `${selectModeMenuAnchor.top}px`,
                       left: `${selectModeMenuAnchor.left}px`,
                       transform: 'translate(-50%, 0)',
-                      backgroundColor: '#1E1E1E',
+                      backgroundColor: 'var(--surface-2)',
                       backgroundImage: 'none',
-                      border: '1px solid #2a3140',
+                      border: '1px solid var(--border)',
                       borderRadius: '6px',
                       boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                       zIndex: 999999,
@@ -1777,7 +1777,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       flexDirection: 'column',
                       padding: '4px',
                       minWidth: '168px',
-                      color: '#e8e2d4',
+                      color: 'var(--text-2)',
                       pointerEvents: 'auto',
                       cursor: 'default',
                       fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
@@ -1797,11 +1797,18 @@ export default function App({ devPreviewReturnTab = null }) {
                         // was a 32px row beside their 34px ones.
                         minHeight: 'var(--chrome-menu-row-h)',
                         padding: '4px 9px',
-                        // UX: gold on warm tint matches the phone checked row, distinct from hover.
-                        background: selected ? '#2a2218' : 'transparent',
+                        // UX 2026-09-17 (revision-2 palette, owner approved):
+                        // the checked row is a real surface step plus a 2px gold
+                        // edge, matching the phone's own checked row. It was a
+                        // #2a2218 warm tint, the one brown in the app, which sat
+                        // 172 degrees of hue away from every other surface. The
+                        // edge is an inset shadow, not a border, because this
+                        // menu's rows must not change box size when checked.
+                        background: selected ? 'var(--surface-3)' : 'transparent',
+                        boxShadow: selected ? 'inset 2px 0 var(--accent)' : 'none',
                         border: 'none',
                         borderRadius: '4px',
-                        color: selected ? '#d8a84e' : '#e8e2d4',
+                        color: selected ? 'var(--accent)' : 'var(--text-2)',
                         // UX: match the phone sheet; colour and check carry selection, not a weight jump.
                         fontWeight: 600,
                         textAlign: 'left',
@@ -1827,8 +1834,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               bottomToolbarApi.setTooltip?.({ visible: false });
                             });
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = selected ? '#2a2218' : '#1f2430'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#2a2218' : 'transparent'; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = selected ? 'var(--surface-3)' : 'var(--hover)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? 'var(--surface-3)' : 'transparent'; }}
                           style={optionStyle}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

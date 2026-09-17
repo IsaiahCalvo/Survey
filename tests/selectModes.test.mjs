@@ -129,7 +129,14 @@ test('desktop Select uses one integrated Drawboard-style mode trigger', () => {
   assert.doesNotMatch(selectToolbar, /data-select-mode-caret/);
   assert.doesNotMatch(selectToolbar, /indicatorClick|event\.target\.closest/);
   assert.match(selectToolbar, /getNextSelectModeMenuOpen\(open, isActive\)/);
-  assert.match(selectToolbar, /backgroundColor: '#1E1E1E'/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
+  // owner): the menu's own fill is now the shared --surface-2 token instead of a
+  // literal #1E1E1E. #1E1E1E was a pure neutral grey with no place in the app's
+  // blue-grey ramp — it was the print panel's colour, borrowed. What the
+  // assertion is really guarding is that the popover paints a SOLID surface
+  // (KAL: a translucent menu over the page was unreadable), so it now pins the
+  // token that carries that surface.
+  assert.match(selectToolbar, /backgroundColor: 'var\(--surface-2\)'/);
   assert.doesNotMatch(selectToolbar, /background: selected \? '#1f2430'/);
   // B1: desktop uses the canonical label, just like the trigger and mobile sheet.
   assert.match(selectToolbar, /<span>\{opt\.label\}<\/span>/);
