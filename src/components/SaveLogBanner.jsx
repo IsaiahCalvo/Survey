@@ -345,9 +345,13 @@ export default function SaveLogBanner() {
 
   const colors = isResult
     ? (isError
-      ? { bg: 'rgba(46, 22, 22, 0.96)', border: '#ef4444', accent: '#ef4444', text: '#fde2e2' }
-      : { bg: 'rgba(22, 44, 32, 0.96)', border: '#22c55e', accent: '#22c55e', text: '#e2f5ea' })
-    : { bg: 'rgba(24, 28, 40, 0.97)', border: '#60a5fa', accent: '#60a5fa', text: '#e8eefb' };
+      ? { bg: 'rgba(46, 22, 22, 0.96)', border: 'var(--danger)', accent: 'var(--danger)', text: 'var(--text-1)' }
+      /* UX 2026-09-17 (revision-2 palette): the "saved" banner was green and the
+         "working" banner was blue, neither of which is a colour in this app.
+         Gold carries the good news; the neutral surface carries the in-progress
+         one, so red stays the only colour that means trouble. */
+      : { bg: 'var(--surface-2)', border: 'var(--accent)', accent: 'var(--accent)', text: 'var(--text-1)' })
+    : { bg: 'var(--surface-2)', border: 'var(--border)', accent: 'var(--text-3)', text: 'var(--text-1)' };
 
   // UX: slide from the LEFT — user specifically asked to flip the direction
   // so the new submit banner is visually distinct from the old right-side
@@ -499,7 +503,7 @@ export default function SaveLogBanner() {
                 onClick={handleSubmit}
                 style={{
                   background: colors.accent,
-                  color: '#0b1220',
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: 6,
                   padding: '6px 14px',
@@ -571,8 +575,8 @@ export default function SaveLogBanner() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#1a1f2e',
-              color: '#e8eefb',
+              background: 'var(--surface-2)',
+              color: 'var(--text-1)',
               padding: '20px 22px',
               borderRadius: 12,
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
@@ -592,7 +596,7 @@ export default function SaveLogBanner() {
                 onClick={handleConfirmEmptyNo}
                 style={{
                   background: 'transparent',
-                  color: '#e8eefb',
+                  color: 'var(--text-1)',
                   border: '1px solid rgba(255,255,255,0.18)',
                   borderRadius: 6,
                   padding: '7px 14px',
@@ -607,8 +611,8 @@ export default function SaveLogBanner() {
                 type="button"
                 onClick={handleConfirmEmptyYes}
                 style={{
-                  background: '#60a5fa',
-                  color: '#0b1220',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: 6,
                   padding: '7px 14px',

@@ -1,7 +1,7 @@
 .text-selection-action-bar {
   width: 100%;
   min-width: 0;
-  color: #e8e2d4;
+  color: var(--text-2);
 }
 
 .text-selection-action-bar__toolbar {
@@ -14,9 +14,9 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
-  scrollbar-color: #4a5260 transparent;
-  border-bottom: 1px solid #30353e;
-  background: linear-gradient(100deg, #15191f, #1b1f26);
+  scrollbar-color: var(--text-disabled) transparent;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(100deg, var(--surface-1), var(--surface-1));
   box-sizing: border-box;
   scroll-padding-inline: 8px;
 }
@@ -63,7 +63,7 @@
 .text-selection-action-bar__button:focus-visible,
 .text-selection-action-bar__link-form button:focus-visible,
 .text-selection-action-bar__link-input:focus-visible {
-  outline: 2px solid #e5ad18;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -79,8 +79,8 @@
   gap: 9px;
   overflow-x: hidden;
   overflow-y: auto;
-  border-bottom: 1px solid #343942;
-  background: linear-gradient(100deg, #171b21, #22262e);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(100deg, var(--surface-1), var(--surface-2));
   box-shadow: 0 5px 16px rgba(0, 0, 0, 0.25);
   box-sizing: border-box;
 }
@@ -89,9 +89,9 @@
   padding: 3px;
   display: flex;
   flex: 0 0 auto;
-  border: 1px solid #474d58;
+  border: 1px solid var(--border-strong);
   border-radius: 7px;
-  background: #15181d;
+  background: var(--surface-1);
 }
 
 .text-selection-action-bar__link-input {
@@ -101,11 +101,11 @@
   height: 35px;
   padding: 0 11px;
   flex: 1 1 220px;
-  border: 1px solid #555b67;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   outline: 0;
-  background: #12151a;
-  color: #f2f3f5;
+  background: var(--surface-1);
+  color: var(--text-1);
   font-size: 12px;
   box-sizing: border-box;
 }

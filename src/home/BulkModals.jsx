@@ -15,14 +15,14 @@ import Spinner from '../components/Spinner';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
-  card: '#181c24',
-  deep: '#12151c',
-  rule: '#2a3140',
-  ink: '#f4f1ea',
-  inkSoft: '#e8e2d4',
-  muted: '#8d96a6',
-  gold: '#d8a84e',
-  danger: '#d95a56',
+  card: 'var(--surface-2)',
+  deep: 'var(--surface-1)',
+  rule: 'var(--border)',
+  ink: 'var(--text-1)',
+  inkSoft: 'var(--text-2)',
+  muted: 'var(--text-3)',
+  gold: 'var(--accent)',
+  danger: 'var(--danger)',
 };
 
 const overlay = {
@@ -71,7 +71,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
         flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
         fontSize: 11.5, fontWeight: 600,
         background: mode === val ? C.gold : 'transparent',
-        color: mode === val ? '#15110a' : C.inkSoft,
+        color: mode === val ? 'var(--accent-text)' : C.inkSoft,
         border: `1px solid ${mode === val ? C.gold : C.rule}`,
       }}
     >
@@ -130,7 +130,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
           <button
             disabled={!destId || submitting}
             onClick={handleConfirm}
-            style={{ opacity: destId && !submitting ? 1 : 0.45, cursor: destId && !submitting ? 'pointer' : 'not-allowed', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            style={{ opacity: destId && !submitting ? 1 : 0.45, cursor: destId && !submitting ? 'pointer' : 'not-allowed', background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}
           >
             {/* KAL-73: ring to the left of the participle label while the batch runs. */}
             {submitting && <Spinner size={14} color="currentColor" />}
@@ -186,7 +186,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
           <button
             disabled={submitting}
             onClick={handleConfirm}
-            style={{ background: danger ? C.danger : C.gold, color: danger ? '#fff' : '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: submitting ? 0.85 : 1 }}
+            style={{ background: danger ? C.danger : C.gold, color: danger ? '#fff' : 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: submitting ? 0.85 : 1 }}
           >
             {submitting && <Spinner size={14} color="currentColor" />}
             {submitting ? (busyLabel || `${confirmLabel}…`) : confirmLabel}
@@ -269,7 +269,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
           <button
             disabled={!trimmed}
             onClick={submit}
-            style={{ minHeight: 44, opacity: trimmed ? 1 : 0.45, cursor: trimmed ? 'pointer' : 'not-allowed', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '6px 16px', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}
+            style={{ minHeight: 44, opacity: trimmed ? 1 : 0.45, cursor: trimmed ? 'pointer' : 'not-allowed', background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '6px 16px', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}
           >
             Save
           </button>

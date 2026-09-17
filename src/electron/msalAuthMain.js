@@ -27,10 +27,10 @@ const GRAPH_SCOPES = ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All',
 const CACHE_FILE_NAME = 'ms-auth-cache.bin';
 
 const SUCCESS_TEMPLATE =
-  '<html><body style="font-family:-apple-system,sans-serif;text-align:center;padding-top:18vh;background:#1e1e1e;color:#eee">' +
+  '<html><body style="font-family:-apple-system,sans-serif;text-align:center;padding-top:18vh;background:var(--surface-1);color:var(--text-1)">' +
   '<h2>Signed in</h2><p>You can close this tab and return to the Survey app.</p></body></html>';
 const ERROR_TEMPLATE =
-  '<html><body style="font-family:-apple-system,sans-serif;text-align:center;padding-top:18vh;background:#1e1e1e;color:#eee">' +
+  '<html><body style="font-family:-apple-system,sans-serif;text-align:center;padding-top:18vh;background:var(--surface-1);color:var(--text-1)">' +
   '<h2>Sign-in did not complete</h2><p>Close this tab and try again from the Survey app.</p></body></html>';
 
 // Map an MSAL AuthenticationResult to the narrow shape the renderer may see.

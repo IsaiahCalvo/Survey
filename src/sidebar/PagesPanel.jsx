@@ -770,7 +770,7 @@ const PagesPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: '#12151c'
+      background: 'var(--surface-1)'
     }}>
       {mobileMode && (
         <div className="mobile-pages-counter">
@@ -843,8 +843,8 @@ const PagesPanel = ({
                 width: mobileMode ? '130px' : undefined,
                 height: mobileMode ? '146px' : undefined,
                 boxSizing: 'border-box',
-                background: isSelected ? '#2a3140' : (dragOverPage === pageNumber ? '#2b4a5a' : 'transparent'),
-                border: isSelected ? '1px solid #d8a84e' : (dragOverPage === pageNumber ? '1px solid #d8a84e' : '1px solid transparent'),
+                background: isSelected ? 'var(--surface-3)' : (dragOverPage === pageNumber ? 'var(--surface-3)' : 'transparent'),
+                border: isSelected ? '1px solid var(--accent)' : (dragOverPage === pageNumber ? '1px solid var(--accent)' : '1px solid transparent'),
                 borderRadius: '4px',
                 cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
                 touchAction: mobileMode ? 'pan-x' : undefined,
@@ -856,7 +856,7 @@ const PagesPanel = ({
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.background = '#181c24';
+                  e.currentTarget.style.background = 'var(--surface-2)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -873,8 +873,8 @@ const PagesPanel = ({
                 width: '20px',
                 height: '20px',
                 borderRadius: '50%',
-                background: '#3a4252',
-                color: '#f4f1ea',
+                background: 'var(--surface-3)',
+                color: 'var(--text-1)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -898,7 +898,7 @@ const PagesPanel = ({
                   aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
                   {...tip(clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste', 'below')}
                 >
-                  <Icon name="copy" size={12} color="#58d976" />
+                  <Icon name="copy" size={12} color="var(--accent)" />
                 </div>
               )}
 
@@ -917,9 +917,13 @@ const PagesPanel = ({
                     padding: 0,
                     display: 'grid',
                     placeItems: 'center',
-                    color: '#e8e2d4',
-                    background: 'rgba(18,21,28,0.84)',
-                    border: '1px solid #3a4252',
+                    color: 'var(--text-2)',
+                    /* UX: the overflow button sits ON a page thumbnail, so it needs a
+                       plate it can be read against without hiding the page. --surface-1 at
+                       the same 84% it always had; the channels used to be the retired
+                       ramp's #12151c typed out as rgba(), which the hex sweep never saw. */
+                    background: 'color-mix(in srgb, var(--surface-1) 84%, transparent)',
+                    border: '1px solid var(--border-strong)',
                     borderRadius: 6,
                     zIndex: 2,
                   }}
@@ -965,7 +969,7 @@ const PagesPanel = ({
                     top: '50%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    color: '#5a6473',
+                    color: 'var(--text-disabled)',
                     fontSize: '10px'
                   }}>
                     Loading...
@@ -988,7 +992,7 @@ const PagesPanel = ({
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            color: '#8d96a6',
+            color: 'var(--text-3)',
             fontSize: '12px'
           }}>
             <Spinner size={18} />
@@ -998,7 +1002,7 @@ const PagesPanel = ({
           <div style={{
             padding: '32px 16px',
             textAlign: 'center',
-            color: '#5a6473',
+            color: 'var(--text-disabled)',
             fontSize: '12px'
           }}>
             No pages are visible in this space. Add pages to the active space to see them here.
@@ -1063,8 +1067,8 @@ const PagesPanel = ({
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
-            background: '#181B20',
-            border: '1px solid #3C424D',
+            background: 'var(--surface-1)',
+            border: '1px solid var(--border)',
             borderRadius: '9px',
             padding: '6px',
             zIndex: 10000,
@@ -1076,8 +1080,8 @@ const PagesPanel = ({
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
-            background: '#2a3140',
-            border: '1px solid #3a4252',
+            background: 'var(--surface-3)',
+            border: '1px solid var(--border-strong)',
             borderRadius: '6px',
             padding: '4px',
             zIndex: 10000,
@@ -1092,13 +1096,13 @@ const PagesPanel = ({
             <>
               {/* UX: demo menus lead with a muted title row + divider
                   (FloatingContextMenu, styles.ts:872-889). */}
-              <div style={{ color: '#8d96a6', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
-              <div style={{ height: 1, margin: '3px 0', background: '#343A45' }} />
+              <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
+              <div style={{ height: 1, margin: '3px 0', background: 'var(--surface-3)' }} />
               <button
                 type="button"
                 disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
                 onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: '#e8e2d4', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) <= 0 ? 0.4 : 1 }}
+                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) <= 0 ? 0.4 : 1 }}
               >
                 <Icon name="chevronUp" size={14} color="currentColor" />
                 Move up
@@ -1107,12 +1111,12 @@ const PagesPanel = ({
                 type="button"
                 disabled={allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
                 onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: '#e8e2d4', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1 ? 0.4 : 1 }}
+                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1 ? 0.4 : 1 }}
               >
                 <Icon name="chevronDown" size={14} color="currentColor" />
                 Move down
               </button>
-              <div style={{ height: 1, margin: '3px 5px', background: '#3a4252' }} />
+              <div style={{ height: 1, margin: '3px 5px', background: 'var(--surface-3)' }} />
             </>
           )}
           <button
@@ -1126,15 +1130,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="scissors" size={14} color="#8d96a6" />
+            <Icon name="scissors" size={14} color="var(--text-3)" />
             Cut
           </button>
           <button
@@ -1148,15 +1152,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="copy" size={14} color="#8d96a6" />
+            <Icon name="copy" size={14} color="var(--text-3)" />
             Copy
           </button>
           <button
@@ -1171,7 +1175,7 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: clipboardPage ? 'pointer' : 'not-allowed',
-              color: clipboardPage ? '#e8e2d4' : '#5a6473',
+              color: clipboardPage ? 'var(--text-2)' : 'var(--text-disabled)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -1179,14 +1183,14 @@ const PagesPanel = ({
             }}
             onMouseEnter={(e) => {
               if (clipboardPage) {
-                e.currentTarget.style.background = '#2a3140';
+                e.currentTarget.style.background = 'var(--surface-3)';
               }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
             }}
           >
-            <Icon name="paste" size={14} color={clipboardPage ? "#8d96a6" : "#5a6473"} />
+            <Icon name="paste" size={14} color={clipboardPage ? "var(--text-3)" : "var(--text-disabled)"} />
             Paste
           </button>
           <button
@@ -1200,20 +1204,20 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="duplicate" size={14} color="#8d96a6" />
+            <Icon name="duplicate" size={14} color="var(--text-3)" />
             Duplicate
           </button>
           <div style={{
             height: '1px',
-            background: '#3a4252',
+            background: 'var(--surface-3)',
             margin: '4px 0'
           }} />
           <button
@@ -1227,15 +1231,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="rotate" size={14} color="#8d96a6" />
+            <Icon name="rotate" size={14} color="var(--text-3)" />
             Rotate
           </button>
           <button
@@ -1249,15 +1253,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="flipHorizontal" size={14} color="#8d96a6" />
+            <Icon name="flipHorizontal" size={14} color="var(--text-3)" />
             Mirror horizontally
           </button>
           <button
@@ -1271,15 +1275,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="flipVertical" size={14} color="#8d96a6" />
+            <Icon name="flipVertical" size={14} color="var(--text-3)" />
             Mirror vertically
           </button>
           <button
@@ -1293,20 +1297,20 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="reset" size={14} color="#8d96a6" />
+            <Icon name="reset" size={14} color="var(--text-3)" />
             Reset
           </button>
           <div style={{
             height: '1px',
-            background: '#3a4252',
+            background: 'var(--surface-3)',
             margin: '4px 0'
           }} />
           <button
@@ -1320,15 +1324,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: mobileMode ? '#F08A8A' : '#d95a56',
+              color: mobileMode ? 'var(--danger)' : 'var(--danger)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = mobileMode ? '#22262d' : '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="trash" size={14} color={mobileMode ? '#F08A8A' : '#d95a56'} />
+            <Icon name="trash" size={14} color={mobileMode ? 'var(--danger)' : 'var(--danger)'} />
             Delete
           </button>
         </div>

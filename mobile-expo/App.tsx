@@ -494,7 +494,7 @@ function SurveyApp() {
         startInLoadingState
         renderLoading={() => (
           <View style={styles.centered}>
-            <ActivityIndicator color="#D8A84E" />
+            <ActivityIndicator color={PALETTE.accent} />
           </View>
         )}
         onLoadStart={handleLoadStart}
@@ -513,7 +513,7 @@ function SurveyApp() {
       />
       {!shellReady && !loadError ? (
         <View pointerEvents="none" style={styles.centered}>
-          <ActivityIndicator color="#D8A84E" />
+          <ActivityIndicator color={PALETTE.accent} />
         </View>
       ) : null}
       {externalNavigationActive ? (
@@ -548,14 +548,28 @@ export default function App() {
   );
 }
 
+// UX 2026-09-17 (revision-2 palette, owner approved): the Expo Go shell had
+// five colours of its own — a near-black #090C12 root, a cool white #F4F5F7,
+// a grey #9CA3AF, a warm cream #F4F1EA and a near-black button ink #11141A —
+// none of which the app itself uses. React Native cannot read a CSS variable,
+// so the tokens from src/styles/tokens.css are mirrored here as literals.
+// Keep the two in step: this file is the ONLY place the native shell paints.
+const PALETTE = {
+  surface0: '#0d0f14',   // --surface-0
+  text1: '#dadfe8',      // --text-1
+  text3: '#8d96a6',      // --text-3
+  accent: '#d8a84e',     // --accent
+  accentText: '#15110a', // --accent-text
+};
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#090C12',
+    backgroundColor: PALETTE.surface0,
   },
   webView: {
     flex: 1,
-    backgroundColor: '#090C12',
+    backgroundColor: PALETTE.surface0,
   },
   externalNavigationClose: {
     position: 'absolute',
@@ -568,7 +582,7 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   externalNavigationCloseText: {
-    color: '#F4F1EA',
+    color: PALETTE.text1,
     fontSize: 30,
     lineHeight: 32,
     fontWeight: '400',
@@ -582,16 +596,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#090C12',
+    backgroundColor: PALETTE.surface0,
     padding: 24,
   },
   errorTitle: {
-    color: '#F4F5F7',
+    color: PALETTE.text1,
     fontSize: 18,
     fontWeight: '700',
   },
   errorBody: {
-    color: '#9CA3AF',
+    color: PALETTE.text3,
     fontSize: 14,
     textAlign: 'center',
   },
@@ -602,10 +616,10 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     alignItems: 'center',
     borderRadius: 6,
-    backgroundColor: '#D8A84E',
+    backgroundColor: PALETTE.accent,
   },
   retryButtonText: {
-    color: '#11141A',
+    color: PALETTE.accentText,
     fontSize: 14,
     fontWeight: '700',
   },

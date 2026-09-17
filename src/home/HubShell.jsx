@@ -49,7 +49,7 @@ export const Icon = ({ name, size = 14, color, style, className }) => (
 
 /* Round initials badge. */
 export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
-  <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: '#15110a', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
+  <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
 );
 
 /* Overlapping row of avatars — used to preview a team compactly. */
@@ -270,8 +270,8 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                   </div>
                 </div>
               ) : (
-                <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
-                  <Icon name="signout" size={15} color="#d95a56" />Sign out
+                <button className="profile-menu-signout" style={{ ...itemStyle, color: 'var(--danger)' }} onClick={() => setConfirmSignOut(true)}>
+                  <Icon name="signout" size={15} color="var(--danger)" />Sign out
                 </button>
               )}
             </div>

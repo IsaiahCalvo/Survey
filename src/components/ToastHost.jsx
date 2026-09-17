@@ -9,9 +9,9 @@ import { useEffect, useState, useCallback } from 'react';
 // success/status, #d95a56 for danger, compact type, letter-spacing 0.
 
 const TYPE_ACCENT = {
-  info: '#d8a84e',    // gold — status (design.md: success/status uses gold)
-  success: '#d8a84e', // gold
-  error: '#d95a56',   // danger
+  info: 'var(--accent)',    // gold — status (design.md: success/status uses gold)
+  success: 'var(--accent)', // gold
+  error: 'var(--danger)',   // danger
   warn: '#e69a7a',    // rose supporting accent — caution, softer than danger
 };
 const AUTO_DISMISS_MS = 4500; // UX: long enough to read a short error, short enough not to nag.
@@ -72,9 +72,9 @@ export default function ToastHost() {
             style={{
               pointerEvents: 'auto',
               cursor: 'pointer',
-              background: '#181c24', // --ink-700 panel surface
-              color: '#f4f1ea', // --bone-100 primary text
-              border: '1px solid #2a3140', // --ink-500 rule
+              background: 'var(--surface-2)', // --ink-700 panel surface
+              color: 'var(--text-1)', // --bone-100 primary text
+              border: '1px solid var(--border)', // --ink-500 rule
               borderLeft: `3px solid ${accent}`,
               padding: '9px 14px',
               borderRadius: 8,

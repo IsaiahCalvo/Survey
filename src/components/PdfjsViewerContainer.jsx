@@ -889,7 +889,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
   };
   const thumbStyle = {
     position: 'absolute',
-    background: '#878e97',
+    background: 'var(--text-3)',
     borderRadius: 999,
     cursor: dragRef.current ? 'grabbing' : 'grab',
     touchAction: 'none',
@@ -2730,7 +2730,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         position: 'absolute',
         inset: 0,
         overflow: 'auto',
-        background: isMobileSurface ? '#070A0D' : '#12151c',
+        background: isMobileSurface ? 'var(--surface-0)' : 'var(--surface-1)',
         contain: 'strict',
         overscrollBehavior: 'contain',
         WebkitOverflowScrolling: 'touch',
@@ -2822,7 +2822,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         }
       `}</style>
       {loading ? (
-        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#cfd2d6' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-2)' }}>
           Loading…
         </div>
       ) : (
@@ -2874,7 +2874,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                   height: dim.h * scale,
                   background: '#fff',
                   boxShadow: isMobileSurface
-                    ? '0 0 0 1px #D8D8D0, 0 10px 28px rgba(0,0,0,0.35)'
+                    ? '0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35)'
                     : undefined,
                 }}
               >

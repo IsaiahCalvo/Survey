@@ -37,18 +37,32 @@ import { Icon } from './HubShell';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
-  card: '#181c24',
-  deep: '#12151c',
-  rule: '#2a3140',
-  ink: '#f4f1ea',
-  inkSoft: '#e8e2d4',
-  muted: '#8d96a6',
-  gold: '#d8a84e',
-  danger: '#d95a56',
+  card: 'var(--surface-2)',
+  deep: 'var(--surface-1)',
+  rule: 'var(--border)',
+  ink: 'var(--text-1)',
+  inkSoft: 'var(--text-2)',
+  muted: 'var(--text-3)',
+  gold: 'var(--accent)',
+  danger: 'var(--danger)',
 };
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
+
+/* Avatar colours for collaborators — the same identity palette and the same
+   deterministic pick as ManageTeamModal and ProjectsFolderTree, so one person
+   wears one colour everywhere. An owner keeps gold.
+   UX 2026-09-17: every non-owner here used to be the SAME #5fbf83 green, which
+   told you nothing about who they were and read as a status ("all good") in an
+   app where green means synced. These colours are identity, never state. */
+const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
+const colorFor = (seed) => {
+  const str = String(seed || '');
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return COLLAB_COLORS[hash % COLLAB_COLORS.length];
+};
 
 function roleLabel(role) {
   const r = String(role || '').toLowerCase();
@@ -236,7 +250,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>{labelForKind(kind)}</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
-            <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
+            <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
             <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
           </div>
 
@@ -262,7 +276,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
               return (
                 <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: rl === 'owner' ? C.gold : '#5fbf83', color: '#15110a', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initials}</div>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: rl === 'owner' ? C.gold : colorFor(m.user_id || m.user?.email || m.email), color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initials}</div>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user?.email || m.email || 'Unknown'}</div>
                     <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_id}</div>
@@ -275,7 +289,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   >
                     {ROLES.map((role) => <option key={role}>{role}</option>)}
                   </select>
-                  <div style={{ fontSize: 11.5, color: '#5fbf83', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
                   <button
                     disabled={busy || isLastOwner}
                     onClick={() => handleRemove(m)}
@@ -292,7 +306,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             {/* Pending email invites. */}
             {emailPending.map((inv) => (
               <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box', background: 'rgba(216,168,78,0.03)' }}>
-                <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#8d96a6', color: '#15110a', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inv.target_email}</div>
                   <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>expires {new Date(inv.expires_at).toLocaleDateString()}</div>
@@ -317,7 +331,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                 </button>
                 {linksOpen && activeLinks.map((inv) => (
                   <div key={inv.id} data-kal31-row="link" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#3b4252', color: C.ink, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>L</div>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-3)', color: C.ink, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>L</div>
                     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>Link invite</div>
                       <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{buildInviteUrl(inv)}</div>
@@ -349,7 +363,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             <span style={{ fontSize: 10.5, color: C.muted, letterSpacing: 0.06, textTransform: 'uppercase', fontWeight: 700 }}>
               {members.length} member{members.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} link{activeLinks.length === 1 ? '' : 's'}
             </span>
-            <button onClick={onClose} style={{ background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Done</button>
+            <button onClick={onClose} style={{ background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Done</button>
           </div>
         </div>
       </div>

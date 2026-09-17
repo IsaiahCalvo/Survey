@@ -117,8 +117,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, []);
 
   const isHighlighted = isSelected || isActive;
-  const headerBackground = isHighlighted ? '#2a3140' : 'transparent';
-  const headerHoverBackground = isHighlighted ? '#2a3140' : '#181c24';
+  const headerBackground = isHighlighted ? 'var(--surface-3)' : 'transparent';
+  const headerHoverBackground = isHighlighted ? 'var(--surface-3)' : 'var(--surface-2)';
   const regionCountText = String(regionCount);
   const regionCountDigits = regionCountText.length;
   const regionCountFontSize = regionCountDigits >= 4 ? '6px' : (regionCountDigits >= 3 ? '7.5px' : '10px');
@@ -140,8 +140,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       <div
         data-drag-rearrange-row
         style={{
-          background: '#181c24',
-          border: isHighlighted ? '1px solid transparent' : '1px solid #2a3140',
+          background: 'var(--surface-2)',
+          border: isHighlighted ? '1px solid transparent' : '1px solid var(--border)',
           borderRadius: '5px',
           overflow: isExpanded ? 'visible' : 'hidden',
           boxShadow: isHighlighted
@@ -184,7 +184,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               style={{
                 width: '24px',
                 height: '24px',
-                color: '#5a6473',
+                color: 'var(--text-disabled)',
               }}
             />
 
@@ -206,7 +206,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#5a6473',
+                color: 'var(--text-disabled)',
                 cursor: 'pointer',
                 padding: '2px 4px',
                 display: 'flex',
@@ -218,7 +218,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
               onMouseEnter={(e) => {
                 tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = '#1f2430';
+                e.currentTarget.style.background = 'var(--surface-3)';
               }}
               onMouseLeave={(e) => {
                 tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseLeave(e);
@@ -282,10 +282,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 width: mobileMode ? '40px' : '28px',
                 height: mobileMode ? '24px' : '16px',
                 borderRadius: mobileMode ? '12px' : '8px',
-                background: isActive ? '#d8a84e' : '#2a3140',
+                background: isActive ? 'var(--accent)' : 'var(--surface-3)',
                 cursor: 'pointer',
                 transition: 'background 0.2s ease',
-                border: isActive ? '1px solid #b6904a' : '1px solid #3a4252',
+                border: isActive ? '1px solid var(--accent-press)' : '1px solid var(--border-strong)',
                 display: 'flex',
                 alignItems: 'center',
                 padding: '2px',
@@ -296,14 +296,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               onMouseEnter={(e) => {
                 tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseEnter(e);
                 if (!isActive) {
-                  e.currentTarget.style.background = '#3a4252';
+                  e.currentTarget.style.background = 'var(--surface-3)';
                 } else {
-                  e.currentTarget.style.background = '#b6904a';
+                  // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
+                  e.currentTarget.style.background = 'var(--accent-light)';
                 }
               }}
               onMouseLeave={(e) => {
                 tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = isActive ? '#d8a84e' : '#2a3140';
+                e.currentTarget.style.background = isActive ? 'var(--accent)' : 'var(--surface-3)';
               }}
             >
               <div
@@ -350,7 +351,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 e.currentTarget.style.background = 'transparent';
               }}
             >
-              <Icon name="trash" size={12} color="#d95a56" />
+              <Icon name="trash" size={12} color="var(--danger)" />
             </button>
           </div>
         </div>
@@ -359,13 +360,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           <div
             style={{
             padding: '10px 12px 16px 12px',
-            background: '#181c24',
-            borderTop: '1px solid #2a3140',
+            background: 'var(--surface-2)',
+            borderTop: '1px solid var(--border)',
             display: 'flex',
             flexDirection: 'column',
             gap: '12px',
             fontSize: '12px',
-            color: '#8d96a6',
+            color: 'var(--text-3)',
             position: 'relative'
           }}>
             <div className="space-add-pages-row" style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
@@ -393,9 +394,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                     minWidth: 0,
                     height: '24px',
                     padding: '2px 8px',
-                    background: '#12151c',
-                    color: '#e8e2d4',
-                    border: '1px solid #2a3140',
+                    background: 'var(--surface-1)',
+                    color: 'var(--text-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: '4px',
                     fontSize: '11px',
                     fontFamily: FONT_FAMILY,
@@ -424,7 +425,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {pageCount === 0 ? (
-                <div style={{ color: '#5a6473', fontSize: '12px' }}>
+                <div style={{ color: 'var(--text-disabled)', fontSize: '12px' }}>
                   No pages added yet.
                 </div>
               ) : (
@@ -455,8 +456,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             gap: '8px',
                             padding: '4px 8px',
                             minHeight: '34px',
-                            background: '#12151c',
-                            border: '1px solid #2a3140',
+                            background: 'var(--surface-1)',
+                            border: '1px solid var(--border)',
                             borderRadius: '6px'
                           }}
                         >
@@ -503,10 +504,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     width: '28px',
                                     height: '16px',
                                     borderRadius: '8px',
-                                    background: isToggleEnabled && isOverlayEnabled ? '#d8a84e' : '#2a3140',
+                                    background: isToggleEnabled && isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)',
                                     cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
                                     transition: 'background 0.2s ease',
-                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid #b6904a' : '1px solid #3a4252',
+                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid var(--accent-press)' : '1px solid var(--border-strong)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     padding: '2px',
@@ -519,15 +520,16 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     tip(overlayTooltipText, 'below').onMouseEnter(e);
                                     if (!isToggleEnabled) return;
                                     if (!isOverlayEnabled) {
-                                      e.currentTarget.style.background = '#3a4252';
+                                      e.currentTarget.style.background = 'var(--surface-3)';
                                     } else {
-                                      e.currentTarget.style.background = '#b6904a';
+                                      // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
+                  e.currentTarget.style.background = 'var(--accent-light)';
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     tip(overlayTooltipText, 'below').onMouseLeave(e);
                                     if (!isToggleEnabled) return;
-                                    e.currentTarget.style.background = isOverlayEnabled ? '#d8a84e' : '#2a3140';
+                                    e.currentTarget.style.background = isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)';
                                   }}
                                 >
                                   <div
@@ -639,7 +641,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     cursor: 'pointer',
-                                    color: isActiveRegionEdit ? '#d8a84e' : '#8d96a6'
+                                    color: isActiveRegionEdit ? 'var(--accent)' : 'var(--text-3)'
                                   }}
                                 >
                                   <Icon name="edit" size={12} color="currentColor" />
@@ -693,7 +695,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   className="region-visibility-button"
                                   style={{
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                    color: isDisabled ? '#5a6473' : (visibilityState ? '#d8a84e' : '#8d96a6'),
+                                    color: isDisabled ? 'var(--text-disabled)' : (visibilityState ? 'var(--accent)' : 'var(--text-3)'),
                                     opacity: isDisabled ? 0.5 : 1,
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
@@ -702,12 +704,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   onMouseEnter={(e) => {
                                     tip(title, 'below').onMouseEnter(e);
                                     if (!isDisabled) {
-                                      e.currentTarget.style.color = visibilityState ? '#5ba1f0' : '#c7c7c7';
+                                      e.currentTarget.style.color = visibilityState ? '#5ba1f0' : 'var(--text-3)';
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     tip(title, 'below').onMouseLeave(e);
-                                    e.currentTarget.style.color = visibilityState ? '#d8a84e' : '#8d96a6';
+                                    e.currentTarget.style.color = visibilityState ? 'var(--accent)' : 'var(--text-3)';
                                   }}
                                 >
                                   {isSurveyContext ? (
@@ -733,7 +735,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               onClick={() => onRemovePage(space.id, page.pageId)}
                               className="region-delete-button"
                             >
-                              <Icon name="trash" size={12} color="#d95a56" />
+                              <Icon name="trash" size={12} color="var(--danger)" />
                             </button>
                           </div>
                         </li>
@@ -1342,15 +1344,15 @@ const SpacesPanel = ({
       flex: mobileMode ? 1 : undefined,
       minHeight: 0,
       fontFamily: FONT_FAMILY,
-      background: mobileMode ? '#24272d' : '#12151c'
+      background: mobileMode ? 'var(--surface-2)' : 'var(--surface-1)'
     }}>
       {/* Header */}
       <div className={mobileMode ? 'mobile-spaces-header' : undefined} style={{
         padding: '12px',
         height: '50px',
         boxSizing: 'border-box',
-        background: '#12151c',
-        borderBottom: '1px solid #2a3140',
+        background: 'var(--surface-1)',
+        borderBottom: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1361,7 +1363,7 @@ const SpacesPanel = ({
             margin: 0,
             fontSize: '13px',
             fontWeight: '600',
-            color: '#e8e2d4',
+            color: 'var(--text-2)',
             lineHeight: 1
           }}>
             Spaces
@@ -1452,7 +1454,7 @@ const SpacesPanel = ({
           <div style={{
             textAlign: 'center',
             padding: '40px 20px',
-            color: '#8d96a6',
+            color: 'var(--text-3)',
             fontSize: '13px'
           }}>
             No spaces yet. Create a space to filter pages by visibility.

@@ -1,0 +1,121 @@
+/* ============================================================================
+   Survey — THE colour palette. One file, every platform.
+   ============================================================================
+
+   UX 2026-09-17 — owner approved "revision 2" of the palette mockup
+   (scratchpad mockup-palette.html, "Survey colours — today vs proposed
+   (revision 2)"), with two amendments recorded at the bottom of this comment.
+   Every colour the app paints on its own chrome comes from here. Desktop,
+   Electron, web-mobile and Capacitor iOS/Android all load this sheet through
+   src/styles.css, which src/main.jsx imports, so there is exactly ONE place a
+   colour is decided.
+
+   WHY the values changed. The old set had four faults the owner's design
+   reference (the Kole Jain colour/UI rules) calls out:
+     1. The four background layers sat 3% apart in brightness (8 / 11 / 14 /
+        19%). Dark colours look more alike than light ones, so 3% collapses
+        into one flat surface and a card stops reading as a card. The new
+        ramp is an even 5% apart (8 / 13 / 18 / 23%).
+     2. The borders were 1.40:1 on their own panel — invisible. --border is
+        now 1.86:1 and --border-strong 2.71:1, so a layer has an edge by
+        stroke as well as by fill.
+     3. The neutral ramp mixed temperatures: warm creams (#f4f1ea, #e8e2d4)
+        for text over cool blue-greys for surfaces. One temperature now.
+     4. Selected rows used #2a2218, a warm brown 172 degrees away in hue from
+        anything else in the app. Selection is now a surface step plus a gold
+        edge, which is what the home sidebar already did.
+
+   WHAT DID NOT CHANGE. The gold is untouched (--accent #d8a84e and its press
+   step #b6904a were already right); --accent-light is the one new gold, a
+   lighter hover step so hover and pressed stop being the same shade.
+
+   HOW STATES ARE BUILT. Never invent a colour for a state. Hover lightens by
+   +5 brightness (--hover), pressed darkens by -4 (--pressed), selected is
+   --surface-3 plus a 2px --accent edge. A gold control's own states are
+   --accent-light (hover) and --accent-press (pressed). --accent-soft is the
+   ONLY warm fill, and only on small gold controls (pills, ghost-button
+   hover) — never on a whole row or panel, because a large warm wash is how
+   the rejected brown happened in the first place.
+
+   OWNER AMENDMENTS to the mockup (2026-09-17):
+     (a) Text stays white where gold reads worse. Gold marks the accent or the
+         active state; a label that is plain information stays --text-1 or
+         --text-2. The phone header's page pill ("3 / 24") keeps white text.
+     (b) Status DOTS keep green / yellow / red for synced / syncing / offline,
+         because a person has to tell "working" from "broken" at a glance and
+         gold already means "selected". --success is the mockup's optional
+         muted green and appears on status dots and NOTHING else: never a
+         button, never a border, never text.
+
+   NOT IN SCOPE, deliberately left alone:
+     - Selection handles stay #4a90e2 (owner ruling 2026-09-17). Do not point
+       HANDLE_RING, SVGAnnotationLayer, SVGSelectionOverlay,
+       PageAnnotationLayer or fabricCustomization at a token here.
+     - Ink / annotation colours belong to the user, not the theme:
+       CompactColorPicker presets, the quick-colour row, pdfTextMarkup and
+       every export paint path keep their literals.
+     - Email HTML keeps literal hexes; mail clients do not resolve CSS
+       variables.
+
+   Contrast (WCAG 2.1) on surface-1, the commonest panel: text-1 13.0,
+   text-2 9.3, text-3 5.8, accent 8.0, accent-light 10.4, danger 4.6,
+   warning 4.2, success 4.45. --text-disabled is 2.88 on purpose.
+   ========================================================================== */
+
+:root {
+  /* --- Surfaces: an even 5% brightness step per layer -------------------- */
+  --surface-0: #0d0f14;   /* the page behind everything  · B 8%  */
+  --surface-1: #171a21;   /* a panel, a bar, a header    · B 13% */
+  --surface-2: #21252e;   /* a card or a well on a panel · B 18% */
+  --surface-3: #2b303b;   /* raised: a selected row, a menu · B 23% */
+
+  /* --- Borders ---------------------------------------------------------- */
+  --border: #404754;          /* the default hairline · 1.86 on surface-1 */
+  --border-strong: #575f6e;   /* an edge that has to be seen · 2.71 */
+
+  /* --- Text: one temperature, four tiers -------------------------------- */
+  --text-1: #dadfe8;          /* headings and the row you are reading */
+  --text-2: #b7bec9;          /* body */
+  --text-3: #8d96a6;          /* subtext, captions, inactive icons */
+  --text-disabled: #5c6370;   /* fails contrast on purpose */
+
+  /* --- Gold: the one accent -------------------------------------------- */
+  --accent-light: #edc26d;    /* hover on a gold control */
+  --accent: #d8a84e;          /* base */
+  --accent-press: #b6904a;    /* pressed, and a disabled gold control */
+  --accent-text: #15110a;     /* the label ON a gold fill · 8.6 */
+  /* The one alpha token. Small gold controls only — see the comment above. */
+  --accent-soft: rgba(216, 168, 78, 0.14);
+
+  /* --- Feedback -------------------------------------------------------- */
+  --danger: #d95a56;
+  --danger-press: #c84c49;
+  --warning: #7d803d;         /* quieter than danger, and far from the gold */
+  /* Status DOTS only (owner amendment b). Never a button, border or text. */
+  --success: #548c71;
+  /* The destructive twin of --accent-soft, derived from --danger the same way
+     (the base colour at 14-16% alpha) rather than invented: the hover wash on a
+     small remove/delete control, which used to be a #3a1f1f dark-red literal.
+     Small controls only, for the same reason --accent-soft is: a large warm
+     wash is how the rejected brown happened. */
+  --danger-soft: rgba(217, 90, 86, 0.16);
+  --info: var(--text-3);      /* "informational" is just subtext */
+
+  /* --- Derived states --------------------------------------------------- */
+  /* A row's hover is +5 brightness on the panel under it; its pressed is -4.
+     These are the mockup's own two steps, kept as tokens so no component
+     re-derives them by eye. */
+  --hover: #26282e;
+  --pressed: #232830;
+  /* The focus ring: gold at 35%, so it reads on any surface without becoming
+     a second selected state. */
+  --focus: rgba(216, 168, 78, 0.35);
+
+  /* --- Kept from the previous token block ------------------------------ */
+  /* --accent-red is the one destructive red (KAL-72, docs/ui/colors.md); it
+     is an alias of --danger now rather than a second definition of the same
+     hex. --overlay-scrim is the one modal scrim (KAL-62), always paired with
+     backdrop-filter: blur(8px); keep theme.js overlay in sync with it. */
+  --accent-red: var(--danger);
+  --overlay-scrim: rgba(13, 15, 20, 0.55);
+}

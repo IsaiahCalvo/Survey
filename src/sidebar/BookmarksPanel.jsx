@@ -202,9 +202,9 @@ const BookmarkTreeRow = ({
           height: 31,
           padding: '3px 4px',
           borderRadius: 5,
-          background: isClone ? '#181c24' : isSelected ? '#30343a' : '#12151c',
-          border: '1px solid #2a3140',
-          color: '#e8e2d4',
+          background: isClone ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-2)',
           boxShadow: isClone ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
           cursor: isEditMode ? 'default' : 'pointer',
           pointerEvents: isSorting ? 'none' : undefined,
@@ -217,10 +217,10 @@ const BookmarkTreeRow = ({
           boxSizing: 'border-box',
         }}
         onMouseEnter={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = '#181c24';
+          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-2)';
         }}
         onMouseLeave={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = '#12151c';
+          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-1)';
         }}
       >
         <div
@@ -231,7 +231,7 @@ const BookmarkTreeRow = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#8d96a6',
+            color: 'var(--text-3)',
             cursor: isDraggingAny ? 'grabbing' : 'grab',
             userSelect: 'none',
             touchAction: 'none',
@@ -254,7 +254,7 @@ const BookmarkTreeRow = ({
             border: 0,
             padding: 0,
             background: 'transparent',
-            color: isFolder && item.children?.length ? '#8d96a6' : 'transparent',
+            color: isFolder && item.children?.length ? 'var(--text-3)' : 'transparent',
             cursor: isFolder && item.children?.length && !isClone ? 'pointer' : 'default',
             transform: (isCollapsed || isVisuallyCollapsed) ? 'rotate(-90deg)' : 'rotate(0deg)',
             transition: `transform ${GROUP_COLLAPSE_ANIMATION_MS}ms ease`,
@@ -263,7 +263,7 @@ const BookmarkTreeRow = ({
         >
           ▾
         </button>
-        <Icon name={isFolder ? 'folder' : 'bookmark'} size={11} color={isFolder ? '#7ab7e6' : '#8d96a6'} />
+        <Icon name={isFolder ? 'folder' : 'bookmark'} size={11} color={isFolder ? '#7ab7e6' : 'var(--text-3)'} />
         {isEditMode && !isClone ? (
           <input
             value={editName}
@@ -282,9 +282,9 @@ const BookmarkTreeRow = ({
             style={{
               flex: 1,
               minWidth: 0,
-              background: '#0d0f14',
-              border: '1px solid #2a3140',
-              color: '#e8e2d4',
+              background: 'var(--surface-0)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-2)',
               borderRadius: 5,
               height: 22,
               padding: '0 6px',
@@ -298,7 +298,7 @@ const BookmarkTreeRow = ({
             style={{
               flex: 1,
               minWidth: 0,
-              color: '#e8e2d4',
+              color: 'var(--text-2)',
               fontSize: 12,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -329,9 +329,9 @@ const BookmarkTreeRow = ({
               pattern="[0-9]*"
               style={{
                 width: 34,
-                background: '#0d0f14',
-                border: '1px solid #2a3140',
-                color: '#e8e2d4',
+                background: 'var(--surface-0)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-2)',
                 borderRadius: 5,
                 height: 22,
                 padding: '0 5px',
@@ -343,7 +343,7 @@ const BookmarkTreeRow = ({
             />
           ) : (
             item.pageIds?.[0] ? (
-              <span style={{ width: 36, color: '#8d96a6', fontSize: 10, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
+              <span style={{ width: 36, color: 'var(--text-3)', fontSize: 10, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
                 P {item.pageIds[0]}
               </span>
             ) : null
@@ -360,8 +360,8 @@ const BookmarkTreeRow = ({
             style={{
               width: 24,
               height: 22,
-              background: '#0d0f14',
-              border: '1px solid #2a3140',
+              background: 'var(--surface-0)',
+              border: '1px solid var(--border)',
               color: '#7ab7e6',
               borderRadius: 5,
               padding: 0,
@@ -397,7 +397,7 @@ const BookmarkTreeRow = ({
               flexShrink: 0,
             }}
           >
-            <Icon name="trash" size={12} color="#d95a56" />
+            <Icon name="trash" size={12} color="var(--danger)" />
           </button>
         )}
         {isClone && childCount > 1 && (
@@ -405,8 +405,8 @@ const BookmarkTreeRow = ({
             minWidth: 20,
             height: 20,
             borderRadius: 999,
-            background: '#d8a84e',
-            color: '#15110a',
+            background: 'var(--accent)',
+            color: 'var(--accent-text)',
             fontSize: 11,
             display: 'inline-flex',
             alignItems: 'center',
@@ -1451,7 +1451,7 @@ const BookmarksPanel = ({
         )}
         {flattenedItems.length === 0 ? (
           <div className="mobile-bookmark-empty">
-            <Icon name="bookmark" size={20} color="#8d96a6" />
+            <Icon name="bookmark" size={20} color="var(--text-3)" />
             <span>No bookmarks yet</span>
           </div>
         ) : (
@@ -1511,7 +1511,7 @@ const BookmarksPanel = ({
                   }}
                 >
                   <span className="mobile-bookmark-bubble">
-                    <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? '#8fb7ff' : '#a8b0bf'} />
+                    <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? 'var(--text-2)' : 'var(--text-3)'} />
                   </span>
                   <span className="mobile-bookmark-copy">
                     <span className="mobile-bookmark-title">{item.name}</span>
@@ -1570,15 +1570,15 @@ const BookmarksPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: '#12151c'
+      background: 'var(--surface-1)'
     }}>
       {/* Header */}
       <div style={{
         padding: '12px',
         height: '50px',
         boxSizing: 'border-box',
-        background: '#12151c',
-        borderBottom: '1px solid #2a3140',
+        background: 'var(--surface-1)',
+        borderBottom: '1px solid var(--border)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -1588,7 +1588,7 @@ const BookmarksPanel = ({
           margin: 0,
           fontSize: '13px',
           fontWeight: '600',
-          color: '#e8e2d4'
+          color: 'var(--text-2)'
         }}>
           Bookmarks
         </h3>
@@ -1597,8 +1597,13 @@ const BookmarksPanel = ({
             onClick={() => setIsEditMode(!isEditMode)}
             style={{
               height: '26px',
-              background: isEditMode ? '#d8a84e' : '#2a3140',
-              color: isEditMode ? '#15110a' : '#e8e2d4',
+              /* UX: this button must answer the pointer. It rests one step
+                 below its own hover (--surface-2 -> --surface-3), exactly like
+                 the five secondary buttons further down this panel; the gold
+                 "Done" state rests on --accent and hovers to --accent-light,
+                 the gold hover step tokens.css defines. */
+              background: isEditMode ? 'var(--accent)' : 'var(--surface-2)',
+              color: isEditMode ? 'var(--accent-text)' : 'var(--text-2)',
               border: 'none',
               borderRadius: '6px',
               padding: '0 10px',
@@ -1612,20 +1617,20 @@ const BookmarksPanel = ({
             }}
             onMouseEnter={(e) => {
               if (!isEditMode) {
-                e.currentTarget.style.background = '#3a4252';
+                e.currentTarget.style.background = 'var(--surface-3)';
               } else {
-                e.currentTarget.style.background = '#b6904a';
+                e.currentTarget.style.background = 'var(--accent-light)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isEditMode) {
-                e.currentTarget.style.background = '#2a3140';
+                e.currentTarget.style.background = 'var(--surface-2)';
               } else {
-                e.currentTarget.style.background = '#d8a84e';
+                e.currentTarget.style.background = 'var(--accent)';
               }
             }}
           >
-            <Icon name="edit" size={12} color={isEditMode ? '#15110a' : '#e8e2d4'} />
+            <Icon name="edit" size={12} color={isEditMode ? 'var(--accent-text)' : 'var(--text-2)'} />
             {isEditMode ? 'Done' : 'Edit'}
           </button>
         </div>
@@ -1687,7 +1692,7 @@ const BookmarksPanel = ({
               <div style={{
                 textAlign: 'center',
                 padding: '40px 20px',
-                color: '#8d96a6',
+                color: 'var(--text-3)',
                 fontSize: '13px'
               }}>
                 No bookmarks yet. Create one to get started.
@@ -1726,8 +1731,8 @@ const BookmarksPanel = ({
       {/* Add Button at Bottom */}
       <div style={{
         padding: '12px',
-        background: '#12151c',
-        borderTop: '1px solid #2a3140'
+        background: 'var(--surface-1)',
+        borderTop: '1px solid var(--border)'
       }}>
         <div style={{ position: 'relative' }} ref={menuRef}>
           <DismissBarrier
@@ -1739,8 +1744,8 @@ const BookmarksPanel = ({
             onClick={() => setShowCreateMenu(!showCreateMenu)}
             style={{
               width: '100%',
-              background: '#d8a84e',
-              color: '#15110a',
+              background: 'var(--accent)',
+              color: 'var(--accent-text)',
               border: 'none',
               borderRadius: '6px',
               padding: '8px 12px',
@@ -1753,10 +1758,13 @@ const BookmarksPanel = ({
               gap: '6px',
               fontFamily: FONT_FAMILY
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
+            /* UX: a gold control hovers UP to --accent-light and only presses
+               DOWN to --accent-press (tokens.css "HOW STATES ARE BUILT"). This
+               used to darken on hover, which reads as already-pressed. */
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
           >
-            <Icon name="plus" size={14} color="#15110a" />
+            <Icon name="plus" size={14} color="var(--accent-text)" />
             Add bookmark
           </button>
           {showCreateMenu && (
@@ -1766,8 +1774,8 @@ const BookmarksPanel = ({
               left: 0,
               right: 0,
               marginBottom: '4px',
-              background: '#2a3140',
-              border: '1px solid #3a4252',
+              background: 'var(--surface-3)',
+              border: '1px solid var(--border-strong)',
               borderRadius: '8px',
               padding: '4px',
               zIndex: 1000,
@@ -1784,18 +1792,18 @@ const BookmarksPanel = ({
                   fontSize: '13px',
                   textAlign: 'left',
                   cursor: 'pointer',
-                  color: '#e8e2d4',
+                  color: 'var(--text-2)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#181c24'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="folder" size={14} color="#8d96a6" />
+                <Icon name="folder" size={14} color="var(--text-3)" />
                 New bookmark group
               </button>
-              <div style={{ padding: '8px 12px', borderTop: '1px solid #2a3140' }}>
+              <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
                 <input
                   type="text"
                   placeholder="Bookmark name"
@@ -1804,9 +1812,9 @@ const BookmarksPanel = ({
                   style={{
                     width: '100%',
                     padding: '8px 10px',
-                    background: '#181c24',
-                    color: '#e8e2d4',
-                    border: '1px solid #2a3140',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontFamily: FONT_FAMILY,
@@ -1814,8 +1822,8 @@ const BookmarksPanel = ({
                     outline: 'none',
                     transition: 'border-color 0.15s ease'
                   }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                 />
                 <input
                   type="text"
@@ -1825,9 +1833,9 @@ const BookmarksPanel = ({
                   style={{
                     width: '100%',
                     padding: '8px 10px',
-                    background: '#181c24',
-                    color: '#e8e2d4',
-                    border: '1px solid #2a3140',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontFamily: FONT_FAMILY,
@@ -1835,8 +1843,8 @@ const BookmarksPanel = ({
                     outline: 'none',
                     transition: 'border-color 0.15s ease'
                   }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                   inputMode="numeric"
                   pattern="[0-9]*"
                 />
@@ -1852,9 +1860,9 @@ const BookmarksPanel = ({
                   style={{
                     width: '100%',
                     padding: '6px 12px',
-                    background: '#2a3140',
-                    color: '#e8e2d4',
-                    border: '1px solid #3a4252',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
+                    border: '1px solid var(--border-strong)',
                     borderRadius: '6px',
                     fontSize: '12px',
                     fontWeight: '500',
@@ -1863,8 +1871,8 @@ const BookmarksPanel = ({
                     marginBottom: '8px',
                     transition: 'background 0.15s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   Current page
                 </button>
@@ -1873,8 +1881,10 @@ const BookmarksPanel = ({
                   style={{
                     width: '100%',
                     padding: '6px 12px',
-                    background: '#d8a84e',
-                    color: '#f4f1ea',
+                    background: 'var(--accent)',
+                    /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                       --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                    color: 'var(--accent-text)',
                     border: 'none',
                     borderRadius: '4px',
                     fontSize: '12px',
@@ -1882,8 +1892,8 @@ const BookmarksPanel = ({
                     cursor: 'pointer',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
                 >
                   Create bookmark
                 </button>
@@ -1914,14 +1924,14 @@ const BookmarksPanel = ({
           zIndex: 10000
         }} onClick={() => setShowBookmarkGroupModal(false)}>
           <div style={{
-            background: '#12151c',
+            background: 'var(--surface-1)',
             borderRadius: '12px',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
             maxHeight: '80vh',
             overflow: 'auto',
-            border: '1px solid #2a3140',
+            border: '1px solid var(--border)',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{
@@ -1934,7 +1944,7 @@ const BookmarksPanel = ({
                 margin: 0,
                 fontSize: '18px',
                 fontWeight: '600',
-                color: '#e8e2d4'
+                color: 'var(--text-2)'
               }}>
                 Create bookmark group
               </h3>
@@ -1947,7 +1957,7 @@ const BookmarksPanel = ({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#8d96a6',
+                  color: 'var(--text-3)',
                   cursor: 'pointer',
                   padding: '4px',
                   display: 'flex',
@@ -1956,12 +1966,12 @@ const BookmarksPanel = ({
                   borderRadius: '4px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#2a3140';
-                  e.currentTarget.style.color = '#e8e2d4';
+                  e.currentTarget.style.background = 'var(--surface-3)';
+                  e.currentTarget.style.color = 'var(--text-2)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = '#8d96a6';
+                  e.currentTarget.style.color = 'var(--text-3)';
                 }}
               >
                 <Icon name="close" size={18} />
@@ -1973,7 +1983,7 @@ const BookmarksPanel = ({
                 display: 'block',
                 fontSize: '13px',
                 fontWeight: '500',
-                color: '#8d96a6',
+                color: 'var(--text-3)',
                 marginBottom: '8px'
               }}>
                 Group name
@@ -1986,17 +1996,17 @@ const BookmarksPanel = ({
                 style={{
                   width: '100%',
                   padding: '10px 12px',
-                  background: '#181c24',
-                  color: '#e8e2d4',
-                  border: '1px solid #2a3140',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-2)',
+                  border: '1px solid var(--border)',
                   borderRadius: '6px',
                   fontSize: '13px',
                   fontFamily: FONT_FAMILY,
                   outline: 'none',
                   transition: 'border-color 0.15s ease'
                 }}
-                onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                 autoFocus
               />
             </div>
@@ -2011,15 +2021,15 @@ const BookmarksPanel = ({
                 <label style={{
                   fontSize: '13px',
                   fontWeight: '500',
-                  color: '#8d96a6'
+                  color: 'var(--text-3)'
                 }}>
                   Bookmarks ({groupBookmarks.length})
                 </label>
                 <button
                   onClick={handleAddNewBookmark}
                   style={{
-                    background: '#2a3140',
-                    color: '#e8e2d4',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
                     border: 'none',
                     borderRadius: '6px',
                     padding: '6px 12px',
@@ -2031,8 +2041,8 @@ const BookmarksPanel = ({
                     gap: '6px',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   <Icon name="plus" size={12} />
                   New bookmark
@@ -2042,15 +2052,15 @@ const BookmarksPanel = ({
               <div style={{
                 maxHeight: '300px',
                 overflowY: 'auto',
-                border: '1px solid #2a3140',
+                border: '1px solid var(--border)',
                 borderRadius: '6px',
-                background: '#12151c'
+                background: 'var(--surface-1)'
               }}>
                 {groupBookmarks.length === 0 ? (
                   <div style={{
                     padding: '40px 20px',
                     textAlign: 'center',
-                    color: '#5a6473',
+                    color: 'var(--text-disabled)',
                     fontSize: '13px'
                   }}>
                     No bookmarks added yet. Add existing bookmarks or create new ones.
@@ -2059,7 +2069,7 @@ const BookmarksPanel = ({
                   groupBookmarks.map((bookmark, index) => (
                     <div key={index} style={{
                       padding: '12px',
-                      borderBottom: index < groupBookmarks.length - 1 ? '1px solid #1f2430' : 'none',
+                      borderBottom: index < groupBookmarks.length - 1 ? '1px solid var(--border)' : 'none',
                       display: 'flex',
                       gap: '8px',
                       alignItems: 'flex-start'
@@ -2069,14 +2079,14 @@ const BookmarksPanel = ({
                           <>
                             <div style={{
                               fontSize: '13px',
-                              color: '#e8e2d4',
+                              color: 'var(--text-2)',
                               fontWeight: '500'
                             }}>
                               {bookmark.name}
                             </div>
                             <div style={{
                               fontSize: '11px',
-                              color: '#8d96a6'
+                              color: 'var(--text-3)'
                             }}>
                               Page {bookmark.pageIds && bookmark.pageIds.length > 0 ? bookmark.pageIds[0] : 'N/A'}
                             </div>
@@ -2091,16 +2101,16 @@ const BookmarksPanel = ({
                               style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: '#181c24',
-                                color: '#e8e2d4',
-                                border: '1px solid #2a3140',
+                                background: 'var(--surface-2)',
+                                color: 'var(--text-2)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
-                              onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                              onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                             />
                             <input
                               type="text"
@@ -2123,16 +2133,16 @@ const BookmarksPanel = ({
                               style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: '#181c24',
-                                color: '#e8e2d4',
-                                border: '1px solid #2a3140',
+                                background: 'var(--surface-2)',
+                                color: 'var(--text-2)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
-                              onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                              onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                               inputMode="numeric"
                               pattern="[0-9]*"
                             />
@@ -2144,7 +2154,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#d95a56',
+                          color: 'var(--danger)',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2157,7 +2167,7 @@ const BookmarksPanel = ({
                         aria-label="Remove"
                         onMouseEnter={(e) => {
                           tip('Remove', 'below').onMouseEnter(e);
-                          e.currentTarget.style.background = '#3a1f1f';
+                          e.currentTarget.style.background = 'var(--danger-soft)';
                         }}
                         onMouseLeave={(e) => {
                           tip('Remove', 'below').onMouseLeave(e);
@@ -2178,7 +2188,7 @@ const BookmarksPanel = ({
                   display: 'block',
                   fontSize: '13px',
                   fontWeight: '500',
-                  color: '#8d96a6',
+                  color: 'var(--text-3)',
                   marginBottom: '8px'
                 }}>
                   Add existing bookmarks
@@ -2186,16 +2196,16 @@ const BookmarksPanel = ({
                 <div style={{
                   maxHeight: '150px',
                   overflowY: 'auto',
-                  border: '1px solid #2a3140',
+                  border: '1px solid var(--border)',
                   borderRadius: '6px',
-                  background: '#12151c',
+                  background: 'var(--surface-1)',
                   padding: '8px'
                 }}>
                   {bookmarks.filter(b => b.type === 'bookmark' && !b.parentId).length === 0 ? (
                     <div style={{
                       padding: '20px',
                       textAlign: 'center',
-                      color: '#5a6473',
+                      color: 'var(--text-disabled)',
                       fontSize: '12px'
                     }}>
                       No existing bookmarks available
@@ -2217,17 +2227,17 @@ const BookmarksPanel = ({
                             fontSize: '12px',
                             textAlign: 'left',
                             cursor: 'pointer',
-                            color: '#e8e2d4',
+                            color: 'var(--text-2)',
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
                             marginBottom: '4px'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = '#181c24'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <span>{bookmark.name}</span>
-                          <span style={{ color: '#8d96a6', fontSize: '11px' }}>
+                          <span style={{ color: 'var(--text-3)', fontSize: '11px' }}>
                             Page {bookmark.pageIds && bookmark.pageIds.length > 0 ? bookmark.pageIds[0] : 'N/A'}
                           </span>
                         </button>
@@ -2250,8 +2260,8 @@ const BookmarksPanel = ({
                 }}
                 style={{
                   padding: '8px 16px',
-                  background: '#2a3140',
-                  color: '#e8e2d4',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-2)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
@@ -2259,8 +2269,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 Cancel
               </button>
@@ -2268,8 +2278,10 @@ const BookmarksPanel = ({
                 onClick={handleSaveBookmarkGroup}
                 style={{
                   padding: '8px 16px',
-                  background: '#d8a84e',
-                  color: '#f4f1ea',
+                  background: 'var(--accent)',
+                  /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                     --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
@@ -2277,8 +2289,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
               >
                 Create group
               </button>
@@ -2311,14 +2323,14 @@ const BookmarksPanel = ({
           setAddToGroupBookmarks([]);
         }}>
           <div style={{
-            background: '#12151c',
+            background: 'var(--surface-1)',
             borderRadius: '12px',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
             maxHeight: '80vh',
             overflow: 'auto',
-            border: '1px solid #2a3140',
+            border: '1px solid var(--border)',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{
@@ -2331,7 +2343,7 @@ const BookmarksPanel = ({
                 margin: 0,
                 fontSize: '18px',
                 fontWeight: '600',
-                color: '#e8e2d4'
+                color: 'var(--text-2)'
               }}>
                 Add bookmarks to group
               </h3>
@@ -2344,7 +2356,7 @@ const BookmarksPanel = ({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#8d96a6',
+                  color: 'var(--text-3)',
                   cursor: 'pointer',
                   padding: '4px',
                   display: 'flex',
@@ -2353,12 +2365,12 @@ const BookmarksPanel = ({
                   borderRadius: '4px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#2a3140';
-                  e.currentTarget.style.color = '#e8e2d4';
+                  e.currentTarget.style.background = 'var(--surface-3)';
+                  e.currentTarget.style.color = 'var(--text-2)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = '#8d96a6';
+                  e.currentTarget.style.color = 'var(--text-3)';
                 }}
               >
                 <Icon name="close" size={18} />
@@ -2373,16 +2385,16 @@ const BookmarksPanel = ({
                     display: 'block',
                     fontSize: '13px',
                     fontWeight: '500',
-                    color: '#8d96a6',
+                    color: 'var(--text-3)',
                     marginBottom: '8px'
                   }}>
                     Group name
                   </label>
                   <div style={{
                     padding: '10px 12px',
-                    background: '#181c24',
-                    color: '#e8e2d4',
-                    border: '1px solid #2a3140',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontFamily: FONT_FAMILY
@@ -2403,15 +2415,15 @@ const BookmarksPanel = ({
                 <label style={{
                   fontSize: '13px',
                   fontWeight: '500',
-                  color: '#8d96a6'
+                  color: 'var(--text-3)'
                 }}>
                   Bookmarks ({addToGroupBookmarks.length})
                 </label>
                 <button
                   onClick={handleAddNewBookmarkToGroup}
                   style={{
-                    background: '#2a3140',
-                    color: '#e8e2d4',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-2)',
                     border: 'none',
                     borderRadius: '6px',
                     padding: '6px 12px',
@@ -2423,8 +2435,8 @@ const BookmarksPanel = ({
                     gap: '6px',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   <Icon name="plus" size={12} />
                   New bookmark
@@ -2434,15 +2446,15 @@ const BookmarksPanel = ({
               <div style={{
                 maxHeight: '300px',
                 overflowY: 'auto',
-                border: '1px solid #2a3140',
+                border: '1px solid var(--border)',
                 borderRadius: '6px',
-                background: '#12151c'
+                background: 'var(--surface-1)'
               }}>
                 {addToGroupBookmarks.length === 0 ? (
                   <div style={{
                     padding: '40px 20px',
                     textAlign: 'center',
-                    color: '#5a6473',
+                    color: 'var(--text-disabled)',
                     fontSize: '13px'
                   }}>
                     No bookmarks added yet. Add existing bookmarks or create new ones.
@@ -2451,7 +2463,7 @@ const BookmarksPanel = ({
                   addToGroupBookmarks.map((bookmark, index) => (
                     <div key={index} style={{
                       padding: '12px',
-                      borderBottom: index < addToGroupBookmarks.length - 1 ? '1px solid #1f2430' : 'none',
+                      borderBottom: index < addToGroupBookmarks.length - 1 ? '1px solid var(--border)' : 'none',
                       display: 'flex',
                       gap: '8px',
                       alignItems: 'flex-start'
@@ -2461,14 +2473,14 @@ const BookmarksPanel = ({
                           <>
                             <div style={{
                               fontSize: '13px',
-                              color: '#e8e2d4',
+                              color: 'var(--text-2)',
                               fontWeight: '500'
                             }}>
                               {bookmark.name}
                             </div>
                             <div style={{
                               fontSize: '11px',
-                              color: '#8d96a6'
+                              color: 'var(--text-3)'
                             }}>
                               Page {bookmark.pageIds && bookmark.pageIds.length > 0 ? bookmark.pageIds[0] : 'N/A'}
                             </div>
@@ -2483,16 +2495,16 @@ const BookmarksPanel = ({
                               style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: '#181c24',
-                                color: '#e8e2d4',
-                                border: '1px solid #2a3140',
+                                background: 'var(--surface-2)',
+                                color: 'var(--text-2)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
-                              onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                              onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                             />
                             <input
                               type="text"
@@ -2515,16 +2527,16 @@ const BookmarksPanel = ({
                               style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: '#181c24',
-                                color: '#e8e2d4',
-                                border: '1px solid #2a3140',
+                                background: 'var(--surface-2)',
+                                color: 'var(--text-2)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
-                              onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
+                              onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                               inputMode="numeric"
                               pattern="[0-9]*"
                             />
@@ -2536,7 +2548,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#d95a56',
+                          color: 'var(--danger)',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2549,7 +2561,7 @@ const BookmarksPanel = ({
                         aria-label="Remove"
                         onMouseEnter={(e) => {
                           tip('Remove', 'below').onMouseEnter(e);
-                          e.currentTarget.style.background = '#3a1f1f';
+                          e.currentTarget.style.background = 'var(--danger-soft)';
                         }}
                         onMouseLeave={(e) => {
                           tip('Remove', 'below').onMouseLeave(e);
@@ -2570,7 +2582,7 @@ const BookmarksPanel = ({
                   display: 'block',
                   fontSize: '13px',
                   fontWeight: '500',
-                  color: '#8d96a6',
+                  color: 'var(--text-3)',
                   marginBottom: '8px'
                 }}>
                   Add existing bookmarks
@@ -2578,9 +2590,9 @@ const BookmarksPanel = ({
                 <div style={{
                   maxHeight: '150px',
                   overflowY: 'auto',
-                  border: '1px solid #2a3140',
+                  border: '1px solid var(--border)',
                   borderRadius: '6px',
-                  background: '#12151c',
+                  background: 'var(--surface-1)',
                   padding: '8px'
                 }}>
                   {bookmarks.filter(b => {
@@ -2591,7 +2603,7 @@ const BookmarksPanel = ({
                     <div style={{
                       padding: '20px',
                       textAlign: 'center',
-                      color: '#5a6473',
+                      color: 'var(--text-disabled)',
                       fontSize: '12px'
                     }}>
                       No existing bookmarks available
@@ -2616,17 +2628,17 @@ const BookmarksPanel = ({
                             fontSize: '12px',
                             textAlign: 'left',
                             cursor: 'pointer',
-                            color: '#e8e2d4',
+                            color: 'var(--text-2)',
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
                             marginBottom: '4px'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = '#181c24'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <span>{bookmark.name}</span>
-                          <span style={{ color: '#8d96a6', fontSize: '11px' }}>
+                          <span style={{ color: 'var(--text-3)', fontSize: '11px' }}>
                             Page {bookmark.pageIds && bookmark.pageIds.length > 0 ? bookmark.pageIds[0] : 'N/A'}
                           </span>
                         </button>
@@ -2649,8 +2661,8 @@ const BookmarksPanel = ({
                 }}
                 style={{
                   padding: '8px 16px',
-                  background: '#2a3140',
-                  color: '#e8e2d4',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-2)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
@@ -2658,8 +2670,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 Cancel
               </button>
@@ -2667,8 +2679,10 @@ const BookmarksPanel = ({
                 onClick={handleSaveAddToGroup}
                 style={{
                   padding: '8px 16px',
-                  background: '#d8a84e',
-                  color: '#f4f1ea',
+                  background: 'var(--accent)',
+                  /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                     --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                  color: 'var(--accent-text)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
@@ -2676,8 +2690,8 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
               >
                 Add bookmarks
               </button>

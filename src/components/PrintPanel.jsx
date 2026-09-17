@@ -1043,7 +1043,7 @@ export default function PrintPanel({
     <div
       className="pp-rail"
       aria-label="Print options"
-      style={{ flex: '0 0 340px', width: 340, minWidth: 340, maxWidth: 340, display: 'block', background: '#242428', borderLeft: '1px solid #333' }}
+      style={{ flex: '0 0 340px', width: 340, minWidth: 340, maxWidth: 340, display: 'block', background: 'var(--surface-1)', borderLeft: '1px solid var(--border)' }}
       ref={(node) => { if (node) printPanelDebug('[PrintPanel] rail mounted, rect:', node.getBoundingClientRect()); }}
     >
       <div className="pp-scope-tabs" role="tablist" aria-label="Customization scope">

@@ -21,8 +21,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  color: #e8e2d4;
-  background: #3a4252;
+  color: var(--text-2);
+  background: var(--surface-3);
   border: 1px solid transparent;
   border-radius: 5px;
   box-sizing: border-box;
@@ -32,12 +32,12 @@
 
 .annotation-dropdown__trigger:hover,
 .annotation-dropdown__trigger[data-state='open'] {
-  color: #fff;
-  background: #454e60;
+  color: var(--text-1);
+  background: var(--border-strong);
 }
 
 .annotation-dropdown__trigger:focus-visible {
-  border-color: #d8a84e;
+  border-color: var(--accent);
   outline: 0;
 }
 
@@ -53,7 +53,7 @@
 
 .annotation-dropdown__chevron {
   flex: 0 0 auto;
-  color: #9da6b4;
+  color: var(--text-3);
 }
 
 .annotation-dropdown__popover {
@@ -66,9 +66,14 @@
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
-  color: #e8e2d4;
-  background: #0d0f14;
-  border: 1px solid #3a4252;
+  color: var(--text-2);
+  /* UX 2026-09-17 (revision-2 palette, owner approved): every popover in the
+     app paints the SAME surface. This one used to be --surface-0, darker than
+     the bar it opens from, while the Select menu beside it used a different
+     grey again. A menu is a card on a panel: --surface-2, with the strong edge
+     so it separates from whatever is behind it. */
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
   font-family: Helvetica, Arial, sans-serif;
@@ -82,8 +87,8 @@
 .annotation-dropdown__heading {
   flex: 0 0 auto;
   padding: 7px 9px 8px;
-  color: #aeb6c3;
-  border-bottom: 1px solid #2a3140;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.065em;
@@ -115,7 +120,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #d6dbe3;
+  color: var(--text-2);
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -129,18 +134,20 @@
 .annotation-dropdown__options > button:focus-visible,
 .annotation-dropdown__option:hover,
 .annotation-dropdown__option:focus-visible {
-  color: #fff;
-  background: #252b35;
+  color: var(--text-1);
+  background: var(--hover);
   outline: 0;
 }
 
 .annotation-dropdown__options > button.is-active,
 .annotation-dropdown__option.is-active {
-  color: #f4f6f8;
-  background: #2b313a;
+  color: var(--accent);
+  background: var(--surface-3);
+  box-shadow: inset 2px 0 var(--accent);
 }
 
-.annotation-dropdown__arrow { fill: #3a4252; }
+/* The arrow continues the panel's own edge, so it takes that edge's token. */
+.annotation-dropdown__arrow { fill: var(--border-strong); }
 
 @keyframes annotation-dropdown-in {
   from { opacity: 0; transform: translateY(-5px) scale(0.98); }

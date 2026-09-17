@@ -7,17 +7,22 @@
 .ed-scope {
   background:
     radial-gradient(circle at 0% 0%, rgba(216, 168, 78, 0.06), transparent 35%),
-    #0d0f14;
-  color: #f4f1ea;
+    var(--surface-0);
+  color: var(--text-1);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   letter-spacing: -0.005em;
-  --paper: #0d0f14; --paper-deep: #12151c; --paper-card: #181c24;
-  --ink: #f4f1ea; --ink-soft: #e8e2d4; --ink-muted: #8d96a6; --ink-quiet: #5a6473;
-  --rule: #2a3140; --rule-strong: #3a4252;
-  --accent: #d8a84e; --accent-soft: #b6904a;
+  /* UX 2026-09-17 (revision-2 palette, owner approved): local aliases of
+     src/styles/tokens.css, not a second ramp. Two local names were DELETED. A
+     local `--accent` would be a CYCLE against the shared token of the same name
+     and would blank the gold for everything in this scope, so the scope simply
+     inherits it. A local `--accent-soft: var(--accent-press)` was read by nothing here and
+     SHADOWED the shared --accent-soft (the gold wash) with a solid gold. */
+  --paper: var(--surface-0); --paper-deep: var(--surface-1); --paper-card: var(--surface-2);
+  --ink: var(--text-1); --ink-soft: var(--text-2); --ink-muted: var(--text-3); --ink-quiet: var(--text-disabled);
+  --rule: var(--border); --rule-strong: var(--border-strong);
   /* warm-dark aliases used by some prototype inline styles */
-  --ink-700: #181c24; --ink-600: #232834; --ink-500: #2a3140;
-  --ink-300: #5a6473; --ink-200: #8d96a6; --bone-100: #f4f1ea;
+  --ink-700: var(--surface-2); --ink-600: var(--surface-3); --ink-500: var(--border);
+  --ink-300: var(--text-disabled); --ink-200: var(--text-3); --bone-100: var(--text-1);
 }
 .ed-scope * { box-sizing: border-box; min-width: 0; }
 .ed-scope .mono,
@@ -27,35 +32,35 @@
 .ed-scope .pill-mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace; }
 .ed-scope .micro {
   font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #8d96a6; font-weight: 700;
+  color: var(--text-3); font-weight: 700;
 }
 .ed-scope .micro-mid {
   font-size: 10.5px; letter-spacing: 0.10em; text-transform: uppercase;
-  color: #8d96a6; font-weight: 600;
+  color: var(--text-3); font-weight: 600;
 }
 .ed-scope .meta { color: var(--ink-muted); }
 
 /* Cards */
-.ed-scope .card { background: #181c24; border: 1px solid #2a3140; border-radius: 10px; }
-.ed-scope .card-line { background: #12151c; border: 1px solid #2a3140; border-radius: 6px; }
+.ed-scope .card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+.ed-scope .card-line { background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; }
 
 /* Buttons */
 .ed-scope .btn-ink {
-  background: #d8a84e; color: #15110a; border: 1px solid #d8a84e;
+  background: var(--accent); color: var(--accent-text); border: 1px solid var(--accent);
   border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;
   height: 28px; box-sizing: border-box; cursor: pointer; font-family: inherit;
   display: inline-flex; align-items: center; gap: 4px;
 }
 .ed-scope .btn-line {
-  background: #181c24; color: #f4f1ea; border: 1px solid #2a3140;
+  background: var(--surface-1); color: var(--text-1); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 8px; font-size: 11px;
   cursor: pointer; font-family: inherit;
 }
 .ed-scope .btn-ghost {
-  background: transparent; color: #8d96a6; border: 0;
+  background: transparent; color: var(--text-3); border: 0;
   padding: 4px 8px; font-size: 11px; cursor: pointer; font-family: inherit;
 }
-.ed-scope .btn-ghost:hover { color: #f4f1ea; }
+.ed-scope .btn-ghost:hover { color: var(--text-1); }
 
 /* Inputs / editable feel */
 .ed-scope .inline-edit {
@@ -64,13 +69,13 @@
   width: 100%; outline: none;
 }
 .ed-scope .inline-edit:hover { border-bottom-color: var(--rule); }
-.ed-scope .inline-edit:focus { border-bottom-color: #d8a84e; }
+.ed-scope .inline-edit:focus { border-bottom-color: var(--accent); }
 /* UX (KAL-69): placeholders are greyed italic so an empty required row reads as
    "type here", visibly different from a row that genuinely holds short text. */
-.ed-scope .inline-edit::placeholder { color: #5a6473; font-style: italic; }
+.ed-scope .inline-edit::placeholder { color: var(--text-disabled); font-style: italic; }
 .ed-scope .cat-title { cursor: text; border-bottom: 1px dashed transparent; }
 .ed-scope .cat-title:hover { border-bottom-color: var(--rule-strong); }
-.ed-scope .cat-title:focus { border-bottom: 1px solid #d8a84e; }
+.ed-scope .cat-title:focus { border-bottom: 1px solid var(--accent); }
 
 /* Prevent horizontal scrolling anywhere inside the editor */
 .ed-scope .slim-scroll { overflow-x: hidden; }
@@ -106,15 +111,15 @@
    because the portal renders outside the .ed-scope CSS-variable root. */
 .ed-tpl-menu {
   position: fixed; z-index: 4000;
-  background: #181c24; border: 1px solid #3a4252; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 8px;
   padding: 4px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 .ed-tpl-menu button {
   display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: #f4f1ea;
+  background: transparent; border: 0; color: var(--text-1);
   padding: 7px 10px; font-size: 12px; border-radius: 4px;
   cursor: pointer; font-family: inherit;
 }
-.ed-tpl-menu button:hover { background: #232834; }
-.ed-tpl-menu button.danger { color: #d95a56; }
+.ed-tpl-menu button:hover { background: var(--surface-2); }
+.ed-tpl-menu button.danger { color: var(--danger); }

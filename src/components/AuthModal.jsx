@@ -371,7 +371,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
               and the label in its present-participle form, so the user reads
               which action is in flight rather than a generic "Please wait". */}
           <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" style={{ marginRight: 8 }} />}
+            {loading && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" style={{ marginRight: 8 }} />}
             {loading
               ? (mode === 'login' ? 'Signing in…' : mode === 'signup' ? 'Creating account…' : mode === 'sso' ? 'Continuing…' : 'Sending link…')
               : (mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'sso' ? 'Continue with SSO' : 'Send reset link')}

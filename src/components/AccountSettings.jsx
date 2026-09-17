@@ -594,7 +594,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           type="button"
                           onClick={handleSendResetLink}
                           disabled={loading}
-                          style={{ display: 'inline-block', background: 'none', border: 'none', color: '#d8a84e', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
+                          style={{ display: 'inline-block', background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
                         >
                           Forgot your current password? Email me a reset link
                         </button>
@@ -615,7 +615,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             treatment — 14px ring left of a present-participle
                             label, disabled until the save resolves. */}
                         <button type="submit" className="account-btn-primary" disabled={loading}>
-                          {loading && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}
+                          {loading && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}
                           {loading ? 'Saving…' : 'Save changes'}
                         </button>
                         <button
@@ -695,11 +695,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                 <section className="account-section" style={{ display: subscriptionViewTab === 'manage' ? 'block' : 'none' }}>
                     {loadingSubscription ? (
-                  <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
+                  <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-disabled)', fontSize: '13px' }}>
                     Loading subscription...
                   </div>
                 ) : subscriptionError ? (
-                  <div role="alert" style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '13px' }}>
+                  <div role="alert" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-3)', fontSize: '13px' }}>
                     <div>{subscriptionError}</div>
                     <button type="button" className="account-btn-secondary" onClick={fetchSubscription} style={{ marginTop: 10 }}>
                       Retry
@@ -740,7 +740,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       }
                       if (!text) return null;
                       return (
-                        <div style={{ color: '#8d96a6', fontSize: '12px', marginBottom: '14px' }}>
+                        <div style={{ color: 'var(--text-3)', fontSize: '12px', marginBottom: '14px' }}>
                           {text}
                         </div>
                       );
@@ -776,16 +776,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           style={{
                             padding: '10px 20px',
                             background: 'transparent',
-                            border: '1px solid #4A90E2',
+                            border: '1px solid var(--accent)',
                             borderRadius: '6px',
-                            color: '#4A90E2',
+                            color: 'var(--accent)',
                             cursor: 'pointer',
                             fontSize: '13px',
                             fontWeight: '500',
                             transition: 'all 0.2s'
                           }}
                           onMouseEnter={(e) => {
-                            e.target.style.background = 'rgba(74, 144, 226, 0.1)';
+                            e.target.style.background = 'var(--accent-soft)';
                           }}
                           onMouseLeave={(e) => {
                             e.target.style.background = 'transparent';
@@ -798,15 +798,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                     {/* Billing Period Toggle (only show for paid users selecting new plan) */}
                     {subscription?.tier === 'free' && (
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: '#222', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: 'var(--surface-1)', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
                         <button
                           onClick={() => setBillingPeriod('monthly')}
                           style={{
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'monthly' ? '#4A90E2' : 'transparent',
-                            color: billingPeriod === 'monthly' ? '#fff' : '#aaa',
+                            background: billingPeriod === 'monthly' ? 'var(--accent)' : 'transparent',
+                            // A label sitting ON gold is --accent-text; white on gold is 2.0:1.
+                            color: billingPeriod === 'monthly' ? 'var(--accent-text)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: '500',
@@ -821,8 +822,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'annual' ? '#4A90E2' : 'transparent',
-                            color: billingPeriod === 'annual' ? '#fff' : '#aaa',
+                            background: billingPeriod === 'annual' ? 'var(--accent)' : 'transparent',
+                            color: billingPeriod === 'annual' ? 'var(--accent-text)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: '500',
@@ -835,8 +836,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             fontSize: '11px',
                             marginLeft: '6px',
                             padding: '2px 6px',
-                            background: 'rgba(34, 197, 94, 0.2)',
-                            color: '#22c55e',
+                            background: 'var(--accent-soft)',
+                            color: 'var(--accent)',
                             borderRadius: '4px',
                             fontWeight: '600'
                           }}>
@@ -849,7 +850,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'free' ? '2px solid #22c55e' : '1px solid #333',
+                        border: subscription?.tier === 'free' ? '2px solid var(--accent)' : '1px solid var(--border)',
                         opacity: subscription?.tier === 'free' ? 1 : 0.7
                       }}>
                         <div className="account-subscription-header">
@@ -887,7 +888,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       {/* Pro Plan */}
                       <div className="account-subscription-card" style={{
-                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid #4A90E2' : '1px solid #333',
+                        // UX 2026-09-17: the current plan is marked with a gold edge, the
+                        // same mark the Free and Enterprise cards use. Pro alone wore a
+                        // #4A90E2 blue, so "this is your plan" looked like two different
+                        // things depending on which plan you were on.
+                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid var(--accent)' : '1px solid var(--border)',
                         opacity: (subscription?.tier === 'free' || subscription?.tier === 'enterprise' || subscription?.tier === 'developer') ? (subscription?.tier === 'free' ? 1 : 0.7) : 1
                       }}>
                         <div className="account-subscription-header">
@@ -902,7 +907,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                               <>
                                 <span className="price-amount">$99</span>
                                 <span className="price-period">/year</span>
-                                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', whiteSpace: 'nowrap' }}>
+                                <div style={{ fontSize: '12px', color: 'var(--text-disabled)', marginTop: '4px', whiteSpace: 'nowrap' }}>
                                   <span style={{ textDecoration: 'line-through' }}>$119.88</span> Save $20
                                 </div>
                               </>
@@ -952,7 +957,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       {/* Enterprise Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'enterprise' ? '2px solid #d8a84e' : '1px solid #333',
+                        border: subscription?.tier === 'enterprise' ? '2px solid var(--accent)' : '1px solid var(--border)',
                         opacity: subscription?.tier === 'enterprise' ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
                       }}>
                         <div className="account-subscription-header">
@@ -960,7 +965,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           <div className="account-subscription-price">
                             <span className="price-amount">$20</span>
                             <span className="price-period">/user/mo</span>
-                            <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--text-disabled)', marginTop: '4px', whiteSpace: 'nowrap' }}>
                               Minimum 3 users
                             </div>
                           </div>
@@ -1026,7 +1031,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           Connected as {msAccount?.username || msAccount?.email || msAccount?.name}
                         </div>
                       ) : msNeedsReconnect ? (
-                        <div className="account-connected-account-status" style={{ color: '#f59e0b' }}>
+                        <div className="account-connected-account-status" style={{ color: 'var(--warning)' }}>
                           Session expired. Click Reconnect to restore access.
                         </div>
                       ) : (
@@ -1062,7 +1067,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           }
                         }}
                         disabled={loading}
-                        style={msNeedsReconnect ? { backgroundColor: '#f59e0b', borderColor: '#f59e0b' } : {}}
+                        style={msNeedsReconnect ? { backgroundColor: 'var(--warning)', borderColor: 'var(--warning)' } : {}}
                       >
                         {msNeedsReconnect ? 'Reconnect' : 'Connect'}
                       </button>

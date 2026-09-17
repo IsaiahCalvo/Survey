@@ -27,10 +27,16 @@ const config: CapacitorConfig = {
     // `always`, the native shell pushed the web view down past the status
     // bar and revealed a white iOS root view behind it. `never` + dark
     // native background makes the status-bar strip match the app's grey.
+    //
+    // UX 2026-09-17 (revision-2 palette): this is --surface-1 from
+    // src/styles/tokens.css, written as a literal because a native config
+    // cannot read a CSS variable. It is what `npx cap sync` copies into
+    // ios/App/App/capacitor.config.json, so changing it here is the only
+    // place the native background is decided. Keep it in step with the token.
     contentInset: 'never',
-    backgroundColor: '#12151c'
+    backgroundColor: '#171a21'
   },
-  backgroundColor: '#12151c'
+  backgroundColor: '#171a21'
 };
 
 export default config;

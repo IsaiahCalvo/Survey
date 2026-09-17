@@ -38,13 +38,13 @@ import DismissBarrier from '../components/DismissBarrier';
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
 const HEX = {
-  card: '#181c24',   // --ink-700  popup surface
-  deep: '#12151c',   // --ink-800
-  rule: '#2a3140',   // --ink-500  borders
-  ink: '#f4f1ea',    // --bone-100 primary text
-  muted: '#8d96a6',  // --ink-200  secondary text
-  gold: '#d8a84e',   // --gold     accent
-  danger: '#d95a56', // destructive action
+  card: 'var(--surface-2)',   // --ink-700  popup surface
+  deep: 'var(--surface-1)',   // --ink-800
+  rule: 'var(--border)',   // --ink-500  borders
+  ink: 'var(--text-1)',    // --bone-100 primary text
+  muted: 'var(--text-3)',  // --ink-200  secondary text
+  gold: 'var(--accent)',   // --gold     accent
+  danger: 'var(--danger)', // destructive action
 };
 
 /* Inline pin icon — HubShell's Icon set has no `pin` glyph, so a small
@@ -387,7 +387,7 @@ export default function ProjectsFolderTree({
           role: 'Owner',
           // Literal gold (not a CSS var): the Manage Team modal renders
           // outside the `.survey-hub` root where CSS vars are not in scope.
-          color: '#d8a84e',
+          color: 'var(--accent)',
           online: true,
         }
       : null
@@ -467,7 +467,7 @@ export default function ProjectsFolderTree({
         initials: m ? initialsOf(m.name) : '—',
         email: m?.email || '',
         role: m?.role || 'Member',
-        color: m?.color || '#d8a84e',
+        color: m?.color || 'var(--accent)',
         added,
       };
     });
@@ -839,7 +839,7 @@ export default function ProjectsFolderTree({
             onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
             className={`projects-mobile-check ${isChecked ? 'checked' : ''}`}
           >
-            {isChecked ? <Icon name="check" size={11} color="#15110a" /> : null}
+            {isChecked ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}
           </span>
         ) : (
           <button
@@ -985,7 +985,7 @@ export default function ProjectsFolderTree({
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                         style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
-                        {isSel && <Icon name="check" size={10} color="#15110a" />}
+                        {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                       </span>
                     ) : (
                       <button
@@ -1171,7 +1171,7 @@ export default function ProjectsFolderTree({
                                 onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                                 style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
-                                {isChecked && <Icon name="check" size={10} color="#15110a" />}
+                                {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                               </span>
                             ) : (
                               <button
@@ -1224,7 +1224,7 @@ export default function ProjectsFolderTree({
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--green)' : 'var(--ink-300)', flex: 'none' }}></span>
+                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--success)' : 'var(--text-disabled)', flex: 'none' }}></span>
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || 'Member'}</span>
                                 </div>
                               </div>
@@ -1366,7 +1366,7 @@ export default function ProjectsFolderTree({
                               <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                             </span>
                             {jobsEdit ? (
-                              <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="#15110a" /> : null}</span>
+                              <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}</span>
                             ) : (
                               <button
                                 onClick={(e) => {
@@ -1438,7 +1438,7 @@ export default function ProjectsFolderTree({
                         >
                           <span>{p.name}</span>
                           <small>{projectFileCount(p.id)} files</small>
-                          {jobsEdit && <i className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="#15110a" /> : null}</i>}
+                          {jobsEdit && <i className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}</i>}
                         </button>
                       );
                     })}
@@ -1468,7 +1468,7 @@ export default function ProjectsFolderTree({
                       <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
                     </span>
                     {jobsEdit ? (
-                      <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="#15110a" /> : null}</span>
+                      <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}</span>
                     ) : (
                       <span className="projects-mobile-disclosure">{isOpen ? 'Open' : 'View'}</span>
                     )}
@@ -1643,7 +1643,7 @@ export default function ProjectsFolderTree({
                   onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                   style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  {isSel && <Icon name="check" size={10} color="#15110a" />}
+                  {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                 </span>
               ) : (
                 <button
@@ -1807,7 +1807,7 @@ export default function ProjectsFolderTree({
                         onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                         style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                       >
-                        {isChecked && <Icon name="check" size={10} color="#15110a" />}
+                        {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                       </span>
                     ) : (
                       <button

@@ -73,7 +73,7 @@ const TemplateOverwriteWarningModal = ({
             justifyContent: 'center',
             flexShrink: 0,
           }}>
-            <Icon name="warningCircle" size={20} color={COLORS.status.warning || '#f59e0b'} />
+            <Icon name="warningCircle" size={20} color={COLORS.status.warning || 'var(--warning)'} />
           </div>
           <h3 style={{
             margin: 0,
@@ -117,7 +117,7 @@ const TemplateOverwriteWarningModal = ({
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
-              color: '#ef4444',
+              color: 'var(--danger)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
             }}>
@@ -140,7 +140,7 @@ const TemplateOverwriteWarningModal = ({
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
-              color: '#22c55e',
+              color: 'var(--accent)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
             }}>
@@ -160,7 +160,7 @@ const TemplateOverwriteWarningModal = ({
           alignItems: 'flex-start',
           gap: '10px',
         }}>
-          <Icon name="warningCircle" size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <Icon name="warningCircle" size={16} color="var(--warning)" style={{ flexShrink: 0, marginTop: '2px' }} />
           <span style={{
             fontSize: TYPOGRAPHY.fontSize.sm,
             color: COLORS.text.muted,

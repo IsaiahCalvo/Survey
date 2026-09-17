@@ -423,7 +423,7 @@ const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAI
 );
 
 function MobileTextAlignmentGlyph({ axis, value, active }) {
-  const stroke = active ? '#F4F7FB' : '#D8DEE9';
+  const stroke = active ? 'var(--text-1)' : 'var(--text-2)';
   const common = {
     stroke,
     strokeWidth: 6,
@@ -434,9 +434,9 @@ function MobileTextAlignmentGlyph({ axis, value, active }) {
     const leftContent = (
       <>
         <line x1="48" y1="44" x2="48" y2="212" {...common} />
-        <rect x="70" y="62" width="150" height="34" rx="8" fill="#d8a84e" />
-        <rect x="70" y="111" width="76" height="34" rx="8" fill="#e8d5a8" />
-        <rect x="70" y="160" width="116" height="34" rx="8" fill="#d8a84e" />
+        <rect x="70" y="62" width="150" height="34" rx="8" fill="var(--accent)" />
+        <rect x="70" y="111" width="76" height="34" rx="8" fill="var(--accent-light)" />
+        <rect x="70" y="160" width="116" height="34" rx="8" fill="var(--accent)" />
       </>
     );
     return (
@@ -445,9 +445,9 @@ function MobileTextAlignmentGlyph({ axis, value, active }) {
         {value === 1 && (
           <>
             <line x1="128" y1="44" x2="128" y2="212" {...common} />
-            <rect x="53" y="62" width="150" height="34" rx="8" fill="#d8a84e" />
-            <rect x="91" y="111" width="74" height="34" rx="8" fill="#e8d5a8" />
-            <rect x="72" y="160" width="112" height="34" rx="8" fill="#d8a84e" />
+            <rect x="53" y="62" width="150" height="34" rx="8" fill="var(--accent)" />
+            <rect x="91" y="111" width="74" height="34" rx="8" fill="var(--accent-light)" />
+            <rect x="72" y="160" width="112" height="34" rx="8" fill="var(--accent)" />
           </>
         )}
         {value === 2 && <g transform="translate(256 0) scale(-1 1)">{leftContent}</g>}
@@ -459,14 +459,14 @@ function MobileTextAlignmentGlyph({ axis, value, active }) {
     <svg width="48" height="34" viewBox="0 0 256 256" aria-hidden="true">
       {value === 0 && (
         <>
-          <rect x="53" y="66" width="150" height="34" rx="8" fill="#d8a84e" />
+          <rect x="53" y="66" width="150" height="34" rx="8" fill="var(--accent)" />
           <line x1="128" y1="130" x2="128" y2="202" {...common} />
           <path d="M128 130 L105 153 M128 130 L151 153" fill="none" {...common} strokeLinejoin="round" />
         </>
       )}
       {value === 1 && (
         <>
-          <rect x="53" y="111" width="150" height="34" rx="8" fill="#d8a84e" />
+          <rect x="53" y="111" width="150" height="34" rx="8" fill="var(--accent)" />
           <line x1="128" y1="40" x2="128" y2="82" {...common} />
           <path d="M128 82 L105 59 M128 82 L151 59" fill="none" {...common} strokeLinejoin="round" />
           <line x1="128" y1="174" x2="128" y2="216" {...common} />
@@ -477,7 +477,7 @@ function MobileTextAlignmentGlyph({ axis, value, active }) {
         <>
           <line x1="128" y1="48" x2="128" y2="120" {...common} />
           <path d="M128 120 L105 97 M128 120 L151 97" fill="none" {...common} strokeLinejoin="round" />
-          <rect x="53" y="156" width="150" height="34" rx="8" fill="#d8a84e" />
+          <rect x="53" y="156" width="150" height="34" rx="8" fill="var(--accent)" />
         </>
       )}
     </svg>
@@ -2017,7 +2017,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     title={entity.name || 'Untitled Entity'}
                     onClick={() => bottomToolbarApi.surveyToolbar.onSelectEntity?.(entity.id)}
                   >
-                    <span style={{ background: entity.color || '#6f7785' }} />
+                    <span style={{ background: entity.color || 'var(--border-strong)' }} />
                   </button>
                 ))}
               </div>
