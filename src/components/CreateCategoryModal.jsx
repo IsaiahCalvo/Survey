@@ -244,7 +244,7 @@ const CreateCategoryModal = ({
             <div style={{
               marginTop: '6px',
               fontSize: TYPOGRAPHY.fontSize.sm,
-              color: 'var(--danger)',
+              color: 'var(--danger-text)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
               {categoryError}
@@ -439,7 +439,7 @@ const CreateCategoryModal = ({
                   <div style={{
                     marginTop: '6px',
                     fontSize: TYPOGRAPHY.fontSize.sm,
-                    color: 'var(--danger)',
+                    color: 'var(--danger-text)',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                   }}>
                     {nameError}

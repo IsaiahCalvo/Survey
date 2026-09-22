@@ -923,7 +923,7 @@ const PagesPanel = ({
                        the same 84% it always had; the channels used to be the retired
                        ramp's #12151c typed out as rgba(), which the hex sweep never saw. */
                     background: 'color-mix(in srgb, var(--surface-1) 84%, transparent)',
-                    border: '1px solid var(--border-strong)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
                     zIndex: 2,
                   }}
@@ -969,7 +969,7 @@ const PagesPanel = ({
                     top: '50%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    color: 'var(--text-disabled)',
+                    color: 'var(--text-3)',
                     fontSize: '10px'
                   }}>
                     Loading...
@@ -1002,7 +1002,7 @@ const PagesPanel = ({
           <div style={{
             padding: '32px 16px',
             textAlign: 'center',
-            color: 'var(--text-disabled)',
+            color: 'var(--text-3)',
             fontSize: '12px'
           }}>
             No pages are visible in this space. Add pages to the active space to see them here.
@@ -1081,7 +1081,7 @@ const PagesPanel = ({
             left: contextMenu.x,
             top: contextMenu.y,
             background: 'var(--surface-3)',
-            border: '1px solid var(--border-strong)',
+            border: '1px solid var(--border)',
             borderRadius: '6px',
             padding: '4px',
             zIndex: 10000,
@@ -1324,7 +1324,7 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: mobileMode ? 'var(--danger)' : 'var(--danger)',
+              color: mobileMode ? 'var(--danger-text)' : 'var(--danger-text)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'

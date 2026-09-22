@@ -303,7 +303,7 @@ const BookmarkTreeRow = ({
               flex: 1,
               minWidth: 0,
               background: 'var(--surface-0)',
-              border: '1px solid var(--border)',
+              border: '1px solid var(--border-strong)',
               color: 'var(--text-2)',
               borderRadius: 5,
               height: 22,
@@ -350,7 +350,7 @@ const BookmarkTreeRow = ({
               style={{
                 width: 34,
                 background: 'var(--surface-0)',
-                border: '1px solid var(--border)',
+                border: '1px solid var(--border-strong)',
                 color: 'var(--text-2)',
                 borderRadius: 5,
                 height: 22,
@@ -1975,7 +1975,7 @@ const BookmarksPanel = ({
               right: 0,
               marginBottom: '4px',
               background: 'var(--surface-3)',
-              border: '1px solid var(--border-strong)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               padding: '4px',
               zIndex: 1000,
@@ -2014,7 +2014,7 @@ const BookmarksPanel = ({
                     padding: '8px 10px',
                     background: 'var(--surface-2)',
                     color: 'var(--text-2)',
-                    border: '1px solid var(--border)',
+                    border: '1px solid var(--border-strong)',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontFamily: FONT_FAMILY,
@@ -2023,7 +2023,7 @@ const BookmarksPanel = ({
                     transition: 'border-color 0.15s ease'
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                 />
                 <input
                   type="text"
@@ -2035,7 +2035,7 @@ const BookmarksPanel = ({
                     padding: '8px 10px',
                     background: 'var(--surface-2)',
                     color: 'var(--text-2)',
-                    border: '1px solid var(--border)',
+                    border: '1px solid var(--border-strong)',
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontFamily: FONT_FAMILY,
@@ -2044,7 +2044,7 @@ const BookmarksPanel = ({
                     transition: 'border-color 0.15s ease'
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                   inputMode="numeric"
                   pattern="[0-9]*"
                 />
@@ -2062,7 +2062,7 @@ const BookmarksPanel = ({
                     padding: '6px 12px',
                     background: 'var(--surface-2)',
                     color: 'var(--text-2)',
-                    border: '1px solid var(--border-strong)',
+                    border: '1px solid var(--border)',
                     borderRadius: '6px',
                     fontSize: '12px',
                     fontWeight: '500',
@@ -2198,7 +2198,7 @@ const BookmarksPanel = ({
                   padding: '10px 12px',
                   background: 'var(--surface-2)',
                   color: 'var(--text-2)',
-                  border: '1px solid var(--border)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '6px',
                   fontSize: '13px',
                   fontFamily: FONT_FAMILY,
@@ -2206,7 +2206,7 @@ const BookmarksPanel = ({
                   transition: 'border-color 0.15s ease'
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                 autoFocus
               />
             </div>
@@ -2260,7 +2260,7 @@ const BookmarksPanel = ({
                   <div style={{
                     padding: '40px 20px',
                     textAlign: 'center',
-                    color: 'var(--text-disabled)',
+                    color: 'var(--text-3)',
                     fontSize: '13px'
                   }}>
                     No bookmarks added yet. Add existing bookmarks or create new ones.
@@ -2303,14 +2303,14 @@ const BookmarksPanel = ({
                                 padding: '6px 8px',
                                 background: 'var(--surface-2)',
                                 color: 'var(--text-2)',
-                                border: '1px solid var(--border)',
+                                border: '1px solid var(--border-strong)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                             />
                             <input
                               type="text"
@@ -2335,14 +2335,14 @@ const BookmarksPanel = ({
                                 padding: '6px 8px',
                                 background: 'var(--surface-2)',
                                 color: 'var(--text-2)',
-                                border: '1px solid var(--border)',
+                                border: '1px solid var(--border-strong)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                               inputMode="numeric"
                               pattern="[0-9]*"
                             />
@@ -2354,7 +2354,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: 'var(--danger)',
+                          color: 'var(--danger-text)',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2405,7 +2405,7 @@ const BookmarksPanel = ({
                     <div style={{
                       padding: '20px',
                       textAlign: 'center',
-                      color: 'var(--text-disabled)',
+                      color: 'var(--text-3)',
                       fontSize: '12px'
                     }}>
                       No existing bookmarks available
@@ -2654,7 +2654,7 @@ const BookmarksPanel = ({
                   <div style={{
                     padding: '40px 20px',
                     textAlign: 'center',
-                    color: 'var(--text-disabled)',
+                    color: 'var(--text-3)',
                     fontSize: '13px'
                   }}>
                     No bookmarks added yet. Add existing bookmarks or create new ones.
@@ -2697,14 +2697,14 @@ const BookmarksPanel = ({
                                 padding: '6px 8px',
                                 background: 'var(--surface-2)',
                                 color: 'var(--text-2)',
-                                border: '1px solid var(--border)',
+                                border: '1px solid var(--border-strong)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                             />
                             <input
                               type="text"
@@ -2729,14 +2729,14 @@ const BookmarksPanel = ({
                                 padding: '6px 8px',
                                 background: 'var(--surface-2)',
                                 color: 'var(--text-2)',
-                                border: '1px solid var(--border)',
+                                border: '1px solid var(--border-strong)',
                                 borderRadius: '4px',
                                 fontSize: '12px',
                                 fontFamily: FONT_FAMILY,
                                 outline: 'none'
                               }}
                               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
                               inputMode="numeric"
                               pattern="[0-9]*"
                             />
@@ -2748,7 +2748,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: 'var(--danger)',
+                          color: 'var(--danger-text)',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2803,7 +2803,7 @@ const BookmarksPanel = ({
                     <div style={{
                       padding: '20px',
                       textAlign: 'center',
-                      color: 'var(--text-disabled)',
+                      color: 'var(--text-3)',
                       fontSize: '12px'
                     }}>
                       No existing bookmarks available
