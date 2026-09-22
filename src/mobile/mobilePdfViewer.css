@@ -1413,18 +1413,34 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    control inside it and swallows every tap on the control it was meant to
    enlarge (seen on the simulator - the settings sheet stopped opening). */
 .mobile-pdf-properties__color::after,
-.mobile-pdf-properties__swatch::after,
 .mobile-pdf-properties__format::after,
 .mobile-pdf-properties__edit::after,
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
-.mobile-pdf-properties__segmented > button::after,
 .mobile-pdf-properties--actions > button::after,
 .mobile-pdf-properties__keep::after {
   content: '';
   position: absolute;
   inset-block: -12px;
   inset-inline: -2px;
+}
+
+/* Two controls are not 20px tall, so they take the inset that lands THEM on 44:
+   the combined swatch is a 22px circle (the disc's own box), and a segment inside
+   the toggle is 16px, because the 20px well pads itself by 2px. Measured in the
+   pane at 390 and 375: 44.0 on both. */
+.mobile-pdf-properties__swatch::after {
+  content: '';
+  position: absolute;
+  inset-block: -11px;
+  inset-inline: -2px;
+}
+
+.mobile-pdf-properties__segmented > button::after {
+  content: '';
+  position: absolute;
+  inset-block: -14px;
+  inset-inline: 0;
 }
 
 /* The dropdown pills and the picker pass's discs and swatch take the same pad
