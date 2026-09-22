@@ -90,7 +90,9 @@ test('a polygon draft cannot finish until it has three corners', () => {
   assert.equal(resolved.closed, true);
 });
 
-test('a polyline finishes open at two points but only closes at three', () => {
+// Owner ruling 2026-09-22: a polyline is a LINE. It finishes open at its
+// latest point and can never be closed into a polygon, at any point count.
+test('a polyline finishes open at two points and never closes', () => {
   const two = draftFrom('polyline', [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
   assert.equal(canFinishPolyDraft(two), true);
   assert.equal(canClosePolyDraft(two), false);
@@ -102,11 +104,19 @@ test('a polyline finishes open at two points but only closes at three', () => {
 
   assert.equal(resolvePolyDraftFinish(two, 'close').ok, false);
 
+  // Three points, four points, any points — still open, still refused.
   const three = addPolyDraftPoint(two, { x: 10, y: 10 });
-  const closed = resolvePolyDraftFinish(three, 'close');
-  assert.equal(closed.ok, true);
-  assert.equal(closed.finalType, 'polygon');
-  assert.equal(closed.closed, true);
+  assert.equal(canClosePolyDraft(three), false);
+  const refused = resolvePolyDraftFinish(three, 'close');
+  assert.equal(refused.ok, false);
+  assert.equal(refused.reason, 'close-not-allowed');
+
+  const four = addPolyDraftPoint(three, { x: 0, y: 10 });
+  assert.equal(canClosePolyDraft(four), false);
+  assert.equal(resolvePolyDraftFinish(four, 'close').ok, false);
+  const stillOpen = resolvePolyDraftFinish(four, 'finish');
+  assert.equal(stillOpen.finalType, 'polyline');
+  assert.equal(stillOpen.closed, false);
 });
 
 test('closing a polygon draft still produces a polygon', () => {
@@ -141,12 +151,21 @@ test('a duplicate final click is dropped instead of blocking the finish', () => 
 // First-point hit detection + finish controls
 // ---------------------------------------------------------------------------
 
-test('finish controls sit on the first and the latest vertex', () => {
-  const draft = draftFrom('polyline', [{ x: 1, y: 2 }, { x: 20, y: 2 }, { x: 20, y: 30 }]);
+test('a polygon carries a finish control on the first and the latest vertex', () => {
+  const draft = draftFrom('polygon', [{ x: 1, y: 2 }, { x: 20, y: 2 }, { x: 20, y: 30 }]);
   const controls = polyDraftFinishControlPoints(draft);
   assert.deepEqual(controls.first, { x: 1, y: 2 });
   assert.deepEqual(controls.last, { x: 20, y: 30 });
   assert.equal(polyDraftFinishControlPoints(null), null);
+});
+
+// Owner ruling 2026-09-22: only the LAST point of a polyline offers a finish
+// checkmark. A control on the first point would be a way to close the run.
+test('a polyline carries a finish control on the latest vertex only', () => {
+  const draft = draftFrom('polyline', [{ x: 1, y: 2 }, { x: 20, y: 2 }, { x: 20, y: 30 }]);
+  const controls = polyDraftFinishControlPoints(draft);
+  assert.equal(controls.first, null);
+  assert.deepEqual(controls.last, { x: 20, y: 30 });
 });
 
 test('first-point hit detection respects the radius and the close minimum', () => {
@@ -174,6 +193,19 @@ test('the rubber-band preview snaps onto the first point inside the magnet', () 
   assert.deepEqual(near.preview, { x: 0, y: 0 });
   // Preview updates never touch the placed points.
   assert.deepEqual(near.points, three.points);
+});
+
+// Owner ruling 2026-09-22: no close magnet on a polyline. Bring the cursor
+// right onto its first point and the rubber band stays where the cursor is —
+// nothing offers to shut the run, and a click there just drops a vertex.
+test('a polyline never snaps to, or closes on, its first point', () => {
+  const three = draftFrom('polyline', [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+  assert.equal(isPointNearPolyDraftFirstPoint({ x: 0, y: 0 }, three, 14), false);
+  assert.equal(isPointNearPolyDraftFirstPoint({ x: 2, y: 1 }, three, 24), false);
+
+  const onFirst = updatePolyDraftPreview(three, { x: 1, y: 1 }, { snapRadius: 14 });
+  assert.equal(onFirst.snapToFirst, false);
+  assert.deepEqual(onFirst.preview, { x: 1, y: 1 });
 });
 
 // ---------------------------------------------------------------------------

@@ -1620,9 +1620,10 @@ const SVGAnnotationLayer = memo(({
   // Polygon / polyline click-to-place commit + cancel.
   // ---------------------------------------------------------------------------
   // `action` is 'close' when the user asked to snap the run shut (first-vertex
-  // checkmark, or a click back on the first point) — that is how a polyline
-  // becomes a polygon. 'finish' ends the shape where it stands: closed for the
-  // Polygon tool, open for the Polyline tool.
+  // checkmark, or a click back on the first point). Owner ruling 2026-09-22:
+  // only a POLYGON draft can be asked that — a polyline is a line and never
+  // closes, so resolvePolyDraftFinish refuses 'close' on one. 'finish' ends the
+  // shape where it stands: closed for the Polygon tool, open for Polyline.
   const commitPolyDraft = useCallback((action = 'finish') => {
     const draft = polyDraftRef.current;
     if (!draft) return false;
@@ -5463,14 +5464,19 @@ const SVGAnnotationLayer = memo(({
             return;
           }
           // Polygon / polyline: every left click drops one vertex. Finishing
-          // is always explicit — a checkmark control, Enter, or a click back
-          // on the first point — so an accidental click never ends the shape.
+          // is always explicit — a checkmark control, Enter, or (polygon only)
+          // a click back on the first point — so an accidental click never
+          // ends the shape.
           if (isPolyCreationTool && e.button === 0) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
               const draft = polyDraftRef.current;
               // A click inside the first vertex's magnet closes the shape,
               // Drawboard-style — it wins over "place another point here".
+              // Owner ruling 2026-09-22: the magnet exists on a POLYGON draft
+              // only (isPointNearPolyDraftFirstPoint is false for a polyline),
+              // so clicking a polyline's first point just drops another vertex
+              // there instead of shutting the run into a shape.
               if (draft && isPointNearPolyDraftFirstPoint(point, draft, polyFirstPointSnapRadius)) {
                 commitPolyDraft('close');
                 e.preventDefault();
@@ -5850,10 +5856,11 @@ const SVGAnnotationLayer = memo(({
           UX: the committed edges render at full strength in the live stroke
           colour and width (what you see IS what commits), while the edge that
           chases the cursor is dashed and half-opaque so the user can always
-          tell which segment is not placed yet. The two finish checkmarks —
-          first vertex (close) and latest vertex (finish here) — are the only
-          interactive parts; everything else is pointer-transparent so a click
-          in the middle of the run still drops a vertex. */}
+          tell which segment is not placed yet. The finish checkmarks — latest
+          vertex (finish here) always, plus first vertex (close) on a POLYGON
+          draft only — are the only interactive parts; everything else is
+          pointer-transparent so a click in the middle of the run still drops a
+          vertex. */}
       {polyDraft && polyDraft.points.length > 0 && (() => {
         const previewStroke = composeAnnotationColor(strokeColor, strokeOpacity);
         const previewWidth = Number(strokeWidth) || 3;
@@ -5945,7 +5952,12 @@ const SVGAnnotationLayer = memo(({
                 style={{ pointerEvents: 'none' }}
               />
             ))}
-            {controls && canClose && finishControl(controls.first, 'close', true)}
+            {/* The close checkmark exists only where closing is legal, which
+                since the 2026-09-22 ruling means the Polygon tool alone —
+                polyDraftFinishControlPoints hands back a null `first` for a
+                polyline, so its first vertex is a plain dot with no control
+                and no way to shut the run into a shape. */}
+            {controls?.first && canClose && finishControl(controls.first, 'close', true)}
             {controls && canFinish && finishControl(controls.last, 'finish', true)}
           </g>
         );
