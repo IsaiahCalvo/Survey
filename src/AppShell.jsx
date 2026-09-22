@@ -2505,7 +2505,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 2px var(--focus)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                             >
                               Continue
@@ -2530,7 +2530,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 background: 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
-                                color: 'var(--danger)',
+                                color: 'var(--danger-text)',
                                 textAlign: 'left',
                                 cursor: 'pointer',
                                 font: 'inherit',
@@ -2539,7 +2539,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger-soft)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 2px var(--focus)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                             >
                               Delete

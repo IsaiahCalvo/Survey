@@ -441,7 +441,11 @@ export default function SaveLogBanner() {
                 Description
               </button>
             </div>
-            <div style={{ height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+            {/* UX: the unfilled part of the progress bar. It is a track — a
+                raised well on the --surface-2 banner — so it takes the raised
+                surface step, the same look every other track uses, rather
+                than a white wash that would change with the banner colour. */}
+            <div style={{ height: 3, background: 'var(--surface-3)', borderRadius: 2, overflow: 'hidden' }}>
               <div
                 style={{
                   width: `${Math.round(progress * 100)}%`,
@@ -471,7 +475,10 @@ export default function SaveLogBanner() {
                 resize: 'vertical',
                 background: 'rgba(0,0,0,0.25)',
                 color: colors.text,
-                border: '1px solid rgba(255,255,255,0.12)',
+                /* UX: a text input. Its edge is the ONLY thing telling you a
+                   field is here, which is exactly the job tokens.css reserves
+                   --border-strong for. */
+                border: '1px solid var(--border-strong)',
                 borderRadius: 8,
                 padding: '8px 10px',
                 fontFamily: 'inherit',
@@ -488,7 +495,10 @@ export default function SaveLogBanner() {
                 style={{
                   background: 'transparent',
                   color: colors.text,
-                  border: '1px solid rgba(255,255,255,0.18)',
+                  /* UX: an outlined button with no fill — the edge is the only
+                     thing that makes it a button, so it takes the identifying
+                     border token. */
+                  border: '1px solid var(--border-strong)',
                   borderRadius: 6,
                   padding: '6px 12px',
                   fontSize: 12,
@@ -520,7 +530,10 @@ export default function SaveLogBanner() {
 
         {state === 'submitting' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Spinner size={14} color={colors.accent} trackColor="rgba(255,255,255,0.25)" />
+            {/* UX: trackColor is the unfilled ring behind the spinner — a
+                track, so the same raised surface step every other track in
+                the app uses. */}
+            <Spinner size={14} color={colors.accent} trackColor="var(--surface-3)" />
             <span>Submitting to GitHub…</span>
           </div>
         )}
@@ -597,7 +610,8 @@ export default function SaveLogBanner() {
                 style={{
                   background: 'transparent',
                   color: 'var(--text-1)',
-                  border: '1px solid rgba(255,255,255,0.18)',
+                  /* UX: outlined button, no fill — identifying border. */
+                  border: '1px solid var(--border-strong)',
                   borderRadius: 6,
                   padding: '7px 14px',
                   fontSize: 13,
