@@ -10,7 +10,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
@@ -1121,6 +1121,45 @@ export function MobileToolProperties({ api }) {
     );
   }
 
+  // BOARD 7 — Select. The strip is the Box / Lasso / Text segmented toggle and
+  // nothing else, using the app's own three select glyphs. It is the SAME
+  // control as the desktop bar's, so a mode picked on one platform reads the
+  // same on the other.
+  // 2026-09-22 (owner ruling): this is now the ONLY mode control — the rail's
+  // caret and its pop-up are gone — so it has to be reachable from ALL THREE
+  // modes, Text included. It therefore sits ABOVE the text-markup branch and
+  // covers text-select too: with Text Select armed and no range dragged yet,
+  // the strip is the toggle, so Text is never a one-way door. The moment a
+  // range is live, or a mark is selected (contextTool names that mark's tool),
+  // the strip below belongs to the mark instead.
+  const selectFamilyActive = api.activeTool === 'select' || api.activeTool === 'text-select';
+  if (
+    selectFamilyActive
+    && (!api.contextTool || api.contextTool === api.activeTool)
+    && !api.hasLiveTextSelection
+  ) {
+    const selectMode = api.activeTool === 'text-select' ? 'text' : (api.selectionMode || 'rectangle');
+    return (
+      <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings">
+        <MobileStripSegmented
+          ariaLabel="Selection mode"
+          width={150}
+          value={selectMode}
+          onChange={(mode) => {
+            const next = getSelectFamilyTransition(mode);
+            api.setSelectionMode?.(next.selectionMode);
+            api.setActiveTool?.(next.activeTool);
+          }}
+          options={[
+            { value: 'rectangle', label: 'Box', ariaLabel: 'Box select', icon: getSelectModeIconName('rectangle') },
+            { value: 'lasso', label: 'Lasso', ariaLabel: 'Lasso select', icon: getSelectModeIconName('lasso') },
+            { value: 'text', label: 'Text', ariaLabel: 'Text select', icon: getSelectModeIconName('text') },
+          ]}
+        />
+      </div>
+    );
+  }
+
   if (textMarkup.active) {
     const markupColor = toHexColor(textMarkup.color, '#f4d35e');
     const markupOpacity = textMarkup.opacity / 100;
@@ -1137,18 +1176,14 @@ export function MobileToolProperties({ api }) {
         api.handleStrokeOpacityChange?.(opacity);
       }
     };
-    if (textMarkup.sharedToolbarActive) {
-      return api.showAnnotationColorPicker ? (
-        <MobileColorPickerSurface
-          title="Text markup color"
-          color={markupColor}
-          opacity={markupOpacity}
-          minOpacity={0.05}
-          onChange={applyMarkupPaint}
-          onClose={() => api.setShowAnnotationColorPicker?.(false)}
-        />
-      ) : null;
-    }
+    // 2026-09-22 (owner ruling: a selected mark's own controls must appear in
+    // the strip). This used to return the picker alone and NO strip whenever a
+    // text markup was selected or a range was live — the one annotation kind on
+    // the phone that showed nothing when you tapped it, while the desktop bar
+    // showed its colour row. The row renders in both states now; it is the same
+    // row, acting on the selected mark or on the live range, and the floating
+    // action bar it sits above owns the Highlight / Underline / Strike actions,
+    // not the paint.
     return (
       <>
         <div
@@ -1210,37 +1245,6 @@ export function MobileToolProperties({ api }) {
 
   // Pan has nothing to set, so it has no strip and the page keeps the 36px.
   if (api.activeTool === 'pan') return null;
-
-  // BOARD 7 — Select. The strip is the Box / Lasso / Text segmented toggle and
-  // nothing else, using the app's own three select glyphs. It is the SAME
-  // control as the desktop bar's, so a mode picked on one platform reads the
-  // same on the other. The rail's caret menu still offers the three modes; this
-  // is the reachable-without-a-menu version the board asks for.
-  // While a mark is selected, contextTool names that mark's tool and the strip
-  // belongs to the mark, not to the select mode - that gate is unchanged.
-  const selectFamilyActive = api.activeTool === 'select' || api.activeTool === 'text-select';
-  if (selectFamilyActive && (!api.contextTool || api.contextTool === api.activeTool)) {
-    const selectMode = api.activeTool === 'text-select' ? 'text' : (api.selectionMode || 'rectangle');
-    return (
-      <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings">
-        <MobileStripSegmented
-          ariaLabel="Selection mode"
-          width={150}
-          value={selectMode}
-          onChange={(mode) => {
-            const next = getSelectFamilyTransition(mode);
-            api.setSelectionMode?.(next.selectionMode);
-            api.setActiveTool?.(next.activeTool);
-          }}
-          options={[
-            { value: 'rectangle', label: 'Box', ariaLabel: 'Box select', icon: getSelectModeIconName('rectangle') },
-            { value: 'lasso', label: 'Lasso', ariaLabel: 'Lasso select', icon: getSelectModeIconName('lasso') },
-            { value: 'text', label: 'Text', ariaLabel: 'Text select', icon: getSelectModeIconName('text') },
-          ]}
-        />
-      </div>
-    );
-  }
 
   const isEraser = tool === 'eraser';
   const showWidth = isEraser || WIDTH_TOOLS.has(tool);
@@ -2088,8 +2092,6 @@ export function MobileToolProperties({ api }) {
 
 export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange }) {
   const [openCategory, setOpenCategory] = useState(null);
-  const [selectModeOpen, setSelectModeOpen] = useState(false);
-  const [selectModePosition, setSelectModePosition] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
@@ -2104,9 +2106,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false), { open: presenceOpen });
   const popoverRef = useRef(null);
-  const selectModeButtonRef = useRef(null);
-  const selectModeCaretRef = useRef(null);
-  const selectModeMenuRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
@@ -2140,16 +2139,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   useEffect(() => {
     if (sync.state === 'synced') setSyncDetailsOpen(false);
   }, [sync.state]);
-
-  useEffect(() => {
-    if (!selectModeOpen) return undefined;
-    const focusFrame = window.requestAnimationFrame(() => {
-      const menu = selectModeMenuRef.current;
-      const selected = menu?.querySelector?.('[role="menuitemradio"][aria-checked="true"]');
-      (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
-    });
-    return () => window.cancelAnimationFrame(focusFrame);
-  }, [selectModeOpen]);
 
   const activateSyncStatus = () => {
     setMoreOpen(false);
@@ -2189,61 +2178,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
   };
 
-  const openSelectModeMenu = () => {
-    const rect = selectModeButtonRef.current?.getBoundingClientRect();
-    if (rect) {
-      const menuWidth = Math.min(180, Math.max(0, window.innerWidth - 16));
-      const menuHeight = 152;
-      setSelectModePosition({
-        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right + 8)),
-        top: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
-      });
-    }
-    setSelectModeOpen(true);
-  };
-
-  useEffect(() => {
-    if (!selectModeOpen) return undefined;
-    const reposition = () => {
-      const rect = selectModeButtonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const viewport = window.visualViewport;
-      const viewportWidth = viewport?.width || window.innerWidth;
-      const viewportHeight = viewport?.height || window.innerHeight;
-      const viewportLeft = viewport?.offsetLeft || 0;
-      const viewportTop = viewport?.offsetTop || 0;
-      const menuWidth = Math.min(180, Math.max(0, viewportWidth - 16));
-      const menuHeight = 152;
-      setSelectModePosition({
-        left: Math.max(viewportLeft + 8, Math.min(viewportLeft + viewportWidth - menuWidth - 8, rect.right + 8)),
-        top: Math.max(viewportTop + 8, Math.min(viewportTop + viewportHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
-      });
-    };
-    reposition();
-    window.addEventListener('resize', reposition);
-    window.addEventListener('orientationchange', reposition);
-    window.visualViewport?.addEventListener?.('resize', reposition);
-    window.visualViewport?.addEventListener?.('scroll', reposition);
-    return () => {
-      window.removeEventListener('resize', reposition);
-      window.removeEventListener('orientationchange', reposition);
-      window.visualViewport?.removeEventListener?.('resize', reposition);
-      window.visualViewport?.removeEventListener?.('scroll', reposition);
-    };
-  }, [selectModeOpen]);
-
-  const chooseSelectMode = (mode) => {
-    bottomToolbarApi?.setSelectionMode?.(mode);
-    if (mode === 'text') {
-      selectTool('text-select');
-    } else {
-      selectTool('select');
-    }
-    setOpenCategory(null);
-    setSelectModeOpen(false);
-    window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
-  };
-
   const toggleCategory = (groupId) => {
     const group = TOOL_GROUPS[groupId];
     // UX 2026-09-16 (phone chrome pass): a second tap on the group that is
@@ -2280,58 +2214,30 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
           <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
-          <div
-            ref={selectModeButtonRef}
-            className="mobile-pdf-tools__select-family"
-            data-active={activeTool === 'select' || activeTool === 'text-select' ? 'true' : 'false'}
+          {/* PASS 7 (board 7, owner ruling 2026-09-22): Select is a PLAIN rail
+              chip, the same 28px square as Pan and the group buttons. Tapping it
+              arms the family and nothing else — no caret, no pop-up menu, and no
+              gold box around the armed chip; armed reads as the gold glyph only.
+              Which mode is live (Box / Lasso / Text) is chosen in the segmented
+              toggle the strip shows while Select is armed, which is the same
+              control the desktop bar draws, so a mode picked on one platform
+              reads the same on the other. */}
+          <RailButton
+            active={activeTool === 'select' || activeTool === 'text-select'}
+            label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
+            onClick={() => {
+              setOpenCategory(null);
+              selectTool(
+                activeTool === 'text-select' || bottomToolbarApi?.selectionMode === 'text'
+                  ? 'text-select'
+                  : 'select',
+              );
+            }}
           >
-            <RailButton
-              active={activeTool === 'select' || activeTool === 'text-select'}
-              label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
-              onClick={() => {
-                setOpenCategory(null);
-                selectTool(
-                  activeTool === 'text-select' || bottomToolbarApi?.selectionMode === 'text'
-                    ? 'text-select'
-                    : 'select',
-                );
-              }}
-            >
-              {/* UX: centre the glyph on the phone rail axis; the desktop
-                  horizontal pair's -3px shift does not fit a vertical rail. */}
-              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={RAIL_GLYPH} color="currentColor" />
-            </RailButton>
-            <button
-              ref={selectModeCaretRef}
-              type="button"
-              className="mobile-pdf-tools__select-caret"
-              aria-label="Selection mode"
-              aria-haspopup="menu"
-              aria-expanded={selectModeOpen}
-              aria-controls="mobile-select-mode-menu"
-              onClick={() => {
-                selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
-              }}
-            >
-              {/* UX: the caret keeps the phone's only mode disclosure legible at
-                  1x in both active and idle states.
-                  2026-09-16: currentColor, not a hard-coded cream. The colour was
-                  a literal, so when the Select family went active and its glyph
-                  turned gold the caret stayed cream — one control showing two
-                  different active colours.
-                  2026-09-16 (phone sweep): 7px, the shared split-button caret
-                  size the desktop uses (AppShell's Select button, whose comment
-                  cites Drawboard's 6px). This is the same kind of caret for the
-                  same reason - it hangs beside a full-size glyph, so it has to
-                  stay out of its way - and it was the last phone caret still
-                  carrying its own number. */}
-              <Icon
-                name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
-                size={7}
-                color="currentColor"
-              />
-            </button>
-          </div>
+            {/* UX: centre the glyph on the phone rail axis; the desktop
+                horizontal pair's -3px shift does not fit a vertical rail. */}
+            <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={RAIL_GLYPH} color="currentColor" />
+          </RailButton>
           <div className="mobile-pdf-tools__divider" />
           {Object.entries(TOOL_GROUPS).map(([groupId, group]) => (
             <RailButton
@@ -2558,59 +2464,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               : bottomToolbarApi?.lassoTouchMode === 'fence' ? 'Fence' : 'Window'}
           </button>
         </div>
-      )}
-      {selectModeOpen && selectModePosition && typeof document !== 'undefined' && createPortal(
-        <>
-          <div
-            className="mobile-pdf-select-mode__backdrop"
-            aria-hidden="true"
-            onPointerDown={() => setSelectModeOpen(false)}
-          />
-          <div
-            id="mobile-select-mode-menu"
-            ref={selectModeMenuRef}
-            className="mobile-pdf-select-mode__menu"
-            role="menu"
-            aria-label="Selection mode"
-            style={{ left: selectModePosition.left, top: selectModePosition.top }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setSelectModeOpen(false);
-                window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
-                return;
-              }
-              const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitemradio"]'));
-              const currentIndex = Math.max(0, items.indexOf(document.activeElement));
-              const nextIndex = getSelectModeMenuFocusIndex(e.key, currentIndex, items.length);
-              if (nextIndex != null) {
-                e.preventDefault();
-                items[nextIndex]?.focus();
-              }
-            }}
-          >
-            {SELECT_MODE_OPTIONS.map((option) => {
-              const selected = isSelectModeActive(option, bottomToolbarApi?.selectionMode);
-              return (
-                <button
-                  key={option.mode}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  className={selected ? 'is-active' : ''}
-                  onClick={() => chooseSelectMode(option.mode)}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Icon name={getSelectModeIconName(option.mode)} size={19} color="currentColor" />
-                    <span>{option.label}</span>
-                  </span>
-                  {selected && <Icon name="check" size={14} color="currentColor" />}
-                </button>
-              );
-            })}
-          </div>
-        </>,
-        document.body,
       )}
       {syncDetailsOpen && sync.state !== 'synced' && syncDetailsPosition && typeof document !== 'undefined' && createPortal(
         <div

@@ -49,44 +49,39 @@ const token = (name) => {
   return Number(match[1]);
 };
 
-test('the Select chip sits on the rail column, not one pixel off it', () => {
-  const border = declared('.mobile-pdf-tools__select-family', 'border');
-  assert.match(
-    String(border),
-    /^0$|^none$/,
-    'the Select wrapper is box-sizing: border-box, so any border on it shrinks its content '
-    + `box and pushes the 30px chip off the rail's column (measured: chip at x 5.5 against `
-    + `every sibling's 4.5). It declares "${border}".`,
-  );
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-22, board 7 owner ruling). Contracts 1
+ * and 2 above both described the Select chip's SPLIT BUTTON - the wrapper that
+ * had to carry no border, and the caret pad that must not own the chip's
+ * centre. The owner removed the split button entirely: "Remove the caret, the
+ * popover menu and its state... The chip becomes a plain 28px rail chip like
+ * the others; armed = gold glyph only." The wrapper's inset ring WAS the gold
+ * box he reported, so the old test's "it still needs its active outline"
+ * assertion now asserts the defect. Both are replaced by one contract that
+ * says the split button is gone, which is what keeps it from coming back.
+ */
+test('the Select chip is a plain rail chip - no wrapper, no caret, no gold box', () => {
+  for (const selector of [
+    '.mobile-pdf-tools__select-family',
+    '.mobile-pdf-tools__select-caret',
+    '.mobile-pdf-select-mode__menu',
+  ]) {
+    assert.equal(
+      css.includes(selector),
+      false,
+      `${selector} is still styled. The Select chip is a plain rail chip now: the wrapper's `
+      + 'inset accent ring was the gold border box the owner reported around the armed chip, '
+      + 'and the caret opened the pop-up he asked to delete.',
+    );
+  }
 
-  // Its hover / focus-within / active outline has to paint somewhere.
-  const active = rulesFor('.mobile-pdf-tools__select-family[data-active=\'true\']').join('\n');
-  assert.match(
-    active,
-    /box-shadow:\s*inset/,
-    'the Select wrapper still needs its active outline - draw it with an inset box-shadow, '
-    + 'which paints where the border did without taking a pixel off the content box',
-  );
-});
-
-test('the selection-mode caret does not own the middle of the Select chip', () => {
-  const chip = token('--mobile-rail-chip');
-  const caretWidth = Number(/^(\d+(?:\.\d+)?)px$/.exec(declared('.mobile-pdf-tools__select-caret', 'width'))?.[1]);
-  assert.equal(Number.isFinite(caretWidth), true, 'the caret must declare a px width');
-  assert.equal(declared('.mobile-pdf-tools__select-caret', 'right'), '0', 'the caret hugs the family\'s right edge');
-
-  const pad = declared('.mobile-pdf-tools__select-caret::after', 'inset-inline');
-  const start = Number(/^(-?\d+(?:\.\d+)?)px/.exec(String(pad))?.[1]);
-  assert.equal(Number.isFinite(start), true, `the caret pad must declare inset-inline in px (got ${pad})`);
-
-  // The caret is laid out against the family's padding box, which is the chip's
-  // own box now that the wrapper carries no border.
-  const padLeft = (chip - caretWidth) + start;
-  assert.ok(
-    padLeft >= chip / 2 + 2,
-    `the caret's tap pad starts ${padLeft}px into a ${chip}px chip, which is on or past the `
-    + `chip's own centre (${chip / 2}px). A tap on the middle of the tool's icon then opens the `
-    + 'selection-mode menu instead of arming the tool.',
+  // The one state an armed rail chip is allowed: the glyph turns gold.
+  const armed = rulesFor('.mobile-pdf-tools__button.is-active').join('\n');
+  assert.match(armed, /color:\s*var\(--accent\)/, 'an armed rail chip turns its glyph gold');
+  assert.doesNotMatch(
+    armed,
+    /box-shadow|border-color:\s*var\(--accent|background:\s*(?!transparent)/,
+    'armed is the gold glyph ONLY - no fill, no border, no box',
   );
 });
 

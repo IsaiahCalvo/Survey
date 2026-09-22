@@ -73,11 +73,16 @@ test('rectangle selection supports Space mode changes plus Shift add and Alt sub
   assert.match(interactionSource, /else if \(mq\.shiftHeld\)/);
 });
 
-test('mobile selection menu remeasures on viewport and orientation changes without clipping rows', () => {
-  assert.match(mobileChromeSource, /window\.addEventListener\('orientationchange', reposition\)/);
-  assert.match(mobileChromeSource, /window\.visualViewport\?\.addEventListener\?\.\('resize', reposition\)/);
-  assert.match(mobileChromeSource, /viewportLeft \+ viewportWidth - menuWidth - 8/);
-  assert.match(mobileCss, /\.mobile-pdf-select-mode__menu\s*\{[\s\S]*?width:\s*min\(180px, calc\(100vw - 16px\)\)/);
-  assert.match(mobileCss, /max-height:\s*min\(152px, calc\(100dvh - 16px\)\)/);
-  assert.match(mobileCss, /\.mobile-pdf-select-mode__menu > button\s*\{[\s\S]*?min-height:\s*44px/);
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-22, board 7 owner ruling). This test
+ * guarded the phone selection-mode FLYOUT - its repositioning listeners and its
+ * 180x152 panel. The owner removed that menu outright ("NO pop-up"), so what it
+ * guarded no longer exists. It now guards the replacement: the chip opens no
+ * menu at all, and the three modes are reachable from the strip's toggle.
+ */
+test('the phone Select chip opens no selection-mode menu', () => {
+  assert.doesNotMatch(mobileChromeSource, /mobile-select-mode-menu/);
+  assert.doesNotMatch(mobileChromeSource, /aria-haspopup="menu"[\s\S]{0,200}Selection mode/);
+  assert.doesNotMatch(mobileCss, /mobile-pdf-select-mode__/);
+  assert.match(mobileChromeSource, /ariaLabel="Selection mode"[\s\S]{0,400}label: 'Box'/);
 });

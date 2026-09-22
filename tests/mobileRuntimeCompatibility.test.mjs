@@ -222,10 +222,21 @@ test('mobile shells lock page zoom without disabling app-controlled PDF pinch', 
 
 test('mobile selected text exposes the shared toolbar and its shared color picker', () => {
   assert.match(PDF_VIEWER_SOURCE, /hasLiveTextSelection:\s*!!liveTextSelection\?\.pages\?\.length/);
+  /*
+   * DELIBERATE ASSERTION CHANGE (2026-09-22, owner ruling: a selected mark's own
+   * controls appear in the strip). The old shape required `sharedToolbarActive`
+   * to return the colour picker and NOTHING ELSE, which made a selected text
+   * markup the one annotation kind that showed no strip on the phone. The row
+   * renders in that state now and still owns the shared picker, which is what
+   * this test was protecting.
+   */
+  assert.doesNotMatch(MOBILE_VIEWER_CHROME_SOURCE, /if \(textMarkup\.sharedToolbarActive\) \{\s*return/);
   assert.match(
     MOBILE_VIEWER_CHROME_SOURCE,
-    /if \(textMarkup\.sharedToolbarActive\) \{[\s\S]*?api\.showAnnotationColorPicker[\s\S]*?<MobileColorPickerSurface/,
+    /data-mobile-text-markup-controls[\s\S]*?api\.showAnnotationColorPicker && \(\s*<MobileColorPickerSurface/,
   );
+  // The live-range gate that keeps the Select strip from covering the markup row.
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /&& !api\.hasLiveTextSelection/);
 });
 
 test('Expo enforces the zoom lock inside its WebView even when the hosted app is older', () => {
