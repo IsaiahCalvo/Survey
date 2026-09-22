@@ -24,10 +24,17 @@ test('live text formatting uses only app-styled menus', () => {
   // are adjacent so there is no dead lane to miss into, and 44px rows made a
   // six-option arrowhead menu taller than the sheet it opened over.
   assert.match(mobileCss, /\n\.mobile-styled-select__trigger \{[\s\S]{0,200}height: var\(--mobile-strip-control-h\)/);
+  /* RULED CHANGE 2026-09-22 (owner, phone review: "Strip controls measure 40px
+     tall, not 44 — raise the strip hit box to 44"). The pad was SYMMETRIC (-12px)
+     and hit-tested at 37-40px, because the header's own 44px pads reach 8px below
+     the 34px header and win that overlap. Measured from y=37 down instead:
+     -5px / -19px on a control sitting at y=42..62 is 37..81, a clear 44. Same
+     contract, same painted 20px — see tests/mobileToolPropertiesReach for the
+     full set. */
   assert.match(
     mobileCss,
-    /\.mobile-pdf-properties > \.mobile-styled-select \.mobile-styled-select__trigger::after \{[\s\S]{0,160}inset-block: -12px/,
-    'the pill must still be a 44px target: 20px painted plus 12px above and below',
+    /\.mobile-pdf-properties > \.mobile-styled-select \.mobile-styled-select__trigger::after \{[\s\S]{0,160}inset-block: -5px -19px/,
+    'the pill must still be a 44px target: 20px painted, and the pad measured from y=37 down',
   );
   assert.match(mobileCss, /\.mobile-styled-select__menu > button \{[\s\S]{0,120}height: 26px/);
 });
