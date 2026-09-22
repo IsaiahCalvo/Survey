@@ -12,6 +12,10 @@
  *     board's `width: '42px', flex: '0 0 42px'`.
  * The accessible name "Opacity percentage" is kept rather than the board's
  * terser "Opacity": a name is not a visual, and the longer one says more.
+ *
+ * 2026-09-22, owner's ONE-SCALE ruling (radii: pills 10, sheet tops 16,
+ * popovers 9, cells 5, buttons 6 — and nothing else):
+ *   - panel radius 12px / attached 0 0 8px 8px -> 9px / 0 0 9px 9px.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +26,10 @@ const SOURCE = readFileSync(new URL('../src/components/CompactColorPicker.jsx', 
 test('attached color picker joins its header without changing standalone corners', () => {
   assert.match(SOURCE, /attachedHeader\s*=\s*false/);
   assert.match(SOURCE, /borderTop:\s*attachedHeader\s*\?\s*'none'\s*:\s*undefined/);
-  assert.match(SOURCE, /borderRadius:\s*attachedHeader\s*\?\s*'0 0 8px 8px'\s*:\s*'12px'/);
+  // CHANGED 2026-09-22, owner's one-radius-scale ruling (pills 10, sheet tops
+  // 16, popovers 9, cells 5, buttons 6): the panel was 12px standalone and
+  // 0 0 8px 8px attached. A popover is 9, so both corners are 9 now.
+  assert.match(SOURCE, /borderRadius:\s*attachedHeader\s*\?\s*'0 0 9px 9px'\s*:\s*'9px'/);
 });
 
 test('the panel is the board 19 panel: 276px desktop, full width on the phone', () => {

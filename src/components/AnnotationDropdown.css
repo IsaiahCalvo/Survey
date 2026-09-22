@@ -79,7 +79,9 @@
   border: 0;
   border-radius: 6px;
   box-sizing: border-box;
-  font: 500 11.5px/1 Helvetica, Arial, sans-serif;
+  /* ONE TYPE SCALE (2026-09-22): a chrome label is 11px/600. This row was
+     11.5px/500, a size and a weight that exist nowhere else in the app. */
+  font: 600 11px/1 Helvetica, Arial, sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   white-space: nowrap;

@@ -493,7 +493,8 @@
   color: var(--text-2);
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  /* ONE RADIUS SCALE (2026-09-22): a button is 6. Was 8. */
+  border-radius: 6px;
   font: 600 11px/1 Helvetica, Arial, sans-serif;
   white-space: nowrap;
   cursor: pointer;

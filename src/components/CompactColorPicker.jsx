@@ -690,7 +690,7 @@ const CompactColorPicker = ({
                         {isMatchSlot && (
                             <span style={{
                                 fontSize: '11px',
-                                fontWeight: 700,
+                                fontWeight: 600,
                                 lineHeight: 1,
                                 color: 'rgba(0,0,0,0.75)',
                                 textShadow: '0 0 2px rgba(255,255,255,0.85), 0 0 1px rgba(255,255,255,0.85)',
@@ -777,7 +777,10 @@ const CompactColorPicker = ({
                     position: 'relative',
                     width: '100%',
                     height: `${spectrumAreaHeight}px`,
-                    borderRadius: '10px',
+                    /* ONE RADIUS SCALE (2026-09-22): the spectrum takes the
+                       grid's box, so it takes a surface radius, 9. Was 10,
+                       which is the PILL radius and means something else. */
+                    borderRadius: '9px',
                     background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hue} 100% 50%))`,
                     cursor: 'crosshair',
                     touchAction: 'none',
@@ -842,7 +845,8 @@ const CompactColorPicker = ({
         color: 'var(--text-1)',
         background: 'var(--surface-2)',
         border: '1px solid var(--border)',
-        borderRadius: '8px',
+        /* ONE RADIUS SCALE (2026-09-22): a 30px control is a button, 6. Was 8. */
+        borderRadius: '6px',
         overflow: 'hidden',
         font: `600 12px/1 ${FONT}`,
         fontVariant: 'tabular-nums',
@@ -866,7 +870,9 @@ const CompactColorPicker = ({
                     display: 'grid',
                     placeItems: 'center',
                     border: 0,
-                    borderRadius: '5px',
+                    /* ONE RADIUS SCALE (2026-09-22): a button is 6; 5 is the
+                       grid CELL radius and belongs to the grid alone. */
+                    borderRadius: '6px',
                     color: on ? 'var(--text-1)' : 'var(--text-3)',
                     background: on ? 'var(--surface-3)' : 'transparent',
                     cursor: 'pointer',
@@ -908,7 +914,10 @@ const CompactColorPicker = ({
             background: chrome ? panelBackground : 'transparent',
             border: chrome ? '1px solid var(--border)' : 0,
             borderTop: attachedHeader ? 'none' : undefined,
-            borderRadius: attachedHeader ? '0 0 8px 8px' : '12px',
+            /* ONE RADIUS SCALE (2026-09-22): a popover is 9. Board 19 drew 12,
+               but every other popover in the chrome (the dropdown menus) is 9
+               and the owner ruled one scale over one board's number. */
+            borderRadius: attachedHeader ? '0 0 9px 9px' : '9px',
             boxShadow: chrome ? '0 14px 32px rgba(0,0,0,0.45)' : 'none',
             padding: chrome ? '12px' : 0,
             display: 'flex',
@@ -928,7 +937,10 @@ const CompactColorPicker = ({
                     gap: '2px',
                     padding: '3px',
                     background: 'var(--surface-2)',
-                    borderRadius: '8px',
+                    /* ONE RADIUS SCALE (2026-09-22): pills 10, sheet tops 16,
+                       popovers and the wells on them 9, cells 5, buttons 6.
+                       This well was 8. */
+                    borderRadius: '9px',
                 }}>
                     {tabs.items.map((item) => {
                         const on = tabs.active === item.id;
@@ -946,7 +958,7 @@ const CompactColorPicker = ({
                                     borderRadius: '6px',
                                     color: on ? 'var(--text-1)' : 'var(--text-3)',
                                     background: on ? 'var(--surface-3)' : 'transparent',
-                                    font: `600 12.5px/1 ${FONT}`,
+                                    font: `600 12px/1 ${FONT}`,
                                     cursor: 'pointer',
                                     padding: 0,
                                 }}
@@ -980,7 +992,8 @@ const CompactColorPicker = ({
                     gap: '2px',
                     padding: '2px',
                     background: 'var(--surface-2)',
-                    borderRadius: '7px',
+                    /* ONE RADIUS SCALE (2026-09-22): was 7. */
+                    borderRadius: '9px',
                     width: '64px',
                     flex: '0 0 64px',
                     boxSizing: 'border-box',

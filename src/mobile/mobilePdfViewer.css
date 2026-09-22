@@ -1529,8 +1529,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   gap: 4px;
   color: var(--text-3);
+  /* ONE TYPE SCALE (2026-09-22): field label, 11/600. Was 11/700. */
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* UX 2026-09-09: Bump inside the edit sheet shares the Stroke style row
@@ -1547,7 +1548,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 auto;
   gap: 4px;
   color: var(--text-1);
-  font-size: 12px;
+  /* ONE TYPE SCALE (2026-09-22): field label inside a sheet, 11/600. Was 12. */
+  font-size: 11px;
+  font-weight: 600;
 }
 .mobile-pdf-text-card__bump input {
   width: 36px;
@@ -1707,7 +1710,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font: 500 11.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  /* ONE TYPE SCALE (2026-09-22): a menu row reads at the chrome label size,
+     11px/600, the same as the desktop dropdown. Was 11.5px/500. */
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   text-align: left;
@@ -2000,16 +2005,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   transform: translateY(-4px);
 }
 
+/* ONE TYPE SCALE (2026-09-22): a phone sheet's title is 16/700 and a field
+   label under it is 11/600 — the numbers the "..." sheet already used. This
+   header ran 16/800 over 11/700. */
 .mobile-pdf-text-defaults > header span {
   color: var(--text-3);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   order: 2;
 }
 
 .mobile-pdf-text-defaults > header strong {
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .mobile-pdf-text-defaults > header > button {
@@ -2046,8 +2054,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-3);
   background: transparent;
   border: 0;
+  /* ONE TYPE SCALE (2026-09-22): a tab word is 12/600, the same as the colour
+     picker's Border / Fill tabs. Was 12/900. */
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .mobile-pdf-text-defaults__tabs > button.is-active {
@@ -2096,7 +2106,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  /* ONE RADIUS SCALE (2026-09-22): a card on a sheet is a surface, 9. Was 8. */
+  border-radius: 9px;
 }
 
 .mobile-pdf-text-card--text-color {
@@ -2117,10 +2128,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 112px;
 }
 
+/* ONE TYPE SCALE (2026-09-22): a row label on a sheet is 13/600 — the number
+   the "..." sheet's rows already use. Was 13/900. */
 .mobile-pdf-text-card strong {
   color: var(--text-1);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .mobile-pdf-text-card__header {
@@ -2138,8 +2151,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-card__header > div > span {
   color: var(--text-3);
+  /* ONE TYPE SCALE (2026-09-22): field label, 11/600. Was 11/700. */
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .mobile-pdf-text-card__large-swatch {
@@ -2256,9 +2270,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-1);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  /* ONE SCALE (2026-09-22): a button is radius 6 and its letter is 12/600.
+     Was radius 8 at 12/900. */
+  border-radius: 6px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .mobile-pdf-text-defaults__format > button.italic { font-style: italic; }
@@ -2278,8 +2294,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
+  /* ONE TYPE SCALE (2026-09-22): a field's own value is 13/600. Was 13/900. */
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -2357,7 +2374,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 44px;
   margin-block: -6px;
   align-self: center;
-  font: 900 13px/44px Helvetica, Arial, sans-serif;
+  /* ONE TYPE SCALE (2026-09-22): 13/600 like every other sheet field. Was 900. */
+  font: 600 13px/44px Helvetica, Arial, sans-serif;
 }
 
 .mobile-pdf-text-card__size .annotation-size-control__trigger {
@@ -2392,7 +2410,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-3);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  /* ONE RADIUS SCALE (2026-09-22): a button is 6. Was 8. */
+  border-radius: 6px;
 }
 
 .mobile-pdf-text-defaults__alignments > button.is-active {
@@ -2419,8 +2438,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-3);
   background: transparent;
   border: 0;
+  /* ONE TYPE SCALE (2026-09-22): a tab word is 12/600. Was 12/900. */
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid var(--border); }
