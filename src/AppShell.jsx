@@ -57,6 +57,8 @@ import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
+// Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
+const HISTORY_GLYPH = 14;
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 function RailLiveZoomText({ fallback, viewerId }) {
@@ -1737,7 +1739,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 // size and glyph like every other button in this row. They
                 // were a one-off 32x26 with a 14px glyph — the smallest pair
                 // in a row that also held 30px and 28px controls.
-                className="btn btn-default chrome-control"
+                // UX 2026-09-22 (owner): a plain icon button like the phone's
+                // - no box, no border, glyph 14 (HISTORY_GLYPH) so the solid
+                // arrowheads sit level with the 16px open-stroke tool glyphs.
+                className="btn chrome-control chrome-history"
                 aria-label="Undo"
                 style={{
                   opacity: topToolbarApi.canUndo ? 1 : 0.4,
@@ -1745,7 +1750,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none'
                 }}
               >
-                <Icon name="undo" size={CHROME_GLYPH} />
+                <Icon name="undo" size={HISTORY_GLYPH} />
               </button>
             </span>
             <span {...chromeTip('Redo', 'below')} style={{ display: 'inline-flex' }}>
@@ -1753,7 +1758,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 onClick={topToolbarApi.onRedo || (() => {})}
                 disabled={!topToolbarApi.canRedo}
                 // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
-                className="btn btn-default chrome-control"
+                className="btn chrome-control chrome-history"
                 aria-label="Redo"
                 style={{
                   opacity: topToolbarApi.canRedo ? 1 : 0.4,
@@ -1767,7 +1772,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   // thing putting Redo on a different baseline from Undo.
                 }}
               >
-                <Icon name="redo" size={CHROME_GLYPH} />
+                <Icon name="redo" size={HISTORY_GLYPH} />
               </button>
             </span>
           </div>

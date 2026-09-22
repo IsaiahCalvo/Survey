@@ -2226,3 +2226,18 @@ input[type="text"].space-add-pages-input:focus-visible {
     transition: none !important;
   }
 }
+
+/* Owner 2026-09-22: desktop undo/redo are plain icon buttons like every other
+   tool button - no bordered square, no fill when disabled; they dim only. */
+.chrome-history {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-2);
+}
+.chrome-history:disabled {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-disabled);
+}
+.chrome-history:not(:disabled):hover { background: var(--hover); border-color: transparent; }
+.chrome-history:not(:disabled):active { background: var(--pressed); }

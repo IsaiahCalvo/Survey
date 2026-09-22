@@ -24679,7 +24679,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         overflow: 'hidden',
         overflowAnchor: 'none',
         cursor: shouldShowGrabCursor ? 'grab' : 'default',
-        background: 'var(--surface-2)',
+        // UX 2026-09-22 (owner): the canvas behind the page is the app's
+        // darkest layer on every platform - the phone already used
+        // --surface-0 and the pass-7 boards draw the desktop the same, so the
+        // page pops and the chrome recedes. It was --surface-2 here.
+        background: 'var(--surface-0)',
         position: 'relative',
         fontFamily: FONT_FAMILY,
         minHeight: 0,
