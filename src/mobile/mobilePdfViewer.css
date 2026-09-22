@@ -64,6 +64,13 @@
   --mobile-strip-arrowhead-w: 90px;
   --mobile-strip-arrowends-w: 96px;
   --mobile-strip-series-w: 80px;
+  /* The live text-edit strip's own two pills (2026-09-22). 92px is what shows
+     "Helvetica", "Courier New" and "Georgia" whole instead of cutting every font
+     name but "Arial" — the owner's standing objection to clipped labels — and
+     60px is what fits "16 pt" with its unit rather than "16 p...". Both are
+     measured: the strip is 318px of controls in a 331px band at 375px. */
+  --mobile-strip-font-w: 92px;
+  --mobile-strip-fontsize-w: 60px;
   --mobile-sheet-field-w: 96px;    /* the sheet's aligned-field variant */
   --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
 
@@ -1318,37 +1325,33 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    tests/mobileRuntimeCompatibility.test.mjs and
    tests/mobileToolSettingsReachable.test.mjs) but every number now comes from
    the base rule. */
-/* The ONE strip that still scrolls, and the one strip no board covers: the live
-   rich-text editor's bar carries a colour swatch, a font, a size, four format
-   toggles and an alignment dropdown, which no 331px band holds. It is
-   start-aligned with a scroll path so its far end is always reachable - the
-   contract pinned by tests/mobileRuntimeCompatibility.test.mjs and
-   tests/mobileToolSettingsReachable.test.mjs. Because it scrolls it must stay
-   hit-testable (WebKit will not scroll a container that is not), so it opts back
-   into the pointer events the pass-7 base rule drops; and because a scroll
-   container clips both axes, its pads stop at the painted band - 36px of target
-   here, not the 44px the fitted strips get. */
-.mobile-pdf-properties--text {
-  padding-right: 20px;
-  justify-content: flex-start;
-  scroll-padding-inline: 8px;
-  touch-action: pan-x;
-  -webkit-overflow-scrolling: touch;
-  overflow-x: auto;
-  overflow-y: visible;
-  pointer-events: auto;
-  clip-path: inset(0 0 8px 0);
-}
+/* RULED CHANGE 2026-09-22 (pass 7, the boards' strip rule applied to the one
+   strip no board draws): the live rich-text bar DOES NOT SCROLL any more, and it
+   has nothing left to scroll to. It used to be the exception - start-aligned,
+   overflow-x: auto, touch-action: pan-x, hit-testable so WebKit would scroll it,
+   and clipped to its painted band, which capped every pad at 36px - because it
+   carried a colour swatch, a 96px font pill, a numeric size box, four 28px format
+   buttons and a 104px "top left" alignment pill: 361px of controls in a 331px
+   band, so the alignment control sat off the right edge of every phone we
+   support. The row was refitted at the source instead (see the strip comment in
+   MobilePdfViewerChrome.jsx): the size box became a 60px pill, B/I/U/S became one
+   80px group of 20px buttons, and the alignment pill became one 20px button that
+   opens a sheet holding both alignment axes. 318px in a 331px band at 375px, so
+   every declaration that existed to serve the scroll is gone with it, and the
+   bar takes the base rule's centring, its dropped pointer events and its 44px
+   pads exactly like every other tool strip.
+   Do NOT give this bar a scroll path back. Add a control only if it still
+   measures inside the band (tests/mobileToolPropertiesReach.test.mjs prices it);
+   otherwise it belongs in the alignment sheet.
 
-.mobile-pdf-properties--text::-webkit-scrollbar { display: none; }
-
-/* These three hold two or three wide labelled buttons that always fit, so they
+   These four hold two or three wide labelled buttons that always fit, so they
    stay centred rather than moving to the bar's left edge - the owner's "never
    move an existing control" applies to them because nothing about them was
    broken. `safe` still falls back to start-aligned if a label ever grows past
-   the bar, which is what keeps the scroll reachable. */
+   the bar, so the first control can never vanish under the tool rail. */
 .mobile-pdf-properties--actions,
 .mobile-pdf-properties--survey,
+.mobile-pdf-properties--text,
 .mobile-pdf-properties--text-markup {
   justify-content: safe center;
 }
@@ -1391,6 +1394,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    there is no dead lane between two controls to miss into. */
 .mobile-pdf-properties__color,
 .mobile-pdf-properties__format,
+.mobile-pdf-properties__align,
 .mobile-pdf-properties__edit,
 .mobile-pdf-properties__more,
 .mobile-pdf-properties__text-button,
@@ -1405,6 +1409,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    enlarge (seen on the simulator - the settings sheet stopped opening). */
 .mobile-pdf-properties__color::after,
 .mobile-pdf-properties__format::after,
+.mobile-pdf-properties__align::after,
 .mobile-pdf-properties__edit::after,
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
@@ -1475,12 +1480,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 0;
 }
 
-/* The rich-text variant's controls are 24px tall inside a bar that clips itself
-   to 36px, so their pads stop where that clip does. */
-.mobile-pdf-properties--text .mobile-pdf-properties__color::after,
-.mobile-pdf-properties--text .mobile-pdf-properties__format::after,
-.mobile-pdf-properties--text .mobile-pdf-properties__edit::after {
-  inset-block: -8px;
+/* RULED CHANGE 2026-09-22: the rich-text variant's 36px pad override is GONE.
+   It existed only because the bar clipped itself to its painted band to scroll;
+   the bar does not scroll and does not clip, so its controls take the shared
+   -12px pad above and reach the full 44px the ruling asks for, exactly like the
+   controls on every other strip. */
+
+/* B / I / U / S sit shoulder to shoulder in an 80px group with no gap between
+   them, so their pads must tile the group EXACTLY. The shared pad runs 2px wide
+   on each side to fill the strip's 4px lanes; here that would overlap the
+   neighbour by 2px, and among overlapping siblings the LATER one wins the hit
+   test - the right-hand sliver of Bold would have toggled Italic. */
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format::after {
+  inset-inline: 0;
 }
 
 .mobile-pdf-properties--actions > button:disabled { color: var(--text-disabled);
@@ -1596,34 +1608,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* ONE TYPE SCALE (2026-09-22): field label, 11/600. Was 11/700. */
   font-size: 11px;
   font-weight: 600;
-}
-
-/* UX 2026-09-09: Bump inside the edit sheet shares the Stroke style row
-   (dropdown + "Bump" input side by side) so the card keeps its height. */
-.mobile-pdf-text-card__style-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.mobile-pdf-text-card__style-row > .mobile-styled-select { flex: 1 1 auto; min-width: 0; }
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger { padding-inline: 8px; }
-.mobile-pdf-text-card__bump {
-  flex: 0 0 auto;
-  gap: 4px;
-  color: var(--text-1);
-  /* ONE TYPE SCALE (2026-09-22): field label inside a sheet, 11/600. Was 12. */
-  font-size: 11px;
-  font-weight: 600;
-}
-.mobile-pdf-text-card__bump input {
-  width: 36px;
-  height: 32px;
-  font-size: 13px;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
 }
 
 .mobile-pdf-properties__width {
@@ -1805,28 +1789,28 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-styled-select__menu > button.is-active { color: var(--accent); }
 
 /* Inside a bottom sheet the pill is the 96px aligned-field variant. */
-.mobile-pdf-tool-sheet .mobile-styled-select__trigger,
-.mobile-pdf-text-card .mobile-styled-select__trigger {
+.mobile-pdf-tool-sheet .mobile-styled-select__trigger {
   width: 100%;
 }
 
-/* UX 2026-09-16 (phone sweep): 44px wide. This one control is a bare <input>
-   that paints its own pill, so it can neither host a transparent ::after nor be
-   made taller without the pill growing with it; its target is its own box, and
-   the width is what carries it. Vertically it is the bar's own 24px, between two
-   neighbours whose pads cover the full 44px. */
-.mobile-pdf-properties__font-size {
-  width: 44px;
+/* RULED CHANGE 2026-09-22: the bare 44px numeric font-size <input> is GONE. It
+   could not carry its unit (the boards: "every numeric field carries its unit"),
+   it was the one control on the bar whose finger target had to be its own painted
+   box because an <input> cannot host a transparent pad, and it summoned the iOS
+   keypad for a value that is almost always one of the standard sizes. It is the
+   desktop bar's own size dropdown now, at --mobile-strip-fontsize-w, reading
+   "16 pt". A size the presets do not hold is still shown, and still settable from
+   the desktop bar. */
+
+/* Boards 1-7 give the strip ONE row of controls 4px apart; B / I / U / S are the
+   one cluster that reads as a single control, so they sit shoulder to shoulder in
+   their own group - 4 x 20px = 80px - instead of 124px of separate chips. The
+   group is the flex item, so it takes the strip's gap on its outer edges only. */
+.mobile-pdf-properties__format-group {
   height: var(--mobile-strip-control-h);
-  padding: 0 4px;
-  box-sizing: border-box;
+  display: flex;
   flex: 0 0 auto;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  font-size: 10px;
-  text-align: center;
+  gap: 0;
 }
 
 /* UX 2026-09-17 (owner, phone build: "Bold, italics, underline and
@@ -1840,8 +1824,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    The other half of the fix is in the artwork: the four assets are normalised
    onto the house 24 grid so one square glyph box serves all four - see
    src/Icons.jsx. */
+/* RULED CHANGE 2026-09-22 (the strip must fit at 375px): 20px, not 28. Four 28px
+   chips 4px apart are 124px of a 331px band, which is what pushed the alignment
+   control off the right edge of the phone. At the strip's own control height the
+   four are 80px, they carry the same 12px glyph as every other strip control, and
+   the group above tiles their 44px pads exactly. */
 .mobile-pdf-properties__format {
-  width: 28px;
+  width: var(--mobile-strip-control-h);
   height: var(--mobile-strip-control-h);
   padding: 0;
   display: grid;
@@ -1855,19 +1844,56 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 800;
 }
 
+/* Four buttons shoulder to shoulder read as one control, so only the OUTER
+   corners of the group are round. */
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format {
+  border-radius: 0;
+}
+
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
 /* B / I / U / S on the phone's live text strip: the letter turns gold, the chip
    keeps its resting --surface-3. */
 .mobile-pdf-properties__format.is-active {
   color: var(--accent);
 }
 
-/* Live text formatting is intentionally a single horizontal strip. RULED CHANGE
-   2026-09-16 (phone sweep; owner ruling "sizing follows Drawboard's ratios
-   uniformly ... everything reads a little big"): these controls used to paint at
-   44px, which is why this bar was 52px tall while every other tool's bar was 36.
-   They paint 24px now, the shared strip control height, and the 44px lives in
-   the transparent ::after pads above - same visual as the rest of the app, same
-   finger target as before. The strip still supplies the horizontal scrolling. */
+/* The ONE alignment button (2026-09-22). It draws the horizontal alignment in
+   force and opens the sheet that holds both axes, so it takes no control surface
+   at all - the same treatment as "Aa" and "...", which also open something rather
+   than holding a value - and it turns gold while its sheet is open. */
+.mobile-pdf-properties__align {
+  width: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.mobile-pdf-properties__align.is-active { color: var(--accent); }
+
+/* Live text formatting is one horizontal row of the shared strip controls, and
+   nothing in it may paint taller than the band. RULED CHANGE 2026-09-16 (phone
+   sweep; owner ruling "sizing follows Drawboard's ratios uniformly ... everything
+   reads a little big"): these controls used to paint at 44px, which is why this
+   bar was 52px tall while every other tool's bar was 36. They paint the shared
+   strip control height now and the 44px lives in the transparent ::after pads
+   above - same visual as the rest of the app, same finger target as before.
+   The `select` and `input` names are kept as a guard: the bar's own OS select and
+   its bare numeric size box are both gone (2026-09-22), and if either ever comes
+   back it will at least not be the one control on the row painting a different
+   height. */
 .mobile-pdf-properties--text > button,
 .mobile-pdf-properties--text > select,
 .mobile-pdf-properties--text > input {
@@ -1931,43 +1957,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__edit.is-active { color: var(--accent); }
 .mobile-pdf-properties__edit:disabled { color: var(--text-disabled);
   cursor: not-allowed;
-}
-
-.mobile-pdf-text-defaults {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 6500;
-  /* The three per-variant heights this sheet used to pick between - 432 text,
-     368 shape, 448 callout - made the same sheet three different sizes
-     depending on which tool opened it, so pass 7 pinned it to Standard. It is a
-     SETTINGS sheet, so it now takes its content's height instead.
-
-     SETTINGS SHEET HEIGHT (ruled 2026-09-22, owner): content height, never a
-     named panel height. `auto` + the same max-height cap; the body below keeps
-     `flex: 1 1 auto; min-height: 0; overflow-y: auto`, so if the content ever
-     outgrows the cap the sheet stops at the cap and scrolls inside instead of
-     growing. useMobileSheetMotion writes ONLY transform, so translateY(100%)
-     still parks a content-height sheet fully off the bottom edge and the
-     drag-to-dismiss maths (finger dy, not a fraction of the height) is
-     unchanged. */
-  height: auto;
-  max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
-  /* Board 16/17/18 sheet frame: 16px of side padding, 24px under the body for the
-     home indicator, the toolbar surface, a border-strong top edge and a 16px top
-     radius. Was surface-2 / radius 14 / a bare inset at the bottom. */
-  padding: 0 16px calc(24px + var(--mobile-bottom-inset));
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  color: var(--text-1);
-  background: var(--surface-1);
-  border-top: 1px solid var(--border-strong);
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
-  /* Entrance comes from useMobileSheetMotion (see .mobile-pdf-sheet above) —
-     one transform timeline for open, drag and close. */
 }
 
 /* BOARD 16 — the "..." sheet. The same frame as the picker sheets (boards 17 and
@@ -2082,487 +2071,73 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 var(--mobile-sheet-field-w);
 }
 
-/* Pass 7: no per-variant heights. Standard is the one starting height. */
-
-.mobile-pdf-text-defaults > header {
-  height: 40px;
-  flex: 0 0 auto;
+/* The alignment rows in the live text sheet (2026-09-22). Three glyph buttons
+   right-aligned in the row, on the same 96px the sheet's fields take so the two
+   rows and every other sheet field line up down one edge. 32px buttons on a 40px
+   row: the row itself carries the rest of the finger target, exactly as the
+   sheet's own Done button does. */
+.mobile-pdf-tool-sheet__aligns {
+  width: var(--mobile-sheet-field-w);
+  flex: 0 0 var(--mobile-sheet-field-w);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.mobile-pdf-text-defaults > .mobile-pdf-sheet__handle {
-  display: flex;
-  align-items: center;
-}
-
-.mobile-pdf-text-defaults > header > div {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-  transform: translateY(-4px);
-}
-
-/* ONE TYPE SCALE (2026-09-22): a phone sheet's title is 16/700 and a field
-   label under it is 11/600 — the numbers the "..." sheet already used. This
-   header ran 16/800 over 11/700. */
-.mobile-pdf-text-defaults > header span {
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 600;
-  order: 2;
-}
-
-.mobile-pdf-text-defaults > header strong {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.mobile-pdf-text-defaults > header > button {
-  width: 18px;
-  height: 30px;
+.mobile-pdf-tool-sheet__aligns > button {
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: grid;
   place-items: center;
-  color: var(--text-1);
+  color: var(--text-2);
   background: transparent;
   border: 0;
   border-radius: 6px;
-  transform: translateY(-3px);
 }
 
-.mobile-pdf-text-defaults__tabs {
-  width: 224px;
-  height: 34px;
-  flex: 0 0 auto;
-  margin: 5px auto 0;
-  display: grid;
-  grid-template-columns: 1fr 1px 1fr;
-  align-items: center;
-  overflow: hidden;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a tab well is 9, the same as the colour
-     picker's Border / Fill well. Was a 17px capsule, a radius used nowhere
-     else. */
-  border-radius: 9px;
-}
+/* Owner's selected-state ruling: the chosen glyph turns gold. No fill, no
+   border, no wash. */
+.mobile-pdf-tool-sheet__aligns > button.is-active { color: var(--accent); }
 
-.mobile-pdf-text-defaults__tabs > button {
-  width: 100%;
-  height: 100%;
+/* The rebuilt "Aa" sheet's Colour row: ONE swatch, at the header's own control
+   size, opening the shared Colour sheet. It replaces a 44px circle sitting over
+   nine large colour buttons - a second palette with its own chosen ring, one tap
+   from the strip's. The 1px ring is what keeps a white or near-white text colour
+   visible against the sheet. */
+.mobile-pdf-tool-sheet__swatch {
+  width: 28px;
+  height: 28px;
   padding: 0;
-  color: var(--text-3);
-  background: transparent;
+  flex: 0 0 auto;
+  background: var(--mobile-text-color, var(--text-1));
   border: 0;
-  /* ONE TYPE SCALE (2026-09-22): a tab word is 12/600, the same as the colour
-     picker's Border / Fill tabs. Was 12/900. */
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-defaults__tabs > button.is-active {
-  color: var(--accent);
-}
-
-.mobile-pdf-text-defaults__tabs > button:focus {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
-
-.mobile-pdf-text-defaults__tabs > span {
-  width: 1px;
-  height: 20px;
-  background: var(--surface-3);
-}
-
-/* The body is what is left of the sheet once its chrome is out: an 18px handle
-   row, a 40px header, the tab row when there is one, and the 12px top margin
-   below. Derived rather than named, so the three literal heights that had to be
-   kept in step with three sheet heights are gone. */
-.mobile-pdf-text-defaults__scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  margin-top: 12px;
-  padding-bottom: 16px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-
-
-.mobile-pdf-text-defaults__scroll::-webkit-scrollbar { display: none; }
-
-.mobile-pdf-text-card {
-  flex: 0 0 auto;
-  padding: 9px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a card on a sheet is a surface, 9. Was 8. */
-  border-radius: 9px;
-}
-
-.mobile-pdf-text-card--text-color {
-  height: 89px;
-  padding: 9px;
-  gap: 8px;
-}
-
-.mobile-pdf-text-card--shape-color {
-  height: 150px;
-  padding: 11px;
-  gap: 10px;
-}
-
-/* 2026-07-12 (Phase E): strokes-only tools (pen/highlighter/line/arrow) drop
-   the Fill/Stroke sub-tabs, so the colour card is shorter. */
-.mobile-pdf-text-card--shape-color.mobile-pdf-text-card--stroke-only {
-  height: 112px;
-}
-
-/* ONE TYPE SCALE (2026-09-22): a row label on a sheet is 13/600 — the number
-   the "..." sheet's rows already use. Was 13/900. */
-.mobile-pdf-text-card strong {
-  color: var(--text-1);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-card__header {
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.mobile-pdf-text-card__header > div {
-  display: grid;
-  gap: 3px;
-}
-
-.mobile-pdf-text-card__header > div > span {
-  color: var(--text-3);
-  /* ONE TYPE SCALE (2026-09-22): field label, 11/600. Was 11/700. */
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-card__large-swatch {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  flex: 0 0 auto;
-  position: relative;
-  overflow: hidden;
-  background: var(--mobile-text-color);
-  border: 2px solid var(--border-strong);
   border-radius: 50%;
-  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--border-strong);
 }
 
-.mobile-pdf-text-card--shape-color .mobile-pdf-text-card__large-swatch {
-  width: 42px;
-  height: 42px;
-  border-radius: 21px;
+/* B / I / U / S are the strip's own group, reused in a sheet row. In the strip a
+   20px control is centred in a 36px band and takes a 44px pad; in a 40px sheet row
+   the same pad would reach 2px into the rows above and below and steal the edge of
+   a neighbour's tap. -10px keeps the target inside its own row at the sheet's own
+   40px, which is what every other field in this sheet offers. */
+.mobile-pdf-tool-sheet .mobile-pdf-properties__format::after {
+  inset-block: -10px;
 }
 
-.mobile-pdf-text-card__colors {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0;
-}
-
-.mobile-pdf-text-card__colors > button {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-}
-
-/* PASS 7 (owner ruling 2026-09-21, reversing the gold exception this rule used
-   to hold): "Chosen quick colour = a ring in the disc's OWN colour, a gap, and a
-   white check in the middle. NEVER a gold ring." So these preset discs mark the
-   chosen one the way every other swatch in the app does — the ring colour comes
-   from the shared swatchRingColour(), the button's resting 1px border is the gap,
-   and the check inside is the shared ChosenCheck. */
-.mobile-pdf-text-card__colors > button.is-active {
-  box-shadow: 0 0 0 2px var(--mobile-swatch-ring, var(--text-1));
-}
-
-.mobile-pdf-text-card__colors > button > span {
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--ink-ring);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-}
-
-.mobile-pdf-text-card--split {
-  height: 81px;
-  min-height: 81px;
-  padding: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
-  gap: 0;
-}
-
-.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split {
-  height: 85px;
-  min-height: 85px;
-}
-
-/* 2026-07-12 (Phase E): tools with no border-style select (pen/highlighter/
-   counter) show a single full-width stroke-width pane. */
-.mobile-pdf-text-card--split.mobile-pdf-text-card--width-only {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card__pane {
-  padding: 11px;
-}
-
-.mobile-pdf-text-card__pane {
-  min-width: 0;
-  padding: 9px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.mobile-pdf-text-card__divider {
-  width: 1px;
-  height: 100%;
-  background: var(--surface-3);
-}
-
-.mobile-pdf-text-defaults__format {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-/* Same baseline fault, same fix as the live strip's format buttons above: a
-   block button centres its icon on a font baseline, not on its box. */
-.mobile-pdf-text-defaults__format > button {
-  width: 31px;
-  height: 31px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE SCALE (2026-09-22): a button is radius 6 and its letter is 12/600.
-     Was radius 8 at 12/900. */
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-defaults__format > button.italic { font-style: italic; }
-.mobile-pdf-text-defaults__format > button.underline { text-decoration: underline; }
-.mobile-pdf-text-defaults__format > button.strike { text-decoration: line-through; }
-
-.mobile-pdf-text-defaults__format > button.is-active {
-  color: var(--accent);
-}
-
-.mobile-pdf-text-card__size > input {
-  width: 52px;
-  height: 32px;
-  padding: 0 6px;
-  box-sizing: border-box;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  /* ONE TYPE SCALE (2026-09-22): a field's own value is 13/600. Was 13/900. */
-  font-size: 13px;
-  font-weight: 600;
-  text-align: center;
-}
-
-/* In-sheet app-styled dropdowns (stroke style / arrowhead) fill their card pane
-   and match the card control aesthetic instead of the compact strip trigger. */
-.mobile-pdf-text-card__pane > .mobile-styled-select,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select { width: 100%; }
-
-/* NOTE the min-height: a bare `height: 32px` here never took effect, because the
-   shared .mobile-styled-select__trigger rule sets min-height: 44px and a
-   min-height always beats a height. That is why the sheet's Stroke style
-   dropdown measured 44px tall beside a 30px Width field. */
-.mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger,
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger {
-  position: relative;
-  width: 100%;
-  height: 32px;
-  min-height: 32px;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger.is-open,
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger.is-open,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger.is-open {
-  color: var(--accent);
-}
-
-/* UX 2026-09-16 (phone sweep, owner: "make them the same size, keep the sheet
-   compact"). In the annotation settings sheet the Stroke style dropdown and the
-   Width field sit side by side in one split card and were plainly two different
-   kinds of control: 148x44 against 76x30, different fill, different radius,
-   different type. They are ONE control size now - each fills its own pane, both
-   32px tall, both wearing the card's #242a33 / #3a4250 / radius-6 / 13-900
-   chrome. No card grew, so the sheet is exactly as compact as it was.
-   Nothing lost a target either: the dropdown's 44px was its wrapper div, which
-   is not the thing you tap - the trigger inside it was 32px before and after. */
-.mobile-pdf-text-card__pane > .mobile-styled-select,
-.mobile-pdf-text-card__style-row > .mobile-styled-select,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select {
-  min-height: 32px;
-}
-
-/* Nothing here loses a finger target: both controls keep a transparent 44px pad
-   over their 32px paint - the dropdown through an ::after, the value field by
-   being a transparent 44px input inside the wrapper that paints the pill. */
-.mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger::after,
-.mobile-pdf-text-card__style-row > .mobile-styled-select .mobile-styled-select__trigger::after,
-.mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger::after {
-  content: '';
-  position: absolute;
-  inset-block: -7px;
-  inset-inline: 0;
-}
-
-.mobile-pdf-text-card__size .annotation-size-control {
-  width: 100%;
+/* The Width row's typed field takes the sheet's 96px field column and the same
+   32px paint as its dropdowns, so the rows read as one column of one control. Its
+   finger target is the transparent input inside the pill, which is why the pill
+   can paint 32 without the row growing. */
+.mobile-pdf-tool-sheet__size {
+  width: var(--mobile-sheet-field-w);
+  flex: 0 0 var(--mobile-sheet-field-w);
   height: 32px;
   overflow: visible;
   color: var(--text-1);
-  background: var(--surface-2);
+  background: var(--surface-3);
   border-color: var(--border-strong);
-  border-radius: 6px;
-}
-
-.mobile-pdf-text-card__size .annotation-size-control > input {
-  width: auto;
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 44px;
-  margin-block: -6px;
-  align-self: center;
-  /* ONE TYPE SCALE (2026-09-22): 13/600 like every other sheet field. Was 900. */
-  font: 600 13px/44px Helvetica, Arial, sans-serif;
-}
-
-.mobile-pdf-text-card__size .annotation-size-control__trigger {
-  position: relative;
-  height: 30px;
-}
-
-.mobile-pdf-text-card__size .annotation-size-control__trigger::after {
-  content: '';
-  position: absolute;
-  inset-block: -7px;
-  inset-inline: 0;
-}
-
-.mobile-pdf-text-card--alignment {
-  height: 145px;
-  padding: 11px;
-  gap: 10px;
-}
-
-.mobile-pdf-text-defaults__alignments {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.mobile-pdf-text-defaults__alignments > button {
-  height: 43px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a button is 6. Was 8. */
-  border-radius: 6px;
-}
-
-.mobile-pdf-text-defaults__alignments > button.is-active {
-  color: var(--accent);
-}
-
-.mobile-pdf-text-card__color-tabs {
-  height: 34px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  overflow: hidden;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  /* ONE RADIUS SCALE (2026-09-22): a tab well is 9. Was 17. */
-  border-radius: 9px;
-}
-
-.mobile-pdf-text-card__color-tabs > button {
-  min-width: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  color: var(--text-3);
-  background: transparent;
-  border: 0;
-  /* ONE TYPE SCALE (2026-09-22): a tab word is 12/600. Was 12/900. */
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid var(--border); }
-.mobile-pdf-text-card__color-tabs > button.is-active { color: var(--accent); }
-
-.mobile-pdf-text-card__color-tabs i {
-  width: 11px;
-  height: 11px;
-  border: 1px solid var(--ink-ring);
-  border-radius: 50%;
-}
-
-.mobile-pdf-text-card--arrowhead {
-  height: 85px;
-  padding: 11px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+  border-radius: 10px;
 }
 
 /* 2026-07-12 (Phase E, demo parity): host for the app's ONE shared
@@ -2890,8 +2465,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* Pass 7: ONE handle everywhere - 36x4 on the board's 20px row. The wider 42px
    variant the demo used on its survey and format sheets is gone, so two sheets
    opened one after the other no longer show two different handles. */
-.mobile-pdf-sheet__handle--wide::before,
-.mobile-pdf-text-defaults .mobile-pdf-sheet__handle::before {
+.mobile-pdf-sheet__handle--wide::before {
   width: 36px;
 }
 

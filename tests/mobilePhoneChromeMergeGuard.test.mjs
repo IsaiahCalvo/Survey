@@ -46,18 +46,21 @@ test('the page pill total never wraps', () => {
   );
 });
 
-test('the text-defaults format buttons centre their glyph on the box, not a baseline', () => {
-  const body = ruleBody('.mobile-pdf-text-defaults__format > button');
-  assert.match(
-    body,
-    /display:\s*grid/,
-    'B / I / U / S must stay display: grid (main 1e5a18dc9); a block button centres its '
-    + `glyph on a font baseline and sits 1.5px high. Rule body is "${body.trim()}"`,
-  );
-  assert.match(
-    body,
-    /place-items:\s*center/,
-    `B / I / U / S must keep place-items: center. Rule body is "${body.trim()}"`,
+/*
+ * RULED CHANGE 2026-09-22 (the "Aa" sheet rebuilt to the pass-7 sheet vocabulary).
+ * The sheet had its OWN copy of B / I / U / S - .mobile-pdf-text-defaults__format
+ * > button - and that copy is what this test guarded. The rebuilt sheet reuses the
+ * strip's .mobile-pdf-properties__format group instead, so the rule is gone and
+ * the contract it protected now has exactly one home, guarded by the test below.
+ * That is strictly stronger than what was here: there is no second rule left for a
+ * merge to drop the structural properties from.
+ */
+test('there is only ONE phone rule for B / I / U / S', () => {
+  assert.equal(
+    (CSS.match(/mobile-pdf-text-defaults__format/g) || []).length,
+    0,
+    'the "Aa" sheet must not grow its own copy of the format buttons again: it '
+    + 'reuses the strip\'s .mobile-pdf-properties__format group',
   );
 });
 
@@ -70,7 +73,8 @@ test('the live strip format buttons centre the same way', () => {
 test('the page total and the format buttons paint tokens, not the old literals', () => {
   for (const selector of [
     '.mobile-pdf-header__page-total',
-    '.mobile-pdf-text-defaults__format > button',
+    // The sheet's own copy of these buttons is gone (2026-09-22); the strip's
+    // group below is the one rule left to check.
     '.mobile-pdf-properties__format {',
   ]) {
     const body = ruleBody(selector);
