@@ -1413,10 +1413,15 @@ export default function TemplatesEditor({
   };
   const ENTITY_BLANK_HINT = "Can't be empty — type a name or remove the row.";
 
-  const commitRequiredRow = (el, previousValue, hint, commit) => {
+  const commitRequiredRow = (el, previousValue, hint, commit, onDiscardFresh) => {
     if (isBlank(el.value)) {
       if (previousValue) el.value = previousValue;      // existing row: quiet revert
-      else flagRequiredInput(el, hint);                 // fresh row: refuse visibly
+      // Fresh blank row: owner 2026-09-22 - "if I click in an empty input
+      // field and then click outside of it, it should just get dismissed",
+      // no red hint. Rows that pass onDiscardFresh vanish as if never added;
+      // the others (entities) keep the visible refusal.
+      else if (onDiscardFresh) onDiscardFresh();
+      else flagRequiredInput(el, hint);
       return;
     }
     commit(el.value.trim());
@@ -2229,7 +2234,7 @@ export default function TemplatesEditor({
                                   defaultValue={it.text}
                                   placeholder="Add checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
-                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v))}
+                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => hardDeleteItem(i, it.id))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 <button
@@ -2766,7 +2771,7 @@ export default function TemplatesEditor({
                                               defaultValue={it.text}
                                               placeholder="Add checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
-                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
+                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => hardDeleteItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>

@@ -2909,7 +2909,10 @@
     display: grid;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    /* Owner 2026-09-22: "too thick, too tall - they need to be one-liners."
+       The 44px toggle/grip already gives the row its finger height; the 8px of
+       vertical padding on top of it made every row 60px. */
+    padding: 0 10px;
   }
 
   .survey-hub .templates-mobile-category-row {
@@ -2957,7 +2960,7 @@
   .survey-hub .templates-mobile-item-row {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
     min-height: 44px;
-    padding: 6px 0;
+    padding: 0;
     border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   }
 
