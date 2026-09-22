@@ -42,7 +42,7 @@ test('the bottom row is one joined field: eyedropper, hex, then a 42px opacity b
   assert.match(SOURCE, /width:\s*'64px',\s*flex:\s*'0 0 64px'/);
   assert.match(SOURCE, /flex:\s*'1 1 0',\s*\n?\s*minWidth:\s*0,/);
   // The eyedropper is always drawn, in its own 34px cell on the field's left.
-  assert.match(SOURCE, /aria-label="Pick a colour from the page"/);
+  assert.match(SOURCE, /aria-label="Pick a color from the page"/);
   assert.match(SOURCE, /width:\s*'34px',\s*\n?\s*height:\s*'30px'/);
   // The opacity box and its percent sign close the field.
   assert.match(SOURCE, /aria-label="Opacity percentage"/);

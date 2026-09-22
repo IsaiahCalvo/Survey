@@ -912,10 +912,10 @@ const CompactColorPicker = ({
                 <div style={fieldChrome}>
                     <button
                         type="button"
-                        aria-label="Pick a colour from the page"
+                        aria-label="Pick a color from the page"
                         title={eyedropperSupported
-                            ? 'Pick a colour from the page'
-                            : 'Picking a colour from the page needs Chrome or Edge'}
+                            ? 'Pick a color from the page'
+                            : 'Picking a color from the page needs Chrome or Edge'}
                         disabled={!eyedropperSupported}
                         onClick={pickFromScreen}
                         style={{
@@ -938,7 +938,7 @@ const CompactColorPicker = ({
                     <span style={{ padding: '0 9px', color: 'var(--text-3)' }}>#</span>
                     <input
                         type="text"
-                        aria-label="Hex colour"
+                        aria-label="Hex color"
                         spellCheck="false"
                         value={localHex.replace('#', '')}
                         onChange={(e) => {

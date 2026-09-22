@@ -189,9 +189,10 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         aria-label={`Close ${title || 'color'} picker`}
         onClick={onClose}
       />
-      {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet at the Standard
-          height with the shared sheet frame, not a floating panel in the middle
-          of the screen. Same handle row, same title, same gold Done as every
+      {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet in the shared
+          sheet frame, not a floating panel in the middle of the screen. It
+          opened at the Standard panel height until 2026-09-22; it is a SETTINGS
+          sheet, so its CSS sizes it to its content now. Same handle row, same title, same gold Done as every
           other phone panel, so it arrives from the same edge and closes the same
           way. The panel inside it is the app's ONE shared CompactColorPicker
           (project rule) — its presets, grid, gradient and opacity row belong to
@@ -199,7 +200,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
       <div className="mobile-pdf-colorpicker-surface" role="dialog" aria-label={`${title || 'Color'} picker`}>
         <div className="mobile-pdf-sheet__handle" />
         <header className="mobile-pdf-tool-sheet__header">
-          <strong>{title || 'Colour'}</strong>
+          <strong>{title || 'Color'}</strong>
           <button type="button" aria-label="Done" onClick={onClose}>Done</button>
         </header>
         <div className="mobile-pdf-colorpicker-surface__body">
@@ -1448,7 +1449,7 @@ export function MobileToolProperties({ api }) {
   const showMoreOnStrip = showArrowhead || canResizeRotate;
 
   /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
-     open — titled "Colour", with a gold Done, the shared picker's 12 presets
+     open — titled "Color", with a gold Done, the shared picker's 12 presets
      edge to edge, its grid or gradient, its opacity slider and its one bottom
      row, at the Standard sheet height.
 
@@ -1475,14 +1476,14 @@ export function MobileToolProperties({ api }) {
   // Config for the shared CompactColorPicker takeover, per open target.
   const colorPickerConfig = colorPicker === 'textColor'
     ? {
-      title: 'Text colour',
+      title: 'Text color',
       color: toHexColor(textDefaults.fontColor, '#1e293b'),
       showOpacity: false,
       onChange: (hex) => updateTextDefaults({ fontColor: hex }),
     }
     : colorPicker === 'fill'
       ? {
-        title: 'Colour',
+        title: 'Color',
         tabs: paintTabs,
         color: toHexColor(api.fillColor, '#ffffff'),
         opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)),
@@ -1495,7 +1496,7 @@ export function MobileToolProperties({ api }) {
       }
       : colorPicker === 'stroke'
         ? {
-          title: 'Colour',
+          title: 'Color',
           tabs: paintTabs,
           color: toHexColor(api.strokeColor, '#ff0000'),
           opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
@@ -1567,7 +1568,7 @@ export function MobileToolProperties({ api }) {
         <QuickPaintSwatch
           platform="phone"
           variant={tool === 'counter' ? 'counter' : 'shape'}
-          label={tool === 'counter' ? 'Pin and number colours' : 'Border and fill colours'}
+          label={tool === 'counter' ? 'Pin and number colors' : 'Border and fill colors'}
           ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
           center={tool === 'counter' ? '#ffffff' : toHexColor(api.fillColor, '#ffffff')}
           /* Boards 17/18: the swatch opens the Colour sheet on the channel it is

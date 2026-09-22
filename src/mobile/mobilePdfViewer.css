@@ -63,10 +63,20 @@
 
   /* PHONE BOTTOM PANEL HEIGHTS — three named sizes and nothing else
      (DESIGN-SYSTEM.md "Phone bottom panels" + phone-panel-height-rules.html).
-     Standard is the starting height for EVERY phone panel. Compact is defined
-     and deliberately assigned to nothing: it is held for a future panel with
-     very little content. Expanded and Full screen are never a starting height —
-     they are only ever reached by pulling a Standard panel upward. */
+     Standard is the starting height for every BROWSE panel (Pages, Search,
+     Bookmarks, Spaces, Survey, Version history, Active users). Compact is
+     defined and deliberately assigned to nothing: it is held for a future
+     browse panel with very little content. Expanded and Full screen are never
+     a starting height — they are only ever reached by pulling a Standard panel
+     upward.
+
+     RULED CHANGE 2026-09-22 (owner): a SETTINGS sheet is NOT sized from this
+     list. The color picker, the tool "..." sheet and the text formatting sheet
+     are exactly as tall as their content — handle + header + body + the bottom
+     safe area — and never taller. At Standard they left roughly 110px of empty
+     sheet below the last control, which reads as a panel that failed to fill
+     itself. They keep the same max-height cap and scroll internally if their
+     content ever outgrows it. */
   --mobile-panel-compact: calc(392px + var(--mobile-bottom-inset));
   --mobile-panel-standard: calc(448px + var(--mobile-bottom-inset));
   --mobile-panel-expanded: 70dvh;
@@ -1856,10 +1866,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   right: 0;
   bottom: 0;
   z-index: 6500;
-  /* Standard, like every other phone panel (pass 7). The three per-variant
-     heights this sheet used to pick between - 432 text, 368 shape, 448 callout -
-     made the same sheet three different sizes depending on which tool opened it. */
-  height: var(--mobile-panel-standard);
+  /* The three per-variant heights this sheet used to pick between - 432 text,
+     368 shape, 448 callout - made the same sheet three different sizes
+     depending on which tool opened it, so pass 7 pinned it to Standard. It is a
+     SETTINGS sheet, so it now takes its content's height instead.
+
+     SETTINGS SHEET HEIGHT (ruled 2026-09-22, owner): content height, never a
+     named panel height. `auto` + the same max-height cap; the body below keeps
+     `flex: 1 1 auto; min-height: 0; overflow-y: auto`, so if the content ever
+     outgrows the cap the sheet stops at the cap and scrolls inside instead of
+     growing. useMobileSheetMotion writes ONLY transform, so translateY(100%)
+     still parks a content-height sheet fully off the bottom edge and the
+     drag-to-dismiss maths (finger dy, not a fraction of the height) is
+     unchanged. */
+  height: auto;
   max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
   /* Board 16/17/18 sheet frame: 16px of side padding, 24px under the body for the
      home indicator, the toolbar surface, a border-strong top edge and a 16px top
@@ -1887,7 +1907,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   right: 0;
   bottom: 0;
   z-index: 6500;
-  height: var(--mobile-panel-standard);
+  /* SETTINGS SHEET HEIGHT (ruled 2026-09-22, owner): content height, never a
+     named panel height. `auto` + the same max-height cap; the body below keeps
+     `flex: 1 1 auto; min-height: 0; overflow-y: auto`, so if the content ever
+     outgrows the cap the sheet stops at the cap and scrolls inside instead of
+     growing. useMobileSheetMotion writes ONLY transform, so translateY(100%)
+     still parks a content-height sheet fully off the bottom edge and the
+     drag-to-dismiss maths (finger dy, not a fraction of the height) is
+     unchanged. */
+  height: auto;
   max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
   padding: 0 16px calc(24px + var(--mobile-bottom-inset));
   box-sizing: border-box;
@@ -2427,15 +2455,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 6650;
 }
 
-/* Boards 17 & 18: the picker is a bottom sheet at the Standard height, in the
-   shared sheet frame. It was a floating panel centred in the viewport, which was
-   the one phone surface that did not arrive from the bottom edge. */
+/* Boards 17 & 18: the picker is a bottom sheet in the shared sheet frame. It was
+   a floating panel centred in the viewport, which was the one phone surface that
+   did not arrive from the bottom edge. It opened at Standard until 2026-09-22;
+   it is a SETTINGS sheet, so it is its content's height now. */
 .mobile-pdf-colorpicker-surface {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  height: var(--mobile-panel-standard);
+  /* SETTINGS SHEET HEIGHT (ruled 2026-09-22, owner): content height, never a
+     named panel height. `auto` + the same max-height cap; the body below keeps
+     `flex: 1 1 auto; min-height: 0; overflow-y: auto`, so if the content ever
+     outgrows the cap the sheet stops at the cap and scrolls inside instead of
+     growing. useMobileSheetMotion writes ONLY transform, so translateY(100%)
+     still parks a content-height sheet fully off the bottom edge and the
+     drag-to-dismiss maths (finger dy, not a fraction of the height) is
+     unchanged. */
+  height: auto;
   max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
   padding: 0 16px calc(24px + var(--mobile-bottom-inset));
   box-sizing: border-box;

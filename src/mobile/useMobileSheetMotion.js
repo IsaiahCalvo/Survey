@@ -61,14 +61,24 @@ export const SHEET_EXPANDED_HEIGHT = '70dvh';
  * PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): THREE named
  * heights, and a browse panel can climb two of them.
  *
- *   0 Standard   448px + the bottom safe area. Every panel opens here.
+ *   0 Standard   448px + the bottom safe area. Every browse panel opens here.
  *   1 Expanded   70% of the visible screen. Reached only by pulling up.
  *   2 Full       the app area below the status bar. A second pull up.
  *
  * Pulling down steps Full -> Expanded -> Standard -> closed, so a panel is never
  * lost in one gesture from the top. Only the browse panels (Pages, Search,
- * Bookmarks, Spaces, Survey) opt into this; a tool sheet or a picker stays at
- * Standard, because Expanded "is optional only for long browse content".
+ * Bookmarks, Spaces, Survey, Version history, Active users) opt into this.
+ *
+ * RULED CHANGE 2026-09-22 (owner): these three heights are for BROWSE panels
+ * only. A SETTINGS sheet - the color picker, the tool "..." sheet, the text
+ * formatting sheet - is exactly as tall as its content (handle + header + body
+ * + the bottom safe area) and never taller, so it names no height here: its CSS
+ * is `height: auto` under the same max-height cap. Nothing in this hook has to
+ * change for that, because the hook writes ONLY transform - translateY(100%)
+ * parks a content-height sheet fully offscreen just as it does a 448px one, and
+ * the dismiss test is finger travel and velocity, never a fraction of the
+ * height. A settings sheet still passes expandable:false, which is now the
+ * stronger statement that it has no taller detent to reach at all.
  */
 export const SHEET_DETENT_STANDARD = 0;
 export const SHEET_DETENT_EXPANDED = 1;
