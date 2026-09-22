@@ -20,7 +20,12 @@ const renderer = (name) => {
 };
 
 test('top toolbar group glyphs carry no translateY optical nudge', () => {
-  for (const name of ['drawGroup', 'textGroup', 'shapes']) {
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner ruling): the Text
+  // group's glyph is Lucide scan-text, so the renderer to read is `scanText`;
+  // `textGroup` is the alias that points at it. The rule is unchanged — no group
+  // glyph in the tool cluster may be nudged off its own ink centre.
+  assert.match(source, /textGroup: 'scanText',/);
+  for (const name of ['drawGroup', 'scanText', 'shapes']) {
     assert.doesNotMatch(
       renderer(name),
       /translateY\(/,
