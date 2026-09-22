@@ -33974,7 +33974,17 @@ ${pageBlocks}
                         setActiveTool(t.id);
                         setHighlighterCaretPopupOpen(false);
                       }}
-                      {...chromeTip(isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, 'below')}
+                      /* PASS 7 (2026-09-22 review): the ERASER is called
+                         "Eraser". It used to rename itself to whichever kind
+                         was armed, so the tool row said "Partial erase" — the
+                         same two words the Partial half of the toggle beside it
+                         carries. Two controls answering to one name is a
+                         genuine problem for anyone driving the bar by name, and
+                         the toggle already SHOWS which kind is live, which is
+                         what the renaming was standing in for before the toggle
+                         existed. 'Eraser' is also the primary label in
+                         TOOL_SHORTCUTS, so the tooltip keeps its E badge. */
+                      {...chromeTip(isHighlighter ? 'Highlighter' : isEraser ? 'Eraser' : t.label, 'below')}
                       // UX 2026-09-16 (desktop sizing pass): every tool in
                       // the sub-row takes the shared .chrome-subcontrol box
                       // (34x32) and the shared 18px glyph, so the row matches
@@ -33984,7 +33994,7 @@ ${pageBlocks}
                       // KAL-65: the instant chip above IS this control's tooltip.
                       // A native title= here would fade the OS tooltip in on top
                       // of it ~1.5s later; aria-label keeps the accessible name.
-                      aria-label={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
+                      aria-label={isHighlighter ? 'Highlighter' : isEraser ? 'Eraser' : t.label}
                     >
                       <Icon name={t.iconName} size={CHROME_GLYPH} />
                       {hasSplitMenu && (
