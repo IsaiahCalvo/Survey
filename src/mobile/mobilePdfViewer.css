@@ -2075,7 +2075,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overflow: hidden;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 17px;
+  /* ONE RADIUS SCALE (2026-09-22): a tab well is 9, the same as the colour
+     picker's Border / Fill well. Was a 17px capsule, a radius used nowhere
+     else. */
+  border-radius: 9px;
 }
 
 .mobile-pdf-text-defaults__tabs > button {
@@ -2456,7 +2459,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overflow: hidden;
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 17px;
+  /* ONE RADIUS SCALE (2026-09-22): a tab well is 9. Was 17. */
+  border-radius: 9px;
 }
 
 .mobile-pdf-text-card__color-tabs > button {
