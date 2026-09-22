@@ -14,6 +14,7 @@ import {
   loadSelectMode,
   saveSelectMode,
   SELECT_MODE_OPTIONS,
+  SELECT_MODE_SHORT_LABELS,
 } from '../src/utils/selectModes.js';
 
 const PDF_VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -118,36 +119,48 @@ test('the full Select trigger opens in one click and toggles once active', () =>
   }
 });
 
-test('desktop Select uses one integrated Drawboard-style mode trigger', () => {
+test('desktop Select arms the family and its modes are a segmented toggle', () => {
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved board 14,
+  // ruling: "Select mode = Box / Lasso / Text segmented toggle using the app's
+  // real glyphs; same on desktop"). The Select button was a split control with a
+  // caret and a popover list of the three modes. It is now a plain 28px tool
+  // button like every other one in the cluster — the cluster must never change
+  // width when the armed tool changes — and the three modes are a segmented
+  // toggle in Select's own settings, where all three are visible without opening
+  // anything. So the caret, the indicator, the popover and its open/close
+  // toggling are gone; what this test still guards is that the desktop uses ONE
+  // integrated control for the family, that it draws the live mode's own glyph,
+  // and that the desktop and the phone name the modes identically.
   const selectToolbar = APP_SHELL_SOURCE.slice(
     APP_SHELL_SOURCE.indexOf('// Select-family modes share one compact Drawboard-style button.'),
     APP_SHELL_SOURCE.indexOf('{/* Draw category */}'),
   );
 
   assert.match(selectToolbar, /data-select-mode-trigger/);
-  assert.match(selectToolbar, /data-select-mode-indicator/);
+  assert.doesNotMatch(selectToolbar, /data-select-mode-indicator/);
   assert.doesNotMatch(selectToolbar, /data-select-mode-caret/);
-  assert.doesNotMatch(selectToolbar, /indicatorClick|event\.target\.closest/);
-  assert.match(selectToolbar, /getNextSelectModeMenuOpen\(open, isActive\)/);
-  // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
-  // owner): the menu's own fill is now the shared --surface-2 token instead of a
-  // literal #1E1E1E. #1E1E1E was a pure neutral grey with no place in the app's
-  // blue-grey ramp — it was the print panel's colour, borrowed. What the
-  // assertion is really guarding is that the popover paints a SOLID surface
-  // (KAL: a translucent menu over the page was unreadable), so it now pins the
-  // token that carries that surface.
-  assert.match(selectToolbar, /backgroundColor: 'var\(--surface-2\)'/);
-  assert.doesNotMatch(selectToolbar, /background: selected \? '#1f2430'/);
-  // B1: desktop uses the canonical label, just like the trigger and mobile sheet.
-  assert.match(selectToolbar, /<span>\{opt\.label\}<\/span>/);
+  assert.doesNotMatch(selectToolbar, /getNextSelectModeMenuOpen/);
+  assert.doesNotMatch(selectToolbar, /chrome-control--split/);
+  // The trigger draws the live mode's glyph at the cluster's one glyph size.
+  assert.match(selectToolbar, /getSelectFamilyIconName\(bottomToolbarApi\.activeTool, bottomToolbarApi\.selectionMode\)[\s\S]{0,80}size=\{CHROME_GLYPH\}/);
+
+  // The three modes, as a segmented toggle on the settings side of the bar.
+  const toggle = APP_SHELL_SOURCE.slice(
+    APP_SHELL_SOURCE.indexOf('data-select-mode-toggle="true"'),
+    APP_SHELL_SOURCE.indexOf('data-eraser-mode-toggle="true"'),
+  );
+  assert.match(toggle, /SELECT_MODE_OPTIONS\.map/);
+  assert.match(toggle, /isSelectModeActive\(opt, bottomToolbarApi\.selectionMode\)/);
+  assert.match(toggle, /aria-pressed=\{selected\}/);
+  assert.match(toggle, /getSelectModeIconName\(opt\.mode\)\} size=\{12\}/);
+  assert.match(toggle, /SELECT_MODE_SHORT_LABELS\[opt\.mode\]/);
+  // B1: desktop uses the canonical label as the accessible name, as the phone does.
+  assert.match(toggle, /aria-label=\{opt\.label\}/);
   assert.equal(SELECT_MODE_OPTIONS.find(option => option.mode === 'rectangle').label, 'Rectangle Select');
-  // DELIBERATE ASSERTION CHANGE (2026-09-16, icon-set consistency pass): the top
-  // tool row now renders every glyph at ONE size. It used to run Pan at 20,
-  // Select at 22 and Draw/Shapes/Text at 18 — a 22% spread in one row, which the
-  // owner called out. 18 is the row size: three of the five already used it, and
-  // growing the other two would grow the top bar.
-  assert.match(selectToolbar, /size=\{18\}/);
-  assert.match(selectToolbar, /getSelectModeIconName\(opt\.mode\)\} size=\{20\}/);
+  assert.deepEqual(
+    SELECT_MODE_OPTIONS.map(({ mode }) => SELECT_MODE_SHORT_LABELS[mode]),
+    ['Box', 'Lasso', 'Text'],
+  );
 });
 
 test('Draw uses the approved group icon at its optical size', () => {
@@ -156,7 +169,9 @@ test('Draw uses the approved group icon at its optical size', () => {
     APP_SHELL_SOURCE.indexOf('{/* Shapes category */}'),
   );
 
-  assert.match(drawToolbar, /<Icon name="drawGroup" size=\{18\} \/>/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): a chrome tool glyph is
+  // CHROME_GLYPH (16 inside a 28px button), pinned as the shared constant.
+  assert.match(drawToolbar, /<Icon name="drawGroup" size=\{CHROME_GLYPH\} \/>/);
 });
 
 test('Select family uses the larger optical sizes on mobile', () => {

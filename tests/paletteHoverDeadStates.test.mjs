@@ -172,13 +172,16 @@ test('--success is a status dot and nothing else', () => {
 });
 
 test('a popover arrow is the same grey as the border it continues', () => {
-  // The two dropdown popovers moved their edge to --border-strong (#575f6e) but
-  // left the little arrow that joins that edge on the retired #3a4252 literal -
-  // 11 brightness points darker, so the tip reads as a different grey.
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved board 15):
+  // a chrome menu has NO pointer arrow any more. Board 15 draws a plain card with
+  // equal 5px padding and 26px rows; the arrow was a third edge colour to keep in
+  // step for a 6px triangle. The rule this test protects still stands for any
+  // arrow that does exist, so it now asserts that neither of the two chrome
+  // dropdowns has reintroduced one on a literal colour.
   for (const rel of ['src/components/AnnotationDropdown.css', 'src/components/AnnotationSizeControl.css']) {
     const css = readFileSync(path.join(repoRoot, rel), 'utf8');
     const arrow = /__arrow\s*\{\s*fill:\s*([^;]+);/.exec(css);
-    assert.notEqual(arrow, null, `missing arrow rule in ${rel}`);
+    if (arrow === null) continue; // no arrow at all is the ideal case
     assert.match(
       arrow[1].trim(),
       /^var\(--/,

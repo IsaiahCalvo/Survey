@@ -23,7 +23,11 @@ test('Shapes category keeps the circle, square and triangle composition', async 
   assert.doesNotMatch(icon, /<!DOCTYPE|<metadata|<!ENTITY|<script|onload\s*=/i);
   assert.match(icons, /import shapesIconUrl from '\.\/assets\/icons\/shapes\.svg';/);
   assert.match(icons, /shapes:.*renderMaskIcon\(shapesIconUrl,/);
-  assert.match(shell, /aria-label="Shapes"[\s\S]{0,500}<Icon name="shapes" size=\{18\}/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved artboards
+  // 8-14): a tool glyph in the document chrome is 16 inside a 28px button, not
+  // 18 inside 34. The assertion now pins the shared CHROME_GLYPH constant
+  // rather than a literal, so the bar and the sub-row can never disagree again.
+  assert.match(shell, /aria-label="Shapes"[\s\S]{0,500}<Icon name="shapes" size=\{CHROME_GLYPH\}/);
   assert.match(mobile, /shape:\s*\{[\s\S]{0,100}icon: 'shapes'/);
   assert.match(mobile, /\{ id: 'rect', label: 'Rectangle', icon: 'rect' \}/);
 });

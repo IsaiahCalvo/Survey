@@ -43,48 +43,48 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP_SHELL = readFileSync(path.join(repoRoot, 'src/AppShell.jsx'), 'utf8');
+const STYLES = readFileSync(path.join(repoRoot, 'src/styles.css'), 'utf8');
 
-// The thin vertical rules inside the desktop top bar. --border-strong is that
-// row's own rule colour.
-// DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
-// owner): the rules were the literal #5a6473 and are the shared --border-strong
-// token now. The old literal's own comment said it was "that row's own rule
-// colour", which is exactly the drift the palette removes: a rule is a rule.
-// rule colour — the #2a3140 rules further down the file belong to other
-// surfaces and are not part of this row.
-const CHROME_RULES = [...APP_SHELL.matchAll(/<div style=\{\{[^}]*background: 'var\(--border-strong\)'[^}]*\}\} \/>/g)]
-  .map((m) => m[0]);
-
-test('the desktop top bar still has the separators this test is about', () => {
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved artboards
+ * 8-14). Two things this file asserted have changed, both by ruling:
+ *
+ *   1. A separator is no longer written inline. Every rule in the three bars is
+ *      the shared `.chrome-divider` class, so there is exactly ONE place its
+ *      size and its inset are written. That is a stronger version of what this
+ *      test was for, so the test now asserts the class and forbids new inline
+ *      rules rather than parsing inline styles that no longer exist.
+ *   2. The inset either side of a rule is 8px, not the row gap. The boards draw
+ *      a 2px gutter between two buttons inside a group and 8px of clear space
+ *      either side of the rule BETWEEN groups — that contrast is the only thing
+ *      telling the eye where a group ends. The rule this file still protects is
+ *      the real one: the inset must come from a token, never from a literal, so
+ *      one edit moves every rule in the chrome.
+ */
+test('every rule in the desktop chrome is the one shared separator', () => {
+  const dividers = APP_SHELL.match(/className="chrome-divider"/g) || [];
   assert.ok(
-    CHROME_RULES.length >= 2,
-    `expected the top bar's vertical rules to still be there, found ${CHROME_RULES.length}`,
+    dividers.length >= 3,
+    `expected the three bars' group rules to use .chrome-divider, found ${dividers.length}`,
+  );
+
+  // No bar may hand-roll a separator beside the shared one.
+  const inlineRules = [...APP_SHELL.matchAll(/<div style=\{\{[^}]*background: 'var\(--border-strong\)'[^}]*\}\} \/>/g)];
+  assert.deepEqual(
+    inlineRules.map((m) => m[0]),
+    [],
+    'a separator in the document chrome must be <div className="chrome-divider" />, '
+    + 'so its height and its inset are written in exactly one place (styles.css)',
   );
 });
 
-test('a chrome separator adds no margin of its own on top of the row gap', () => {
-  for (const rule of CHROME_RULES) {
-    const margin = /margin: '([^']*)'/.exec(rule)?.[1];
-    if (margin === undefined) continue; // no margin at all is the ideal case
-    assert.ok(
-      !/^0 \d+px$/.test(margin),
-      'a top-bar separator sits in a flex row whose gap is already '
-      + `var(--chrome-gap), so its own \`margin: '${margin}'\` is added to that gap and the `
-      + 'gutter beside the rule comes out at 8px against the 4px used between every '
-      + `other pair of controls in the same row. Rule: ${rule}`,
-    );
-  }
-});
-
-test('a chrome separator that keeps a margin spells it with the shared gap token', () => {
-  for (const rule of CHROME_RULES) {
-    const margin = /margin: '([^']*)'/.exec(rule)?.[1];
-    if (margin === undefined || margin === '0' || margin === '0px') continue;
-    assert.match(
-      margin,
-      /var\(--chrome-gap/,
-      'a separator that does keep a horizontal margin must read it from '
-      + `--chrome-gap so it can never drift from the row's own gap; found '${margin}'`,
-    );
-  }
+test('the shared separator reads its size and inset from the chrome tokens', () => {
+  const rule = /\.chrome-divider\s*\{([^}]*)\}/.exec(STYLES)?.[1] ?? '';
+  assert.ok(rule, 'styles.css must define .chrome-divider');
+  assert.match(rule, /height: var\(--chrome-divider-h\)/);
+  assert.match(rule, /margin: 0 var\(--chrome-divider-inset\)/);
+  assert.match(rule, /background: var\(--border-strong\)/);
+  assert.match(STYLES, /--chrome-divider-h: 16px;/);
+  assert.match(STYLES, /--chrome-divider-inset: 8px;/);
+  assert.match(STYLES, /--chrome-tool-gap: 2px;/);
 });

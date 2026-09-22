@@ -86,9 +86,16 @@ test('production keeps eraser mode in the top toolbar and omits the duplicate dr
   assert.match(VIEWER_SOURCE, /const hasSplitMenu = isHighlighterSplitMenu/);
   assert.doesNotMatch(VIEWER_SOURCE, /data-eraser-caret-(?:button|popup)/);
   assert.doesNotMatch(VIEWER_SOURCE, /setEraserCaretPopupOpen/);
-  assert.match(APP_SHELL_SOURCE, /label="Eraser type"/);
-  assert.match(APP_SHELL_SOURCE, /\{ value: 'partial', label: 'Partial erase' \}/);
-  assert.match(APP_SHELL_SOURCE, /\{ value: 'entire', label: 'Full stroke erase' \}/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved board 13):
+  // the eraser's two kinds are a SEGMENTED TOGGLE (Partial | Whole) in the top
+  // bar, not a dropdown. There are only two of them and which one is live changes
+  // what a drag does, so both are worth showing. What this test guards is
+  // unchanged — eraser mode lives in the TOP BAR and the draw strip has no
+  // second caret for it — and both modes are still asserted by name.
+  assert.match(APP_SHELL_SOURCE, /aria-label="Eraser type"/);
+  assert.match(APP_SHELL_SOURCE, /data-eraser-mode-toggle="true"/);
+  assert.match(APP_SHELL_SOURCE, /\['partial', 'Partial', 'Partial erase'\]/);
+  assert.match(APP_SHELL_SOURCE, /\['entire', 'Whole', 'Full stroke erase'\]/);
 });
 
 test('production eraser uses only the exact SVG clone for live carving', () => {

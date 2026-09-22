@@ -2976,23 +2976,22 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={() => bottomToolbarApi.onEnterTextEdit()}
                     onMouseDown={(e) => e.stopPropagation()}
                     disabled={!bottomToolbarApi.canEnterTextEdit}
+                    className="chrome-text-toggle"
                     style={{
-                      height: 'var(--chrome-field-h)',
-                      padding: '0 var(--chrome-field-pad-x)',
-                      // UX 2026-09-17 (owner ruling): in text-edit mode the "Aa"
-                      // label turns gold; the chip keeps its resting fill.
-                      background: 'var(--surface-3)',
+                      // PASS 7 (board 12): the "Aa" that opens text editing is a
+                      // 20px-tall label on no fill, 12px/800 — a word, not a
+                      // chip. In edit mode it turns gold and changes nothing
+                      // else (owner ruling on selected states).
+                      width: 'auto',
+                      minWidth: 'auto',
+                      padding: '0 7px',
                       color: bottomToolbarApi.richTextEditor
                         ? 'var(--accent)'
                         : bottomToolbarApi.canEnterTextEdit ? 'var(--text-2)' : 'var(--text-disabled)',
-                      border: '1px solid transparent',
-                      borderRadius: '5px',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      fontFamily: FONT_FAMILY,
+                      font: `800 12px/1 ${FONT_FAMILY}`,
+                      letterSpacing: '-0.02em',
                       cursor: bottomToolbarApi.canEnterTextEdit ? 'pointer' : 'not-allowed',
                       opacity: bottomToolbarApi.canEnterTextEdit ? 1 : 0.5,
-                      lineHeight: 1,
                     }}
                     {...chromeTip(bottomToolbarApi.canEnterTextEdit
                       ? 'Edit text'

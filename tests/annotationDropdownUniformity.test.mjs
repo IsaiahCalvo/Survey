@@ -38,9 +38,16 @@ test('annotation dropdowns share the Width preset surface and Radix behavior', (
   // pinning the token rather than a hex is what makes them unable to drift.
   assert.match(css, /background: var\(--surface-2\)/);
   assert.match(css, /border: 1px solid var\(--border-strong\)/);
-  assert.match(css, /border-radius: 8px/);
   assert.match(css, /box-shadow: 0 10px 30px rgba\(0, 0, 0, 0\.48\)/);
-  assert.match(css, /min-height: 34px/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved artboards
+  // 8-15). Two numbers on this surface moved, and the boards are where they moved
+  // to: a menu card is 9px round against the 10px pill it opens from (it was
+  // 8px), and a menu ROW is 26px (it was 34px). What the test guards is
+  // unchanged: the two dropdowns share ONE popover surface, edge, radius, shadow
+  // and row height, and the row height is still spelled twice on purpose so the
+  // literal here and the shared token cannot drift.
+  assert.match(css, /border-radius: 9px/);
+  assert.match(css, /min-height: 26px/);
 });
 
 test('only numeric size menus render an input and all annotation menus are mutually exclusive', () => {
@@ -50,12 +57,31 @@ test('only numeric size menus render an input and all annotation menus are mutua
   assert.match(appShell, /open=\{openAnnotationDropdown === 'size'\}/);
   assert.match(appShell, /label="Style"/);
   assert.match(appShell, /label="Arrowhead"/);
-  assert.match(appShell, /label="Eraser type"/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): the ERASER's two kinds are
+  // a segmented toggle on board 13, not a dropdown, and ARROW ENDS became a
+  // dropdown of three on board 10 — so this list swaps one for the other. The
+  // point of the list is that every menu in the chrome goes through the one
+  // exclusive layer, which both of those still do.
+  assert.match(appShell, /label="Arrow ends"/);
+  assert.match(appShell, /data-eraser-mode-toggle="true"/);
   assert.match(appShell, /label="Counter series"/);
   assert.match(appShell, /label="Font"/);
   assert.match(appShell, /label="Font size"/);
-  assert.match(appShell, /label="Text alignment"/);
-  assert.ok((appShell.match(/preserveFocus/g) || []).length >= 3, 'rich-text dropdowns must preserve the active Fabric selection');
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): board 12 replaces the
+  // "Text alignment" 3x3 grid dropdown with six buttons in two groups —
+  // horizontal and vertical — both visible on the formatting bar. There is no
+  // alignment MENU any more, so the two groups are asserted instead.
+  assert.match(appShell, /'alignLeft', 'left', 'Align left'/);
+  assert.match(appShell, /'alignTop', 'top', 'Align to the top'/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): three rich-text DROPDOWNS
+  // became two, because alignment is no longer a dropdown (board 12: six buttons
+  // on the bar). The rule this guards — a formatting control must not steal the
+  // Fabric text selection — still holds for all of them: the two dropdowns carry
+  // preserveFocus, and the buttons preventDefault on mousedown, which is asserted
+  // on the next line.
+  assert.ok((appShell.match(/preserveFocus/g) || []).length >= 2, 'rich-text dropdowns must preserve the active Fabric selection');
+  assert.match(appShell, /setTextAlign\?\.\(value\)/);
+  assert.match(appShell, /onMouseDown=\{\(e\) => \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}\}\s*onClick=\{\(\) => bottomToolbarApi\.richTextEditor\?\.api\?\.setTextAlign/);
   assert.match(appShell, /bottomToolbarApi\?\.setShowAnnotationColorPicker\?\.\(false\);\s*setOpenAnnotationDropdown\(null\);/);
   assert.match(appShell, /if \(!openAnnotationDropdown\) return;[\s\S]*setShowFontColorPicker\(false\)[\s\S]*setShowAnnotationColorPicker/);
   assert.match(appShell, /if \(!bottomToolbarApi\?\.showAnnotationColorPicker\) return;[\s\S]*setOpenAnnotationDropdown\(null\)/);

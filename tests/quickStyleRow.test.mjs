@@ -68,15 +68,17 @@ test('the quick styles are one shared list, not a copy on each platform', async 
     );
     assert.match(
       source,
-      /QuickWidthPresets/,
-      `${name} must render the shared quick width presets`,
-    );
-    assert.match(
-      source,
       /from '\.{1,2}\/components\/QuickStyleControls'/,
       `${name} must import the shared controls`,
     );
   }
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner ruling "width is a
+  // dropdown ONLY, never a bare line"): the three quick WIDTH chips are gone from
+  // the desktop bar. A width is one pill that draws the stroke it will paint and
+  // says "2 pt". The phone strip keeps the shared control, so the component and
+  // its shared list stay one source of truth.
+  assert.match(phoneChrome, /QuickWidthPresets/, 'the phone strip must render the shared quick width presets');
+  assert.doesNotMatch(appShell, /QuickWidthPresets/);
 
   // The list is declared in exactly one place in the whole tree. Neither
   // chrome file even names it: they render the shared controls, which read it.
@@ -257,9 +259,13 @@ test('the desktop row wires a press to the same handlers the picker and the fiel
 
   // Width: the field's own draft-then-commit pair, so a press and a typed
   // number land identically.
-  const widthBlock = appShell.slice(appShell.indexOf('<QuickWidthPresets'), appShell.indexOf('<AnnotationSizeControl'));
-  assert.match(widthBlock, /bottomToolbarApi\.handleStrokeWidthInputChange\?\.\(\{ target: \{ value \} \}\)/);
-  assert.match(widthBlock, /bottomToolbarApi\.handleStrokeWidthInputBlur\?\.\(\{ currentTarget: \{ value \} \}\)/);
+  // Width: the same draft-then-commit pair the field always used, now reached
+  // from the pill's own list instead of from three chips beside it, so a pressed
+  // row and a typed number still land identically.
+  const widthBlock = appShell.slice(appShell.indexOf('<AnnotationSizeControl'), appShell.indexOf('variant="pill"'));
+  assert.match(widthBlock, /handler = bottomToolbarApi\.activeTool === 'eraser'\s*\?\s*bottomToolbarApi\.handleEraserSizeInputChange\s*:\s*bottomToolbarApi\.handleStrokeWidthInputChange/);
+  assert.match(widthBlock, /handler\?\.\(\{ target: \{ value \} \}\)/);
+  assert.match(widthBlock, /handler\?\.\(\{ currentTarget: \{ value \} \}\)/);
 });
 
 test('the phone row wires a press to the same handlers its sheet uses', () => {
@@ -307,10 +313,11 @@ test('the desktop row reads colours, swatch, widths, width field, line style', (
     appShell.indexOf('id="chrome-left-host"'),
   );
   assert.ok(row.length > 1000, 'the tool-properties row must still be where this test reads it');
+  // Pass 7: the quick width chips left this row (see above); the width pill IS
+  // the AnnotationSizeControl now.
   orderOf(row, [
     '<QuickColourDots',
     'data-annotation-color-trigger',
-    '<QuickWidthPresets',
     '<AnnotationSizeControl',
     'label="Style"',
   ], 'desktop');
@@ -336,12 +343,15 @@ test('nothing else in either row moved', () => {
     appShell.indexOf("{/* 2026-05-26: Tool properties (divider + color swatch + width +"),
     appShell.indexOf('id="chrome-left-host"'),
   );
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved board 10):
+  // the "both ends" on/off button is now the Arrow ends dropdown (End / Both /
+  // None), in the same place in the row.
   orderOf(desktopRow, [
     'data-annotation-color-trigger',
     '<AnnotationSizeControl',
     'label="Style"',
     'label="Arrowhead"',
-    'aria-label="Arrowhead on both ends"',
+    'label="Arrow ends"',
     'aria-label="Edit text"',
   ], 'desktop tail');
 
