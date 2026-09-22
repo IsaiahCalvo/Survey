@@ -1424,8 +1424,28 @@ export function MobileToolProperties({ api }) {
     if (arrowheadValue === 'none') api.setArrowheadStyle?.('solidTriangle');
     api.setArrowBothEnds?.(next === 'both');
   };
+  /* BOARD 15 (counter series menu) — words only: "Count 1", "Count 2", then a
+     plus and "New count". The rows come from the app's own series list, which is
+     derived from the pins already on the document (getCounterSeriesList in
+     src/utils/counterNumbering.js), so a name here can never disagree with the
+     name the desktop menu shows for the same group.
+
+     MEASURED 2026-09-22 (phone): that list alone left the strip's pill reading
+     its placeholder ("Count") and the menu holding a single "New count" row,
+     because the list counts PLACED pins and the series the next pin will join
+     has none yet — so the control looked dead. The live series is named here as
+     the count it is about to become, which gives the pill the group in force and
+     the menu something to switch between from the first tap. */
+  const counterSeriesRows = (api.counterSeriesList || []).map((series, index) => ({
+    value: series.seriesId,
+    label: series.label || `Count ${index + 1}`,
+  }));
+  const activeCounterSeriesId = api.activeCounterSeriesId || '';
+  if (!counterSeriesRows.some((row) => row.value === activeCounterSeriesId)) {
+    counterSeriesRows.push({ value: activeCounterSeriesId, label: `Count ${counterSeriesRows.length + 1}` });
+  }
   const counterSeriesOptions = [
-    ...(api.counterSeriesList || []).map((series) => ({ value: series.seriesId, label: series.label || 'Count' })),
+    ...counterSeriesRows,
     {
       value: '__new',
       label: 'New count',
@@ -1433,6 +1453,20 @@ export function MobileToolProperties({ api }) {
       menuPreview: <Icon name="plus" size={13} color="currentColor" />,
     },
   ];
+  const applyCounterSeries = (seriesId) => {
+    if (seriesId === '__new') api.onNewCounterSeries?.();
+    // The row the tool is already on (including the not-yet-drawn first count,
+    // which has no id to switch to) is a no-op rather than a failed lookup.
+    else if (seriesId && seriesId !== activeCounterSeriesId) api.onSwitchCounterSeries?.(seriesId);
+  };
+  /* The counter's SIZE. A pin is measured in points like every other mark, so
+     the field carries its unit ("24 pt"); the presets are the app's own counter
+     list and the live size is prepended when it is not one of them, so the field
+     can never read a size the tool is not on. */
+  const counterSizeOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.counter, sizeValue).map((size) => ({
+    value: size,
+    label: `${size} pt`,
+  }));
   // Which board a tool's strip follows. Multi-colour tools show ONE combined
   // swatch instead of the three preset discs (owner ruling); the counter's
   // swatch is its pin with its number.
@@ -1446,7 +1480,14 @@ export function MobileToolProperties({ api }) {
   // the strip that nobody could read (owner, 2026-09-22); it is now a named
   // row in this same sheet, so the "..." also shows for those marks.
   const canResizeRotate = !!(api.canEnterBBoxEdit && api.onEnterBBoxEdit);
-  const showMoreOnStrip = showArrowhead || canResizeRotate;
+  /* MEASURED 2026-09-22 (phone): the counter had NO "..." and no size field, so a
+     pin's size could not be set on the phone at all while the desktop bar has
+     it — the one sheet that still held it (the big annotation sheet below) is
+     only reachable from "Aa", which the counter has no reason to show, and the
+     swatch now opens the colour picker instead. The counter joins the "..."
+     tools and its sheet holds exactly what the strip leaves off: Series and
+     Size (the pass-7 brief: "counter: series + size"). */
+  const showMoreOnStrip = showArrowhead || canResizeRotate || tool === 'counter';
 
   /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
      open — titled "Color", with a gold Done, the shared picker's 12 presets
@@ -1604,19 +1645,17 @@ export function MobileToolProperties({ api }) {
       )}
       {/* BOARD 4 — the counter's series picker. Words only: a series is "Count
           1", not a colour, and the pin beside it already carries the colour.
-          The counter's SIZE is in its sheet (the swatch opens it), because the
-          board gives this strip two controls and a size is not one of them. */}
+          The counter's SIZE is behind this strip's "..." (board 16's sheet
+          frame), because the board gives the strip two controls and a size is
+          not one of them. */}
       {tool === 'counter' && (
         <MobileStyledSelect
           ariaLabel="Counter series"
           width="var(--mobile-strip-series-w)"
-          value={api.activeCounterSeriesId || ''}
+          value={activeCounterSeriesId}
           placeholder="Count"
           options={counterSeriesOptions}
-          onChange={(seriesId) => {
-            if (seriesId === '__new') api.onNewCounterSeries?.();
-            else api.onSwitchCounterSeries?.(seriesId);
-          }}
+          onChange={applyCounterSeries}
         />
       )}
       {showLineStyleOnStrip && (
@@ -1718,6 +1757,36 @@ export function MobileToolProperties({ api }) {
                   onChange={applyArrowEnds}
                 />
               </div>
+            )}
+            {/* BOARD 4 + 16 — the counter's two sheet rows, in board 16's frame:
+                a 40px row, the word on the left, the 96px field on the right.
+                Series is the SAME control as the strip's pill (one option list,
+                one handler), so the two can never disagree; Size is the field
+                the desktop bar has and the phone had nowhere for. */}
+            {tool === 'counter' && (
+              <>
+                <div className="mobile-pdf-tool-sheet__row">
+                  <span>Series</span>
+                  <MobileStyledSelect
+                    ariaLabel="Counter series"
+                    width="var(--mobile-sheet-field-w)"
+                    value={activeCounterSeriesId}
+                    placeholder="Count"
+                    options={counterSeriesOptions}
+                    onChange={applyCounterSeries}
+                  />
+                </div>
+                <div className="mobile-pdf-tool-sheet__row">
+                  <span>Size</span>
+                  <MobileStyledSelect
+                    ariaLabel="Counter size"
+                    width="var(--mobile-sheet-field-w)"
+                    value={String(sizeValue ?? '')}
+                    options={counterSizeOptions}
+                    onChange={(size) => { handleSizeDraft(size); handleSizeCommit(size); }}
+                  />
+                </div>
+              </>
             )}
             {/* The callout's line style lives here because its strip already
                 carries the swatch, the width and "Aa". */}
@@ -2082,13 +2151,10 @@ export function MobileToolProperties({ api }) {
                     <MobileStyledSelect
                       ariaLabel="Counter series"
                       width="var(--mobile-sheet-field-w)"
-                      value={api.activeCounterSeriesId || ''}
+                      value={activeCounterSeriesId}
                       placeholder="Count"
                       options={counterSeriesOptions}
-                      onChange={(seriesId) => {
-                        if (seriesId === '__new') api.onNewCounterSeries?.();
-                        else api.onSwitchCounterSeries?.(seriesId);
-                      }}
+                      onChange={applyCounterSeries}
                     />
                   </section>
                 )}

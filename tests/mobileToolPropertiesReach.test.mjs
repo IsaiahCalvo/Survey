@@ -79,7 +79,10 @@ const STRIPS = {
   ellipse: [disc, null, widthPill, linePill],
   polygon: [disc, null, widthPill, linePill],
   polyline: [disc, null, widthPill, linePill],
-  counter: [disc, null, seriesPill],
+  /* 2026-09-22: the counter grew a "..." (its Size had no home on the phone at
+     all — see the sheet rows in MobilePdfViewerChrome), so its row is priced
+     with the divider and the button that came with it. */
+  counter: [disc, null, seriesPill, null, moreButton],
   text: [disc, null, widthPill, linePill, null, aaButton],
   callout: [disc, null, widthPill, null, aaButton, moreButton],
   eraser: [100, null, widthPill],
