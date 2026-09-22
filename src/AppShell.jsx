@@ -180,6 +180,44 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
   };
 };
 
+/**
+ * PASS 7 (board 12): the ONE source the text-formatting bar reads and writes.
+ *
+ * The bar has two jobs, and they are the same job: while a text box is open for
+ * editing it formats THAT text, and while the text box or callout tool is merely
+ * armed it formats the text the NEXT one will carry. Both are a `{ state, api }`
+ * pair with the same field names, so the bar is written once and neither case is
+ * a special case.
+ *
+ * Returns null when neither applies, which is every other tool.
+ */
+const resolveTextFormatting = (api) => {
+  if (!api) return null;
+  // A live editor already publishes exactly this shape (PDFViewer's rich-text
+  // bridge), and it wins: what is on screen is what the user is looking at.
+  if (api.richTextEditor) return api.richTextEditor;
+  const armed = api.contextTool === 'text' || api.contextTool === 'callout';
+  if (!armed || typeof api.onTextStyleDefaultsChange !== 'function') return null;
+  const defaults = api.textStyleDefaults;
+  if (!defaults) return null;
+  const patch = (fields) => api.onTextStyleDefaultsChange({ ...defaults, ...fields });
+  const toggle = (key) => () => patch({ [key]: !defaults[key] });
+  return {
+    state: defaults,
+    api: {
+      setFontColor: (hex) => patch({ fontColor: hex }),
+      setFontFamily: (family) => patch({ fontFamily: family }),
+      setFontSize: (size) => patch({ fontSize: size }),
+      toggleBold: toggle('bold'),
+      toggleItalic: toggle('italic'),
+      toggleUnderline: toggle('underline'),
+      toggleStrike: toggle('strike'),
+      setTextAlign: (value) => patch({ textAlign: value }),
+      setVerticalAlign: (value) => patch({ verticalAlign: value }),
+    },
+  };
+};
+
 /*
  * PASS 7 (boards 9-12 + 15): the four LINE STYLES and the drawing each one
  * shows. The drawing is the same glyph in the pill and in the menu row, at two
@@ -760,6 +798,18 @@ export default function App({ devPreviewReturnTab = null }) {
   // read and write: the quick colour dots, the swatch's ring, and the picker
   // itself. See resolveAnnotationPaint above.
   const annotationPaint = resolveAnnotationPaint(bottomToolbarApi, colorPickerTab);
+  // PASS 7 (board 12): the THIRD BAR is shown while the text box or callout tool
+  // is merely ARMED, not only once a text box is open for editing. Board 12 is
+  // the text-box tool's board and it draws three bars; the formatting a mark is
+  // about to be created with is as worth seeing as the formatting it already has,
+  // and the user used to have to draw a box and double-click into it to find out
+  // what font the next one would use.
+  const [showTextFormatBar, setShowTextFormatBar] = useState(true);
+  const textFormatSource = resolveTextFormatting(bottomToolbarApi);
+  // The bar is the live editor's whenever there is one; armed, it is the tool's
+  // defaults and the "Aa" button decides whether it is on screen.
+  const showTextFormatting = !!textFormatSource
+    && (!!bottomToolbarApi?.richTextEditor || showTextFormatBar);
   // PASS 7: the cluster's own chosen mark is the shared one now — a preset disc
   // rings in its OWN colour, and when the colour is not one of the three the
   // rainbow disc wears the mark instead (QuickColourDots works that out for
@@ -1926,23 +1976,25 @@ export default function App({ devPreviewReturnTab = null }) {
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)', position: 'relative' }}>
-                {bottomToolbarApi.richTextEditor && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
-                  /* 2026-05-26: Rich-text edit mode — the formatting controls
-                     drop into the sub-row beneath the top strip (mirrors the
-                     Draw / Shape category sub-rows). The inline strip's swatch,
-                     width input, and Aa button stay put — only the rich-text
-                     controls relocate, so the user keeps the usual chrome.
-                     The strip-wide PDFViewer portal suppresses itself when
-                     richTextEditor is non-null so the two sub-rows can't stack.
-                     2026-05-25: Bridge contract — state comes from the
-                     bridge's `state` field (per-selection aware); writes route
-                     through the bridge's `api`. The data-rich-text-toolbar
-                     attribute opts these buttons out of FabricEditCanvas's
-                     document-level click-outside handler so clicks don't
-                     commit-and-close the editor. */
-                  /* PASS 7 (board 12): the third bar is 36px like the two above
+                {showTextFormatting && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+                  /* 2026-05-26: the formatting controls drop into the sub-row
+                     beneath the top strip (mirrors the Draw / Shape category
+                     sub-rows). The inline strip's swatch, width input and Aa
+                     button stay put — only these controls live down here, so the
+                     user keeps the usual chrome.
+                     2026-05-25: Bridge contract — state comes from the source's
+                     `state` field (per-selection aware); writes route through its
+                     `api`. The data-rich-text-toolbar attribute opts these
+                     buttons out of the edit canvas's document-level click-outside
+                     handler so clicks don't commit-and-close the editor.
+                     PASS 7 (board 12): the third bar is 36px like the two above
                      it, its controls sit on the settings gutter, and it is
-                     CENTRED. */
+                     CENTRED. It shows while the text box or callout tool is
+                     ARMED as well as while a box is open — see
+                     resolveTextFormatting, which hands this one bar either the
+                     live editor or the tool's own defaults. Armed, it sits UNDER
+                     the Text category row, which is board 12's third bar; in
+                     edit mode that category row is closed, so there are two. */
                   <div data-rich-text-toolbar style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
                     {/* PASS 7 (board 12): the order is colour, then font and
                         size, then B / I / U / S, then the two alignments —
@@ -1962,8 +2014,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         circles are what the bar draws. */}
                     <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                       <QuickColourDots
-                        value={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
-                        onPick={(hex) => bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex)}
+                        value={textFormatSource?.state?.fontColor || '#1e293b'}
+                        onPick={(hex) => textFormatSource?.api?.setFontColor?.(hex)}
                         onOpenPicker={() => setShowFontColorPicker((v) => !v)}
                       />
                       {showFontColorPicker && (
@@ -1979,11 +2031,11 @@ export default function App({ devPreviewReturnTab = null }) {
                         }}>
                           <Suspense fallback={null}>
                             <CompactColorPicker
-                              color={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
+                              color={textFormatSource?.state?.fontColor || '#1e293b'}
                               opacity={1}
                               marginRight="0"
                               onChange={(hex) => {
-                                bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex);
+                                textFormatSource?.api?.setFontColor?.(hex);
                               }}
                               onClose={() => setShowFontColorPicker(false)}
                               firstPreset="transparent"
@@ -2001,7 +2053,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         gotcha (2026-04-08). */}
                     {(() => {
                       const FONT_FAMILIES = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'];
-                      const currentFamily = bottomToolbarApi.richTextEditor?.state?.fontFamily || 'Arial';
+                      const currentFamily = textFormatSource?.state?.fontFamily || 'Arial';
                       return (
                         <AnnotationDropdown
                           open={showFontFamilyMenu}
@@ -2013,7 +2065,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             label: family,
                             style: { fontFamily: family },
                           }))}
-                          onSelect={(family) => bottomToolbarApi.richTextEditor?.api?.setFontFamily?.(family)}
+                          onSelect={(family) => textFormatSource?.api?.setFontFamily?.(family)}
                           /* Board 12: 104px — the widest font name the list
                              offers ("Times New Roman") has to fit without the
                              pill resizing as the user changes font. */
@@ -2031,7 +2083,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         trigger label still matches the live value. */}
                     {(() => {
                       const FONT_SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72];
-                      const currentSize = bottomToolbarApi.richTextEditor?.state?.fontSize ?? 16;
+                      const currentSize = textFormatSource?.state?.fontSize ?? 16;
                       const sizes = FONT_SIZE_PRESETS.includes(currentSize)
                         ? FONT_SIZE_PRESETS
                         : [currentSize, ...FONT_SIZE_PRESETS];
@@ -2044,7 +2096,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           /* Board 12 + the units ruling: a size field says
                              "16 pt", not "16". */
                           options={sizes.map((size) => ({ value: size, label: `${size} pt` }))}
-                          onSelect={(size) => bottomToolbarApi.richTextEditor?.api?.setFontSize?.(size)}
+                          onSelect={(size) => textFormatSource?.api?.setFontSize?.(size)}
                           width="var(--chrome-field-w-fontsize)"
                           contentWidth="var(--chrome-field-w-fontsize)"
                           dataMarker="data-font-size-menu"
@@ -2062,7 +2114,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
                       ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
                     ].map(([iconName, stateKey, apiKey, title]) => {
-                      const isOn = !!bottomToolbarApi.richTextEditor?.state?.[stateKey];
+                      const isOn = !!textFormatSource?.state?.[stateKey];
                       return (
                         <button
                           key={stateKey}
@@ -2074,7 +2126,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             e.preventDefault();
                             e.stopPropagation();
                           }}
-                          onClick={() => bottomToolbarApi.richTextEditor?.api?.[apiKey]?.()}
+                          onClick={() => textFormatSource?.api?.[apiKey]?.()}
                           className="chrome-text-toggle"
                           // PASS 7 (board 12, owner ruling): 22x20 with a 13px
                           // glyph, on no fill at all. A pressed toggle turns its
@@ -2103,13 +2155,13 @@ export default function App({ devPreviewReturnTab = null }) {
                       ['alignCenter', 'center', 'Align centre'],
                       ['alignRight', 'right', 'Align right'],
                     ].map(([iconName, value, title]) => {
-                      const on = (bottomToolbarApi.richTextEditor?.state?.textAlign || 'left') === value;
+                      const on = (textFormatSource?.state?.textAlign || 'left') === value;
                       return (
                         <button
                           key={value}
                           className="chrome-text-toggle"
                           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          onClick={() => bottomToolbarApi.richTextEditor?.api?.setTextAlign?.(value)}
+                          onClick={() => textFormatSource?.api?.setTextAlign?.(value)}
                           style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
@@ -2125,13 +2177,13 @@ export default function App({ devPreviewReturnTab = null }) {
                       ['alignMiddle', 'middle', 'Align to the middle'],
                       ['alignBottom', 'bottom', 'Align to the bottom'],
                     ].map(([iconName, value, title]) => {
-                      const on = (bottomToolbarApi.richTextEditor?.state?.verticalAlign || 'top') === value;
+                      const on = (textFormatSource?.state?.verticalAlign || 'top') === value;
                       return (
                         <button
                           key={value}
                           className="chrome-text-toggle"
                           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          onClick={() => bottomToolbarApi.richTextEditor?.api?.setVerticalAlign?.(value)}
+                          onClick={() => textFormatSource?.api?.setVerticalAlign?.(value)}
                           style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
@@ -2901,41 +2953,56 @@ export default function App({ devPreviewReturnTab = null }) {
                   />
                   );
                 })()}
-                {/* 2026-05-25: Rich-text edit entry button. Only renders when
-                    the user is on the text box / callout tool or has one of
-                    those selected. Disabled when nothing editable is picked.
-                    Clicking drops the user into text edit mode on the
-                    selected item — same path as double-clicking the text. */}
-                {bottomToolbarApi.onEnterTextEdit
+                {/* 2026-05-25 / PASS 7 (board 12): the "Aa" that owns the
+                    formatting bar. It renders on the text box and callout tools
+                    and whenever a text box is open for editing.
+
+                    WHAT IT DOES, in the order the user means it:
+                      - a box is open for editing → the bar is the editor's and
+                        cannot be hidden, so Aa is simply gold and inert;
+                      - the bar is showing and something editable is selected →
+                        drop into that text, the same act as double-clicking it;
+                      - otherwise → show or hide the bar.
+                    It is GOLD exactly when the bar is on screen and changes
+                    nothing else (owner ruling on selected states), so the button
+                    and the bar always agree. It used to be permanently grey and
+                    disabled while the tool was merely armed, because entering
+                    edit mode was the only thing it could do and there was nothing
+                    selected to enter. */}
+                {(bottomToolbarApi.onEnterTextEdit || textFormatSource)
                   && (bottomToolbarApi.contextTool === 'text'
                       || bottomToolbarApi.contextTool === 'callout'
                       || !!bottomToolbarApi.richTextEditor) && (
                   <button
-                    onClick={() => bottomToolbarApi.onEnterTextEdit()}
+                    onClick={() => {
+                      if (bottomToolbarApi.richTextEditor) return;
+                      if (showTextFormatting && bottomToolbarApi.canEnterTextEdit) {
+                        bottomToolbarApi.onEnterTextEdit();
+                        return;
+                      }
+                      setShowTextFormatBar((shown) => !shown);
+                    }}
                     onMouseDown={(e) => e.stopPropagation()}
-                    disabled={!bottomToolbarApi.canEnterTextEdit}
                     className="chrome-text-toggle"
                     style={{
-                      // PASS 7 (board 12): the "Aa" that opens text editing is a
-                      // 20px-tall label on no fill, 12px/800 — a word, not a
-                      // chip. In edit mode it turns gold and changes nothing
-                      // else (owner ruling on selected states).
+                      // PASS 7 (board 12): the "Aa" is a 20px-tall label on no
+                      // fill, 12px/800 — a word, not a chip. When the bar is up
+                      // it turns gold and changes nothing else.
                       width: 'auto',
                       minWidth: 'auto',
                       padding: '0 7px',
-                      color: bottomToolbarApi.richTextEditor
-                        ? 'var(--accent)'
-                        : bottomToolbarApi.canEnterTextEdit ? 'var(--text-2)' : 'var(--text-disabled)',
+                      color: showTextFormatting ? 'var(--accent)' : 'var(--text-2)',
                       font: `800 12px/1 ${FONT_FAMILY}`,
                       letterSpacing: '-0.02em',
-                      cursor: bottomToolbarApi.canEnterTextEdit ? 'pointer' : 'not-allowed',
-                      opacity: bottomToolbarApi.canEnterTextEdit ? 1 : 0.5,
+                      cursor: 'pointer',
                     }}
-                    {...chromeTip(bottomToolbarApi.canEnterTextEdit
-                      ? 'Edit text'
-                      : 'Select a text box or callout to edit its text', 'below')}
+                    {...chromeTip(bottomToolbarApi.richTextEditor
+                      ? 'Text formatting'
+                      : showTextFormatting
+                        ? (bottomToolbarApi.canEnterTextEdit ? 'Edit text' : 'Hide text formatting')
+                        : 'Text formatting', 'below')}
                     aria-label="Edit text"
-                    aria-pressed={!!bottomToolbarApi.richTextEditor}
+                    aria-pressed={showTextFormatting}
                   >
                     Aa
                   </button>

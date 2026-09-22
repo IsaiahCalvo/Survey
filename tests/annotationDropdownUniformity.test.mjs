@@ -81,7 +81,14 @@ test('only numeric size menus render an input and all annotation menus are mutua
   // on the next line.
   assert.ok((appShell.match(/preserveFocus/g) || []).length >= 2, 'rich-text dropdowns must preserve the active Fabric selection');
   assert.match(appShell, /setTextAlign\?\.\(value\)/);
-  assert.match(appShell, /onMouseDown=\{\(e\) => \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}\}\s*onClick=\{\(\) => bottomToolbarApi\.richTextEditor\?\.api\?\.setTextAlign/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-22, pass 7 integration):
+  // bottomToolbarApi.richTextEditor?.api -> textFormatSource?.api. RULING: board
+  // 12 shows the formatting bar while the text box or callout tool is ARMED, not
+  // only while a box is open, so the bar reads ONE source that is either the live
+  // editor or the tool's own defaults (resolveTextFormatting in src/AppShell.jsx).
+  // The rule this line guards is untouched: a formatting button must preventDefault
+  // on mousedown so it cannot steal the Fabric text selection.
+  assert.match(appShell, /onMouseDown=\{\(e\) => \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}\}\s*onClick=\{\(\) => textFormatSource\?\.api\?\.setTextAlign/);
   assert.match(appShell, /bottomToolbarApi\?\.setShowAnnotationColorPicker\?\.\(false\);\s*setOpenAnnotationDropdown\(null\);/);
   assert.match(appShell, /if \(!openAnnotationDropdown\) return;[\s\S]*setShowFontColorPicker\(false\)[\s\S]*setShowAnnotationColorPicker/);
   assert.match(appShell, /if \(!bottomToolbarApi\?\.showAnnotationColorPicker\) return;[\s\S]*setOpenAnnotationDropdown\(null\)/);
