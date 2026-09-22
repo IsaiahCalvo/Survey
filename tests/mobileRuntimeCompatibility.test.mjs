@@ -558,8 +558,11 @@ test('native mobile home remains viewport-contained with a solid full-width tab 
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs::before \{\s*display: none/);
 });
 
+// DELIBERATE ASSERTION CHANGE 2026-09-22: the phone left host went from a fixed
+// 44px to var(--mobile-rail-w) (36px, board 1) after the owner saw an empty
+// 8px strip beside the rail. The flex-shorthand guard itself is unchanged.
 test('mobile viewer rails do not mix flex shorthand with flexShrink during rerender', () => {
-  assert.match(APP_SHELL_SOURCE, /id="chrome-left-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '44px' : '48px',[\s\S]{0,100}flexShrink: 0/);
+  assert.match(APP_SHELL_SOURCE, /id="chrome-left-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? 'var\(--mobile-rail-w\)' : '48px',[\s\S]{0,100}flexShrink: 0/);
   assert.match(APP_SHELL_SOURCE, /id="chrome-right-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '0px' : '48px',[\s\S]{0,100}flexShrink: 0/);
   assert.doesNotMatch(APP_SHELL_SOURCE, /flex: isMobileViewer \? '0 0 (?:0|44)px' : '0 0 48px'/);
   assert.match(

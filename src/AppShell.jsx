@@ -3015,15 +3015,18 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
         )}
         <div className={isMobileViewer ? 'mobile-pdf-work-area' : undefined} style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
+          {/* Phone: the host is exactly the rail (--mobile-rail-w, 36px on
+              board 1). It used to be a fixed 44px and left an 8px empty strip
+              beside the rail; the owner spotted it on 2026-09-22. */}
           <div
             id="chrome-left-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
-              flexBasis: isMobileViewer ? '44px' : '48px',
-              width: isMobileViewer ? '44px' : '48px',
+              flexBasis: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
+              width: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               flexShrink: 0,
-              minWidth: isMobileViewer ? '44px' : '48px',
+              minWidth: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               alignSelf: 'stretch',
               background: isMobileViewer ? 'var(--surface-2)' : 'var(--surface-1)',
               color: 'var(--text-2)',
