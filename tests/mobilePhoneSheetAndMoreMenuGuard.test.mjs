@@ -62,6 +62,15 @@ test('every phone panel opens at the one Standard height', () => {
   assert.match(mobileCss, /\.mobile-pdf-users-sheet \{[\s\S]{0,200}--mobile-sheet-height: var\(--mobile-panel-standard\)/);
   assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface \{[\s\S]{0,400}height: var\(--mobile-panel-standard\)/);
 
+  // ADDED at the pass-7 integration: the Survey panel is a phone panel too, and
+  // it was the last one still measuring its own content (154 + 48 a template,
+  // 392 with one chosen, 314 + the checklist window in detail). It sets no height
+  // of its own now, which is what leaves .mobile-pdf-sheet's fallback - Standard -
+  // in charge, and leaves .is-expanded free to raise it on a pull-up.
+  const surveyRail = read('../src/SurveySpacesRail.jsx');
+  assert.doesNotMatch(surveyRail, /mobileSurveyPanelBaseHeight/);
+  assert.match(surveyRail, /height: mobileMode \? 'var\(--mobile-sheet-height, var\(--mobile-panel-standard\)\)'/);
+
   // Empty states fill the shared tray instead of leaving a stub sheet.
   assert.match(mobileCss, /\.mobile-search-panel__results \{[\s\S]{0,320}flex-direction: column;/);
   assert.match(mobileCss, /\.mobile-search-empty \{[\s\S]{0,120}flex: 1;/);

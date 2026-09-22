@@ -512,15 +512,12 @@ const SurveySpacesRail = ({
   const mobileDetailChecklist = mobileDetailCategory
     ? (mobileDetailCategory.checklist || []).filter((item) => item && item.archived !== true)
     : [];
-  // Demo pageUtils.ts:1-12 — detail sheet = 314px fixed body + a checklist
-  // window of 36px rows with 5px gaps, max 4 visible before it scrolls.
+  // Demo pageUtils.ts:1-12 — the checklist window is 36px rows with 5px gaps,
+  // max 4 visible before it scrolls. It still sizes the window INSIDE the panel;
+  // it no longer sizes the panel, which stands at Standard like every other one
+  // (pass 7 — see the sheet's own style block below).
   const mobileChecklistVisibleCount = Math.min(4, Math.max(1, mobileDetailChecklist.length));
   const mobileChecklistWindowHeight = (mobileChecklistVisibleCount * 36) + ((mobileChecklistVisibleCount - 1) * 5);
-  const mobileSurveyPanelBaseHeight = mobileDetailMarker
-    ? 314 + mobileChecklistWindowHeight
-    : selectedTemplate
-      ? 392
-      : 154 + Math.max(availableSurveyTemplates.length, 1) * 48;
 
   // Phase F (motion & feel): the survey sheet gets the same finger-follow drag +
   // velocity dismiss (dy>82 or vy>0.65) + spring-back + slide-down exit as the
@@ -1220,15 +1217,23 @@ const SurveySpacesRail = ({
             <div
               className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
-                '--mobile-sheet-height': mobileMode
-                  ? `calc(${mobileSurveyPanelBaseHeight}px + var(--mobile-bottom-inset))`
-                  : undefined,
+                // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
+                // Standard - 448px plus the bottom safe area - so the tray does
+                // not change height as you move between Pages, Search, Spaces and
+                // Survey. This panel used to measure its own content instead (154
+                // plus 48 a template, 392 with one chosen, 314 plus the checklist
+                // window in detail), which made it the odd one out AND made it
+                // resize under your finger as you moved through it. The token is
+                // --mobile-panel-standard, and .mobile-pdf-sheet already falls
+                // back to it, so nothing is set here: leaving --mobile-sheet-height
+                // unset is what lets .is-expanded and .is-fullscreen set it on a
+                // pull-up, which an inline value would have outranked.
                 position: mobileMode ? 'fixed' : 'absolute',
                 top: mobileMode ? 'auto' : 0,
                 right: 0,
                 bottom: mobileMode ? 0 : 'auto',
                 left: mobileMode ? 0 : 'auto',
-                height: mobileMode ? 'var(--mobile-sheet-height)' : '100%',
+                height: mobileMode ? 'var(--mobile-sheet-height, var(--mobile-panel-standard))' : '100%',
                 width: mobileMode ? '100%' : (isSurveyPanelCollapsed ? '48px' : '320px'),
                 background: 'var(--surface-1)',
                 borderLeft: mobileMode ? 'none' : '1px solid var(--border)',
