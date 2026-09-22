@@ -344,7 +344,12 @@ export const REGION_EDIT_TOOL = 'region-edit';
 // their artwork carries the row's weight at 18 because both assets are drawn on
 // the house 24 grid at the house 1.5 stroke (src/assets/icons/pan-hand-closed.svg
 // and selection-cursor-rounded.svg). tests/selectModes.test.mjs pins the size.
-export const CHROME_GLYPH = 18;
+// PASS 7 (boards 8-14, owner-approved artboards): the document chrome's tool
+// glyph is 16 inside a 28px button — the ratio the boards draw. It was 18-in-34.
+// The RAIL keeps 18 (see RAIL_GLYPH below): the boards changed the three document
+// bars, not the 48px rails, so the two tiers are separate constants now instead
+// of one shared number.
+export const CHROME_GLYPH = 16;
 export const CHROME_FIELD_GLYPH = 14;
 
 // UX 2026-09-16 (desktop sweep): the RAIL tier — the left document rail and the
@@ -361,7 +366,7 @@ export const CHROME_FIELD_GLYPH = 14;
 // RAIL_CONTROL / RAIL_CONTROL_GLYPH are the chrome's own value-chip pair (24 and
 // 14) rather than new numbers — a rail footer control and a value chip are the
 // same size of thing.
-export const RAIL_GLYPH = CHROME_GLYPH;
+export const RAIL_GLYPH = 18;
 export const RAIL_CONTROL = 24;
 export const RAIL_CONTROL_GLYPH = CHROME_FIELD_GLYPH;
 // The one rail control that hangs a caret beside its glyph (Fit options) needs

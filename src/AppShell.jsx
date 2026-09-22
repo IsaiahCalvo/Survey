@@ -23,7 +23,7 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
-import { QuickColourDots, QuickWidthPresets } from './components/QuickStyleControls';
+import { QuickColourDots } from './components/QuickStyleControls';
 import BodyPortal from './components/BodyPortal.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import { matchedQuickColour } from './utils/quickStylePresets';
@@ -47,7 +47,7 @@ import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
-import { getNextSelectModeMenuOpen, getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS, SELECT_MODE_SHORT_LABELS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
@@ -56,7 +56,7 @@ import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 
-import { CHROME_FIELD_GLYPH, CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
+import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 function RailLiveZoomText({ fallback, viewerId }) {
@@ -181,6 +181,57 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
   };
 };
 
+/*
+ * PASS 7 (boards 9-12 + 15): the four LINE STYLES and the drawing each one
+ * shows. The drawing is the same glyph in the pill and in the menu row, at two
+ * sizes, so what the row promises is what the pill reports back.
+ */
+const LINE_STYLE_OPTIONS = Object.freeze([
+  Object.freeze({ value: 'solid', label: 'Solid' }),
+  Object.freeze({ value: 'dashed', label: 'Dashed' }),
+  Object.freeze({ value: 'dotted', label: 'Dotted' }),
+  Object.freeze({ value: 'cloud', label: 'Cloud' }),
+]);
+
+const LINE_STYLE_SAMPLE_ICONS = Object.freeze({
+  solid: 'lineSampleSolid',
+  dashed: 'lineSampleDashed',
+  dotted: 'lineSampleDotted',
+  cloud: 'lineSampleCloud',
+});
+
+/*
+ * PASS 7 (board 15): the six ARROWHEADS the boards offer, in board order, each
+ * drawn as the head it will put on the line. The app carries three more styles
+ * (open triangle, diamond, slash) that only ever arrive from an imported PDF;
+ * the list below prepends whichever of those is live so the pill never lies
+ * about a mark the user has selected.
+ */
+const ARROWHEAD_MENU_OPTIONS = Object.freeze([
+  Object.freeze({ value: 'none', label: 'None', icon: 'arrowheadNone' }),
+  Object.freeze({ value: 'solidTriangle', label: 'Solid', icon: 'arrowheadSolid' }),
+  Object.freeze({ value: 'vShape', label: 'Open', icon: 'arrowheadOpen' }),
+  Object.freeze({ value: 'openCircle', label: 'Circle', icon: 'arrowheadCircle' }),
+  Object.freeze({ value: 'square', label: 'Square', icon: 'arrowheadSquare' }),
+  Object.freeze({ value: 'horizontalLine', label: 'Bar', icon: 'arrowheadBar' }),
+]);
+
+/*
+ * PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is one dropdown with three
+ * values and the same three Lucide glyphs on desktop and in the phone sheet.
+ * It writes the two pieces of state the app already has:
+ *   End  — the head sits on the finish only        (bothEnds off)
+ *   Both — the head is mirrored onto the start too (bothEnds on)
+ *   None — no head at either end                   (head style 'none')
+ * so nothing new is stored, and picking a head in the Arrowhead pill moves this
+ * control back off None by itself.
+ */
+const ARROW_ENDS_OPTIONS = Object.freeze([
+  Object.freeze({ value: 'end', label: 'End', icon: 'moveRight' }),
+  Object.freeze({ value: 'both', label: 'Both', icon: 'moveHorizontal' }),
+  Object.freeze({ value: 'none', label: 'None', icon: 'minus' }),
+]);
+
 /**
  * Whether the tool-properties row is showing a colour control at all, i.e.
  * whether the quick colour dots have a swatch to stand beside. The three arms
@@ -197,17 +248,6 @@ const showsColorSwatch = (api) => {
   if (['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(tool)) return true;
   if (tool === 'counter') return !!api.handleFillColorChange;
   return ['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(tool) && !!api.handleFillColorChange;
-};
-
-/**
- * Whether the row's size field is a LINE WIDTH — the only thing the three
- * quick widths mean. Counter Size and Eraser Size take the same field but are
- * not line weights (a 22px rule drawn at "pin size 24" would be nonsense), so
- * they keep the field and its preset list and skip the quick trio.
- */
-const showsQuickWidths = (api) => {
-  if (!api || api.activeTool === 'eraser' || api.contextTool === 'counter') return false;
-  return ['pen', 'highlighter', 'arrow', 'line', 'rect', 'ellipse', 'polygon', 'polyline', 'text', 'callout'].includes(api.contextTool);
 };
 
 export default function App({ devPreviewReturnTab = null }) {
@@ -647,8 +687,6 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []);
   const showArrowheadMenu = openAnnotationDropdown === 'arrowhead';
   const setShowArrowheadMenu = useCallback((next) => setDropdownOpen('arrowhead', next), [setDropdownOpen]);
-  const showAlignGrid = openAnnotationDropdown === 'alignment';
-  const setShowAlignGrid = useCallback((next) => setDropdownOpen('alignment', next), [setDropdownOpen]);
   const showFontFamilyMenu = openAnnotationDropdown === 'font-family';
   const setShowFontFamilyMenu = useCallback((next) => setDropdownOpen('font-family', next), [setDropdownOpen]);
   const showFontSizeMenu = openAnnotationDropdown === 'font-size';
@@ -657,8 +695,11 @@ export default function App({ devPreviewReturnTab = null }) {
   const setShowStyleMenu = useCallback((next) => setDropdownOpen('style', next), [setDropdownOpen]);
   const showCounterSeriesMenu = openAnnotationDropdown === 'counter-series';
   const setShowCounterSeriesMenu = useCallback((next) => setDropdownOpen('counter-series', next), [setDropdownOpen]);
-  const showEraserTypeMenu = openAnnotationDropdown === 'eraser-type';
-  const setShowEraserTypeMenu = useCallback((next) => setDropdownOpen('eraser-type', next), [setDropdownOpen]);
+  // PASS 7: Arrow ends (End / Both / None) is a dropdown of its own now, and the
+  // eraser's two kinds moved out of a dropdown into a segmented toggle — so
+  // 'eraser-type' is gone from this list and 'arrow-ends' takes its place.
+  const showArrowEndsMenu = openAnnotationDropdown === 'arrow-ends';
+  const setShowArrowEndsMenu = useCallback((next) => setDropdownOpen('arrow-ends', next), [setDropdownOpen]);
   // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
   // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
   // UX 2026-09-17: it opens on 'border', not 'fill', because that is the channel
@@ -715,7 +756,6 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     if (!bottomToolbarApi?.richTextEditor) {
       setShowFontColorPicker(false);
-      setShowAlignGrid(false);
       setShowFontFamilyMenu(false);
       setShowFontSizeMenu(false);
     }
@@ -803,12 +843,6 @@ export default function App({ devPreviewReturnTab = null }) {
     };
   }, [counterSeriesContextMenu]);
 
-  useEffect(() => {
-    if (bottomToolbarApi?.activeTool !== 'eraser') {
-      setShowEraserTypeMenu(false);
-    }
-  }, [bottomToolbarApi?.activeTool]);
-
   // Formatting popovers share one exclusive layer. Capture-phase dismissal
   // runs before trigger buttons stop propagation, so opening one control
   // reliably closes every peer and clicking the page closes them all.
@@ -829,11 +863,10 @@ export default function App({ devPreviewReturnTab = null }) {
       }
       if (!insideDropdown && !inside('[data-style-menu]')) setShowStyleMenu(false);
       if (!insideDropdown && !inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
-      if (!insideDropdown && !inside('[data-eraser-type-menu]')) setShowEraserTypeMenu(false);
+      if (!insideDropdown && !inside('[data-arrow-ends-menu]')) setShowArrowEndsMenu(false);
       if (!inside('[data-font-color-picker]')) setShowFontColorPicker(false);
       if (!insideDropdown && !inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
       if (!insideDropdown && !inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
-      if (!insideDropdown && !inside('[data-align-grid]')) setShowAlignGrid(false);
     };
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
@@ -848,7 +881,7 @@ export default function App({ devPreviewReturnTab = null }) {
     setCounterSeriesContextMenu(null);
     setShowStyleMenu(false);
     setShowArrowheadMenu(false);
-    setShowEraserTypeMenu(false);
+    setShowArrowEndsMenu(false);
   }, [bottomToolbarApi?.contextTool]);
 
   /*
@@ -1492,18 +1525,22 @@ export default function App({ devPreviewReturnTab = null }) {
           style={{
             display: isViewerVisible ? 'flex' : 'none',
             flexShrink: 0,
-            // UX 2026-09-16 (desktop sizing pass): the bar is still 44px tall.
-            // It used to be 8px of padding around a 28px control; it is now
-            // 5px around the shared 34px control (--chrome-control-h), which
-            // is Drawboard PDF's tool-button height. Same bar, Drawboard's
-            // ratio inside it. Do not grow this padding — 5 + 34 + 5 = 44.
-            padding: '5px 12px',
+            // PASS 7 (boards 8-14): the tool bar is 36px tall — 4px of air
+            // around the 28px tool button — and the bar carries the same
+            // hairline underneath it as the two bars below. Undo/Redo and
+            // Export sit 10px in from the edges. minHeight rather than height
+            // so a narrow window may still wrap onto a second row instead of
+            // clipping. Do not grow this padding: 4 + 28 + 4 = 36.
+            minHeight: 'var(--chrome-bar-h)',
+            padding: '0 10px',
             background: 'var(--surface-2)',
+            borderBottom: '1px solid var(--border)',
+            boxSizing: 'border-box',
             alignItems: 'center',
             justifyContent: 'center',
             flexWrap: 'wrap',
-            rowGap: '6px',
-            columnGap: 'var(--chrome-gap)',
+            rowGap: '4px',
+            columnGap: 'var(--chrome-tool-gap)',
             fontSize: '13px',
             fontFamily: FONT_FAMILY,
             color: 'var(--text-2)',
@@ -1526,10 +1563,10 @@ export default function App({ devPreviewReturnTab = null }) {
               // second row instead of pinning over the tool cluster.
               ...(isNarrowShell
                 ? { position: 'static', flexBasis: '100%', justifyContent: 'center' }
-                : { position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)' }),
+                : { position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }),
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: 'var(--chrome-tool-gap)',
               border: 'none',
               background: 'transparent',
               borderRadius: 0,
@@ -1569,10 +1606,10 @@ export default function App({ devPreviewReturnTab = null }) {
             // Narrow shells: flow inline with the tool cluster (no pinning).
             ...(isNarrowShell
               ? { position: 'static' }
-              : { position: 'absolute', left: '12px', top: 0, bottom: 0 }),
+              : { position: 'absolute', left: '10px', top: 0, bottom: 0 }),
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--chrome-gap)'
+            gap: 'var(--chrome-tool-gap)'
           }}>
             <span {...chromeTip('Undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
@@ -1627,7 +1664,7 @@ export default function App({ devPreviewReturnTab = null }) {
               tool cluster sits centered while Undo/Redo float on the
               left edge. */}
           {bottomToolbarApi && (
-            <div data-tool-toolbar="true" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
+            <div data-tool-toolbar="true" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}>
               {/* 2026-05-26: Pan + Select sit in their own absolute block to
                   the LEFT of the centered annotation cluster. This mirrors
                   the right-side tool properties block so the annotation
@@ -1640,8 +1677,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   : { position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)' }),
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--chrome-gap)',
-                paddingRight: 'var(--chrome-gap)',
+                gap: 'var(--chrome-tool-gap)',
                 whiteSpace: 'nowrap'
               }}>
               {[
@@ -1649,7 +1685,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 { id: 'select', label: 'Select', iconName: 'selectCursor' }
               ].map(t => {
                 // Select-family modes share one compact Drawboard-style button.
-                // The full button activates the last mode and opens the mode list.
+                // PASS 7 (boards 8-14, owner ruling): the button ARMS the family
+                // and nothing else — it is a plain 28px tool button like every
+                // other one in the cluster. Which mode is live (Box / Lasso /
+                // Text) is chosen in the segmented toggle that Select shows in
+                // its settings, so the caret and the popover menu that used to
+                // hang off this button are gone. The cluster must never change
+                // width when the armed tool changes.
                 const isSelect = t.id === 'select';
                 const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
                 const isActive = isSelect
@@ -1669,9 +1711,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-tool-group="true"
                   data-select-mode-trigger={isSelect ? 'true' : undefined}
                   aria-label={label}
-                  aria-haspopup={isSelect ? 'menu' : undefined}
-                  aria-expanded={isSelect ? selectModeMenuOpen : undefined}
-                  aria-controls={isSelect ? 'desktop-select-mode-menu' : undefined}
                   onClick={() => {
                     if (isSelect) {
                       selectModeTriggerToolRef.current = !isActive
@@ -1682,204 +1721,40 @@ export default function App({ devPreviewReturnTab = null }) {
                           : 'select',
                       );
                       bottomToolbarApi.setActiveCategoryDropdown(null);
-                      setSelectModeMenuOpen((open) => getNextSelectModeMenuOpen(open, isActive));
                       return;
                     }
                     bottomToolbarApi.setActiveTool(t.id);
                     bottomToolbarApi.setActiveCategoryDropdown(null);
-                    setSelectModeMenuOpen(false);
-                  }}
-                  onKeyDown={(event) => {
-                    if (!isSelect || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
-                    event.preventDefault();
-                    bottomToolbarApi.setActiveCategoryDropdown(null);
-                    setSelectModeMenuOpen(true);
                   }}
                   {...chromeTip(label, 'below')}
-                  // UX 2026-09-16 (desktop sizing pass): Pan and Select take
-                  // the shared top-bar control size. Select keeps the extra
-                  // width its caret needs (.chrome-control--split) but is now
-                  // the same HEIGHT as Pan — the two used to be 28x28 and
-                  // 40x28 with 20px and 22px glyphs respectively.
-                  className={`btn chrome-control${isSelect ? ' chrome-control--split' : ''} ${isActive ? 'btn-active' : 'btn-default'}`}
+                  // PASS 7 (boards 8-14): every button in the cluster is the
+                  // same 28px square with a 16px glyph. Select is no longer
+                  // wider than its neighbours — it lost the caret, so it lost
+                  // the extra width too.
+                  className={`btn chrome-control ${isActive ? 'btn-active' : 'btn-default'}`}
                   style={isSelect ? { position: 'relative' } : undefined}
                 >
-                  {/* UX 2026-09-16: ONE glyph size for the whole top tool row.
-                      Pan rendered at 20 and Select at 22 while Draw, Shapes and
-                      Text rendered at 18 — a 22% spread in the single
-                      most-looked-at row, so it never read as one set. 18 is the
-                      row size because three of the five already used it and
-                      because growing the others would grow the bar. The control
-                      BOX around it is the shared desktop-sizing one
-                      (.chrome-control / .chrome-control--split), so Pan and
-                      Select are the same height as their neighbours too.
-                      Pinned by tests/selectModes.test.mjs and
-                      tests/iconSetConsistency.test.mjs. */}
+                  {/* PASS 7 (boards 8-14): ONE glyph size for the whole tool
+                      cluster — CHROME_GLYPH (16) inside the 28px button. Select
+                      draws the live mode's own glyph (Box / Lasso / Text) so the
+                      button says which mode it will arm, and it is centred now
+                      that the caret beside it is gone. */}
                   <Icon
                     name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
-                    size={18}
-                    style={isSelect ? { transform: 'translateX(-3px)' } : undefined}
+                    size={CHROME_GLYPH}
                   />
-                  {isSelect && (
-                    <span
-                      data-select-mode-indicator="true"
-                      aria-hidden="true"
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        right: 1,
-                        width: '13px',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: isActive ? 'var(--text-2)' : 'var(--text-3)',
-                      }}
-                    >
-                      {/* UX: 7px, deliberately smaller than the 10px caret on
-                          the Width / Style dropdowns. Reference = Drawboard
-                          PDF, whose split-button caret measures 6px — a
-                          split button hangs its caret beside a full-size
-                          glyph, so it has to stay small. At 10px it collided
-                          with this button's 22px glyph. */}
-                      <Icon name="chevronDown" size={7} color="currentColor" />
-                    </span>
-                  )}
                 </button>
-                {isSelect && selectModeMenuOpen && createPortal(
-                  <div
-                    id="desktop-select-mode-menu"
-                    ref={selectModeMenuRef}
-                    data-select-mode-menu="true"
-                    role="menu"
-                    aria-label="Selection mode"
-                    onKeyDown={(e) => {
-                      const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitemradio"]'));
-                      const currentIndex = Math.max(0, items.indexOf(document.activeElement));
-                      const nextIndex = getSelectModeMenuFocusIndex(e.key, currentIndex, items.length);
-                      if (nextIndex != null) {
-                        e.preventDefault();
-                        items[nextIndex]?.focus();
-                      }
-                    }}
-                    style={{
-                      position: 'fixed',
-                      top: `${selectModeMenuAnchor.top}px`,
-                      left: `${selectModeMenuAnchor.left}px`,
-                      transform: 'translate(-50%, 0)',
-                      // UX 2026-09-17 (revision-2 palette): a popover is a RAISED
-                      // surface, so it takes --surface-2 even though its old
-                      // literal (#1E1E1E) sat at the --surface-1 brightness. It
-                      // has to read as lifted off the bar it opens from.
-                      // Pinned by tests/selectModes.test.mjs.
-                      backgroundColor: 'var(--surface-2)',
-                      backgroundImage: 'none',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                      zIndex: 999999,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      padding: '4px',
-                      minWidth: '168px',
-                      color: 'var(--text-2)',
-                      pointerEvents: 'auto',
-                      cursor: 'default',
-                      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
-                      fontSize: '12px'
-                    }}
-                  >
-                    {SELECT_MODE_OPTIONS.map((opt) => {
-                      const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
-                      const optionStyle = {
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                        // UX 2026-09-16 (desktop sizing pass): the selection-mode
-                        // menu takes the same row height and row inset as the
-                        // Width and line-style menus (--chrome-menu-row-h); it
-                        // was a 32px row beside their 34px ones.
-                        minHeight: 'var(--chrome-menu-row-h)',
-                        padding: '4px 9px',
-                        // UX 2026-09-17 (revision-2 palette, owner approved):
-                        // the checked row is a real surface step plus a 2px gold
-                        // edge, matching the phone's own checked row. It was a
-                        // #2a2218 warm tint, the one brown in the app, which sat
-                        // 172 degrees of hue away from every other surface. The
-                        // edge is an inset shadow, not a border, because this
-                        // menu's rows must not change box size when checked.
-                        background: selected ? 'var(--surface-3)' : 'transparent',
-                        boxShadow: selected ? 'inset 2px 0 var(--accent)' : 'none',
-                        border: 'none',
-                        borderRadius: '4px',
-                        color: selected ? 'var(--accent)' : 'var(--text-2)',
-                        // UX: match the phone sheet; colour and check carry selection, not a weight jump.
-                        fontWeight: 600,
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontFamily: 'inherit',
-                        whiteSpace: 'nowrap'
-                      };
-                      return (
-                        <button
-                          key={opt.mode}
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={selected}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            bottomToolbarApi.setSelectionMode?.(opt.mode);
-                            bottomToolbarApi.setActiveTool(opt.tool);
-                            setSelectModeMenuOpen(false);
-                            bottomToolbarApi.setTooltip?.({ visible: false });
-                            window.requestAnimationFrame(() => {
-                              selectModeButtonRef.current?.focus?.();
-                              bottomToolbarApi.setTooltip?.({ visible: false });
-                            });
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = selected ? 'var(--surface-3)' : 'var(--hover)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? 'var(--surface-3)' : 'transparent'; }}
-                          style={optionStyle}
-                        >
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {/* UX: 20, the same optical size the Select trigger
-                                uses for these glyphs (see above); pinned by
-                                tests/selectModes.test.mjs. */}
-                            <Icon name={getSelectModeIconName(opt.mode)} size={20} color="currentColor" />
-                            {/* UX: use the same mode name in the menu, trigger and phone sheet. */}
-                            {/* UX: reserve bold label width so changing the checked row never shifts menu edges. */}
-                            <span className="select-mode-label">
-                              <span aria-hidden="true" style={{ fontWeight: 600, visibility: 'hidden' }}>{opt.label}</span>
-                              <span>{opt.label}</span>
-                            </span>
-                          </span>
-                          {/* UX: give selection its own gold check, separate from shortcut text. */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>{opt.hint}</span>
-                            {/* UX: use the phone sheet's stroked tick; keep its slot on unchecked rows. */}
-                            <span aria-hidden="true" data-select-mode-check style={{ width: '14px', height: '14px', display: 'flex', color: 'var(--accent)' }}>{selected ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>,
-                  document.body
-                )}
                 </div>
                 );
               })}
 
-              {/* Intended UX: the thin rule reads as part of ONE gutter, not as a
-                  wider break that makes the row look like two toolbars pushed
-                  together. It carries no margin of its own — the row's
-                  gap: var(--chrome-gap) and the side block's matching padding
-                  do all the spacing, so the gutter beside the rule measures the
-                  same 4px as every other pair of neighbouring controls.
-                  Reference behaviour matched: Drawboard PDF's tool strip, which
-                  holds one constant gutter across its whole width. */}
-              <div style={{ width: '1px', height: '20px', background: 'var(--border-strong)' }} />
+              {/* PASS 7 (boards 8-14): the rule between two tool GROUPS. It is
+                  16px tall with 8px of clear space either side, against the 2px
+                  gutter that separates two buttons inside one group — that
+                  contrast is the only thing telling the eye where a group ends.
+                  Both numbers come from the shared .chrome-divider class, so no
+                  bar can write its own. */}
+              <div className="chrome-divider" />
               </div>
 
               {/* Draw category */}
@@ -1898,7 +1773,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 aria-label="Draw"
               >
-                <Icon name="drawGroup" size={18} />
+                <Icon name="drawGroup" size={CHROME_GLYPH} />
               </button>
 
               {/* Shapes category */}
@@ -1917,7 +1792,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 aria-label="Shapes"
               >
-                <Icon name="shapes" size={18} />
+                <Icon name="shapes" size={CHROME_GLYPH} />
               </button>
 
               {/* Text category */}
@@ -1936,7 +1811,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 aria-label="Text"
               >
-                <Icon name="textGroup" size={18} />
+                <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
 
               {/* KAL-47: Forms category. Opens the form-field subtoolbar
@@ -1987,18 +1862,12 @@ export default function App({ devPreviewReturnTab = null }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--chrome-gap)',
-                paddingLeft: 'var(--chrome-gap)',
                 whiteSpace: 'nowrap'
               }}>
-              {/* Intended UX: the thin rule reads as part of ONE gutter, not as a
-                  wider break that makes the row look like two toolbars pushed
-                  together. It carries no margin of its own — the row's
-                  gap: var(--chrome-gap) and the side block's matching padding
-                  do all the spacing, so the gutter beside the rule measures the
-                  same 4px as every other pair of neighbouring controls.
-                  Reference behaviour matched: Drawboard PDF's tool strip, which
-                  holds one constant gutter across its whole width. */}
-              <div style={{ width: '1px', height: '20px', background: 'var(--border-strong)' }} />
+              {/* PASS 7 (boards 8-14): the rule that separates the tool cluster
+                  from the armed tool's settings. Same shared rule, same 8px
+                  inset either side, as the one on the cluster's other edge. */}
+              <div className="chrome-divider" />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
@@ -2024,12 +1893,20 @@ export default function App({ devPreviewReturnTab = null }) {
                      attribute opts these buttons out of FabricEditCanvas's
                      document-level click-outside handler so clicks don't
                      commit-and-close the editor. */
-                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
-                    {/* 2026-05-26: Order — font color, font size, B / I / U / S,
-                        alignment. Matches the user's requested left-to-right
-                        sequence so the chrome reads as one cohesive row. Font
-                        family was removed from the strip in this pass per the
-                        same request. */}
+                  /* PASS 7 (board 12): the third bar is 36px like the two above
+                     it, its controls sit on the settings gutter, and it is
+                     CENTRED. */
+                  <div data-rich-text-toolbar style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
+                    {/* PASS 7 (board 12): the order is colour, then font and
+                        size, then B / I / U / S, then the two alignments —
+                        appearance, then shape, then position, each pair behind
+                        its own rule. */}
+                    {/* The quick text colours, the same four the drawing tools
+                        show, acting on the text instead of on a stroke. */}
+                    <QuickColourDots
+                      value={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
+                      onPick={(hex) => bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex)}
+                    />
                     {/* Font color — reuses the shared color picker, just like
                         the stroke/fill swatches above. The picker drops DOWN
                         below the swatch via an absolute wrapper (top:100%) so
@@ -2040,8 +1917,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={() => setShowFontColorPicker((v) => !v)}
                         className="ctx-color-swatch"
                         style={{
-                          width: 'var(--chrome-field-h)',
-                          height: 'var(--chrome-field-h)',
+                          width: 'var(--chrome-colour-btn)',
+                          height: 'var(--chrome-colour-btn)',
                           padding: 0,
                           borderRadius: '50%',
                           border: 'none',
@@ -2084,6 +1961,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         </div>
                       )}
                     </div>
+                    {/* Board 12: the rule between the colour group and the
+                        font pair. */}
+                    <div className="chrome-divider" />
                     {/* Font family — custom dropdown so it opens strictly
                         downward and styling matches the rest of the chrome.
                         Single-name fonts only per the Fabric cursor-drift
@@ -2103,7 +1983,11 @@ export default function App({ devPreviewReturnTab = null }) {
                             style: { fontFamily: family },
                           }))}
                           onSelect={(family) => bottomToolbarApi.richTextEditor?.api?.setFontFamily?.(family)}
-                          contentWidth="170px"
+                          /* Board 12: 104px — the widest font name the list
+                             offers ("Times New Roman") has to fit without the
+                             pill resizing as the user changes font. */
+                          width="var(--chrome-field-w-font)"
+                          contentWidth="var(--chrome-field-w-font)"
                           dataMarker="data-font-family-menu"
                           preserveFocus
                         />
@@ -2126,14 +2010,20 @@ export default function App({ devPreviewReturnTab = null }) {
                           onOpenChange={setShowFontSizeMenu}
                           label="Font size"
                           value={currentSize}
-                          options={sizes.map((size) => ({ value: size, label: String(size) }))}
+                          /* Board 12 + the units ruling: a size field says
+                             "16 pt", not "16". */
+                          options={sizes.map((size) => ({ value: size, label: `${size} pt` }))}
                           onSelect={(size) => bottomToolbarApi.richTextEditor?.api?.setFontSize?.(size)}
-                          contentWidth="126px"
+                          width="var(--chrome-field-w-fontsize)"
+                          contentWidth="var(--chrome-field-w-fontsize)"
                           dataMarker="data-font-size-menu"
                           preserveFocus
                         />
                       );
                     })()}
+                    {/* Board 12: the rule between the font pair and the four
+                        style toggles. */}
+                    <div className="chrome-divider" />
                     {/* Bold / Italic / Underline / Strikethrough toggles. */}
                     {[
                       ['formatBold', 'bold', 'toggleBold', 'Bold'],
@@ -2154,135 +2044,144 @@ export default function App({ devPreviewReturnTab = null }) {
                             e.stopPropagation();
                           }}
                           onClick={() => bottomToolbarApi.richTextEditor?.api?.[apiKey]?.()}
-                          style={{
-                            width: '28px',
-                            height: '24px',
-                            padding: 0,
-                            // UX 2026-09-17 (owner ruling): a pressed control turns
-                            // its GLYPH gold and changes nothing else — the desktop
-                            // tool rail's .btn-active is the house reference. The
-                            // rgba(216,168,78,.18) wash that used to sit here is the
-                            // banned gold-brown; the chip keeps its resting fill.
-                            background: 'var(--surface-3)',
-                            color: isOn ? 'var(--accent)' : 'var(--text-2)',
-                            border: '1px solid transparent',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
+                          className="chrome-text-toggle"
+                          // PASS 7 (board 12, owner ruling): 22x20 with a 13px
+                          // glyph, on no fill at all. A pressed toggle turns its
+                          // GLYPH gold and changes nothing else — the resting
+                          // chip fill these carried made four filled boxes in a
+                          // row that already had two filled pills in it.
+                          style={{ color: isOn ? 'var(--accent)' : 'var(--text-2)' }}
                           {...chromeTip(title, 'below')}
                           aria-label={title}
                           aria-pressed={isOn}
                         >
-                          <Icon name={iconName} size={17} />
+                          <Icon name={iconName} size={13} />
                         </button>
                       );
                     })}
-                    {/* Alignment — 28x26 trigger with 3x3 mini-grid, opens a
-                        "Text alignment" popover that picks horizontal +
-                        vertical anchor at once. */}
-                    {(() => {
-                      const hAlign = bottomToolbarApi.richTextEditor?.state?.textAlign || 'left';
-                      const vAlign = bottomToolbarApi.richTextEditor?.state?.verticalAlign || 'top';
-                      const labelFor = (v, h) => `${v}-${h === 'center' ? 'center' : h}`;
-                      const isCellActive = (v, h) => v === vAlign && h === hAlign;
+                    {/* PASS 7 (board 12, owner ruling): alignment is SIX
+                        buttons in two groups — left / centre / right, then top /
+                        middle / bottom — behind their own rules. It used to be
+                        one 3x3 dot grid behind a dropdown, which meant the bar
+                        never showed how the text was aligned and setting one
+                        axis meant re-picking the other. Both axes are now
+                        visible and independent. */}
+                    <div className="chrome-divider" />
+                    {[
+                      ['alignLeft', 'left', 'Align left'],
+                      ['alignCenter', 'center', 'Align centre'],
+                      ['alignRight', 'right', 'Align right'],
+                    ].map(([iconName, value, title]) => {
+                      const on = (bottomToolbarApi.richTextEditor?.state?.textAlign || 'left') === value;
                       return (
-                        <AnnotationDropdown
-                          open={showAlignGrid}
-                          onOpenChange={setShowAlignGrid}
-                          label="Text alignment"
-                          align="end"
-                          contentWidth="116px"
-                          dataMarker="data-align-grid"
-                          preserveFocus
-                          triggerContent={(
-                            <span style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(3, 4px)',
-                              gridTemplateRows: 'repeat(3, 4px)',
-                              gap: '2px',
-                            }}>
-                              {['top', 'middle', 'bottom'].flatMap((v) => ['left', 'center', 'right'].map((h) => {
-                                const on = isCellActive(v, h);
-                                return (
-                                  <span key={labelFor(v, h)} style={{
-                                    width: '4px',
-                                    height: '4px',
-                                    borderRadius: '1px',
-                                    /* UX: an "off" cell in the 3x3 alignment grid is a quiet
-                                       ghost of the "on" gold. The tint is --text-3 (what the
-                                       retired #a8b0bf became everywhere else) at the same 40%
-                                       it always had, written as a color-mix so the colour comes
-                                       from the token file and not from the old ramp. */
-                                    background: on ? 'var(--accent)' : 'color-mix(in srgb, var(--text-3) 40%, transparent)',
-                                    /* UX 2026-09-17 (owner ruling): the dot itself IS the
-                                       gold glyph; the 25%-alpha gold halo that used to ring
-                                       it added a second, blurrier gold edge on a 4px square
-                                       and read as the banned wash at a glance. */
-                                    boxShadow: 'none',
-                                  }} />
-                                );
-                              }))}
-                            </span>
-                          )}
+                        <button
+                          key={value}
+                          className="chrome-text-toggle"
+                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onClick={() => bottomToolbarApi.richTextEditor?.api?.setTextAlign?.(value)}
+                          style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
+                          {...chromeTip(title, 'below')}
+                          aria-label={title}
+                          aria-pressed={on}
                         >
-                            <div className="annotation-dropdown__body" style={{ padding: '8px' }}>
-                              <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(3, 26px)',
-                                gap: '4px',
-                              }}>
-                                {['top', 'middle', 'bottom'].flatMap((v) => ['left', 'center', 'right'].map((h) => {
-                                  const on = isCellActive(v, h);
-                                  return (
-                                    <button
-                                      key={labelFor(v, h)}
-                                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      onClick={() => {
-                                        bottomToolbarApi.richTextEditor?.api?.setTextAlign?.(h);
-                                        bottomToolbarApi.richTextEditor?.api?.setVerticalAlign?.(v);
-                                        setShowAlignGrid(false);
-                                      }}
-                                      style={{
-                                        appearance: 'none',
-                                        width: '26px',
-                                        height: '26px',
-                                        /* UX 2026-09-17 (owner ruling): the chosen cell in the
-                                           3x3 alignment grid is marked by its DOT turning gold
-                                           (below), not by a gold wash and a gold outline around
-                                           the cell. Same rule as the desktop tool rail. */
-                                        background: 'var(--surface-1)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        padding: 0,
-                                      }}
-                                      {...chromeTip(`${v} ${h}`, 'below')}
-                                      aria-label={`${v} ${h}`}
-                                    >
-                                      <span style={{
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: on ? 'var(--accent)' : 'var(--border-strong)',
-                                      }} />
-                                    </button>
-                                  );
-                                }))}
-                              </div>
-                            </div>
-                        </AnnotationDropdown>
+                          <Icon name={iconName} size={14} color="currentColor" />
+                        </button>
                       );
-                    })()}
+                    })}
+                    <div className="chrome-divider" />
+                    {[
+                      ['alignTop', 'top', 'Align to the top'],
+                      ['alignMiddle', 'middle', 'Align to the middle'],
+                      ['alignBottom', 'bottom', 'Align to the bottom'],
+                    ].map(([iconName, value, title]) => {
+                      const on = (bottomToolbarApi.richTextEditor?.state?.verticalAlign || 'top') === value;
+                      return (
+                        <button
+                          key={value}
+                          className="chrome-text-toggle"
+                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onClick={() => bottomToolbarApi.richTextEditor?.api?.setVerticalAlign?.(value)}
+                          style={{ color: on ? 'var(--accent)' : 'var(--text-2)' }}
+                          {...chromeTip(title, 'below')}
+                          aria-label={title}
+                          aria-pressed={on}
+                        >
+                          <Icon name={iconName} size={14} color="currentColor" />
+                        </button>
+                      );
+                    })}
                   </div>,
                   document.getElementById('chrome-sub-toolbar-host')
                 )}
                 <>
+                {/* PASS 7 (board 14, owner ruling): SELECT's setting is the
+                    Box / Lasso / Text segmented toggle — the same three modes
+                    the phone shows, on the same quiet well, with the chosen
+                    word and glyph in gold. It replaced a caret and a popover
+                    menu hanging off the Select button: three modes are few
+                    enough to show, and showing them means the user can see
+                    which one is live without opening anything. */}
+                {isSelectFamilyTool(bottomToolbarApi.activeTool) && (
+                  <div
+                    className="chrome-segmented"
+                    data-select-mode-toggle="true"
+                    role="group"
+                    aria-label="Selection mode"
+                    style={{ width: '150px' }}
+                  >
+                    {SELECT_MODE_OPTIONS.map((opt) => {
+                      const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
+                      return (
+                        <button
+                          key={opt.mode}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            bottomToolbarApi.setSelectionMode?.(opt.mode);
+                            bottomToolbarApi.setActiveTool(opt.tool);
+                          }}
+                          {...chromeTip(opt.label, 'below')}
+                          aria-label={opt.label}
+                        >
+                          {/* Board 14: the app's own selection glyphs at 12px —
+                              a segment is 16px of usable height. */}
+                          <Icon name={getSelectModeIconName(opt.mode)} size={12} color="currentColor" />
+                          {SELECT_MODE_SHORT_LABELS[opt.mode]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* PASS 7 (board 13, owner ruling): the ERASER's two kinds are a
+                    segmented toggle, not a dropdown — there are only two, and
+                    which one is live changes what a drag does, so it is worth
+                    the width to show both. */}
+                {bottomToolbarApi.activeTool === 'eraser' && bottomToolbarApi.setEraserMode && (
+                  <div
+                    className="chrome-segmented"
+                    data-eraser-mode-toggle="true"
+                    role="group"
+                    aria-label="Eraser type"
+                    style={{ width: '100px' }}
+                  >
+                    {[['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']].map(([mode, short, full]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-pressed={bottomToolbarApi.eraserMode === mode}
+                        onClick={() => bottomToolbarApi.setEraserMode(mode)}
+                        {...chromeTip(full, 'below')}
+                        aria-label={full}
+                      >
+                        {short}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Board 13: the rule between the eraser's kind and its size. */}
+                {bottomToolbarApi.activeTool === 'eraser' && bottomToolbarApi.setEraserMode && (
+                  <div className="chrome-divider" />
+                )}
                 {/* 2026-05-25: Eraser hides the color swatch entirely — only
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
@@ -2313,8 +2212,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
                     style={{
-                      width: 'var(--chrome-field-h)',
-                      height: 'var(--chrome-field-h)',
+                      width: 'var(--chrome-colour-btn)',
+                      height: 'var(--chrome-colour-btn)',
                       padding: 0,
                       borderRadius: '50%',
                       border: 'none',
@@ -2334,11 +2233,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     />
                   </button>
                 ) : bottomToolbarApi.contextTool === 'counter' && bottomToolbarApi.handleFillColorChange ? (
-                  /* 2026-05-25: Counter swatch — a literal preview of the pin.
-                     Background disc = fill colour (pin colour), the centred
-                     "1" = stroke colour (number colour). Updates live as the
-                     user picks colours so they always see what the next pin
-                     will look like, instead of an abstract ring + disc. */
+                  /* PASS 7 (board 11, owner ruling "the counter icon is the
+                     app's real pin, NEVER a circle"): the counter's colour
+                     control IS a pin — the owner's own traced pin shape filled
+                     with the pin colour, carrying the number in the number
+                     colour. It was a round disc with a "1" on it, which showed
+                     both colours truthfully but drew a shape the app never
+                     draws. Both colours still update live, so the button is
+                     always a preview of the next pin. */
                   <button
                     data-annotation-color-trigger
                     onClick={() => {
@@ -2347,14 +2249,13 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
                     style={{
-                      width: 'var(--chrome-field-h)',
-                      height: 'var(--chrome-field-h)',
+                      width: 'var(--chrome-colour-btn)',
+                      height: 'var(--chrome-colour-btn)',
                       padding: 0,
-                      borderRadius: '50%',
                       border: 'none',
+                      background: 'transparent',
                       boxSizing: 'border-box',
                       position: 'relative',
-                      overflow: 'hidden',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -2363,22 +2264,21 @@ export default function App({ devPreviewReturnTab = null }) {
                     {...chromeTip('Counter colors', 'below')}
                     aria-label="Counter colors"
                   >
-                    <span
-                      className="ctx-color-fill"
-                      style={{
-                        background: bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
-                      }}
-                    />
-                    <span style={{
-                      position: 'relative',
-                      zIndex: 2,
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      lineHeight: 1,
-                      color: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
-                      fontFamily: FONT_FAMILY,
-                      pointerEvents: 'none'
-                    }}>1</span>
+                    {(() => {
+                      const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+                      const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+                      return (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          {/* The traced pin from src/assets/icons/counter.svg, on
+                              the house 24 grid: 67 units of stroke inside a
+                              0.0224 group resolves to the house 1.5. */}
+                          <g transform="translate(1.6 1.6) scale(0.0224)">
+                            <path d="M16.64 14.53C32.51 16.06 48.52 16.04 64.42 17.17C84.3 18.58 104.24 19.47 124.15 20.54C172.46 23.14 221 24.9 269.21 28.79C311.2 32.18 353.46 32.81 395.47 35.77C437.49 38.73 479.63 39.7 521.62 43C562.5 46.22 604.72 56.56 642.66 72C785.02 129.91 889.46 257.4 913.66 410.03C920.35 452.22 920.36 494.92 915.01 537.24C910.4 573.68 901 610.28 886.95 644.23C866.32 694.11 836.9 740.48 799.81 779.75C766.71 814.79 728.26 842.48 686.57 866.19C659.41 881.64 629.18 892.19 599.35 900.86C567.56 910.1 535.15 914.56 502.15 916.64C334.46 927.2 173.19 832.76 94.22 686.11C70.5 642.04 55.77 594.61 47.28 545.43C41.58 512.41 41.99 478.36 39.82 444.99C35.52 379.05 33.34 312.95 28.8 247.02C25.11 193.32 22.63 139.51 19.72 85.75C18.82 69.26 17.52 52.77 16.94 36.26C16.7 29.6 14.39 20.75 16.64 14.53Z" fill={pinColour} stroke={pinColour} strokeWidth="67" strokeLinejoin="round" />
+                            <text x="478" y="640" textAnchor="middle" fill={numberColour} fontFamily={FONT_FAMILY} fontWeight="800" fontSize="430">1</text>
+                          </g>
+                        </svg>
+                      );
+                    })()}
                   </button>
                 ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
                   /* 2026-05-25: Border + fill swatch. Checker shows through
@@ -2400,8 +2300,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
                     style={{
-                      width: 'var(--chrome-field-h)',
-                      height: 'var(--chrome-field-h)',
+                      width: 'var(--chrome-colour-btn)',
+                      height: 'var(--chrome-colour-btn)',
                       padding: 0,
                       borderRadius: '50%',
                       border: `2px solid ${bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)}`,
@@ -2422,6 +2322,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     />
                   </button>
                 ) : null}
+
+                {/* PASS 7 (boards 8-12): the rule between the COLOUR group and
+                    the value pills. The bar reads colour | rule | numbers, so a
+                    glance separates "what it looks like" from "how big it is". */}
+                {showsColorSwatch(bottomToolbarApi) && <div className="chrome-divider" />}
 
                 {!bottomToolbarApi.richTextEditor
                   && bottomToolbarApi.contextTool === 'counter'
@@ -2444,45 +2349,24 @@ export default function App({ devPreviewReturnTab = null }) {
                             setCounterSeriesContextMenu(null);
                           },
                         }}
-                        triggerContent={(
-                          <>
-                          <span style={{
-                            width: '10px',
-                            height: '10px',
-                            borderRadius: '50%',
-                            background: activeSeries?.color || bottomToolbarApi.fillColor || '#ef4444',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            flexShrink: 0,
-                          }} />
-                          <span>{seriesLabel}</span>
-                          </>
-                        )}
-                        contentWidth="180px"
+                        /* PASS 7 (boards 11 + 15, owner ruling): the series pill
+                           is WORDS ONLY. The coloured dot that used to lead it
+                           said the same thing as the pin swatch two controls to
+                           its left, and a 10px dot in an 80px pill was the
+                           smallest thing in the bar. */
+                        triggerContent={seriesLabel}
+                        width="var(--chrome-field-w-series)"
+                        contentWidth="var(--chrome-field-w-series)"
                         dataMarker="data-counter-series-menu"
                         outsideBoundarySelector="[data-counter-series-context-menu]"
                       >
                           <div className="annotation-dropdown__body">
-                            <button
-                              className="annotation-dropdown__option"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                bottomToolbarApi.onNewCounterSeries();
-                                setShowCounterSeriesMenu(false);
-                              }}
-                            >
-                              + New Count
-                            </button>
-                            {seriesList.length > 0 && (
-                              <div style={{
-                                padding: '6px 8px 4px',
-                                color: 'var(--text-3)',
-                                fontSize: '10px',
-                                textTransform: 'uppercase',
-                                fontWeight: 600,
-                              }}>
-                                Continue Count
-                              </div>
-                            )}
+                            {/* PASS 7 (board 15): the counts the user already
+                                has come first and "New count" closes the list —
+                                continuing a count is the common act, starting
+                                one is the exception. The "CONTINUE COUNT"
+                                caption that used to split them is gone: three
+                                words of chrome above three words of content. */}
                             {seriesList.map((series) => {
                               const isActive = series.seriesId === bottomToolbarApi.activeCounterSeriesId;
                               return (
@@ -2530,19 +2414,29 @@ export default function App({ devPreviewReturnTab = null }) {
                                     });
                                   }}
                                 >
-                                  <span style={{
-                                    width: '10px',
-                                    height: '10px',
-                                    borderRadius: '50%',
-                                    background: series.color,
-                                    border: '1px solid rgba(255,255,255,0.15)',
-                                    flexShrink: 0,
-                                  }} />
+                                  {/* PASS 7 (board 15, owner ruling): the series
+                                      menu is WORDS ONLY — the dot and the pin
+                                      tally are gone from the row. How many pins
+                                      a count holds is still announced to a
+                                      screen reader through aria-label above. */}
                                   <span style={{ flex: 1 }}>{series.label}</span>
-                                  <span style={{ fontSize: '10px', color: 'var(--text-3)' }}>{series.count}</span>
                                 </button>
                               );
                             })}
+                            <button
+                              className="annotation-dropdown__option"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                bottomToolbarApi.onNewCounterSeries();
+                                setShowCounterSeriesMenu(false);
+                              }}
+                            >
+                              {/* Board 15: a plus glyph, not a "+" typed into
+                                  the label, so the row matches every other
+                                  drawing-then-words row in the chrome. */}
+                              <Icon name="plus" size={13} color="currentColor" />
+                              New count
+                            </button>
                           </div>
                         {showCounterSeriesMenu && counterSeriesContextMenu && typeof document !== 'undefined' && createPortal((
                           <div
@@ -2752,40 +2646,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   </>
                 )}
 
-                {bottomToolbarApi.activeTool === 'eraser' && bottomToolbarApi.setEraserMode && (
-                  <AnnotationDropdown
-                    open={showEraserTypeMenu}
-                    onOpenChange={setShowEraserTypeMenu}
-                    label="Eraser type"
-                    value={bottomToolbarApi.eraserMode}
-                    options={[
-                      { value: 'partial', label: 'Partial erase' },
-                      { value: 'entire', label: 'Full stroke erase' },
-                    ]}
-                    onSelect={bottomToolbarApi.setEraserMode}
-                    contentWidth="150px"
-                    dataMarker="data-eraser-type-menu"
-                  />
-                )}
-
-                {/* UX 2026-09-17 (owner): the three default line widths, drawn
-                    as real lines at the weight they apply, standing
-                    immediately to the LEFT of the field that takes any other
-                    number and the dropdown that lists the rest. Pressing one
-                    commits it exactly as typing it into the field and pressing
-                    Enter does — armed tool and selected mark both. They are
-                    members of the field's own preset list, so the dropdown
-                    shows the pressed width as its selected row. */}
-                {showsQuickWidths(bottomToolbarApi) && (
-                  <QuickWidthPresets
-                    value={bottomToolbarApi.strokeWidthInputValue}
-                    onPick={(width) => {
-                      const value = String(width);
-                      bottomToolbarApi.handleStrokeWidthInputChange?.({ target: { value } });
-                      bottomToolbarApi.handleStrokeWidthInputBlur?.({ currentTarget: { value } });
-                    }}
-                  />
-                )}
+                {/* PASS 7 (owner ruling): the WIDTH is a dropdown only — the
+                    three quick width chips that used to stand to the left of
+                    the field are gone, and so is the typed field itself. A
+                    width is a pill showing the stroke it will draw, the value
+                    with its unit, and a chevron onto the list. */}
 
                 {(bottomToolbarApi.contextTool === 'pen'
                   || bottomToolbarApi.contextTool === 'highlighter'
@@ -2842,6 +2707,33 @@ export default function App({ devPreviewReturnTab = null }) {
                   }}
                   open={openAnnotationDropdown === 'size'}
                   onOpenChange={(open) => setDropdownOpen('size', open)}
+                  // PASS 7 (boards 8-13, owner ruling "width is a dropdown
+                  // ONLY"): the pill presentation. Every numeric setting in the
+                  // bar carries its unit, so "2" reads "2 pt". The line width
+                  // leads with a stroke drawn at the weight it will paint; the
+                  // eraser leads with a dot, because what it sets is the size of
+                  // a round rubber; the counter's pin size leads with nothing,
+                  // because a pin has no line to preview.
+                  variant="pill"
+                  unit="pt"
+                  width="var(--chrome-field-w)"
+                  preview={bottomToolbarApi.activeTool === 'eraser' ? (
+                    <span
+                      aria-hidden="true"
+                      style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor' }}
+                    />
+                  ) : bottomToolbarApi.contextTool === 'counter' ? null : (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: 'block',
+                        width: '12px',
+                        height: 0,
+                        borderTop: `${Math.max(1, Math.min(6, Math.round(Number(bottomToolbarApi.strokeWidthInputValue) || 1)))}px solid currentColor`,
+                        borderRadius: '1px',
+                      }}
+                    />
+                  )}
                 />
                 )}
                 {bottomToolbarApi.contextTool === 'counter'
@@ -2916,20 +2808,34 @@ export default function App({ devPreviewReturnTab = null }) {
                     what will be drawn. Polygon and polyline read the same
                     picker because they are stroked shapes like line and rect. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
+                  (() => {
+                  const styleValue = bottomToolbarApi.lineBorderStyle === 'cloud' && !bottomToolbarApi.supportsCloudStyle ? 'solid' : bottomToolbarApi.lineBorderStyle;
+                  return (
                   <AnnotationDropdown
                     open={showStyleMenu}
                     onOpenChange={setShowStyleMenu}
                     label="Style"
-                    value={bottomToolbarApi.lineBorderStyle === 'cloud' && !bottomToolbarApi.supportsCloudStyle ? 'solid' : bottomToolbarApi.lineBorderStyle}
-                    options={[
-                      { value: 'solid', label: 'Solid' },
-                      { value: 'dashed', label: 'Dashed' },
-                      { value: 'dotted', label: 'Dotted' },
-                      ...(bottomToolbarApi.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
-                    ]}
+                    value={styleValue}
+                    options={LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle)}
                     onSelect={bottomToolbarApi.setLineBorderStyle}
                     dataMarker="data-style-menu"
+                    /* PASS 7 (boards 9-12 + 15): the pill shows the LINE it
+                       will draw, then names it; every row in its menu is the
+                       same drawing at the menu's 24px sample width. */
+                    preview={<Icon name={LINE_STYLE_SAMPLE_ICONS[styleValue] || 'lineSampleSolid'} size={18} color="currentColor" />}
+                    renderOption={(option) => (
+                      <>
+                        <span className="annotation-dropdown__sample" aria-hidden="true">
+                          <Icon name={LINE_STYLE_SAMPLE_ICONS[option.value]} size={24} color="currentColor" />
+                        </span>
+                        <span>{option.label}</span>
+                      </>
+                    )}
+                    width="var(--chrome-field-w-style)"
+                    contentWidth="var(--chrome-field-w-style)"
                   />
+                  );
+                  })()
                 )}
                 {/* 2026-05-25: Bump number input — shows only when the border
                     style is Cloud, on the same shapes that offer Cloud at all
@@ -2979,56 +2885,84 @@ export default function App({ devPreviewReturnTab = null }) {
                     option at once (native select scrolls / picks its own
                     direction). Callouts have their own arrowhead end so the
                     same picker drives both. */}
-                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (
+                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
+                  const live = bottomToolbarApi.arrowheadStyle;
+                  const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
+                    ? ARROWHEAD_MENU_OPTIONS
+                    : [{ value: live, label: ARROWHEAD_STYLE_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
+                  const iconFor = (value) => options.find((option) => option.value === value)?.icon || 'arrowheadSolid';
+                  return (
                   <AnnotationDropdown
                     open={showArrowheadMenu}
                     onOpenChange={setShowArrowheadMenu}
                     label="Arrowhead"
-                    value={bottomToolbarApi.arrowheadStyle}
-                    options={Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
+                    value={live}
+                    options={options}
                     onSelect={bottomToolbarApi.setArrowheadStyle}
-                    contentWidth="170px"
                     dataMarker="data-arrowhead-menu"
+                    /* PASS 7 (boards 10 + 15): the pill draws the head it will
+                       put on the line, and each row draws its own. */
+                    preview={<Icon name={iconFor(live)} size={15} color="currentColor" />}
+                    renderOption={(option) => (
+                      <>
+                        <span className="annotation-dropdown__sample" aria-hidden="true">
+                          <Icon name={option.icon} size={16} color="currentColor" />
+                        </span>
+                        <span>{option.label}</span>
+                      </>
+                    )}
+                    width="var(--chrome-field-w-arrowhead)"
+                    contentWidth="var(--chrome-field-w-arrowhead)"
                   />
-                )}
-                {/* UX (owner, 2026-09-02): "Both ends" — mirrors the picked
-                    ending onto the start of the arrow. One picker + a toggle
-                    instead of two pickers: double-headed arrows are common in
-                    survey markup, mismatched ends are rare, and the toolbar
-                    stays compact. Arrow tool only (callouts have one end).
-                    Visual (design review 2026-09-04): the glyph comes from the
-                    shared icon set (24-grid, 1.5 stroke, round joins) at the
-                    same optical size as its neighbours, inside the same
-                    24px trigger chrome as the Arrowhead dropdown — no bespoke
-                    unicode arrow. */}
-                {bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.setArrowBothEnds && (
-                  <button
-                    type="button"
-                    onClick={() => bottomToolbarApi.setArrowBothEnds(!bottomToolbarApi.arrowBothEnds)}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    style={{
-                      height: 'var(--chrome-field-h)',
-                      width: '28px',
-                      padding: 0,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      // UX 2026-09-17 (owner ruling): on = gold glyph, nothing else.
-                      // The old rgba(216,168,78,.18) wash is the banned gold-brown.
-                      background: 'var(--surface-3)',
-                      color: bottomToolbarApi.arrowBothEnds ? 'var(--accent)' : 'var(--text-2)',
-                      border: '1px solid transparent',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      lineHeight: 1,
+                  );
+                })()}
+                {/* PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is a
+                    dropdown of three — End, Both, None — replacing the "both
+                    ends" on/off button. A toggle could only say "both or not",
+                    so "no head at all" had to be found in the Arrowhead list
+                    instead; the three ends now sit together in one control, with
+                    the identical glyphs the phone's arrow sheet shows. Arrow
+                    tool only (a callout has one end). */}
+                {bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.setArrowBothEnds && (() => {
+                  const endsValue = bottomToolbarApi.arrowheadStyle === 'none'
+                    ? 'none'
+                    : (bottomToolbarApi.arrowBothEnds ? 'both' : 'end');
+                  const iconFor = (value) => ARROW_ENDS_OPTIONS.find((option) => option.value === value)?.icon || 'moveRight';
+                  return (
+                  <AnnotationDropdown
+                    open={showArrowEndsMenu}
+                    onOpenChange={setShowArrowEndsMenu}
+                    label="Arrow ends"
+                    value={endsValue}
+                    options={ARROW_ENDS_OPTIONS}
+                    onSelect={(next) => {
+                      if (next === 'none') {
+                        bottomToolbarApi.setArrowheadStyle?.('none');
+                        return;
+                      }
+                      // Coming back from None: the line needs a head again
+                      // before "which ends" can mean anything, so restore the
+                      // default solid head the boards show.
+                      if (bottomToolbarApi.arrowheadStyle === 'none') {
+                        bottomToolbarApi.setArrowheadStyle?.('solidTriangle');
+                      }
+                      bottomToolbarApi.setArrowBothEnds(next === 'both');
                     }}
-                    {...chromeTip(bottomToolbarApi.arrowBothEnds ? 'Arrowhead on both ends (on)' : 'Put the arrowhead on both ends', 'below')}
-                    aria-label="Arrowhead on both ends"
-                    aria-pressed={!!bottomToolbarApi.arrowBothEnds}
-                  >
-                    <Icon name="arrowBothEnds" size={CHROME_FIELD_GLYPH} color="currentColor" />
-                  </button>
-                )}
+                    dataMarker="data-arrow-ends-menu"
+                    preview={<Icon name={iconFor(endsValue)} size={15} color="currentColor" />}
+                    renderOption={(option) => (
+                      <>
+                        <span className="annotation-dropdown__sample" aria-hidden="true">
+                          <Icon name={option.icon} size={16} color="currentColor" />
+                        </span>
+                        <span>{option.label}</span>
+                      </>
+                    )}
+                    width="var(--chrome-field-w-ends)"
+                    contentWidth="var(--chrome-field-w-ends)"
+                  />
+                  );
+                })()}
                 {/* 2026-05-25: Rich-text edit entry button. Only renders when
                     the user is on the text box / callout tool or has one of
                     those selected. Disabled when nothing editable is picked.

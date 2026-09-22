@@ -41,6 +41,14 @@ export default function AnnotationSizeControl({
   className = '',
   open: controlledOpen,
   onOpenChange,
+  // PASS 7 (owner ruling, boards 8-15): on the desktop chrome a size is a
+  // DROPDOWN ONLY — a pill showing what it will draw, the value with its unit,
+  // and a chevron. `variant="pill"` is that presentation; the default keeps the
+  // typed field for callers that still need one (the phone strip owns its own).
+  variant = 'field',
+  unit = '',
+  width,
+  preview,
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
@@ -137,8 +145,32 @@ export default function AnnotationSizeControl({
     },
   };
 
+  const isPill = variant === 'pill';
+  const valueLabel = `${valueText}${unit ? ` ${unit}` : ''}`;
+
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      {isPill ? (
+        <div className={`annotation-size-control annotation-size-control--pill ${className}`.trim()} data-annotation-size-control="true">
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              className="chrome-pill annotation-size-control__pill"
+              aria-label={`${label}: ${valueLabel}`}
+              title={label}
+              aria-haspopup="listbox"
+              disabled={disabled}
+              style={width ? { '--chrome-pill-w': width } : undefined}
+            >
+              {preview ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
+              <span className="chrome-pill__label">{valueLabel}</span>
+              <span className="chrome-pill__chevron" aria-hidden="true">
+                <Icon name="chevronDown" size={9} color="currentColor" />
+              </span>
+            </button>
+          </Popover.Trigger>
+        </div>
+      ) : (
       <div className={`annotation-size-control ${className}`.trim()} data-annotation-size-control="true">
         <input {...inputProps} maxLength={allowsDecimals ? 4 + decimals : 3} aria-label={label} />
         <Popover.Trigger asChild>
@@ -158,15 +190,19 @@ export default function AnnotationSizeControl({
           </button>
         </Popover.Trigger>
       </div>
+      )}
       <Popover.Portal>
         <Popover.Content
           className="annotation-size-control__popover"
           data-annotation-size-popover="true"
-          align="center"
+          align={isPill ? 'start' : 'center'}
           sideOffset={6}
           collisionPadding={8}
+          style={isPill && width ? { '--chrome-menu-field-w': width } : undefined}
         >
-          <div className="annotation-size-control__heading">{label}</div>
+          {/* PASS 7 (board 15): rows only — the pill above already names the
+              control, so a title row inside the menu was a second thing to read
+              in a 36px chrome. */}
           <div className="annotation-size-control__presets" role="listbox" aria-label={`${label} presets`}>
             {availablePresets.map((preset, index) => {
               const active = Number(valueText) === preset;
@@ -195,12 +231,13 @@ export default function AnnotationSizeControl({
                       }}
                     />
                   </span>
-                  <span className="annotation-size-control__preset-value">{preset}</span>
+                  <span className="annotation-size-control__preset-value">
+                    {preset}{unit ? ` ${unit}` : ''}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <Popover.Arrow className="annotation-size-control__arrow" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

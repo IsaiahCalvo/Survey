@@ -28,6 +28,13 @@ export default function AnnotationDropdown({
   dataMarker,
   preserveFocus = false,
   outsideBoundarySelector,
+  // PASS 7 (boards 8-15): a setting pill is a PREVIEW, a value and a chevron.
+  // `preview` is the drawing on the left (a stroke sample, an arrowhead, a
+  // line style); `width` is the pill's own width token so every pill of the
+  // same kind measures the same across tools. A caller that passes neither
+  // still gets the old single-slot trigger.
+  preview,
+  width,
 }) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const optionRefs = useRef([]);
@@ -75,11 +82,12 @@ export default function AnnotationDropdown({
           <button
             ref={triggerRef}
             type="button"
-            className="annotation-dropdown__trigger"
+            className="chrome-pill annotation-dropdown__trigger"
             aria-label={label}
             title={label}
             disabled={disabled}
             {...triggerProps}
+            style={width ? { '--chrome-pill-w': width, ...(triggerProps.style || {}) } : triggerProps.style}
             onMouseDown={(event) => {
               triggerProps.onMouseDown?.(event);
               if (preserveFocus) {
@@ -90,10 +98,15 @@ export default function AnnotationDropdown({
               }
             }}
           >
-            <span className="annotation-dropdown__trigger-content">
+            {preview ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
+            <span className="chrome-pill__label annotation-dropdown__trigger-content">
               {triggerContent ?? options.find((option) => option.value === value)?.label ?? value}
             </span>
-            <Icon name="chevronDown" size={10} color="currentColor" className="annotation-dropdown__chevron" />
+            {/* Board 15: the pill's chevron is 9px — smaller than a tool glyph,
+                because it only has to say "there is a list behind this". */}
+            <span className="chrome-pill__chevron annotation-dropdown__chevron" aria-hidden="true">
+              <Icon name="chevronDown" size={9} color="currentColor" />
+            </span>
           </button>
         </Popover.Trigger>
       </div>
@@ -145,7 +158,10 @@ export default function AnnotationDropdown({
             if (outsideBoundarySelector && event.target?.closest?.(outsideBoundarySelector)) event.preventDefault();
           }}
         >
-          <div className="annotation-dropdown__heading">{label}</div>
+          {/* PASS 7 (board 15): a menu is rows and nothing else — no title row,
+              no pointer arrow. The control it opens from already says what it
+              is, and the chrome is 36px tall, so a second label was a second
+              thing to read. The accessible name lives on the listbox. */}
           {children ?? (
             <div className="annotation-dropdown__options" role="listbox" aria-label={label}>
               {options.map((option, index) => {
@@ -185,7 +201,6 @@ export default function AnnotationDropdown({
               })}
             </div>
           )}
-          <Popover.Arrow className="annotation-dropdown__arrow" />
         </Popover.Content>
       )}
     </Popover.Root>

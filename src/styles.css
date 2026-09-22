@@ -34,21 +34,45 @@
      would touch. 4px is the smallest gap that keeps a visible gutter.
      Any control added to the chrome later should take these tokens rather
      than inventing a number. */
-  --chrome-control-h: 34px;        /* top-bar icon button height (Drawboard: 34) */
-  --chrome-control-w: 34px;        /* top-bar icon button width — square, as Drawboard */
-  --chrome-control-split-w: 40px;  /* icon + caret (the Select mode button) */
-  --chrome-sub-control-h: 32px;    /* tool sub-row button, inside the 34px strip */
-  --chrome-sub-control-w: 34px;
-  --chrome-glyph: 18px;            /* every chrome control glyph (Drawboard: 18) */
-  --chrome-field-glyph: 14px;      /* glyph inside a 24px value chip */
-  --chrome-gap: 4px;               /* gap between neighbouring chrome controls */
+  /* PASS 7 (owner-approved artboards 8-15, 2026-09-21). The desktop document
+     chrome is THREE bars of 36px: the tool bar, the armed group's sub-tool row,
+     and the text-formatting row that only a text box or callout shows. Inside a
+     bar: a 28px tool button with a 16px glyph, a 2px gutter between buttons in a
+     group, an 8px inset either side of a group rule, and 20px-tall setting pills
+     with a 6px gutter between them. Every number below is read off the boards;
+     no control in the chrome may write its own. */
+  --chrome-bar-h: 36px;            /* every desktop chrome bar (boards 8-14) */
+  --chrome-control-h: 28px;        /* tool button (board: 28) */
+  --chrome-control-w: 28px;        /* square, as the boards draw it */
+  --chrome-control-split-w: 28px;  /* pass 7: Select lost its caret, so it is square too */
+  --chrome-sub-control-h: 28px;    /* sub-tool row button — same button, second bar */
+  --chrome-sub-control-w: 28px;
+  --chrome-glyph: 16px;            /* every chrome tool glyph (board: 16) */
+  --chrome-field-glyph: 14px;      /* glyph inside a setting pill */
+  --chrome-gap: 6px;               /* gutter between setting pills (board: 6) */
+  --chrome-tool-gap: 2px;          /* gutter between tool buttons in a group (board: 2) */
+  --chrome-divider-h: 16px;        /* the group rule's own height (board: 16) */
+  --chrome-divider-inset: 8px;     /* clear space either side of a group rule (board: 8) */
   --chrome-radius: 6px;
-  --chrome-field-h: 24px;          /* value chips: colour, width, line style (Drawboard: 24) */
-  --chrome-field-w: 76px;          /* the width control and the line-style dropdown are ONE size */
-  --chrome-field-trigger-w: 24px;  /* the width control's preset-list trigger */
-  --chrome-field-pad-x: 6px;
-  --chrome-menu-w: 126px;          /* dropdown popover width */
-  --chrome-menu-row-h: 34px;       /* dropdown popover row height */
+  --chrome-colour-btn: 22px;       /* colour disc button (board: 22) */
+  --chrome-colour-gap: 4px;        /* gutter inside the colour group (board: 4) */
+  --chrome-field-h: 20px;          /* setting pill height (board: 20) */
+  --chrome-field-radius: 10px;     /* setting pill radius (board: 10) */
+  --chrome-field-w: 72px;          /* width / size pill (board: 72) */
+  --chrome-field-w-style: 92px;    /* line-style pill */
+  --chrome-field-w-arrowhead: 90px;/* arrowhead pill */
+  --chrome-field-w-ends: 96px;     /* arrow-ends pill */
+  --chrome-field-w-series: 80px;   /* counter-series pill */
+  --chrome-field-w-font: 104px;    /* font-name pill (board 12) */
+  --chrome-field-w-fontsize: 62px; /* font-size pill (board 12) */
+  --chrome-text-toggle-w: 22px;    /* B / I / U / S and an alignment button */
+  --chrome-field-pad-x: 6px;       /* pill inset on the chevron side */
+  --chrome-field-pad-l: 8px;       /* pill inset on the preview side */
+  --chrome-field-trigger-w: 20px;  /* the size pill's own chevron column */
+  --chrome-menu-pad: 5px;          /* equal padding on all four sides of a menu */
+  --chrome-menu-row-h: 26px;       /* menu row height (board 15: 26) */
+  --chrome-menu-sample-w: 24px;    /* the sample drawn at the head of a menu row */
+  --chrome-menu-w: 126px;          /* fallback width for a menu with no field of its own */
 
   /* UX 2026-09-16 (desktop sweep): the RAIL tier — the left document rail and
      the right Survey rail. One control box and one glyph size per kind, so a
@@ -334,6 +358,155 @@
   min-width: var(--chrome-sub-control-w);
   height: var(--chrome-sub-control-h);
   min-height: var(--chrome-sub-control-h);
+}
+
+/* PASS 7 (boards 8-15): the rule between two tool groups. It is a 1px hairline
+   16px tall with 8px of clear space either side — the one break in a bar that
+   otherwise runs on a 2px gutter. Intended UX: the eye reads "these belong
+   together, those are something else" without the bar looking like two
+   toolbars pushed together. Both numbers come from the tokens above so a bar
+   can never write its own. */
+.chrome-divider {
+  width: 1px;
+  height: var(--chrome-divider-h);
+  margin: 0 var(--chrome-divider-inset);
+  background: var(--border-strong);
+  flex: 0 0 auto;
+}
+
+/* PASS 7 (boards 8-15): a SETTING PILL — the one shape every value control in
+   the chrome takes (width, line style, arrowhead, arrow ends, counter series,
+   size, font, font size). 20px tall, 10px radius, a preview on the left, the
+   value left-aligned beside it, a 9px chevron on the right. Width comes from
+   the caller's own token so pills of the same kind line up across tools.
+   Intended UX (owner ruling 2026-09-17): a value control never shows a bare
+   line or a bare number — it shows what it will draw, then says what it is. */
+.chrome-pill {
+  width: var(--chrome-pill-w, var(--chrome-field-w));
+  min-width: var(--chrome-pill-w, var(--chrome-field-w));
+  height: var(--chrome-field-h);
+  padding: 0 var(--chrome-field-pad-x) 0 var(--chrome-field-pad-l);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chrome-gap);
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  color: var(--text-2);
+  background: var(--surface-3);
+  border: 0;
+  border-radius: var(--chrome-field-radius);
+  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+
+/* Hover is a SURFACE STEP, never a gold wash (owner ruling 2026-09-17). */
+.chrome-pill:hover,
+.chrome-pill[data-state='open'] {
+  color: var(--text-1);
+  background: var(--border-strong);
+}
+
+.chrome-pill:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.chrome-pill:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chrome-pill__preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.chrome-pill__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.chrome-pill__chevron {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  line-height: 0;
+}
+
+/* PASS 7 (board 12): a text-formatting toggle — B / I / U / S and the six
+   alignment buttons. 22x20 on no fill; pressed = gold glyph only, per the owner's
+   selected-state ruling. Hover is a surface step. */
+.chrome-text-toggle {
+  width: var(--chrome-text-toggle-w);
+  min-width: var(--chrome-text-toggle-w);
+  height: var(--chrome-field-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--chrome-radius);
+  cursor: pointer;
+}
+
+.chrome-text-toggle:hover {
+  background: var(--hover);
+}
+
+.chrome-text-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* PASS 7 (boards 13, 14): a SEGMENTED TOGGLE — Partial/Whole on the eraser and
+   Box/Lasso/Text on Select. One quiet well, and the chosen segment is marked by
+   its word and glyph turning gold on a single surface step. Owner ruling: no
+   raised thumb, no gold fill, no border. */
+.chrome-segmented {
+  height: var(--chrome-field-h);
+  padding: 2px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border-radius: var(--chrome-field-radius);
+}
+
+.chrome-segmented > button {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chrome-segmented > button:hover {
+  color: var(--text-1);
+  background: var(--hover);
+}
+
+.chrome-segmented > button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--surface-3);
 }
 
 .survey-marker-name-fit {

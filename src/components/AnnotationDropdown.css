@@ -5,63 +5,29 @@
   font-family: Helvetica, Arial, sans-serif;
 }
 
-/* UX 2026-09-16 (desktop sizing pass): the line-style dropdown and the Width
-   control are ONE size — same width, height, horizontal inset, radius and
-   font. They sit side by side and the owner could see they differed (72px vs
-   69px wide). Both read --chrome-field-w / --chrome-field-h from styles.css.
-   This is a MIN width, not a fixed one, so the longer-labelled dropdowns that
-   share this component (Arrowhead, Eraser type) still fit their text; the
-   line-style labels (Solid / Dashed / Dotted / Cloud) all sit inside the
-   shared width, so that dropdown lands exactly on it. */
-.annotation-dropdown__trigger {
-  min-width: var(--chrome-field-w, 76px);
-  height: var(--chrome-field-h, 24px);
-  padding: 0 var(--chrome-field-pad-x, 6px);
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  color: var(--text-2);
-  background: var(--surface-3);
-  border: 1px solid transparent;
-  border-radius: 5px;
-  box-sizing: border-box;
-  font: 600 12px/22px Helvetica, Arial, sans-serif;
-  cursor: pointer;
-}
-
-.annotation-dropdown__trigger:hover,
-.annotation-dropdown__trigger[data-state='open'] {
-  color: var(--text-1);
-  background: var(--border-strong);
-}
-
-.annotation-dropdown__trigger:focus-visible {
-  border-color: var(--accent);
-  outline: 0;
-}
-
+/* PASS 7 (boards 8-15): every trigger this component renders IS a setting pill
+   — the shared .chrome-pill in styles.css owns its box (20px tall, 10px radius,
+   surface-3, preview + value + chevron) and the caller passes the pill's own
+   width token. What stays here is only what belongs to a DROPDOWN rather than
+   to a pill. */
 .annotation-dropdown__trigger-content {
-  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.annotation-dropdown__chevron {
-  flex: 0 0 auto;
-  color: var(--text-3);
 }
 
 .annotation-dropdown__popover {
-  width: var(--annotation-dropdown-width, max-content);
-  min-width: var(--chrome-menu-w, 126px);
+  /* PASS 7: a menu is as wide as the field it opens from. The caller passes its
+     field's own width token; the menu never comes out NARROWER than that, and it
+     only ever grows when a row's own text would not otherwise fit (the Width
+     list reaches "50 pt"). */
+  min-width: var(--annotation-dropdown-width, var(--chrome-menu-w, 126px));
+  width: max-content;
   max-width: min(280px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 24px));
-  padding: 5px;
+  /* Board 15: equal 5px padding on all four sides. */
+  padding: var(--chrome-menu-pad, 5px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -74,7 +40,8 @@
      so it separates from whatever is behind it. */
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  /* Board 15: 9px on the menu card, against the 10px pill it opens from. */
+  border-radius: 9px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
   font-family: Helvetica, Arial, sans-serif;
   z-index: 6500;
@@ -84,50 +51,52 @@
   animation: annotation-dropdown-in 140ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.annotation-dropdown__heading {
-  flex: 0 0 auto;
-  padding: 7px 9px 8px;
-  color: var(--text-3);
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.065em;
-  text-transform: uppercase;
-}
-
 .annotation-dropdown__options,
 .annotation-dropdown__body {
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 4px 0;
 }
 
 .annotation-dropdown__options > button,
 .annotation-dropdown__option {
   width: 100%;
-  /* UX 2026-09-16: one popover row height and one row inset across both
-     dropdowns — see AnnotationSizeControl.css.
+  /* PASS 7 (board 15): one 26px menu row across every dropdown in the chrome.
      The literal below is declared FIRST and kept on purpose:
      tests/annotationDropdownUniformity.test.mjs reads this file as text and
-     guards `min-height: 34px`. The token declaration after it wins in the
+     guards `min-height: 26px`. The token declaration after it wins in the
      cascade, so the shared --chrome-menu-row-h is what actually drives the
      row and the two can never drift apart. */
-  min-height: 34px;
-  min-height: var(--chrome-menu-row-h, 34px);
-  padding: 4px 9px;
+  min-height: 26px;
+  min-height: var(--chrome-menu-row-h, 26px);
+  padding: 0 6px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text-2);
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   box-sizing: border-box;
-  font: 600 12px/1.2 Helvetica, Arial, sans-serif;
+  font: 500 11.5px/1 Helvetica, Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
   text-align: left;
   cursor: pointer;
+}
+
+/* Board 15: a row that leads with a drawing gives it a fixed 24px column, so the
+   words line up under each other whatever the sample is. */
+.annotation-dropdown__sample {
+  width: var(--chrome-menu-sample-w, 24px);
+  min-width: var(--chrome-menu-sample-w, 24px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  line-height: 0;
 }
 
 .annotation-dropdown__options > button:hover,
@@ -139,15 +108,20 @@
   outline: 0;
 }
 
+/* PASS 7 (board 15, owner ruling): the CURRENT row is gold text and nothing
+   else — no tick, no fill, no gold edge. The pill above already shows the
+   current value, so the row only has to agree with it. */
 .annotation-dropdown__options > button.is-active,
 .annotation-dropdown__option.is-active {
   color: var(--accent);
-  background: var(--surface-3);
-  box-shadow: inset 2px 0 var(--accent);
+  background: transparent;
+  box-shadow: none;
 }
 
-/* The arrow continues the panel's own edge, so it takes that edge's token. */
-.annotation-dropdown__arrow { fill: var(--border-strong); }
+.annotation-dropdown__options > button.is-active:hover,
+.annotation-dropdown__option.is-active:hover {
+  background: var(--hover);
+}
 
 @keyframes annotation-dropdown-in {
   from { opacity: 0; transform: translateY(-5px) scale(0.98); }
