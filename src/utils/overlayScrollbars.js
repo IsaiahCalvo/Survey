@@ -27,7 +27,13 @@
        never swallow a click meant for a row;
      * a container whose content fits shows NOTHING. Ever. (The owner hit the
        opposite: a one-row file list painting a full-height bar.)
-     * it appears on scroll, holds 600ms after the last scroll, then fades. */
+     * it appears on scroll, holds 600ms after the last scroll, then fades.
+
+   ONE ACCEPTED LOOSE END: a list that is unmounted AFTER its thumb has already
+   faded (switching tabs, say) leaves that thumb in the body at opacity 0 until
+   the next scroll anywhere, which sweeps it. It is invisible and
+   `pointer-events: none`, and catching it sooner would mean a MutationObserver
+   or a standing timer for something nobody can see. */
 
 import { getViewportScrollbarAxis } from './pdfViewportScrollbar';
 
@@ -82,24 +88,30 @@ export function installOverlayScrollbars({ root = document } = {}) {
     const state = tracked.get(el);
     if (!state) return;
     clearTimeout(state.hideTimer);
+    clearTimeout(state.sweepTimer);
     dropThumb(state.y);
     dropThumb(state.x);
     tracked.delete(el);
   };
 
-  const hide = (state) => {
+  const hide = (el, state) => {
     state.active = false;
     for (const thumb of [state.y, state.x]) {
       if (!thumb) continue;
       thumb.style.transition = `opacity ${FADE_MS}ms ease-out`;
       thumb.style.opacity = '0';
     }
+    // The rAF loop only runs while something is active, so a list that was
+    // unmounted mid-fade would leave its (invisible) thumb in the body for
+    // good. Sweep it once the fade is over.
+    clearTimeout(state.sweepTimer);
+    state.sweepTimer = setTimeout(() => { if (!el.isConnected) forget(el); }, FADE_MS + 50);
   };
 
   const paint = (el, state) => {
     if (!el.isConnected) { forget(el); return; }
     const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) { hide(state); return; }
+    if (rect.width <= 0 || rect.height <= 0) { hide(el, state); return; }
     const insetLeft = rect.left + el.clientLeft;
     const insetTop = rect.top + el.clientTop;
 
@@ -160,6 +172,13 @@ export function installOverlayScrollbars({ root = document } = {}) {
     }
   };
 
+  // Any list that has left the DOM since we last painted takes its thumb with
+  // it. Called on every wake, so switching tabs cannot pile up invisible
+  // leftovers in the body.
+  const sweepDetached = () => {
+    for (const el of Array.from(tracked.keys())) { if (!el.isConnected) forget(el); }
+  };
+
   const tick = () => {
     frame = 0;
     let anyActive = false;
@@ -171,18 +190,22 @@ export function installOverlayScrollbars({ root = document } = {}) {
     // Keep following while a container is live: an ancestor may scroll or the
     // window may resize under us, and a fixed thumb has to be re-measured.
     if (anyActive) frame = requestAnimationFrame(tick);
+    // Nothing is moving any more: this is the cheapest moment to drop the
+    // thumbs of lists that have since left the page.
+    else sweepDetached();
   };
 
   const wake = (el) => {
+    sweepDetached();
     let state = tracked.get(el);
     if (!state) {
-      state = { y: null, x: null, hideTimer: 0, active: false };
+      state = { y: null, x: null, hideTimer: 0, sweepTimer: 0, active: false };
       tracked.set(el, state);
     }
     state.active = true;
     clearTimeout(state.hideTimer);
     paint(el, state);
-    state.hideTimer = setTimeout(() => hide(state), HOLD_MS);
+    state.hideTimer = setTimeout(() => hide(el, state), HOLD_MS);
     if (!frame) frame = requestAnimationFrame(tick);
   };
 

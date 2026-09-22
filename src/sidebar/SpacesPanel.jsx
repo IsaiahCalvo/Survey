@@ -425,7 +425,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {pageCount === 0 ? (
-                <div style={{ color: 'var(--text-disabled)', fontSize: '12px' }}>
+                <div style={{ color: 'var(--text-3)', fontSize: '12px' }}>
                   No pages added yet.
                 </div>
               ) : (

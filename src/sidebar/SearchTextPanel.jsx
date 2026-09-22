@@ -1716,7 +1716,7 @@ const SearchTextPanel = ({
               boxSizing: 'border-box',
               padding: '0 10px 0 36px',
               background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
+              border: '1px solid var(--border-strong)',
               borderRadius: '6px',
               fontSize: '13px',
               fontFamily: FONT_FAMILY,
@@ -1725,7 +1725,7 @@ const SearchTextPanel = ({
               transition: 'border-color 0.15s ease'
             }}
             onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
           />
           {internalSearchQuery && (
             <button
@@ -1791,7 +1791,7 @@ const SearchTextPanel = ({
                 aria-label="Previous match (Shift+Enter)"
                 style={{
                   background: 'transparent',
-                  border: '1px solid var(--border)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '4px',
                   cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
                   padding: '4px 8px',
@@ -1818,7 +1818,7 @@ const SearchTextPanel = ({
                 aria-label="Next match (Enter)"
                 style={{
                   background: 'transparent',
-                  border: '1px solid var(--border)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '4px',
                   cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
                   padding: '4px 8px',

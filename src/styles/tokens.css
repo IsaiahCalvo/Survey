@@ -53,10 +53,12 @@
    seven things revision 2 still got wrong. Every change below is one of them:
 
      1. BORDERS WERE STILL INVISIBLE. 1.86:1 and 2.71:1 both fail the 3:1 that
-        WCAG 1.4.11 asks of a non-text boundary, which is the whole job of a
-        border. Same hue (219 degrees), lifted until BOTH pass on ALL FOUR
-        layers: --border 4.50 / 4.09 / 3.60 / 3.11 and --border-strong
-        5.75 / 5.22 / 4.60 / 3.96, read off surface-0 up to surface-3.
+        WCAG 1.4.11 asks of a non-text boundary. Revision 3 lifted BOTH borders
+        until they passed on ALL FOUR layers (--border 4.50 / 4.09 / 3.60 /
+        3.11, --border-strong 5.75 / 5.22 / 4.60 / 3.96).
+        *** SUPERSEDED BY REVISION 4 — see the bottom of this comment. Lifting
+        every border was the wrong reading of 1.4.11 and the owner rejected how
+        it looked. Borders are now split by JOB, not raised as a class. ***
      2. HOVER AND PRESSED WERE THE WRONG WAY ROUND. --pressed (#232830) was
         LIGHTER than --hover (#26282e), so a press looked like a hover and
         neither read as the other; --pressed had no consumers at all and a
@@ -92,10 +94,31 @@
    controls (pills, ghost-button hover) — never on a whole row or panel,
    because a large warm wash is how the rejected brown happened.
 
+   REVISION 4 (2026-09-22, same day) — the owner saw revision 3 running and
+   said: "you have a dark background and then really light borders, light
+   buttons, light elements — huge contrast, it doesn't look good." Revision 3
+   had treated WCAG 1.4.11 as a rule about every border. It is not. 1.4.11 asks
+   3:1 of a boundary that is the ONLY thing identifying a control; where a
+   surface STEP already does that work, the edge is decoration. Revision 4
+   therefore splits borders by JOB instead of raising them as a class:
+     --border        subtle, decorative  (#404754, 1.86 on surface-1)
+     --border-strong identifying         (#666f80, 3.44 on surface-1, 3.03 on
+                                          a surface-2 card)
+   --border-strong is allowed on inputs, outlined and ghost buttons, checkboxes
+   and radios, and focus or selected outlines. Nothing else. Everything a fill
+   step already separates — cards, panels, rows, dividers, the home Documents
+   cards — takes the subtle one. An outlined button gets the strong EDGE and no
+   lighter fill, so it never out-shouts its own label.
+   Also revision 4: a ghost or icon button must not gain a fill and a border
+   when it is disabled. .btn-default is transparent, and painting
+   --disabled-fill onto it is what boxed the desktop undo/redo control the owner
+   objected to. A disabled fill belongs only to a variant that already HAS one.
+
    Contrast (WCAG 2.1) on surface-1, the commonest panel: text-1 13.02,
    text-2 9.30, text-3 6.45, accent 7.98, accent-light 10.40, danger-text 6.35,
-   warning 5.96. --text-disabled is 2.88 on purpose. Borders: --border 4.09
-   and --border-strong 5.22, and both clear 3:1 on all four layers.
+   warning 5.96. --text-disabled is 2.88 on purpose. Borders: --border 1.86
+   (decorative, under 3:1 on purpose) and --border-strong 3.44 (identifying;
+   3.03 on a surface-2 card, which is the tightest surface it has to clear).
    ========================================================================== */
 
 :root {
@@ -105,11 +128,44 @@
   --surface-2: #21252e;   /* a card or a well on a panel · B 18% */
   --surface-3: #2b303b;   /* raised: a SELECTED row, a field, a menu · B 23% */
 
-  /* --- Borders: both pass WCAG 1.4.11 (3:1) on the layers they land on --- */
-  --border: #727b8d;          /* the default hairline · passes 3:1 on ALL FOUR
-                                 layers: 4.50 / 4.09 / 3.60 / 3.11 */
-  --border-strong: #848da0;   /* an edge that has to be seen · 5.75 / 5.22 /
-                                 4.60 / 3.96 */
+  /* --- Borders: TWO JOBS, two values (revision 4) --------------------------
+     Revision 3 pushed every border to 4.09-4.50:1 to satisfy WCAG 1.4.11. The
+     owner rejected the result on sight (2026-09-22): "you have a dark
+     background and then really light borders, light buttons, light elements —
+     huge contrast, it doesn't look good." Revision 3's mistake was reading
+     1.4.11 as a rule about ALL borders. It is not: it asks 3:1 of a boundary
+     that is the ONLY thing identifying a control. When a surface STEP already
+     separates two things — a --surface-2 card on a --surface-1 panel — the edge
+     is decoration, and loud decoration is just noise.
+
+     So a border now answers one question: is this edge the only thing telling
+     me a control is here?
+       NO  -> --border, subtle. Cards, panels, rows, dividers, separators, and
+              any hairline between things a fill step already separates.
+       YES -> --border-strong, identifying. Inputs, outlined/ghost buttons,
+              checkboxes and radios, and focus or selected outlines. Nothing
+              else may take it, or we are back to the rejected look. */
+  --border: #404754;          /* subtle · decorative · 2.05 / 1.86 / 1.64 / 1.41
+                                 read off surface-0 up to surface-3. Deliberately
+                                 under 3:1 — it never identifies a control. */
+  --border-strong: #666f80;   /* identifying · 3.79 / 3.44 / 3.03 / 2.61.
+                                 The owner gave two targets that pull apart:
+                                 "roughly #5a6371" on surface-1 (which measures
+                                 2.87) AND "identifying edges >= 3.0". One token
+                                 cannot be two values, and their own note said
+                                 "on surface-2 slightly lighter", so this is the
+                                 single value that clears 3.0 on every surface an
+                                 outlined control actually sits on — the page
+                                 (3.79), a panel (3.44) and a card (3.03).
+                                 #5e6776 was tried first and measured 2.69 on a
+                                 card, which left 13 outlined buttons failing.
+                                 Surface-1 at 3.44 is 0.4 above the stated
+                                 3.0-3.2, and far below the 4.09 that was
+                                 rejected for looking loud. The one shortfall
+                                 left is an identifying edge ON --surface-3
+                                 (2.61) — a control inside an open menu — and it
+                                 is accepted rather than lifting every other edge
+                                 to reach it. */
 
   /* --- Text: one temperature, four tiers -------------------------------- */
   --text-1: #dadfe8;          /* headings and the row you are reading */

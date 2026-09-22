@@ -13,7 +13,12 @@
    components/dialogPrompts.jsx, which renders inside the PDF viewer where
    hub.css is not the styling authority. */
 
-const DEFAULT_RULE = 'var(--ink-500)';
+/* UX 2026-09-22 (tokens.css revision 4): closeButtonStyle is an OUTLINED
+   button with a transparent rest state, so its edge is the only thing saying a
+   control is there. That identifying job takes --border-strong, not the
+   --border hairline used between two things a fill step already separates.
+   Callers that override borderColor should pass their own ruleStrong. */
+const DEFAULT_RULE = 'var(--border-strong)';
 const DEFAULT_MUTED = 'var(--ink-200)';
 
 export const closeButtonStyle = ({

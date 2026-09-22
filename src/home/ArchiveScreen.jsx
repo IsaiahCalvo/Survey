@@ -124,7 +124,7 @@ const URGENT_DAYS = 3;
 /* The app's one destructive red (KAL-72, docs/ui/colors.md). Archive uses it
    for "Delete forever" and to tint rows inside the final days of the retention
    window, so it has to be the same red the rest of the app warns with. */
-const DANGER = 'var(--danger)';
+const DANGER = 'var(--danger-text)';
 
 const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
 
@@ -384,10 +384,14 @@ export default function ArchiveScreen({
     </>
   );
 
+  /* UX 2026-09-22: the resting edge is --border, not --ink-300. --ink-300 is
+     --text-disabled, which fails contrast deliberately (2.54:1 on this card), so
+     an empty box looked switched off instead of empty. --border is 3.60:1 and is
+     the token for a hairline that has to be seen. 1.4px width unchanged. */
   const checkGlyph = (checked) => (
     <span style={{
       width: 14, height: 14,
-      border: `1.4px solid ${checked ? 'var(--gold)' : 'var(--ink-300)'}`,
+      border: `1.4px solid ${checked ? 'var(--gold)' : 'var(--border-strong)'}`,
       background: checked ? 'var(--gold)' : 'transparent',
       borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
@@ -644,7 +648,7 @@ export default function ArchiveScreen({
               : <span style={{ width: 12, flex: 'none' }} />}
             <Icon name="folder" size={13} color="var(--gold)" />
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
-            <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>{item.childCount}</span>
+            <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
           </div>
           {item.childCount === 0 && (
             <div className="meta" style={{ fontSize: 11.5, padding: '6px 0 6px 20px' }}>This project has no documents.</div>
@@ -700,7 +704,7 @@ export default function ArchiveScreen({
                     ? previewDisclosure(moduleKey, open, 'categories')
                     : <span style={{ width: 12, flex: 'none' }} />}
                   <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{mod.name}</span>
-                  <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>
+                  <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', flex: 'none' }}>
                     {categories.length} {categories.length === 1 ? 'category' : 'categories'}
                   </span>
                 </div>
@@ -710,7 +714,7 @@ export default function ArchiveScreen({
                      template I meant?" — a full checklist would bury that. */
                   <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0 3px 20px' }}>
                     <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{cat.name}</span>
-                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', flex: 'none' }}>
                       {cat.itemCount} {cat.itemCount === 1 ? 'item' : 'items'}
                     </span>
                   </div>
@@ -769,7 +773,13 @@ export default function ArchiveScreen({
           }}
           style={{
             display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
-            borderBottom: '1px solid var(--ink-600)',
+            // UX 2026-09-22: the row divider. --ink-600 (= --surface-3) on a
+            // --surface-2 card measured 1.16:1, so the Archive list had no rows
+            // to speak of. --surface-3 is the SELECTED colour, not a boundary
+            // one — hence the background below still uses it. --border is 3.60:1.
+            borderBottom: '1px solid var(--border)',
+            // Transparent on purpose: reserves the 2px the gold selected edge
+            // fills, so the row does not shift when it becomes active.
             borderLeft: active ? '2px solid var(--gold)' : '2px solid transparent',
             background: active ? 'var(--ink-600)' : 'transparent',
             cursor: 'pointer',
@@ -837,7 +847,7 @@ export default function ArchiveScreen({
             }}
             style={{
               display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
-              borderBottom: '1px solid var(--ink-600)',
+              borderBottom: '1px solid var(--border)',
               borderLeft: previewId === child.id ? '2px solid var(--gold)' : '2px solid transparent',
               background: previewId === child.id ? 'var(--ink-600)' : 'transparent',
               cursor: selectMode ? 'default' : 'pointer',

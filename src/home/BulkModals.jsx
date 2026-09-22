@@ -61,7 +61,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
         fontSize: 11.5, fontWeight: 600,
         background: mode === val ? C.gold : 'transparent',
         color: mode === val ? 'var(--accent-text)' : C.inkSoft,
-        border: `1px solid ${mode === val ? C.gold : C.rule}`,
+        border: `1px solid ${mode === val ? C.gold : C.ruleStrong}`,
       }}
     >
       {label}
@@ -87,7 +87,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             {mode === 'move' ? 'Moves the documents into the chosen project.' : 'Copies the documents into the chosen project; originals stay where they are.'}
           </div>
           {submitError && (
-            <div role="alert" style={{ fontSize: 11.5, color: C.danger, lineHeight: 1.4 }}>
+            <div role="alert" style={{ fontSize: 11.5, color: C.dangerText, lineHeight: 1.4 }}>
               {submitError} Try again.
             </div>
           )}
@@ -253,7 +253,7 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
                     submit();
                   }
                 }}
-                style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${C.rule}`, background: C.deep, color: C.ink, padding: '0 11px', fontSize: 16, fontFamily: 'inherit', outline: 'none' }}
+                style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${C.ruleStrong}`, background: C.deep, color: C.ink, padding: '0 11px', fontSize: 16, fontFamily: 'inherit', outline: 'none' }}
               />
             </label>
           </div>

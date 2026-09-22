@@ -109,15 +109,18 @@ export default function TextSelectionActionBar({
               comes from the token file by role — Apply is the one gold primary with
               --accent-text on it, Open link and Cancel are raised neutral buttons,
               and Remove link is the destructive pair (--danger-soft wash inside a
-              --danger-press edge, --danger ink). The mark swatches above keep their
-              literals: those show the user's ink, not the theme. */}
+              --danger-press edge, --danger-text ink). The mark swatches above keep their
+              literals: those show the user's ink, not the theme.
+              2026-09-22 (revision 4): the two RAISED buttons keep their fill and drop to
+              the subtle --border. A raised button is defined by its plate, so its edge is
+              decoration; --border-strong is only for a control whose edge is all it has. */}
           <div className="text-selection-action-bar__link-actions" data-text-link-actions="true">
             <button data-text-link-control="true" type="submit" aria-label="Apply hyperlink" style={{ height: 34, padding: '0 16px', border: '1px solid var(--accent-press)', borderRadius: 6, background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
-            {linkActive && <button data-text-link-control="true" type="button" aria-label="Open link" onClick={onLinkOpen} style={{ height: 34, padding: '0 12px', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface-3)', color: 'var(--text-1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Open link</button>}
-            {linkActive && <button data-text-link-control="true" type="button" aria-label="Remove link" onClick={onLinkRemove} style={{ height: 34, padding: '0 12px', border: '1px solid var(--danger-press)', borderRadius: 6, background: 'var(--danger-soft)', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Remove link</button>}
-            <button data-text-link-control="true" type="button" aria-label="Cancel hyperlink" onClick={onLinkCancel} style={{ height: 34, padding: '0 16px', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface-3)', color: 'var(--text-1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+            {linkActive && <button data-text-link-control="true" type="button" aria-label="Open link" onClick={onLinkOpen} style={{ height: 34, padding: '0 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-3)', color: 'var(--text-1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Open link</button>}
+            {linkActive && <button data-text-link-control="true" type="button" aria-label="Remove link" onClick={onLinkRemove} style={{ height: 34, padding: '0 12px', border: '1px solid var(--danger-press)', borderRadius: 6, background: 'var(--danger-soft)', color: 'var(--danger-text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Remove link</button>}
+            <button data-text-link-control="true" type="button" aria-label="Cancel hyperlink" onClick={onLinkCancel} style={{ height: 34, padding: '0 16px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-3)', color: 'var(--text-1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
           </div>
-          {linkError && <span role="alert" style={{ width: '100%', color: 'var(--danger)', fontSize: 11, textAlign: 'center' }}>{linkError}</span>}
+          {linkError && <span role="alert" style={{ width: '100%', color: 'var(--danger-text)', fontSize: 11, textAlign: 'center' }}>{linkError}</span>}
         </form>
       )}
     </div>

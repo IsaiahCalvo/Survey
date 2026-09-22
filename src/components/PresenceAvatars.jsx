@@ -148,7 +148,11 @@ export default function PresenceAvatars({
                 width: `${avatarSize}px`,
                 height: `${avatarSize}px`,
                 borderRadius: '50%',
-                background: 'rgba(255,255,255,0.08)',
+                /* UX: the "+N" bubble is a raised neutral disc sitting among
+                   the per-person identity colours, so it takes the raised
+                   surface token instead of a white wash whose meaning would
+                   change with whatever is behind the rail. */
+                background: 'var(--surface-3)',
                 color: 'var(--text-1)',
                 border: '2px solid var(--surface-0)',
                 display: 'inline-flex',
@@ -174,7 +178,10 @@ export default function PresenceAvatars({
                     ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
                     : { top: 'calc(100% + 6px)', right: 0 }),
                   background: '#11131a',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  /* UX: the popover already reads as a separate layer from its
+                     own dark fill and drop shadow, so its edge is decorative —
+                     the subtle hairline, not a white wash. */
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '8px 0',
                   minWidth: '240px',
@@ -189,7 +196,9 @@ export default function PresenceAvatars({
                     color: '#9aa0a8',
                     textTransform: 'uppercase',
                     letterSpacing: '0.06em',
-                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                    /* UX: a separator under the "N viewing" caption — purely a
+                       divider, so the subtle border token. */
+                    borderBottom: '1px solid var(--border)',
                     marginBottom: '4px'
                   }}
                 >

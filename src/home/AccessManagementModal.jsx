@@ -344,7 +344,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
           {(error || status) && (
             <div style={{ padding: '8px 18px', borderTop: `1px solid ${C.rule}`, background: C.deep }}>
-              {error && <div style={{ color: C.danger, fontSize: 12 }}>{error}</div>}
+              {error && <div style={{ color: C.dangerText, fontSize: 12 }}>{error}</div>}
               {status && !error && <div style={{ color: C.gold, fontSize: 12 }}>{status}</div>}
             </div>
           )}

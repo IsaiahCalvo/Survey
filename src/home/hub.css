@@ -279,9 +279,12 @@
   box-shadow: none;
   transition: color 100ms cubic-bezier(0.4, 0, 0.2, 1), background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.hub-icon-btn:not(:disabled):hover { background: var(--hover); color: var(--text-1); }
+.hub-icon-btn:not(:disabled):hover { background: var(--hover); }
+/* A destructive glyph already rests at --danger, so only a NEUTRAL icon button
+   brightens its glyph on hover — otherwise the red × would turn grey under the
+   pointer, and a hover rule that repaints a colour with itself is dead CSS. */
+.hub-icon-btn:not(.is-danger):not(:disabled):hover { color: var(--text-1); }
 .hub-icon-btn:not(:disabled):active { background: var(--pressed); }
-.hub-icon-btn.is-danger:not(:disabled):hover { color: var(--danger); }
 
 /* ONE disabled look for all four kinds, from tokens — no opacity, which dims
    a gold fill into a paler gold instead of switching it off. */
@@ -434,7 +437,13 @@
 .survey-hub .hub-loading-document-row {
   align-items: center;
   height: 50px;
-  border-bottom: 1px solid var(--ink-600);
+  /* UX 2026-09-22: a divider is a boundary, so it takes --border (3.60:1 on
+     this --surface-2 card). --ink-600 is --surface-3, the SELECTED colour, and
+     measured 1.16:1 — an invisible rule. The header row above already used
+     --ink-500 (--border), so the skeleton disagreed with itself. */
+  border-bottom: 1px solid var(--border);
+  /* Transparent on purpose: it reserves the 2px the gold selected edge fills,
+     so a row does not shift sideways when it becomes selected. */
   border-left: 2px solid transparent;
 }
 .survey-hub .hub-loading-date-pair,
@@ -651,7 +660,7 @@
   gap: 10px;
   border-top: 1px solid var(--ink-500);
   padding: 7px 12px;
-  color: var(--ink-300);
+  color: var(--text-3);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -778,13 +787,16 @@
   font-size: 9.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-300);
+  color: var(--text-3);
   font-weight: 700;
 }
 
 .survey-hub .archive-sort-menu-label:not(:first-child) {
   margin-top: 3px;
-  border-top: 1px solid var(--ink-600);
+  /* UX 2026-09-22: the group separator inside the menu. The menu's own plate is
+     --ink-700 (--surface-2), so the old --ink-600 (--surface-3) rule measured
+     1.16:1 and simply was not there. --border reads at 3.60:1. */
+  border-top: 1px solid var(--border);
 }
 
 /* Desktop header actions: the filter control beside the search field, the same
@@ -1384,9 +1396,12 @@
     height: 28px;
     box-sizing: border-box;
     padding: 5px 10px;
-    border: 1px solid var(--ink-500);
+    /* UX 2026-09-22: this IS the documents filter button (its label is the live
+       sort — "Last edited", "File", "Size"). Outlined control: identifying edge,
+       no resting fill, so the box never reads brighter than the word in it. */
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--ink-700);
+    background: transparent;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2186,7 +2201,13 @@
     width: 17px;
     height: 17px;
     justify-self: center;
-    border: 1.4px solid var(--ink-300);
+    /* UX 2026-09-22: an unchecked box is ONLY its edge, so that edge has to be
+       seen. --ink-300 is --text-disabled, which fails contrast on purpose
+       (2.54:1 here) and is not a boundary colour; the box read as switched off
+       rather than empty. Revision 4 split the borders by job: a checkbox edge
+       IS the control, so it takes the identifying --border-strong, not the
+       decorative --border. Width unchanged. */
+    border: 1.4px solid var(--border-strong);
     border-radius: 3px;
     display: grid;
     place-items: center;
@@ -2468,7 +2489,8 @@
     min-width: 0;
     background: transparent;
     border: 0;
-    border-bottom: 1px solid var(--ink-500);
+    /* A text field with no fill: the underline is the whole control. */
+    border-bottom: 1px solid var(--border-strong);
     color: var(--bone-100);
     font: inherit;
     font-size: 20px;
@@ -2697,7 +2719,9 @@
     width: 17px;
     height: 17px;
     justify-self: center;
-    border: 1.4px solid var(--ink-300);
+    /* Same ruling as .projects-mobile-check above: an unchecked box is only its
+       edge, so it takes the identifying --border-strong. */
+    border: 1.4px solid var(--border-strong);
     border-radius: 3px;
     display: grid;
     place-items: center;
@@ -3025,17 +3049,23 @@
     display: grid;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    /* Owner 2026-09-22: "too thick, too tall - they need to be one-liners."
+       The 44px toggle/grip already gives the row its finger height; the 8px of
+       vertical padding on top of it made every row 60px. */
+    padding: 0 10px;
   }
 
   .survey-hub .templates-mobile-category-row {
     grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px;
-    min-height: 44px;
+    /* Owner 2026-09-22 ("I want them thinner"): 36px painted, like the phone
+       strip band; the toggle keeps a 44px finger target through its pad. */
+    min-height: 36px;
   }
 
   .survey-hub .templates-mobile-category-toggle {
+    position: relative;
     width: 44px;
-    height: 44px;
+    height: 36px;
     border: 0;
     border-radius: 5px;
     background: transparent;
@@ -3050,6 +3080,12 @@
 
   .survey-hub .templates-mobile-category-toggle > svg {
     display: block;
+  }
+
+  .survey-hub .templates-mobile-category-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
   }
 
   .survey-hub .templates-mobile-category-toggle.open {
@@ -3072,8 +3108,8 @@
 
   .survey-hub .templates-mobile-item-row {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
-    min-height: 44px;
-    padding: 6px 0;
+    min-height: 36px;
+    padding: 0;
     border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   }
 
@@ -3105,7 +3141,7 @@
 
   .survey-hub .templates-mobile-archived > div:first-child {
     margin-bottom: 4px;
-    color: var(--ink-300);
+    color: var(--text-3);
     font-size: 10px;
     font-weight: 750;
     letter-spacing: 0.1em;
@@ -3137,7 +3173,7 @@
     height: 44px;
     border: 0;
     background: transparent;
-    color: var(--danger);
+    color: var(--danger-text);
     font: inherit;
     font-size: 16px;
   }
@@ -3158,6 +3194,7 @@
   }
 
   .survey-hub .templates-mobile-entity-row {
+    min-height: 36px;
     grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
     min-height: 44px;
   }
@@ -3520,7 +3557,10 @@
   .survey-hub .archive-mobile-children {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid var(--ink-600);
+    /* UX 2026-09-22: the rule that separates a card's child rows from its head.
+       The card is --ink-700 (--surface-2), so --ink-600 (--surface-3) measured
+       1.16:1 and the children ran straight into the head. --border is 3.60:1. */
+    border-top: 1px solid var(--border);
     display: grid;
     gap: 6px;
   }

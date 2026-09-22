@@ -83,7 +83,16 @@ test('the shared separator reads its size and inset from the chrome tokens', () 
   assert.ok(rule, 'styles.css must define .chrome-divider');
   assert.match(rule, /height: var\(--chrome-divider-h\)/);
   assert.match(rule, /margin: 0 var\(--chrome-divider-inset\)/);
-  assert.match(rule, /background: var\(--border-strong\)/);
+  /* CHANGED 2026-09-22 with tokens.css revision 4, and the reason is a change
+     of MEANING, not a relaxation. --border-strong used to mean "an edge that
+     has to be seen"; the owner's ruling redefined it as "the edge that is the
+     only thing identifying a CONTROL" (a field, an outlined button, a
+     checkbox, a focus ring) and put "cards, panels, dividers and rows" on the
+     subtle --border. A separator between two tool groups identifies no
+     control, so pinning it to the identifying token now asserts the opposite
+     of the rule. The assertion still pins the divider to ONE token so a bar
+     cannot hand-roll its own colour — only which token that is has moved. */
+  assert.match(rule, /background: var\(--border\)/);
   assert.match(STYLES, /--chrome-divider-h: 16px;/);
   assert.match(STYLES, /--chrome-divider-inset: 8px;/);
   assert.match(STYLES, /--chrome-tool-gap: 2px;/);

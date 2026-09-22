@@ -390,7 +390,7 @@ function SortableModuleTab({
         </button>
       )}
       {showCount ? (
-        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>
+        <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', padding: '0 6px 0 2px', flex: 'none' }}>
           {catCount}
         </span>
       ) : null}
@@ -604,7 +604,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
         onClick={() => { if (!disabled) setOpen((v) => !v); }}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border)',
+          width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border-strong)',
           borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
           color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
           font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
@@ -624,7 +624,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
           style={{
             position: 'fixed', zIndex: 4100,
             left: pos.left, top: pos.top, width: pos.width,
-            background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 8,
+            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
             padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
             maxHeight: 240, overflowY: 'auto',
             fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -1412,10 +1412,15 @@ export default function TemplatesEditor({
   };
   const ENTITY_BLANK_HINT = "Can't be empty — type a name or remove the row.";
 
-  const commitRequiredRow = (el, previousValue, hint, commit) => {
+  const commitRequiredRow = (el, previousValue, hint, commit, onDiscardFresh) => {
     if (isBlank(el.value)) {
       if (previousValue) el.value = previousValue;      // existing row: quiet revert
-      else flagRequiredInput(el, hint);                 // fresh row: refuse visibly
+      // Fresh blank row: owner 2026-09-22 - "if I click in an empty input
+      // field and then click outside of it, it should just get dismissed",
+      // no red hint. Rows that pass onDiscardFresh vanish as if never added;
+      // the others (entities) keep the visible refusal.
+      else if (onDiscardFresh) onDiscardFresh();
+      else flagRequiredInput(el, hint);
       return;
     }
     commit(el.value.trim());
@@ -2149,7 +2154,7 @@ export default function TemplatesEditor({
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
                         />
-                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
                           {items.length} items{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
                         </span>
                         {catEdit && (
@@ -2206,7 +2211,7 @@ export default function TemplatesEditor({
                                   defaultValue={it.text}
                                   placeholder="Add checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
-                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v))}
+                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => hardDeleteItem(i, it.id))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 <button
@@ -2243,7 +2248,7 @@ export default function TemplatesEditor({
                                 data-testid={`archived-items-${c.id}`}
                                 style={{ marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}
                               >
-                                <div className="meta" style={{ fontSize: 10.5, marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--ink-quiet)' }}>
+                                <div className="meta" style={{ fontSize: 10.5, marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-3)' }}>
                                   Archived ({archivedItems.length})
                                 </div>
                                 {archivedItems.map((it, j) => (
@@ -2257,7 +2262,7 @@ export default function TemplatesEditor({
                                       opacity: 0.65,
                                     }}
                                   >
-                                    <span style={{ color: 'var(--ink-quiet)', fontSize: 11 }}>—</span>
+                                    <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
                                     <span
                                       title={`Archived${it.archivedAt ? ` ${new Date(it.archivedAt).toLocaleString()}` : ''} — historical responses preserved`}
                                       style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', textDecoration: 'line-through' }}
@@ -2294,7 +2299,7 @@ export default function TemplatesEditor({
             <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <div style={{ padding: '8px 8px 8px 8px', borderBottom: '1px solid var(--rule)', flex: 'none', minHeight: 64, boxSizing: 'border-box', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                 <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                  <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--ink-quiet)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
+                  <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--text-3)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
                 </div>
                 <button onClick={addEntity} disabled={!tpl} className="hub-btn hub-btn--primary">
                   <Icon name="plus" size={11} />New entity
@@ -2738,7 +2743,7 @@ export default function TemplatesEditor({
                                               defaultValue={it.text}
                                               placeholder="Add checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
-                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
+                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => hardDeleteItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
@@ -3057,7 +3062,7 @@ export default function TemplatesEditor({
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: 'var(--text-1)', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-0)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-0)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
                 <Icon name="search" size={12} color="var(--text-3)" />
                 <input
                   value={modSearch}
@@ -3112,7 +3117,7 @@ export default function TemplatesEditor({
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
                           style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: 'var(--text-1)', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                         />
-                        <span style={{ fontSize: 10, color: 'var(--text-disabled)', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
                       </div>
                     )}
                   </SortableRearrangeRow>

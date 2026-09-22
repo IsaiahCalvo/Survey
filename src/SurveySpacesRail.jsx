@@ -1091,7 +1091,11 @@ const SurveySpacesRail = ({
     const exactColor = color || null;
     return {
       backgroundColor: '#fff',
-      borderColor: exactColor ? 'rgba(255, 255, 255, 0.58)' : 'var(--border-strong)',
+      // UX: when the swatch carries a colour the USER picked, its hairline is
+      // the shared ink ring — a neutral border would let a near-black entity
+      // colour vanish. With no colour chosen it is ordinary chrome and takes
+      // the identifying border instead.
+      borderColor: exactColor ? 'var(--ink-ring-strong)' : 'var(--border-strong)',
       '--survey-marker-entity-swatch-color': exactColor || 'transparent'
     };
   };
@@ -1524,7 +1528,10 @@ const SurveySpacesRail = ({
                             onClick={() => setIsMobileExportMenuOpen((open) => !open)}
                           >
                             {isExporting
-                              ? <Spinner size={14} color="var(--text-1)" trackColor="rgba(255,255,255,0.3)" />
+                              // UX: trackColor is the unfilled ring behind the
+                              // spinner — a track, so it takes the raised
+                              // surface step like every other track.
+                              ? <Spinner size={14} color="var(--text-1)" trackColor="var(--surface-3)" />
                               : <Icon name="upload" size={17} color="currentColor" />}
                           </button>
                           {isMobileExportMenuOpen && (
@@ -1615,7 +1622,7 @@ const SurveySpacesRail = ({
                           style={{
                             height: '30px',
                             borderRadius: '6px',
-                            border: canSelectPreviousModule ? '1px solid var(--border-strong)' : '1px solid var(--border)',
+                            border: '1px solid var(--border)',
                             background: canSelectPreviousModule ? 'var(--surface-3)' : 'var(--surface-1)',
                             color: canSelectPreviousModule ? 'var(--text-2)' : 'var(--text-disabled)',
                             cursor: canSelectPreviousModule ? 'pointer' : 'not-allowed',
@@ -1674,7 +1681,7 @@ const SurveySpacesRail = ({
                           style={{
                             height: '30px',
                             borderRadius: '6px',
-                            border: canSelectNextModule ? '1px solid var(--border-strong)' : '1px solid var(--border)',
+                            border: '1px solid var(--border)',
                             background: canSelectNextModule ? 'var(--surface-3)' : 'var(--surface-1)',
                             color: canSelectNextModule ? 'var(--text-2)' : 'var(--text-disabled)',
                             cursor: canSelectNextModule ? 'pointer' : 'not-allowed',
@@ -1697,7 +1704,7 @@ const SurveySpacesRail = ({
                               right: '38px',
                               zIndex: 20,
                               background: 'var(--surface-1)',
-                              border: '1px solid var(--border-strong)',
+                              border: '1px solid var(--border)',
                               borderRadius: '6px',
                               padding: '4px',
                               boxShadow: '0 10px 24px rgba(0, 0, 0, 0.32)',
@@ -2030,7 +2037,11 @@ const SurveySpacesRail = ({
                                       className="mobile-survey-detail-entity-dot"
                                       style={{
                                         background: option.color || 'transparent',
-                                        borderColor: option.color ? 'rgba(255, 255, 255, 0.4)' : 'var(--border-strong)'
+                                        // UX: same rule as the entity swatch
+                                        // above — a USER colour gets the
+                                        // shared ink ring, no colour gets
+                                        // ordinary chrome.
+                                        borderColor: option.color ? 'var(--ink-ring-strong)' : 'var(--border-strong)'
                                       }}
                                     />
                                     <span>{option.name}</span>
@@ -2483,7 +2494,7 @@ const SurveySpacesRail = ({
                               color: 'var(--text-1)',
                               fontSize: '14px',
                               cursor: 'pointer',
-                              borderBottom: '1px solid var(--border-strong)',
+                              borderBottom: '1px solid var(--border)',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -2504,7 +2515,7 @@ const SurveySpacesRail = ({
                               color: 'var(--text-1)',
                               fontSize: '14px',
                               cursor: 'pointer',
-                              borderBottom: '1px solid var(--border-strong)',
+                              borderBottom: '1px solid var(--border)',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -2529,7 +2540,7 @@ const SurveySpacesRail = ({
                               color: 'var(--text-1)',
                               fontSize: '14px',
                               cursor: 'pointer',
-                              borderBottom: '1px solid var(--border-strong)',
+                              borderBottom: '1px solid var(--border)',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -2562,7 +2573,7 @@ const SurveySpacesRail = ({
                                   : liveSyncStatus === 'connecting' || gateChecking
                                     ? 'var(--warning)'
                                     : liveSyncStatus === 'error' || liveSyncSupported === false
-                                      ? 'var(--danger)'
+                                      ? 'var(--danger-text)'
                                       : '#fff',
                                 fontSize: '14px',
                                 cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
@@ -2625,7 +2636,7 @@ const SurveySpacesRail = ({
                                 color: verifying ? 'var(--warning)' : (verdictColor || '#fff'),
                                 fontSize: '14px',
                                 cursor: verifying ? 'wait' : 'pointer',
-                                borderTop: '1px solid var(--border-strong)',
+                                borderTop: '1px solid var(--border)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px'
@@ -2938,24 +2949,32 @@ const SurveySpacesRail = ({
                                   padding: 0,
                                   background: 'transparent',
                                   border: 'none',
-                                  color: Object.values(copiedItemSelection).some(Boolean) ? 'var(--danger-press)' : 'var(--text-disabled)',
+                                  padding: '2px 6px',
+                                  borderRadius: 4,
+                                  color: Object.values(copiedItemSelection).some(Boolean) ? 'var(--danger-text)' : 'var(--text-disabled)',
                                   fontSize: '13px',
                                   fontWeight: '400',
                                   cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
                                 }}
-                                /* UX: the enabled label rests on --danger-press
-                                   and brightens to --danger under the pointer.
-                                   It painted --danger-press in both directions
-                                   before, so it never answered at all. */
+                                /* UX 2026-09-22: this is a WORD, so it takes the
+                                   label red. It used to rest on --danger-press
+                                   (4.45:1) and brighten to --danger (4.05:1) —
+                                   both under the 4.5:1 a label needs, which is
+                                   why tokens.css says "--danger IS A FILL, NOT A
+                                   LABEL". --danger-text is 4.82:1 at its worst.
+                                   Because the label is now already the brightest
+                                   red available, the pointer is answered by the
+                                   control's FILL instead: --danger-soft is the
+                                   token's own "hover wash on a small remove or
+                                   delete control", and the small padding above
+                                   gives that wash something to sit in. */
                                 onMouseEnter={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = 'var(--danger)';
+                                    e.currentTarget.style.background = 'var(--danger-soft)';
                                   }
                                 }}
                                 onMouseLeave={(e) => {
-                                  if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = 'var(--danger-press)';
-                                  }
+                                  e.currentTarget.style.background = 'transparent';
                                 }}
                               >
                                 Delete
@@ -3432,7 +3451,7 @@ const SurveySpacesRail = ({
                                                 data-drag-rearrange-row
                                                 style={{
                                                 background: mobileMode ? 'var(--surface-1)' : (isDragging ? 'var(--accent-soft)' : 'transparent'),
-                                                border: mobileMode ? '1px solid var(--border)' : '1px solid var(--border-strong)',
+                                                border: '1px solid var(--border)',
                                                 borderRadius: mobileMode ? '6px' : '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
@@ -3748,7 +3767,7 @@ const SurveySpacesRail = ({
                                                       <div style={{
                                                         padding: '6px 8px',
                                                         background: 'var(--surface-3)',
-                                                        borderTop: '1px solid var(--border-strong)',
+                                                        borderTop: '1px solid var(--border)',
                                                         marginTop: '0'
                                                       }}>
                                                         <div className="survey-marker-entity-row">
@@ -3833,7 +3852,7 @@ const SurveySpacesRail = ({
                                                       <div key={item.id} style={{
                                                         padding: '6px 8px',
                                                         background: 'var(--surface-3)',
-                                                        borderTop: '1px solid var(--border-strong)',
+                                                        borderTop: '1px solid var(--border)',
                                                         marginTop: '0'
                                                       }}>
                                                         <div style={{
@@ -3925,7 +3944,7 @@ const SurveySpacesRail = ({
                                                         style={{
                                                           padding: '6px 8px',
                                                           background: 'var(--surface-3)',
-                                                          borderTop: '2px solid var(--border-strong)',
+                                                          borderTop: '2px solid var(--border)',
                                                           marginTop: '0',
                                                         }}
                                                       >
@@ -4178,7 +4197,7 @@ const SurveySpacesRail = ({
                                     textAlign: 'left',
                                     padding: '10px 12px',
                                     borderRadius: '6px',
-                                    border: '1px solid var(--border-strong)',
+                                    border: '1px solid var(--border)',
                                     background: 'var(--surface-2)',
                                     color: 'var(--text-2)',
                                     cursor: 'pointer',
@@ -4194,7 +4213,7 @@ const SurveySpacesRail = ({
                                   }}
                                   onMouseLeave={mobileMode ? undefined : (event) => {
                                     event.currentTarget.style.background = 'var(--surface-2)';
-                                    event.currentTarget.style.borderColor = 'var(--border-strong)';
+                                    event.currentTarget.style.borderColor = 'var(--border)';
                                   }}
                                 >
                                   <Icon name="template" size={18} color="var(--text-2)" />

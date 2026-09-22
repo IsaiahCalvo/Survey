@@ -202,7 +202,7 @@ export default function ShareModal({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            style={{ height: 30, background: C.card, color: C.ink, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 10px', fontSize: 12, fontFamily: 'inherit', marginBottom: 8 }}
+            style={{ height: 30, background: C.card, color: C.ink, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '0 10px', fontSize: 12, fontFamily: 'inherit', marginBottom: 8 }}
           >
             {ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
           </select>
@@ -226,7 +226,7 @@ export default function ShareModal({
               onChange={(e) => setEmails(e.target.value)}
               placeholder="name@example.com, name@example.com"
               rows={3}
-              style={{ width: '100%', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
             />
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. New users get an invite link; existing users get a direct-access link as {role.toLowerCase()}.</div>
           </div>

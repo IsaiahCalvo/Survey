@@ -117,7 +117,7 @@ const TemplateOverwriteWarningModal = ({
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
-              color: 'var(--danger)',
+              color: 'var(--danger-text)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
             }}>

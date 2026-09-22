@@ -525,7 +525,12 @@ test('mobile live text formatting fits its band with 44px touch targets', () => 
   // taps below it. The bar does not scroll and does not clip any more, so B / I /
   // U / S take the shared pad every other strip control takes and reach the 44px
   // the ruling asks for.
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties__format::after,[\s\S]{0,400}inset-block: -12px;/);
+  // MERGE NOTE 2026-09-22: the phone hit-box pass measured that a symmetric
+  // -12px pad landed at 37-40px because the header's own pads reach 8px below
+  // it and win; the pad is now -5px above / -19px below, which hit-tests at
+  // 44px on every strip control (tests/mobileToolPropertiesReach pins the
+  // numbers). Same 44px contract, different arithmetic.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties__format::after,[\s\S]{0,400}inset-block: -5px -19px;/);
   // The four sit in one 80px group with no gap, so their pads tile it exactly
   // rather than running 2px into each other: overlapping pads hand the press to
   // the later sibling, so Bold's right edge would have toggled Italic.

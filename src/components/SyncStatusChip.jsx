@@ -267,8 +267,13 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detai
         gap: '8px',
         padding: '5px 10px',
         borderRadius: '999px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        /* UX: the chip is a raised pill on the sidebar footer, which paints
+           --surface-1, so it takes the next surface step up rather than a
+           white wash. Its edge is decoration — the fill step is what says
+           "chip" — so the hairline is the subtle --border, not the
+           identifying one. */
+        background: 'var(--surface-2)',
+        border: '1px solid var(--border)',
         /* UX: the LABEL is plain information, so it reads in --text-2 in every
            state; the dot next to it is what turns green / amber / red. */
         color: 'var(--text-2)',

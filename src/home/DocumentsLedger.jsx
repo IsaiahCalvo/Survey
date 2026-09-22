@@ -363,10 +363,16 @@ export default function DocumentsLedger({
       title="More" aria-label="More"
     ><Icon name="more" size={14} /></button>
   );
+  /* UX 2026-09-22: an unchecked box has no fill, so its edge is the whole
+     control and must clear WCAG 1.4.11's 3:1. It used to be --ink-300
+     (= --text-disabled), which fails contrast on purpose — 2.54:1 on this card,
+     so an empty box read as a disabled one. --border is 3.60:1. Checked stays
+     gold, and the 1.4px width is unchanged. Same swap in the row checkbox below
+     and in ArchiveScreen / ProjectsFolderTree. */
   const renderMobileCheck = (d, size = 18) => {
     const isChecked = selDocs.has(d.id);
     return (
-      <span style={{ width: size, height: size, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ width: size, height: size, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {isChecked && <Icon name="check" size={11} color="var(--accent-text)" />}
       </span>
     );
@@ -463,7 +469,12 @@ export default function DocumentsLedger({
                     onDoubleClick={() => !docSelectMode && onOpenDocument && onOpenDocument(d.raw)}
                     style={{
                       display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
-                      borderBottom: '1px solid var(--ink-600)',
+                      // UX 2026-09-22: the row divider. It was --ink-600
+                      // (= --surface-3) on a --surface-2 card: 1.16:1, so the
+                      // ledger read as one unbroken block. --surface-3 means
+                      // SELECTED and is not a boundary colour; --border is
+                      // 3.60:1 here.
+                      borderBottom: '1px solid var(--border)',
                       borderLeft: !docSelectMode && isSel ? '2px solid var(--gold)' : '2px solid transparent',
                       background: docSelectMode ? (isChecked ? 'var(--ink-600)' : 'transparent') : (isSel ? 'var(--ink-600)' : 'transparent'),
                       cursor: 'pointer',
@@ -475,7 +486,7 @@ export default function DocumentsLedger({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
                       {docSelectMode ? (
-                        <span style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
                       ) : (
@@ -510,10 +521,10 @@ export default function DocumentsLedger({
                     <div style={stickyCell(docSelectMode ? isChecked : isSel)}>
                       <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
-                    <span className="meta" style={{ fontSize: 11.5, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--ink-300)' }}>N/A</span> : d.project}</span>
+                    <span className="meta" style={{ fontSize: 11.5, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--text-3)' }}>N/A</span> : d.project}</span>
                     <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
-                      <div style={{ color: 'var(--ink-300)' }}>{d.touchedAbs}</div>
+                      <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
                     </div>
                     <span className="mono" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
                   </div>

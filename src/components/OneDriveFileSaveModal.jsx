@@ -191,7 +191,7 @@ const OneDriveFileSaveModal = ({
             <div style={{
               marginTop: '6px',
               fontSize: TYPOGRAPHY.fontSize.sm,
-              color: 'var(--danger)',
+              color: 'var(--danger-text)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
               {fileNameError}

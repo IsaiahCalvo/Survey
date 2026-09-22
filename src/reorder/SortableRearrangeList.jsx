@@ -342,7 +342,11 @@ export function SortableRearrangeList({
         <DropTransformSuppressionContext.Provider value={dropTransformSuppressionValue}>
           <div
             data-sortable-rearrange-list={String(activeId ?? '')}
-            style={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', gap }}
+            // Owner 2026-09-22: no `minHeight: 100%` here. Inside a padded
+            // scroll container it made the list taller than the container's
+            // content box, so a ONE-row project file list showed a scrollbar.
+            // The list is as tall as its rows; the scroll container decides.
+            style={{ width: '100%', display: 'flex', flexDirection: 'column', gap }}
           >
             {children}
           </div>

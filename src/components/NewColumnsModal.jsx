@@ -274,7 +274,7 @@ const NewColumnsModal = ({
                   <div style={{
                     fontSize: TYPOGRAPHY.fontSize.xs,
                     fontWeight: TYPOGRAPHY.fontWeight.medium,
-                    color: 'var(--danger)',
+                    color: 'var(--danger-text)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                     textTransform: 'uppercase',
@@ -412,7 +412,7 @@ const NewColumnsModal = ({
                   <div style={{
                     marginTop: '6px',
                     fontSize: TYPOGRAPHY.fontSize.sm,
-                    color: 'var(--danger)',
+                    color: 'var(--danger-text)',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
                   }}>
                     {nameError}
