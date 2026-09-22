@@ -4,10 +4,18 @@
  *
  * Both tools are CLICK-TO-PLACE (not drag-out like rect/ellipse): each click
  * commits one vertex, a rubber-band edge follows the cursor, and the shape is
- * finished explicitly — via a checkmark control on the first / latest vertex,
- * the Enter key, or by clicking back on the first point. This module owns the
- * draft geometry and every finish/close rule; SVGAnnotationLayer owns the
- * pixels and useSVGInteraction owns the pointer plumbing.
+ * finished explicitly — never by an accidental click.
+ *
+ * WHERE THEY DIFFER (owner ruling 2026-09-22): a POLYGON is a shape and may be
+ * closed — a checkmark on its first vertex, or a click back onto that vertex,
+ * snaps the run shut. A POLYLINE is a LINE: it finishes only at its LATEST
+ * vertex (that checkmark, or Enter), its first vertex offers nothing, and it
+ * can never become a polygon. It carries no fill either, so its toolbar shows
+ * the single-colour quick discs rather than a border/fill swatch.
+ *
+ * This module owns the draft geometry and every finish/close rule;
+ * SVGAnnotationLayer owns the pixels and useSVGInteraction owns the pointer
+ * plumbing.
  *
  * Everything here is page-space (page units, y-down) and pure — the Node test
  * runner imports it directly.
@@ -19,11 +27,12 @@ export const POLY_DRAFT_TOOLS = Object.freeze(['polygon', 'polyline']);
 /**
  * Minimum vertex count before a draft may be finished AS THAT TYPE.
  * A polygon needs 3 (two points can only ever be a line); an open polyline
- * needs 2. Closing a polyline into a polygon uses POLY_CLOSE_MIN_POINTS.
+ * needs 2. Closing a POLYGON draft uses POLY_CLOSE_MIN_POINTS; a polyline
+ * never closes at all (see canClosePolyDraft).
  */
 export const POLY_MIN_POINTS = Object.freeze({ polygon: 3, polyline: 2 });
 
-/** Closing any draft into a polygon needs a real area — three corners. */
+/** Closing a polygon draft needs a real area — three corners. */
 export const POLY_CLOSE_MIN_POINTS = 3;
 
 /**
@@ -145,20 +154,37 @@ export function canFinishPolyDraft(draft) {
   return draft.points.length >= POLY_MIN_POINTS[draft.tool];
 }
 
-/** Can this draft be closed into a polygon? */
+/**
+ * Can this draft be closed into a polygon?
+ *
+ * UX 2026-09-22 (OWNER RULING): only the Polygon tool. A polyline is a LINE,
+ * not a shape — it is open by definition and must never be talked into
+ * becoming a polygon, which is how Drawboard PDF behaves. That one rule is the
+ * whole difference between the two click-to-place tools, so every close
+ * affordance reads it from here: the first-vertex checkmark, the magnetic
+ * "click here to close" target on the first point, the rubber-band's snap onto
+ * that point, and the finish resolver below. Put another way — a polyline
+ * finishes ONLY at its latest point (checkmark or Enter).
+ */
 export function canClosePolyDraft(draft) {
   if (!draft || !isPolyDraftTool(draft.tool)) return false;
+  if (draft.tool !== 'polygon') return false;
   return draft.points.length >= POLY_CLOSE_MIN_POINTS;
 }
 
 /**
- * The two vertices that carry a finish checkmark: the FIRST point (closes the
- * shape) and the LATEST point (finishes it where it stands). Drawboard-style.
+ * The vertices that carry a finish checkmark.
+ *
+ * `last` is always present once a draft exists: its checkmark finishes the run
+ * where it stands. `first` is the CLOSE control and is non-null only on a
+ * draft that may legally close (canClosePolyDraft) — so a polygon offers two
+ * checkmarks and a polyline offers exactly one, on its latest point. A null
+ * `first` means "this draft has no close control", not a missing point.
  */
 export function polyDraftFinishControlPoints(draft) {
   if (!draft?.points?.length) return null;
   return {
-    first: { ...asPoint(draft.points[0]) },
+    first: canClosePolyDraft(draft) ? { ...asPoint(draft.points[0]) } : null,
     last: { ...asPoint(draft.points[draft.points.length - 1]) },
   };
 }
@@ -197,13 +223,20 @@ export function compactPolyDraftPoints(points, epsilon = 3) {
  *
  * - 'finish' on a polygon draft → closed polygon.
  * - 'finish' on a polyline draft → open polyline.
- * - 'close' on either → polygon (this is how a polyline becomes a polygon).
+ * - 'close' on a polygon draft → closed polygon.
+ * - 'close' on a polyline draft → REFUSED (owner ruling 2026-09-22: a polyline
+ *   is a line and can never close into a polygon). No caller asks for this any
+ *   more, and the refusal keeps it that way.
  *
- * Returns `{ ok: false, reason }` when the draft is too short, so the caller
- * can leave the draft alive instead of silently discarding the user's clicks.
+ * Returns `{ ok: false, reason }` when the draft is too short or the close is
+ * not allowed, so the caller can leave the draft alive instead of silently
+ * discarding the user's clicks.
  */
 export function resolvePolyDraftFinish(draft, action = 'finish') {
   if (!draft || !isPolyDraftTool(draft.tool)) return { ok: false, reason: 'no-draft' };
+  if (action === 'close' && draft.tool !== 'polygon') {
+    return { ok: false, reason: 'close-not-allowed' };
+  }
   const finalType = action === 'close' ? 'polygon' : draft.tool;
   const minimum = POLY_MIN_POINTS[finalType];
   const points = compactPolyDraftPoints(draft.points);
