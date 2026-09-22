@@ -57,6 +57,9 @@ const disc = tokenPx('--mobile-strip-disc-button');
 const widthPill = tokenPx('--mobile-strip-dropdown-w');
 const linePill = tokenPx('--mobile-strip-linestyle-w');
 const seriesPill = tokenPx('--mobile-strip-series-w');
+const fontPill = tokenPx('--mobile-strip-font-w');
+const fontSizePill = tokenPx('--mobile-strip-fontsize-w');
+const control = tokenPx('--mobile-strip-control-h');
 
 // A divider is a 1px hairline with its stated side margin on each side.
 const divider = 1 + (2 * dividerInset);
@@ -84,6 +87,17 @@ const STRIPS = {
   callout: [disc, null, widthPill, null, aaButton, moreButton],
   eraser: [100, null, widthPill],
   select: [150],
+  /*
+   * ADDED 2026-09-22 — the LIVE TEXT-EDIT strip, the one strip no board draws and
+   * until now the one strip that scrolled instead of being measured:
+   *   colour disc | divider | font | size | divider | B I U S | alignment
+   * The old row was 361px of controls in a 331px band (a 20px colour disc, a 96px
+   * font pill, a 44px numeric size box, four 28px format buttons and a 104px
+   * "top left" alignment pill), so the alignment control sat off the right edge of
+   * a 375, 390 and 402pt phone. B / I / U / S are one group of four control-height
+   * buttons with NO gap between them, which is why they price as one part.
+   */
+  'text-edit': [control, null, fontPill, fontSizePill, null, control * 4, control],
 };
 
 const stripWidth = (parts) => parts.reduce((sum, part) => sum + (part ?? divider), 0)

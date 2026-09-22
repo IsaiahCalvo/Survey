@@ -16,7 +16,16 @@ test('live text formatting uses only app-styled menus', () => {
   const liveTextFormatting = mobileChrome.slice(start, end);
   assert.doesNotMatch(liveTextFormatting, /<select\b/);
   assert.match(liveTextFormatting, /ariaLabel="Font"/);
-  assert.match(liveTextFormatting, /ariaLabel="Text alignment"/);
+  // RULED CHANGE 2026-09-22 (the strip must fit at 375px): alignment is no longer
+  // a 104px MobileStyledSelect whose label read "top left" and whose menu was nine
+  // "vertical horizontal" rows - it was the control that hung off the right edge
+  // of every phone we support. It is one 20px button showing the horizontal
+  // alignment in force, opening a sheet that holds both axes, so the control's
+  // accessible name comes from a plain aria-label instead of the pill's ariaLabel
+  // prop. The name itself is unchanged.
+  assert.match(liveTextFormatting, /aria-label="Text alignment"/);
+  assert.match(liveTextFormatting, /ariaLabel="Font size"/, 'the size field is the shared pill, not a bare input');
+  assert.doesNotMatch(liveTextFormatting, /<input\b/, 'no bare numeric box on the strip: every field is the shared pill');
   // RULED CHANGE 2026-09-21 (pass 7, boards 1-7 + 15). The pill PAINTS 20px and is
   // HIT at 44px through a transparent pad - the painted-20/box-44 trick every
   // control on this bar uses - where it used to paint a 44px box. And a menu row
@@ -121,42 +130,33 @@ test('the fitted tool strip paints 20px controls and hits them at 44px', () => {
     /\.mobile-pdf-properties > \* \{[\s\S]{0,80}pointer-events: auto/,
     'the controls must take back the pointer events the bar drops',
   );
-  // The one bar that still scrolls keeps both: its own pointer events, and the
-  // clip that a scroll container forces.
-  assert.match(
+  // RULED CHANGE 2026-09-22 (the boards' strip rule, applied to the one strip no
+  // board draws). There is no scrolling bar left. The live rich-text bar used to
+  // opt back into pointer events and clip itself to its painted band, because a
+  // scroll container must be hit-testable and clips both axes - and that clip is
+  // why its pads stopped at 36px instead of 44. The row was refitted to 318px in
+  // a 331px band, so it keeps NOTHING of the scroll contract and takes the base
+  // rule like every other strip. These two assertions replace "the scrolling bar
+  // keeps its clip" and "its pads stop at 36px" with their opposite.
+  assert.doesNotMatch(
     mobileCss,
-    /\.mobile-pdf-properties--text \{[\s\S]{0,320}pointer-events: auto;[\s\S]{0,80}clip-path: inset\(0 0 8px 0\)/,
+    /\.mobile-pdf-properties--text \{/,
+    'the rich-text bar must not carry a variant rule of its own any more: every '
+    + 'declaration it had existed to serve a scroll path it no longer has',
   );
-  // RULED CHANGE 2026-09-16 (r4 phone pass): 20px, not 8. The bar faded its last
-  // 20px so a control sliced by the screen edge read as "there is more this
-  // way"; with only 8px of runway the fade still lay over the Text-alignment
-  // dropdown once the row was scrolled all the way, so a control the user had
-  // successfully reached looked half-rendered. Every other variant already
-  // cleared the fade (the base right inset is the 40px rail plus 8px). The
-  // assertion moved from "8px" to "enough runway to clear the fade".
-  // 2026-09-17 (owner ruling): the fade itself is GONE - the bar paints to the
-  // screen edge, pinned by tests/mobileStripEdgeFade.test.mjs. The assertion
-  // below is unchanged and still earns its keep as trailing runway: it is what
-  // keeps the rich-text strip's last control off the screen edge.
-  const textPad = mobileCss.match(/\.mobile-pdf-properties--text \{[\s\S]{0,650}?padding-right: (\d+)px;/);
-  assert.notEqual(textPad, null, '.mobile-pdf-properties--text must declare padding-right');
-  assert.ok(
-    Number(textPad[1]) >= 20,
-    `the rich-text strip ends ${textPad[1]}px from its edge, inside the bar's own 20px `
-    + 'trailing fade, so its last control still looks cut off at the end of the scroll',
-  );
-  // RULED CHANGE 2026-09-21 (pass 7). The pill's height used to be overridden
-  // per strip variant - one rule for the tool strips, another for the rich-text
-  // one - because the rich-text bar was the only 44px-tall dropdown in the app.
-  // Both variants take the shared control token now, so the base rule (asserted
-  // at the top of this file) sets it once and there is no per-variant override
-  // left to pin. What is still per-variant is the PAD, and it must be: the fitted
-  // strips reach 44px (-12px), the scrolling rich-text bar is clipped to the
-  // painted band and reaches 36px (-8px).
-  assert.match(
+  assert.doesNotMatch(
     mobileCss,
-    /\.mobile-pdf-properties--text \.mobile-pdf-properties__color::after,[\s\S]{0,240}inset-block: -8px/,
-    'the scrolling rich-text bar is clipped to its painted band, so its pads stop at 36px',
+    /\.mobile-pdf-properties--text[^,{]*\{[^}]*(overflow-x:\s*(auto|scroll)|clip-path|touch-action:\s*pan-x)/,
+    'the rich-text bar must never get a scroll path or a clip back: it is measured '
+    + 'to fit 375px (tests/mobileToolPropertiesReach.test.mjs), and a clipped bar '
+    + 'caps every finger target at the painted 36px',
+  );
+  // With the clip gone there is no per-variant pad override left: every control on
+  // the bar takes the shared -12px and reaches the full 44px the ruling asks for.
+  assert.doesNotMatch(
+    mobileCss,
+    /\.mobile-pdf-properties--text \.mobile-pdf-properties__[a-z]+::after/,
+    'the rich-text bar takes the shared 44px pads now, so it needs no smaller ones',
   );
 });
 

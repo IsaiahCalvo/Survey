@@ -71,14 +71,28 @@ test('the strip fits, so it is centred with no scroll path at all', () => {
 });
 
 /*
- * The ONE exception, and the reason it is one: the live rich-text editor's bar is
- * not a tool strip off a board. It carries a colour swatch, a font, a size, four
- * format toggles and an alignment dropdown, which no 331px band holds, so it
- * keeps the start-aligned scroll path its own tests pin.
+ * RULED CHANGE 2026-09-22: there is no exception left. This used to assert that
+ * the live rich-text bar KEEPS a start-aligned scroll path, on the grounds that no
+ * board shrinks it: a colour swatch, a 96px font pill, a numeric size box, four
+ * 28px format buttons and a 104px "top left" alignment pill are 361px of controls
+ * in a 331px band. But the boards' rule is about the band, not about which tool
+ * owns the row - "essentials only; if a strip does not fit at 375px, move the least
+ * essential control into the sheet" - and on a phone the scroll simply hid the
+ * alignment control off the right edge. The row was refitted instead (size box to
+ * a 60px pill, B/I/U/S to one 80px group of 20px buttons, the alignment pill to one
+ * 20px button opening a sheet with both axes): 318px in a 331px band at 375px.
  */
-test('the live text bar keeps its scroll path, because no board shrinks it', () => {
-  const text = stripRules().find(({ selectors }) => selectors === '.mobile-pdf-properties--text');
-  assert.ok(text, '.mobile-pdf-properties--text rule not found');
-  assert.match(text.body, /overflow-x:\s*auto/);
-  assert.match(text.body, /justify-content:\s*flex-start/);
+test('the live text bar fits too, so no variant scrolls', () => {
+  const offenders = stripRules()
+    .filter(({ body }) => /overflow(-x)?:\s*(auto|scroll)/.test(body))
+    .map(({ selectors }) => selectors);
+  assert.deepEqual(
+    offenders,
+    [],
+    `${offenders.join(' / ')} gives the tool-properties strip a scroll path. Every `
+    + 'strip, the live text one included, is measured to fit 375px '
+    + '(tests/mobileToolPropertiesReach.test.mjs). A scrolling row loses its first '
+    + 'control under the tool rail and its last one off the screen edge, and it has '
+    + 'to stay hit-testable to scroll, which caps every finger target at 36px.',
+  );
 });

@@ -64,6 +64,13 @@
   --mobile-strip-arrowhead-w: 90px;
   --mobile-strip-arrowends-w: 96px;
   --mobile-strip-series-w: 80px;
+  /* The live text-edit strip's own two pills (2026-09-22). 92px is what shows
+     "Helvetica", "Courier New" and "Georgia" whole instead of cutting every font
+     name but "Arial" — the owner's standing objection to clipped labels — and
+     60px is what fits "16 pt" with its unit rather than "16 p...". Both are
+     measured: the strip is 318px of controls in a 331px band at 375px. */
+  --mobile-strip-font-w: 92px;
+  --mobile-strip-fontsize-w: 60px;
   --mobile-sheet-field-w: 96px;    /* the sheet's aligned-field variant */
   --mobile-dock-control-h: 30px;   /* Drawboard bottom-bar controls 24-33pt */
 
@@ -1311,37 +1318,33 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    tests/mobileRuntimeCompatibility.test.mjs and
    tests/mobileToolSettingsReachable.test.mjs) but every number now comes from
    the base rule. */
-/* The ONE strip that still scrolls, and the one strip no board covers: the live
-   rich-text editor's bar carries a colour swatch, a font, a size, four format
-   toggles and an alignment dropdown, which no 331px band holds. It is
-   start-aligned with a scroll path so its far end is always reachable - the
-   contract pinned by tests/mobileRuntimeCompatibility.test.mjs and
-   tests/mobileToolSettingsReachable.test.mjs. Because it scrolls it must stay
-   hit-testable (WebKit will not scroll a container that is not), so it opts back
-   into the pointer events the pass-7 base rule drops; and because a scroll
-   container clips both axes, its pads stop at the painted band - 36px of target
-   here, not the 44px the fitted strips get. */
-.mobile-pdf-properties--text {
-  padding-right: 20px;
-  justify-content: flex-start;
-  scroll-padding-inline: 8px;
-  touch-action: pan-x;
-  -webkit-overflow-scrolling: touch;
-  overflow-x: auto;
-  overflow-y: visible;
-  pointer-events: auto;
-  clip-path: inset(0 0 8px 0);
-}
+/* RULED CHANGE 2026-09-22 (pass 7, the boards' strip rule applied to the one
+   strip no board draws): the live rich-text bar DOES NOT SCROLL any more, and it
+   has nothing left to scroll to. It used to be the exception - start-aligned,
+   overflow-x: auto, touch-action: pan-x, hit-testable so WebKit would scroll it,
+   and clipped to its painted band, which capped every pad at 36px - because it
+   carried a colour swatch, a 96px font pill, a numeric size box, four 28px format
+   buttons and a 104px "top left" alignment pill: 361px of controls in a 331px
+   band, so the alignment control sat off the right edge of every phone we
+   support. The row was refitted at the source instead (see the strip comment in
+   MobilePdfViewerChrome.jsx): the size box became a 60px pill, B/I/U/S became one
+   80px group of 20px buttons, and the alignment pill became one 20px button that
+   opens a sheet holding both alignment axes. 318px in a 331px band at 375px, so
+   every declaration that existed to serve the scroll is gone with it, and the
+   bar takes the base rule's centring, its dropped pointer events and its 44px
+   pads exactly like every other tool strip.
+   Do NOT give this bar a scroll path back. Add a control only if it still
+   measures inside the band (tests/mobileToolPropertiesReach.test.mjs prices it);
+   otherwise it belongs in the alignment sheet.
 
-.mobile-pdf-properties--text::-webkit-scrollbar { display: none; }
-
-/* These three hold two or three wide labelled buttons that always fit, so they
+   These four hold two or three wide labelled buttons that always fit, so they
    stay centred rather than moving to the bar's left edge - the owner's "never
    move an existing control" applies to them because nothing about them was
    broken. `safe` still falls back to start-aligned if a label ever grows past
-   the bar, which is what keeps the scroll reachable. */
+   the bar, so the first control can never vanish under the tool rail. */
 .mobile-pdf-properties--actions,
 .mobile-pdf-properties--survey,
+.mobile-pdf-properties--text,
 .mobile-pdf-properties--text-markup {
   justify-content: safe center;
 }
@@ -1384,6 +1387,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    there is no dead lane between two controls to miss into. */
 .mobile-pdf-properties__color,
 .mobile-pdf-properties__format,
+.mobile-pdf-properties__align,
 .mobile-pdf-properties__edit,
 .mobile-pdf-properties__more,
 .mobile-pdf-properties__text-button,
@@ -1398,6 +1402,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    enlarge (seen on the simulator - the settings sheet stopped opening). */
 .mobile-pdf-properties__color::after,
 .mobile-pdf-properties__format::after,
+.mobile-pdf-properties__align::after,
 .mobile-pdf-properties__edit::after,
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
@@ -1468,12 +1473,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 0;
 }
 
-/* The rich-text variant's controls are 24px tall inside a bar that clips itself
-   to 36px, so their pads stop where that clip does. */
-.mobile-pdf-properties--text .mobile-pdf-properties__color::after,
-.mobile-pdf-properties--text .mobile-pdf-properties__format::after,
-.mobile-pdf-properties--text .mobile-pdf-properties__edit::after {
-  inset-block: -8px;
+/* RULED CHANGE 2026-09-22: the rich-text variant's 36px pad override is GONE.
+   It existed only because the bar clipped itself to its painted band to scroll;
+   the bar does not scroll and does not clip, so its controls take the shared
+   -12px pad above and reach the full 44px the ruling asks for, exactly like the
+   controls on every other strip. */
+
+/* B / I / U / S sit shoulder to shoulder in an 80px group with no gap between
+   them, so their pads must tile the group EXACTLY. The shared pad runs 2px wide
+   on each side to fill the strip's 4px lanes; here that would overlap the
+   neighbour by 2px, and among overlapping siblings the LATER one wins the hit
+   test - the right-hand sliver of Bold would have toggled Italic. */
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format::after {
+  inset-inline: 0;
 }
 
 .mobile-pdf-properties--actions > button:disabled { opacity: 0.4; }
@@ -1799,23 +1811,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 100%;
 }
 
-/* UX 2026-09-16 (phone sweep): 44px wide. This one control is a bare <input>
-   that paints its own pill, so it can neither host a transparent ::after nor be
-   made taller without the pill growing with it; its target is its own box, and
-   the width is what carries it. Vertically it is the bar's own 24px, between two
-   neighbours whose pads cover the full 44px. */
-.mobile-pdf-properties__font-size {
-  width: 44px;
+/* RULED CHANGE 2026-09-22: the bare 44px numeric font-size <input> is GONE. It
+   could not carry its unit (the boards: "every numeric field carries its unit"),
+   it was the one control on the bar whose finger target had to be its own painted
+   box because an <input> cannot host a transparent pad, and it summoned the iOS
+   keypad for a value that is almost always one of the standard sizes. It is the
+   desktop bar's own size dropdown now, at --mobile-strip-fontsize-w, reading
+   "16 pt". A size the presets do not hold is still shown, and still settable from
+   the desktop bar. */
+
+/* Boards 1-7 give the strip ONE row of controls 4px apart; B / I / U / S are the
+   one cluster that reads as a single control, so they sit shoulder to shoulder in
+   their own group - 4 x 20px = 80px - instead of 124px of separate chips. The
+   group is the flex item, so it takes the strip's gap on its outer edges only. */
+.mobile-pdf-properties__format-group {
   height: var(--mobile-strip-control-h);
-  padding: 0 4px;
-  box-sizing: border-box;
+  display: flex;
   flex: 0 0 auto;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  font-size: 10px;
-  text-align: center;
+  gap: 0;
 }
 
 /* UX 2026-09-17 (owner, phone build: "Bold, italics, underline and
@@ -1829,8 +1842,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    The other half of the fix is in the artwork: the four assets are normalised
    onto the house 24 grid so one square glyph box serves all four - see
    src/Icons.jsx. */
+/* RULED CHANGE 2026-09-22 (the strip must fit at 375px): 20px, not 28. Four 28px
+   chips 4px apart are 124px of a 331px band, which is what pushed the alignment
+   control off the right edge of the phone. At the strip's own control height the
+   four are 80px, they carry the same 12px glyph as every other strip control, and
+   the group above tiles their 44px pads exactly. */
 .mobile-pdf-properties__format {
-  width: 28px;
+  width: var(--mobile-strip-control-h);
   height: var(--mobile-strip-control-h);
   padding: 0;
   display: grid;
@@ -1844,19 +1862,56 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 800;
 }
 
+/* Four buttons shoulder to shoulder read as one control, so only the OUTER
+   corners of the group are round. */
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format {
+  border-radius: 0;
+}
+
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.mobile-pdf-properties__format-group > .mobile-pdf-properties__format:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
 /* B / I / U / S on the phone's live text strip: the letter turns gold, the chip
    keeps its resting --surface-3. */
 .mobile-pdf-properties__format.is-active {
   color: var(--accent);
 }
 
-/* Live text formatting is intentionally a single horizontal strip. RULED CHANGE
-   2026-09-16 (phone sweep; owner ruling "sizing follows Drawboard's ratios
-   uniformly ... everything reads a little big"): these controls used to paint at
-   44px, which is why this bar was 52px tall while every other tool's bar was 36.
-   They paint 24px now, the shared strip control height, and the 44px lives in
-   the transparent ::after pads above - same visual as the rest of the app, same
-   finger target as before. The strip still supplies the horizontal scrolling. */
+/* The ONE alignment button (2026-09-22). It draws the horizontal alignment in
+   force and opens the sheet that holds both axes, so it takes no control surface
+   at all - the same treatment as "Aa" and "...", which also open something rather
+   than holding a value - and it turns gold while its sheet is open. */
+.mobile-pdf-properties__align {
+  width: var(--mobile-strip-control-h);
+  height: var(--mobile-strip-control-h);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.mobile-pdf-properties__align.is-active { color: var(--accent); }
+
+/* Live text formatting is one horizontal row of the shared strip controls, and
+   nothing in it may paint taller than the band. RULED CHANGE 2026-09-16 (phone
+   sweep; owner ruling "sizing follows Drawboard's ratios uniformly ... everything
+   reads a little big"): these controls used to paint at 44px, which is why this
+   bar was 52px tall while every other tool's bar was 36. They paint the shared
+   strip control height now and the 44px lives in the transparent ::after pads
+   above - same visual as the rest of the app, same finger target as before.
+   The `select` and `input` names are kept as a guard: the bar's own OS select and
+   its bare numeric size box are both gone (2026-09-22), and if either ever comes
+   back it will at least not be the one control on the row painting a different
+   height. */
 .mobile-pdf-properties--text > button,
 .mobile-pdf-properties--text > select,
 .mobile-pdf-properties--text > input {
@@ -2068,6 +2123,35 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: var(--mobile-sheet-field-w);
   flex: 0 0 var(--mobile-sheet-field-w);
 }
+
+/* The alignment rows in the live text sheet (2026-09-22). Three glyph buttons
+   right-aligned in the row, on the same 96px the sheet's fields take so the two
+   rows and every other sheet field line up down one edge. 32px buttons on a 40px
+   row: the row itself carries the rest of the finger target, exactly as the
+   sheet's own Done button does. */
+.mobile-pdf-tool-sheet__aligns {
+  width: var(--mobile-sheet-field-w);
+  flex: 0 0 var(--mobile-sheet-field-w);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-pdf-tool-sheet__aligns > button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+/* Owner's selected-state ruling: the chosen glyph turns gold. No fill, no
+   border, no wash. */
+.mobile-pdf-tool-sheet__aligns > button.is-active { color: var(--accent); }
 
 /* Pass 7: no per-variant heights. Standard is the one starting height. */
 

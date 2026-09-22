@@ -194,8 +194,12 @@ test('every icon button in the header and the rich-text strip centres its glyph 
 
   // One box and one radius across the four format buttons - they share a single
   // rule, so there is nowhere for a fifth size to hide.
+  // RULED CHANGE 2026-09-22 (the strip must fit at 375px): the four are the strip's
+  // own control width, not 28px. Four 28px chips 4px apart are 124px of a 331px
+  // band, which is what pushed the live text bar's alignment control off the right
+  // edge of every phone we support; at 20px in one group they are 80px.
   const format = block(css, '.mobile-pdf-properties__format');
-  assert.match(format, /width: 28px/);
+  assert.match(format, /width: var\(--mobile-strip-control-h\)/);
   assert.match(format, /height: var\(--mobile-strip-control-h\)/);
   assert.match(format, /border-radius: 5px/);
 });

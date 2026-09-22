@@ -50,14 +50,29 @@ const declaration = (body, property) => {
 test('the phone tool-settings strip can reach controls that overflow it', async () => {
   const css = await readFile(CSS, 'utf8');
 
-  // The text strip is the reference: it already scrolls its own overflow.
-  const textStrip = ruleBody(css, (s) => s.includes('.mobile-pdf-properties--text') && !s.includes('--actions'));
-  assert.ok(textStrip, '.mobile-pdf-properties--text rule not found');
-  const textOverflow = declaration(textStrip, 'overflow-x') || declaration(textStrip, 'overflow');
-  assert.match(
-    String(textOverflow),
-    /auto|scroll/,
-    'the text strip is supposed to be the reference that scrolls its overflow',
+  /*
+   * RULED CHANGE 2026-09-22. The live text strip used to be this file's
+   * REFERENCE - the one bar that scrolled its own overflow, held up as proof that
+   * scrolling was a workable answer. It is not one on a phone: the scroll hid the
+   * alignment control off the right edge of a 375, 390 and 402pt screen, and a bar
+   * that has to stay hit-testable to scroll caps every finger target at its
+   * painted 36px. That row was refitted to 318px in a 331px band, so the reference
+   * is gone and the rule is the same for every variant: measure it, do not scroll
+   * it. This asserts that - no strip, text included, carries a scroll path.
+   */
+  const scrollingStrips = [];
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = match[1].replace(/\/\*[\s\S]*?\*\//g, '').trim();
+    if (!/(^|\s|,)\.mobile-pdf-properties(--[a-z-]+)?(\s|$|,|:|>)/.test(selectors)) continue;
+    const overflow = declaration(match[2], 'overflow-x') || declaration(match[2], 'overflow');
+    if (overflow && /auto|scroll/.test(overflow)) scrollingStrips.push(selectors.replace(/\s+/g, ' '));
+  }
+  assert.deepEqual(
+    scrollingStrips,
+    [],
+    `${scrollingStrips.join(' / ')} still scrolls. Every phone strip is measured to `
+    + 'fit 375px instead (tests/mobileToolPropertiesReach.test.mjs); a control that '
+    + 'does not fit belongs in that tool\'s sheet.',
   );
 
   /*

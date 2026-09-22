@@ -396,6 +396,13 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
           role="listbox"
           aria-label={ariaLabel}
           data-modal-focus-layer="true"
+          /* This menu portals to document.body, so it sits OUTSIDE the strip
+             that carries TextEditOverlay's opt-out. Without the attribute here,
+             picking a font or a size while a text box was being edited landed a
+             pointerdown on plain document, which committed and closed the editor
+             before the style could be applied — and no chrome menu should ever
+             commit a text box. */
+          data-rich-text-toolbar
           onKeyDown={onMenuKeyDown}
           style={{
             position: 'fixed',
@@ -649,6 +656,61 @@ const ARROW_ENDS_OPTIONS = [
   preview: <Icon name={option.icon} size={15} color="currentColor" />,
   menuPreview: <Icon name={option.icon} size={18} color="currentColor" />,
 }));
+
+/* ---------------------------------------------------------------------------
+ * PASS 7 — THE LIVE TEXT-EDIT STRIP (2026-09-22).
+ *
+ * The strip that appears while a text box or a callout is being typed into is
+ * the one phone strip no board covers, and until now it was the one strip that
+ * scrolled: colour disc | "Arial" | "16" | B | I | U | S | "top left", which ran
+ * off the right edge of a 402pt phone and worse at 375 and 390, so the alignment
+ * control was unreachable with a thumb unless the row was dragged sideways.
+ *
+ * The boards' rule applies to it like every other strip — "essentials only; it
+ * must NEVER scroll and NEVER clip; if a strip does not fit at 375px, move the
+ * least essential control into the sheet" — so it is measured to fit now:
+ *   colour disc | divider | font | size | divider | B I U S | alignment
+ * and the two alignment AXES (desktop board 12 shows them as six buttons) live
+ * in the sheet the alignment button opens. That button draws the horizontal
+ * alignment in force, so the strip still says which way the text is set.
+ *
+ * The lists below are the DESKTOP bar's own lists (src/AppShell.jsx, the board-12
+ * row), so the two platforms can never offer a different font or a different
+ * size. Single-name fonts only — a CSS fallback stack drifts the Fabric text
+ * cursor (gotcha 2026-04-08).
+ * ------------------------------------------------------------------------- */
+const MOBILE_FONT_FAMILY_OPTIONS = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana']
+  .map((family) => ({ value: family, label: family }));
+
+const MOBILE_FONT_SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72];
+
+/* Board 12 + the units ruling: a size field says "16 pt", never a bare "16". A
+   size the presets do not hold — one typed on the desktop, one carried in by an
+   imported mark — is prepended so the pill never lies about the text in force,
+   exactly as the desktop dropdown does. */
+const mobileFontSizeOptions = (current) => {
+  const size = Number(current);
+  const live = Number.isFinite(size) ? size : 16;
+  const sizes = MOBILE_FONT_SIZE_PRESETS.includes(live)
+    ? MOBILE_FONT_SIZE_PRESETS
+    : [live, ...MOBILE_FONT_SIZE_PRESETS];
+  return sizes.map((value) => ({ value: String(value), label: `${value} pt` }));
+};
+
+/* The app's own six alignment glyphs (src/Icons.jsx, drawn for board 12), with
+   the desktop bar's own wording so a screen reader hears the same name on both
+   platforms. */
+const HORIZONTAL_ALIGNMENTS = [
+  { value: 'left', icon: 'alignLeft', label: 'Align left' },
+  { value: 'center', icon: 'alignCenter', label: 'Align centre' },
+  { value: 'right', icon: 'alignRight', label: 'Align right' },
+];
+
+const VERTICAL_ALIGNMENTS = [
+  { value: 'top', icon: 'alignTop', label: 'Align to the top' },
+  { value: 'middle', icon: 'alignMiddle', label: 'Align to the middle' },
+  { value: 'bottom', icon: 'alignBottom', label: 'Align to the bottom' },
+];
 
 /* UX 2026-09-16 (icon-set pass + sizing pass, merged): ONE glyph size per rail
    tier, and no per-glyph exceptions inside a tier. The rail used to run 19 with
@@ -1059,7 +1121,10 @@ export function MobileToolProperties({ api }) {
     const editor = api.richTextEditor;
     const state = editor.state || {};
     const editorApi = editor.api || {};
-    const alignment = `${state.verticalAlign || 'top'}|${state.textAlign || 'left'}`;
+    const textAlign = state.textAlign || 'left';
+    const verticalAlign = state.verticalAlign || 'top';
+    const liveAlignment = HORIZONTAL_ALIGNMENTS.find((option) => option.value === textAlign)
+      || HORIZONTAL_ALIGNMENTS[0];
     return (
       <>
       {/* data-rich-text-toolbar is TextEditOverlay's opt-out contract: a
@@ -1069,7 +1134,10 @@ export function MobileToolProperties({ api }) {
           already unmounting. */}
       <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" data-rich-text-toolbar role="toolbar" aria-label="Text formatting">
         {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
-            app's shared CompactColorPicker takeover, not an OS colour input. */}
+            app's shared CompactColorPicker takeover, not an OS colour input.
+            PASS 7: it stays ONE swatch rather than gaining the quick-colour
+            discs — four discs plus a rainbow is 110px, and this strip has 331px
+            for seven controls. */}
         <button
           type="button"
           className="mobile-pdf-properties__color"
@@ -1080,55 +1148,71 @@ export function MobileToolProperties({ api }) {
         >
           <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
         </button>
+        <MobileStripDivider />
+        {/* The font name ellipsises rather than widening the pill: a strip is a
+            row of fixed widths, and the menu shows every name in full. */}
         <MobileStyledSelect
           ariaLabel="Font"
           value={state.fontFamily || 'Arial'}
-          options={['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => ({ value: family, label: family }))}
+          options={MOBILE_FONT_FAMILY_OPTIONS}
           onChange={(family) => editorApi.setFontFamily?.(family)}
-          minWidth={96}
+          width="var(--mobile-strip-font-w)"
         />
-        <input
-          className="mobile-pdf-properties__font-size"
-          aria-label="Font size"
-          inputMode="numeric"
-          value={state.fontSize ?? 16}
-          onChange={(event) => {
-            const size = Number.parseInt(event.target.value, 10);
-            if (Number.isFinite(size)) editorApi.setFontSize?.(Math.max(1, Math.min(200, size)));
-          }}
-        />
-        {[
-          ['formatBold', 'bold', 'toggleBold', 'Bold'],
-          ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
-          ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
-          ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
-        ].map(([iconName, stateKey, method, title]) => (
-          <button
-            key={stateKey}
-            type="button"
-            className={`mobile-pdf-properties__format${state[stateKey] ? ' is-active' : ''}`}
-            aria-label={title}
-            aria-pressed={Boolean(state[stateKey])}
-            onPointerDown={keepTextEditFocus}
-            onClick={() => editorApi[method]?.()}
-          >
-            <Icon name={iconName} size={STRIP_GLYPH} />
-          </button>
-        ))}
+        {/* The bare numeric input this replaced could not carry its unit and
+            needed the iOS keypad for a value that is almost always one of the
+            standard sizes. It is the desktop bar's dropdown now, at the strip's
+            own size, and it reads "16 pt". */}
         <MobileStyledSelect
-          ariaLabel="Text alignment"
-          value={alignment}
-          options={['top', 'middle', 'bottom'].flatMap((vertical) => ['left', 'center', 'right'].map((horizontal) => ({
-            value: `${vertical}|${horizontal}`,
-            label: `${vertical} ${horizontal}`,
-          })))}
-          onChange={(nextAlignment) => {
-            const [vertical, horizontal] = nextAlignment.split('|');
-            editorApi.setTextAlign?.(horizontal);
-            editorApi.setVerticalAlign?.(vertical);
+          ariaLabel="Font size"
+          value={String(state.fontSize ?? 16)}
+          options={mobileFontSizeOptions(state.fontSize ?? 16)}
+          onChange={(size) => {
+            const next = Number.parseInt(size, 10);
+            if (Number.isFinite(next)) editorApi.setFontSize?.(Math.max(1, Math.min(200, next)));
           }}
-          minWidth={104}
+          width="var(--mobile-strip-fontsize-w)"
         />
+        <MobileStripDivider />
+        {/* B / I / U / S are one 80px group of four 20px buttons, not four
+            separate 28px controls 4px apart (124px). Their hit pads tile the
+            group exactly — 20 x 44 each, no overlap — because two pads that
+            overlap hand the press to the later sibling. */}
+        <div className="mobile-pdf-properties__format-group" role="group" aria-label="Text style">
+          {[
+            ['formatBold', 'bold', 'toggleBold', 'Bold'],
+            ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
+            ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
+            ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
+          ].map(([iconName, stateKey, method, title]) => (
+            <button
+              key={stateKey}
+              type="button"
+              className={`mobile-pdf-properties__format${state[stateKey] ? ' is-active' : ''}`}
+              aria-label={title}
+              aria-pressed={Boolean(state[stateKey])}
+              onPointerDown={keepTextEditFocus}
+              onClick={() => editorApi[method]?.()}
+            >
+              <Icon name={iconName} size={STRIP_GLYPH} />
+            </button>
+          ))}
+        </div>
+        {/* ONE alignment button, drawing the horizontal alignment in force, and
+            it opens the sheet where both axes live. It replaces a 104px pill
+            whose label read "top left" and whose menu was nine rows of
+            "vertical horizontal" — the control that fell off the right edge of
+            every phone we support. */}
+        <button
+          type="button"
+          className={`mobile-pdf-properties__align${moreSheetOpen ? ' is-active' : ''}`}
+          aria-label="Text alignment"
+          title="Text alignment"
+          aria-expanded={moreSheetOpen}
+          onPointerDown={keepTextEditFocus}
+          onClick={() => setMoreSheetOpen((open) => !open)}
+        >
+          <Icon name={liveAlignment.icon} size={STRIP_GLYPH} color="currentColor" />
+        </button>
       </div>
       {colorPicker === 'fontColorLive' && (
         <MobileColorPickerSurface
@@ -1138,6 +1222,68 @@ export function MobileToolProperties({ api }) {
           onChange={(hex) => editorApi.setFontColor?.(hex)}
           onClose={() => setColorPicker(null)}
         />
+      )}
+      {/* The alignment sheet. Same frame, motion and Done as every other tool
+          sheet, and it carries data-rich-text-toolbar because it portals to
+          document.body: without the opt-out, TextEditOverlay's document-level
+          pointerdown listener would commit and close the text box the moment a
+          finger landed on it (see TextEditOverlay's onDocPointerDown). */}
+      {moreSheetOpen && typeof document !== 'undefined' && createPortal(
+        <>
+          <button
+            type="button"
+            className="mobile-pdf-sheet-backdrop"
+            data-rich-text-toolbar
+            aria-label="Close text alignment"
+            onPointerDown={keepTextEditFocus}
+            onClick={requestMoreSheetClose}
+          />
+          <section
+            className="mobile-pdf-tool-sheet"
+            data-rich-text-toolbar
+            aria-label="Text alignment"
+            style={moreSheetMotionStyle}
+          >
+            <div
+              className="mobile-pdf-sheet__handle"
+              onTouchStart={moreSheetDragHandlers.onTouchStart}
+              onTouchMove={moreSheetDragHandlers.onTouchMove}
+              onTouchEnd={moreSheetDragHandlers.onTouchEnd}
+            />
+            <header className="mobile-pdf-tool-sheet__header">
+              <strong>Text alignment</strong>
+              <button type="button" aria-label="Done" onPointerDown={keepTextEditFocus} onClick={requestMoreSheetClose}>Done</button>
+            </header>
+            <div className="mobile-pdf-tool-sheet__rows">
+              {[
+                { title: 'Horizontal', options: HORIZONTAL_ALIGNMENTS, value: textAlign, apply: (next) => editorApi.setTextAlign?.(next) },
+                { title: 'Vertical', options: VERTICAL_ALIGNMENTS, value: verticalAlign, apply: (next) => editorApi.setVerticalAlign?.(next) },
+              ].map(({ title, options, value, apply }) => (
+                <div className="mobile-pdf-tool-sheet__row" key={title}>
+                  <span>{title}</span>
+                  <div className="mobile-pdf-tool-sheet__aligns" role="group" aria-label={`${title} text alignment`}>
+                    {options.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        /* Owner's selected-state ruling: the chosen glyph turns
+                           gold. No fill, no border, no wash. */
+                        className={value === option.value ? 'is-active' : ''}
+                        aria-label={option.label}
+                        aria-pressed={value === option.value}
+                        onPointerDown={keepTextEditFocus}
+                        onClick={() => apply(option.value)}
+                      >
+                        <Icon name={option.icon} size={18} color="currentColor" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>,
+        document.body,
       )}
       </>
     );
