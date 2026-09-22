@@ -252,7 +252,7 @@ test('the custom disc appears only where the host can open the picker, and opens
     const buttons = [...document.querySelectorAll('[data-quick-colours] button')];
     assert.equal(buttons.length, 4, 'three presets plus the rainbow custom disc');
     const custom = document.querySelector('[data-quick-colour-custom]');
-    assert.equal(custom.getAttribute('aria-label'), 'Custom colour');
+    assert.equal(custom.getAttribute('aria-label'), 'Custom color');
     // Red is current, so the custom disc is not marked.
     assert.equal(custom.getAttribute('aria-pressed'), 'false');
     await act(async () => { custom.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
@@ -291,7 +291,7 @@ test('a multi-colour tool gets ONE combined swatch that opens the picker', async
     })));
     const swatch = document.querySelector('[data-quick-paint-swatch]');
     assert.equal(swatch.getAttribute('data-quick-paint-swatch'), 'shape');
-    assert.equal(swatch.getAttribute('aria-label'), 'Border and fill colours');
+    assert.equal(swatch.getAttribute('aria-label'), 'Border and fill colors');
     const disc = swatch.querySelector('.quick-style__swatch-disc');
     assert.equal(disc.style.getPropertyValue('--quick-style-fill'), '#ffffff');
     assert.equal(disc.style.getPropertyValue('--quick-style-border'), '#FF0000');
@@ -320,7 +320,7 @@ test('the counter swatch is the pin with its number, not a circle', async () => 
       onOpen: () => {},
     })));
     const swatch = document.querySelector('[data-quick-paint-swatch="counter"]');
-    assert.equal(swatch.getAttribute('aria-label'), 'Pin and number colours');
+    assert.equal(swatch.getAttribute('aria-label'), 'Pin and number colors');
     const svg = swatch.querySelector('svg');
     assert.equal(svg.querySelectorAll('circle').length, 0, 'the owner ruled out a circle');
     assert.equal(svg.querySelector('path').getAttribute('fill'), '#FF0000');

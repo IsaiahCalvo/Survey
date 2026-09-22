@@ -132,7 +132,7 @@ export function QuickColourDots({
       className={`quick-style quick-style--colours quick-style--${platform}`}
       data-quick-colours="true"
       role="group"
-      aria-label="Colour"
+      aria-label="Color"
     >
       {QUICK_COLOURS.map((colour) => {
         const name = QUICK_COLOUR_NAMES[colour] || colour;
@@ -182,8 +182,8 @@ export function QuickColourDots({
           className={`quick-style__dot quick-style__dot--custom${customIsCurrent ? ' is-current' : ''}`}
           data-quick-colour-custom="true"
           style={customIsCurrent ? { '--quick-style-ring': swatchRingColour(value) } : undefined}
-          {...chromeTip('Custom colour', 'below')}
-          aria-label="Custom colour"
+          {...chromeTip('Custom color', 'below')}
+          aria-label="Custom color"
           aria-pressed={customIsCurrent}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={() => onOpenPicker?.()}
@@ -227,7 +227,7 @@ export function QuickPaintSwatch({
   const isCounter = variant === 'counter';
   const ringColour = ring ?? border ?? '#FF0000';
   const centreColour = center ?? fill ?? (isCounter ? '#ffffff' : '#ffffff');
-  const name = label || (isCounter ? 'Pin and number colours' : 'Border and fill colours');
+  const name = label || (isCounter ? 'Pin and number colors' : 'Border and fill colors');
   return (
     <button
       type="button"

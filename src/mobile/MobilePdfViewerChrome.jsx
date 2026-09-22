@@ -194,7 +194,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
       <div className="mobile-pdf-colorpicker-surface" role="dialog" aria-label={`${title || 'Color'} picker`}>
         <div className="mobile-pdf-sheet__handle" />
         <header className="mobile-pdf-tool-sheet__header">
-          <strong>{title || 'Colour'}</strong>
+          <strong>{title || 'Color'}</strong>
           <button type="button" aria-label="Done" onClick={onClose}>Done</button>
         </header>
         <div className="mobile-pdf-colorpicker-surface__body">
@@ -1443,7 +1443,7 @@ export function MobileToolProperties({ api }) {
   const showMoreOnStrip = showArrowhead || canResizeRotate;
 
   /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
-     open — titled "Colour", with a gold Done, the shared picker's 12 presets
+     open — titled "Color", with a gold Done, the shared picker's 12 presets
      edge to edge, its grid or gradient, its opacity slider and its one bottom
      row, at the Standard sheet height.
 
@@ -1470,14 +1470,14 @@ export function MobileToolProperties({ api }) {
   // Config for the shared CompactColorPicker takeover, per open target.
   const colorPickerConfig = colorPicker === 'textColor'
     ? {
-      title: 'Text colour',
+      title: 'Text color',
       color: toHexColor(textDefaults.fontColor, '#1e293b'),
       showOpacity: false,
       onChange: (hex) => updateTextDefaults({ fontColor: hex }),
     }
     : colorPicker === 'fill'
       ? {
-        title: 'Colour',
+        title: 'Color',
         tabs: paintTabs,
         color: toHexColor(api.fillColor, '#ffffff'),
         opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)),
@@ -1490,7 +1490,7 @@ export function MobileToolProperties({ api }) {
       }
       : colorPicker === 'stroke'
         ? {
-          title: 'Colour',
+          title: 'Color',
           tabs: paintTabs,
           color: toHexColor(api.strokeColor, '#ff0000'),
           opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
@@ -1562,7 +1562,7 @@ export function MobileToolProperties({ api }) {
         <QuickPaintSwatch
           platform="phone"
           variant={tool === 'counter' ? 'counter' : 'shape'}
-          label={tool === 'counter' ? 'Pin and number colours' : 'Border and fill colours'}
+          label={tool === 'counter' ? 'Pin and number colors' : 'Border and fill colors'}
           ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
           center={tool === 'counter' ? '#ffffff' : toHexColor(api.fillColor, '#ffffff')}
           /* Boards 17/18: the swatch opens the Colour sheet on the channel it is
