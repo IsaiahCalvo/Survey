@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
-import { matchedQuickColour, withQuickColoursFirst } from '../utils/quickStylePresets';
+import { normaliseQuickColour, swatchCheckInk, swatchRingColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
-import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
+import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
@@ -174,7 +174,7 @@ const TOOL_LABELS = {
  * Rendered as a near-invisible-backdrop popover above the edit sheet, matching
  * the demo's never-dim overlay convention.
  */
-function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title }) {
+function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title, tabs = null }) {
   if (typeof document === 'undefined') return null;
   return createPortal(
     <>
@@ -212,6 +212,11 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
             showOpacity={showOpacity}
             firstPreset={firstPreset}
             minOpacity={minOpacity}
+            /* Boards 17 and 18: a mark with two colours gets the Border / Fill
+               tabs at the top of the sheet body. A single-colour control (a pen's
+               stroke, a text colour) passes none, and the sheet opens straight
+               onto the presets. */
+            tabs={tabs}
             onChange={onChange}
             onClose={onClose}
           />
@@ -1167,7 +1172,10 @@ export function MobileToolProperties({ api }) {
           />
           <button
             type="button"
-            className={`mobile-pdf-properties__color${matchedQuickColour(markupColor) ? '' : ' is-current-color'}`}
+            /* No chosen mark on this button: the discs beside it carry it, and
+               the class that used to put a gold ring here has had no rule behind
+               it since the owner reversed that on 2026-09-21. */
+            className="mobile-pdf-properties__color"
             aria-label="Text markup color and opacity"
             title="Text markup color and opacity"
             aria-expanded={Boolean(api.showAnnotationColorPicker)}
@@ -1409,24 +1417,43 @@ export function MobileToolProperties({ api }) {
   // shares that arrowhead, so it shares the "...".
   const showMoreOnStrip = showArrowhead;
 
-  // Open the edit sheet from a strip swatch, focused on the tapped colour
-  // section (demo: swatch → AnnotationEditPanel focused on that colour).
-  const openSheet = (section) => {
-    if (section === 'fill' || section === 'stroke') setTextShapeColorSection(section);
-    setTextDefaultsTab('shape');
-    setTextDefaultsOpen(true);
-  };
+  /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
+     open — titled "Colour", with a gold Done, the shared picker's 12 presets
+     edge to edge, its grid or gradient, its opacity slider and its one bottom
+     row, at the Standard sheet height.
+
+     A multi-colour tool opens it with the Border / Fill tabs, and a tab simply
+     re-points this sheet at that channel — the target IS the tab, so the two can
+     never disagree. A counter's two channels are its pin and the number printed
+     on it, so its first tab is called "Number".
+
+     WHAT THIS REPLACED: the rainbow custom disc did nothing at all on the phone
+     (it carried a tooltip and no handler), and the combined swatch opened the
+     old "Rectangle settings" sheet — Fill/Stroke tabs, nine presets of its own
+     with a GOLD ring on the chosen one, a stroke-style field and a width field.
+     That sheet is not a colour picker and boards 17/18 are; the colour controls
+     do not reach it any more. */
+  const isCounterTool = tool === 'counter';
+  const paintTabs = isMultiColour ? {
+    items: [
+      { id: 'stroke', label: isCounterTool ? 'Number' : 'Border' },
+      { id: 'fill', label: 'Fill' },
+    ],
+    active: colorPicker,
+    onSelect: (id) => setColorPicker(id),
+  } : null;
   // Config for the shared CompactColorPicker takeover, per open target.
   const colorPickerConfig = colorPicker === 'textColor'
     ? {
-      title: 'Text color',
+      title: 'Text colour',
       color: toHexColor(textDefaults.fontColor, '#1e293b'),
       showOpacity: false,
       onChange: (hex) => updateTextDefaults({ fontColor: hex }),
     }
     : colorPicker === 'fill'
       ? {
-        title: 'Fill color',
+        title: 'Colour',
+        tabs: paintTabs,
         color: toHexColor(api.fillColor, '#ffffff'),
         opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)),
         showOpacity: typeof api.handleFillOpacityChange === 'function',
@@ -1438,7 +1465,8 @@ export function MobileToolProperties({ api }) {
       }
       : colorPicker === 'stroke'
         ? {
-          title: 'Stroke color',
+          title: 'Colour',
+          tabs: paintTabs,
           color: toHexColor(api.strokeColor, '#ff0000'),
           opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
           showOpacity: typeof api.handleStrokeOpacityChange === 'function',
@@ -1492,7 +1520,9 @@ export function MobileToolProperties({ api }) {
           platform="phone"
           value={quickColourValue}
           onPick={applyQuickColour}
-          onOpenPicker={() => openSheet('stroke')}
+          /* Boards 17/18: the rainbow disc opens the Colour sheet. It used to
+             carry a tooltip and no handler, so tapping it did nothing. */
+          onOpenPicker={() => setColorPicker('stroke')}
         />
       )}
       {/* BOARDS 2, 4 & 5 — a multi-colour tool gets ONE combined swatch instead
@@ -1510,7 +1540,11 @@ export function MobileToolProperties({ api }) {
           label={tool === 'counter' ? 'Pin and number colours' : 'Border and fill colours'}
           ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
           center={tool === 'counter' ? '#ffffff' : toHexColor(api.fillColor, '#ffffff')}
-          onOpen={() => openSheet(tool === 'counter' ? 'fill' : 'stroke')}
+          /* Boards 17/18: the swatch opens the Colour sheet on the channel it is
+             showing — the border ring for a shape, the pin for a counter — with
+             the Border / Fill tabs for the other one. It used to open the old
+             "<Tool> settings" sheet instead, which is not a colour picker. */
+          onOpen={() => setColorPicker(tool === 'counter' ? 'fill' : 'stroke')}
         />
       )}
       <MobileStripDivider />
@@ -1776,18 +1810,28 @@ export function MobileToolProperties({ api }) {
                     />
                   </div>
                   <div className="mobile-pdf-text-card__colors">
-                    {MOBILE_ANNOTATION_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        aria-label={`Set Text color ${color}`}
-                        aria-pressed={color.toLowerCase() === toHexColor(textDefaults.fontColor, '#1e293b').toLowerCase()}
-                        className={color.toLowerCase() === toHexColor(textDefaults.fontColor, '#1e293b').toLowerCase() ? 'is-active' : ''}
-                        onClick={() => updateTextDefaults({ fontColor: color })}
-                      >
-                        <span style={{ backgroundColor: color }} />
-                      </button>
-                    ))}
+                    {MOBILE_ANNOTATION_COLORS.map((color) => {
+                      const chosen = normaliseQuickColour(color)
+                        === normaliseQuickColour(toHexColor(textDefaults.fontColor, '#1e293b'));
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          aria-label={`Set Text color ${color}`}
+                          aria-pressed={chosen}
+                          className={chosen ? 'is-active' : ''}
+                          /* The chosen mark is the shared one (owner, 2026-09-21):
+                             a ring in the swatch's OWN colour, a gap, and a check
+                             in the middle. Never a gold ring. */
+                          style={chosen ? { '--mobile-swatch-ring': swatchRingColour(color) } : undefined}
+                          onClick={() => updateTextDefaults({ fontColor: color })}
+                        >
+                          <span style={{ backgroundColor: color, color: swatchCheckInk(color) }}>
+                            {chosen && <ChosenCheck size={12} />}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </section>
 
@@ -1903,18 +1947,26 @@ export function MobileToolProperties({ api }) {
                     />
                   </div>
                   <div className="mobile-pdf-text-card__colors">
-                    {MOBILE_ANNOTATION_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        aria-label={`Set ${shapeSection === 'fill' ? 'Fill' : 'Stroke'} color ${color}`}
-                        aria-pressed={color.toLowerCase() === shapeColor.toLowerCase()}
-                        className={color.toLowerCase() === shapeColor.toLowerCase() ? 'is-active' : ''}
-                        onClick={() => applyShapeColor(color)}
-                      >
-                        <span style={{ backgroundColor: color }} />
-                      </button>
-                    ))}
+                    {MOBILE_ANNOTATION_COLORS.map((color) => {
+                      const chosen = normaliseQuickColour(color) === normaliseQuickColour(shapeColor);
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          aria-label={`Set ${shapeSection === 'fill' ? 'Fill' : 'Stroke'} color ${color}`}
+                          aria-pressed={chosen}
+                          className={chosen ? 'is-active' : ''}
+                          /* Same shared chosen mark as every other swatch in the
+                             app: its own colour as the ring, and a check. */
+                          style={chosen ? { '--mobile-swatch-ring': swatchRingColour(color) } : undefined}
+                          onClick={() => applyShapeColor(color)}
+                        >
+                          <span style={{ backgroundColor: color, color: swatchCheckInk(color) }}>
+                            {chosen && <ChosenCheck size={12} />}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </section>
 
@@ -2025,6 +2077,7 @@ export function MobileToolProperties({ api }) {
         opacity={colorPickerConfig.opacity}
         showOpacity={colorPickerConfig.showOpacity}
         firstPreset={colorPickerConfig.firstPreset}
+        tabs={colorPickerConfig.tabs}
         onChange={colorPickerConfig.onChange}
         onClose={() => setColorPicker(null)}
       />

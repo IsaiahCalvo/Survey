@@ -2231,11 +2231,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 50%;
 }
 
-/* DELIBERATE EXCEPTION, as the rail's entity dots: this button's glyph is a
-   colour disc, so it keeps the gold RING instead of turning gold. The wash
-   behind it is gone. */
+/* PASS 7 (owner ruling 2026-09-21, reversing the gold exception this rule used
+   to hold): "Chosen quick colour = a ring in the disc's OWN colour, a gap, and a
+   white check in the middle. NEVER a gold ring." So these preset discs mark the
+   chosen one the way every other swatch in the app does — the ring colour comes
+   from the shared swatchRingColour(), the button's resting 1px border is the gap,
+   and the check inside is the shared ChosenCheck. */
 .mobile-pdf-text-card__colors > button.is-active {
-  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--mobile-swatch-ring, var(--text-1));
 }
 
 .mobile-pdf-text-card__colors > button > span {
@@ -2243,6 +2246,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 20px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 50%;
+  display: grid;
+  place-items: center;
 }
 
 .mobile-pdf-text-card--split {
