@@ -281,6 +281,49 @@ const ARROW_ENDS_OPTIONS = Object.freeze([
   Object.freeze({ value: 'none', label: 'None', icon: 'arrowEndsNone' }),
 ]);
 
+/*
+ * PASS 7 (2026-09-22, owner ruling): a text mark's BLEND — the one setting the
+ * highlight tools carry beyond colour and it was the last native <select> left
+ * in the desktop chrome: a grey 62x28 browser widget sitting among 20px pills,
+ * reading "Layered / Uniform", which are the file-format words, not the user's.
+ *
+ *   See-through ('layered') — every mark keeps its own paint, so two that cross
+ *                             deepen where they overlap. Stays an editable
+ *                             native PDF highlight.
+ *   Solid       ('uniform')  — one strength across the whole mark, crossing or
+ *                             not. Exports as a flat mask so other PDF readers
+ *                             match Survey.
+ *
+ * The sample on the left of the pill says the same thing without words: two
+ * overlapping translucent squares for See-through, one opaque square for Solid.
+ * Drawn here rather than in the icon set because it is a STATE glyph made of
+ * the swatch shapes the chrome already uses, like the chosen-state check in
+ * QuickStyleControls — the shared icon set is one stroke weight and cannot show
+ * a fill at two opacities.
+ */
+const BLEND_SAMPLE_SEE_THROUGH = (size) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+    <rect x="1.5" y="3.5" width="8" height="8" rx="1.5" fill="currentColor" opacity="0.45" />
+    <rect x="6.5" y="3.5" width="8" height="8" rx="1.5" fill="currentColor" opacity="0.45" />
+  </svg>
+);
+
+const BLEND_SAMPLE_SOLID = (size) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+    <rect x="1.5" y="3.5" width="13" height="8" rx="1.5" fill="currentColor" opacity="0.9" />
+  </svg>
+);
+
+const BLEND_MODE_OPTIONS = Object.freeze([
+  Object.freeze({ value: 'layered', label: 'See-through' }),
+  Object.freeze({ value: 'uniform', label: 'Solid' }),
+]);
+
+const BLEND_MODE_SAMPLES = Object.freeze({
+  layered: BLEND_SAMPLE_SEE_THROUGH,
+  uniform: BLEND_SAMPLE_SOLID,
+});
+
 /**
  * Whether the tool-properties row is showing a colour control at all, i.e.
  * whether the quick colour dots have a swatch to stand beside. The three arms
@@ -743,6 +786,10 @@ export default function App({ devPreviewReturnTab = null }) {
   // 'eraser-type' is gone from this list and 'arrow-ends' takes its place.
   const showArrowEndsMenu = openAnnotationDropdown === 'arrow-ends';
   const setShowArrowEndsMenu = useCallback((next) => setDropdownOpen('arrow-ends', next), [setDropdownOpen]);
+  // PASS 7 (2026-09-22): the text-mark BLEND pill — the last native <select> in
+  // the desktop chrome, now the same dropdown every other setting uses.
+  const showBlendMenu = openAnnotationDropdown === 'blend';
+  const setShowBlendMenu = useCallback((next) => setDropdownOpen('blend', next), [setDropdownOpen]);
   // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
   // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
   // UX 2026-09-17: it opens on 'border', not 'fill', because that is the channel
@@ -2622,18 +2669,43 @@ export default function App({ devPreviewReturnTab = null }) {
                   );
                   return isTextMarkupPalette ? <BodyPortal>{picker}</BodyPortal> : picker;
                 })()}
-                {['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool) && bottomToolbarApi.setTextMarkupOverlapMode && (
-                  <select
-                    aria-label="Highlight overlap mode"
-                    title="Layered keeps editable native PDF highlights. Uniform keeps one visual strength and exports as a flat mask so other PDF viewers match Survey."
-                    value={bottomToolbarApi.textMarkupOverlapMode || 'layered'}
-                    onChange={(event) => bottomToolbarApi.setTextMarkupOverlapMode(event.target.value)}
-                    style={{ height: 28, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-1)', color: 'var(--text-1)', fontSize: 11 }}
-                  >
-                    <option value="layered">Layered</option>
-                    <option value="uniform">Uniform</option>
-                  </select>
-                )}
+                {/* PASS 7 (2026-09-22, owner ruling): BLEND. This was a bare
+                    native <select> — a grey 62x28 browser widget wearing the
+                    file-format words "Layered / Uniform" in a row of 20px
+                    pills, and the only control in the desktop chrome that did
+                    not look like the chrome. It is the shared setting pill now,
+                    with the sample-then-word layout every other pill has, and
+                    it says what the two modes DO: See-through marks deepen
+                    where they cross, a Solid mark is one strength throughout.
+                    Its accessible name stays "Blend"; the long explanation of
+                    what each mode means for the exported PDF moved onto the
+                    rows' own titles, where it is read at the moment of choosing
+                    rather than hovered at rest. */}
+                {['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool) && bottomToolbarApi.setTextMarkupOverlapMode && (() => {
+                  const blendValue = bottomToolbarApi.textMarkupOverlapMode === 'uniform' ? 'uniform' : 'layered';
+                  return (
+                    <AnnotationDropdown
+                      open={showBlendMenu}
+                      onOpenChange={setShowBlendMenu}
+                      label="Blend"
+                      value={blendValue}
+                      options={BLEND_MODE_OPTIONS}
+                      onSelect={(next) => bottomToolbarApi.setTextMarkupOverlapMode(next)}
+                      dataMarker="data-blend-menu"
+                      preview={BLEND_MODE_SAMPLES[blendValue](14)}
+                      renderOption={(option) => (
+                        <>
+                          <span className="annotation-dropdown__sample" aria-hidden="true">
+                            {BLEND_MODE_SAMPLES[option.value](16)}
+                          </span>
+                          <span>{option.label}</span>
+                        </>
+                      )}
+                      width="var(--chrome-field-w-blend)"
+                      contentWidth="var(--chrome-field-w-blend)"
+                    />
+                  );
+                })()}
                   </>
                 )}
 

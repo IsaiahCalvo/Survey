@@ -64,6 +64,12 @@
   --chrome-field-w-arrowhead: 90px;/* arrowhead pill */
   --chrome-field-w-ends: 96px;     /* arrow-ends pill */
   --chrome-field-w-series: 80px;   /* counter-series pill */
+  /* The blend pill is the widest word the chrome carries: "See-through"
+     measures 64px at 11px/600, and 8 + 14 sample + 6 + 64 + 6 + 9 chevron + 6
+     is 113. 118 is the first width that holds it WITHOUT clipping and that the
+     menu (5 + 24 sample + 6 + 64 + 5) matches exactly, so the field and its
+     list are the same width, as board 15 requires. */
+  --chrome-field-w-blend: 118px;   /* text-mark blend pill ("See-through") */
   --chrome-field-w-font: 104px;    /* font-name pill (board 12) */
   --chrome-field-w-fontsize: 62px; /* font-size pill (board 12) */
   --chrome-text-toggle-w: 22px;    /* B / I / U / S and an alignment button */
