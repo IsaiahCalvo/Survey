@@ -16,7 +16,6 @@ import panHandUrl from './assets/icons/pan-hand-closed.svg';
 import counterIconUrl from './assets/icons/counter.svg';
 import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
-import textGroupIconUrl from './assets/icons/case-sensitive.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
@@ -254,6 +253,152 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    /* PASS 7 (owner ruling, boards 8-15): the text tool's glyph is Lucide
+       scan-text — lines of text inside a frame. It replaces the Lucide
+       Case Sensitive "Aa", which read as a FONT control rather than as the
+       group that draws a text box and a callout. Drawn at the house 1.5
+       weight on the house 24 grid, like every other glyph in the set. */
+    scanText: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+          <path d="M7 8h8" />
+          <path d="M7 12h10" />
+          <path d="M7 16h6" />
+        </g>
+      </svg>
+    ),
+
+    /* PASS 7 (boards 10, 15, 16): the three ARROW ENDS, Lucide move-right /
+       move-horizontal / minus. They are one control's three values, so they are
+       drawn to the same visual length (the shaft runs 2 -> 22 in all three) and
+       at the house weight. `minus` above is the third of the set. */
+    moveRight: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M18 8L22 12L18 16M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    moveHorizontal: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M18 8L22 12L18 16M6 8L2 12L6 16M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    /* PASS 7 (board 12): the six ALIGNMENTS on the text-formatting bar. Three
+       rules of text, and which rule is short says which way the text is pushed
+       (horizontal) or where the block sits in its box (vertical). Drawn exactly
+       as board 12 draws them, at the house weight. */
+    alignLeft: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 6H20M4 12H14M4 18H18" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    alignCenter: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 6H20M7 12H17M5 18H19" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    alignRight: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 6H20M10 12H20M6 18H20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    alignTop: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 5H20M7 10H17M7 15H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    alignMiddle: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 12H20M7 7H17M7 17H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    alignBottom: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 19H20M7 14H17M7 9H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    /* PASS 7 (board 15): the LINE-STYLE samples. Each one is the line it names,
+       drawn across a 24x12 field so the menu row and the pill preview show the
+       same drawing at two sizes. Cloud is the Drawboard-style scallop with three
+       bumps, exactly as board 15 draws it. */
+    lineSampleSolid: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    lineSampleDashed: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H6M9.5 6H14.5M18 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    lineSampleDotted: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />
+      </svg>
+    ),
+
+    lineSampleCloud: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 10a2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    /* PASS 7 (board 15): the ARROWHEAD samples — the head itself on the end of a
+       shaft, so the menu says what it will draw instead of naming it. The filled
+       heads are fill-drawn (Solid, Circle, Square); the rest are the house
+       stroke. */
+    arrowheadNone: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 12H21" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    arrowheadSolid: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 12H16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M13 8L19 12L13 16Z" fill={color} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    arrowheadOpen: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 12H21M15 7L21 12L15 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    arrowheadCircle: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 12H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="18" cy="12" r="3" fill={color} />
+      </svg>
+    ),
+
+    arrowheadSquare: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 12H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="15" y="9" width="6" height="6" fill={color} />
+      </svg>
+    ),
+
+    arrowheadBar: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 12H19M19 7.5V16.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     // Zoom icons
     minus: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
@@ -354,7 +499,6 @@ const ICON_RENDERERS = {
 
     textBox: (size, color, style, className) => renderMaskIcon(textBoxIconUrl, size, color, style, className),
 
-    textGroup: (size, color, style, className) => renderMaskIcon(textGroupIconUrl, size, color, style, className),
 
     callout: (size, color, style, className) => renderMaskIcon(calloutIconUrl, size, color, style, className),
 
@@ -890,6 +1034,9 @@ const ICON_RENDERERS = {
 };
 
 const ICON_ALIASES = {
+  // PASS 7 (owner ruling): the Text group renders Lucide scan-text everywhere —
+  // the desktop tool bar, the phone rail and every menu that names the group.
+  textGroup: 'scanText',
   highlighter: 'highlighterTool',
   pan: 'formatPan',
   underline: 'formatUnderline',

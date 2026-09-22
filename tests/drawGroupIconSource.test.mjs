@@ -27,7 +27,11 @@ test('Draw category uses the square-pen group glyph while Pen keeps its own icon
   assert.match(icons, /M18\.375 2\.625a1 1 0 0 1 3 3l-9\.013 9\.014a2 2 0 0 1-\.853\.505l-2\.873\.84a\.5\.5 0 0 1-\.62-\.62l\.84-2\.873a2 2 0 0 1 \.506-\.852z/);
   assert.doesNotMatch(icons, /draw-group-option-5\.svg/);
 
-  assert.match(shell, /aria-label="Draw"[\s\S]{0,500}<Icon name="drawGroup" size=\{18\}/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved artboards
+  // 8-14): a tool glyph in the document chrome is 16 inside a 28px button, not
+  // 18 inside 34. The assertion now pins the shared CHROME_GLYPH constant
+  // rather than a literal, so the bar and the sub-row can never disagree again.
+  assert.match(shell, /aria-label="Draw"[\s\S]{0,500}<Icon name="drawGroup" size=\{CHROME_GLYPH\}/);
   assert.match(viewer, /\{ id: 'pen', label: 'Pen', iconName: 'pen' \}/);
   // 2026-09-07 (A7): the phone's Draw GROUP button used to show the Pen tool's
   // own icon while desktop showed the group glyph. Same tool, same glyph on both.

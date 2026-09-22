@@ -149,14 +149,23 @@ test('every annotation swatch prefers exact selected colors over tool defaults',
     appShellSource,
     /background: bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor/,
   );
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner ruling "the counter
+  // icon is the app's real pin, NEVER a circle", board 11): the counter swatch
+  // draws the owner's traced PIN instead of a round disc with a "1" on it, so its
+  // two colours are named once each as `pinColour` / `numberColour` and handed to
+  // the pin's fill and its numeral. The contract this test guards is unchanged —
+  // the selected mark's exact colour wins, the armed tool's default is the
+  // fallback, and the fallbacks are still #ef4444 and #ffffff.
   assert.match(
     appShellSource,
-    /background: bottomToolbarApi\.selectedFillColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.fillColor \|\| '#ef4444'/,
+    /const pinColour = bottomToolbarApi\.selectedFillColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.fillColor \|\| '#ef4444'/,
   );
   assert.match(
     appShellSource,
-    /color: bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#ffffff'/,
+    /const numberColour = bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#ffffff'/,
   );
+  assert.match(appShellSource, /fill=\{pinColour\} stroke=\{pinColour\}/);
+  assert.match(appShellSource, /fill=\{numberColour\}/);
   // The shape swatch's ring — the fill.
   assert.match(
     appShellSource,

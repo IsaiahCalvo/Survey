@@ -37,7 +37,13 @@ test('annotation formatting popovers share one exclusive Radix layer', () => {
     'portaled dropdown content must count as inside before capture-phase dismissal',
   );
   assert.match(contract, /if \(!insideDropdown\) \{\s*setOpenAnnotationDropdown\(null\)/);
-  assert.ok((appShell.match(/<AnnotationDropdown/g) || []).length >= 7, 'annotation menus must use the shared Radix dropdown');
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): the count is 6, not 7. Two
+  // controls left this component by ruling — the eraser's kind (board 13: a
+  // segmented toggle) and text alignment (board 12: six buttons on the bar) —
+  // and one joined it, Arrow ends (board 10). What matters is that every menu in
+  // the chrome still goes through the ONE shared Radix dropdown, which the count
+  // and the exclusive-layer assertions below both check.
+  assert.ok((appShell.match(/<AnnotationDropdown/g) || []).length >= 6, 'annotation menus must use the shared Radix dropdown');
 
   assert.match(appShell, /data-annotation-color-trigger/);
   assert.match(appShell, /data-annotation-color-picker/);
@@ -53,7 +59,10 @@ test('annotation context changes dismiss the color panel and formatting peers', 
   assert.match(contract, /setShowCounterSeriesMenu\(false\)/);
   assert.match(contract, /setShowStyleMenu\(false\)/);
   assert.match(contract, /setShowArrowheadMenu\(false\)/);
-  assert.match(contract, /setShowEraserTypeMenu\(false\)/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): the eraser-type MENU is
+  // gone (board 13 makes it a segmented toggle); Arrow ends is the menu that
+  // joined the exclusive layer, so it takes the place in this list.
+  assert.match(contract, /setShowArrowEndsMenu\(false\)/);
   assert.match(
     contract,
     /\}, \[bottomToolbarApi\?\.contextTool\]\);/,

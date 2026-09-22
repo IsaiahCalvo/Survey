@@ -6,6 +6,23 @@ export const SELECT_MODE_OPTIONS = Object.freeze([
 
 export const SELECT_MODE_STORAGE_KEY = 'lastSelectMode';
 
+/**
+ * PASS 7 (board 14, owner ruling): the one-word name each mode carries inside
+ * the Box / Lasso / Text segmented toggle, on desktop and on the phone. The
+ * full names above stay the accessible name and the tooltip, so a segment that
+ * reads "Box" still announces "Rectangle Select".
+ */
+export const SELECT_MODE_SHORT_LABELS = Object.freeze({
+  rectangle: 'Box',
+  lasso: 'Lasso',
+  text: 'Text',
+});
+
+/** True when the armed tool is any member of the Select family. */
+export function isSelectFamilyTool(activeTool) {
+  return activeTool === 'select' || activeTool === 'text-select';
+}
+
 const isSelectMode = (mode) => SELECT_MODE_OPTIONS.some((option) => option.mode === mode);
 
 export function getSelectModeIconName(mode = 'rectangle') {

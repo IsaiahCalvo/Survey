@@ -33913,7 +33913,11 @@ ${pageBlocks}
             className="survey-surface-in"
             style={{
               width: '100%',
-              height: '34px',
+              // PASS 7 (boards 8-12): the sub-tool row is the SECOND of three
+              // 36px bars, with the same 2px gutter between tool buttons as the
+              // cluster above it. Both numbers are the shared chrome tokens in
+              // styles.css — change them there, not here.
+              height: 'var(--chrome-bar-h)',
               background: 'var(--surface-2)',
               borderBottom: '1px solid var(--border)',
               borderTop: 'none',
@@ -33921,10 +33925,7 @@ ${pageBlocks}
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              // UX 2026-09-16 (desktop sizing pass): one gap across the whole
-              // chrome (--chrome-gap). This row used 8px while the top bar
-              // used 6px, so the two rows read as different toolbars.
-              gap: 'var(--chrome-gap)',
+              gap: 'var(--chrome-tool-gap)',
               zIndex: 10,
               boxSizing: 'border-box'
             }}
