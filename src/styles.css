@@ -53,6 +53,7 @@
   --chrome-tool-gap: 2px;          /* gutter between tool buttons in a group (board: 2) */
   --chrome-divider-h: 16px;        /* the group rule's own height (board: 16) */
   --chrome-divider-inset: 8px;     /* clear space either side of a group rule (board: 8) */
+  --chrome-row-gap: var(--chrome-gap); /* the gutter of the row a divider sits in */
   --chrome-radius: 6px;
   --chrome-colour-btn: 22px;       /* colour disc button (board: 22) */
   --chrome-colour-gap: 4px;        /* gutter inside the colour group (board: 4) */
@@ -372,6 +373,22 @@
   margin: 0 var(--chrome-divider-inset);
   background: var(--border-strong);
   flex: 0 0 auto;
+}
+
+/* MEASURED 2026-09-22: the rules were NOT 8px either side. A flex row's own
+   `gap` lands on top of the divider's margin, so a rule in a 6px settings row
+   read 14px on the side that had a neighbour and a rule at the end of a 2px
+   tool row read 10px — every divider in bars 1-3 was lopsided or too wide.
+   Cancel the row's gutter on whichever side actually HAS a neighbour inside
+   the row; a divider at the row's edge keeps the full inset, because the gap
+   never applied there. --chrome-row-gap is each row's own gutter, defaulting
+   to the settings gutter and overridden inline on the tool rows. */
+.chrome-divider:not(:first-child) {
+  margin-left: calc(var(--chrome-divider-inset) - var(--chrome-row-gap));
+}
+
+.chrome-divider:not(:last-child) {
+  margin-right: calc(var(--chrome-divider-inset) - var(--chrome-row-gap));
 }
 
 /* PASS 7 (boards 8-15): a SETTING PILL — the one shape every value control in

@@ -1732,6 +1732,11 @@ export default function App({ devPreviewReturnTab = null }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--chrome-tool-gap)',
+                // This row runs on the 2px tool gutter, so the rule inside it
+                // subtracts 2 rather than the settings row's 6 (see
+                // .chrome-divider in styles.css). Without this the rule sat
+                // 10px from Select and 8px from Draw.
+                '--chrome-row-gap': 'var(--chrome-tool-gap)',
                 whiteSpace: 'nowrap'
               }}>
               {[
@@ -1966,6 +1971,23 @@ export default function App({ devPreviewReturnTab = null }) {
                         open a picker when it was built. The custom disc is that
                         way, so the extra swatch is gone and board 12's four
                         circles are what the bar draws. */}
+                    {/* 2026-09-22 (owner): bar 3's row of discs is the TEXT
+                        colour, and nothing said so — the other groups all read
+                        as what they are. A short muted word to its left, at the
+                        chrome label size, says it without costing the bar a
+                        control. */}
+                    <span
+                      data-text-colour-label
+                      style={{
+                        flex: '0 0 auto',
+                        color: 'var(--text-3)',
+                        font: '600 11px/1 Helvetica, Arial, sans-serif',
+                        letterSpacing: '-0.01em',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Text
+                    </span>
                     <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                       <QuickColourDots
                         value={textFormatSource?.state?.fontColor || '#1e293b'}

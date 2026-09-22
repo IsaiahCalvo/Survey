@@ -1933,26 +1933,57 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
 }
 
-/* The header and Done stay put while the rows scroll (DESIGN-SYSTEM.md). */
+/* The header and Done stay put while the rows scroll (DESIGN-SYSTEM.md).
+   MEASURED 2026-09-22 (owner): the title and Done were CENTRE-aligned, which
+   put a 16px word and a 14px word on two baselines 1px apart — the kind of
+   near-miss the eye reads as sloppy. `align-items: baseline` puts them on ONE
+   baseline; `flex-wrap: wrap` + `align-content: center` then centres that
+   single line inside the 38px row, which a baseline-aligned flex line does not
+   do on its own. The title takes the slack and ellipsizes, so the row can
+   never actually wrap. */
 .mobile-pdf-tool-sheet__header {
   min-height: 38px;
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: baseline;
+  align-content: center;
   justify-content: space-between;
   gap: 12px;
   color: var(--text-1);
   font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
 }
 
+.mobile-pdf-tool-sheet__header > strong {
+  /* MEASURED 2026-09-22: <strong> is `font-weight: bolder` by default, which
+     against this header's own 700 computes to 900 — the sheet title was NOT
+     the 16/700 the rule says. Say 700 and mean it. */
+  font-weight: 700;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .mobile-pdf-tool-sheet__header > button {
-  height: 30px;
+  position: relative;
+  height: auto;
   padding: 0 4px;
   flex: 0 0 auto;
   color: var(--accent);
   background: transparent;
   border: 0;
   font: 700 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+/* Done is painted at its own 14px so it can share the title's baseline; the
+   finger still gets the app's usual 44px box, the same painted-small /
+   hit-large trick the tool strip uses. */
+.mobile-pdf-tool-sheet__header > button::after {
+  content: '';
+  position: absolute;
+  inset: -15px -10px;
 }
 
 .mobile-pdf-tool-sheet__rows {
