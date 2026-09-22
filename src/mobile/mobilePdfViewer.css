@@ -1456,6 +1456,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   inset-inline: -2px;
 }
 
+/* The colour discs reach 44px through the picker pass's own hook rather than a
+   pad written here: a pad on this side would have to sit on the group wrapper,
+   which covers the discs inside it and swallows every tap on the control it was
+   meant to enlarge.
+   -11px is the VERTICAL half of 44 on a 22px disc, and QuickColourDots applies
+   it vertically only, capping the box at half the 4px gap sideways - so the
+   result is 26 x 44, the full pitch covered with no overlap.
+   DO NOT reach for the sideways variant (--quick-style-hit-inset-x) to make this
+   44 WIDE. The discs sit on a 26px pitch, so a 44px-wide box overlaps its
+   neighbour by 18px, and among overlapping siblings the LATER one wins the hit
+   test: the right-hand 4px of the red disc would apply blue. Caught by the
+   picker pass, 2026-09-21, before it shipped. */
 .mobile-pdf-properties .quick-style {
   --quick-style-hit-inset: -11px;
 }
