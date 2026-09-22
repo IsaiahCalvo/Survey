@@ -2500,25 +2500,31 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 <Icon name="download" size={16} color="currentColor" />
                 Export annotated PDF
               </button>
-              {typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoreOpen(false);
-                    const buffer = window.__consoleLogBuffer;
-                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-                      detail: {
-                        consoleText: Array.isArray(buffer) && buffer.length > 0
-                          ? buffer.join('\n')
-                          : '(no console output captured)',
-                      },
-                    }));
-                  }}
-                >
-                  <Icon name="document" size={16} color="currentColor" />
-                  Save log
-                </button>
-              )}
+              {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
+                  used to be gated on window.Capacitor.isNativePlatform(), so the
+                  menu on web mobile held ONE row and the ruling's second item
+                  simply was not there — and web mobile is the only place a phone
+                  user can hit Cmd+Shift+L from, which is to say nowhere. The row
+                  fires the same event that shortcut does (see AppShell's
+                  keyHandler), so the two paths are one path and it works wherever
+                  the app runs. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  const buffer = window.__consoleLogBuffer;
+                  window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                    detail: {
+                      consoleText: Array.isArray(buffer) && buffer.length > 0
+                        ? buffer.join('\n')
+                        : '(no console output captured)',
+                    },
+                  }));
+                }}
+              >
+                <Icon name="document" size={16} color="currentColor" />
+                Save log
+              </button>
               {/* UX (owner ruling 2026-09-17): zoom lives in exactly ONE place on
                   phone — the header's zoom menu behind the % pill. The two
                   duplicate zoom rows that used to sit here were removed so the
