@@ -1974,16 +1974,37 @@ export default function App({ devPreviewReturnTab = null }) {
                   cluster so they grow outward to the right / shrink back to
                   the left without nudging the pan-select or annotation icons.
                   User priority is icon stability over visual centering. */}
-              <div style={{
-                // Narrow shells: flow inline after the annotation icons.
-                ...(isNarrowShell
-                  ? { position: 'static' }
-                  : { position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)' }),
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--chrome-gap)',
-                whiteSpace: 'nowrap'
-              }}>
+              <div
+                data-chrome-settings-holder="true"
+                style={{
+                  // Narrow shells: flow inline after the annotation icons.
+                  ...(isNarrowShell
+                    ? { position: 'static' }
+                    : {
+                        position: 'absolute',
+                        left: '100%',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        /* An absolutely positioned box with no width shrink-to-
+                           fits into the room LEFT OF THE SHELL'S RIGHT EDGE, not
+                           to its own content. The arrow's settings are 502px
+                           wide; on a narrow desktop that available room runs out
+                           first and the box is squeezed under its contents,
+                           which then only stay visible because nothing clips
+                           them. max-content takes the available room out of the
+                           sum, so the box always measures what it holds and the
+                           row can lay itself out honestly. It changes nothing
+                           for the tool cluster, which is this box's anchor and
+                           not its sibling — MEASURED: Pan stays at x=601 (1440)
+                           and x=521 (1280) in every tool state. */
+                        width: 'max-content',
+                      }),
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--chrome-gap)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
               {/* PASS 7 (boards 8-14): the rule that separates the tool cluster
                   from the armed tool's settings. Same shared rule, same 8px
                   inset either side, as the one on the cluster's other edge. */}
