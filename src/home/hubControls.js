@@ -1,4 +1,10 @@
-const DEFAULT_RULE = 'var(--ink-500)';
+/* UX 2026-09-22 (tokens.css revision 4): both consumers of this value —
+   closeButtonStyle and miniButtonStyle — are OUTLINED buttons with a
+   transparent rest state, so their edge is the only thing saying a control is
+   there. That is the identifying job, which takes --border-strong. It is not a
+   hairline between two things a fill step already separates; those keep
+   --border. Callers that override borderColor should pass C.ruleStrong. */
+const DEFAULT_RULE = 'var(--border-strong)';
 const DEFAULT_MUTED = 'var(--ink-200)';
 const DEFAULT_TEXT = 'var(--bone-100)';
 const DEFAULT_DISABLED = 'var(--ink-300)';

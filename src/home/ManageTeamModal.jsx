@@ -47,6 +47,14 @@ const INK_800 = 'var(--surface-1)';
 // rules below rather than re-declared. See src/uiPalette.js.
 const INK_700 = C.card;
 const INK_500 = C.rule;
+/* UX 2026-09-22 (tokens.css revision 4): borders here split by JOB. INK_500 is
+   the subtle, decorative hairline — the modal edge, its header/footer rules,
+   the row separators, the popup menus, everything a surface step already
+   separates. INK_500_FIELD is the identifying edge, and only the controls the
+   token file names may use it: the selects, the email textarea, the search
+   field, the checkbox, and the buttons that have no resting fill of their own
+   (Close, Copy link, All/None, the icon button). */
+const INK_500_FIELD = C.ruleStrong;
 const INK_300 = C.disabled;
 const INK_200 = C.muted;
 const BONE_100 = C.ink;
@@ -130,7 +138,7 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500_FIELD, color: INK_200 })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
@@ -254,25 +262,25 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500_FIELD, color: INK_200 })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700, marginBottom: 8 }}>Share link</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
               <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
-              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: "none", height: 30, whiteSpace: "nowrap", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", fontSize: 11.5, cursor: busy || blockedReason ? "not-allowed" : "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{copied ? "Copied" : "Copy link"}</button>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: "none", height: 30, whiteSpace: "nowrap", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 11px", fontSize: 11.5, cursor: busy || blockedReason ? "not-allowed" : "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{copied ? "Copied" : "Copy link"}</button>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this invite link can join as {linkRole}. Free users enter as Viewer until upgrade.</div>
           </div>
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700, marginBottom: 8 }}>Invite by email</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 6 }}>
-              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "9px 11px", fontSize: 12.5, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
-              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 12.5, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
+              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
@@ -564,7 +572,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const ICON_BTN = (iconName, title, onClick, color, disabled) => (
     <button title={title} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
-      style={{ width: 28, height: 28, borderRadius: 6, padding: 0, background: "transparent", border: `1px solid ${INK_500}`, color: disabled ? INK_300 : color, display: "grid", placeItems: "center", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", flex: "none" }}>
+      style={{ width: 28, height: 28, borderRadius: 6, padding: 0, background: "transparent", border: `1px solid ${INK_500_FIELD}`, color: disabled ? INK_300 : color, display: "grid", placeItems: "center", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", flex: "none" }}>
       <Icon name={iconName} size={13} />
     </button>
   );
@@ -605,14 +613,14 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
           {/* Toolbar */}
           <div style={{ padding: "10px 18px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
-            <div ref={searchRootRef} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 10px", height: 28, fontSize: 12, color: INK_200, minWidth: 0 }}>
+            <div ref={searchRootRef} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 10px", height: 28, fontSize: 12, color: INK_200, minWidth: 0 }}>
               <Icon name="search" size={13} color={INK_200}/>
               <input ref={searchInputRef} value={search} onChange={(e) => setSearch(e.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} placeholder="Find a teammate…" style={{ background: "transparent", border: 0, outline: 0, color: BONE_100, font: "inherit", fontSize: 12, flex: 1, width: "100%", minWidth: 0 }}/>
             </div>
             {editMode && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 4, flex: "none" }}>
                 <button onClick={(e) => { e.stopPropagation(); if (allSel) setSelectedIds(new Set()); else setSelectedIds(new Set(selectable.map(m => m.id))); }}
-                  style={{ padding: "0 8px", height: 28, fontSize: 11.5, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, cursor: "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{allSel ? "None" : "All"}</button>
+                  style={{ padding: "0 8px", height: 28, fontSize: 11.5, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, cursor: "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{allSel ? "None" : "All"}</button>
                 <div style={{ position: "relative", display: "inline-flex" }}>
                   {ICON_BTN(
                     "userRole",
@@ -710,7 +718,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     {editMode ? (
                       m.isCreator ? <span /> : (
                         <span onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
-                          style={{ width: 18, height: 18, border: `1.4px solid ${checked ? GOLD : INK_500}`, background: checked ? GOLD : "transparent", borderRadius: 3, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", justifySelf: "center" }}>
+                          style={{ width: 18, height: 18, border: `1.4px solid ${checked ? GOLD : INK_500_FIELD}`, background: checked ? GOLD : "transparent", borderRadius: 3, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", justifySelf: "center" }}>
                           {checked && <Icon name="check" size={11} color="var(--accent-text)" />}
                         </span>
                       )
@@ -734,7 +742,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         } },
                         ...(m.isCreator ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
                       ].map(it => (
-                        <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
+                        <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? C.dangerText : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
                       ))}
                     </div>
                   )}
@@ -772,7 +780,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         ...(isLink ? [] : [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }]),
                         { label: "Revoke invite", danger: true, onClick: () => { setOpenInviteMenu(null); revokeInvite(inv); } },
                       ].map(it => (
-                        <button key={it.label} disabled={busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : BONE_100, padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
+                        <button key={it.label} disabled={busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? C.dangerText : BONE_100, padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
                       ))}
                     </div>
                   )}
@@ -784,7 +792,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           {/* Inline feedback (real backend errors / confirmations). */}
           {(error || status) && (
             <div style={{ padding: "8px 18px", borderTop: `1px solid ${INK_500}`, background: INK_800 }}>
-              {error && <div style={{ color: DANGER, fontSize: 12 }}>{error}</div>}
+              {error && <div style={{ color: C.dangerText, fontSize: 12 }}>{error}</div>}
               {status && !error && <div style={{ color: GOLD, fontSize: 12 }}>{status}</div>}
             </div>
           )}

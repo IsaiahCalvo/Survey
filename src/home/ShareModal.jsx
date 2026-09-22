@@ -194,7 +194,7 @@ export default function ShareModal({
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button ref={closeRef} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button ref={closeRef} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}
@@ -203,7 +203,7 @@ export default function ShareModal({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            style={{ height: 30, background: C.card, color: C.ink, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 10px', fontSize: 12, fontFamily: 'inherit', marginBottom: 8 }}
+            style={{ height: 30, background: C.card, color: C.ink, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '0 10px', fontSize: 12, fontFamily: 'inherit', marginBottom: 8 }}
           >
             {ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
           </select>
@@ -215,7 +215,7 @@ export default function ShareModal({
             <div style={fieldLabel}>Invite link</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px', gap: 6 }}>
               <div style={{ flex: 1, minWidth: 0, background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, display: 'flex', alignItems: 'center', fontSize: 11.5, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: 'none', height: 30, whiteSpace: 'nowrap', background: C.card, color: C.ink, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', fontSize: 11.5, cursor: busy || blockedReason ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxSizing: 'border-box' }}>{copied ? 'Copied' : 'Copy link'}</button>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: 'none', height: 30, whiteSpace: 'nowrap', background: C.card, color: C.ink, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '0 11px', fontSize: 11.5, cursor: busy || blockedReason ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxSizing: 'border-box' }}>{copied ? 'Copied' : 'Copy link'}</button>
             </div>
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>{explicitLinkText}{freeNote}</div>
           </div>
@@ -227,7 +227,7 @@ export default function ShareModal({
               onChange={(e) => setEmails(e.target.value)}
               placeholder="name@example.com, name@example.com"
               rows={3}
-              style={{ width: '100%', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
             />
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. New users get an invite link; existing users get a direct-access link as {role.toLowerCase()}.</div>
           </div>

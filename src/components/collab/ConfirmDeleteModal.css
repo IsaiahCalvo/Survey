@@ -69,13 +69,15 @@
   margin: 8px 0 0;
 }
 
+/* An OUTLINED icon button: no fill, so the box IS the control — the one
+   button case tokens.css revision 4 gives the identifying grey to. */
 .confirm-delete-modal__close {
   width: 24px;
   height: 24px;
   border-radius: 6px;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   color: var(--text-3);
   cursor: pointer;
   line-height: 1;

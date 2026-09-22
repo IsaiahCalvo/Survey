@@ -107,9 +107,12 @@
   font-family: inherit;
 }
 
+/* UX 2026-09-22 (revision 4): the hover fill, the brighter glyph and the scale
+   already answer the pointer. The edge used to jump to the identifying
+   --border-strong as well, which tokens.css reserves for a control whose edge
+   is its only definition — a filled close button is not one. */
 .account-settings-close:hover {
   background: var(--hover);
-  border-color: var(--border-strong);
   color: var(--text-1);
   transform: scale(1.05);
 }
@@ -189,8 +192,10 @@
   border-radius: 6px;
 }
 
+/* A scrollbar thumb is chrome furniture, never an identified control, so its
+   hover lifts to the subtle grey and not the identifying one. */
 .account-settings-content::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background: var(--border);
 }
 
 .account-section {
@@ -267,9 +272,13 @@
   text-transform: uppercase;
 }
 
+/* A text field's edge is the only thing saying "type here", so it carries the
+   identifying --border-strong at rest (tokens.css revision 4 allows it on
+   inputs). It used to be the decorative grey, and only firmed up on hover —
+   which is the one moment a person no longer needs telling. */
 .account-form-group input {
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   background: var(--surface-2);
@@ -283,7 +292,6 @@
 }
 
 .account-form-group input:hover:not(:disabled) {
-  border-color: var(--border-strong);
   background: var(--hover);
 }
 
@@ -314,13 +322,13 @@
 }
 
 .account-field-display-empty {
-  color: var(--text-disabled);
+  color: var(--text-3);
   font-style: italic;
 }
 
 .account-field-hint {
   font-size: 11px;
-  color: var(--text-disabled);
+  color: var(--text-3);
   margin-top: 4px;
 }
 
@@ -413,7 +421,6 @@
 
 .account-btn-secondary:hover:not(:disabled) {
   background: var(--hover);
-  border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
@@ -429,7 +436,7 @@
 .account-btn-danger {
   padding: 8px 16px;
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--danger-text);
   border: 1px solid var(--danger);
   border-radius: 6px;
   font-size: 13px;
@@ -455,7 +462,7 @@
 }
 
 .account-danger-zone h3 {
-  color: var(--danger);
+  color: var(--danger-text);
   margin-bottom: 8px;
   font-size: 14px;
 }
@@ -507,9 +514,10 @@
   margin-bottom: 12px;
 }
 
+/* A connected-account ROW: a fill step already separates it from the panel, so
+   its edge stays decorative on hover too (tokens.css revision 4). */
 .account-connected-account:hover {
   background: var(--hover);
-  border-color: var(--border-strong);
 }
 
 .account-connected-account-info {

@@ -52,11 +52,16 @@ export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
   <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
 );
 
-/* Overlapping row of avatars — used to preview a team compactly. */
+/* Overlapping row of avatars — used to preview a team compactly.
+   UX 2026-09-22: the ring that separates one overlapping avatar from the next.
+   It used to be --ink-700 (--surface-2) — the SAME colour as the card the stack
+   sits on, so it measured 1.00:1 and was literally invisible: the avatars ran
+   into each other with no edge at all. It is --border now (3.60:1 on that card),
+   which is the token for a hairline that has to be seen. */
 export const AvatarStack = ({ members, size = 22 }) => (
   <div style={{ display: 'flex' }}>
     {members.map((m, i) => (
-      <div key={i} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--ink-700)', borderRadius: '50%' }}>
+      <div key={i} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--border)', borderRadius: '50%' }}>
         <Avatar initials={m} color={['var(--gold)', 'var(--blue)', 'var(--slate)', 'var(--lilac)'][i % 4]} size={size} />
       </div>
     ))}
@@ -95,7 +100,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           setFocused(false);
         }}
       />
-      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 6, padding: '5px 9px', width, fontSize: 11.5, height: 28, boxSizing: 'border-box' }}>
+      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '5px 9px', width, fontSize: 11.5, height: 28, boxSizing: 'border-box' }}>
         <Icon name="search" size={13} color="var(--ink-200)" />
         <input
           ref={inputRef}
@@ -270,7 +275,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                   </div>
                 </div>
               ) : (
-                <button className="profile-menu-signout" style={{ ...itemStyle, color: 'var(--danger)' }} onClick={() => setConfirmSignOut(true)}>
+                <button className="profile-menu-signout" style={{ ...itemStyle, color: 'var(--danger-text)' }} onClick={() => setConfirmSignOut(true)}>
                   <Icon name="signout" size={15} color="var(--danger)" />Sign out
                 </button>
               )}

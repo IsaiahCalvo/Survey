@@ -268,9 +268,11 @@ function labelStyle() {
   };
 }
 
+// A text field's edge is the only thing saying "type here", so it takes the
+// identifying rule (tokens.css revision 4 allows it on inputs).
 function inputStyle() {
   return {
-    background: C.bg, color: C.ink, border: `1px solid ${C.rule}`,
+    background: C.bg, color: C.ink, border: `1px solid ${C.ruleStrong}`,
     borderRadius: 6, padding: '8px 10px', fontSize: 13,
     fontFamily: 'inherit', outline: 'none',
   };
@@ -284,9 +286,11 @@ function btnPrimary(color) {
   };
 }
 
+// A GHOST button paints no fill, so its edge is the whole control — the one
+// button case tokens.css revision 4 gives the identifying rule to.
 function btnGhost() {
   return {
-    background: 'transparent', color: C.ink, border: `1px solid ${C.rule}`,
+    background: 'transparent', color: C.ink, border: `1px solid ${C.ruleStrong}`,
     borderRadius: 6, padding: '6px 12px', height: 30, fontSize: 12, fontWeight: 500,
     cursor: 'pointer', fontFamily: 'inherit',
   };

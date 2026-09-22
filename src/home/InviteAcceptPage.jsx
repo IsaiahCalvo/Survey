@@ -265,7 +265,7 @@ function btnPrimary(color) {
 
 function btnGhost() {
   return {
-    background: 'transparent', color: C.ink, border: `1px solid ${C.rule}`,
+    background: 'transparent', color: C.ink, border: `1px solid ${C.ruleStrong}`,
     borderRadius: 6, padding: '6px 12px', height: 30, fontSize: 12, fontWeight: 500,
     cursor: 'pointer', fontFamily: 'inherit',
   };
