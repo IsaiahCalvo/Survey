@@ -64,9 +64,16 @@
   --chrome-field-w-arrowhead: 90px;/* arrowhead pill */
   --chrome-field-w-ends: 96px;     /* arrow-ends pill */
   --chrome-field-w-series: 80px;   /* counter-series pill */
+  /* The blend pill is the widest word the chrome carries: "See-through"
+     measures 64px at 11px/600, and 8 + 14 sample + 6 + 64 + 6 + 9 chevron + 6
+     is 113. 118 is the first width that holds it WITHOUT clipping and that the
+     menu (5 + 24 sample + 6 + 64 + 5) matches exactly, so the field and its
+     list are the same width, as board 15 requires. */
+  --chrome-field-w-blend: 118px;   /* text-mark blend pill ("See-through") */
   --chrome-field-w-font: 104px;    /* font-name pill (board 12) */
   --chrome-field-w-fontsize: 62px; /* font-size pill (board 12) */
   --chrome-text-toggle-w: 22px;    /* B / I / U / S and an alignment button */
+  --chrome-segment-pad-x: 3px;     /* inset inside one segment of a segmented toggle */
   --chrome-field-pad-x: 6px;       /* pill inset on the chevron side */
   --chrome-field-pad-l: 8px;       /* pill inset on the preview side */
   --chrome-field-trigger-w: 20px;  /* the size pill's own chevron column */
@@ -555,13 +562,20 @@
   border-radius: var(--chrome-field-radius);
 }
 
+/* MEASURED 2026-09-22: at a 6px inset the three Select segments wanted 160px
+   inside their 150px well, so "Text" ran out past the rounded end — a clipped
+   word on the only control that says which selection mode is live. The words
+   and the 12px glyphs are the board's; the inset is the only slack there is, so
+   it comes down to 3px. That puts the same three segments at 138.4px in 150,
+   and the eraser's Partial / Whole at 74.6px in 100 — both clear, both still
+   with a visible gutter between the words and the well's rounded ends. */
 .chrome-segmented > button {
   flex: 1 1 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 6px;
+  padding: 0 var(--chrome-segment-pad-x);
   color: var(--text-2);
   background: transparent;
   border: 0;

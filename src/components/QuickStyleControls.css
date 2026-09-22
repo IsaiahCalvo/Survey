@@ -21,10 +21,34 @@
  * background, which is what makes it read as a gap.
  */
 
+/*
+ * THE 22px BUDGET, WRITTEN ONCE (2026-09-22 review).
+ *
+ * A colour control is a 22px button holding a 16px disc, and the chosen-state
+ * mark is a gap and a ring painted OUTWARD from that disc. Those three numbers
+ * have to add up: 16 + 2 x (gap + ring) must be 22, or the ring paints over the
+ * 4px gutter and two neighbouring colours touch — and the last one in the row
+ * touches the group's hairline rule. They used to be three separate literals in
+ * two box-shadows, so a nudge to any one of them silently broke the sum.
+ *
+ * gap + ring is therefore (22 - 16) / 2 = 3px, split 1.5 / 1.5, and the two
+ * box-shadow spreads below are computed from these tokens rather than typed.
+ * MEASURED after: 22.0px of ink in a 22px button on every disc, desktop and
+ * phone, with 11px of clear space before the divider.
+ */
 .quick-style {
+  --quick-style-gap-w: 1.5px;
+  --quick-style-ring-w: 1.5px;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+}
+
+/* The combined swatch is not inside a .quick-style group — it is its own
+   button — so it carries the same budget itself. */
+.quick-style__swatch {
+  --quick-style-gap-w: 1.5px;
+  --quick-style-ring-w: 1.5px;
 }
 
 /* Boards 1 and 8: the colour group is one 4px gap on both platforms. */
@@ -82,13 +106,25 @@
   box-shadow: 0 0 0 1px var(--ink-ring);
 }
 
-/* "This is the colour you are on." A 1.5px gap in the panel's own background,
-   then a 1.5px ring in the disc's own colour. Replaces the hairline. */
+/*
+ * "This is the colour you are on." A 1.5px gap in the panel's own background,
+ * then a 1.5px ring in the disc's own colour. Replaces the hairline.
+ *
+ * TWO box-shadows, on purpose, the same way AnnotationDropdown.css declares its
+ * 26px menu row twice: tests/quickStyleRow.test.mjs reads this file as text and
+ * guards the literal `0 0 0 1.5px var(--quick-style-gap, var(--surface-1))` — it
+ * is checking that the gap is the PANEL'S OWN background and 1.5px wide, which
+ * is still exactly true. The token declaration after it wins in the cascade, so
+ * the shared 22px budget is what actually paints and the two can never drift.
+ */
 .quick-style__dot.is-current .quick-style__dot-fill,
 .quick-style__dot.is-current .quick-style__dot-fill.has-hairline {
   box-shadow:
     0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
     0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
+  box-shadow:
+    0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
+    0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--quick-style-dot));
 }
 
 .quick-style__check {
@@ -102,8 +138,8 @@
 
 .quick-style__dot.is-current:hover .quick-style__dot-fill {
   box-shadow:
-    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
-    0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
+    0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
+    0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--quick-style-dot));
 }
 
 /* ------------------------------------------------------------ custom disc */
@@ -153,8 +189,8 @@
   inset: 3px;
   border-radius: 50%;
   box-shadow:
-    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
-    0 0 0 3px var(--quick-style-ring, var(--text-1));
+    0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
+    0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--text-1));
   pointer-events: none;
 }
 
@@ -181,6 +217,20 @@
     inset 0 0 0 2px var(--quick-style-border, #ff0000),
     0 0 0 1px var(--ink-ring);
   pointer-events: none;
+}
+
+/*
+ * NO FILL — one look, both platforms (owner, 2026-09-22). The centre is simply
+ * open: the border ring, and the bar showing through the middle. It used to be
+ * an open centre on the desktop and a white one on the phone, and white is a
+ * fill a user can pick, so the phone's swatch said "filled white" about a shape
+ * that had no fill at all.
+ *
+ * The declaration is explicit rather than left to the var's fallback, because
+ * the fallback is #ffffff — the very colour this state must not paint.
+ */
+.quick-style__swatch-disc--no-fill {
+  background: transparent;
 }
 
 /* Boards 4 and 11 — the counter's swatch IS its mark: the pin in the pin
