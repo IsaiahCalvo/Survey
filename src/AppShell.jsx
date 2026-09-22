@@ -2040,19 +2040,32 @@ export default function App({ devPreviewReturnTab = null }) {
                         as what they are. A short muted word to its left, at the
                         chrome label size, says it without costing the bar a
                         control. */}
-                    <span
-                      data-text-colour-label
-                      style={{
-                        flex: '0 0 auto',
-                        color: 'var(--text-3)',
-                        font: '600 11px/1 Helvetica, Arial, sans-serif',
-                        letterSpacing: '-0.01em',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Text
-                    </span>
+                    {/* MEASURED 2026-09-22: in the flow, this caption pushed the
+                        whole formatting group 13.7px to the RIGHT of centre
+                        while the rows above it sat dead centre — 21.4px of word
+                        plus a 6px gutter, shared between the two ends. A caption
+                        is not a control, so it is taken out of the flow and hung
+                        off the left edge of the group it names: the bar then
+                        centres the CONTROLS, which is what the eye reads and
+                        what bars 1 and 2 centre. */}
                     <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                      <span
+                        data-text-colour-label
+                        style={{
+                          position: 'absolute',
+                          right: '100%',
+                          marginRight: 'var(--chrome-gap)',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          color: 'var(--text-3)',
+                          font: '600 11px/1 Helvetica, Arial, sans-serif',
+                          letterSpacing: '-0.01em',
+                          whiteSpace: 'nowrap',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        Text
+                      </span>
                       <QuickColourDots
                         value={textFormatSource?.state?.fontColor || '#1e293b'}
                         onPick={(hex) => textFormatSource?.api?.setFontColor?.(hex)}
@@ -3041,6 +3054,18 @@ export default function App({ devPreviewReturnTab = null }) {
                   />
                   );
                 })()}
+                {/* PASS 7 (2026-09-22 review): the rule that closes the value
+                    group before "Aa". Every other group in bars 1-3 is fenced
+                    off by a hairline — colour | numbers | style — but the Aa sat
+                    hard against the line-style pill with nothing between them,
+                    so a control that OPENS A WHOLE BAR read as one more setting
+                    of the shape. Same shared rule, same 8px inset. */}
+                {(bottomToolbarApi.onEnterTextEdit || textFormatSource)
+                  && (bottomToolbarApi.contextTool === 'text'
+                      || bottomToolbarApi.contextTool === 'callout'
+                      || !!bottomToolbarApi.richTextEditor) && (
+                  <div className="chrome-divider" data-chrome-divider-before-aa="true" />
+                )}
                 {/* 2026-05-25 / PASS 7 (board 12): the "Aa" that owns the
                     formatting bar. It renders on the text box and callout tools
                     and whenever a text box is open for editing.
