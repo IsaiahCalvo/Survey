@@ -2075,3 +2075,23 @@ input[type="text"].space-add-pages-input:focus-visible {
     animation: none;
   }
 }
+
+/* PASS 7 (owner ruling 2026-09-22): the colour picker's opacity slider GLIDES
+   to the other tab's value instead of snapping there. The thumb animates its
+   own `left`; the track's tint animates this registered custom property,
+   because an unregistered property inside a gradient cannot be transitioned at
+   all. The component turns the transition on for one 200ms beat and off again,
+   so a drag is still frame-for-frame instant. Nothing here touches the value
+   the picker reports — only how it looks on the way. */
+@property --picker-alpha-ink {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker-alpha-track,
+  .picker-alpha-track > span {
+    transition: none !important;
+  }
+}

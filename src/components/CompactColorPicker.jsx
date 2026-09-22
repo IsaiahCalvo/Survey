@@ -245,6 +245,29 @@ const CompactColorPicker = ({
         ? (typeof firstPreset.opacity === 'number' ? Math.max(0, Math.min(1, firstPreset.opacity)) : 1)
         : 1;
     const [mode, setMode] = useState('grid'); // 'grid' or 'spectrum'
+    /*
+     * RULED 2026-09-22 (owner): switching Border <-> Fill (or Pin <-> Number,
+     * or Text <-> anything) must not make the opacity thumb JUMP to the other
+     * slot's value — it glides there, fast.
+     *
+     * This is PURELY VISUAL. `glideAlpha` only turns a CSS transition on for
+     * one short beat; nothing that reaches `onChange` is interpolated, so the
+     * annotation on the page still takes the new tab's real value on the very
+     * first frame, exactly as before. A drag never glides (`alphaDragging`),
+     * and prefers-reduced-motion never glides at all.
+     */
+    const ALPHA_GLIDE_MS = 200;
+    const [glideAlpha, setGlideAlpha] = useState(false);
+    const glideTimer = useRef(null);
+    const alphaDragging = useRef(false);
+    useEffect(() => () => clearTimeout(glideTimer.current), []);
+    const startAlphaGlide = () => {
+        if (typeof window === 'undefined') return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+        clearTimeout(glideTimer.current);
+        setGlideAlpha(true);
+        glideTimer.current = setTimeout(() => setGlideAlpha(false), ALPHA_GLIDE_MS + 60);
+    };
     const [localHex, setLocalHex] = useState(color || '#000000');
     // 2026-05-25: localOpacity is the SLIDER position, never zeroed by the
     // transparent preset. transparentMode is a separate flag — true when the
@@ -296,6 +319,14 @@ const CompactColorPicker = ({
     // again at the remembered opacity.
     useEffect(() => {
         const pct = (opacity ?? 0);
+        // The thumb glides ONLY when the value arrived from outside — a tab
+        // switch hands the picker the other slot's opacity. A drag or a key
+        // press has already moved localOpacity to the same number by the time
+        // the prop echoes back, so the difference is zero and nothing glides;
+        // alphaDragging is the belt to that braces.
+        if (!alphaDragging.current && Math.abs(Math.round(pct * 100) - Math.round(localOpacity)) >= 1) {
+            startAlphaGlide();
+        }
         if (pct > 0) {
             setLocalOpacity(Math.round(pct * 100));
             setTransparentMode(false);
@@ -423,6 +454,11 @@ const CompactColorPicker = ({
             handleSVChange(event);
         } else if (kind === 'alpha') {
             alphaPointerId.current = event.pointerId;
+            // A drag is instant: kill any glide in flight so the thumb never
+            // lags the finger.
+            alphaDragging.current = true;
+            clearTimeout(glideTimer.current);
+            setGlideAlpha(false);
             handleAlphaChange(event);
         } else {
             huePointerId.current = event.pointerId;
@@ -447,6 +483,7 @@ const CompactColorPicker = ({
                 : huePointerId;
         if (pointerRef.current !== event.pointerId) return;
         pointerRef.current = null;
+        if (kind === 'alpha') alphaDragging.current = false;
         if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
             event.currentTarget.releasePointerCapture(event.pointerId);
         }
@@ -523,7 +560,8 @@ const CompactColorPicker = ({
      * "nothing may spill, collide or clip", and 100% opacity is the default
      * every picker opens on. Every real slider is built this way.
      */
-    const thumb = (percent) => ({
+    const thumb = (percent, transition) => ({
+        transition: transition || undefined,
         position: 'absolute',
         left: `calc(9px + (100% - 18px) * ${clamp(percent, 0, 100) / 100})`,
         top: '50%',
@@ -690,16 +728,29 @@ const CompactColorPicker = ({
             onPointerMove={transparentMode ? undefined : ((event) => movePointerDrag('alpha', event))}
             onPointerUp={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onPointerCancel={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
-            onLostPointerCapture={() => { alphaPointerId.current = null; }}
+            onLostPointerCapture={() => { alphaPointerId.current = null; alphaDragging.current = false; }}
+            className="picker-alpha-track"
             style={{
                 ...track,
-                background: `linear-gradient(to right, transparent, ${localHex}), ${ALPHA_CHEQUER}`,
+                /* The ink is a REGISTERED custom property (styles.css
+                   @property --picker-alpha-ink), so the track's tint can be
+                   transitioned like any other colour. Without the
+                   registration a gradient stop cannot animate at all. */
+                '--picker-alpha-ink': localHex,
+                background: 'linear-gradient(to right, transparent, var(--picker-alpha-ink)),'
+                    + ` ${ALPHA_CHEQUER}`,
+                transition: glideAlpha
+                    ? `--picker-alpha-ink ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+                    : 'none',
                 opacity: transparentMode ? 0.4 : 1,
                 cursor: transparentMode ? 'not-allowed' : 'pointer',
                 marginTop: labelled ? 0 : undefined,
             }}
         >
-            <span style={thumb(localOpacity)} />
+            <span style={thumb(
+                localOpacity,
+                glideAlpha ? `left ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : undefined,
+            )} />
         </div>
     );
 
