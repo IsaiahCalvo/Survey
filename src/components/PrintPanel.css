@@ -975,3 +975,18 @@
 @media (max-width: 900px) {
   .pp-rail { flex-basis: 260px; width: 260px; }
 }
+
+/* Four controls in this panel had no hover and no press at all: the two
+   dropdown shells, a segmented button and the toggle. One hover, one press,
+   both from the shared palette (UX 2026-09-22, revision-3 palette). */
+.pp-dd:hover,
+.pp-seg button:not(.is-active):hover,
+.pp-tog:hover {
+  background: var(--pp-hover);
+}
+
+.pp-dd:active,
+.pp-seg button:not(.is-active):active,
+.pp-tog:active {
+  background: var(--pp-pressed);
+}

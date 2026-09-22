@@ -199,3 +199,7 @@
   opacity: 1;
   transition: opacity 220ms cubic-bezier(0, 0, 0.2, 1);
 }
+
+/* The banner's action had no hover and no press (UX 2026-09-22). */
+.storage-banner__action:hover { background: var(--hover); }
+.storage-banner__action:active { background: var(--pressed); }

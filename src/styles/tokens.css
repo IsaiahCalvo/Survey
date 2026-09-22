@@ -54,9 +54,9 @@
 
      1. BORDERS WERE STILL INVISIBLE. 1.86:1 and 2.71:1 both fail the 3:1 that
         WCAG 1.4.11 asks of a non-text boundary, which is the whole job of a
-        border. Same hue (219 degrees), lifted until they pass: --border is
-        3.65:1 on surface-1 and 3.21 on surface-2; --border-strong is 3.46 on
-        surface-3, the highest layer it can land on.
+        border. Same hue (219 degrees), lifted until BOTH pass on ALL FOUR
+        layers: --border 4.50 / 4.09 / 3.60 / 3.11 and --border-strong
+        5.75 / 5.22 / 4.60 / 3.96, read off surface-0 up to surface-3.
      2. HOVER AND PRESSED WERE THE WRONG WAY ROUND. --pressed (#232830) was
         LIGHTER than --hover (#26282e), so a press looked like a hover and
         neither read as the other; --pressed had no consumers at all and a
@@ -94,8 +94,8 @@
 
    Contrast (WCAG 2.1) on surface-1, the commonest panel: text-1 13.02,
    text-2 9.30, text-3 6.45, accent 7.98, accent-light 10.40, danger-text 6.35,
-   warning 5.96. --text-disabled is 2.88 on purpose. Borders: --border 3.65,
-   --border-strong 4.19 (3.21 / 3.46 on surface-2 / surface-3).
+   warning 5.96. --text-disabled is 2.88 on purpose. Borders: --border 4.09
+   and --border-strong 5.22, and both clear 3:1 on all four layers.
    ========================================================================== */
 
 :root {
@@ -106,10 +106,10 @@
   --surface-3: #2b303b;   /* raised: a SELECTED row, a field, a menu · B 23% */
 
   /* --- Borders: both pass WCAG 1.4.11 (3:1) on the layers they land on --- */
-  --border: #6a7384;          /* the default hairline · 3.65 on surface-1,
-                                 3.21 on surface-2, 4.01 on surface-0 */
-  --border-strong: #7a8394;   /* an edge that has to be seen · 3.46 even on
-                                 surface-3, the highest layer there is */
+  --border: #727b8d;          /* the default hairline · passes 3:1 on ALL FOUR
+                                 layers: 4.50 / 4.09 / 3.60 / 3.11 */
+  --border-strong: #848da0;   /* an edge that has to be seen · 5.75 / 5.22 /
+                                 4.60 / 3.96 */
 
   /* --- Text: one temperature, four tiers -------------------------------- */
   --text-1: #dadfe8;          /* headings and the row you are reading */
@@ -183,13 +183,19 @@
   --hover: #232830;
   --pressed: #12151b;
   /* Disabled: one fill and one text colour, never an opacity. Seven different
-     opacities used to mean "off" and none of them matched. */
-  --disabled-fill: #2b303b;
-  /* The focus ring: gold at 55%, which composites to 3.38 / 3.30 / 3.12 on
-     surfaces 0-2 — a boundary you can actually see, where 35% measured 2.09
-     and was painted by exactly one rule. Always 2px on :focus-visible, never
-     on :focus, so a mouse click never draws it. */
-  --focus: rgba(216, 168, 78, 0.55);
+     opacities used to mean "off" and none of them matched.
+     It is --surface-2 on purpose, and NOT the #2b303b the audit first
+     proposed: #2b303b is --surface-3, which this file reserves for SELECTED,
+     so a disabled button would have been painted the chosen colour. A flat
+     card surface with --text-disabled on it (2.54:1, deliberately low) is the
+     video's own description of a disabled control — "obviously disabled
+     without any other visual cues, just from the light gray and white text". */
+  --disabled-fill: var(--surface-2);
+  /* The focus ring: gold at 62%, which composites to 4.00 / 3.85 / 3.57 /
+     3.26 — past 3:1 on every layer, where 35% measured 2.09 and was painted by
+     exactly one rule. Always 2px on :focus-visible, never on :focus, so a
+     mouse click never draws it. */
+  --focus: rgba(216, 168, 78, 0.62);
 
   /* --- Kept from the previous token block ------------------------------ */
   /* --accent-red is the one destructive red (KAL-72, docs/ui/colors.md); it

@@ -4461,6 +4461,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    ALREADY armed or selected keeps its own look — .is-active is matched more
    specifically above and below.
    ========================================================================== */
+.mobile-pdf-tools__button:not(:disabled):active,
+.mobile-pdf-header__page-input:active,
+.mobile-doc-card:active,
+.mobile-project-card:active,
 .mobile-pdf-properties__color:active,
 .mobile-pdf-text-card__large-swatch:active,
 .mobile-survey-detail-swatch-btn:active,

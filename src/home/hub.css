@@ -124,6 +124,13 @@
 .survey-hub .actions { margin-left: auto; display: flex; gap: 6px; }
 .survey-hub .btn { background: var(--ink-700); color: var(--bone-100); border: 1px solid var(--ink-500); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; }
 .survey-hub .btn.primary { background: var(--gold); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+/* UX 2026-09-22: a gold control's own states. It used to take the generic
+   neutral press, so the home screen's one primary button went dark grey under
+   the finger instead of darkening its gold. */
+.survey-hub .btn.primary:hover { background: var(--accent-light); }
+.survey-hub .btn.primary:active { background: var(--accent-press); }
+.survey-hub .btn:not(.primary):hover { background: var(--hover); }
+.survey-hub .btn:not(.primary):active { background: var(--pressed); }
 .survey-hub .btn.ghost { background: transparent; }
 
 .survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -1606,6 +1613,15 @@
 
   .survey-hub .ed-scope {
     background: var(--ink-900) !important;
+  }
+
+  /* UX 2026-09-22: a tapped card has to answer the finger. There is no hover
+     on a phone, so the press IS the feedback — --pressed for as long as the
+     finger is down. */
+  .survey-hub .mobile-doc-card:active,
+  .survey-hub .mobile-project-card:active {
+    background: var(--pressed);
+    transition: background 90ms ease-out;
   }
 
   .survey-hub .mobile-doc-card,
@@ -3380,5 +3396,47 @@
 @media (max-width: 420px) {
   .survey-hub .actions {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* ==========================================================================
+   MISSING STATES (UX 2026-09-22, revision-3 palette)
+   --------------------------------------------------------------------------
+   Twelve controls in the hub had no hover and no press at all: the desktop
+   sidebar nav, the sign-out buttons, the archive sort menu, and the eight
+   phone rows and triggers. Measured live at 1440x900 and 390x844, all four
+   nav items read the same colour at rest, under the pointer and after the
+   pointer left — the rail simply did not answer.
+
+   One hover (--hover) and one press (--pressed), and a control that is
+   .active keeps its own selected look. Last in the file so it wins over the
+   resting fill without !important; the .active guards keep a chosen row
+   chosen. Desktop gets hover AND press; a phone row gets the press only,
+   because there is no pointer to hover with.
+   ========================================================================== */
+.survey-hub .nav button:not(.active):hover,
+.survey-hub .profile-signout-buttons button:not(.danger):hover,
+.survey-hub .archive-sort-menu button:not(.active):hover {
+  background: var(--hover);
+}
+
+.survey-hub .nav button:not(.active):active,
+.survey-hub .profile-signout-buttons button:not(.danger):active,
+.survey-hub .archive-sort-menu button:not(.active):active {
+  background: var(--pressed);
+}
+
+@media (max-width: 860px) {
+  .survey-hub .mobile-rail-nav-trigger:active,
+  .survey-hub .mobile-rail-nav-options button:not(.active):active,
+  .survey-hub .mobile-header-select-button:active,
+  .survey-hub .mobile-home-tabs button:not(.active):active,
+  .survey-hub .projects-mobile-iteration-switcher button:not(.active):active,
+  .survey-hub .projects-mobile-folder-row.drill:active,
+  .survey-hub .projects-mobile-file-row:active,
+  .survey-hub .templates-mobile-row:active,
+  .survey-hub .archive-mobile-disclosure:active {
+    background: var(--pressed);
+    transition: background 90ms ease-out;
   }
 }

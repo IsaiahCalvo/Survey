@@ -123,3 +123,9 @@
 }
 .ed-tpl-menu button:hover { background: var(--hover); }
 .ed-tpl-menu button.danger { color: var(--danger); }
+
+/* The editor's two button shapes had no hover and no press (UX 2026-09-22). */
+.ed-scope .btn-ink:hover,
+.ed-scope .btn-line:hover { background: var(--hover); }
+.ed-scope .btn-ink:active,
+.ed-scope .btn-line:active { background: var(--pressed); }

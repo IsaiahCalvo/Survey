@@ -99,3 +99,12 @@
   .apply-redactions-actions { flex-direction: column-reverse; }
   .apply-redactions-actions button { width: 100%; min-height: 44px; }
 }
+
+/* The Cancel button had no hover and no press; Confirm has its own red pair
+   above (UX 2026-09-22, revision-3 palette). */
+.apply-redactions-actions button:not(.apply-redactions-confirm):not(:disabled):hover {
+  background: var(--hover);
+}
+.apply-redactions-actions button:not(.apply-redactions-confirm):not(:disabled):active {
+  background: var(--pressed);
+}
