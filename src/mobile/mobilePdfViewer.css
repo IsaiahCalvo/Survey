@@ -4176,6 +4176,38 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-bookmark-toolbar {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
+}
+
+/* UX 2026-09-22 (owner ruling: the phone needs a way to make a bookmark
+   folder) — "New folder" sits beside "Add bookmark" in the panel's own action
+   row. It is the app's neutral phone pill: a surface fill with a border, never
+   a gold fill; while its name field is open the GLYPH turns gold, which is the
+   one active-state signal the phone chrome uses (owner: "selected = gold glyph
+   only"). Same 36px min-height as the Add pill, so the row stays one line. */
+.mobile-bookmark-newfolder {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 12px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.mobile-bookmark-newfolder.is-active {
+  color: var(--accent);
+}
+
+/* One field plus its Create button — the two-field bookmark editor's grid minus
+   the page column. */
+.mobile-bookmark-editor-folder {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .mobile-bookmark-add,
@@ -4243,8 +4275,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   transition: margin-left 120ms ease-out;
 }
 
+/* UX 2026-09-22 (owner ruling): the row is a 44px touch target. It used to
+   paint 43px — its two lines of copy, not the old 38px min-height, set the
+   height — which left the row's own tap area (.mobile-bookmark-open, the thing
+   you press to jump to the page) 1px under the iOS minimum. The floor now
+   states the 44 outright so no future copy change can drop it again. */
 .mobile-bookmark-row {
-  min-height: 38px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -4363,11 +4400,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
-.mobile-bookmark-move:disabled {
-  opacity: 0.36;
-  cursor: default;
-}
-
+/* Only Edit and Delete live here now — the up/down chevrons were removed with
+   the 2026-09-22 ruling, and with them the only disabled state this row had. */
 .mobile-bookmark-delete {
   color: var(--danger);
 }

@@ -461,18 +461,23 @@ const BookmarkTreeRow = ({
  * touch handlers are attached only to the 35px grab-handle strip at the top of
  * the sheet (PDFSidebar.jsx), never to the panel content, so a touch that
  * starts on a bookmark row never reaches them. No opt-out hook is needed.
+ *
+ * UX 2026-09-22 (owner ruling) — the row carries NO up/down reorder buttons.
+ * Long-press drag is the only reorder path on the phone; two chevrons beside a
+ * working drag handle were redundant chrome on a 315px row, and they could only
+ * ever swap same-parent siblings, never reparent. Accessibility is preserved
+ * because the grip spreads @dnd-kit's `attributes` (role="button", tabIndex 0),
+ * so the KeyboardSensor in `mobileSensors` still reorders with Space + arrows.
+ * The desktop tree never had these arrows, so nothing changes there.
  */
 const MobileBookmarkRow = ({
   item,
   depth,
   projectedDepth,
   isDraggingAny,
-  isFirst,
-  isLast,
   onToggle,
   onNavigate,
   onEdit,
-  onMove,
   onDelete,
 }) => {
   const {
@@ -555,24 +560,6 @@ const MobileBookmarkRow = ({
           )}
           <button
             type="button"
-            className="mobile-bookmark-move"
-            aria-label="Move bookmark up"
-            disabled={isFirst}
-            onClick={() => onMove?.(item.id, -1)}
-          >
-            <Icon name="chevronUp" size={13} color="currentColor" />
-          </button>
-          <button
-            type="button"
-            className="mobile-bookmark-move"
-            aria-label="Move bookmark down"
-            disabled={isLast}
-            onClick={() => onMove?.(item.id, 1)}
-          >
-            <Icon name="chevronDown" size={13} color="currentColor" />
-          </button>
-          <button
-            type="button"
             className="mobile-bookmark-move mobile-bookmark-delete"
             aria-label={`Delete bookmark ${item.name}`}
             onClick={() => onDelete?.(item.id)}
@@ -610,6 +597,9 @@ const BookmarksPanel = ({
   const [isEditMode, setIsEditMode] = useState(initialEditMode);
   const [newBookmarkName, setNewBookmarkName] = useState('');
   const [newBookmarkPages, setNewBookmarkPages] = useState('');
+  // Phone-only "New folder" inline editor (owner ruling 2026-09-22).
+  const [showMobileFolderEditor, setShowMobileFolderEditor] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
   const [mobileEditingBookmarkId, setMobileEditingBookmarkId] = useState(null);
   const [mobileEditName, setMobileEditName] = useState('');
   const [mobileEditPage, setMobileEditPage] = useState('');
@@ -1260,27 +1250,49 @@ const BookmarksPanel = ({
     }
   }, [onBookmarkDelete]);
 
-  // UX 2026-07-12 — Mobile up/down reorder. The demo's BookmarkRow move buttons
-  // shift a bookmark one slot among its same-parent siblings (BookmarkRow.tsx:64-70).
-  // We reuse the same mutation path desktop drag uses (onBookmarkUpdate with a new
-  // `order`), so sync/CRDT sees an identical operation — no new store write is
-  // introduced. Only the two swapped siblings are rewritten.
-  const handleMobileMoveBookmark = useCallback((id, delta) => {
-    if (!onBookmarkUpdate) return;
-    const target = (bookmarks || []).find((b) => b.id === id);
-    if (!target) return;
-    const siblings = (bookmarks || [])
-      .filter((b) => (b.parentId ?? null) === (target.parentId ?? null))
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-    const currentIndex = siblings.findIndex((b) => b.id === id);
-    const swapIndex = currentIndex + delta;
-    if (currentIndex < 0 || swapIndex < 0 || swapIndex >= siblings.length) return;
-    const neighbor = siblings[swapIndex];
-    const targetOrder = target.order || 0;
-    const neighborOrder = neighbor.order || 0;
-    onBookmarkUpdate(id, { order: neighborOrder });
-    onBookmarkUpdate(neighbor.id, { order: targetOrder });
-  }, [bookmarks, onBookmarkUpdate]);
+  /*
+   * UX 2026-09-22 (owner ruling) — "New folder" on the phone.
+   *
+   * Desktop's only folder route is the "New bookmark group" MODAL, which refuses
+   * to save until the group already contains at least one bookmark. That flow
+   * needs a two-column picker and cannot fit a phone sheet, and the owner asked
+   * for the drag-first shape instead: make an EMPTY, named folder, then long-press
+   * an existing bookmark onto it to nest. So the phone gets an inline name field
+   * (the same one-line editor the phone already uses for "Add bookmark") and
+   * writes exactly the record the desktop modal writes for its folder —
+   * { type: 'folder', children: [] } through onBookmarkCreate. No new store, no
+   * new shape: folders are just rows in the same flat `bookmarks` array, carried
+   * by the same create/update/delete handlers in PDFViewer, so persistence and
+   * sync treat a phone-made folder exactly as they treat a desktop-made one.
+   *
+   * The folder lands at root with the next free root `order`, so it appears at
+   * the bottom of the list where the user just created it.
+   */
+  const handleCreateMobileFolder = useCallback(() => {
+    const trimmedName = newFolderName.trim();
+    if (!trimmedName) {
+      showToast('Please enter a folder name.', 'warn');
+      return;
+    }
+    if (!onBookmarkCreate) return;
+
+    const rootOrders = (bookmarks || [])
+      .filter((b) => !b?.parentId)
+      .map((b) => (typeof b?.order === 'number' ? b.order : 0));
+    const nextOrder = rootOrders.length ? Math.max(...rootOrders) + 1 : 0;
+
+    onBookmarkCreate({
+      id: generateId(),
+      name: trimmedName,
+      type: 'folder',
+      parentId: null,
+      order: nextOrder,
+      children: [],
+    });
+
+    setNewFolderName('');
+    setShowMobileFolderEditor(false);
+  }, [bookmarks, newFolderName, onBookmarkCreate]);
 
   // Existing create/modal handlers remain the same
   const handleCreateBookmark = useCallback(() => {
@@ -1596,7 +1608,9 @@ const BookmarksPanel = ({
     // demo (BookmarkRow.tsx / HubTray bookmarks branch). flattenedItems already
     // honours folder collapse state and carries per-row depth. Tapping a folder
     // toggles it; tapping a bookmark navigates via the same handleNavigate path as
-    // desktop. Up/down move among same-parent siblings via handleMobileMoveBookmark.
+    // desktop. UX 2026-09-22 (owner ruling): reordering is long-press drag only —
+    // the old up/down chevrons are gone, and "New folder" in the action row makes
+    // an empty folder to drag bookmarks into.
     // Note: the demo's markerId→survey jump does not apply here — the new app's
     // Bookmarks tab is the PDF outline (page-anchored), with no survey markerId and
     // no survey-open handler threaded to this panel, so page navigation is the
@@ -1618,16 +1632,58 @@ const BookmarksPanel = ({
         data-bookmark-tree-list
       >
         <div className="mobile-bookmark-toolbar">
+          {/* UX 2026-09-22 (owner ruling): folder creation lives in the phone
+              panel's own action row, beside "Add bookmark". It is a neutral
+              pill whose glyph turns gold while its name field is open — the
+              app's phone control language (gold glyph marks the active
+              control, never a gold fill). */}
+          <button
+            type="button"
+            className={`mobile-bookmark-newfolder${showMobileFolderEditor ? ' is-active' : ''}`}
+            aria-label={showMobileFolderEditor ? 'Cancel new folder' : 'New folder'}
+            aria-expanded={showMobileFolderEditor}
+            onClick={() => {
+              setShowMobileFolderEditor((shown) => !shown);
+              setNewFolderName('');
+              setShowCreateMenu(false);
+            }}
+          >
+            <Icon name={showMobileFolderEditor ? 'close' : 'folder'} size={13} color="currentColor" />
+            {showMobileFolderEditor ? 'Cancel' : 'New folder'}
+          </button>
           <button
             type="button"
             className="mobile-bookmark-add"
             aria-label={showCreateMenu ? 'Cancel new bookmark' : 'Add bookmark'}
-            onClick={() => setShowCreateMenu((shown) => !shown)}
+            onClick={() => {
+              setShowCreateMenu((shown) => !shown);
+              setShowMobileFolderEditor(false);
+            }}
           >
             <Icon name={showCreateMenu ? 'close' : 'plus'} size={13} color="currentColor" />
             {showCreateMenu ? 'Cancel' : 'Add bookmark'}
           </button>
         </div>
+        {showMobileFolderEditor && (
+          <div className="mobile-bookmark-editor mobile-bookmark-editor-folder" aria-label="New folder">
+            <input
+              type="text"
+              aria-label="Folder name"
+              value={newFolderName}
+              placeholder="Folder name"
+              autoFocus
+              onChange={(event) => setNewFolderName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleCreateMobileFolder();
+                if (event.key === 'Escape') {
+                  setNewFolderName('');
+                  setShowMobileFolderEditor(false);
+                }
+              }}
+            />
+            <button type="button" onClick={handleCreateMobileFolder}>Create folder</button>
+          </div>
+        )}
         {showCreateMenu && (
           <div className="mobile-bookmark-editor" aria-label="New bookmark">
             <input
@@ -1659,12 +1715,6 @@ const BookmarksPanel = ({
           <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
           {flattenedItems.map((item) => {
             const isFolder = item.type === 'folder';
-            const siblings = (bookmarks || [])
-              .filter((b) => (b.parentId ?? null) === (item.parentId ?? null))
-              .sort((a, b) => (a.order || 0) - (b.order || 0));
-            const posIndex = siblings.findIndex((b) => b.id === item.id);
-            const isFirst = posIndex <= 0;
-            const isLast = posIndex === siblings.length - 1;
             const depth = item.depth || 0;
             return (
               mobileEditingBookmarkId === item.id && !isFolder ? (
@@ -1699,12 +1749,9 @@ const BookmarksPanel = ({
                   depth={depth}
                   projectedDepth={item.id === activeId && projected ? projected.depth : null}
                   isDraggingAny={Boolean(activeId)}
-                  isFirst={isFirst}
-                  isLast={isLast}
                   onToggle={toggleExpand}
                   onNavigate={handleNavigate}
                   onEdit={beginMobileBookmarkEdit}
-                  onMove={handleMobileMoveBookmark}
                   onDelete={handleDelete}
                 />
               )
