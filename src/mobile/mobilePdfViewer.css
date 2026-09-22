@@ -1697,16 +1697,27 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 auto;
 }
 
+/* MEASURED 2026-09-22 (phone, 390 and 375): a five-character value was CLIPPED.
+   "20 pt" (the highlighter's default) and "50 pt" each need 29px of text, and the
+   72px width pill left its label 25px — 8px of left padding, a 12px stroke
+   sample, two 6px gaps, a 9px chevron and 6px of right padding — so the label
+   ellipsised to "20 p…".
+   The room is taken from the pill's INSIDE, not from its width: every pill keeps
+   the width its board states (width 72 / line style 92 / arrowhead 90 / arrow
+   ends 96 / series 80 / sheet field 96), because growing the width pill to 80
+   pushes the arrow strip to 336px inside a 331px band at 375px, and that strip
+   neither scrolls nor clips. Inner gap 6 -> 4 (the strip's own gap token) and
+   left padding 8 -> 6 give the label 31px, which clears 29 with a point to
+   spare; the line-style label gains the same 6px on top of the 39 it had. */
 .mobile-styled-select__trigger {
   position: relative;
   height: var(--mobile-strip-control-h);
   min-height: var(--mobile-strip-control-h);
-  /* 6px right, 8px left: the chevron needs less air than the preview. */
-  padding: 0 6px 0 8px;
+  padding: 0 6px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--mobile-strip-gap);
   color: var(--text-1);
   background: var(--surface-3);
   border: 0;
