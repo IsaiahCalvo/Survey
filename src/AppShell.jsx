@@ -23,10 +23,9 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
-import { QuickColourDots } from './components/QuickStyleControls';
+import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
 import BodyPortal from './components/BodyPortal.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
-import { matchedQuickColour } from './utils/quickStylePresets';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import {
@@ -276,6 +275,27 @@ const showsQuickColourDots = (api) => (
   showsColorSwatch(api)
   && ['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(api.contextTool)
 );
+
+/**
+ * PASS 7 (boards 9, 11, 12): which tools show the ONE COMBINED SWATCH.
+ *
+ * The other half of the ruling above: a tool that has both a fill and a border
+ * shows the swatch and no preset discs. A polyline is deliberately NOT in here —
+ * it is a stroke with no fill in this app (see resolveAnnotationPaint), so a
+ * "fill centre with a border ring" would preview a colour the mark never paints
+ * and the picker's Fill tab would write somewhere nothing reads.
+ *
+ * Rich-text edit mode keeps the swatch (`api.richTextEditor`) even though
+ * showsColorSwatch hides the discs there: the swatch paints the text BOX — its
+ * fill and its border — while the third bar owns the font colour, so the two
+ * never compete for the same control.
+ */
+const showsPaintSwatch = (api) => {
+  if (!api || api.activeTool === 'eraser') return false;
+  if (api.contextTool === 'counter') return !!api.handleFillColorChange;
+  return (['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(api.contextTool) || !!api.richTextEditor)
+    && !!api.handleFillColorChange;
+};
 
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
@@ -740,13 +760,13 @@ export default function App({ devPreviewReturnTab = null }) {
   // read and write: the quick colour dots, the swatch's ring, and the picker
   // itself. See resolveAnnotationPaint above.
   const annotationPaint = resolveAnnotationPaint(bottomToolbarApi, colorPickerTab);
-  // UX 2026-09-17: exactly ONE thing in the colour cluster wears the gold ring
-  // at a time, and it is always where the current colour came from — the dot
-  // when the colour is one of the four, the swatch when it is anything else
-  // (a hex the user typed, a colour off the picker's grid, a colour carried in
-  // from a selected mark). A ring that were always on the swatch as well would
-  // stop meaning "current" and start reading as decoration.
-  const quickColourOnSwatch = !!annotationPaint && !matchedQuickColour(annotationPaint.quick.color);
+  // PASS 7: the cluster's own chosen mark is the shared one now — a preset disc
+  // rings in its OWN colour, and when the colour is not one of the three the
+  // rainbow disc wears the mark instead (QuickColourDots works that out for
+  // itself from the value it is given). The combined swatch carries no mark at
+  // all, because boards 9, 11 and 12 draw none on it: it IS the current colour.
+  // The old `quickColourOnSwatch` flag, which put the mark on the legacy swatch,
+  // went with that swatch.
   // UX 2026-09-17: and it goes back to that channel's tab whenever the armed
   // tool changes which channel the dots act on — Counter takes the fill (a
   // pin's colour IS its fill), every other tool takes the border. Only that
@@ -2197,142 +2217,80 @@ export default function App({ devPreviewReturnTab = null }) {
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
                   <>
-                {/* UX 2026-09-17 (owner): the four default colours open the
-                    row, with the swatch that opens the full picker standing
-                    immediately to their right. Pressing a dot applies the
-                    colour straight away — to the armed tool and to a selected
-                    mark — through the very same paint path the picker uses, so
-                    the dot and the picker can never mean different things.
-                    They sit BEFORE the swatch because the common case is one
-                    of the four, and the swatch is the way out to everything
-                    else (hex, opacity, the full grid, the spectrum). */}
+                {/* PASS 7 (boards 8-12, owner rulings) — THE COLOUR CLUSTER.
+                    Both controls in here are the shared ones the phone strip
+                    shows (src/components/QuickStyleControls.jsx), at the same
+                    size, so "my red" is the same button on both screens.
+
+                    A SINGLE-COLOUR tool (pen, highlighter, line, arrow, a text
+                    mark) gets the three preset discs and the rainbow custom
+                    disc. Pressing a preset applies straight away — to the armed
+                    tool and to a selected mark — through the very same paint the
+                    picker writes, so a disc and the picker can never mean
+                    different things. The rainbow disc is the way out to
+                    everything else (hex, opacity, the full grid, the spectrum).
+
+                    A MULTI-COLOUR tool (rectangle, ellipse, polygon, text box,
+                    callout, counter) gets ONE combined swatch instead: the fill
+                    in the centre with the border as a 2px ring, or the counter's
+                    own pin with its number. Two colours cannot be told apart by
+                    three discs, so the discs would have had to lie about one of
+                    them; pressing the swatch opens the picker on the channel the
+                    swatch is showing, where the Border and Fill tabs say which
+                    is which.
+
+                    WHAT WENT: the legacy "Color" swatch that used to stand to
+                    the right of the discs — a big flat filled circle with its
+                    own .ctx-color-swatch styling and its own chosen-state ring.
+                    On a single-colour tool it was a fourth circle repeating what
+                    the three discs already showed; on a multi-colour tool it was
+                    the combined swatch drawn by hand, upside down (the disc was
+                    the border and the ring was the fill). Boards 8-12 draw
+                    neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
                     value={annotationPaint.quick.color}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
+                    onOpenPicker={() => {
+                      setColorPickerTab(annotationPaint.quick.tab);
+                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+                    }}
                   />
                 )}
-                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text-markup' || bottomToolbarApi.contextTool === 'text-select') ? (
-                  /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
-                     line). Checker pattern shows through low-opacity strokes
-                     and a faint hairline ring lifts pure black off the dark
-                     toolbar — both behaviours come from .ctx-color-swatch. */
-                  <button
-                    data-annotation-color-trigger
-                    onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
-                    style={{
-                      width: 'var(--chrome-colour-btn)',
-                      height: 'var(--chrome-colour-btn)',
-                      padding: 0,
-                      borderRadius: '50%',
-                      border: 'none',
-                      position: 'relative',
-                      overflow: 'hidden',
-                      boxSizing: 'border-box',
-                      cursor: 'pointer'
-                    }}
-                    {...chromeTip('Color', 'below')}
-                    aria-label="Color"
-                  >
+                {showsPaintSwatch(bottomToolbarApi) && annotationPaint && (() => {
+                  const isCounter = bottomToolbarApi.contextTool === 'counter';
+                  /* The swatch previews the paint the next mark will carry, or
+                     the selected mark's own paint when one is picked — the same
+                     two sources every other preview in the bar reads, with the
+                     same per-tool fallbacks the hand-drawn swatches used.
+                     A counter rings in its PIN colour and centres its NUMBER
+                     colour; every other shape rings in its BORDER and centres
+                     its FILL. */
+                  const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+                  const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+                  const borderColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
+                  const fillColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100);
+                  return (
+                    /* data-annotation-color-trigger: the shared dismiss boundary
+                       (the capture-phase effect above) has to count a press on a
+                       colour control as INSIDE the picker, or the press that
+                       should close the popover would close and reopen it. */
                     <span
-                      className="ctx-color-fill"
-                      style={{
-                        background: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
-                      }}
-                    />
-                  </button>
-                ) : bottomToolbarApi.contextTool === 'counter' && bottomToolbarApi.handleFillColorChange ? (
-                  /* PASS 7 (board 11, owner ruling "the counter icon is the
-                     app's real pin, NEVER a circle"): the counter's colour
-                     control IS a pin — the owner's own traced pin shape filled
-                     with the pin colour, carrying the number in the number
-                     colour. It was a round disc with a "1" on it, which showed
-                     both colours truthfully but drew a shape the app never
-                     draws. Both colours still update live, so the button is
-                     always a preview of the next pin. */
-                  <button
-                    data-annotation-color-trigger
-                    onClick={() => {
-                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
-                    style={{
-                      width: 'var(--chrome-colour-btn)',
-                      height: 'var(--chrome-colour-btn)',
-                      padding: 0,
-                      border: 'none',
-                      background: 'transparent',
-                      boxSizing: 'border-box',
-                      position: 'relative',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    {...chromeTip('Counter colors', 'below')}
-                    aria-label="Counter colors"
-                  >
-                    {(() => {
-                      const pinColour = bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100);
-                      const numberColour = bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100);
-                      return (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          {/* The traced pin from src/assets/icons/counter.svg, on
-                              the house 24 grid: 67 units of stroke inside a
-                              0.0224 group resolves to the house 1.5. */}
-                          <g transform="translate(1.6 1.6) scale(0.0224)">
-                            <path d="M16.64 14.53C32.51 16.06 48.52 16.04 64.42 17.17C84.3 18.58 104.24 19.47 124.15 20.54C172.46 23.14 221 24.9 269.21 28.79C311.2 32.18 353.46 32.81 395.47 35.77C437.49 38.73 479.63 39.7 521.62 43C562.5 46.22 604.72 56.56 642.66 72C785.02 129.91 889.46 257.4 913.66 410.03C920.35 452.22 920.36 494.92 915.01 537.24C910.4 573.68 901 610.28 886.95 644.23C866.32 694.11 836.9 740.48 799.81 779.75C766.71 814.79 728.26 842.48 686.57 866.19C659.41 881.64 629.18 892.19 599.35 900.86C567.56 910.1 535.15 914.56 502.15 916.64C334.46 927.2 173.19 832.76 94.22 686.11C70.5 642.04 55.77 594.61 47.28 545.43C41.58 512.41 41.99 478.36 39.82 444.99C35.52 379.05 33.34 312.95 28.8 247.02C25.11 193.32 22.63 139.51 19.72 85.75C18.82 69.26 17.52 52.77 16.94 36.26C16.7 29.6 14.39 20.75 16.64 14.53Z" fill={pinColour} stroke={pinColour} strokeWidth="67" strokeLinejoin="round" />
-                            <text x="478" y="640" textAnchor="middle" fill={numberColour} fontFamily={FONT_FAMILY} fontWeight="800" fontSize="430">1</text>
-                          </g>
-                        </svg>
-                      );
-                    })()}
-                  </button>
-                ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
-                  /* 2026-05-25: Border + fill swatch. Checker shows through
-                     low-opacity paint, faint hairline lifts black off the bar.
-                     UX 2026-09-17: the DISC is the border and the 2px ring
-                     around it is the fill — the disc side and the four dots
-                     beside it are the same channel, so a gold ring on this
-                     swatch points at a colour the user can actually see on it.
-                     It used to be the other way up, which meant a fresh
-                     rectangle showed a 0%-opacity white disc next to four dots
-                     setting its red border. backgroundClip keeps the white
-                     checker behind the disc only, so a transparent fill reads
-                     as no ring rather than as a white one. */
-                  <button
-                    data-annotation-color-trigger
-                    onClick={() => {
-                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className={`ctx-color-swatch${quickColourOnSwatch ? ' is-current-color' : ''}`}
-                    style={{
-                      width: 'var(--chrome-colour-btn)',
-                      height: 'var(--chrome-colour-btn)',
-                      padding: 0,
-                      borderRadius: '50%',
-                      border: `2px solid ${bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)}`,
-                      backgroundClip: 'padding-box',
-                      boxSizing: 'border-box',
-                      position: 'relative',
-                      overflow: 'hidden',
-                      cursor: 'pointer'
-                    }}
-                    {...chromeTip('Color', 'below')}
-                    aria-label="Color"
-                  >
-                    <span
-                      className="ctx-color-fill"
-                      style={{
-                        background: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
-                      }}
-                    />
-                  </button>
-                ) : null}
+                      data-annotation-color-trigger
+                      style={{ display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <QuickPaintSwatch
+                        variant={isCounter ? 'counter' : 'shape'}
+                        ring={isCounter ? pinColour : borderColour}
+                        center={isCounter ? numberColour : fillColour}
+                        onOpen={() => {
+                          setColorPickerTab(annotationPaint.quick.tab);
+                          bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+                        }}
+                      />
+                    </span>
+                  );
+                })()}
 
                 {/* PASS 7 (boards 8-12): the rule between the COLOUR group and
                     the value pills. The bar reads colour | rule | numbers, so a
@@ -2574,63 +2532,32 @@ export default function App({ devPreviewReturnTab = null }) {
                       transform: isTextMarkupPalette ? 'none' : 'translate(-50%, 0)',
                       zIndex: isTextMarkupPalette ? 5900 : 2000
                     }}>
-                      {isShape && (
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr 1fr',
-                          background: 'var(--surface-0)',
-                          border: '1px solid var(--border)',
-                          borderBottom: 'none',
-                          borderRadius: '8px 8px 0 0',
-                          overflow: 'hidden',
-                          width: '260px',
-                          marginRight: '53px'
-                        }}>
-                          {[['fill', 'Fill'], ['border', secondTabLabel]].map(([k, label], i) => {
-                            const on = colorPickerTab === k;
-                            return (
-                              <button
-                                key={k}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setColorPickerTab(k);
-                                  bottomToolbarApi.setShowAnnotationColorPicker(true);
-                                }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                style={{
-                                  /* UX 2026-09-17 (owner ruling): the chosen Fill / Border tab
-                                     is marked by the 2px gold underline below plus brighter
-                                     ink, never by a warm wash behind the label. */
-                                  background: 'transparent',
-                                  color: on ? 'var(--text-2)' : 'var(--text-3)',
-                                  fontWeight: 600,
-                                  fontSize: 12,
-                                  padding: '8px 0',
-                                  border: 0,
-                                  borderRight: i === 0 ? '1px solid var(--border)' : 0,
-                                  cursor: 'pointer',
-                                  position: 'relative'
-                                }}
-                              >
-                                {label}
-                                {on && (
-                                  <span style={{
-                                    position: 'absolute', left: 0, right: 0, bottom: 0,
-                                    height: 2, background: 'var(--accent)'
-                                  }} />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                      {/* PASS 7 (board 19): the Border / Fill tabs are the
+                          PICKER'S OWN now — a 26px segment in a 3px well at the
+                          top of the 276px panel, the same tablist the phone sheet
+                          shows (boards 17 and 18). This bar used to draw them
+                          itself, as a 260px strip glued above the panel with a
+                          gold underline under the chosen word: two tab designs
+                          for one control, on two screens, and the only one the
+                          boards draw is the picker's. */}
                       <Suspense fallback={null}>
                         <CompactColorPicker
                           color={currentColor}
                           opacity={currentOpacity}
-                          marginRight="53px"
-                          attachedHeader={isShape}
                           outsideBoundaryRef={annotationColorPickerRef}
+                          /* Board 19: Border first, then Fill — the order the
+                             board reads, and the order the swatch shows (ring
+                             then centre). A counter's two channels are its pin
+                             and the number printed on it, so the second word is
+                             "Number" there. */
+                          tabs={isShape ? {
+                            items: [
+                              { id: 'border', label: secondTabLabel },
+                              { id: 'fill', label: 'Fill' },
+                            ],
+                            active: colorPickerTab,
+                            onSelect: (id) => setColorPickerTab(id),
+                          } : null}
                           onChange={applyChange}
                           onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
                           firstPreset={(shapeOneVisibleRule && !onFillTab)

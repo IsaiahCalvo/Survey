@@ -65,11 +65,22 @@ test('counter Size clamps to a radius of at least four', () => {
   );
 });
 
-test('annotation color chrome is marked and the picker attaches to its header', () => {
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-22, pass 7 integration). Was
+ * /<CompactColorPicker[\s\S]*?attachedHeader=\{isShape\}/.
+ *
+ * RULING: board 19 puts the Border / Fill tabs INSIDE the picker panel, so there
+ * is no separate header strip above it to attach to and `attachedHeader` is not
+ * passed any more. What this test is for is unchanged — the colour trigger and
+ * the popover are both marked, so the shared dismiss boundary can tell a press
+ * on either from a press on the page — and the tabs are asserted in their new
+ * home instead.
+ */
+test('annotation color chrome is marked and the picker carries the tabs', () => {
   assert.match(APP_SHELL_SOURCE, /data-annotation-color-trigger/);
   assert.match(APP_SHELL_SOURCE, /data-annotation-color-picker/);
   assert.match(
     APP_SHELL_SOURCE,
-    /<CompactColorPicker[\s\S]*?attachedHeader=\{isShape\}/,
+    /<CompactColorPicker[\s\S]*?tabs=\{isShape \? \{/,
   );
 });

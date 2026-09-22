@@ -119,8 +119,27 @@ test('counter draw color edits patch only the active series and never a stale se
   });
 });
 
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-22, pass 7 integration). Was
+ * /setColorPickerTab\(k\);\s*bottomToolbarApi\.setShowAnnotationColorPicker\(true\);/.
+ *
+ * RULING: board 19 draws the Border / Fill tabs INSIDE the 276px picker panel,
+ * as the same tablist boards 17 and 18 draw on the phone, so the desktop bar no
+ * longer builds its own strip above the panel. The behaviour this guards is
+ * unchanged and is now the picker's: selecting a tab only changes which channel
+ * the panel is on, and nothing in that path closes the popover.
+ */
 test('switching Fill and Number keeps the counter color picker open', () => {
-  assert.match(appShellSource, /setColorPickerTab\(k\);\s*bottomToolbarApi\.setShowAnnotationColorPicker\(true\);/);
+  const tabs = appShellSource.slice(
+    appShellSource.indexOf('tabs={isShape ? {'),
+    appShellSource.indexOf('onChange={applyChange}'),
+  );
+  assert.ok(tabs.length > 80, 'the picker tabs must still be where this test reads them');
+  assert.match(tabs, /\{ id: 'border', label: secondTabLabel \}/);
+  assert.match(tabs, /\{ id: 'fill', label: 'Fill' \}/);
+  // Picking a tab does exactly one thing: it moves the panel to that channel.
+  assert.match(tabs, /onSelect: \(id\) => setColorPickerTab\(id\),/);
+  assert.doesNotMatch(tabs, /setShowAnnotationColorPicker\(false\)/);
 });
 
 test('callout preview matches renderer defaults and nested opacity', () => {
@@ -144,11 +163,21 @@ test('callout preview matches renderer defaults and nested opacity', () => {
  * contract each line guards is untouched — only which side of the swatch it is
  * read off.
  */
+/*
+ * DELIBERATE ASSERTION CHANGE (2026-09-22, pass 7 integration).
+ *
+ * What this test is for STILL has not changed: every colour control in the
+ * tool-properties row must show the selected mark's exact colour when there is
+ * one and fall back to the armed tool's default otherwise. What changed is where
+ * those four values are read: boards 8-12 replace the bar's two hand-drawn
+ * swatches — a flat "Color" disc and a border/fill circle — with the shared
+ * <QuickPaintSwatch>, so the values are named once each and handed to it as
+ * `ring` and `center` instead of being written straight into a CSS `background`
+ * and `border`. The `?? ensureRgbaOpacity(...)` contract and every fallback
+ * (#ef4444, #ffffff, #000000, #ffffff) are untouched, which is what the lines
+ * below check.
+ */
 test('every annotation swatch prefers exact selected colors over tool defaults', () => {
-  assert.match(
-    appShellSource,
-    /background: bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor/,
-  );
   // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner ruling "the counter
   // icon is the app's real pin, NEVER a circle", board 11): the counter swatch
   // draws the owner's traced PIN instead of a round disc with a "1" on it, so its
@@ -164,16 +193,17 @@ test('every annotation swatch prefers exact selected colors over tool defaults',
     appShellSource,
     /const numberColour = bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#ffffff'/,
   );
-  assert.match(appShellSource, /fill=\{pinColour\} stroke=\{pinColour\}/);
-  assert.match(appShellSource, /fill=\{numberColour\}/);
-  // The shape swatch's ring — the fill.
+  // The counter's pin rings in the pin colour and centres the number colour.
+  assert.match(appShellSource, /ring=\{isCounter \? pinColour : borderColour\}/);
+  assert.match(appShellSource, /center=\{isCounter \? numberColour : fillColour\}/);
+  // A shape's border — the ring, and the channel the quick dots act on.
   assert.match(
     appShellSource,
-    /border: `2px solid \$\{bottomToolbarApi\.selectedFillColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.fillColor \|\| '#ffffff'/,
+    /const borderColour = bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#000000'/,
   );
-  // The shape swatch's disc — the border, the channel the quick dots act on.
+  // A shape's fill — the centre of the swatch.
   assert.match(
     appShellSource,
-    /background: bottomToolbarApi\.selectedStrokeColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.strokeColor \|\| '#000000'/,
+    /const fillColour = bottomToolbarApi\.selectedFillColor \?\? ensureRgbaOpacity\(bottomToolbarApi\.fillColor \|\| '#ffffff'/,
   );
 });
