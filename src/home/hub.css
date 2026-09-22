@@ -3460,3 +3460,33 @@
     transition: background 90ms ease-out;
   }
 }
+
+/* Owner 2026-09-22: desktop Templates - Cancel / Save live in the header's
+   subtitle row where the "reusable category + checklist sets" tagline was.
+   Same 20px pill face as the rest of the chrome; Save is the one gold fill. */
+.survey-hub .templates-desktop-save-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+.survey-hub .templates-desktop-save-row button {
+  height: 20px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-1);
+  font: 600 11px/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+.survey-hub .templates-desktop-save-row button:hover { background: var(--hover); }
+.survey-hub .templates-desktop-save-row button:active { background: var(--pressed); }
+.survey-hub .templates-desktop-save-row button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.survey-hub .templates-desktop-save-row button.primary:hover { background: var(--accent-light); border-color: var(--accent-light); }
+.survey-hub .templates-desktop-save-row button.primary:active { background: var(--accent-press); border-color: var(--accent-press); }

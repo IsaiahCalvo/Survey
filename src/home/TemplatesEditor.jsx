@@ -1345,7 +1345,24 @@ export default function TemplatesEditor({
     });
   };
   const mutateCategory = (ci, fn) => mutateCategoryInModule(openMod, ci, fn);
-  const addItemToModule = (moduleIndex, ci) => mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
+  // UX 2026-09-22 (owner): "I should not be allowed to add an infinite amount
+  // of empty checklist items." One blank row per category at a time: if the
+  // category already holds an empty item, Add does not add another - it puts
+  // the cursor in the blank row that is already there.
+  const addItemToModule = (moduleIndex, ci) => {
+    const current = tpl?.modules?.[moduleIndex]?.categories?.[ci];
+    const hasBlank = (current?.items || []).some((item) => !String(item?.text || '').trim());
+    if (hasBlank) {
+      if (typeof document !== 'undefined') {
+        requestAnimationFrame(() => {
+          const empty = [...document.querySelectorAll('input.inline-edit[placeholder="Add checklist item"]')].find((el) => !el.value.trim());
+          empty?.focus();
+        });
+      }
+      return;
+    }
+    mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
+  };
   const addItem = (ci) => addItemToModule(openMod, ci);
   const renameItemInModule = (moduleIndex, ci, itemId, text) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
@@ -1709,7 +1726,17 @@ export default function TemplatesEditor({
   );
   const subtitle = (
     <>
-      <span className="templates-desktop-summary"><b>{visibleTemplates.length}</b> templates · reusable category + checklist sets</span>
+      {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
+          edits, Cancel / Save sit right here in the subtitle row instead. */}
+      <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+        <span><b>{visibleTemplates.length}</b> templates</span>
+        {dirty ? (
+          <span className="templates-desktop-save-row">
+            <button type="button" onClick={handleCancelEdits}>Cancel</button>
+            <button type="button" className="primary" onClick={handleSaveTemplates}>Save</button>
+          </span>
+        ) : null}
+      </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="templates-mobile-count">
           <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
@@ -2321,22 +2348,8 @@ export default function TemplatesEditor({
                     </>
                   );
                 })()}
-                {/* Save / Cancel surface as soon as anything in the template
-                    is edited. Cancel discards every working change; Save writes
-                    the whole template set (modules, categories, checklist and
-                    entities + their colours) back to the host for persistence. */}
-                {dirty && (
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
-                    <button
-                      onClick={handleCancelEdits}
-                      style={{ background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 7px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink-soft)', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' }}
-                    >Cancel</button>
-                    <button
-                      onClick={handleSaveTemplates}
-                      style={{ background: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: 2, padding: '1px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--paper)', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' }}
-                    >Save</button>
-                  </div>
-                )}
+                {/* Save / Cancel moved to the header's subtitle row (owner,
+                    2026-09-22) - see `subtitle` above. */}
               </div>
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>

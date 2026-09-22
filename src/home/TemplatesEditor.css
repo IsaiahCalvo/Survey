@@ -5,9 +5,10 @@
    goes through Vite (HMR-aware, unmounted with the bundle). */
 
 .ed-scope {
-  background:
-    radial-gradient(circle at 0% 0%, var(--accent-soft), transparent 35%),
-    var(--surface-0);
+  /* Owner 2026-09-22: the gold radial glow that sat behind the three panels
+     is gone ("looks like shit"); the editor's ground is the plain darkest
+     surface like every other screen. */
+  background: var(--surface-0);
   color: var(--text-1);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   letter-spacing: -0.005em;
@@ -124,8 +125,11 @@
 .ed-tpl-menu button:hover { background: var(--hover); }
 .ed-tpl-menu button.danger { color: var(--danger); }
 
-/* The editor's two button shapes had no hover and no press (UX 2026-09-22). */
-.ed-scope .btn-ink:hover,
+/* The editor's two button shapes had no hover and no press (UX 2026-09-22).
+   A FILLED gold button lightens to the gold hover tint and darkens to the gold
+   press tint - never the neutral --hover, which turned it a dark blue-grey on
+   hover (owner, 2026-09-22: "terrible"). Only the outlined one takes neutral. */
+.ed-scope .btn-ink:hover { background: var(--accent-light); border-color: var(--accent-light); }
+.ed-scope .btn-ink:active { background: var(--accent-press); border-color: var(--accent-press); }
 .ed-scope .btn-line:hover { background: var(--hover); }
-.ed-scope .btn-ink:active,
 .ed-scope .btn-line:active { background: var(--pressed); }
