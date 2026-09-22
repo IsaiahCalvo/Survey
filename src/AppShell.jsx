@@ -33,6 +33,7 @@ import {
   MobilePdfViewerHeader,
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
+import { createKeyboardViewportController } from './mobile/keyboardViewport';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
@@ -1451,6 +1452,22 @@ export default function App({ devPreviewReturnTab = null }) {
     document.documentElement.classList.toggle('survey-viewer-open', !!isViewerVisible);
     return () => document.documentElement.classList.remove('survey-viewer-open');
   }, [isViewerVisible]);
+
+  // UX 2026-09-22 (owner bug): on a phone the on-screen keyboard used to push
+  // the whole app shell up — header, tool rail and dock all moved — because the
+  // browser reveals a focused field by scrolling the document. Drawboard PDF
+  // keeps its chrome still and scrolls only the page; so do we now.
+  //
+  // The controller publishes --keyboard-inset on <html> and re-pins the
+  // document to 0,0 on every viewport event; mobilePdfViewer.css pins body and
+  // spends the inset on the PDF scroller alone. Mounted only for the phone
+  // viewer, which is the only surface with page-level text editing and fixed
+  // chrome; it tears itself down (clearing the var) when the viewer closes.
+  useEffect(() => {
+    if (!isMobileViewer) return undefined;
+    const controller = createKeyboardViewportController();
+    return () => controller.dispose();
+  }, [isMobileViewer]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
