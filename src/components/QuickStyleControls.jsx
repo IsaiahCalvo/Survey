@@ -199,6 +199,39 @@ export function QuickColourDots({
 }
 
 /**
+ * "This shape has no fill."
+ *
+ * ONE definition, for both platforms (owner, 2026-09-22). A shape with no fill
+ * used to draw an open centre on the desktop and a WHITE centre on the phone,
+ * so the same rectangle looked filled on one screen and hollow on the other —
+ * and white is a real fill a user can pick, which made the phone's swatch a
+ * lie. No fill is drawn as an OPEN centre: the border ring, and the bar showing
+ * straight through the middle.
+ *
+ * A caller reaches this look by handing the swatch the paint it actually has —
+ * `transparent`, `none`, an empty value, or any colour at zero alpha. A caller
+ * that substitutes an opaque fallback of its own before calling (the phone
+ * strip still passes `toHexColor(fill, '#ffffff')`) cannot be rescued from in
+ * here; it has to pass the real value.
+ */
+export function isNoFillColour(colour) {
+  if (colour == null) return true;
+  const value = String(colour).trim().toLowerCase();
+  if (!value || value === 'transparent' || value === 'none') return true;
+  // rgba()/hsla() at zero alpha, and #rrggbb00 / #rgb0.
+  const functional = value.match(/^(?:rgba|hsla)\(([^)]*)\)$/);
+  if (functional) {
+    const parts = functional[1].split(/[,/]/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 4 && Number.parseFloat(parts[3]) === 0) return true;
+  }
+  if (/^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/.test(value)) {
+    const alpha = value.length === 5 ? value.slice(4) + value.slice(4) : value.slice(7);
+    if (Number.parseInt(alpha, 16) === 0) return true;
+  }
+  return false;
+}
+
+/**
  * The ONE combined swatch every multi-colour tool shows instead of preset
  * discs. Boards 2, 5, 9 and 12 for a shape; boards 4 and 11 for the counter.
  *
@@ -227,6 +260,9 @@ export function QuickPaintSwatch({
   const isCounter = variant === 'counter';
   const ringColour = ring ?? border ?? '#FF0000';
   const centreColour = center ?? fill ?? (isCounter ? '#ffffff' : '#ffffff');
+  // A counter's centre is its NUMBER, which always has a colour; only a shape
+  // can be unfilled.
+  const noFill = !isCounter && isNoFillColour(centreColour);
   const name = label || (isCounter ? 'Pin and number colors' : 'Border and fill colors');
   return (
     <button
@@ -244,10 +280,10 @@ export function QuickPaintSwatch({
         </span>
       ) : (
         <span
-          className="quick-style__swatch-disc"
+          className={`quick-style__swatch-disc${noFill ? ' quick-style__swatch-disc--no-fill' : ''}`}
           aria-hidden="true"
           style={{
-            '--quick-style-fill': centreColour,
+            '--quick-style-fill': noFill ? 'transparent' : centreColour,
             '--quick-style-border': ringColour,
           }}
         />

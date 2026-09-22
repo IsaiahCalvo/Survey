@@ -207,6 +207,20 @@
   pointer-events: none;
 }
 
+/*
+ * NO FILL — one look, both platforms (owner, 2026-09-22). The centre is simply
+ * open: the border ring, and the bar showing through the middle. It used to be
+ * an open centre on the desktop and a white one on the phone, and white is a
+ * fill a user can pick, so the phone's swatch said "filled white" about a shape
+ * that had no fill at all.
+ *
+ * The declaration is explicit rather than left to the var's fallback, because
+ * the fallback is #ffffff — the very colour this state must not paint.
+ */
+.quick-style__swatch-disc--no-fill {
+  background: transparent;
+}
+
 /* Boards 4 and 11 — the counter's swatch IS its mark: the pin in the pin
    colour with the number inside it, at 20px in the 22px button. */
 .quick-style__swatch-pin {
