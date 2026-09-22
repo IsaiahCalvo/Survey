@@ -856,7 +856,7 @@ const PagesPanel = ({
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.background = 'var(--surface-2)';
+                  e.currentTarget.style.background = 'var(--hover)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -1135,7 +1135,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="scissors" size={14} color="var(--text-3)" />
@@ -1157,7 +1157,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="copy" size={14} color="var(--text-3)" />
@@ -1183,7 +1183,7 @@ const PagesPanel = ({
             }}
             onMouseEnter={(e) => {
               if (clipboardPage) {
-                e.currentTarget.style.background = 'var(--surface-3)';
+                e.currentTarget.style.background = 'var(--hover)';
               }
             }}
             onMouseLeave={(e) => {
@@ -1209,7 +1209,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="duplicate" size={14} color="var(--text-3)" />
@@ -1236,7 +1236,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="rotate" size={14} color="var(--text-3)" />
@@ -1258,7 +1258,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="flipHorizontal" size={14} color="var(--text-3)" />
@@ -1280,7 +1280,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="flipVertical" size={14} color="var(--text-3)" />
@@ -1302,7 +1302,7 @@ const PagesPanel = ({
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="reset" size={14} color="var(--text-3)" />

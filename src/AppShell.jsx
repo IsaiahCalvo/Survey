@@ -2464,7 +2464,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 fontSize: '12px',
                                 outline: 'none',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                               onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
@@ -2498,7 +2498,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 fontSize: '12px',
                                 outline: 'none',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,113,113,0.12)'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger-soft)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                               onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}

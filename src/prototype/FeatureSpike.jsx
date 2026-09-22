@@ -51,7 +51,7 @@ function BookmarkNode({ node, depth, collapsed, onToggle, onJump }) {
           cursor: 'pointer', fontSize: 13, color: '#dfe2e6', borderRadius: 4,
           userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#2f3439'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         title={page ? `${node.name} — page ${page}` : node.name}
       >

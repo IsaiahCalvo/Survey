@@ -237,7 +237,7 @@ const BookmarkTreeRow = ({
           boxSizing: 'border-box',
         }}
         onMouseEnter={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-2)';
+          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--hover)';
         }}
         onMouseLeave={(event) => {
           if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-1)';
@@ -1770,7 +1770,7 @@ const BookmarksPanel = ({
             }}
             onMouseEnter={(e) => {
               if (!isEditMode) {
-                e.currentTarget.style.background = 'var(--surface-3)';
+                e.currentTarget.style.background = 'var(--hover)';
               } else {
                 e.currentTarget.style.background = 'var(--accent-light)';
               }
@@ -1950,7 +1950,7 @@ const BookmarksPanel = ({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <Icon name="folder" size={14} color="var(--text-3)" />
@@ -2024,7 +2024,7 @@ const BookmarksPanel = ({
                     marginBottom: '8px',
                     transition: 'background 0.15s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   Current page
@@ -2119,7 +2119,7 @@ const BookmarksPanel = ({
                   borderRadius: '4px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--surface-3)';
+                  e.currentTarget.style.background = 'var(--hover)';
                   e.currentTarget.style.color = 'var(--text-2)';
                 }}
                 onMouseLeave={(e) => {
@@ -2194,7 +2194,7 @@ const BookmarksPanel = ({
                     gap: '6px',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   <Icon name="plus" size={12} />
@@ -2386,7 +2386,7 @@ const BookmarksPanel = ({
                             alignItems: 'center',
                             marginBottom: '4px'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <span>{bookmark.name}</span>
@@ -2422,7 +2422,7 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 Cancel
@@ -2518,7 +2518,7 @@ const BookmarksPanel = ({
                   borderRadius: '4px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--surface-3)';
+                  e.currentTarget.style.background = 'var(--hover)';
                   e.currentTarget.style.color = 'var(--text-2)';
                 }}
                 onMouseLeave={(e) => {
@@ -2588,7 +2588,7 @@ const BookmarksPanel = ({
                     gap: '6px',
                     fontFamily: FONT_FAMILY
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
                 >
                   <Icon name="plus" size={12} />
@@ -2787,7 +2787,7 @@ const BookmarksPanel = ({
                             alignItems: 'center',
                             marginBottom: '4px'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <span>{bookmark.name}</span>
@@ -2823,7 +2823,7 @@ const BookmarksPanel = ({
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 Cancel

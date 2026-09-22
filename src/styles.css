@@ -1537,7 +1537,22 @@ input[type="text"].space-name-inline:focus {
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.spaces-header-export-button:hover,
+/* UX 2026-09-22: hover and "open" shared one declaration, so hovering an idle
+   Export button made it look already open. A gold control hovers UP to
+   --accent-light and presses DOWN to --accent-press; the OPEN state keeps the
+   base gold. */
+.spaces-header-export-button:hover:not(.is-active) {
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+  color: var(--accent-text);
+}
+
+.spaces-header-export-button:active {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+  color: var(--accent-text);
+}
+
 .spaces-header-export-button.is-active {
   background: var(--accent);
   border-color: var(--accent);

@@ -37,7 +37,14 @@
   --pp-accent-hover: var(--accent-light);
   --pp-accent-ink: var(--accent-text);
   --pp-accent-soft: var(--accent-soft);
-  --pp-accent-glow: 0 0 0 1px var(--focus);
+  --pp-accent-glow: 0 0 0 2px var(--focus);
+  /* UX 2026-09-22: the panel's hover and press. It used to hover to
+     --pp-panel-elev (= --surface-3, the app's SELECTED colour) on six
+     controls and to the full GOLD on five more, so an idle button under the
+     pointer looked either selected or primary. Hover lightens, press
+     darkens, and neither is the accent. */
+  --pp-hover: var(--hover);
+  --pp-pressed: var(--pressed);
   /* UX (KAL-62): the app's one modal scrim colour. */
   --pp-overlay: var(--overlay-scrim);
   --pp-shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 0 var(--ink-ring) inset;
@@ -129,7 +136,7 @@
   border: 0; cursor: pointer; font-size: 15px;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.pp-close:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-close:hover { background: var(--pp-hover); color: var(--pp-ink); }
 
 /* ---------- Body ---------- */
 .pp-body {
@@ -183,7 +190,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer; font-family: inherit;
 }
-.pp-quick:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-quick:hover { background: var(--pp-hover); color: var(--pp-ink); }
 /* UX 2026-04-24: active state for the Pages-to-print shortcut pills.
    AMENDED 2026-09-17 (owner ruling): the chosen pill's LABEL turns gold; it no
    longer fills solid gold. Same rule as the desktop tool rail's .btn-active. */
@@ -364,7 +371,8 @@
   padding: 0 6px; cursor: pointer; font-size: 10px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.pp-ppicker-caret:hover { background: var(--pp-accent); color: var(--pp-accent-ink); border-color: var(--pp-accent); }
+.pp-ppicker-caret:hover { background: var(--pp-hover); border-color: var(--pp-border-strong); }
+.pp-ppicker-caret:active { background: var(--pp-pressed); }
 .pp-ppicker-menu {
   position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%;
   max-height: 220px; /* fits ~10 rows; scrolls beyond */
@@ -441,7 +449,8 @@
   display: inline-flex; align-items: center; justify-content: center;
 }
 .pp-pager-btn:disabled { color: var(--text-disabled); cursor: not-allowed; }
-.pp-pager-btn:not(:disabled):hover { background: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-pager-btn:not(:disabled):hover { background: var(--pp-hover); border-color: var(--pp-border-strong); }
+.pp-pager-btn:not(:disabled):active { background: var(--pp-pressed); }
 .pp-pager-pos strong { color: var(--pp-ink); }
 /* UX 2026-04-23: dots are clickable <button>s that jump to a specific page.
    Kept visually compact (rectangles) but given a hover state, pointer
@@ -468,7 +477,8 @@
   cursor: pointer;
   transition: background 120ms, transform 120ms, border-color 120ms, color 120ms;
 }
-.pp-pager-dot:hover { background: var(--pp-ink-2); color: var(--text-1); transform: translateY(-1px); }
+.pp-pager-dot:hover { background: var(--pp-hover); color: var(--text-1); transform: translateY(-1px); }
+.pp-pager-dot:active { background: var(--pp-pressed); }
 .pp-pager-dot:focus-visible { outline: none; border-color: var(--pp-accent); }
 .pp-pager-dot.is-landscape { min-width: 26px; }
 /* The page you are on: the number turns gold on the pager's own plate. The
@@ -486,7 +496,8 @@
   border: 1px solid var(--pp-border); border-radius: 6px;
   font-size: 12px; cursor: pointer; font-family: inherit;
 }
-.pp-bigprev-btn:hover { background: var(--pp-accent); color: var(--pp-accent-ink); border-color: var(--pp-accent); }
+.pp-bigprev-btn:hover { background: var(--pp-hover); color: var(--pp-ink); border-color: var(--pp-border-strong); }
+.pp-bigprev-btn:active { background: var(--pp-pressed); }
 
 /* ---------- Right rail: sections ---------- */
 .pp-rail {
@@ -541,7 +552,7 @@
   padding: 6px 8px; font-size: 12px; font-family: inherit;
   cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
-.pp-scope-tab:hover { background: var(--pp-panel-elev); color: var(--pp-ink-2); }
+.pp-scope-tab:hover { background: var(--pp-hover); color: var(--pp-ink-2); }
 .pp-scope-tab.is-active {
   color: var(--pp-accent);
 }
@@ -654,7 +665,8 @@
   display: inline-flex; align-items: center; justify-content: center;
   transition: background 120ms, border-color 120ms, color 120ms, transform 120ms;
 }
-.pp-rbtn:hover { background: var(--pp-accent); border-color: var(--pp-accent); color: var(--pp-accent-ink); }
+.pp-rbtn:hover { background: var(--pp-hover); color: var(--pp-ink); border-color: var(--pp-border-strong); }
+.pp-rbtn:active { background: var(--pp-pressed); }
 .pp-rbtn:active { transform: scale(0.92); }
 .pp-rbtn svg { display: block; }
 
@@ -694,7 +706,7 @@
   border: 0; width: 26px; height: 26px;
   cursor: pointer; font-size: 14px;
 }
-.pp-stepper button:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-stepper button:hover { background: var(--pp-hover); color: var(--pp-ink); }
 .pp-stepper input {
   width: 34px; text-align: center; background: transparent;
   color: var(--pp-ink); border: 0; outline: none;
@@ -736,7 +748,7 @@
   box-sizing: border-box;
   height: 23px;
 }
-.pp-btn-cancel:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-btn-cancel:hover { background: var(--pp-hover); color: var(--pp-ink); }
 .pp-btn-print {
   background: var(--pp-accent); color: var(--pp-accent-ink);
   border: 0; border-radius: 4px;
@@ -806,7 +818,7 @@
   color: var(--text-1);
 }
 .pp-bigprev-head .pp-bigprev-zoom button:active {
-  background: var(--pp-accent);
+  background: var(--pp-pressed);
   color: var(--text-1);
 }
 .pp-bigprev-head .pp-bigprev-zoom > span {
@@ -902,7 +914,7 @@
   background: var(--pp-panel); border-color: var(--pp-border); color: var(--pp-ink);
 }
 .pp-bigprev-nav .pp-pager-btn:not(:disabled):hover {
-  background: var(--pp-accent); border-color: var(--pp-accent); color: var(--pp-accent-ink);
+  background: var(--pp-hover); border-color: var(--pp-border-strong); color: var(--pp-ink);
 }
 /* UX 2026-04-23: page picker now sits inside the bigger preview's
    header, next to the "Preview" label. */

@@ -8895,7 +8895,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Cut
@@ -8916,7 +8916,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Copy
@@ -8938,7 +8938,7 @@ const PageAnnotationLayer = memo(({
                     alignItems: 'center',
                     gap: '8px'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   Paste
@@ -8962,7 +8962,7 @@ const PageAnnotationLayer = memo(({
                     alignItems: 'center',
                     gap: '8px'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   Group
@@ -8985,7 +8985,7 @@ const PageAnnotationLayer = memo(({
                     alignItems: 'center',
                     gap: '8px'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   Ungroup
@@ -9007,7 +9007,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Properties
@@ -9029,7 +9029,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Delete
@@ -9056,7 +9056,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Cut
@@ -9077,7 +9077,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Copy
@@ -9099,7 +9099,7 @@ const PageAnnotationLayer = memo(({
                     alignItems: 'center',
                     gap: '8px'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   Paste
@@ -9122,7 +9122,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Properties
@@ -9144,7 +9144,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Delete
@@ -9173,7 +9173,7 @@ const PageAnnotationLayer = memo(({
                       alignItems: 'center',
                       gap: '8px'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     Paste
@@ -9199,7 +9199,7 @@ const PageAnnotationLayer = memo(({
                       alignItems: 'center',
                       gap: '8px'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     Paste page
@@ -9223,7 +9223,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Duplicate page
@@ -9245,7 +9245,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Rotate clockwise
@@ -9266,7 +9266,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Rotate Counter-Clockwise
@@ -9288,7 +9288,7 @@ const PageAnnotationLayer = memo(({
                   alignItems: 'center',
                   gap: '8px'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Insert blank page

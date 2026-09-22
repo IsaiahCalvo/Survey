@@ -4439,3 +4439,42 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 10px;
   font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
 }
+
+/* ==========================================================================
+   THE PHONE PRESS (UX 2026-09-22, revision-3 palette)
+   --------------------------------------------------------------------------
+   The reference video is explicit about this: "because we don't have hover
+   effects on mobile, we usually just resort to click effects ... adding a
+   slightly darker grey on press makes it feel like you're actually pressing
+   into something." Eleven phone controls had no press feedback at all — a tap
+   changed the app but the control itself never moved — and the ones that did
+   painted --surface-2 or --surface-3, which is the SELECTED colour, so a tap
+   flashed "selected" and then took it away.
+
+   One value, --pressed, for as long as the finger is down. No gold: a gold
+   flash would collide with the selected state (owner ruling: selected is a
+   gold glyph, nothing else). The transition is the phone's 90ms so the press
+   registers instantly and the release eases back.
+
+   Every rule here is last in the file on purpose, so it wins over the resting
+   fill of the control it names without needing !important. A control that is
+   ALREADY armed or selected keeps its own look — .is-active is matched more
+   specifically above and below.
+   ========================================================================== */
+.mobile-pdf-properties__color:active,
+.mobile-pdf-text-card__large-swatch:active,
+.mobile-survey-detail-swatch-btn:active,
+.mobile-survey-detail-icon-btn:active,
+.mobile-survey-detail-name-dd:active,
+.mobile-survey-check-btn:active,
+.mobile-survey-notes-attachment > button:active,
+.mobile-survey-notes-cancel:active,
+.mobile-survey-notes-save:active,
+.mobile-bookmark-open:active,
+.mobile-bookmark-move:not(:disabled):active,
+.mobile-pdf-tool-sheet__action:active,
+.mobile-pdf-header__zoom-menu button:active,
+.mobile-spaces-panel .spaces-header-export-menu-button:active {
+  background: var(--pressed);
+  transition: background 90ms ease-out;
+}

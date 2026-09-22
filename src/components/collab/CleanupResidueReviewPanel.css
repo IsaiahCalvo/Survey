@@ -176,7 +176,7 @@
 }
 
 .cleanup-residue-review__action--secondary:hover {
-  background: var(--surface-1);
+  background: var(--hover);
 }
 
 .cleanup-residue-review__action--primary {
