@@ -196,6 +196,21 @@ test('every strip control is hit at 44px, not at the 20px it paints', () => {
       `${selector} must reach 44px: 20px of control plus 12px above and below`,
     );
   }
+
+  // ADDED at the pass-7 integration. The colour cluster is the shared component,
+  // whose own pad is a 28px circle - a smaller finger target than the pills beside
+  // it - so the phone raises it here, and it is 26 x 44 rather than 44 x 44: the
+  // discs sit on a 26px pitch, so a 44-wide box would overlap its neighbour and
+  // hand the press to the wrong colour. Vertically -11px on a 22px control is 44.
+  assert.match(css, /--quick-style-hit-inset:\s*-11px/, 'the discs reach 44px tall');
+  for (const selector of [
+    '.mobile-pdf-properties .quick-style--colours .quick-style__dot::after',
+    '.mobile-pdf-properties .quick-style__swatch::after',
+  ]) {
+    const body = padBody(selector);
+    assert.match(body, /inset-inline:\s*-2px/, `${selector} stops at half the 4px gap sideways`);
+    assert.match(body, /border-radius:\s*0/, `${selector} is a rectangle, so the band's edges are live`);
+  }
 });
 
 test('the strip carries only the controls its board draws', () => {

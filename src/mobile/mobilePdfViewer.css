@@ -1472,6 +1472,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 0;
 }
 
+/* The combined swatch takes the same 26 x 44, written out rather than hooked: the
+   swatch is its own element, not a child of the .quick-style group, so the custom
+   property above never reaches it and it would otherwise keep the shared 28px
+   default - a finger target smaller than the pills beside it. These are the exact
+   numbers the phone's own swatch had before it became the shared component. */
+.mobile-pdf-properties .quick-style__swatch::after {
+  inset-block: -11px;
+  inset-inline: -2px;
+  border-radius: 0;
+}
+
 /* The rich-text variant's controls are 24px tall inside a bar that clips itself
    to 36px, so their pads stop where that clip does. */
 .mobile-pdf-properties--text .mobile-pdf-properties__color::after,
