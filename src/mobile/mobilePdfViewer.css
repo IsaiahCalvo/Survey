@@ -4349,3 +4349,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-spaces-panel .spaces-header-export-menu-button {
   min-height: 30px;
 }
+
+/* "..." sheet action row (Resize and rotate): the same 20px pill face as the
+   sheet's dropdown fields, at the sheet field width, text centred. */
+.mobile-pdf-tool-sheet__action {
+  min-width: var(--mobile-sheet-field-w);
+  height: var(--mobile-strip-control-h);
+  padding: 0 10px;
+  white-space: nowrap;
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 10px;
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+}

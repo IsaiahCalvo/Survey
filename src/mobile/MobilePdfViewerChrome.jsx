@@ -256,15 +256,29 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
     const openUp = rect.bottom > (window.innerHeight * 0.6);
     setPos({
       left: rect.left,
-      // Board 15: "Menus: exactly as wide as their field". The menu takes the
-      // trigger's measured width as a width, not a floor, so a long option label
-      // ellipsizes in its row instead of widening the menu past its field.
+      // Board 15: "Menus: exactly as wide as their field" - as a FLOOR. The
+      // owner found "10 pt" / "12 pt" cut to "1..." in the 72px width menu
+      // (2026-09-22), so the menu now grows to its widest row (desktop does the
+      // same) and is nudged left when that would run off the screen.
       width: rect.width,
       openUp,
       top: openUp ? undefined : rect.bottom + 4,
       bottom: openUp ? (window.innerHeight - rect.top + 4) : undefined,
     });
   };
+
+  // After the menu renders at its natural width, keep it on screen: if its
+  // right edge passes the viewport, slide it left (never past the left gutter).
+  useEffect(() => {
+    if (!open || !pos) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    const overflow = rect.right - (window.innerWidth - 8);
+    if (overflow > 0) {
+      setPos((prev) => (prev ? { ...prev, left: Math.max(8, prev.left - overflow) } : prev));
+    }
+  }, [open, pos?.width]);
 
   const openMenu = (index = selectedIndex) => {
     if (disabled) return;
@@ -382,7 +396,9 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
             left: pos.left,
             top: pos.top,
             bottom: pos.bottom,
-            width: pos.width,
+            minWidth: pos.width,
+            width: 'max-content',
+            maxWidth: 'calc(100vw - 16px)',
           }}
         >
           {options.map((option, index) => {
@@ -1419,7 +1435,12 @@ export function MobileToolProperties({ api }) {
   // Board 3: only the arrow carries a "..." on its strip, because only the
   // arrow has controls its board leaves off (Arrowhead, Arrow ends). Callout
   // shares that arrowhead, so it shares the "...".
-  const showMoreOnStrip = showArrowhead;
+  // A selected line / polygon / polyline / counter can switch from point
+  // handles to a resize-and-rotate box. That used to be a bare diagonal-arrow glyph on
+  // the strip that nobody could read (owner, 2026-09-22); it is now a named
+  // row in this same sheet, so the "..." also shows for those marks.
+  const canResizeRotate = !!(api.canEnterBBoxEdit && api.onEnterBBoxEdit);
+  const showMoreOnStrip = showArrowhead || canResizeRotate;
 
   /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
      open — titled "Colour", with a gold Done, the shared picker's 12 presets
@@ -1639,16 +1660,6 @@ export function MobileToolProperties({ api }) {
           </svg>
         </button>
       )}
-      {api.canEnterBBoxEdit && api.onEnterBBoxEdit && (
-        <button
-          type="button"
-          className="mobile-pdf-properties__edit"
-          aria-label="Resize and rotate"
-          onClick={api.onEnterBBoxEdit}
-        >
-          ↗
-        </button>
-      )}
     </div>
     {/* BOARD 16 — the "..." sheet. Standard height, the shared sheet frame, a
         title, a gold Done, and one 40px row per control with its field aligned
@@ -1714,6 +1725,19 @@ export function MobileToolProperties({ api }) {
                   options={lineStyleOptions}
                   onChange={(value) => api.setLineBorderStyle(value)}
                 />
+              </div>
+            )}
+            {canResizeRotate && (
+              <div className="mobile-pdf-tool-sheet__row">
+                <span>Handles</span>
+                <button
+                  type="button"
+                  className="mobile-pdf-tool-sheet__action"
+                  aria-label="Resize and rotate"
+                  onClick={() => { requestMoreSheetClose(); api.onEnterBBoxEdit(); }}
+                >
+                  Resize and rotate
+                </button>
               </div>
             )}
             {api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (

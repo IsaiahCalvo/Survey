@@ -12,7 +12,12 @@ test('mobile toolbar publishes a bbox edit entry for line, polygon, and counter 
   assert.match(viewer, /editType: 'bbox'/);
 });
 
-test('mobile formatting strip exposes a touch-accessible Resize and rotate action', () => {
+// DELIBERATE ASSERTION CHANGE 2026-09-22: the bare "↗" strip glyph became a
+// named "Resize and rotate" row in the tool's "..." sheet (owner could not
+// tell what the glyph did). The entry still calls api.onEnterBBoxEdit.
+test('the tool sheet exposes a named Resize and rotate action', () => {
   assert.match(chrome, /aria-label="Resize and rotate"/);
-  assert.match(chrome, /onClick=\{api\.onEnterBBoxEdit\}/);
+  assert.match(chrome, /Resize and rotate\s*<\/button>/);
+  assert.match(chrome, /api\.onEnterBBoxEdit\(\)/);
+  assert.doesNotMatch(chrome, /↗/);
 });
