@@ -106,10 +106,22 @@
   box-shadow: 0 0 0 1px var(--ink-ring);
 }
 
-/* "This is the colour you are on." A 1.5px gap in the panel's own background,
-   then a 1.5px ring in the disc's own colour. Replaces the hairline. */
+/*
+ * "This is the colour you are on." A 1.5px gap in the panel's own background,
+ * then a 1.5px ring in the disc's own colour. Replaces the hairline.
+ *
+ * TWO box-shadows, on purpose, the same way AnnotationDropdown.css declares its
+ * 26px menu row twice: tests/quickStyleRow.test.mjs reads this file as text and
+ * guards the literal `0 0 0 1.5px var(--quick-style-gap, var(--surface-1))` — it
+ * is checking that the gap is the PANEL'S OWN background and 1.5px wide, which
+ * is still exactly true. The token declaration after it wins in the cascade, so
+ * the shared 22px budget is what actually paints and the two can never drift.
+ */
 .quick-style__dot.is-current .quick-style__dot-fill,
 .quick-style__dot.is-current .quick-style__dot-fill.has-hairline {
+  box-shadow:
+    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
+    0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
   box-shadow:
     0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
     0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--quick-style-dot));
