@@ -8,7 +8,7 @@ import CompactColorPicker from '../components/CompactColorPicker';
 import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
-import { ZOOM_MODE_OPTIONS } from '../viewerShared';
+import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
@@ -458,6 +458,22 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   if (!rgb) return fallback;
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
+
+/**
+ * The paint the combined swatch is shown, colour AND opacity together.
+ *
+ * MEASURED 2026-09-22 (phone): a rectangle with NO fill painted a solid WHITE
+ * centre. The phone was sending the swatch `toHexColor(fillColor)`, and a hex
+ * cannot carry "none" — a fill of #ffffff at 0% opacity came out #ffffff. The
+ * desktop bar composes the two before it hands them over (AppShell:
+ * `ensureRgbaOpacity(fillColor, fillOpacity / 100)`), which is why the same
+ * rectangle reads empty there. This is that line, so the two bars now show the
+ * one mark the same way, and nothing in the phone stylesheet paints this centre.
+ */
+const toSwatchPaint = (color, opacityPercent, fallback) => ensureRgbaOpacity(
+  color || fallback,
+  Math.max(0, Math.min(1, (opacityPercent ?? 100) / 100)),
+);
 
 /* ---------------------------------------------------------------------------
  * PASS 7 PHONE STRIP PRIMITIVES (owner-approved boards 1-7 / 15 / 16).
@@ -1610,8 +1626,15 @@ export function MobileToolProperties({ api }) {
           platform="phone"
           variant={tool === 'counter' ? 'counter' : 'shape'}
           label={tool === 'counter' ? 'Pin and number colors' : 'Border and fill colors'}
-          ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
-          center={tool === 'counter' ? '#ffffff' : toHexColor(api.fillColor, '#ffffff')}
+          ring={tool === 'counter'
+            ? toSwatchPaint(api.fillColor, api.fillOpacity, '#ef4444')
+            : toSwatchPaint(api.strokeColor, api.strokeOpacity, '#ff0000')}
+          /* Colour AND opacity, the way the desktop bar composes them: a shape
+             with no fill hands the swatch a transparent centre instead of white.
+             A counter's centre is the number printed on its pin. */
+          center={tool === 'counter'
+            ? toSwatchPaint(api.strokeColor, api.strokeOpacity, '#ffffff')
+            : toSwatchPaint(api.fillColor, api.fillOpacity, '#ffffff')}
           /* Boards 17/18: the swatch opens the Colour sheet on the channel it is
              showing — the border ring for a shape, the pin for a counter — with
              the Border / Fill tabs for the other one. It used to open the old
