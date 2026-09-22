@@ -250,6 +250,22 @@ const showsColorSwatch = (api) => {
   return ['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(tool) && !!api.handleFillColorChange;
 };
 
+/**
+ * PASS 7 (boards 8-12, owner ruling): which tools show the QUICK COLOUR DISCS.
+ *
+ * A SINGLE-COLOUR tool — pen, highlighter, line, arrow, polyline, a text mark —
+ * has one colour, so three ready colours and a way out to the picker are the
+ * whole control. A MULTI-COLOUR tool — rectangle, ellipse, polygon, counter,
+ * text box, callout — has a fill AND a border, and a disc cannot say which of
+ * the two it would change: those tools show ONE combined swatch instead (the
+ * fill with the border as a ring, or the pin with its number), which opens the
+ * picker on its Border / Fill tabs. Boards 9, 11 and 12 draw exactly that.
+ */
+const showsQuickColourDots = (api) => (
+  showsColorSwatch(api)
+  && ['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(api.contextTool)
+);
+
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
@@ -2195,7 +2211,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     They sit BEFORE the swatch because the common case is one
                     of the four, and the swatch is the way out to everything
                     else (hex, opacity, the full grid, the spectrum). */}
-                {showsColorSwatch(bottomToolbarApi) && annotationPaint && (
+                {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
                     value={annotationPaint.quick.color}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
