@@ -42,7 +42,7 @@
 }
 
 .apply-redactions-error {
-  color: var(--danger) !important;
+  color: var(--danger-text) !important;
 }
 
 .apply-redactions-actions {
@@ -62,8 +62,10 @@
   cursor: pointer;
 }
 
+/* The --surface-2 fill already steps this button up off the --surface-1 modal,
+   so its edge is decoration, not identification (tokens.css revision 4). */
 .apply-redactions-cancel {
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-2);
 }

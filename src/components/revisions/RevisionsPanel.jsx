@@ -103,7 +103,7 @@ function isDeleteHistoryEvent(event) {
 
 function originBadge(origin) {
   if (origin === 'auto-pre-restore') {
-    return { label: 'auto', color: 'var(--text-disabled)' };
+    return { label: 'auto', color: 'var(--text-3)' };
   }
   if (origin === 'sign-off') {
     return { label: 'sign-off', color: '#7ea8ff' };
@@ -852,7 +852,7 @@ export default function RevisionsPanel({
 
       <div className={mobileMode ? 'mobile-revisions-panel' : undefined} style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
         {loading && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>Loading…</div>}
-        {err && <div style={{ padding: 10, color: 'var(--danger)', fontSize: 12 }}>Error: {err}</div>}
+        {err && <div style={{ padding: 10, color: 'var(--danger-text)', fontSize: 12 }}>Error: {err}</div>}
         {!loading && !err && timelineItems.length === 0 && (
           <div style={{ padding: 10, color: 'var(--text-3)', fontSize: 12 }}>
             No history yet. Edit the document or save a named version to start the timeline.
@@ -943,7 +943,10 @@ export default function RevisionsPanel({
                     style={{
                       marginTop: 8,
                       paddingTop: 8,
-                      borderTop: '1px solid rgba(255,255,255,0.08)',
+                      // UX: a divider between a selected revision row and its
+                      // expanded detail. Decorative — the row's own surface
+                      // step already separates them — so the subtle border.
+                      borderTop: '1px solid var(--border)',
                       fontSize: 11,
                       color: 'var(--text-2)',
                       display: 'grid',
@@ -1024,9 +1027,11 @@ export default function RevisionsPanel({
                   disabled={busy}
                   style={{
                     fontSize: 11,
+                    // A FILLED button: the --surface-2 plate is what marks it
+                    // out, so its edge is decoration (tokens.css revision 4).
                     background: 'var(--surface-2)',
                     color: 'var(--text-2)',
-                    border: '1px solid var(--border-strong)',
+                    border: '1px solid var(--border)',
                     borderRadius: 4,
                     padding: '3px 8px',
                     cursor: busy ? 'wait' : 'pointer',
@@ -1046,7 +1051,7 @@ export default function RevisionsPanel({
                     style={{
                       fontSize: 11,
                       background: 'var(--surface-3)',
-                      color: 'var(--danger)',
+                      color: 'var(--danger-text)',
                       border: '1px solid var(--danger)',
                       borderRadius: 4,
                       padding: '3px 8px',
@@ -1251,9 +1256,11 @@ export default function RevisionsPanel({
           right: 14,
           bottom: 80,
           zIndex: 9000,
+          // A FILLED launcher on its own plate plus a drop shadow: the edge is
+          // decoration, not identification (tokens.css revision 4).
           background: 'var(--surface-2)',
           color: 'var(--text-2)',
-          border: '1px solid var(--border-strong)',
+          border: '1px solid var(--border)',
           borderRadius: 8,
           padding: '8px 12px',
           fontSize: 12,

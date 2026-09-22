@@ -981,9 +981,15 @@ export default function ProjectsFolderTree({
                       <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                     </div>
                     {jobsEdit ? (
+                      /* UX 2026-09-22: an unchecked box is only its edge, so the
+                         edge takes --border (3.60:1 on this card). It used to be
+                         --ink-300 (= --text-disabled, 2.54:1), which fails
+                         contrast on purpose and made an empty box read as a
+                         disabled one. All four checkboxes in this file changed;
+                         checked stays gold and 1.4px is unchanged. */
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
-                        style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
+                        style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
                         {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                       </span>
@@ -1145,6 +1151,12 @@ export default function ProjectsFolderTree({
                             style={{
                               // UX 2026-09-17 (owner ruling): a ticked row lifts a
                               // surface step, never a warm gold wash.
+                              // UX 2026-09-22: the 2% zebra stripe KEEPS its wash on
+                              // purpose. The obvious token swap is --surface-3, but
+                              // --ink-600 (the ticked look, left) already IS
+                              // --surface-3, so a striped row would be painted the
+                              // selected colour. Fixing this needs a new banding
+                              // token, which is a palette decision, not a rename.
                               background: fileSelect && isChecked ? 'var(--ink-600)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
                               display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
@@ -1171,7 +1183,7 @@ export default function ProjectsFolderTree({
                             {fileSelect ? (
                               <span
                                 onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
-                                style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
+                                style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
                                 {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                               </span>
@@ -1639,7 +1651,7 @@ export default function ProjectsFolderTree({
               {jobsEdit ? (
                 <span
                   onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
-                  style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
                 </span>
@@ -1804,7 +1816,7 @@ export default function ProjectsFolderTree({
                     {fileSelect ? (
                       <span
                         onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
-                        style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
+                        style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                       >
                         {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                       </span>

@@ -40,7 +40,13 @@ const PDF_TAB_MAX_WIDTH = 280;
 const TAB_BAR_BG = 'var(--surface-0)';
 const TAB_IDLE_BG = 'var(--surface-1)';
 const TAB_ACTIVE_BG = 'var(--surface-2)';
-const TAB_HOVER_BG = 'var(--surface-3)';
+/* UX 2026-09-22: this was var(--surface-3), which src/styles/tokens.css reserves
+   for SELECTED ("--surface-3 is a SELECTED or a FIELD surface. It is never a
+   hover"). Hovering an idle tab therefore painted it the active tab's colour, so
+   the bar appeared to have two active tabs. Hover is --hover, press is
+   --pressed, like every other control. */
+const TAB_HOVER_BG = 'var(--hover)';
+const TAB_PRESSED_BG = 'var(--pressed)';
 const TAB_BORDER = 'var(--border)';
 const TAB_TEXT = 'var(--text-3)';
 const TAB_TEXT_ACTIVE = 'var(--text-1)';
@@ -170,6 +176,20 @@ function TabItem({
           e.currentTarget.style.background = TAB_IDLE_BG;
         }
       }}
+      /* A tab is a draggable div, not a <button>, so the app-wide :active rule
+         in src/styles/states.css cannot reach it — it needs the press painted
+         by hand. Pressing the ACTIVE tab still darkens, because pressing the
+         tab you are already on should still feel like a press. */
+      onMouseDown={(e) => {
+        if (!isSorting) {
+          e.currentTarget.style.background = TAB_PRESSED_BG;
+        }
+      }}
+      onMouseUp={(e) => {
+        if (!isSorting) {
+          e.currentTarget.style.background = isActive ? TAB_ACTIVE_BG : TAB_HOVER_BG;
+        }
+      }}
     >
       {isHome ? (
         <Icon
@@ -238,7 +258,7 @@ function TabItem({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--text-disabled)',
+            color: 'var(--text-3)',
             transition: 'all 0.15s ease',
             flexShrink: 0
           }}

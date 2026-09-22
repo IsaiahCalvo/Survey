@@ -2697,9 +2697,15 @@ const RegionSelectionTool = ({
           className={`btn btn-sm ${toolType === 'move' ? 'btn-active' : 'btn-default'}`}
           style={{
             padding: '4px 8px',
-            background: toolType === 'move' ? '#4a90e2' : '#3a3a3a',
-            color: 'var(--text-1)',
-            border: '1px solid #555',
+            /* UX 2026-09-22: was a #4a90e2 BLUE fill when armed on a #3a3a3a
+               grey, with a #555 edge — three colours the palette does not have,
+               and a selected state painted in the one hue reserved for
+               selection HANDLES. tokens.css: a selected control is "a gold
+               GLYPH with no fill". So the armed tool now says so in gold and
+               keeps the same transparent box as when it is idle. */
+            background: 'transparent',
+            color: toolType === 'move' ? 'var(--accent)' : 'var(--text-2)',
+            border: '1px solid var(--border-strong)',
             borderRadius: '4px',
             fontSize: '12px',
             cursor: 'pointer',
@@ -2741,9 +2747,10 @@ const RegionSelectionTool = ({
             style={{
               padding: '4px 8px',
               paddingRight: '28px',
-              background: (toolType === 'rectangular' || toolType === 'freehand') ? '#4a90e2' : '#555',
-              color: 'var(--text-1)',
-              border: '1px solid #555',
+              /* Armed = gold glyph, no fill — see the Move button above. */
+              background: 'transparent',
+              color: (toolType === 'rectangular' || toolType === 'freehand') ? 'var(--accent)' : 'var(--text-2)',
+              border: '1px solid var(--border-strong)',
               borderRadius: '4px',
               fontSize: '12px',
               cursor: 'pointer',
@@ -2819,8 +2826,8 @@ const RegionSelectionTool = ({
                   style={{
                     width: '100%',
                     padding: '6px 12px',
-                    background: toolType === 'rectangular' ? '#4a90e2' : 'transparent',
-                    color: 'var(--text-1)',
+                    background: 'transparent',
+                    color: toolType === 'rectangular' ? 'var(--accent)' : 'var(--text-2)',
                     border: 'none',
                     fontSize: '12px',
                     cursor: 'pointer',
@@ -2849,8 +2856,8 @@ const RegionSelectionTool = ({
                   style={{
                     width: '100%',
                     padding: '6px 12px',
-                    background: toolType === 'freehand' ? '#4a90e2' : 'transparent',
-                    color: 'var(--text-1)',
+                    background: 'transparent',
+                    color: toolType === 'freehand' ? 'var(--accent)' : 'var(--text-2)',
                     border: 'none',
                     fontSize: '12px',
                     cursor: 'pointer',

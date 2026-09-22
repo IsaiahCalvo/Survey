@@ -130,13 +130,15 @@ export function PromptModal({
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
               style={{
                 width: '100%', boxSizing: 'border-box', marginTop: label ? 0 : 14,
-                background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6,
+                // A text field's edge is the only thing saying "type here", so
+                // it takes the identifying rule (tokens.css revision 4).
+                background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6,
                 color: C.ink, padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit',
                 outline: 'none',
               }}
             />
           </div>
-          <button onClick={onCancel} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button onClick={onCancel} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={cancelButtonStyle}>Cancel</button>

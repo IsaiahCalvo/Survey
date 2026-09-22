@@ -122,7 +122,7 @@
   font-weight: 400;
   line-height: 1.5;
   letter-spacing: 0;
-  color: var(--danger);
+  color: var(--danger-text);
   background: var(--danger-soft);
   border: 1px solid var(--danger);
   border-radius: 6px;
@@ -177,7 +177,9 @@
   line-height: 1.5;
   color: var(--text-1);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  /* UX 2026-09-22 (tokens.css revision 4): a text field's edge is the only
+     thing saying "type here", so it takes the identifying --border-strong. */
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 8px 12px;
   outline: none;

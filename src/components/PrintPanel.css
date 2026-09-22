@@ -23,6 +23,13 @@
   --pp-panel: var(--surface-2);
   --pp-panel-2: var(--surface-2);
   --pp-panel-elev: var(--surface-3);
+  /* UX 2026-09-22 (tokens.css revision 4): --pp-border / --pp-border-subtle are
+     the DECORATIVE edge — panels, cards, filled buttons, rules, anything a fill
+     step already separates. --pp-border-strong is the IDENTIFYING edge and this
+     panel spends it on exactly two things: a form field (the page range, the
+     page picker, the scope search, the paper dropdown, the custom dimension,
+     the stepper) and a genuinely outlined button (Quick, Cancel, the preview
+     close). A hover must not promote an edge from one to the other. */
   --pp-border: var(--border);
   --pp-border-subtle: var(--border);
   --pp-border-strong: var(--border-strong);
@@ -169,7 +176,7 @@
 }
 .pp-range-input {
   background: var(--pp-bg); color: var(--pp-ink);
-  border: 1px solid var(--pp-border); border-radius: var(--pp-radius-sm);
+  border: 1px solid var(--pp-border-strong); border-radius: var(--pp-radius-sm);
   box-sizing: border-box;
   height: 22px;
   padding: 0 10px; font-size: 13px; font-family: inherit;
@@ -183,7 +190,7 @@
 .pp-quicks { display: inline-flex; gap: 4px; }
 .pp-quick {
   background: transparent; color: var(--pp-ink-2);
-  border: 1px solid var(--pp-border); border-radius: 6px;
+  border: 1px solid var(--pp-border-strong); border-radius: 6px;
   box-sizing: border-box;
   height: 22px;
   padding: 0 10px; font-size: 12px; line-height: 20px;
@@ -204,7 +211,7 @@
 .pp-scope-select-input input.has-error,
 .pp-range-input.has-error {
   border-color: var(--danger) !important;
-  color: var(--danger);
+  color: var(--danger-text);
   box-shadow: 0 0 0 1px rgba(231, 76, 60, 0.35);
 }
 .pp-hint {
@@ -349,7 +356,7 @@
    input so users can type a page or open the datalist and pick one. */
 .pp-preview-page-input {
   background: var(--pp-panel-elev); color: var(--pp-ink);
-  border: 1px solid var(--pp-border); border-radius: 4px 0 0 4px;
+  border: 1px solid var(--pp-border-strong); border-radius: 4px 0 0 4px;
   font: 600 12px/1 inherit; text-transform: none;
   padding: 4px 6px; width: 38px; text-align: center;
 }
@@ -367,11 +374,11 @@
 }
 .pp-ppicker-caret {
   background: var(--pp-panel-elev); color: var(--pp-ink);
-  border: 1px solid var(--pp-border); border-left: none; border-radius: 0 4px 4px 0;
+  border: 1px solid var(--pp-border-strong); border-left: none; border-radius: 0 4px 4px 0;
   padding: 0 6px; cursor: pointer; font-size: 10px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.pp-ppicker-caret:hover { background: var(--pp-hover); border-color: var(--pp-border-strong); }
+.pp-ppicker-caret:hover { background: var(--pp-hover); }
 .pp-ppicker-caret:active { background: var(--pp-pressed); }
 .pp-ppicker-menu {
   position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%;
@@ -449,7 +456,7 @@
   display: inline-flex; align-items: center; justify-content: center;
 }
 .pp-pager-btn:disabled { color: var(--text-disabled); cursor: not-allowed; }
-.pp-pager-btn:not(:disabled):hover { background: var(--pp-hover); border-color: var(--pp-border-strong); }
+.pp-pager-btn:not(:disabled):hover { background: var(--pp-hover); }
 .pp-pager-btn:not(:disabled):active { background: var(--pp-pressed); }
 .pp-pager-pos strong { color: var(--pp-ink); }
 /* UX 2026-04-23: dots are clickable <button>s that jump to a specific page.
@@ -496,7 +503,7 @@
   border: 1px solid var(--pp-border); border-radius: 6px;
   font-size: 12px; cursor: pointer; font-family: inherit;
 }
-.pp-bigprev-btn:hover { background: var(--pp-hover); color: var(--pp-ink); border-color: var(--pp-border-strong); }
+.pp-bigprev-btn:hover { background: var(--pp-hover); color: var(--pp-ink); }
 .pp-bigprev-btn:active { background: var(--pp-pressed); }
 
 /* ---------- Right rail: sections ---------- */
@@ -565,7 +572,7 @@
   margin-bottom: 10px;
 }
 .pp-scope-select-input input {
-  background: var(--pp-bg); color: var(--pp-ink); border: 1px solid var(--pp-border);
+  background: var(--pp-bg); color: var(--pp-ink); border: 1px solid var(--pp-border-strong);
   border-radius: 5px; padding: 5px 8px; font-size: 12px; flex: 1;
   font-family: inherit; outline: none;
 }
@@ -580,7 +587,7 @@
   position: relative;
   display: flex; align-items: center;
   background: var(--pp-bg); color: var(--pp-ink);
-  border: 1px solid var(--pp-border);
+  border: 1px solid var(--pp-border-strong);
   border-radius: 6px;
   font-size: 13px; cursor: pointer; font-family: inherit;
   width: 100%;
@@ -646,7 +653,7 @@
 }
 .pp-custom-dim {
   background: var(--pp-bg); color: var(--pp-ink-2);
-  border: 1px solid var(--pp-border); border-radius: 4px;
+  border: 1px solid var(--pp-border-strong); border-radius: 4px;
   padding: 2px 7px; font-size: 12px; width: 52px;
   font-family: inherit; outline: none; text-align: center;
 }
@@ -665,7 +672,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   transition: background 120ms, border-color 120ms, color 120ms, transform 120ms;
 }
-.pp-rbtn:hover { background: var(--pp-hover); color: var(--pp-ink); border-color: var(--pp-border-strong); }
+.pp-rbtn:hover { background: var(--pp-hover); color: var(--pp-ink); }
 .pp-rbtn:active { background: var(--pp-pressed); }
 .pp-rbtn:active { transform: scale(0.92); }
 .pp-rbtn svg { display: block; }
@@ -698,7 +705,7 @@
 }
 .pp-stepper {
   display: inline-flex; align-items: center;
-  background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px;
+  background: var(--pp-bg); border: 1px solid var(--pp-border-strong); border-radius: 6px;
   overflow: hidden;
 }
 .pp-stepper button {
@@ -742,7 +749,7 @@
 .pp-footer-cta { display: inline-flex; gap: 8px; align-items: center; }
 .pp-btn-cancel {
   background: transparent; color: var(--pp-ink-2);
-  border: 1px solid var(--pp-border); border-radius: 3px;
+  border: 1px solid var(--pp-border-strong); border-radius: 3px;
   padding: 0 10px; font-size: 13px; cursor: pointer;
   font-family: inherit;
   box-sizing: border-box;
@@ -914,7 +921,7 @@
   background: var(--pp-panel); border-color: var(--pp-border); color: var(--pp-ink);
 }
 .pp-bigprev-nav .pp-pager-btn:not(:disabled):hover {
-  background: var(--pp-hover); border-color: var(--pp-border-strong); color: var(--pp-ink);
+  background: var(--pp-hover); color: var(--pp-ink);
 }
 /* UX 2026-04-23: page picker now sits inside the bigger preview's
    header, next to the "Preview" label. */

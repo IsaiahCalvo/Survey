@@ -784,7 +784,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   borderRadius: 5,
                   cursor: it.disabled ? 'default' : 'pointer',
                   userSelect: 'none',
-                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger)' : 'var(--text-1)'),
+                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
                 }}
                 onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}

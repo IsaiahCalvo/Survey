@@ -90,7 +90,9 @@ export default function FormFieldPropertiesPanel({
         width: '260px',
         background: 'var(--surface-3)',
         color: 'var(--text-2)',
-        border: '1px solid var(--border-strong)',
+        // A floating PANEL: its own surface plus a 24px drop shadow separate it
+        // from the page, so the edge is decoration (tokens.css revision 4).
+        border: '1px solid var(--border)',
         borderRadius: '8px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
         padding: '12px',

@@ -122,7 +122,15 @@
   display: none !important;
 }
 .survey-hub .actions { margin-left: auto; display: flex; gap: 6px; }
-.survey-hub .btn { background: var(--ink-700); color: var(--bone-100); border: 1px solid var(--ink-500); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; }
+/* UX 2026-09-22 (tokens.css revision 4): the secondary hub button — Upload's
+   neighbours, the documents filter/sort trigger, every "Add", "Manage", "New"
+   in the header — is an OUTLINED button. Its edge is the only thing that says a
+   control is there, so the edge is --border-strong. It must NOT also paint a
+   lighter resting fill: --ink-700 (--surface-2) on a --surface-1 bar made the
+   box brighter than its own label, which is exactly what the owner rejected.
+   Rest is transparent; the fill arrives on hover (--hover) and press
+   (--pressed). .primary still paints its gold and .ghost is unchanged. */
+.survey-hub .btn { background: transparent; color: var(--bone-100); border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; }
 .survey-hub .btn.primary { background: var(--gold); color: var(--accent-text); border-color: transparent; font-weight: 600; }
 /* UX 2026-09-22: a gold control's own states. It used to take the generic
    neutral press, so the home screen's one primary button went dark grey under
@@ -268,7 +276,13 @@
 .survey-hub .hub-loading-document-row {
   align-items: center;
   height: 50px;
-  border-bottom: 1px solid var(--ink-600);
+  /* UX 2026-09-22: a divider is a boundary, so it takes --border (3.60:1 on
+     this --surface-2 card). --ink-600 is --surface-3, the SELECTED colour, and
+     measured 1.16:1 — an invisible rule. The header row above already used
+     --ink-500 (--border), so the skeleton disagreed with itself. */
+  border-bottom: 1px solid var(--border);
+  /* Transparent on purpose: it reserves the 2px the gold selected edge fills,
+     so a row does not shift sideways when it becomes selected. */
   border-left: 2px solid transparent;
 }
 .survey-hub .hub-loading-date-pair,
@@ -482,7 +496,7 @@
   gap: 10px;
   border-top: 1px solid var(--ink-500);
   padding: 7px 12px;
-  color: var(--ink-300);
+  color: var(--text-3);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -609,13 +623,16 @@
   font-size: 9.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-300);
+  color: var(--text-3);
   font-weight: 700;
 }
 
 .survey-hub .archive-sort-menu-label:not(:first-child) {
   margin-top: 3px;
-  border-top: 1px solid var(--ink-600);
+  /* UX 2026-09-22: the group separator inside the menu. The menu's own plate is
+     --ink-700 (--surface-2), so the old --ink-600 (--surface-3) rule measured
+     1.16:1 and simply was not there. --border reads at 3.60:1. */
+  border-top: 1px solid var(--border);
 }
 
 /* Desktop header actions: the filter control beside the search field, the same
@@ -1221,9 +1238,12 @@
     height: 28px;
     box-sizing: border-box;
     padding: 5px 10px;
-    border: 1px solid var(--ink-500);
+    /* UX 2026-09-22: this IS the documents filter button (its label is the live
+       sort — "Last edited", "File", "Size"). Outlined control: identifying edge,
+       no resting fill, so the box never reads brighter than the word in it. */
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--ink-700);
+    background: transparent;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2024,7 +2044,13 @@
     width: 17px;
     height: 17px;
     justify-self: center;
-    border: 1.4px solid var(--ink-300);
+    /* UX 2026-09-22: an unchecked box is ONLY its edge, so that edge has to be
+       seen. --ink-300 is --text-disabled, which fails contrast on purpose
+       (2.54:1 here) and is not a boundary colour; the box read as switched off
+       rather than empty. Revision 4 split the borders by job: a checkbox edge
+       IS the control, so it takes the identifying --border-strong, not the
+       decorative --border. Width unchanged. */
+    border: 1.4px solid var(--border-strong);
     border-radius: 3px;
     display: grid;
     place-items: center;
@@ -2306,7 +2332,8 @@
     min-width: 0;
     background: transparent;
     border: 0;
-    border-bottom: 1px solid var(--ink-500);
+    /* A text field with no fill: the underline is the whole control. */
+    border-bottom: 1px solid var(--border-strong);
     color: var(--bone-100);
     font: inherit;
     font-size: 20px;
@@ -2535,7 +2562,9 @@
     width: 17px;
     height: 17px;
     justify-self: center;
-    border: 1.4px solid var(--ink-300);
+    /* Same ruling as .projects-mobile-check above: an unchecked box is only its
+       edge, so it takes the identifying --border-strong. */
+    border: 1.4px solid var(--border-strong);
     border-radius: 3px;
     display: grid;
     place-items: center;
@@ -2647,7 +2676,8 @@
   .survey-hub .templates-mobile-save-row button {
     width: auto;
     height: 27px;
-    border: 1px solid var(--ink-500);
+    /* Outlined: no resting fill, so the edge has to identify the control. */
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: transparent;
     color: var(--bone-100);
@@ -2959,7 +2989,7 @@
 
   .survey-hub .templates-mobile-archived > div:first-child {
     margin-bottom: 4px;
-    color: var(--ink-300);
+    color: var(--text-3);
     font-size: 10px;
     font-weight: 750;
     letter-spacing: 0.1em;
@@ -2991,7 +3021,7 @@
     height: 44px;
     border: 0;
     background: transparent;
-    color: var(--danger);
+    color: var(--danger-text);
     font: inherit;
     font-size: 16px;
   }
@@ -3374,7 +3404,10 @@
   .survey-hub .archive-mobile-children {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid var(--ink-600);
+    /* UX 2026-09-22: the rule that separates a card's child rows from its head.
+       The card is --ink-700 (--surface-2), so --ink-600 (--surface-3) measured
+       1.16:1 and the children ran straight into the head. --border is 3.60:1. */
+    border-top: 1px solid var(--border);
     display: grid;
     gap: 6px;
   }

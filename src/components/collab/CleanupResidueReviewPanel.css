@@ -169,9 +169,11 @@
 
 .cleanup-residue-review__action--secondary {
   /* UX: Close — neutral outline. Default focus per accessibility (the user
-     can dismiss without committing to a destructive action). */
+     can dismiss without committing to a destructive action). An OUTLINED
+     button paints no fill, so its edge is the whole control — the one button
+     case tokens.css revision 4 gives the identifying grey to. */
   background: transparent;
-  border-color: var(--border);
+  border-color: var(--border-strong);
   color: var(--text-1);
 }
 

@@ -31878,7 +31878,7 @@ ${pageBlocks}
                 <Icon name="document" size={48} />
               </div>
               <div style={{ fontSize: '18px', color: 'var(--text-3)' }}>Loading PDF...</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-disabled)', marginTop: '10px' }}>
+              <div style={{ fontSize: '14px', color: 'var(--text-3)', marginTop: '10px' }}>
                 {pdfFile?.name || 'document.pdf'}
               </div>
             </div>
@@ -32142,7 +32142,11 @@ ${pageBlocks}
                     right: 12,
                     zIndex: 4000,
                     background: 'rgba(15, 15, 15, 0.86)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    /* UX: an overlay panel floating over the page. Its own
+                       dark fill already separates it, so the edge is
+                       decoration — the subtle border, not a white wash whose
+                       strength would change with the page behind it. */
+                    border: '1px solid var(--border)',
                     borderRadius: 8,
                     color: 'var(--text-2)',
                     fontFamily: FONT_FAMILY,
@@ -32598,7 +32602,7 @@ ${pageBlocks}
                                 Local {OCR_ENGINE_NAME} - {OCR_ENGINE_LICENSE}. Works offline.
                               </span>
                               {ocrStateByPage[pageNumber]?.status === 'error' && (
-                                <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--danger)', fontSize: 11 }}>
+                                <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--danger-text)', fontSize: 11 }}>
                                   {ocrStateByPage[pageNumber].message}
                                 </span>
                               )}
@@ -34547,7 +34551,11 @@ ${pageBlocks}
                                         borderRadius: '50%',
                                         background: s.color,
                                         flexShrink: 0,
-                                        border: '1px solid rgba(255,255,255,0.15)',
+                                        // UX: this dot is filled with the
+                                        // USER's ink colour, so its hairline
+                                        // is the shared ink ring — a neutral
+                                        // border would swallow a dark ink.
+                                        border: '1px solid var(--ink-ring)',
                                       }}
                                     />
                                     <span style={{ flex: 1 }}>{s.label}</span>
@@ -35952,7 +35960,10 @@ ${pageBlocks}
                               height: '24px',
                               borderRadius: '4px',
                               background: entity.color,
-                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                              // UX: an entity swatch filled with the USER's
+                              // chosen colour — the shared ink ring, same as
+                              // every other colour swatch in the app.
+                              border: '1px solid var(--ink-ring)',
                               flexShrink: 0
                             }}
                           />

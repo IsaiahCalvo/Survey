@@ -62,13 +62,15 @@
   }
 }
 
-/* Top-right bordered square close button (shared modal-close language). */
+/* Top-right bordered square close button (shared modal-close language).
+   It paints no fill, so the box IS the control — the one case tokens.css
+   revision 4 lets a button take the identifying --border-strong. */
 .auth-modal-close {
   position: absolute;
   top: 14px;
   right: 14px;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
@@ -176,9 +178,11 @@
   font-family: inherit;
 }
 
+/* A text field's edge is the only thing saying "type here", so it takes the
+   identifying --border-strong (tokens.css revision 4 allows it on inputs). */
 .auth-form-group input {
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -250,7 +254,7 @@
   align-items: center;
   gap: 14px;
   margin: 20px 0;
-  color: var(--text-disabled);
+  color: var(--text-3);
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0;
@@ -286,9 +290,12 @@
   letter-spacing: 0;
 }
 
+/* UX 2026-09-22 (revision 4): the hover fill is what answers the pointer here.
+   This rule also brightened the edge to the identifying --border-strong, which
+   is reserved for controls whose edge is their only definition; a filled button
+   is not one. The edge simply stays subtle through the hover. */
 .auth-google-btn:hover:not(:disabled) {
   background: var(--hover);
-  border-color: var(--border-strong);
 }
 
 .auth-google-btn:disabled {

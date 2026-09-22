@@ -62,7 +62,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
         fontSize: 11.5, fontWeight: 600,
         background: mode === val ? C.gold : 'transparent',
         color: mode === val ? 'var(--accent-text)' : C.inkSoft,
-        border: `1px solid ${mode === val ? C.gold : C.rule}`,
+        border: `1px solid ${mode === val ? C.gold : C.ruleStrong}`,
       }}
     >
       {label}
@@ -77,7 +77,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -88,7 +88,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             {mode === 'move' ? 'Moves the documents into the chosen project.' : 'Copies the documents into the chosen project; originals stay where they are.'}
           </div>
           {submitError && (
-            <div role="alert" style={{ fontSize: 11.5, color: C.danger, lineHeight: 1.4 }}>
+            <div role="alert" style={{ fontSize: 11.5, color: C.dangerText, lineHeight: 1.4 }}>
               {submitError} Try again.
             </div>
           )}
@@ -172,7 +172,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
             {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button disabled={submitting} onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
@@ -251,11 +251,11 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
                     submit();
                   }
                 }}
-                style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${C.rule}`, background: C.deep, color: C.ink, padding: '0 11px', fontSize: 16, fontFamily: 'inherit', outline: 'none' }}
+                style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${C.ruleStrong}`, background: C.deep, color: C.ink, padding: '0 11px', fontSize: 16, fontFamily: 'inherit', outline: 'none' }}
               />
             </label>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={16} /></button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={16} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ minHeight: 44, background: 'transparent', border: 0, color: C.muted, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>

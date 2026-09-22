@@ -590,6 +590,12 @@ const CompactColorPicker = ({
                     <button
                         type="button"
                         key={preset}
+                        /* This button's background IS the user's ink, so the
+                           app-wide pressed fill in src/styles/states.css must
+                           skip it — otherwise a press would paint theme grey
+                           over the colour being chosen. states.css excludes it
+                           by this attribute. */
+                        data-ink-swatch="true"
                         aria-label={preset}
                         aria-pressed={isSelected}
                         title={preset}
@@ -615,7 +621,11 @@ const CompactColorPicker = ({
                             background: preset,
                             boxShadow: isSelected
                                 ? `0 0 0 1.5px ${panelBackground}, 0 0 0 3px ${swatchRingColour(preset)}`
-                                : (needsSwatchHairline(preset) ? '0 0 0 1px rgba(255,255,255,0.16)' : undefined),
+                                // UX: the resting hairline that lifts a dark
+                                // preset ink off the dark panel. It rings a
+                                // USER colour, so it uses the shared ink ring
+                                // rather than a hand-typed white alpha.
+                                : (needsSwatchHairline(preset) ? '0 0 0 1px var(--ink-ring)' : undefined),
                         }}>
                             {isSelected && (
                                 <span style={{ color: swatchCheckInk(preset), lineHeight: 0 }}>
@@ -668,6 +678,8 @@ const CompactColorPicker = ({
                     <button
                         type="button"
                         key={`${rowIndex}-${columnIndex}`}
+                        /* Ink, not chrome — see the sibling swatch above. */
+                        data-ink-swatch="true"
                         title={title}
                         aria-label={title}
                         aria-pressed={Boolean(isSelected)}
@@ -844,7 +856,10 @@ const CompactColorPicker = ({
         alignItems: 'center',
         color: 'var(--text-1)',
         background: 'var(--surface-2)',
-        border: '1px solid var(--border)',
+        // A FIELD (the hex box with its eyedropper and alpha cells): its edge is
+        // what says "you can type in here", so it takes the identifying rule.
+        // The hairlines INSIDE it stay subtle — they only divide its cells.
+        border: '1px solid var(--border-strong)',
         /* ONE RADIUS SCALE (2026-09-22): a 30px control is a button, 6. Was 8. */
         borderRadius: '6px',
         overflow: 'hidden',

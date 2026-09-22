@@ -241,7 +241,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
-            <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+            <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>
@@ -304,8 +304,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                 <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
                 <div style={{ fontSize: 11.5, color: C.gold, fontWeight: 600 }}>Pending</div>
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  <button disabled={busy} onClick={() => handleResend(inv)} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.ink, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Resend</button>
-                  <button disabled={busy} onClick={() => handleRevoke(inv)} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.danger, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Revoke</button>
+                  <button disabled={busy} onClick={() => handleResend(inv)} style={{ background: 'transparent', border: `1px solid ${C.ruleStrong}`, color: C.ink, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Resend</button>
+                  <button disabled={busy} onClick={() => handleRevoke(inv)} style={{ background: 'transparent', border: `1px solid ${C.ruleStrong}`, color: C.dangerText, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Revoke</button>
                 </div>
               </div>
             ))}
@@ -333,8 +333,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                         const result = await copyTextToClipboard(buildInviteUrl(inv), { surface: 'document_access_link' });
                         if (result.ok) { setError(''); setStatus('Link copied.'); }
                         else { setStatus(''); setError('Survey could not copy this share link.'); }
-                      }} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.ink, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
-                      <button disabled={busy} onClick={() => handleRevoke(inv)} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.danger, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Revoke</button>
+                      }} style={{ background: 'transparent', border: `1px solid ${C.ruleStrong}`, color: C.ink, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
+                      <button disabled={busy} onClick={() => handleRevoke(inv)} style={{ background: 'transparent', border: `1px solid ${C.ruleStrong}`, color: C.dangerText, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Revoke</button>
                     </div>
                   </div>
                 ))}
@@ -344,7 +344,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
           {(error || status) && (
             <div style={{ padding: '8px 18px', borderTop: `1px solid ${C.rule}`, background: C.deep }}>
-              {error && <div style={{ color: C.danger, fontSize: 12 }}>{error}</div>}
+              {error && <div style={{ color: C.dangerText, fontSize: 12 }}>{error}</div>}
               {status && !error && <div style={{ color: C.gold, fontSize: 12 }}>{status}</div>}
             </div>
           )}
