@@ -82,7 +82,12 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'pen', label: 'Pen', icon: 'pen' },
       { id: 'highlighter', label: 'Highlighter', icon: 'highlighter' },
-      { id: 'eraser', label: 'Partial erase' /* UX: same tool name as desktop. */, icon: 'eraser' },
+      /* UX 2026-09-22 (owner, with the desktop rail): the tool is "Eraser". It
+         was "Partial erase", which collided with the Partial half of the
+         Partial / Whole toggle its own strip carries — two different things
+         wearing one name. The toggle keeps its own names, and they are the ones
+         that mean partial and whole. */
+      { id: 'eraser', label: 'Eraser', icon: 'eraser' },
     ],
   },
   shape: {
