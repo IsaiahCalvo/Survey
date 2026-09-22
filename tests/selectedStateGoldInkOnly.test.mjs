@@ -106,10 +106,6 @@ const EXCEPTIONS = [
       + 'so the chip never changes size.',
   },
   {
-    match: /\.mobile-pdf-text-card__colors > button\.is-active/,
-    why: 'the text card\'s colour buttons: the colour-disc exception once more.',
-  },
-  {
     match: /\.survey-marker-leading-check\.is-selected \.survey-marker-leading-checkbox|\.mobile-pdf-properties__keep\.is-active > span|\.mobile-page-select-indicator\.is-selected/,
     why: 'CHECKBOXES. A ticked box is a filled box with a dark tick, here and in '
       + 'every other application; there is no glyph beside it to turn gold.',

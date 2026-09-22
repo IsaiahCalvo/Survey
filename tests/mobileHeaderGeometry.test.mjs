@@ -168,7 +168,9 @@ test('every icon button in the header and the rich-text strip centres its glyph 
     '.mobile-pdf-header__page-nav',
     '.mobile-pdf-header__page-chevron',
     '.mobile-pdf-properties__format',
-    '.mobile-pdf-text-defaults__format > button',
+    /* RULED CHANGE 2026-09-22: the "Aa" sheet's own copy of B / I / U / S is gone.
+       The rebuilt sheet reuses the strip's .mobile-pdf-properties__format group,
+       one line above, so there is one rule to centre instead of two. */
   ]) {
     const rule = block(css, selector);
     assert.match(rule, /display: grid/, `${selector} must centre geometrically`);
