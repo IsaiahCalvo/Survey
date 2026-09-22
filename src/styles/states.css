@@ -1,0 +1,199 @@
+/* ============================================================================
+   Survey — HOVER, PRESSED and FOCUS. One file, every control.
+   ============================================================================
+
+   WHY THIS FILE EXISTS. src/styles/tokens.css already decides what a state
+   LOOKS like ("HOW STATES ARE BUILT": hover is --hover, pressed is --pressed,
+   and those two "are the ONLY hover and pressed fills in the app"). Nothing
+   applied them. An audit of the running app on 2026-09-22 measured, across
+   1440x900 and 390x844, home and a PDF:
+
+     79 JSX sites painted var(--hover) from an inline onMouseEnter handler
+      0 sites painted var(--pressed) anywhere — the token had no consumers
+     71 of 98 measured controls changed nothing on hover
+      8 of 98 painted an identical colour for hover and for press
+
+   A press that looks exactly like a hover tells you nothing: you cannot see
+   that the control took the click. This file supplies the missing half.
+
+   WHY A STYLESHEET AND NOT 79 MORE HANDLERS. The inline handlers each write
+   element.style.background, so the honest fix — a shared class whose :hover and
+   :active come from the tokens — is also the only fix that scales: one rule
+   here replaces an onMouseDown/onMouseUp/onMouseLeave trio at 79 call sites in
+   39 files, and it covers the controls that never had a handler at all.
+
+   WHY !important. An inline style declaration beats any normal rule, however
+   specific. Those 79 handlers write the HOVER colour inline, so a plain
+   `:active` rule would lose to the hover it is supposed to replace and the
+   press would keep looking like a hover — the exact bug. `!important` is
+   therefore load-bearing here, and it is scoped as tightly as the job allows.
+   It is a bridge, not a destination: as inline hover paints are deleted in
+   favour of these rules, the !important flags can go with them.
+
+   THE HOVER RULES ARE INSIDE @media (hover: hover) and (pointer: fine) on
+   purpose. tokens.css: "hover (desktop pointer only)" and "On the phone there
+   is no hover, so a touch paints --pressed for the duration of the press and
+   nothing else." Without that guard a touch leaves a phone control stuck in a
+   hover colour until you tap elsewhere.
+
+   WHAT IS DELIBERATELY EXCLUDED — read before adding anything here:
+     * A COLOUR SWATCH. Its background IS the user's ink. Painting a theme
+       colour over it during a press would hide the very thing being chosen,
+       and "annotation ink belongs to the user, not the theme" is a standing
+       rule. Excluded by attribute, not by class, so a restyle cannot silently
+       opt one back in.
+     * A GOLD control. It has its own ladder: --accent-light on hover,
+       --accent-press on press. Handled below, not excluded.
+     * A DESTRUCTIVE fill. Same: --danger-press.
+     * A SELECTED control (aria-pressed/aria-selected/aria-current/.active/
+       .is-active/.is-selected). --surface-3 means "selected"; repainting it on
+       hover would make the chosen row look unchosen while the pointer is over
+       it. It still gets a PRESS, because pressing a selected thing should still
+       feel like a press.
+     * A DISABLED control. It has one look, from --disabled-fill.
+     * Bare <a>. A text link has no resting fill, so giving it one on press
+       would paint a block behind running text.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. PRESSED — the one rule that was missing entirely.
+   -------------------------------------------------------------------------- */
+/* :where() keeps the element list at zero specificity so the gold and
+   destructive ladders below win on their class alone. */
+:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]) {
+  background-color: var(--pressed) !important;
+}
+
+/* --------------------------------------------------------------------------
+   2. HOVER for the controls that had none. Desktop pointer only.
+   -------------------------------------------------------------------------- */
+@media (hover: hover) and (pointer: fine) {
+  /* The home hub. Its shared style factories (src/home/hubControls.js:
+     moreButtonStyle, closeButtonStyle, miniButtonStyle) hard-code
+     `background: 'transparent'` INLINE on every row "More", close and mini
+     button, which is why 25 classless hub buttons measured no hover at all.
+     Inline loses only to !important, so this is where the flag earns its keep.
+     Scoped to .survey-hub because the hub is flat cards and rows — no gold
+     tints to trample. */
+  /* `:not(:active)` is load-bearing. While a control is pressed it is ALSO
+     hovered, and this selector is more specific than the pressed rule above
+     (both carry !important), so without it the hover would win and the press
+     would look identical to the hover — the exact fault this file fixes. An
+     audit measured 51 controls colliding that way before this was added. */
+  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):hover:not(:active),
+  .survey-hub [role='button']:not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):hover:not(:active) {
+    background-color: var(--hover) !important;
+  }
+
+  /* The phone chrome renders at desktop widths too (hidden, or on a narrow
+     window), and these classes are CSS-driven rather than inline, so a plain
+     rule reaches them. Listed explicitly because each measured no hover. */
+  .mobile-doc-card:not(.is-selected):hover:not(:active),
+  .mobile-header-select-button:hover:not(:active),
+  .mobile-rail-nav-trigger:hover:not(:active),
+  .documents-mobile-filter:hover:not(:active),
+  .mobile-pdf-header__icon:not(:disabled):hover:not(:active),
+  .mobile-pdf-header__page-frac:hover:not(:active),
+  .mobile-pdf-header__page-chevron:not(:disabled):hover:not(:active),
+  .mobile-pdf-tools__button:not(.is-active):not(:disabled):hover:not(:active),
+  .mobile-pdf-tools__sync:hover:not(:active),
+  .mobile-pdf-dock__side:not(:disabled):hover:not(:active),
+  .mobile-pdf-dock__center:hover:not(:active) {
+    background-color: var(--hover);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2b. PAPER IS NOT CHROME — the one place rule 1 must be undone.
+   -------------------------------------------------------------------------- */
+/* src/components/TextMarkupLinkLayer.jsx paints an invisible <button> over every
+   link in the PDF as its hit region, sitting ON the page. Rule 1 would fill that
+   region with --pressed on click, i.e. paint theme grey across the document the
+   user is reading — caught in the audit as a white-page link turning dark on
+   press. A page, a page thumbnail and a print preview are paper, and the theme
+   does not get to paint on paper. Expressed as a reset rather than a
+   :not(.layer *) exclusion so it works on the older WebKit that Capacitor iOS
+   ships, where a complex selector inside :not() is unsupported.
+   The link button itself is ALSO excluded by attribute up in rule 1, because a
+   reset alone loses: rule 1 carries ten :not()s and therefore outranks a plain
+   `[data-text-markup-link]:active`, and the page link kept turning dark on
+   press even with this block present. Belt and braces — the reset below still
+   covers the two pdf.js layers, which have no attribute to exclude. */
+[data-text-markup-link]:active,
+[data-text-markup-link]:hover,
+[aria-label='Text links'] button:active,
+[aria-label='Text links'] button:hover,
+.annotationLayer button:active,
+.textLayer button:active {
+  background-color: transparent !important;
+}
+
+/* --------------------------------------------------------------------------
+   2c. The slim right rail (#chrome-right-host): Zoom in / Zoom out / the zoom
+   percentage / the page number / Fit options. Each one hard-codes
+   `background: 'transparent'` inline and carries no class, so — like the hub's
+   shared factories — only !important reaches them. They measured no hover at
+   all while their press already worked, which is the reverse of the usual bug.
+   -------------------------------------------------------------------------- */
+@media (hover: hover) and (pointer: fine) {
+  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):hover:not(:active) {
+    background-color: var(--hover) !important;
+  }
+  /* "Export annotated PDF" is a .chrome-control that sets
+     `background: 'transparent'` inline, so the class's own hover never showed.
+     Armed tool buttons are excluded: a selected tool is a gold GLYPH and must
+     not gain a fill. */
+  .chrome-control:not(:disabled):not([aria-disabled='true']):not(.btn-active):not([aria-pressed='true']):hover:not(:active) {
+    background-color: var(--hover) !important;
+  }
+  /* The sync status chip is a role="button" that opens the sync details, but it
+     paints its own fill inline and so never showed that it was clickable.
+     Targeted by aria-controls because the chip carries no class. */
+  [aria-controls='sync-status-details']:hover:not(:active) {
+    background-color: var(--hover) !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. The gold and destructive ladders (tokens.css "HOW STATES ARE BUILT":
+      "A gold control's own states are --accent-light (hover) and
+      --accent-press (pressed)"). These carry !important only to outrank
+      rule 1, which they must, and they are class-specific so they cannot
+      leak onto neutral chrome.
+   -------------------------------------------------------------------------- */
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:not(:disabled):hover:not(:active),
+  .btn.primary:not(:disabled):hover:not(:active),
+  .survey-hub .btn.primary:not(:disabled):hover:not(:active) {
+    background-color: var(--accent-light) !important;
+  }
+  .btn-danger:not(:disabled):hover:not(:active) {
+    background-color: var(--danger) !important;
+  }
+}
+.btn-primary:not(:disabled):active,
+.btn.primary:not(:disabled):active,
+.survey-hub .btn.primary:not(:disabled):active {
+  background-color: var(--accent-press) !important;
+}
+.btn-danger:not(:disabled):active {
+  background-color: var(--danger-press) !important;
+}
+
+/* --------------------------------------------------------------------------
+   4. FOCUS. tokens.css: "Always 2px on :focus-visible, never on :focus, so a
+      mouse click never draws it." --focus is the gold at 62%, which
+      composites past 3:1 on all four surfaces.
+   -------------------------------------------------------------------------- */
+:where(button, [role='button'], [role='tab'], [role='option'], a[href], input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* A press should not also animate. The global `.btn` hover lifts the button by
+   1px; without this the lift and the press fight and the control jitters. */
+@media (prefers-reduced-motion: reduce) {
+  :where(button, [role='button'], [role='tab'], [role='option']) {
+    transition: none !important;
+  }
+}
