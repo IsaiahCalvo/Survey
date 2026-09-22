@@ -17,8 +17,19 @@ test('live text formatting uses only app-styled menus', () => {
   assert.doesNotMatch(liveTextFormatting, /<select\b/);
   assert.match(liveTextFormatting, /ariaLabel="Font"/);
   assert.match(liveTextFormatting, /ariaLabel="Text alignment"/);
-  assert.match(mobileCss, /\.mobile-styled-select__trigger \{[\s\S]{0,160}min-height: 44px/);
-  assert.match(mobileCss, /\.mobile-styled-select__menu > button \{[\s\S]{0,120}min-height: 44px/);
+  // RULED CHANGE 2026-09-21 (pass 7, boards 1-7 + 15). The pill PAINTS 20px and is
+  // HIT at 44px through a transparent pad - the painted-20/box-44 trick every
+  // control on this bar uses - where it used to paint a 44px box. And a menu row
+  // is 26px on board 15, not 44: a menu is a list you are already inside, its rows
+  // are adjacent so there is no dead lane to miss into, and 44px rows made a
+  // six-option arrowhead menu taller than the sheet it opened over.
+  assert.match(mobileCss, /\n\.mobile-styled-select__trigger \{[\s\S]{0,200}height: var\(--mobile-strip-control-h\)/);
+  assert.match(
+    mobileCss,
+    /\.mobile-pdf-properties > \.mobile-styled-select \.mobile-styled-select__trigger::after \{[\s\S]{0,160}inset-block: -12px/,
+    'the pill must still be a 44px target: 20px painted plus 12px above and below',
+  );
+  assert.match(mobileCss, /\.mobile-styled-select__menu > button \{[\s\S]{0,120}height: 26px/);
 });
 
 /*
@@ -61,11 +72,28 @@ test('live text formatting uses only app-styled menus', () => {
  * wins. Apple's 44px is a floor for a control in open space, and 36px with
  * 5px lanes and no neighbour overlap still clears every control by a finger.
  */
-test('compact eraser and shape selects keep 24px visuals with unclipped 36px targets', () => {
+/*
+ * RULED CHANGE 2026-09-21 (pass 7, boards 1-7). Four pinned values moved, all of
+ * them because the approved boards changed what this bar IS:
+ *   - controls paint 20px, not 24 ("controls 20px, discs 16px in 22px buttons");
+ *   - the bar is CENTRED and does not scroll, so `overflow-x: auto` is gone and
+ *     with it the clip-path that a scroll container forced;
+ *   - the right padding is the plain 8px the boards draw, not "rail + 8", which
+ *     existed only to centre a row on the VIEWPORT; the boards centre it in the
+ *     strip's own band;
+ *   - the bar takes NO pointer events (its children take them back), which the
+ *     old comment correctly said would break a scrolling bar - and the bar no
+ *     longer scrolls, so it is now the right answer: the 8px of box that lies
+ *     over the page hands those taps to the document in every lane between
+ *     controls, and each control's pad reaches the full 44px.
+ * So the target is 44px again, not the 36px the scroll era capped it at.
+ */
+test('the fitted tool strip paints 20px controls and hits them at 44px', () => {
   assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1600}height: 44px;[\s\S]{0,60}min-height: 44px/);
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,2600}overflow-x: auto/);
-  assert.match(mobileCss, /--mobile-strip-control-h: 24px;/);
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1800}padding: 0 calc\(var\(--mobile-rail-w\) \+ 8px\) 8px 8px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,2600}justify-content: center/);
+  assert.doesNotMatch(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,2600}overflow-x: auto/);
+  assert.match(mobileCss, /--mobile-strip-control-h: 20px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,1800}padding: 0 8px 8px;/);
   // The painted bar is still 36px: the gradient stops there and the rest of the
   // box is transparent.
   // DELIBERATE ASSERTION CHANGE (2026-09-17, revision-2 palette approved by the
@@ -80,11 +108,25 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 36px tar
   const barRule = /\.mobile-pdf-properties \{([\s\S]*?)\n\}/.exec(mobileCss);
   assert.notEqual(barRule, null, '.mobile-pdf-properties rule not found');
   const barDeclarations = barRule[1].replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(barDeclarations, /clip-path: inset\(0 0 8px 0\);/);
-  // ... and it does NOT get there with pointer-events: none, which stops WebKit
-  // scrolling the row at all (A/B'd on the simulator, r4).
-  assert.doesNotMatch(barDeclarations, /pointer-events:\s*none/);
-  assert.match(barDeclarations, /pointer-events: auto;/);
+  // The 8px below the painted bar belongs to the page, and the bar gets there by
+  // taking no pointer events rather than by clipping itself. A clip removed that
+  // strip from hit testing but also capped every pad at 36px; pointer-events lets
+  // a pad reach 44px and still hands the page every lane between controls. The
+  // scrolling bar could not do this (WebKit will not scroll a container that is
+  // not hit-testable); the fitted bar does not scroll, so it can.
+  assert.doesNotMatch(barDeclarations, /clip-path/);
+  assert.match(barDeclarations, /pointer-events: none;/);
+  assert.match(
+    mobileCss,
+    /\.mobile-pdf-properties > \* \{[\s\S]{0,80}pointer-events: auto/,
+    'the controls must take back the pointer events the bar drops',
+  );
+  // The one bar that still scrolls keeps both: its own pointer events, and the
+  // clip that a scroll container forces.
+  assert.match(
+    mobileCss,
+    /\.mobile-pdf-properties--text \{[\s\S]{0,320}pointer-events: auto;[\s\S]{0,80}clip-path: inset\(0 0 8px 0\)/,
+  );
   // RULED CHANGE 2026-09-16 (r4 phone pass): 20px, not 8. The bar faded its last
   // 20px so a control sliced by the screen edge read as "there is more this
   // way"; with only 8px of runway the fade still lay over the Text-alignment
@@ -103,10 +145,19 @@ test('compact eraser and shape selects keep 24px visuals with unclipped 36px tar
     `the rich-text strip ends ${textPad[1]}px from its edge, inside the bar's own 20px `
     + 'trailing fade, so its last control still looks cut off at the end of the scroll',
   );
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,140}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,320}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -8px/);
-  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select,[\s\S]{0,180}height: var\(--mobile-strip-control-h\);[\s\S]{0,60}min-height: var\(--mobile-strip-control-h\)/);
-  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select \.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -8px/);
+  // RULED CHANGE 2026-09-21 (pass 7). The pill's height used to be overridden
+  // per strip variant - one rule for the tool strips, another for the rich-text
+  // one - because the rich-text bar was the only 44px-tall dropdown in the app.
+  // Both variants take the shared control token now, so the base rule (asserted
+  // at the top of this file) sets it once and there is no per-variant override
+  // left to pin. What is still per-variant is the PAD, and it must be: the fitted
+  // strips reach 44px (-12px), the scrolling rich-text bar is clipped to the
+  // painted band and reaches 36px (-8px).
+  assert.match(
+    mobileCss,
+    /\.mobile-pdf-properties--text \.mobile-pdf-properties__color::after,[\s\S]{0,240}inset-block: -8px/,
+    'the scrolling rich-text bar is clipped to its painted band, so its pads stop at 36px',
+  );
 });
 
 test('shared color picker uses captured pointer gestures for touch and mouse', () => {

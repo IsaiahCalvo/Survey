@@ -27,7 +27,21 @@ test('mobile viewer popovers consume the first outside gesture through the share
   assert.match(mobileChrome, /import DismissBarrier from '\.\.\/components\/DismissBarrier'/);
   assert.match(styledSelect, /active=\{open\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
   assert.match(header, /active=\{pageEditing \|\| zoomOpen\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
-  assert.match(toolProperties, /active=\{counterMenuOpen\}[\s\S]*insideRefs=\{counterMenuInsideRefs\}/);
+  /*
+   * RULED CHANGE 2026-09-21 (pass 7, board 4: the counter strip is a pin swatch
+   * and a series PILL). The counter series was a bespoke text button with its own
+   * hand-rolled popover, which is why it needed a barrier of its own; the board
+   * makes it one of the shared dropdown pills, and that pill's barrier is the
+   * MobileStyledSelect one asserted on the line above. So the strip has no
+   * popover left to guard - one fewer bespoke menu in the app - and what this
+   * test is really about, "no phone popover listens on the document directly",
+   * still holds for every popover in the file (the loop below).
+   */
+  assert.doesNotMatch(
+    toolProperties,
+    /counterMenu/,
+    'the counter series is a shared dropdown now, not a bespoke popover',
+  );
   assert.match(toolRail, /active=\{moreOpen \|\| syncDetailsOpen\}[\s\S]*insideRefs=\{popoverInsideRefs\}/);
 
   for (const source of [styledSelect, header, toolProperties, toolRail]) {

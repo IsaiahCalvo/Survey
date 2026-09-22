@@ -32,7 +32,12 @@ const css = read('../src/mobile/mobilePdfViewer.css');
 const chrome = read('../src/mobile/MobilePdfViewerChrome.jsx');
 
 const RATIO_MIN = 0.55;
-const RATIO_MAX = 0.6;
+// RULED CHANGE 2026-09-21 (pass 7, boards 1-7). The ceiling is 0.61, not 0.60.
+// The approved boards fix BOTH numbers on the rail and header tiers - a 17px
+// glyph in a 28px chip - which is 0.607. The band still does its job: it catches
+// a glyph drawn at two thirds of its box (0.67), which is what it was written
+// for, and every tier still sits inside one narrow band.
+const RATIO_MAX = 0.61;
 
 // Pull one declaration block so a size assertion cannot be satisfied by an
 // unrelated rule elsewhere in the sheet.

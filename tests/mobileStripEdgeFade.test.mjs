@@ -46,9 +46,39 @@ test('the phone tool-properties strip carries no edge fade, on any variant', () 
   );
 });
 
-test('the strip still scrolls, so nothing needs a fade to hint at it', () => {
+/*
+ * RULED CHANGE 2026-09-21 (pass 7, boards 1-7: "CENTRED; essentials only; it must
+ * NEVER scroll and NEVER clip"). This used to assert the opposite - that the bar
+ * scrolls and is start-aligned - because on 2026-09-17 the quick-style chips
+ * pushed the Arrow row 269px past a 375px screen and a scroll was the only way
+ * back to the far end. The approved boards take those chips off the row, so the
+ * widest strip is 328px of controls against 331px of band at 375px, and there is
+ * nothing left to scroll to. The reason the fade was banned is unchanged and is
+ * now stronger: a fade cannot be hinting at anything on a bar that fits.
+ */
+test('the strip fits, so it is centred with no scroll path at all', () => {
   const base = stripRules().find(({ selectors }) => selectors === '.mobile-pdf-properties');
   assert.ok(base, '.mobile-pdf-properties rule not found');
-  assert.match(base.body, /overflow-x:\s*auto/);
-  assert.match(base.body, /justify-content:\s*flex-start/);
+  assert.match(base.body, /justify-content:\s*center/);
+  assert.match(base.body, /overflow:\s*visible/);
+  assert.doesNotMatch(
+    base.body,
+    /overflow(-x)?:\s*(auto|scroll)/,
+    'the strip must not scroll: every strip is measured to fit 375px '
+    + '(tests/mobileToolPropertiesReach.test.mjs), and a centred row that scrolls '
+    + 'would be back to losing its first control under the tool rail',
+  );
+});
+
+/*
+ * The ONE exception, and the reason it is one: the live rich-text editor's bar is
+ * not a tool strip off a board. It carries a colour swatch, a font, a size, four
+ * format toggles and an alignment dropdown, which no 331px band holds, so it
+ * keeps the start-aligned scroll path its own tests pin.
+ */
+test('the live text bar keeps its scroll path, because no board shrinks it', () => {
+  const text = stripRules().find(({ selectors }) => selectors === '.mobile-pdf-properties--text');
+  assert.ok(text, '.mobile-pdf-properties--text rule not found');
+  assert.match(text.body, /overflow-x:\s*auto/);
+  assert.match(text.body, /justify-content:\s*flex-start/);
 });

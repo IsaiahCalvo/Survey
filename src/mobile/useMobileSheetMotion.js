@@ -57,6 +57,22 @@ export const SHEET_CLOSE_UNMOUNT_MS = SHEET_CLOSE_MS + 30;
 // thirds of the screen rather than one fixed short tray.
 export const SHEET_EXPAND_DY = 48; // px of upward travel
 export const SHEET_EXPANDED_HEIGHT = '70dvh';
+/*
+ * PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): THREE named
+ * heights, and a browse panel can climb two of them.
+ *
+ *   0 Standard   448px + the bottom safe area. Every panel opens here.
+ *   1 Expanded   70% of the visible screen. Reached only by pulling up.
+ *   2 Full       the app area below the status bar. A second pull up.
+ *
+ * Pulling down steps Full -> Expanded -> Standard -> closed, so a panel is never
+ * lost in one gesture from the top. Only the browse panels (Pages, Search,
+ * Bookmarks, Spaces, Survey) opt into this; a tool sheet or a picker stays at
+ * Standard, because Expanded "is optional only for long browse content".
+ */
+export const SHEET_DETENT_STANDARD = 0;
+export const SHEET_DETENT_EXPANDED = 1;
+export const SHEET_DETENT_FULL = 2;
 // spring-back settle approximating damping24/stiffness260/mass.75 — a brief
 // overshoot then settle; kept subtle so it reads as a snap, not a bounce.
 export const SHEET_SPRING_MS = 260;
@@ -84,17 +100,22 @@ function prefersReducedMotion() {
  *   drag only engages from the handle / when inner scroll is at top.
  * @param {boolean} [options.expandable]  opt this sheet into the taller second
  *   detent (the Pages / Search / Bookmarks tray). Off for everything else.
+ * @param {boolean} [options.fullscreenable]  also allow the THIRD step, full
+ *   screen, from Expanded. Browse panels only; requires expandable.
  * @param {boolean} [options.open]  whether the sheet is currently shown. Drives
  *   the slide-up entrance. Sheets that mount only while open can leave this at
  *   its default; sheets that stay mounted and toggle a collapsed class (the hub
  *   tray, the survey rail) must pass their real open state.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag, expandable = false, open = true } = options;
+  const { canStartDrag, expandable = false, fullscreenable = false, open = true } = options;
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
   const [springing, setSpringing] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  // 0 Standard | 1 Expanded | 2 Full screen. `expanded` below is kept as the
+  // boolean every existing caller reads: it means "taller than Standard".
+  const [detent, setDetent] = useState(SHEET_DETENT_STANDARD);
+  const maxDetent = fullscreenable ? SHEET_DETENT_FULL : SHEET_DETENT_EXPANDED;
   // null = idle | 'parked' = held offscreen for one frame | 'settling' = sliding up
   const [enterPhase, setEnterPhase] = useState(() => (
     open && !prefersReducedMotion() ? 'parked' : null
@@ -143,7 +164,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     if (prefersReducedMotion()) {
       setDragY(0);
       setSpringing(false);
-      setExpanded(false);
+      setDetent(SHEET_DETENT_STANDARD);
       onClose?.();
       return;
     }
@@ -154,7 +175,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
     window.setTimeout(() => {
       setClosing(false);
       setDragY(0);
-      setExpanded(false);
+      setDetent(SHEET_DETENT_STANDARD);
       onClose?.();
     }, SHEET_CLOSE_UNMOUNT_MS);
   }, [closing, onClose]);
@@ -207,18 +228,22 @@ export function useMobileSheetMotion(onClose, options = {}) {
     if (!engaged) return;
     const travel = (lastYRef.current ?? startY) - startY;
     const vy = vyRef.current;
-    // Upward release on an expandable sheet: step up to the tall detent.
+    // Upward release on an expandable sheet: step UP one detent, at most to the
+    // sheet's own ceiling (Expanded, or Full screen for a browse panel).
     if (expandable && travel < 0) {
-      if (!expanded && (-travel > SHEET_EXPAND_DY || -vy > SHEET_DISMISS_VY)) setExpanded(true);
+      if (-travel > SHEET_EXPAND_DY || -vy > SHEET_DISMISS_VY) {
+        setDetent((current) => Math.min(maxDetent, current + 1));
+      }
       setDragY(0);
       return;
     }
     const dy = Math.max(0, travel);
     if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
-      // From the tall detent a downward pull steps back to the compact height
-      // instead of dismissing, so the sheet is never lost in one gesture.
-      if (expanded) {
-        setExpanded(false);
+      // From a tall detent a downward pull steps back ONE height instead of
+      // dismissing, so Full screen takes three pulls to close and a panel is
+      // never lost in one gesture.
+      if (detent > SHEET_DETENT_STANDARD) {
+        setDetent((current) => current - 1);
         setDragY(0);
         return;
       }
@@ -233,7 +258,7 @@ export function useMobileSheetMotion(onClose, options = {}) {
       setDragY(0);
       window.setTimeout(() => setSpringing(false), SHEET_SPRING_MS);
     }
-  }, [requestClose, expandable, expanded]);
+  }, [requestClose, expandable, detent, maxDetent]);
 
   // Merge into the sheet element's inline style. Only ever transform +
   // transition, so this never invalidates layout for the pdf.js render.
@@ -267,7 +292,12 @@ export function useMobileSheetMotion(onClose, options = {}) {
     dragHandlers: { onTouchStart, onTouchMove, onTouchEnd },
     requestClose,
     closing,
-    expanded,
-    setExpanded,
+    // `expanded` stays the boolean it always was - "taller than Standard" - so
+    // callers that only need two states are untouched.
+    expanded: detent > SHEET_DETENT_STANDARD,
+    fullscreen: detent >= SHEET_DETENT_FULL,
+    detent,
+    setDetent,
+    setExpanded: (next) => setDetent(next ? SHEET_DETENT_EXPANDED : SHEET_DETENT_STANDARD),
   };
 }

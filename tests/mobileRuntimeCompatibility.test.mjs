@@ -523,9 +523,18 @@ test('mobile annotation settings retain the preserved app geometry and controls'
   // <select> retired); it emits the same runtime aria-label from its ariaLabel
   // prop. Guard the control's presence via that prop.
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Arrowhead"/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /height: calc\(432px \+ var\(--mobile-bottom-inset\)\)/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\)[\s\S]{0,100}height: calc\(368px \+ var\(--mobile-bottom-inset\)\)/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /is-shape\.is-callout[\s\S]{0,100}height: calc\(448px \+ var\(--mobile-bottom-inset\)\)/);
+  /*
+   * RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Phone bottom panels":
+   * "Standard is the starting height for every current phone panel ... Do not
+   * choose a new height for one panel"). The settings sheet used to pick one of
+   * THREE heights depending on which tool opened it - 432 for text, 368 for a
+   * shape, 448 for a callout - so the same sheet was three different sizes and
+   * its body carried three matching literals to stay in step. One Standard
+   * height now, and the body is derived from it (flex:1) rather than named.
+   */
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[\s\S]{0,400}height: var\(--mobile-panel-standard\)/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\) \{\s*height:/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults__scroll \{[\s\S]{0,120}flex: 1 1 auto/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--shape-color[\s\S]{0,120}height: 150px/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--arrowhead[\s\S]{0,80}height: 85px/);
 });

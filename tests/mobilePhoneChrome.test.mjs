@@ -37,18 +37,34 @@ test('the sheet backdrop dims to 30% black', () => {
   assert.match(css, /\.mobile-pdf-colorpicker-backdrop \{[^}]*background: rgba\(0, 0, 0, 0\.01\)/);
 });
 
-test('the hub sheet has a second taller detent at 70% of the screen', () => {
-  // Detent math: compact = the content-measured height; expanded = 70dvh.
+/*
+ * RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Phone bottom panels"):
+ * THREE named heights, not two. A browse panel opens at Standard, climbs to
+ * Expanded (70dvh) on a pull up and to full screen on a second pull, and a pull
+ * down steps back ONE height at a time. The hook's boolean `expanded` became a
+ * numbered detent, so the two assertions that read `setExpanded(false)` out of it
+ * now read the step instead; what they guard - "a pull down from a tall detent
+ * steps back rather than dismissing" - is unchanged.
+ */
+test('the hub sheet steps through its three named heights', () => {
   assert.match(sheetMotion, /export const SHEET_EXPAND_DY = 48/);
   assert.match(sheetMotion, /export const SHEET_EXPANDED_HEIGHT = '70dvh'/);
-  // Drag up past the threshold (or flick up) expands.
+  // Drag up past the threshold (or flick up) climbs one detent, capped at the
+  // sheet's own ceiling.
   assert.match(sheetMotion, /-travel > SHEET_EXPAND_DY \|\| -vy > SHEET_DISMISS_VY/);
-  // Drag down from expanded returns to compact instead of dismissing.
-  assert.match(sheetMotion, /if \(expanded\) \{[\s\S]{0,160}setExpanded\(false\)/);
-  assert.match(css, /\.mobile-pdf-sheet\.is-expanded \{[^}]*--mobile-sheet-height: 70dvh/);
-  // The hub (Pages / Search / Bookmarks) opts in; standalone panels do not.
-  assert.match(sidebar, /expandable: mobileMode && !mobileStandalonePanel/);
+  assert.match(sheetMotion, /Math\.min\(maxDetent, current \+ 1\)/);
+  // Drag down from a tall detent steps back one height instead of dismissing.
+  assert.match(sheetMotion, /if \(detent > SHEET_DETENT_STANDARD\) \{[\s\S]{0,120}current - 1/);
+  assert.match(css, /\.mobile-pdf-sheet\.is-expanded \{[^}]*--mobile-sheet-height: var\(--mobile-panel-expanded\)/);
+  assert.match(css, /--mobile-panel-expanded: 70dvh/);
+  // Full screen stops clear of the app's top bar.
+  assert.match(css, /\.mobile-pdf-sheet\.is-fullscreen \{[^}]*100dvh/);
+  // The browse panels opt in; Version history does not.
+  assert.match(sidebar, /const browsePanel = mobileMode && activeTab !== 'history'/);
+  assert.match(sidebar, /expandable: browsePanel/);
+  assert.match(sidebar, /fullscreenable: browsePanel/);
   assert.match(sidebar, /sheetExpanded \? 'is-expanded ' : ''/);
+  assert.match(sidebar, /sheetFullscreen \? 'is-fullscreen ' : ''/);
   // The inline custom property is what actually takes effect; a stylesheet
   // rule alone would lose to it.
   assert.match(sidebar, /sheetExpanded \? SHEET_EXPANDED_HEIGHT :/);
