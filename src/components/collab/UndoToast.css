@@ -66,7 +66,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.4;
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
 }
 
 .undo-toast__action {
@@ -99,6 +99,6 @@
      (src/styles.css). 2px halo at 0.4 opacity reads clearly without
      overpowering surrounding chrome. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
   border-radius: 2px;
 }

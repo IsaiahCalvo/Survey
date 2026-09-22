@@ -57,7 +57,7 @@ export const AvatarStack = ({ members, size = 22 }) => (
   <div style={{ display: 'flex' }}>
     {members.map((m, i) => (
       <div key={i} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--ink-700)', borderRadius: '50%' }}>
-        <Avatar initials={m} color={['var(--gold)', 'var(--blue)', 'var(--green)', 'var(--rose)', 'var(--lilac)'][i % 5]} size={size} />
+        <Avatar initials={m} color={['var(--gold)', 'var(--blue)', 'var(--slate)', 'var(--lilac)'][i % 4]} size={size} />
       </div>
     ))}
   </div>

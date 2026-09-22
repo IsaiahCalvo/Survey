@@ -31,19 +31,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfirmModal } from '../home/BulkModals';
 import { closeButtonStyle } from '../home/hubControls';
 import { Icon } from '../home/HubShell';
+import { C } from '../uiPalette';
 
 // Literal hex colors mirror src/home/BulkModals.jsx: these overlays render
 // outside the `.survey-hub` root where the palette CSS variables aren't in
 // scope. Keep in sync with that file's `C` map.
-const C = {
-  scrim: 'rgba(13,15,20,0.55)',
-  card: 'var(--surface-2)',
-  deep: 'var(--surface-1)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  muted: 'var(--text-3)',
-  gold: 'var(--accent)',
-};
 
 const overlay = {
   position: 'fixed', inset: 0, background: C.scrim,

@@ -52,14 +52,14 @@
   color: var(--text-3);
   background: rgba(0, 0, 0, 0.12);
   border: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid var(--border);
   cursor: pointer;
 }
 
 .annotation-size-control__trigger:hover,
 .annotation-size-control__trigger[data-state='open'] {
   color: var(--text-2);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
 }
 
 /* PASS 7 (boards 8-15): the pill presentation. The box itself is the shared
@@ -179,7 +179,7 @@
 
 .annotation-size-control input:disabled,
 .annotation-size-control__trigger:disabled {
-  opacity: 0.45;
+  color: var(--text-disabled);
   cursor: default;
 }
 

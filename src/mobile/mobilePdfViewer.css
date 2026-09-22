@@ -338,8 +338,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 
-.mobile-pdf-header__icon:disabled { color: var(--text-disabled); opacity: 0.56; }
-.mobile-pdf-header__icon:not(:disabled):active { background: var(--surface-2); }
+.mobile-pdf-header__icon:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.mobile-pdf-header__icon:not(:disabled):active { background: var(--pressed); }
 
 /* UX 2026-09-21 (pass 7): every header control paints 28px and is HIT at 44px,
    the same painted-28/box-44 trick the strip and the dock use. The pad reaches
@@ -401,7 +403,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-nav:disabled { color: var(--text-disabled); }
-.mobile-pdf-header__page-nav:not(:disabled):active { background: var(--surface-2); }
+.mobile-pdf-header__page-nav:not(:disabled):active { background: var(--pressed); }
 
 /* Demo pill geometry: 68 wide, radius 5, tabular-nums, gold active border.
    Its height comes from the shared header control token so the pill lines up
@@ -626,8 +628,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   inset: -4px;
 }
 
-.mobile-pdf-header__zoom-steppers > button:disabled { color: var(--text-disabled); opacity: 0.5; }
-.mobile-pdf-header__zoom-steppers > button:not(:disabled):active { background: var(--surface-2); }
+.mobile-pdf-header__zoom-steppers > button:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.mobile-pdf-header__zoom-steppers > button:not(:disabled):active { background: var(--pressed); }
 
 .mobile-pdf-header__zoom-percent {
   min-width: 0;
@@ -806,7 +810,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--accent);
 }
 
-.mobile-pdf-tools__button:disabled { opacity: 0.35; }
+.mobile-pdf-tools__button:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
 
 /* PASS 7 (board 7, owner ruling 2026-09-22): the Select chip's split-button
    wrapper, its mode caret and the caret's flyout menu were all deleted. The
@@ -846,11 +852,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--accent);
 }
 
-/* The finger-down feedback is the phone's hover: a faint neutral wash, the same
-   one .quick-style__width:hover uses. It was grouped with .is-active above and
-   so painted the banned gold wash on every tap. */
+/* The finger-down feedback. There is no hover on a phone, so the press IS the
+   feedback: --pressed for as long as the finger is down, and nothing else. It
+   was grouped with .is-active above and so painted the banned gold wash on
+   every tap. */
 .mobile-pdf-lasso-controls > button:active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--pressed);
 }
 
 .mobile-pdf-lasso-controls > button:focus-visible {
@@ -1034,7 +1041,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__sync span {
   width: 12px;
   height: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border);
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--surface-2);
 }
@@ -1145,7 +1152,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-align: left;
 }
 
-.mobile-pdf-tools__popover button:active { background: var(--surface-3); }
+.mobile-pdf-tools__popover button:active { background: var(--pressed); }
 .mobile-pdf-tools__popover strong { display: block; padding: 5px 7px 8px; font-size: 12px; }
 
 .mobile-pdf-tools__popover > div {
@@ -1476,7 +1483,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   inset-block: -8px;
 }
 
-.mobile-pdf-properties--actions > button:disabled { opacity: 0.4; }
+.mobile-pdf-properties--actions > button:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
 
 /* UX 2026-07-12 (Phase C, demo parity): inline "Make region full page?"
    question shown when Full Page flips the region strip into its confirm step
@@ -1729,7 +1738,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-styled-select__trigger.is-open { color: var(--accent); }
 .mobile-styled-select__trigger.is-open > svg { color: var(--accent); }
-.mobile-styled-select__trigger:disabled { color: var(--text-3); opacity: 0.7; }
+.mobile-styled-select__trigger:disabled { color: var(--text-3);
+  cursor: not-allowed;
+}
 
 /* Board 15's menu: as wide as its field (content-box, so the rows measure the
    pill exactly), equal 5px padding on all four sides, 26px rows, and the current
@@ -1918,7 +1929,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__menu em { color: var(--text-3); font-style: normal; }
 
 .mobile-pdf-properties__edit.is-active { color: var(--accent); }
-.mobile-pdf-properties__edit:disabled { opacity: 0.4; }
+.mobile-pdf-properties__edit:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
 
 .mobile-pdf-text-defaults {
   position: fixed;
@@ -2295,7 +2308,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__colors > button > span {
   width: 20px;
   height: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid var(--ink-ring);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -2539,7 +2552,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__color-tabs i {
   width: 11px;
   height: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid var(--ink-ring);
   border-radius: 50%;
 }
 
@@ -3106,7 +3119,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--accent);
 }
 
-.mobile-survey-sheet-export:disabled { opacity: 0.45; }
+.mobile-survey-sheet-export:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
 
 .mobile-survey-sheet-export-menu {
   position: absolute;
@@ -3136,8 +3151,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
-.mobile-survey-sheet-export-menu > button:active { background: var(--surface-2); }
-.mobile-survey-sheet-export-menu > button:disabled { opacity: 0.45; }
+.mobile-survey-sheet-export-menu > button:active { background: var(--pressed); }
+.mobile-survey-sheet-export-menu > button:disabled { color: var(--text-disabled);
+  cursor: not-allowed;
+}
 .mobile-survey-sheet-export-menu > button > strong { font-size: 13px; font-weight: 900; }
 .mobile-survey-sheet-export-menu > button > span { color: var(--text-3); font-size: 10px; font-weight: 700; }
 
@@ -3171,10 +3188,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-survey-module-row > div > button:nth-child(1):disabled,
 .mobile-survey-module-row > div > button:nth-child(3):disabled {
-  opacity: 0.45;
   background: var(--surface-3) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-2) !important;
+  cursor: not-allowed;
 }
 
 /* UX 2026-07-12 (Phase C, demo parity): category cards inside the mobile
@@ -3225,7 +3242,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-survey-template-row:active {
-  background: var(--surface-3) !important;
+  background: var(--pressed) !important;
   border-color: var(--accent) !important;
 }
 
@@ -3299,7 +3316,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
-.mobile-survey-item-row:active { background: var(--surface-2); }
+.mobile-survey-item-row:active { background: var(--pressed); }
 
 .mobile-survey-item-dot {
   width: 10px;
@@ -3321,7 +3338,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    (styles.ts:2870-3401): 10px/800 uppercase field labels, 30px compact rows on
    #1B1F25/#343A45, 14px round entity swatch, #181B20/#3C424D dropdown menus
    with 34px options, and the 36px checklist rows with Y/N/N-A segments
-   (28x24; #2F7D55 / #8C3A42 / #5E6570 semantic colors). */
+   (28x24). The demo's #2F7D55 / #8C3A42 / #5E6570 answer fills were dropped
+   on 2026-09-22 — see .mobile-survey-check-btn below for why. */
 .mobile-survey-detail {
   flex: 1;
   min-height: 0;
@@ -3478,7 +3496,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
-.mobile-survey-detail-menu > button:active { background: var(--surface-2); }
+.mobile-survey-detail-menu > button:active { background: var(--pressed); }
 
 .mobile-survey-detail-menu > button.is-active { background: var(--surface-3); }
 
@@ -3574,15 +3592,29 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
+/* UX 2026-09-22 (revision-3 palette). The chosen answer used to be a GREEN
+   fill (#2f7d55) beside a red one (#8c3a42) and a grey one — three fills, two
+   of them a second and third accent, on a control 28px wide. Two rules
+   decided it: the owner's (there is no green accent in this app; green is a
+   status DOT and nothing else) and the reference video's (an icon's job is to
+   be a recognisable symbol, and colour is reserved for telling the user
+   something a shape cannot). So the chosen answer takes the app's own
+   selected cue — a gold LABEL on the neutral surface, no fill — and only NO,
+   which is the one destructive-shaped answer, keeps a red, as the soft tint
+   rather than a slab. Measured on surface-3: gold 6.06:1, --danger-text
+   4.82:1. (--danger-text over a --danger-soft fill measures 4.06 and was
+   rejected — the label is 9px, so it needs the full 4.5.) */
 .mobile-survey-check-btn.is-active {
-  border-color: transparent;
-  color: var(--text-1);
+  color: var(--accent);
 }
 
-/* Semantic checklist colors — same in demo (styles.ts:3385-3393). */
-.mobile-survey-check-btn.is-yes { background: #2f7d55; }
-.mobile-survey-check-btn.is-no { background: #8c3a42; }
-.mobile-survey-check-btn.is-na { background: var(--border-strong); }
+/* The chosen answer is INK, never a fill and never a border — the owner's
+   selected-state ruling, which tests/selectedStateGoldInkOnly.test.mjs
+   enforces. The unchosen two stay --text-3 (4.90 on this surface), so the one
+   that is lit is the only bright thing in the group. */
+.mobile-survey-check-btn.is-yes { color: var(--accent); }
+.mobile-survey-check-btn.is-no { color: var(--danger-text); }
+.mobile-survey-check-btn.is-na { color: var(--text-1); }
 
 .mobile-survey-detail-empty {
   margin-top: 6px;
@@ -3686,7 +3718,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
-.mobile-survey-notes-upload:active { background: var(--surface-3); }
+.mobile-survey-notes-upload:active { background: var(--pressed); }
 
 .mobile-survey-notes-attachment {
   min-height: 40px;
@@ -4078,6 +4110,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 112px !important;
   padding-bottom: 0 !important;
   flex: 0 0 auto;
+  /* A page thumbnail is a picture of PAPER, so it keeps paper colours — the
+     one class of value tokens.css exempts along with ink. */
   background: #fafaf8 !important;
   border: 1px solid #e5e5de;
   border-radius: 5px !important;
@@ -4295,8 +4329,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* Lifted row while dragging — the phone equivalent of the desktop clone's
    shadow + lighter surface, so the finger has something that looks picked up. */
 .mobile-bookmark-row.is-dragging {
-  background: #242a33;
-  border-color: #d8a84e;
+  background: var(--surface-3);
+  border-color: var(--accent);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
 }
 
@@ -4308,7 +4342,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-self: stretch;
   display: grid;
   place-items: center;
-  color: #8d96a6;
+  color: var(--text-3);
   font-size: 14px;
   line-height: 1;
   cursor: grab;
@@ -4327,7 +4361,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-bookmark-row.is-dragging .mobile-bookmark-grip {
-  color: #d8a84e;
+  color: var(--accent);
   cursor: grabbing;
 }
 
@@ -4548,4 +4582,47 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 0;
   border-radius: 10px;
   font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+/* ==========================================================================
+   THE PHONE PRESS (UX 2026-09-22, revision-3 palette)
+   --------------------------------------------------------------------------
+   The reference video is explicit about this: "because we don't have hover
+   effects on mobile, we usually just resort to click effects ... adding a
+   slightly darker grey on press makes it feel like you're actually pressing
+   into something." Eleven phone controls had no press feedback at all — a tap
+   changed the app but the control itself never moved — and the ones that did
+   painted --surface-2 or --surface-3, which is the SELECTED colour, so a tap
+   flashed "selected" and then took it away.
+
+   One value, --pressed, for as long as the finger is down. No gold: a gold
+   flash would collide with the selected state (owner ruling: selected is a
+   gold glyph, nothing else). The transition is the phone's 90ms so the press
+   registers instantly and the release eases back.
+
+   Every rule here is last in the file on purpose, so it wins over the resting
+   fill of the control it names without needing !important. A control that is
+   ALREADY armed or selected keeps its own look — .is-active is matched more
+   specifically above and below.
+   ========================================================================== */
+.mobile-pdf-tools__button:not(:disabled):active,
+.mobile-pdf-header__page-input:active,
+.mobile-doc-card:active,
+.mobile-project-card:active,
+.mobile-pdf-properties__color:active,
+.mobile-pdf-text-card__large-swatch:active,
+.mobile-survey-detail-swatch-btn:active,
+.mobile-survey-detail-icon-btn:active,
+.mobile-survey-detail-name-dd:active,
+.mobile-survey-check-btn:active,
+.mobile-survey-notes-attachment > button:active,
+.mobile-survey-notes-cancel:active,
+.mobile-survey-notes-save:active,
+.mobile-bookmark-open:active,
+.mobile-bookmark-move:not(:disabled):active,
+.mobile-pdf-tool-sheet__action:active,
+.mobile-pdf-header__zoom-menu button:active,
+.mobile-spaces-panel .spaces-header-export-menu-button:active {
+  background: var(--pressed);
+  transition: background 90ms ease-out;
 }

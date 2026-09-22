@@ -87,7 +87,7 @@
 
 .confirm-delete-modal__close:hover {
   color: var(--text-1);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
 }
 
 .confirm-delete-modal__actions {
@@ -116,20 +116,28 @@
 
 .confirm-delete-modal__btn--cancel:hover {
   color: var(--text-1);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
 }
 
 .confirm-delete-modal__btn--danger {
   height: 28px;
-  background: var(--danger);
+  background: var(--danger-fill);
   border: 0;
   border-radius: 6px;
-  color: var(--text-1);
+  color: var(--on-danger);
   padding: 5px 14px;
   font-size: 11.5px;
   font-weight: 600;
 }
 
+/* UX 2026-09-22: --text-1 on the bright --danger measures 2.83:1, so the label
+   on the most destructive button in this view was its least readable text.
+   --danger-fill is the darkened red white is allowed to sit on (6.06), and the
+   hover LIFTS to --danger, which is the video's rule for a hover. */
 .confirm-delete-modal__btn--danger:hover {
+  background: var(--danger);
+}
+
+.confirm-delete-modal__btn--danger:active {
   background: var(--danger-press);
 }

@@ -32068,7 +32068,7 @@ ${pageBlocks}
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 2000,
-              background: 'rgba(216, 168, 78, 0.9)',
+              background: 'var(--accent)',
               color: 'white',
               padding: '8px 16px',
               borderRadius: '20px',
@@ -34104,7 +34104,7 @@ ${pageBlocks}
                               setActiveTool('highlighter');
                               setHighlighterCaretPopupOpen(false);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? 'var(--surface-3)' : 'transparent'; }}
                             style={optionStyle(activeTool === 'highlighter')}
                           >
@@ -34116,7 +34116,7 @@ ${pageBlocks}
                               setActiveTool('text-highlight');
                               setHighlighterCaretPopupOpen(false);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? 'var(--surface-3)' : 'transparent'; }}
                             style={optionStyle(activeTool === 'text-highlight')}
                           >
@@ -34390,7 +34390,7 @@ ${pageBlocks}
                               e.stopPropagation();
                               handleNewCounterSeries();
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             style={{
                               display: 'flex',
@@ -34418,7 +34418,7 @@ ${pageBlocks}
                             }}
                             onMouseEnter={(e) => {
                               setCounterCaretSubmenu('continue');
-                              e.currentTarget.style.background = 'var(--surface-3)';
+                              e.currentTarget.style.background = 'var(--hover)';
                             }}
                             onMouseLeave={(e) => {
                               if (counterCaretSubmenu !== 'continue') {
@@ -34502,7 +34502,7 @@ ${pageBlocks}
                                       e.stopPropagation();
                                       handleSwitchCounterSeries(s.seriesId);
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? 'var(--surface-3)' : 'transparent'; }}
                                     style={{
                                       display: 'flex',
@@ -34679,7 +34679,7 @@ ${pageBlocks}
                         setUnderlineCaretPopupOpen(false);
                         setStrikeCaretPopupOpen(false);
                       }}
-                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--surface-3)'; }}
+                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--hover)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? 'var(--surface-3)' : 'transparent'; }}
                       style={optionStyle(activeTool === tool, disabled)}
                     >

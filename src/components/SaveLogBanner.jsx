@@ -417,7 +417,7 @@ export default function SaveLogBanner() {
                     lineHeight: 1,
                     touchAction: 'manipulation'
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'transparent'; }}
                 >
                   <Icon name="close" size={14} />

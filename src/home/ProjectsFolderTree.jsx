@@ -1623,12 +1623,8 @@ export default function ProjectsFolderTree({
           return (
             <div
               key={`mobile-project-${p.id}`}
-              className="mobile-project-card"
+              className={`mobile-project-card${jobsEdit && isSel ? ' is-selected' : ''}${isOpen ? ' is-open' : ''}`}
               onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
-              style={{
-                borderColor: isOpen ? 'var(--gold)' : 'var(--ink-500)',
-                background: jobsEdit && isSel ? 'var(--ink-600)' : 'var(--ink-700)',
-              }}
             >
               <div style={{ minWidth: 0 }}>
                 <div className="mobile-card-title">{p.name}</div>

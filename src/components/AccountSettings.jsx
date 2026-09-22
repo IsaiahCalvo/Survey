@@ -875,11 +875,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                               Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
-                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                            <button className="account-btn-secondary" disabled>
                               Developer account
                             </button>
                           ) : (
-                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                            <button className="account-btn-secondary" disabled>
                               Downgrade available
                             </button>
                           )}
@@ -936,11 +936,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                               Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
-                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                            <button className="account-btn-secondary" disabled>
                               Developer account
                             </button>
                           ) : subscription?.tier === 'enterprise' ? (
-                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                            <button className="account-btn-secondary" disabled>
                               On higher plan
                             </button>
                           ) : (
@@ -987,7 +987,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                               Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
-                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                            <button className="account-btn-secondary" disabled>
                               Developer account
                             </button>
                           ) : (

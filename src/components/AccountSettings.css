@@ -108,7 +108,7 @@
 }
 
 .account-settings-close:hover {
-  background: var(--surface-3);
+  background: var(--hover);
   border-color: var(--border-strong);
   color: var(--text-1);
   transform: scale(1.05);
@@ -157,7 +157,7 @@
 /* UX: the nav row lifts a surface step AND brightens its label under the
    pointer. Repainting the resting --text-3 here left the label dead. */
 .account-sidebar-btn:hover {
-  background: var(--surface-2);
+  background: var(--hover);
   color: var(--text-1);
 }
 
@@ -224,7 +224,7 @@
    fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
    body text. Red is the accent, not the text colour. Same shape as .auth-error. */
 .account-error {
-  background: rgba(217, 90, 86, 0.10);
+  background: var(--danger-soft);
   border-left: 3px solid var(--danger);
   color: var(--text-1);
   border-radius: 8px;
@@ -235,8 +235,8 @@
 }
 
 .account-message {
-  background: rgba(216, 168, 78, 0.1);
-  border: 1px solid rgba(216, 168, 78, 0.28);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
   color: var(--accent);
   border-radius: 6px;
   padding: 9px 12px;
@@ -284,14 +284,14 @@
 
 .account-form-group input:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: var(--surface-3);
+  background: var(--hover);
 }
 
 .account-form-group input:focus {
   outline: none;
   border-color: var(--accent);
   background: var(--surface-3);
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.18);
+  box-shadow: 0 0 0 2px var(--accent-soft-strong);
 }
 
 .account-form-group input:disabled {
@@ -299,7 +299,6 @@
   border-color: var(--border);
   color: var(--text-3);
   cursor: not-allowed;
-  opacity: 0.7;
 }
 
 .account-field-display {
@@ -395,7 +394,7 @@
 }
 
 .account-btn-primary:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
@@ -413,13 +412,13 @@
 }
 
 .account-btn-secondary:hover:not(:disabled) {
-  background: var(--surface-3);
+  background: var(--hover);
   border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
 .account-btn-secondary:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
@@ -429,9 +428,9 @@
 
 .account-btn-danger {
   padding: 8px 16px;
-  background: rgba(217, 90, 86, 0.1);
+  background: var(--danger-soft);
   color: var(--danger);
-  border: 1px solid rgba(217, 90, 86, 0.26);
+  border: 1px solid var(--danger);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -441,13 +440,13 @@
 }
 
 .account-btn-danger:hover:not(:disabled) {
-  background: rgba(217, 90, 86, 0.18);
-  border-color: rgba(217, 90, 86, 0.4);
+  background: var(--danger-soft);
+  border-color: var(--danger);
   transform: translateY(-1px);
 }
 
 .account-btn-danger:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
@@ -509,7 +508,7 @@
 }
 
 .account-connected-account:hover {
-  background: var(--surface-3);
+  background: var(--hover);
   border-color: var(--border-strong);
 }
 
@@ -692,8 +691,8 @@
 }
 
 .account-btn-outline-gold {
-  background: rgba(216, 168, 78, 0.1);
-  border: 1px solid rgba(216, 168, 78, 0.35);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
   color: var(--accent);
   padding: 8px;
   border-radius: 6px;
@@ -730,7 +729,7 @@
    its label; --text-3 on both sides was no hover. */
 .account-subscription-tab:hover {
   color: var(--text-1);
-  background: var(--surface-2);
+  background: var(--hover);
 }
 
 .account-subscription-tab.active {

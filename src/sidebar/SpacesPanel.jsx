@@ -218,7 +218,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
               onMouseEnter={(e) => {
                 tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'var(--surface-3)';
+                e.currentTarget.style.background = 'var(--hover)';
               }}
               onMouseLeave={(e) => {
                 tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseLeave(e);
@@ -296,7 +296,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               onMouseEnter={(e) => {
                 tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseEnter(e);
                 if (!isActive) {
-                  e.currentTarget.style.background = 'var(--surface-3)';
+                  e.currentTarget.style.background = 'var(--hover)';
                 } else {
                   // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
                   e.currentTarget.style.background = 'var(--accent-light)';
@@ -344,7 +344,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               aria-label="Delete"
               onMouseEnter={(e) => {
                 tip('Delete', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'rgba(217, 90, 86, 0.15)';
+                e.currentTarget.style.background = 'var(--danger-soft)';
               }}
               onMouseLeave={(e) => {
                 tip('Delete', 'below').onMouseLeave(e);
@@ -520,7 +520,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     tip(overlayTooltipText, 'below').onMouseEnter(e);
                                     if (!isToggleEnabled) return;
                                     if (!isOverlayEnabled) {
-                                      e.currentTarget.style.background = 'var(--surface-3)';
+                                      e.currentTarget.style.background = 'var(--hover)';
                                     } else {
                                       // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
                   e.currentTarget.style.background = 'var(--accent-light)';
@@ -700,7 +700,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   style={{
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
                                     color: isDisabled ? 'var(--text-disabled)' : (visibilityState ? 'var(--accent)' : 'var(--text-3)'),
-                                    opacity: isDisabled ? 0.5 : 1,
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
                                   {...tip(title, 'below')}

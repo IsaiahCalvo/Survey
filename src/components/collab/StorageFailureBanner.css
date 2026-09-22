@@ -69,7 +69,7 @@
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: -0.01em;
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
 }
 
 .storage-banner__body {
@@ -116,7 +116,7 @@
   /* UX: keyboard focus ring matching existing input focus pattern (src/styles.css).
      2px halo at 0.4 opacity reads clearly without overpowering surrounding chrome. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
   border-radius: 2px;
 }
 
@@ -145,12 +145,12 @@
 }
 
 .storage-banner__dismiss:hover {
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
 }
 
 .storage-banner__dismiss:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
   border-radius: 2px;
 }
 
@@ -199,3 +199,7 @@
   opacity: 1;
   transition: opacity 220ms cubic-bezier(0, 0, 0.2, 1);
 }
+
+/* The banner's action had no hover and no press (UX 2026-09-22). */
+.storage-banner__action:hover { background: var(--hover); }
+.storage-banner__action:active { background: var(--pressed); }

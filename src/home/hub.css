@@ -36,10 +36,19 @@
      palette. Nothing inside .survey-hub ever read it, yet the phone viewer
      asked for `var(--gold-bg, #2a2218)` from OUTSIDE this scope and so always
      painted the fallback brown. The active-state fill is --accent-soft now. */
-  --blue:    #7ab7e6;
-  --green:   #a6e07a;
-  --rose:    #e69a7a;
-  --lilac:   #c293e6;
+  /* UX 2026-09-22 (revision-3 palette). This block WAS a second accent family.
+     --green measured 11.25:1 on the panel and --blue 8.08 — both LOUDER than
+     the gold's 7.98, so on a screen where gold means "the accent" the eye went
+     to a status tag instead. The reference video's first rule: one accent, and
+     everything else steps back.
+     --green and --rose are gone. A tag that carried them takes --slate, the
+     neutral. The two that stay are dimmed below the gold on purpose —
+     --blue 5.95 and --lilac 5.30 on the panel, both still comfortably past
+     4.5 for their 10.5px uppercase label, and both now quieter than the
+     accent rather than louder. These are still NOT chrome: they are the set of
+     distinguishable hues a tag or an avatar is given. */
+  --blue:    #5f9dcc;
+  --lilac:   #a97bcc;
   --slate:   var(--text-3);
 }
 
@@ -74,7 +83,7 @@
 .survey-hub .nav { margin-top: 18px; display: grid; gap: 2px; }
 .survey-hub .nav button { background: transparent; border: 0; text-align: left; padding: 6px 8px; border-radius: 6px; color: var(--ink-200); cursor: pointer; font: inherit; display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .survey-hub .nav button.active { background: var(--ink-600); color: var(--bone-100); box-shadow: inset 2px 0 var(--gold); }
-.survey-hub .nav button:disabled { opacity: 0.5; cursor: not-allowed; }
+.survey-hub .nav button:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .survey-hub .nav button .ico { width: 14px; height: 14px; opacity: .9; }
 /* KAL-280 — the Archive group takes the rail's flexible space so it settles at
    the bottom, directly above the profile chip. `.who` keeps margin-top:auto as a
@@ -97,7 +106,7 @@
   font-weight: 700;
   cursor: pointer;
 }
-.survey-hub .profile-signin:hover { background: rgba(216,168,78,0.1); }
+.survey-hub .profile-signin:hover { background: var(--accent-soft); }
 
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
@@ -115,14 +124,22 @@
 .survey-hub .actions { margin-left: auto; display: flex; gap: 6px; }
 .survey-hub .btn { background: var(--ink-700); color: var(--bone-100); border: 1px solid var(--ink-500); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; }
 .survey-hub .btn.primary { background: var(--gold); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+/* UX 2026-09-22: a gold control's own states. It used to take the generic
+   neutral press, so the home screen's one primary button went dark grey under
+   the finger instead of darkening its gold. */
+.survey-hub .btn.primary:hover { background: var(--accent-light); }
+.survey-hub .btn.primary:active { background: var(--accent-press); }
+.survey-hub .btn:not(.primary):hover { background: var(--hover); }
+.survey-hub .btn:not(.primary):active { background: var(--pressed); }
 .survey-hub .btn.ghost { background: transparent; }
 
 .survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
-.survey-hub .pill.gold { background: rgba(216,168,78,0.15); color: var(--gold); }
-.survey-hub .pill.blue { background: rgba(122,183,230,0.15); color: var(--blue); }
-.survey-hub .pill.green { background: rgba(166,224,122,0.16); color: var(--green); }
-.survey-hub .pill.rose { background: rgba(230,154,122,0.16); color: var(--rose); }
-.survey-hub .pill.lilac { background: rgba(194,147,230,0.16); color: var(--lilac); }
+.survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
+.survey-hub .pill.blue { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
+/* The green and the rose tags map to the neutral one — see the :root note. */
+.survey-hub .pill.green,
+.survey-hub .pill.rose { background: color-mix(in srgb, var(--slate) 14%, transparent); color: var(--slate); }
+.survey-hub .pill.lilac { background: color-mix(in srgb, var(--lilac) 15%, transparent); color: var(--lilac); }
 .survey-hub .pill.slate { background: rgba(154,163,178,0.14); color: var(--slate); }
 
 .survey-hub .meta { color: var(--ink-200); font-size: 11.5px; }
@@ -148,7 +165,7 @@
    colours, exactly as a real page would. */
 .survey-hub .pdf-thumb .ribbon { position: absolute; top: 0; left: 0; right: 0; height: 18%; background: #1f4a7a; }
 .survey-hub .pdf-thumb .ribbon-line { position: absolute; top: 22%; left: 8%; right: 8%; height: 4%; background: rgba(20,20,20,0.6); }
-.survey-hub .pdf-thumb .stamp { position: absolute; bottom: 6%; right: 6%; width: 28px; height: 14px; border: 1.4px solid #b03a3a; color: #b03a3a; border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 8px; display: grid; place-items: center; }
+.survey-hub .pdf-thumb .stamp { position: absolute; bottom: 6%; right: 6%; width: 28px; height: 14px; border: 1.4px solid var(--danger-fill); color: var(--danger-fill); border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 8px; display: grid; place-items: center; }
 .survey-hub .pdf-thumb .mark { position: absolute; border: 1.5px solid var(--gold); border-radius: 2px; }
 .survey-hub .pdf-thumb .swatch { position: absolute; background: rgba(216,168,78,0.45); }
 
@@ -475,7 +492,7 @@
 }
 
 .survey-hub .profile-menu-signout:hover {
-  background: rgba(217, 90, 86,0.1) !important;
+  background: var(--danger-soft) !important;
 }
 
 .survey-hub .profile-signout-confirm {
@@ -484,8 +501,8 @@
   gap: 8px;
   margin-top: 2px;
   padding: 9px 10px;
-  background: rgba(217, 90, 86,0.08);
-  border: 1px solid rgba(217, 90, 86,0.22);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
   border-radius: 8px;
 }
 
@@ -513,10 +530,24 @@
   cursor: pointer;
 }
 
+/* UX 2026-09-22: --text-1 on the bright --danger measures 2.83:1, so the label
+   on the most destructive button in this view was its least readable text.
+   --danger-fill is the darkened red white is allowed to sit on (6.06), and the
+   hover LIFTS to --danger, which is the video's rule for a hover. */
 .survey-hub .profile-signout-buttons button.danger {
-  border-color: rgba(217, 90, 86,0.42);
+  border-color: var(--danger-fill);
+  background: var(--danger-fill);
+  color: var(--on-danger);
+}
+
+.survey-hub .profile-signout-buttons button.danger:hover {
+  border-color: var(--danger);
   background: var(--danger);
-  color: var(--text-1);
+}
+
+.survey-hub .profile-signout-buttons button.danger:active {
+  border-color: var(--danger-press);
+  background: var(--danger-press);
 }
 
 .survey-hub .mobile-home-tabs,
@@ -880,7 +911,7 @@
   }
 
   .survey-hub .mobile-rail-nav-options button:disabled {
-    opacity: 0.5;
+    color: var(--text-disabled);
     cursor: not-allowed;
   }
 
@@ -1470,7 +1501,7 @@
   }
 
   .survey-hub .mobile-home-tabs button:disabled {
-    opacity: 0.45;
+    color: var(--text-disabled);
     cursor: not-allowed;
   }
 
@@ -1582,6 +1613,35 @@
 
   .survey-hub .ed-scope {
     background: var(--ink-900) !important;
+  }
+
+  /* UX 2026-09-22: the SELECTED card, moved here out of an inline style. An
+     inline declaration outranks every class rule, so while the fill lived on
+     the element the card's :active below could never paint — measured live at
+     390x844, the card took the transition from the press rule and kept its
+     resting colour. Selected is a surface step plus the gold edge, which is
+     the app's one selected cue. */
+  .survey-hub .mobile-doc-card.is-selected,
+  .survey-hub .mobile-project-card.is-selected {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+  }
+
+  /* The gold EDGE these two used to carry went with them. The owner's ruling
+     is that a selected thing is marked by gold INK and nothing else
+     (tests/selectedStateGoldInkOnly.test.mjs enforces it); while the edge was
+     an inline style the test could not see it. The card's own check mark is
+     already gold, and an OPEN project says so with a gold title. */
+  .survey-hub .mobile-project-card.is-open .mobile-card-title {
+    color: var(--accent);
+  }
+
+  /* A tapped card has to answer the finger. There is no hover on a phone, so
+     the press IS the feedback — --pressed for as long as the finger is down. */
+  .survey-hub .mobile-doc-card:active,
+  .survey-hub .mobile-project-card:active {
+    background: var(--pressed);
+    transition: background 90ms ease-out;
   }
 
   .survey-hub .mobile-doc-card,
@@ -1728,7 +1788,7 @@
     border-radius: 8px;
     display: grid;
     place-items: center;
-    background: rgba(216,168,78,0.16);
+    background: var(--accent-soft);
     color: var(--gold);
   }
 
@@ -2175,7 +2235,7 @@
   }
 
   .survey-hub .projects-mobile-folder-art {
-    background: rgba(216,168,78,0.16);
+    background: var(--accent-soft);
     color: var(--gold);
   }
 
@@ -2749,7 +2809,7 @@
   }
 
   .survey-hub .templates-mobile-module-group.active {
-    border-color: rgba(216,168,78,0.46);
+    border-color: var(--accent-press);
   }
 
   .survey-hub .templates-mobile-module-group-head {
@@ -3356,5 +3416,47 @@
 @media (max-width: 420px) {
   .survey-hub .actions {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* ==========================================================================
+   MISSING STATES (UX 2026-09-22, revision-3 palette)
+   --------------------------------------------------------------------------
+   Twelve controls in the hub had no hover and no press at all: the desktop
+   sidebar nav, the sign-out buttons, the archive sort menu, and the eight
+   phone rows and triggers. Measured live at 1440x900 and 390x844, all four
+   nav items read the same colour at rest, under the pointer and after the
+   pointer left — the rail simply did not answer.
+
+   One hover (--hover) and one press (--pressed), and a control that is
+   .active keeps its own selected look. Last in the file so it wins over the
+   resting fill without !important; the .active guards keep a chosen row
+   chosen. Desktop gets hover AND press; a phone row gets the press only,
+   because there is no pointer to hover with.
+   ========================================================================== */
+.survey-hub .nav button:not(.active):hover,
+.survey-hub .profile-signout-buttons button:not(.danger):hover,
+.survey-hub .archive-sort-menu button:not(.active):hover {
+  background: var(--hover);
+}
+
+.survey-hub .nav button:not(.active):active,
+.survey-hub .profile-signout-buttons button:not(.danger):active,
+.survey-hub .archive-sort-menu button:not(.active):active {
+  background: var(--pressed);
+}
+
+@media (max-width: 860px) {
+  .survey-hub .mobile-rail-nav-trigger:active,
+  .survey-hub .mobile-rail-nav-options button:not(.active):active,
+  .survey-hub .mobile-header-select-button:active,
+  .survey-hub .mobile-home-tabs button:not(.active):active,
+  .survey-hub .projects-mobile-iteration-switcher button:not(.active):active,
+  .survey-hub .projects-mobile-folder-row.drill:active,
+  .survey-hub .projects-mobile-file-row:active,
+  .survey-hub .templates-mobile-row:active,
+  .survey-hub .archive-mobile-disclosure:active {
+    background: var(--pressed);
+    transition: background 90ms ease-out;
   }
 }

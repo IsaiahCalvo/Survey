@@ -142,8 +142,8 @@ export const rowIdWritebackMessage = (result) => {
 export const SYNC_TONE_COLORS = Object.freeze({
   [SYNC_TONE.INFO]: { color: 'var(--text-3)', background: 'var(--surface-2)', border: '1px solid var(--border)' },
   [SYNC_TONE.SUCCESS]: { color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-press)' },
-  [SYNC_TONE.WARN]: { color: 'var(--warning)', background: 'rgba(125, 128, 61, 0.14)', border: '1px solid var(--warning)' },
-  [SYNC_TONE.ERROR]: { color: 'var(--danger)', background: 'rgba(217, 90, 86, 0.12)', border: '1px solid var(--danger)' }
+  [SYNC_TONE.WARN]: { color: 'var(--warning)', background: 'var(--warning-soft)', border: '1px solid var(--warning)' },
+  [SYNC_TONE.ERROR]: { color: 'var(--danger)', background: 'var(--danger-soft)', border: '1px solid var(--danger)' }
 });
 
 /**

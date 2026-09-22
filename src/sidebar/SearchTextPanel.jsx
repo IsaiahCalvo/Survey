@@ -1034,7 +1034,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = 'var(--surface-3)';
+          e.currentTarget.style.background = 'var(--hover)';
         }
       }}
       onMouseLeave={(e) => {
@@ -1065,7 +1065,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
           fontSize: '11px',
           fontWeight: '600',
           color: 'var(--accent)',
-          background: 'rgba(216, 168, 78, 0.15)',
+          background: 'var(--accent-soft)',
           padding: '2px 6px',
           borderRadius: '4px'
         }}>
@@ -1742,7 +1742,7 @@ const SearchTextPanel = ({
                 justifyContent: 'center',
                 borderRadius: '4px'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               <Icon name="close" size={14} color="var(--text-3)" />
@@ -1802,7 +1802,7 @@ const SearchTextPanel = ({
                 }}
                 onMouseEnter={(e) => {
                   tip('Previous match (Shift+Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--surface-3)';
+                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--hover)';
                 }}
                 onMouseLeave={(e) => {
                   tip('Previous match (Shift+Enter)', 'below').onMouseLeave(e);
@@ -1829,7 +1829,7 @@ const SearchTextPanel = ({
                 }}
                 onMouseEnter={(e) => {
                   tip('Next match (Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--surface-3)';
+                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--hover)';
                 }}
                 onMouseLeave={(e) => {
                   tip('Next match (Enter)', 'below').onMouseLeave(e);

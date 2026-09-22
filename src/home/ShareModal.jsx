@@ -28,18 +28,8 @@ import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
 import useModalFocusTrap from './useModalFocusTrap';
+import { C } from '../uiPalette';
 
-const C = {
-  scrim: 'rgba(13,15,20,0.55)',
-  card: 'var(--surface-2)',
-  deep: 'var(--surface-1)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  inkSoft: 'var(--text-2)',
-  muted: 'var(--text-3)',
-  gold: 'var(--accent)',
-  danger: 'var(--danger)',
-};
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
 const ROLE_OPTIONS = ['Viewer', 'Editor', 'Owner'];
@@ -225,7 +215,7 @@ export default function ShareModal({
             <div style={fieldLabel}>Invite link</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px', gap: 6 }}>
               <div style={{ flex: 1, minWidth: 0, background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, display: 'flex', alignItems: 'center', fontSize: 11.5, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: 'none', height: 30, whiteSpace: 'nowrap', background: C.card, color: C.ink, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', fontSize: 11.5, cursor: busy || blockedReason ? 'not-allowed' : 'pointer', opacity: busy || blockedReason ? 0.5 : 1, fontFamily: 'inherit', boxSizing: 'border-box' }}>{copied ? 'Copied' : 'Copy link'}</button>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: 'none', height: 30, whiteSpace: 'nowrap', background: C.card, color: C.ink, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', fontSize: 11.5, cursor: busy || blockedReason ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxSizing: 'border-box' }}>{copied ? 'Copied' : 'Copy link'}</button>
             </div>
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>{explicitLinkText}{freeNote}</div>
           </div>
@@ -243,17 +233,17 @@ export default function ShareModal({
           </div>
 
           {blockedReason && (
-            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {blockedReason}
             </div>
           )}
           {error && !blockedReason && (
-            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {error}
             </div>
           )}
           {success && (
-            <div style={{ background: 'rgba(216,168,78,0.10)', border: `1px solid ${C.gold}`, borderRadius: 6, padding: '8px 10px', color: C.gold, fontSize: 11.5 }}>
+            <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 6, padding: '8px 10px', color: C.gold, fontSize: 11.5 }}>
               {success}
             </div>
           )}
@@ -265,7 +255,7 @@ export default function ShareModal({
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
             onClick={sendInvite}
-            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? 'progress' : (!emails.trim() || blockedReason ? 'not-allowed' : 'pointer'), background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            style={{ cursor: busy ? 'progress' : (!emails.trim() || blockedReason ? 'not-allowed' : 'pointer'), background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             {/* UX (KAL-73): sending an invite is a network round-trip well over
                 500ms, so it takes the shared button loading treatment — 14px ring

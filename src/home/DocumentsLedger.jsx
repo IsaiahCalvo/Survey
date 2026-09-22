@@ -392,7 +392,7 @@ export default function DocumentsLedger({
       <div
         key={`mobile-${d.id}`}
         data-document-id={d.id}
-        className="mobile-doc-card"
+        className={`mobile-doc-card${docSelectMode && isChecked ? ' is-selected' : ''}`}
         onClick={() => openMobileDoc(d)}
         role="button"
         tabIndex={0}
@@ -400,10 +400,6 @@ export default function DocumentsLedger({
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
           openMobileDoc(d);
-        }}
-        style={{
-          borderColor: docSelectMode && isChecked ? 'var(--gold)' : 'var(--ink-500)',
-          background: docSelectMode && isChecked ? 'var(--ink-600)' : 'var(--ink-700)',
         }}
       >
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
@@ -560,8 +556,8 @@ export default function DocumentsLedger({
                         marks={[
                           { x: 12, y: 36, w: 36, h: 16, color: 'var(--gold)' },
                           { x: 56, y: 50, w: 24, h: 22, color: 'var(--blue)' },
-                          { type: 'swatch', x: 18, y: 62, w: 50, h: 6, color: 'rgba(166,224,122,0.4)' },
-                          { x: 60, y: 78, w: 26, h: 10, color: 'var(--rose)' },
+                          { type: 'swatch', x: 18, y: 62, w: 50, h: 6, color: 'var(--accent-soft-strong)' },
+                          { x: 60, y: 78, w: 26, h: 10, color: 'var(--slate)' },
                         ]}
                       />
                     </div>

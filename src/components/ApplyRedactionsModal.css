@@ -68,15 +68,29 @@
   color: var(--text-2);
 }
 
+/* UX 2026-09-22: --text-1 on the bright --danger measures 2.83:1, so the label
+   on the most destructive button in this view was its least readable text.
+   --danger-fill is the darkened red white is allowed to sit on (6.06), and the
+   hover LIFTS to --danger, which is the video's rule for a hover. */
 .apply-redactions-confirm {
-  border: 1px solid var(--danger);
+  border: 1px solid var(--danger-fill);
+  background: var(--danger-fill);
+  color: var(--on-danger);
+}
+
+.apply-redactions-confirm:hover:not(:disabled) {
+  border-color: var(--danger);
   background: var(--danger);
-  color: var(--text-1);
+}
+
+.apply-redactions-confirm:active:not(:disabled) {
+  border-color: var(--danger-press);
+  background: var(--danger-press);
 }
 
 .apply-redactions-actions button:disabled {
   cursor: wait;
-  opacity: 0.58;
+  color: var(--text-disabled);
 }
 
 @media (max-width: 520px) {
@@ -84,4 +98,13 @@
   .apply-redactions-modal { padding: 18px; }
   .apply-redactions-actions { flex-direction: column-reverse; }
   .apply-redactions-actions button { width: 100%; min-height: 44px; }
+}
+
+/* The Cancel button had no hover and no press; Confirm has its own red pair
+   above (UX 2026-09-22, revision-3 palette). */
+.apply-redactions-actions button:not(.apply-redactions-confirm):not(:disabled):hover {
+  background: var(--hover);
+}
+.apply-redactions-actions button:not(.apply-redactions-confirm):not(:disabled):active {
+  background: var(--pressed);
 }

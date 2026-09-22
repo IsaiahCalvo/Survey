@@ -328,8 +328,8 @@ function SortableModuleTab({
         marginBottom: -1,
         borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
         borderRadius: '5px 5px 0 0',
-        background: isDragging ? 'rgba(216,168,78,0.14)' : (isOn ? 'rgba(244,241,234,0.035)' : 'transparent'),
-        boxShadow: isDragging ? '0 12px 26px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(216,168,78,0.28)' : 'none',
+        background: isDragging ? 'var(--accent-soft)' : (isOn ? 'var(--hover)' : 'transparent'),
+        boxShadow: isDragging ? '0 12px 26px rgba(0,0,0,0.35), inset 0 0 0 1px var(--accent-press)' : 'none',
         cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
         flex: '1 1 0',
         minWidth: 32,
@@ -607,9 +607,9 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
           width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border)',
           borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
-          color: selected ? 'var(--text-1)' : 'var(--text-3)',
+          color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
           font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.5 : 1,
+          background: disabled ? 'var(--disabled-fill)' : 'var(--surface-1)',
           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'left',
           outline: 'none',
         }}
@@ -648,7 +648,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
                   padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
-                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--hover)'; }}
                 onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
@@ -1808,7 +1808,7 @@ export default function TemplatesEditor({
         {/* KAL-72: unified error-banner pattern (docs/ui/colors.md) — red is
             the accent edge, not the text colour. */}
         {persistenceError ? (
-          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red)', background: 'rgba(217, 90, 86, 0.10)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red)', background: 'var(--danger-soft)', color: 'var(--text-1)', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
             {persistenceError}
           </div>
         ) : null}

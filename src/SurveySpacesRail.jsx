@@ -1283,7 +1283,7 @@ const SurveySpacesRail = ({
                       // before, so the strip's 35px height and the rail's centre
                       // line are unchanged — nothing moves.
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
                     >
                       <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
@@ -1337,7 +1337,7 @@ const SurveySpacesRail = ({
                         onMouseEnter={(e) => {
                           // UX: use the shared rail hint, including press dismissal.
                           tip('Survey', 'left').onMouseEnter(e);
-                          e.currentTarget.style.background = 'var(--surface-2)';
+                          e.currentTarget.style.background = 'var(--hover)';
                         }}
                         onMouseLeave={(e) => {
                           tip('Survey', 'left').onMouseLeave(e);
@@ -1408,7 +1408,7 @@ const SurveySpacesRail = ({
                         justifyContent: 'center',
                         transition: 'background 0.15s'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
@@ -2488,7 +2488,7 @@ const SurveySpacesRail = ({
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="document" size={16} />
@@ -2509,7 +2509,7 @@ const SurveySpacesRail = ({
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="upload" size={16} />
@@ -2534,7 +2534,7 @@ const SurveySpacesRail = ({
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="download" size={16} />
@@ -2566,14 +2566,13 @@ const SurveySpacesRail = ({
                                       : '#fff',
                                 fontSize: '14px',
                                 cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
-                                opacity: liveSyncSupported === false ? 0.6 : gateRefused ? 0.75 : 1,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px'
                               }}
                               onMouseEnter={(e) => {
                                 if (liveSyncSupported !== false) {
-                                  e.currentTarget.style.background = 'var(--surface-3)';
+                                  e.currentTarget.style.background = 'var(--hover)';
                                 }
                               }}
                               onMouseLeave={(e) => {
@@ -2631,7 +2630,7 @@ const SurveySpacesRail = ({
                                 alignItems: 'center',
                                 gap: '8px'
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-3)'}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                               {...tip(
                                 verifying
@@ -3432,12 +3431,12 @@ const SurveySpacesRail = ({
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 data-drag-rearrange-row
                                                 style={{
-                                                background: mobileMode ? 'var(--surface-1)' : (isDragging ? 'rgba(216, 168, 78, 0.12)' : 'transparent'),
+                                                background: mobileMode ? 'var(--surface-1)' : (isDragging ? 'var(--accent-soft)' : 'transparent'),
                                                 border: mobileMode ? '1px solid var(--border)' : '1px solid var(--border-strong)',
                                                 borderRadius: mobileMode ? '6px' : '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
-                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(216, 168, 78, 0.3)' : 'none',
+                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 2px var(--focus)' : 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
                                                 {/* UX (mobile demo parity): expanded-category item rows are
@@ -3661,7 +3660,7 @@ const SurveySpacesRail = ({
                                                     }}
                                                     onMouseEnter={(e) => {
                                                       e.currentTarget.style.opacity = '1';
-                                                      e.currentTarget.style.background = 'var(--surface-3)';
+                                                      e.currentTarget.style.background = 'var(--hover)';
                                                     }}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.opacity = '0.78';
@@ -3695,7 +3694,7 @@ const SurveySpacesRail = ({
                                                       color: (surveyMarker.bounds && surveyMarker.pageNumber) ? 'var(--accent)' : 'var(--warning)', // Blue if located, Orange if not
                                                     }}
                                                     onMouseEnter={(e) => {
-                                                      e.currentTarget.style.background = 'var(--surface-3)';
+                                                      e.currentTarget.style.background = 'var(--hover)';
                                                     }}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
@@ -4062,7 +4061,7 @@ const SurveySpacesRail = ({
                                       transition: 'background 0.2s ease, border-color 0.2s ease'
                                     }}
                                     onMouseEnter={(event) => {
-                                      event.currentTarget.style.background = 'var(--surface-3)';
+                                      event.currentTarget.style.background = 'var(--hover)';
                                       event.currentTarget.style.borderColor = 'var(--accent-light)';
                                     }}
                                     onMouseLeave={(event) => {
@@ -4190,7 +4189,7 @@ const SurveySpacesRail = ({
                                     transition: 'background 0.15s ease, border-color 0.15s ease'
                                   }}
                                   onMouseEnter={mobileMode ? undefined : (event) => {
-                                    event.currentTarget.style.background = 'var(--surface-3)';
+                                    event.currentTarget.style.background = 'var(--hover)';
                                     event.currentTarget.style.borderColor = 'var(--accent)';
                                   }}
                                   onMouseLeave={mobileMode ? undefined : (event) => {

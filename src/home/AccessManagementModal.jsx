@@ -34,18 +34,8 @@ import {
 import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
+import { C } from '../uiPalette';
 
-const C = {
-  scrim: 'rgba(13,15,20,0.55)',
-  card: 'var(--surface-2)',
-  deep: 'var(--surface-1)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  inkSoft: 'var(--text-2)',
-  muted: 'var(--text-3)',
-  gold: 'var(--accent)',
-  danger: 'var(--danger)',
-};
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
@@ -305,7 +295,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
             {/* Pending email invites. */}
             {emailPending.map((inv) => (
-              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box', background: 'rgba(216,168,78,0.03)' }}>
+              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box', background: 'var(--accent-soft)' }}>
                 <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inv.target_email}</div>

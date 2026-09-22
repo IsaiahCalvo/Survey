@@ -54,7 +54,11 @@ export const COLORS = {
     primary: 'var(--accent)',
     primaryHover: 'var(--accent-light)',
     primaryDark: 'var(--accent-press)',
-    secondary: '#c293e6',    // lilac — a category hue, not chrome
+    // UX 2026-09-22 (revision-3 palette): `secondary` is GONE. It was a lilac
+    // #c293e6 — a SECOND accent, which is the first mistake the reference
+    // video names ("we have at least five different accent colours all
+    // competing for attention"). Nothing read it. There is one accent: gold.
+    // Category hues live in src/utils/contentTypeColors.js, where they belong.
   },
 
   // Status colors
@@ -67,9 +71,17 @@ export const COLORS = {
     success: 'var(--accent)',
     danger: 'var(--danger)',
     dangerHover: 'var(--danger-press)',
-    dangerText: 'var(--danger)',
-    dangerBg: 'rgba(217, 90, 86, 0.12)',
-    dangerBgDark: 'rgba(217, 90, 86, 0.16)',
+    // UX 2026-09-22: `dangerText` was --danger, which measures 4.05 on
+    // surface-2 and 3.49 on surface-3 — it fails as words on the two surfaces
+    // a delete confirmation actually sits on. --danger-text is the label twin
+    // (4.82 at its worst). The two hand-typed rgba reds are --danger-soft now;
+    // nothing may re-type the red's channels.
+    dangerText: 'var(--danger-text)',
+    dangerBg: 'var(--danger-soft)',
+    dangerBgDark: 'var(--danger-soft)',
+    // The darkened red a WHITE label is allowed to sit on (6.06). White on
+    // plain --danger is 3.79 and fails.
+    dangerFill: 'var(--danger-fill)',
     // UX 2026-09-17: warning was a warm rose two hues from the gold, so a
     // warning and an accent read as the same thing. It is the palette's olive
     // now, quieter than danger and far from the gold. `info` is just subtext.
@@ -85,6 +97,9 @@ export const COLORS = {
     shadow: 'rgba(0, 0, 0, 0.45)',
     shadowLight: 'rgba(0, 0, 0, 0.2)',
     hoverBg: 'var(--hover)',
+    pressedBg: 'var(--pressed)',
+    disabledFill: 'var(--disabled-fill)',
+    focusRing: '0 0 0 2px var(--focus)',
     dragOverlay: 'rgba(33, 37, 46, 0.9)',
   },
 
@@ -100,8 +115,8 @@ export const COLORS = {
     textPrimary: 'var(--text-2)',
     textMuted: 'var(--text-3)',
     primaryButton: 'var(--surface-3)',
-    primaryButtonHover: 'rgba(216, 168, 78, 0.2)',
-    primaryButtonDisabled: 'var(--surface-1)',
+    primaryButtonHover: 'var(--accent-soft-strong)',
+    primaryButtonDisabled: 'var(--disabled-fill)',
     secondaryButton: 'var(--surface-2)',
     secondaryButtonHover: 'var(--accent-soft)',
     /* UX 2026-09-17 (owner ruling: no warm fill on a selected thing). A modal's
@@ -111,7 +126,7 @@ export const COLORS = {
        OneDriveFolderBrowser; changing it here fixes all four at once. */
     optionSelectedBg: 'var(--surface-3)',
     optionSelectedBorder: 'var(--accent)',
-    hoverGlow: '0 0 0 1px var(--focus)',
+    hoverGlow: '0 0 0 2px var(--focus)',
   },
 };
 
@@ -176,7 +191,9 @@ export const SHADOWS = {
   lg: '0 12px 30px rgba(0, 0, 0, 0.5)',
   xl: '0 24px 60px rgba(0, 0, 0, 0.55)',
   inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)',
-  focus: '0 0 0 1px var(--focus)',
+  // UX 2026-09-22: 2px, not 1px. A 1px ring at 35% gold composited to 2.09:1
+  // and was invisible; the ring is the only thing a keyboard user has.
+  focus: '0 0 0 2px var(--focus)',
 };
 
 export const TRANSITIONS = {

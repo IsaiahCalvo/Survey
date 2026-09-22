@@ -79,7 +79,7 @@
 /* Boards 1-12: a disc too dark to have an edge of its own gets the faint
    hairline, so pure black does not dissolve into the bar. */
 .quick-style__dot-fill.has-hairline {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 0 1px var(--ink-ring);
 }
 
 /* "This is the colour you are on." A 1.5px gap in the panel's own background,
@@ -97,7 +97,7 @@
 }
 
 .quick-style__dot:hover .quick-style__dot-fill {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px var(--ink-ring-strong);
 }
 
 .quick-style__dot.is-current:hover .quick-style__dot-fill {
@@ -159,7 +159,9 @@
 }
 
 .quick-style__dot--custom.is-current .quick-style__custom-glyph {
-  color: #fff;
+  /* Sits on the user's own colour, so it is the ink ring's partner, not a
+     chrome label — the same white the two ring tokens are made from. */
+  color: var(--text-1);
 }
 
 /* --------------------------------------------------- combined paint swatch */
@@ -177,7 +179,7 @@
   background: var(--quick-style-fill, #ffffff);
   box-shadow:
     inset 0 0 0 2px var(--quick-style-border, #ff0000),
-    0 0 0 1px rgba(255, 255, 255, 0.14);
+    0 0 0 1px var(--ink-ring);
   pointer-events: none;
 }
 
@@ -193,7 +195,7 @@
 .quick-style__swatch:hover .quick-style__swatch-disc {
   box-shadow:
     inset 0 0 0 2px var(--quick-style-border, #ff0000),
-    0 0 0 1px rgba(255, 255, 255, 0.55);
+    0 0 0 1px var(--ink-ring-strong);
 }
 
 /* ------------------------------------------------------------- width chips */
@@ -238,7 +240,7 @@
 }
 
 .quick-style__width:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
 }
 
 /* Current width. UX 2026-09-17 (owner ruling): "When we select a tool, the icon

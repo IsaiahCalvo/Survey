@@ -72,7 +72,7 @@
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: -0.01em;
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
   margin: 0;
 }
 
@@ -164,7 +164,7 @@
   /* UX: keyboard focus ring — same shape as the rest of the collab surface
      family. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
 }
 
 .cleanup-residue-review__action--secondary {
@@ -172,23 +172,31 @@
      can dismiss without committing to a destructive action). */
   background: transparent;
   border-color: var(--border);
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
 }
 
 .cleanup-residue-review__action--secondary:hover {
-  background: var(--surface-1);
+  background: var(--hover);
 }
 
 .cleanup-residue-review__action--primary {
   /* UX: red destructive primary — same accent-red token ConfirmDeleteModal
      uses so cleaning up brake-suppressed residue and bulk-deleting feel
      like the same destructive surface family. */
-  background: var(--accent-red);
-  border-color: var(--accent-red);
-  color: #FFFFFF;
+  /* UX 2026-09-22: --accent-red is --danger, on which white measures 3.79:1.
+     --danger-fill is the darkened twin white may sit on (6.06), and the hover
+     lifts rather than darkens. */
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: var(--on-danger);
 }
 
 .cleanup-residue-review__action--primary:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.cleanup-residue-review__action--primary:active {
   background: var(--danger-press);
   border-color: var(--danger-press);
 }

@@ -2830,7 +2830,7 @@ const RegionSelectionTool = ({
                   }}
                   onMouseEnter={(e) => {
                     if (toolType !== 'rectangular') {
-                      e.currentTarget.style.background = '#4a4a4a';
+                      e.currentTarget.style.background = 'var(--hover)';
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -2861,7 +2861,7 @@ const RegionSelectionTool = ({
                   }}
                   onMouseEnter={(e) => {
                     if (toolType !== 'freehand') {
-                      e.currentTarget.style.background = '#4a4a4a';
+                      e.currentTarget.style.background = 'var(--hover)';
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -3232,8 +3232,8 @@ const RegionSelectionTool = ({
                 position: 'fixed',
                 top: contextMenu.y,
                 left: contextMenu.x,
-                background: 'white',
-                border: '1px solid #ccc',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
                 borderRadius: '4px',
                 boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
                 zIndex: 100004,
@@ -3248,13 +3248,12 @@ const RegionSelectionTool = ({
                   padding: '8px 12px',
                   cursor: selectedRegionIds.size > 0 ? 'pointer' : 'not-allowed',
                   fontSize: '13px',
-                  color: '#333',
-                  fontFamily: FONT_FAMILY,
-                  opacity: selectedRegionIds.size > 0 ? 1 : 0.45
+                  color: selectedRegionIds.size > 0 ? 'var(--text-2)' : 'var(--text-disabled)',
+                  fontFamily: FONT_FAMILY
                 }}
                 onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Copy
               </div>
@@ -3263,38 +3262,36 @@ const RegionSelectionTool = ({
                   padding: '8px 12px',
                   cursor: selectedRegionIds.size > 0 ? 'pointer' : 'not-allowed',
                   fontSize: '13px',
-                  color: '#333',
-                  fontFamily: FONT_FAMILY,
-                  opacity: selectedRegionIds.size > 0 ? 1 : 0.45
+                  color: selectedRegionIds.size > 0 ? 'var(--text-2)' : 'var(--text-disabled)',
+                  fontFamily: FONT_FAMILY
                 }}
                 onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Cut
               </div>
               <div
-                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', fontFamily: FONT_FAMILY }}
+                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-2)', fontFamily: FONT_FAMILY }}
                 onClick={handlePaste}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Paste
               </div>
-              <div style={{ height: '1px', background: '#e0e0e0', margin: '4px 0' }} />
+              <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
               <div
                 style={{
                   padding: '8px 12px',
                   cursor: contextMenu.canMerge ? 'pointer' : 'not-allowed',
-                  opacity: contextMenu.canMerge ? 1 : 0.45,
-                  color: '#333',
+                  color: contextMenu.canMerge ? 'var(--text-2)' : 'var(--text-disabled)',
                   fontSize: '13px',
                   fontFamily: FONT_FAMILY,
                   background: 'transparent'
                 }}
                 onClick={contextMenu.canMerge ? handleMergeSelected : undefined}
                 onMouseEnter={(e) => {
-                  if (contextMenu.canMerge) e.currentTarget.style.background = '#f0f0f0';
+                  if (contextMenu.canMerge) e.currentTarget.style.background = 'var(--hover)';
                 }}
                 onMouseLeave={(e) => {
                   if (contextMenu.canMerge) e.currentTarget.style.background = 'transparent';
@@ -3306,16 +3303,15 @@ const RegionSelectionTool = ({
                 style={{
                   padding: '8px 12px',
                   cursor: contextMenu.canUnmerge ? 'pointer' : 'not-allowed',
-                  opacity: contextMenu.canUnmerge ? 1 : 0.45,
-                  color: '#333',
+                  color: contextMenu.canUnmerge ? 'var(--text-2)' : 'var(--text-disabled)',
                   fontSize: '13px',
                   fontFamily: FONT_FAMILY
                 }}
                 onClick={contextMenu.canUnmerge ? handleSeparateRegion : undefined}
                 onMouseEnter={(e) => {
-                  if (contextMenu.canUnmerge) e.currentTarget.style.background = '#f0f0f0';
+                  if (contextMenu.canUnmerge) e.currentTarget.style.background = 'var(--hover)';
                 }}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 Unmerge
               </div>

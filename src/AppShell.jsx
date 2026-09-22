@@ -2503,7 +2503,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 fontSize: '12px',
                                 outline: 'none',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                               onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
@@ -2537,7 +2537,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 fontSize: '12px',
                                 outline: 'none',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,113,113,0.12)'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger-soft)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                               onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--text-disabled)'; }}
                               onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
@@ -3257,9 +3257,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 background: 'transparent',
                 border: 'none',
                 borderRadius: '4px',
-                color: 'var(--text-3)',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.35 : 1
+                color: disabled ? 'var(--text-disabled)' : 'var(--text-3)',
+                cursor: disabled ? 'not-allowed' : 'pointer'
               });
               // Editable zoom % — Walkthru-style: plain "100%" by default,
               // click swaps to an input (it only mounts while editing so the

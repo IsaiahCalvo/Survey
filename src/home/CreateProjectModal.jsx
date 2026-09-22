@@ -2,16 +2,9 @@ import { useEffect, useRef } from 'react';
 import { closeButtonStyle } from './hubControls';
 import Spinner from '../components/Spinner';
 import Icon from '../Icons';
+import { C } from '../uiPalette';
 
-const COLORS = {
-  card: 'var(--surface-2)',
-  deep: 'var(--surface-1)',
-  gold: 'var(--accent)',
-  ink: 'var(--text-1)',
-  muted: 'var(--text-3)',
-  rule: 'var(--border)',
-  scrim: 'rgba(13,15,20,0.72)',
-};
+const COLORS = C;
 
 export default function CreateProjectModal({
   busy = false,

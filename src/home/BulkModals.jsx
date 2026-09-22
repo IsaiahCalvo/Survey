@@ -12,18 +12,8 @@ import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from '../components/Spinner';
+import { C } from '../uiPalette';
 
-const C = {
-  scrim: 'rgba(13,15,20,0.55)',
-  card: 'var(--surface-2)',
-  deep: 'var(--surface-1)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  inkSoft: 'var(--text-2)',
-  muted: 'var(--text-3)',
-  gold: 'var(--accent)',
-  danger: 'var(--danger)',
-};
 
 const overlay = {
   position: 'fixed', inset: 0, background: C.scrim,
@@ -189,7 +179,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
           <button
             disabled={submitting}
             onClick={handleConfirm}
-            style={{ background: danger ? C.danger : C.gold, color: danger ? '#fff' : 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: submitting ? 0.85 : 1 }}
+            style={{ background: danger ? C.dangerFill : C.gold, color: danger ? C.onDanger : C.onGold, border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: submitting ? 0.85 : 1 }}
           >
             {submitting && <Spinner size={14} color="currentColor" />}
             {submitting ? (busyLabel || `${confirmLabel}…`) : confirmLabel}
