@@ -46,7 +46,7 @@ test('the rail More menu carries no zoom controls', () => {
  * panel - including Version history and Spaces, which had their own numbers -
  * opens at the shared Standard token. The stronger form of the same rule.
  */
-test('every phone panel opens at the one Standard height', () => {
+test('every browse panel opens at Standard; a settings sheet fits its content', () => {
   assert.match(sidebar, /const MOBILE_PANEL_STANDARD = 'var\(--mobile-panel-standard\)';/);
   assert.match(mobileCss, /--mobile-panel-standard: calc\(448px \+ var\(--mobile-bottom-inset\)\)/);
   // Compact exists as a token and is assigned to nothing.
@@ -56,11 +56,28 @@ test('every phone panel opens at the one Standard height', () => {
   assert.doesNotMatch(sidebar, /const MOBILE_HUB_TRAY_HEIGHT/);
   assert.doesNotMatch(sidebar, /activeTab === 'history'\)\s*return\s*\d/);
   assert.doesNotMatch(sidebar, /activeTab === 'spaces'\)\s*\{/);
-  // The sheet's default and the tool sheets all read the Standard token.
+  // The browse sheets read the Standard token.
   assert.match(mobileCss, /height: var\(--mobile-sheet-height, var\(--mobile-panel-standard\)\) !important/);
-  assert.match(mobileCss, /\.mobile-pdf-tool-sheet \{[\s\S]{0,400}height: var\(--mobile-panel-standard\)/);
   assert.match(mobileCss, /\.mobile-pdf-users-sheet \{[\s\S]{0,200}--mobile-sheet-height: var\(--mobile-panel-standard\)/);
-  assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface \{[\s\S]{0,400}height: var\(--mobile-panel-standard\)/);
+
+  /*
+   * RULED CHANGE 2026-09-22 (owner): "a settings sheet is exactly as tall as its
+   * content, never taller. The Standard / Expanded / Compact heights stay for
+   * browse panels." The two assertions that used to pin the tool "..." sheet and
+   * the color picker to Standard are inverted: at Standard both left roughly
+   * 110px of empty sheet under their last control. They are `height: auto` now,
+   * under the unchanged max-height cap, and must never name a panel height
+   * again.
+   */
+  assert.match(mobileCss, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}\n  height: auto;/);
+  assert.doesNotMatch(mobileCss, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
+  assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface \{[^}]{0,1600}\n  height: auto;/);
+  assert.doesNotMatch(mobileCss, /\.mobile-pdf-colorpicker-surface \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
+  // The cap and the internal scroll are what replace the fixed height.
+  assert.match(mobileCss, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}max-height: calc\(100dvh/);
+  assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface \{[^}]{0,1600}max-height: calc\(100dvh/);
+  assert.match(mobileCss, /\.mobile-pdf-tool-sheet__rows \{[^}]{0,400}overflow-y: auto/);
+  assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface__body \{[^}]{0,400}overflow-y: auto/);
 
   // ADDED at the pass-7 integration: the Survey panel is a phone panel too, and
   // it was the last one still measuring its own content (154 + 48 a template,

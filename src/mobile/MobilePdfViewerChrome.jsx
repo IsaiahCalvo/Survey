@@ -184,9 +184,10 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         aria-label={`Close ${title || 'color'} picker`}
         onClick={onClose}
       />
-      {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet at the Standard
-          height with the shared sheet frame, not a floating panel in the middle
-          of the screen. Same handle row, same title, same gold Done as every
+      {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet in the shared
+          sheet frame, not a floating panel in the middle of the screen. It
+          opened at the Standard panel height until 2026-09-22; it is a SETTINGS
+          sheet, so its CSS sizes it to its content now. Same handle row, same title, same gold Done as every
           other phone panel, so it arrives from the same edge and closes the same
           way. The panel inside it is the app's ONE shared CompactColorPicker
           (project rule) — its presets, grid, gradient and opacity row belong to

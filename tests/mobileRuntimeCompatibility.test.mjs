@@ -551,7 +551,17 @@ test('mobile annotation settings retain the preserved app geometry and controls'
    * its body carried three matching literals to stay in step. One Standard
    * height now, and the body is derived from it (flex:1) rather than named.
    */
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[\s\S]{0,400}height: var\(--mobile-panel-standard\)/);
+  /*
+   * RULED CHANGE 2026-09-22 (owner): the text formatting sheet is a SETTINGS
+   * sheet, and "a settings sheet is exactly as tall as its content, never
+   * taller". Standard left blank sheet under its last control, so the assertion
+   * above flips from the Standard token to content height under the same cap.
+   * The point pass 7 made still holds and is still guarded below: the sheet has
+   * ONE height rule, not one per tool variant.
+   */
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}\n  height: auto;/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}max-height: calc\(100dvh/);
   assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\) \{\s*height:/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults__scroll \{[\s\S]{0,120}flex: 1 1 auto/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--shape-color[\s\S]{0,120}height: 150px/);
