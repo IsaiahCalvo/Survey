@@ -130,8 +130,12 @@ test('the header row is one height and one glyph size, and undo/redo do not move
   for (const selector of [
     '.mobile-pdf-header__icon',
     '.mobile-pdf-header__page-nav',
-    '.mobile-pdf-header__page-pill',
   ]) assert.match(block(css, selector), /height: var\(--mobile-control-h\)/);
+  // RULED CHANGE 2026-09-22 (owner, second header pass: "the dropdown height
+  // could be more narrow"): the page pill is 22px (--mobile-page-pill-h), not
+  // the 28px chip height, so it no longer reads as the biggest thing in the bar.
+  assert.match(block(css, '.mobile-pdf-header__page-pill'), /height: var\(--mobile-page-pill-h\)/);
+  assert.match(css, /--mobile-page-pill-h: 22px;/);
   assert.doesNotMatch(css, /\.mobile-pdf-header__title \{/, 'the phone header shows no PDF name');
 
   // RULED CHANGE 2026-09-21: all three header groups sit 4px above the bar's
@@ -146,8 +150,12 @@ test('the header row is one height and one glyph size, and undo/redo do not move
   // same 17 on every header action). It was 15-in-26 from the 2026-09-16 sweep;
   // the boards fix both numbers at 17-in-28, which is the same 0.61 fill.
   assert.match(chrome, /const HEADER_GLYPH = 17;/);
-  assert.match(chrome, /name="undo" size=\{HEADER_GLYPH\}/);
-  assert.match(chrome, /name="redo" size=\{HEADER_GLYPH\}/);
+  // RULED CHANGE 2026-09-22 (owner: "undo and redo could be smaller"): the
+  // solid-headed history arrows draw at HISTORY_GLYPH 14 so their ink sits
+  // level with the rail's open strokes; chip and hit box stay 28 / 44.
+  assert.match(chrome, /const HISTORY_GLYPH = 14;/);
+  assert.match(chrome, /name="undo" size=\{HISTORY_GLYPH\}/);
+  assert.match(chrome, /name="redo" size=\{HISTORY_GLYPH\}/);
   assert.match(chrome, /name="chevronLeft" size=\{HEADER_GLYPH\}/);
 });
 

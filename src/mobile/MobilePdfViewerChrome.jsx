@@ -35,6 +35,11 @@ const SUBTOOL_GLYPH = 14;
 // ratio; the approved boards draw a 17px glyph in a 28px box, so both numbers
 // move together and the ratio is unchanged at 0.61.
 const HEADER_GLYPH = 17;
+// RULED CHANGE 2026-09-22 (owner): undo/redo draw smaller than the other
+// header glyphs. Their solid arrowheads carry more ink than the rail's open
+// strokes, so at 17 they read as the heaviest thing in the bar; 14 sits them
+// level with the rail optically. Chip and 44px hit box unchanged.
+const HISTORY_GLYPH = 14;
 // RULED CHANGE 2026-09-21 (pass 7): 12, not 14. The strip control is 20px on the
 // approved boards where it was 24, so 14 would have been 0.70 of its box - by a
 // wide margin the heaviest glyph on the phone. 12-in-20 is 0.60, the same fill
@@ -933,7 +938,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           onClick={topToolbarApi?.onUndo || undefined}
         >
           {/* UX: share the desktop undo arrow without changing the phone touch target. */}
-          <Icon name="undo" size={HEADER_GLYPH} color="currentColor" />
+          <Icon name="undo" size={HISTORY_GLYPH} color="currentColor" />
         </button>
         <button
           type="button"
@@ -943,7 +948,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           onClick={topToolbarApi?.onRedo || undefined}
         >
           {/* UX: share the desktop redo arrow without changing the phone touch target. */}
-          <Icon name="redo" size={HEADER_GLYPH} color="currentColor" />
+          <Icon name="redo" size={HISTORY_GLYPH} color="currentColor" />
         </button>
       </div>
     </header>

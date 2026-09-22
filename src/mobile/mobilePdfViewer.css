@@ -101,6 +101,7 @@
      = 40px of chrome. 52.622 + 40 = 92.622px, and the slack below rounds that
      to a whole 96px - 3.4px of headroom for metric drift between WebKit and
      Blink, verified in the pane at 375 and 390. */
+  --mobile-page-pill-h: 22px;
   --mobile-page-digit-w: 7.286px;
   --mobile-page-input-w: calc((3 * var(--mobile-page-digit-w)) + 0.5px);
   --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.531px + 2.875px + (3 * var(--mobile-page-digit-w)));
@@ -346,7 +347,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      wrap. */
   width: var(--mobile-page-pill-w);
   min-width: var(--mobile-page-pill-w);
-  height: var(--mobile-control-h);
+  /* RULED CHANGE 2026-09-22 (owner, second pass): the pill is shorter than
+     the 28px header chips - 22px, two more than the strip's 20px pills so the
+     11px fraction has air - because at 28 it read as the biggest thing in the
+     header. Its 44px hit box is unchanged (::after). */
+  height: var(--mobile-page-pill-h);
   /* 3 a side, not 4: the chevron section grew by 2 to the board's 24, and the
      pill's own box is fixed at 96, so the two pay for each other. */
   padding: 0 3px;
