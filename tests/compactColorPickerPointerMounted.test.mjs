@@ -72,15 +72,26 @@ test('mounted CompactColorPicker follows pointer-captured spectrum and hue drags
       spectrum.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 170, clientY: 40 }));
       spectrum.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 170, clientY: 40 }));
     });
-    assert.equal(spectrum.firstElementChild.style.left, '80%');
-    assert.equal(spectrum.firstElementChild.style.top, '20%');
+    // CHANGED 2026-09-21. Was an exact `style.left === '80%'` on the handle.
+    // RULING (pass-7 picker boards, "nothing may spill, collide or clip"): the
+    // handle's travel is now inset by half its own width so it cannot hang
+    // outside the panel at full saturation, which makes its `left` a calc()
+    // rather than a bare percentage. What the test is really about — the drag
+    // followed the pointer — is read off the slider's own value instead, which
+    // is stronger than a style string.
+    assert.equal(spectrum.getAttribute('aria-valuenow'), '80');
+    assert.match(spectrum.getAttribute('aria-valuetext'), /Saturation 80%, brightness 80%/);
+    assert.match(spectrum.firstElementChild.style.left, /^calc\(8px \+ 0\.8 \* \(100% - 16px\)\)$/);
 
     await act(async () => {
       hue.dispatchEvent(pointerEvent(dom.window, 'pointerdown', { clientX: 48, clientY: 206, pointerId: 2 }));
       hue.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 165, clientY: 206, pointerId: 2 }));
       hue.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 165, clientY: 206, pointerId: 2 }));
     });
-    assert.equal(hue.firstElementChild.style.left, '75%');
+    // CHANGED with the same ruling: the thumb's travel is inset by half the
+    // thumb, so 75% of the track reads as 75 degrees of hue on the slider.
+    assert.equal(hue.getAttribute('aria-valuenow'), '270');
+    assert.match(hue.firstElementChild.style.left, /^calc\(9px \+ 0\.75 \* \(100% - 18px\)\)$/);
     assert.ok(changes.length >= 4);
   } finally {
     await act(async () => root.unmount());

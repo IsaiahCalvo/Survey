@@ -188,6 +188,13 @@ const CompactColorPicker = ({
     outsideBoundaryRef = null,
     platform = 'desktop',
     tabs = null,
+    // Boards 17 and 18 draw the phone picker as the bottom SHEET'S own content:
+    // the sheet paints the panel and pads it, and the presets row runs edge to
+    // edge across the sheet's 358px band. A host that owns that sheet passes
+    // chrome={false} so the picker adds no second panel and no second padding.
+    // Left true by default so the picker always stands on its own when a host
+    // just drops it on the page.
+    chrome = true,
     // 2026-05-25: First preset cell behaviour.
     //   'transparent' (default) — zero-alpha picker; click sets opacity 0.
     //   { kind: 'match', color }  — Match Fill picker; click snapshots the
@@ -482,10 +489,17 @@ const CompactColorPicker = ({
 
     const panelBackground = 'var(--surface-1)';
 
-    /** The 18px white thumb both the hue and opacity tracks carry (board 18). */
-    const thumb = (left) => ({
+    /**
+     * The 18px white thumb both the hue and opacity tracks carry (board 18).
+     *
+     * The travel is inset by half the thumb so the thumb is flush with the
+     * track's ends at 0% and 100% instead of hanging 9px outside the panel —
+     * "nothing may spill, collide or clip", and 100% opacity is the default
+     * every picker opens on. Every real slider is built this way.
+     */
+    const thumb = (percent) => ({
         position: 'absolute',
-        left: `${left}%`,
+        left: `calc(9px + (100% - 18px) * ${clamp(percent, 0, 100) / 100})`,
         top: '50%',
         width: '18px',
         height: '18px',
@@ -692,13 +706,15 @@ const CompactColorPicker = ({
                     touchAction: 'none',
                 }}
             >
+                {/* Inset by half the handle, for the same reason as the track
+                    thumbs: at full saturation the handle would otherwise hang
+                    8px outside the panel. */}
                 <span style={{
                     position: 'absolute',
-                    left: `${saturation}%`,
-                    top: `${100 - value}%`,
+                    left: `calc(8px + (100% - 16px) * ${clamp(saturation, 0, 100) / 100})`,
+                    top: `calc(8px + (100% - 16px) * ${clamp(100 - value, 0, 100) / 100})`,
                     width: '16px',
                     height: '16px',
-                    margin: '-8px 0 0 -8px',
                     borderRadius: '50%',
                     border: '2.5px solid #fff',
                     boxShadow: '0 0 0 1px rgba(0,0,0,0.45)',
@@ -811,12 +827,12 @@ const CompactColorPicker = ({
                and the checkerboard behind a transparent swatch stay literal —
                those are the user's colours, not the theme's. --surface-1 is the
                boards' own --ui-toolbar, and the ring gaps are painted in it. */
-            background: panelBackground,
-            border: '1px solid var(--border)',
+            background: chrome ? panelBackground : 'transparent',
+            border: chrome ? '1px solid var(--border)' : 0,
             borderTop: attachedHeader ? 'none' : undefined,
             borderRadius: attachedHeader ? '0 0 8px 8px' : '12px',
-            boxShadow: '0 14px 32px rgba(0,0,0,0.45)',
-            padding: '12px',
+            boxShadow: chrome ? '0 14px 32px rgba(0,0,0,0.45)' : 'none',
+            padding: chrome ? '12px' : 0,
             display: 'flex',
             flexDirection: 'column',
             gap: '10px',
