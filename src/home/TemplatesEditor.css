@@ -92,17 +92,17 @@
 .ed-scope .picker-op-range::-webkit-slider-thumb {
   appearance: none; -webkit-appearance: none;
   width: 4px; height: 14px; border-radius: 2px;
-  background: #f6f4ef; border: 1px solid rgba(0, 0, 0, 0.65);
+  background: var(--text-1); border: 1px solid rgba(0, 0, 0, 0.65);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55); cursor: pointer;
 }
 .ed-scope .picker-hue-range::-moz-range-thumb {
   width: 4px; height: 14px; border-radius: 2px;
-  background: #f6f4ef; border: 1px solid rgba(0, 0, 0, 0.65);
+  background: var(--text-1); border: 1px solid rgba(0, 0, 0, 0.65);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55); cursor: pointer;
 }
 .ed-scope .picker-op-range::-moz-range-thumb {
   width: 4px; height: 14px; border-radius: 2px;
-  background: #f6f4ef; border: 1px solid rgba(0, 0, 0, 0.65);
+  background: var(--text-1); border: 1px solid rgba(0, 0, 0, 0.65);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55); cursor: pointer;
 }
 

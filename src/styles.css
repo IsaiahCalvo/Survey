@@ -1627,7 +1627,7 @@ input[type="text"].space-add-pages-input:focus-visible {
   top: 25px;
   left: 0;
   right: 0;
-  color: #e69a7a;
+  color: var(--danger-text);
   font-size: 9px;
   line-height: 10px;
   white-space: nowrap;

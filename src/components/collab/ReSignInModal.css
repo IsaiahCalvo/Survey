@@ -99,7 +99,7 @@
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: -0.01em;
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
   margin: 0 0 16px 0;
 }
 
@@ -175,7 +175,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-primary, #FFFFFF);
+  color: var(--text-1);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -191,9 +191,9 @@
 }
 
 .re-signin-modal__input:disabled {
-  /* UX: while submitting, inputs visually dim to 0.6 opacity so the user
-   * sees the form is locked. Cursor:not-allowed reinforces the disabled
-   * state on hover. */
+  /* UX 2026-09-22: a locked input takes the app's ONE disabled look —
+   * --text-disabled and not-allowed. It used to be `opacity: 0.6`, one of
+   * seven different opacities that all meant "off" and none of which agreed. */
   color: var(--text-disabled);
   cursor: not-allowed;
 }
@@ -235,9 +235,10 @@
 }
 
 .re-signin-modal__cta:disabled {
-  /* UX: disabled state — opacity 0.5 + cursor:not-allowed signals the button
-   * isn't actionable yet (waiting for both fields to fill, or a submit is
-   * already in flight). Matches UI-SPEC contract verbatim. */
+  /* UX 2026-09-22: disabled state — --text-disabled + cursor:not-allowed
+   * signals the button isn't actionable yet (waiting for both fields to fill,
+   * or a submit is already in flight). It was `opacity: 0.5`; the palette has
+   * one disabled look now and an opacity is not it. */
   color: var(--text-disabled);
   cursor: not-allowed;
 }

@@ -41,6 +41,16 @@
   /* UX (KAL-62): the app's one modal scrim colour. */
   --pp-overlay: var(--overlay-scrim);
   --pp-shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 0 var(--ink-ring) inset;
+  /* UX 2026-09-22: the preview SHEET is a picture of paper, so it keeps paper
+     colours — but as three tokens rather than six literals typed inline. The
+     old sheet ink was #222 / #666 / #888 / #999, and the last two measured
+     3.00:1 and 2.41:1 on the sheet: the page label and the dashed content box
+     were the least readable text in the print dialog. --pp-paper-ink-2 is
+     4.59:1 on the sheet and is the ONE muted ink now. */
+  --pp-paper: #ececea;
+  --pp-paper-thumb: #f0f0ec;
+  --pp-paper-ink: #222222;
+  --pp-paper-ink-2: #5f6b7a;
   --pp-radius: 12px;
   --pp-radius-sm: 6px;
   --pp-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
@@ -246,7 +256,7 @@
   width: auto;
   aspect-ratio: var(--pp-thumb-ar, 46 / 60);
   border-radius: 4px;
-  background: #f0f0ec; color: #222;
+  background: var(--pp-paper-thumb); color: var(--pp-paper-ink);
   border: 2px solid transparent;
   transition: border-color 120ms, box-shadow 120ms, background 120ms, opacity 120ms;
 }
@@ -282,13 +292,19 @@
 }
 .pp-thumb-bd.bd-mk { background: var(--accent-light); color: var(--accent-text); }
 .pp-thumb-bd.bd-rot { background: var(--pp-accent); }
-.pp-thumb-bd.bd-ex { background: #9b59f0; }
-.pp-thumb-bd.bd-sel { background: #4A90E2; }
+/* UX 2026-09-22: these two badges used to be a purple (#9b59f0) and a blue
+   (#4A90E2) — a fourth and fifth accent on a 9px chip, which is the exact
+   mistake the reference video opens with. The badge already says what it is in
+   words; the colour only has to separate "this page is included" from "this
+   page is rotated", so both take neutral chrome and the gold stays the one
+   accent on .bd-mk / .bd-rot above. */
+.pp-thumb-bd.bd-ex { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-thumb-bd.bd-sel { background: var(--pp-border-strong); color: var(--pp-ink); }
 .pp-thumb /* The preview sheets and page thumbnails below are a picture of PAPER, not
    chrome: their fill, their ink and their dashed guides keep the colours a real
    printed page has. They are deliberately exempt from the shared palette. */
 .pp-thumb-face {
-  position: absolute; inset: 6px; border: 1px dashed #999; border-radius: 2px;
+  position: absolute; inset: 6px; border: 1px dashed var(--pp-paper-ink-2); border-radius: 2px;
   pointer-events: none;
 }
 /* UX 2026-04-24: thumbs mirror the color/BW state live so toggling the
@@ -389,22 +405,22 @@
   overflow: hidden; position: relative;
 }
 .pp-preview-sheet {
-  background: #ececea;
-  color: #222;
+  background: var(--pp-paper);
+  color: var(--pp-paper-ink);
   border-radius: 2px;
   box-shadow: 0 10px 28px rgba(0,0,0,0.6);
   position: relative;
   transition: transform 200ms cubic-bezier(0.2, 0, 0.2, 1), filter 180ms;
 }
 .pp-preview-sheet .pp-sheet-label {
-  position: absolute; top: 8px; left: 10px; font-size: 10px; color: #666;
+  position: absolute; top: 8px; left: 10px; font-size: 10px; color: var(--pp-paper-ink-2);
   font-weight: 600; letter-spacing: 0.3px;
 }
 .pp-preview-sheet .pp-sheet-face {
   position: absolute; inset: 22px 14px 18px;
-  border: 1.5px dashed #888; border-radius: 2px;
+  border: 1.5px dashed var(--pp-paper-ink-2); border-radius: 2px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: #666;
+  font-size: 11px; color: var(--pp-paper-ink-2);
 }
 .pp-preview-sheet.is-bw { filter: grayscale(1); }
 .pp-preview-sheet.is-mirror-h { transform: scaleX(-1); }
@@ -849,7 +865,7 @@
 }
 .pp-bigprev-close:hover { background: var(--hover); color: var(--text-1); }
 .pp-bigprev-sheet {
-  background: #ececea; color: #222;
+  background: var(--pp-paper); color: var(--pp-paper-ink);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9);
   transform-origin: center center;
   transition: transform 200ms cubic-bezier(0.2, 0, 0.2, 1);
@@ -860,7 +876,7 @@
   color: var(--text-2);
 }
 .pp-bigprev-zoom button {
-  background: #2b2b2b; color: #ddd; border: 1px solid #555;
+  background: var(--pp-panel); color: var(--pp-ink); border: 1px solid var(--pp-border);
   border-radius: 6px; width: 28px; height: 28px; cursor: pointer;
   font-size: 15px; font-family: inherit;
 }
@@ -883,7 +899,7 @@
   width: 22px;
   height: 22px;
   font-size: 13px;
-  background: #2b2b2b; border-color: #555; color: #ddd;
+  background: var(--pp-panel); border-color: var(--pp-border); color: var(--pp-ink);
 }
 .pp-bigprev-nav .pp-pager-btn:not(:disabled):hover {
   background: var(--pp-accent); border-color: var(--pp-accent); color: var(--pp-accent-ink);

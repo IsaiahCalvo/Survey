@@ -560,8 +560,8 @@ export default function DocumentsLedger({
                         marks={[
                           { x: 12, y: 36, w: 36, h: 16, color: 'var(--gold)' },
                           { x: 56, y: 50, w: 24, h: 22, color: 'var(--blue)' },
-                          { type: 'swatch', x: 18, y: 62, w: 50, h: 6, color: 'rgba(166,224,122,0.4)' },
-                          { x: 60, y: 78, w: 26, h: 10, color: 'var(--rose)' },
+                          { type: 'swatch', x: 18, y: 62, w: 50, h: 6, color: 'var(--accent-soft-strong)' },
+                          { x: 60, y: 78, w: 26, h: 10, color: 'var(--slate)' },
                         ]}
                       />
                     </div>

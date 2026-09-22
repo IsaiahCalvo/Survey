@@ -36,10 +36,19 @@
      palette. Nothing inside .survey-hub ever read it, yet the phone viewer
      asked for `var(--gold-bg, #2a2218)` from OUTSIDE this scope and so always
      painted the fallback brown. The active-state fill is --accent-soft now. */
-  --blue:    #7ab7e6;
-  --green:   #a6e07a;
-  --rose:    #e69a7a;
-  --lilac:   #c293e6;
+  /* UX 2026-09-22 (revision-3 palette). This block WAS a second accent family.
+     --green measured 11.25:1 on the panel and --blue 8.08 — both LOUDER than
+     the gold's 7.98, so on a screen where gold means "the accent" the eye went
+     to a status tag instead. The reference video's first rule: one accent, and
+     everything else steps back.
+     --green and --rose are gone. A tag that carried them takes --slate, the
+     neutral. The two that stay are dimmed below the gold on purpose —
+     --blue 5.95 and --lilac 5.30 on the panel, both still comfortably past
+     4.5 for their 10.5px uppercase label, and both now quieter than the
+     accent rather than louder. These are still NOT chrome: they are the set of
+     distinguishable hues a tag or an avatar is given. */
+  --blue:    #5f9dcc;
+  --lilac:   #a97bcc;
   --slate:   var(--text-3);
 }
 
@@ -119,10 +128,11 @@
 
 .survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
 .survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
-.survey-hub .pill.blue { background: rgba(122,183,230,0.15); color: var(--blue); }
-.survey-hub .pill.green { background: rgba(166,224,122,0.16); color: var(--green); }
-.survey-hub .pill.rose { background: rgba(230,154,122,0.16); color: var(--rose); }
-.survey-hub .pill.lilac { background: rgba(194,147,230,0.16); color: var(--lilac); }
+.survey-hub .pill.blue { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
+/* The green and the rose tags map to the neutral one — see the :root note. */
+.survey-hub .pill.green,
+.survey-hub .pill.rose { background: color-mix(in srgb, var(--slate) 14%, transparent); color: var(--slate); }
+.survey-hub .pill.lilac { background: color-mix(in srgb, var(--lilac) 15%, transparent); color: var(--lilac); }
 .survey-hub .pill.slate { background: rgba(154,163,178,0.14); color: var(--slate); }
 
 .survey-hub .meta { color: var(--ink-200); font-size: 11.5px; }
@@ -148,7 +158,7 @@
    colours, exactly as a real page would. */
 .survey-hub .pdf-thumb .ribbon { position: absolute; top: 0; left: 0; right: 0; height: 18%; background: #1f4a7a; }
 .survey-hub .pdf-thumb .ribbon-line { position: absolute; top: 22%; left: 8%; right: 8%; height: 4%; background: rgba(20,20,20,0.6); }
-.survey-hub .pdf-thumb .stamp { position: absolute; bottom: 6%; right: 6%; width: 28px; height: 14px; border: 1.4px solid #b03a3a; color: #b03a3a; border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 8px; display: grid; place-items: center; }
+.survey-hub .pdf-thumb .stamp { position: absolute; bottom: 6%; right: 6%; width: 28px; height: 14px; border: 1.4px solid var(--danger-fill); color: var(--danger-fill); border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 8px; display: grid; place-items: center; }
 .survey-hub .pdf-thumb .mark { position: absolute; border: 1.5px solid var(--gold); border-radius: 2px; }
 .survey-hub .pdf-thumb .swatch { position: absolute; background: rgba(216,168,78,0.45); }
 

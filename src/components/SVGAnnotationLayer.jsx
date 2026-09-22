@@ -5629,12 +5629,15 @@ const SVGAnnotationLayer = memo(({
             deleteSelectedSurveyMarker();
           }}
         >
+          {/* UX 2026-09-22: the Delete chip's own red comes from the palette
+              now instead of two literals (#6f3037 / #8c3a42). var() is only
+              valid in a CSS declaration, never in an SVG presentation
+              attribute, so it travels on `style`, not on `fill`. */}
           <rect
             width={selectedSurveyMarkerDeleteBounds.width}
             height={selectedSurveyMarkerDeleteBounds.height}
             rx={8 * inverseScale}
-            fill="#6f3037"
-            stroke="#8c3a42"
+            style={{ fill: 'var(--danger-fill)', stroke: 'var(--danger)' }}
             strokeWidth={inverseScale}
           />
           <text

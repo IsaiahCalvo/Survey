@@ -797,9 +797,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--accent);
 }
 
-/* The finger-down feedback is the phone's hover: a faint neutral wash, the same
-   one .quick-style__width:hover uses. It was grouped with .is-active above and
-   so painted the banned gold wash on every tap. */
+/* The finger-down feedback. There is no hover on a phone, so the press IS the
+   feedback: --pressed for as long as the finger is down, and nothing else. It
+   was grouped with .is-active above and so painted the banned gold wash on
+   every tap. */
 .mobile-pdf-lasso-controls > button:active {
   background: var(--pressed);
 }
@@ -3227,7 +3228,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    (styles.ts:2870-3401): 10px/800 uppercase field labels, 30px compact rows on
    #1B1F25/#343A45, 14px round entity swatch, #181B20/#3C424D dropdown menus
    with 34px options, and the 36px checklist rows with Y/N/N-A segments
-   (28x24; #2F7D55 / #8C3A42 / #5E6570 semantic colors). */
+   (28x24). The demo's #2F7D55 / #8C3A42 / #5E6570 answer fills were dropped
+   on 2026-09-22 — see .mobile-survey-check-btn below for why. */
 .mobile-survey-detail {
   flex: 1;
   min-height: 0;
@@ -3480,15 +3482,29 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
+/* UX 2026-09-22 (revision-3 palette). The chosen answer used to be a GREEN
+   fill (#2f7d55) beside a red one (#8c3a42) and a grey one — three fills, two
+   of them a second and third accent, on a control 28px wide. Two rules
+   decided it: the owner's (there is no green accent in this app; green is a
+   status DOT and nothing else) and the reference video's (an icon's job is to
+   be a recognisable symbol, and colour is reserved for telling the user
+   something a shape cannot). So the chosen answer takes the app's own
+   selected cue — a gold LABEL on the neutral surface, no fill — and only NO,
+   which is the one destructive-shaped answer, keeps a red, as the soft tint
+   rather than a slab. Measured on surface-3: gold 6.06:1, --danger-text
+   4.82:1. (--danger-text over a --danger-soft fill measures 4.06 and was
+   rejected — the label is 9px, so it needs the full 4.5.) */
 .mobile-survey-check-btn.is-active {
-  border-color: transparent;
-  color: var(--text-1);
+  color: var(--accent);
 }
 
-/* Semantic checklist colors — same in demo (styles.ts:3385-3393). */
-.mobile-survey-check-btn.is-yes { background: #2f7d55; }
-.mobile-survey-check-btn.is-no { background: #8c3a42; }
-.mobile-survey-check-btn.is-na { background: var(--border-strong); }
+/* The chosen answer is INK, never a fill and never a border — the owner's
+   selected-state ruling, which tests/selectedStateGoldInkOnly.test.mjs
+   enforces. The unchosen two stay --text-3 (4.90 on this surface), so the one
+   that is lit is the only bright thing in the group. */
+.mobile-survey-check-btn.is-yes { color: var(--accent); }
+.mobile-survey-check-btn.is-no { color: var(--danger-text); }
+.mobile-survey-check-btn.is-na { color: var(--text-1); }
 
 .mobile-survey-detail-empty {
   margin-top: 6px;
@@ -3984,6 +4000,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 112px !important;
   padding-bottom: 0 !important;
   flex: 0 0 auto;
+  /* A page thumbnail is a picture of PAPER, so it keeps paper colours — the
+     one class of value tokens.css exempts along with ink. */
   background: #fafaf8 !important;
   border: 1px solid #e5e5de;
   border-radius: 5px !important;
@@ -4164,8 +4182,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* Lifted row while dragging — the phone equivalent of the desktop clone's
    shadow + lighter surface, so the finger has something that looks picked up. */
 .mobile-bookmark-row.is-dragging {
-  background: #242a33;
-  border-color: #d8a84e;
+  background: var(--surface-3);
+  border-color: var(--accent);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
 }
 
@@ -4177,7 +4195,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-self: stretch;
   display: grid;
   place-items: center;
-  color: #8d96a6;
+  color: var(--text-3);
   font-size: 14px;
   line-height: 1;
   cursor: grab;
@@ -4196,7 +4214,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-bookmark-row.is-dragging .mobile-bookmark-grip {
-  color: #d8a84e;
+  color: var(--accent);
   cursor: grabbing;
 }
 
