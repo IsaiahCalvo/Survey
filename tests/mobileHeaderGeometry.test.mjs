@@ -46,13 +46,22 @@ const token = (source, name) => pxToken(source, name);
 test('the page pill is sized from "999 / 999", not from the document in front of it', () => {
   const root = block(css, ':root');
 
+  /*
+   * DELIBERATE ASSERTION CHANGE (2026-09-22, owner: "the page pill looks too
+   * large"). The pill's face drops from 800 to the strip's 600, so the three
+   * faces it is measured from are narrower. The RULE is unchanged and is what
+   * this test still guards - the pill is sized from "999 / 999" in whatever
+   * face it wears, never from the document in front of it. Only the measured
+   * metrics move:  digit 7.602 -> 7.286,  slash 3.852 -> 3.531,
+   * space 2.82 -> 2.875.
+   */
   // The faces the pill's text is made of, measured in the pill's own font
-  // (SF Pro Text 800 11px, font-variant-numeric: tabular-nums) in the browser
-  // at both 375 and 402 wide. Tabular numerals are what make one digit width
-  // enough for all ten.
+  // (SF Pro Text 600 11px, tabular numerals, -0.01em) in the browser at both
+  // 375 and 390 wide. Tabular numerals are what make one digit width enough
+  // for all ten.
   const digit = token(root, '--mobile-page-digit-w');
-  const SLASH = 3.852;
-  const SPACE = 2.82;
+  const SLASH = 3.531;
+  const SPACE = 2.875;
   const FLEX_GAP = 2; // between the ordinal and the "/ N" span
   assert.match(root, new RegExp(`--mobile-page-pill-text:[^;]*${SLASH}px`));
   assert.match(root, new RegExp(`--mobile-page-pill-text:[^;]*${SPACE}px`));
@@ -61,17 +70,30 @@ test('the page pill is sized from "999 / 999", not from the document in front of
   // pill: the ordinal becomes a 3-digit input carrying half a pixel over its
   // own digits so rounding cannot shave the last one.
   const input = token(root, '--mobile-page-input-w');
-  assert.equal(input, (3 * digit) + 0.5, 'the page input holds three tabular digits');
+  // Compared with a tolerance, not exactly: 3 * 7.286 + 0.5 is 22.357999999999997
+  // in IEEE doubles while the token resolver rounds to 22.358, and the contract
+  // is "three digits plus half a pixel", not a float's last bit.
+  assert.ok(
+    Math.abs(input - ((3 * digit) + 0.5)) < 1e-6,
+    `the page input holds three tabular digits (got ${input}, expected ${(3 * digit) + 0.5})`,
+  );
   assert.match(block(css, '.mobile-pdf-header__page-input'), /width: var\(--mobile-page-input-w\)/);
 
   const displayState = (3 * digit) + FLEX_GAP + SLASH + SPACE + (3 * digit); // "999 / 999"
   const editState = input + FLEX_GAP + SLASH + SPACE + (3 * digit);
   assert.ok(editState > displayState, 'the input state is the wider of the two');
 
+  /*
+   * DELIBERATE ASSERTION CHANGE (2026-09-22, owner: "the chevron is not centred
+   * in its section"). The chevron zone goes to the board's 24 and the pill's own
+   * padding drops to 3 a side, so the two cancel: the chrome total is the same
+   * 40px, which is why the centred page cluster does not move. The sum is spelt
+   * out with the new parts rather than the old ones.
+   */
   // Chrome around the text: the fraction's 6px of padding, the pill's 2px flex
-  // gap, the 22px chevron zone, the pill's 8px padding and 2px of border.
+  // gap, the 24px chevron zone, the pill's 6px padding and 2px of border.
   const chrome = token(root, '--mobile-page-pill-chrome');
-  assert.equal(chrome, 6 + 2 + 22 + 8 + 2);
+  assert.equal(chrome, 6 + 2 + 24 + 6 + 2);
 
   const slack = token(root, '--mobile-page-pill-slack');
   const pill = +(editState + chrome + slack).toFixed(6);
@@ -155,10 +177,20 @@ test('every icon button in the header and the rich-text strip centres its glyph 
 
   // The chevron carries a 1px border-left, which is part of its box: an even
   // 5/5 padding centres the caret on the CONTENT box and leaves it 0.5px right
-  // of the button the user sees.
+  // of the button the user sees. With the 4/5 split and the board's 24px
+  // section, the 11px caret's centre lands on 12 - the section's own centre.
   const chevron = block(css, '.mobile-pdf-header__page-chevron');
   assert.match(chevron, /border-left: 1px solid/);
   assert.match(chevron, /padding: 0 5px 0 4px/);
+  const chevronWidth = Number(/min-width:\s*(\d+(?:\.\d+)?)px/.exec(chevron)?.[1]);
+  assert.equal(chevronWidth, 24, 'board 1-pen draws the zoom section 24px wide');
+  const CARET = 11;
+  const caretCentre = 1 + 4 + ((chevronWidth - 1 - 4 - 5) - CARET) / 2 + CARET / 2;
+  assert.equal(
+    caretCentre,
+    chevronWidth / 2,
+    `the caret's centre sits at ${caretCentre}px in a ${chevronWidth}px section, not on its centre line`,
+  );
 
   // One box and one radius across the four format buttons - they share a single
   // rule, so there is nowhere for a fifth size to hide.

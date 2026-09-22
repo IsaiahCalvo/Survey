@@ -136,7 +136,13 @@ test('desktop Select arms the family and its modes are a segmented toggle', () =
     APP_SHELL_SOURCE.indexOf('{/* Draw category */}'),
   );
 
-  assert.match(selectToolbar, /data-select-mode-trigger/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-22, board 14 owner ruling: "no split
+  // button/caret/popover on the Select tool"). The hook was named
+  // data-select-mode-trigger because the button opened the mode menu. The menu,
+  // its anchor state and its outside-click watcher are gone, so the button is
+  // just the Select tool and the hook says so: data-select-tool.
+  assert.match(selectToolbar, /data-select-tool/);
+  assert.doesNotMatch(selectToolbar, /data-select-mode-trigger/);
   assert.doesNotMatch(selectToolbar, /data-select-mode-indicator/);
   assert.doesNotMatch(selectToolbar, /data-select-mode-caret/);
   assert.doesNotMatch(selectToolbar, /getNextSelectModeMenuOpen/);
@@ -186,9 +192,15 @@ test('Select family uses the larger optical sizes on mobile', () => {
   // mobile" in the title is now about the RATIO, not the raw number: the phone
   // chip is 30px against the desktop's 34px, and 17-in-30 (0.57) is a fuller
   // chip than the desktop's 18-in-34 (0.53).
+  //
+  // DELIBERATE ASSERTION CHANGE (2026-09-22, board 7 owner ruling: "NO pop-up").
+  // The third line pinned the 19px glyph in a row of the phone's selection-mode
+  // FLYOUT. That flyout is deleted, so the three modes are drawn by the strip's
+  // segmented toggle instead, at the strip's own STRIP_GLYPH.
   assert.match(MOBILE_CHROME_SOURCE, /const RAIL_GLYPH = 17;/);
   assert.match(MOBILE_CHROME_SOURCE, /getSelectFamilyIconName\(activeTool, bottomToolbarApi\?\.selectionMode\)\} size=\{RAIL_GLYPH\}/);
-  assert.match(MOBILE_CHROME_SOURCE, /getSelectModeIconName\(option\.mode\)\} size=\{19\}/);
+  assert.match(MOBILE_CHROME_SOURCE, /icon: getSelectModeIconName\('rectangle'\)/);
+  assert.doesNotMatch(MOBILE_CHROME_SOURCE, /getSelectModeIconName\(option\.mode\)/);
 });
 
 test('creating or toggling a text mark keeps the live Text Select range active', () => {

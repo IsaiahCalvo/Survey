@@ -77,26 +77,35 @@
      WRAPPED - the "/ 99" span broke after the slash and painted "2 /" over
      "99", two 11px lines in a 26px control.
      So the pill is sized from the widest string it can ever show, "999 / 999",
-     never from the document in front of it. Measured in the pill's own face
-     (SF Pro Text 800 11px, font-variant-numeric: tabular-nums) at both 375 and
-     402 wide: every digit 7.602px, the slash 3.852px, the one space inside the
-     "/ N" span 2.82px. The fraction is a flex row of two children - the ordinal
-     and that span - so a 2px gap sits between them:
-        6 digits + slash + space + gap = 45.612 + 3.852 + 2.82 + 2 = 54.284px.
+     never from the document in front of it.
+
+     RULED CHANGE 2026-09-22 (owner, testing the phone build: "the page pill
+     looks too large"). The pill's own face drops from the header's 800 to the
+     STRIP's scale - 600 11px, tabular numerals, the strip's -0.01em - so the
+     numbers stop shouting next to a 17px rail glyph. Its box is untouched at
+     96x28 (DESIGN-SYSTEM.md). Re-measured in that face at both 375 and 390
+     wide: every digit 7.286px (was 7.602 at 800), the slash 3.531px (was
+     3.852), the one space inside the "/ N" span 2.875px (was 2.82).
+     The fraction is a flex row of two children - the ordinal and that span -
+     so a 2px gap sits between them:
+        6 digits + slash + space + gap = 43.716 + 3.531 + 2.875 + 2 = 52.122px.
      Tapping the fraction swaps the ordinal for a 3-digit input, and THAT is the
      wider of the two states, so it is the one the pill is sized from: the input
      carries half a pixel over its own three digits so a sub-pixel rounding can
      never shave the last one.
      Around the text: the fraction's own 6px of padding, the pill's 2px flex
-     gap, the 22px chevron zone, the pill's 8px of padding and 2px of border
-     = 40px of chrome. 54.784 + 40 = 94.784px, and the slack below rounds that
-     to a whole 96px - 1.2px of headroom for metric drift between WebKit and
-     Blink, verified on the iOS Simulator and in the pane. */
-  --mobile-page-digit-w: 7.602px;
+     gap, the 24px chevron zone (2026-09-22: 22 before - the board draws 24 and
+     the owner asked for the caret to sit exactly centred in it), the pill's 6px
+     of padding (3 a side, 4 before - the two swaps cancel, so the chrome is the
+     same 40px it was and the centred cluster never moves) and 2px of border
+     = 40px of chrome. 52.622 + 40 = 92.622px, and the slack below rounds that
+     to a whole 96px - 3.4px of headroom for metric drift between WebKit and
+     Blink, verified in the pane at 375 and 390. */
+  --mobile-page-digit-w: 7.286px;
   --mobile-page-input-w: calc((3 * var(--mobile-page-digit-w)) + 0.5px);
-  --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.852px + 2.82px + (3 * var(--mobile-page-digit-w)));
+  --mobile-page-pill-text: calc(var(--mobile-page-input-w) + 2px + 3.531px + 2.875px + (3 * var(--mobile-page-digit-w)));
   --mobile-page-pill-chrome: 40px;
-  --mobile-page-pill-slack: 1.216px;
+  --mobile-page-pill-slack: 3.378px;
   --mobile-page-pill-w: calc(var(--mobile-page-pill-text) + var(--mobile-page-pill-chrome) + var(--mobile-page-pill-slack));
 
   /* The centred page cluster: prev chevron, pill, next chevron, 2px apart.
@@ -286,6 +295,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   inset-inline: 0;
 }
 
+/* The two controls INSIDE the pill are 26px tall, not 28 - the pill's 1px
+   border is not theirs - so the shared -8px reached only 42. -9px puts them on
+   the same 44px as every other header control (owner 2026-09-22: "keep 44px hit
+   boxes"). Measured at 375 and 390: 44.0 for all six. */
+.mobile-pdf-header__page-frac::after,
+.mobile-pdf-header__page-chevron::after {
+  inset-block: -9px;
+}
+
 /* OWNER DECISION 2 (2026-07-12): centred page cluster = prev-page ‹ + split
    pill (fraction | chevron) + next-page ›. Prev/next are the keeper superset
    (demo has none in the bar); they flank the pill so they read as page nav and
@@ -329,7 +347,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: var(--mobile-page-pill-w);
   min-width: var(--mobile-page-pill-w);
   height: var(--mobile-control-h);
-  padding: 0 4px;
+  /* 3 a side, not 4: the chevron section grew by 2 to the board's 24, and the
+     pill's own box is fixed at 96, so the two pay for each other. */
+  padding: 0 3px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,9 +357,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-1);
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  font: 800 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  /* RULED CHANGE 2026-09-22 (owner): the pill takes the STRIP pill's radius,
+     10, so it reads as one of the app's pills rather than a boxier control
+     sitting above them. 5px before. */
+  border-radius: 10px;
+  /* RULED CHANGE 2026-09-22 (owner: "the page pill looks too large"). The
+     strip's own face - 600 11px with the strip's tabular numerals and -0.01em -
+     in place of the header's 800. Same box, quieter numbers. */
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* UX 2026-09-17 (owner ruling): no wash and no gold outline on an open pill.
@@ -384,21 +411,33 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-1);
   background: transparent;
   border: 0;
-  font: 800 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  /* The same 600 face the pill wears, so typing a page number does not make the
+     numerals jump a weight (2026-09-22 ruling). */
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   text-align: center;
 }
 
 .mobile-pdf-header__page-input:focus { outline: none; }
 
-.mobile-pdf-header__page-total { color: var(--text-3); white-space: nowrap; }
+/* RULED CHANGE 2026-09-22 (owner): the total reads --text-2, a step up from the
+   --text-3 it had. At 600 the numerals lost enough weight that the total at
+   --text-3 started to disappear beside the ordinal; --text-2 is the same step
+   down from the ordinal the strip uses between a label and its unit. */
+.mobile-pdf-header__page-total { color: var(--text-2); white-space: nowrap; }
 
-/* Tap zone 2 — chevron → zoom/fit dropdown only. Widened hit area (min 22px)
-   so it isn't a cramped edge target next to the fraction zone. */
+/* Tap zone 2 — chevron → zoom/fit dropdown only. Widened hit area (min 24px)
+   so it isn't a cramped edge target next to the fraction zone.
+   RULED CHANGE 2026-09-22 (owner: "the chevron is not centred in its section";
+   board 1-pen draws this button at min-width 24). 22 left the 11px caret's
+   centre half a pixel adrift of the section the eye sees, because the 1px
+   hairline on the left is part of the box. At 24 the 4px/5px padding puts the
+   caret's centre exactly on 12 - the section's own centre line. */
 .mobile-pdf-header__page-chevron {
   position: relative;
   height: 100%;
-  min-width: 22px;
+  min-width: 24px;
   /* 4px left, 5px right: the 1px border-left is part of this box, so an even
      5/5 padding centred the caret on the CONTENT box and left it 0.5px right
      of the box the user sees. 4 + 1px border = 5 on both sides, and the caret
@@ -682,7 +721,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    chip inside a 34.7pt pitch). Without this the smaller chip would also be a
    smaller target, which is the one thing the phone research said not to do. */
 .mobile-pdf-tools__main > .mobile-pdf-tools__button::after,
-.mobile-pdf-tools__select-family > .mobile-pdf-tools__button::after,
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button::after,
 .mobile-pdf-tools__footer-stack > .mobile-pdf-tools__button::after {
   content: '';
@@ -700,77 +738,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
 
-/* UX 2026-09-17 (phone sweep): the wrapper carries NO border. It used to carry
-   `1px solid transparent` with box-sizing: border-box, which left a 28px content
-   box for a 30px chip: the chip started 1px in on both axes and ran 1px past the
-   wrapper's right edge. Measured at 375x812, it was the only chip in the rail
-   that did not sit on the column's centre line - every sibling paints at x 4.5
-   (Pan, Draw, Shapes, Text, the kebab, Version history) while this one painted
-   at 5.5, 80 inside a wrapper correctly placed at 4.5, 79. Its hover /
-   focus-within / active outline is an inset box-shadow now, which paints in the
-   same place a 1px border did, on the same 6px radius, without taking a pixel
-   off the content box. */
-.mobile-pdf-tools__select-family {
-  position: relative;
-  width: var(--mobile-rail-chip);
-  height: var(--mobile-rail-chip);
-  border: 0;
-  border-radius: 6px;
-}
-
-.mobile-pdf-tools__select-family .mobile-pdf-tools__button {
-  position: relative;
-  border-color: transparent;
-}
-
-.mobile-pdf-tools__select-family:hover,
-.mobile-pdf-tools__select-family:focus-within,
-.mobile-pdf-tools__select-family[data-active='true'] {
-  box-shadow: inset 0 0 0 1px var(--accent-press);
-}
-
-.mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button,
-.mobile-pdf-tools__select-family:focus-within .mobile-pdf-tools__button {
-  border-color: transparent;
-}
-
-/* The mode caret hugs the Select family's own right edge (right:0, not a hard
-   left offset), so it follows the chip down to 30px and can never hang past the
-   rail and lose its right side the way it used to. Its own ::after keeps a
-   finger-sized target over a deliberately small glyph. */
-.mobile-pdf-tools__select-caret {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 8px;
-  height: 14px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  z-index: 1;
-}
-
-/* UX 2026-09-17 (phone sweep): the caret's pad starts INSIDE its own glyph's
-   column, not 6px to the left of it. With `-6px 0` the pad spanned x 19.5..33.5
-   across the chip's full height, which put the dead centre of the Text Select
-   chip inside the caret's target: document.elementFromPoint at the chip's centre
-   (20.5, 95) answered "Selection mode", and a 7x4 probe grid found the caret
-   owning 16 of the chip's 30px at every y. A tap on the middle of the tool's own
-   icon opened the selection-mode menu instead of arming the tool.
-   `-2px -4px` moves the pad to x 23.5..37.5 - the same 14px of width, still
-   inside the 40px rail - so the chip keeps its centre and its left 18px. The
-   vertical reach is untouched at 30px. Nothing paints differently; only hit
-   ownership changes. */
-.mobile-pdf-tools__select-caret::after {
-  content: '';
-  position: absolute;
-  inset-block: -8px;
-  inset-inline: -2px -4px;
-}
+/* PASS 7 (board 7, owner ruling 2026-09-22): the Select chip's split-button
+   wrapper, its mode caret and the caret's flyout menu were all deleted. The
+   wrapper's inset accent ring was the gold box the owner reported around the
+   armed chip; the chip is a plain rail chip now, so armed reads exactly like
+   every other tool — the gold glyph and nothing else — and the three modes live
+   in the strip's Box / Lasso / Text toggle instead of behind a pop-up. */
 
 .mobile-pdf-lasso-controls {
   position: fixed;
@@ -813,64 +786,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-lasso-controls > button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-
-.mobile-pdf-select-mode__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 8998;
-  border: 0;
-  background: transparent;
-}
-
-.mobile-pdf-select-mode__menu {
-  /* UX 2026-09-16: the selection-mode flyout used to appear in a single frame
-     with no transition. It now fades and slides down 5px over 150ms — the
-     same in-motion the zoom menu above already uses (Drawboard: 100ms fade +
-     grow in). It unmounts on close, so only the "in" half exists. */
-  animation: mobilePdfFlyoutIn 150ms cubic-bezier(0.33, 1, 0.68, 1);
-  position: fixed;
-  z-index: 8999;
-  width: min(180px, calc(100vw - 16px));
-  max-height: min(152px, calc(100dvh - 16px));
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--text-2);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-
-.mobile-pdf-select-mode__menu > button {
-  min-height: 44px;
-  padding: 0 9px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-}
-
-.mobile-pdf-select-mode__menu > button:focus-visible,
-.mobile-pdf-tools__select-caret:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.mobile-pdf-select-mode__menu > button.is-active {
-  color: var(--accent);
-  background: var(--surface-3);
-  box-shadow: inset 2px 0 var(--accent);
 }
 
 .mobile-pdf-tools__divider {
@@ -4048,15 +3963,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   .mobile-pdf-header__zoom-menu.is-open {
     transition: visibility 0s !important;
   }
-  .mobile-pdf-select-mode__menu,
   .mobile-pdf-tools__subtools {
     animation: none !important;
   }
-}
-
-@keyframes mobilePdfFlyoutIn {
-  from { opacity: 0; translate: 0 -5px; }
-  to { opacity: 1; translate: 0 0; }
 }
 
 @keyframes mobilePdfStripIn {

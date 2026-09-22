@@ -74,15 +74,11 @@ const rel = (file) => path.relative(repoRoot, file);
  *     :hover .quick-style__dot-fill under the pointer instead of taking the
  *                                  generic white ring - the override IS the
  *                                  intent.
- *   .mobile-pdf-tools__select-     redundant child rule; the parent's own
- *     family:hover .mobile-pdf-    :hover adds an inset accent-press ring,
- *     tools__button                so the control does answer the pointer.
  */
 const DELIBERATE_NO_OP_HOVERS = new Set([
   '.btn-active:hover',
   '#chrome-sub-toolbar-host .btn-active:hover:not(:disabled)',
   '.quick-style__dot.is-current:hover .quick-style__dot-fill',
-  '.mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button',
 ]);
 
 const PAINTS = /^(background|background-color|background-image|border|border-color|border-top|border-bottom|border-left|border-right|border-top-color|border-bottom-color|border-left-color|border-right-color|box-shadow|color|fill|stroke|opacity|outline|outline-color|text-decoration|text-decoration-color|transform|filter)$/;

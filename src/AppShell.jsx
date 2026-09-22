@@ -661,54 +661,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
-  // KAL-239: the Select tool's selection-mode menu. The current selection tool
-  // and its menu indicator share one button, matching Drawboard's compact
-  // Select / Lasso Select / Text Select switcher. The
-  // menu is a fixed-position portal anchored under the button (matching the
-  // Draw sub-toolbar popups) and closes on any outside click or Escape.
-  const [selectModeMenuOpen, setSelectModeMenuOpen] = useState(false);
-  const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
-  const selectModeButtonRef = useRef(null);
-  const selectModeMenuRef = useRef(null);
-  const selectModeTriggerToolRef = useRef(null);
-  // UX: tool shortcuts close the old menu so it cannot cover the new toolbar.
-  useEffect(() => {
-    if (selectModeTriggerToolRef.current === bottomToolbarApi?.activeTool) {
-      selectModeTriggerToolRef.current = null;
-      return;
-    }
-    selectModeTriggerToolRef.current = null;
-    setSelectModeMenuOpen(false);
-  }, [bottomToolbarApi?.activeTool, bottomToolbarApi?.selectionMode]);
-  useEffect(() => {
-    if (!selectModeMenuOpen) return undefined;
-    const el = selectModeButtonRef.current;
-    if (el) {
-      const r = el.getBoundingClientRect();
-      setSelectModeMenuAnchor({ top: r.bottom + 6, left: r.left + r.width / 2 });
-    }
-    const focusFrame = window.requestAnimationFrame(() => {
-      const menu = selectModeMenuRef.current;
-      const selected = menu?.querySelector?.('[role="menuitemradio"][aria-checked="true"]');
-      (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
-    });
-    const onDown = (e) => {
-      if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-trigger]'))) return;
-      setSelectModeMenuOpen(false);
-    };
-    const onKeyDown = (e) => {
-      if (e.key !== 'Escape') return;
-      setSelectModeMenuOpen(false);
-      window.requestAnimationFrame(() => selectModeButtonRef.current?.focus?.());
-    };
-    document.addEventListener('mousedown', onDown, true);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.removeEventListener('mousedown', onDown, true);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [selectModeMenuOpen]);
+  // PASS 7 (board 14, owner ruling 2026-09-22): the Select tool has NO caret and
+  // NO selection-mode pop-up on either platform. Clicking Select arms the family
+  // and the three modes are picked in the Box / Lasso / Text segmented toggle the
+  // bar shows beside it, so the anchor state, the outside-click watcher and the
+  // Escape handler this button used to need are all gone with the menu.
 
   // UX 2026-07-14: every top-bar control gets the app's instant tooltip
   // (the floating chip PDFViewer renders from setTooltip), not just the
@@ -1803,15 +1760,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
                 >
                 <button
-                  ref={isSelect ? selectModeButtonRef : undefined}
                   type="button"
                   data-tool-group="true"
-                  data-select-mode-trigger={isSelect ? 'true' : undefined}
+                  data-select-tool={isSelect ? 'true' : undefined}
                   aria-label={label}
                   onClick={() => {
                     if (isSelect) {
-                      selectModeTriggerToolRef.current = !isActive
-                        ? (isTextSelect || bottomToolbarApi.selectionMode === 'text' ? 'text-select' : 'select') : null;
                       bottomToolbarApi.setActiveTool(
                         isTextSelect || bottomToolbarApi.selectionMode === 'text'
                           ? 'text-select'
@@ -2203,8 +2157,16 @@ export default function App({ devPreviewReturnTab = null }) {
                     word and glyph in gold. It replaced a caret and a popover
                     menu hanging off the Select button: three modes are few
                     enough to show, and showing them means the user can see
-                    which one is live without opening anything. */}
-                {isSelectFamilyTool(bottomToolbarApi.activeTool) && (
+                    which one is live without opening anything.
+                    2026-09-22 (owner ruling): the toggle is what Select shows
+                    while NOTHING is selected. Click a mark with Select armed and
+                    contextTool names that mark's own tool, the settings that
+                    follow become that mark's (colour, width, line style, ends,
+                    series, text formatting), and the toggle steps aside — the
+                    mode is still armed, it just is not what the bar is talking
+                    about. Deselecting brings it straight back. */}
+                {isSelectFamilyTool(bottomToolbarApi.activeTool)
+                  && isSelectFamilyTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool) && (
                   <div
                     className="chrome-segmented"
                     data-select-mode-toggle="true"
