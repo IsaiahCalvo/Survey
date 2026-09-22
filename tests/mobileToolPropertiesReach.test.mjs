@@ -82,7 +82,10 @@ const STRIPS = {
   ellipse: [disc, null, widthPill, linePill],
   polygon: [disc, null, widthPill, linePill],
   polyline: [disc, null, widthPill, linePill],
-  counter: [disc, null, seriesPill],
+  /* 2026-09-22: the counter grew a "..." (its Size had no home on the phone at
+     all — see the sheet rows in MobilePdfViewerChrome), so its row is priced
+     with the divider and the button that came with it. */
+  counter: [disc, null, seriesPill, null, moreButton],
   text: [disc, null, widthPill, linePill, null, aaButton],
   callout: [disc, null, widthPill, null, aaButton, moreButton],
   eraser: [100, null, widthPill],
@@ -187,9 +190,29 @@ test('the strip is centred and has no scroll path, on every variant but the live
   assert.match(ruleBody('.mobile-pdf-properties > *'), /pointer-events:\s*auto/);
 });
 
+/*
+ * RULED CHANGE 2026-09-22 (owner, phone review): "Strip controls measure 40px
+ * tall, not 44 — raise the strip hit box to 44 (painted band stays 36), the app's
+ * ::after trick; discs stay 26x44 by design (their pitch), everything else
+ * >= 44x44."
+ *
+ * The numbers below moved because the SYMMETRIC pads this test used to pin were
+ * measured, by hit-testing every control with elementFromPoint at 390 and 375,
+ * and they answered 37-40px, not 44:
+ *   .mobile-pdf-properties__color::after        -12px      -> -5px -19px
+ *   the .mobile-styled-select__trigger pad      -12px      -> -5px -19px
+ *   --quick-style-hit-inset                     -11px      -> -2px (sideways only)
+ *   the disc and swatch pads                    (hooked)   -> -4px -18px
+ * Why: the header's own controls carry the same 44px pads, and theirs reach 8px
+ * BELOW the 34px header - to y=37 - and win the overlap, so everything a strip
+ * pad claimed above 37 was the header's. The pads are measured from y=37 down
+ * now (37..81 is 44), and each control's pair is its own distance to those two
+ * lines. What this test guards is unchanged: 44px of target on a 20px control,
+ * discs at 26 wide so a press cannot land on the wrong colour.
+ */
 test('every strip control is hit at 44px, not at the 20px it paints', () => {
-  // A 20px control centred in the painted 36px band sits 8px below the box top,
-  // so a -12px pad reaches -4..40 - 44px of target inside a 44px box.
+  // A 20px control centred in the painted 36px band sits at y=42..62, and the
+  // header's own pads end at y=37, so -5px / -19px is 37..81 - a clear 44.
   assert.equal(tokenPx('--mobile-strip-control-h'), 20);
   // Both pad rules are grouped selectors, so find the declaration block that
   // FOLLOWS the selector wherever it appears in its list.
@@ -206,8 +229,8 @@ test('every strip control is hit at 44px, not at the 20px it paints', () => {
   ]) {
     assert.match(
       padBody(selector),
-      /inset-block:\s*-12px/,
-      `${selector} must reach 44px: 20px of control plus 12px above and below`,
+      /inset-block:\s*-5px -19px/,
+      `${selector} must reach 44px: y=37 (where the header's pads stop) to y=81`,
     );
   }
 
@@ -215,16 +238,27 @@ test('every strip control is hit at 44px, not at the 20px it paints', () => {
   // whose own pad is a 28px circle - a smaller finger target than the pills beside
   // it - so the phone raises it here, and it is 26 x 44 rather than 44 x 44: the
   // discs sit on a 26px pitch, so a 44-wide box would overlap its neighbour and
-  // hand the press to the wrong colour. Vertically -11px on a 22px control is 44.
-  assert.match(css, /--quick-style-hit-inset:\s*-11px/, 'the discs reach 44px tall');
+  // hand the press to the wrong colour. The shared hook is ONE symmetric number,
+  // so it carries the sideways bleed only and the two rules below write the
+  // vertical pair: a 22px disc sits at y=41..63, so -4px / -18px is 37..81.
+  assert.match(css, /--quick-style-hit-inset:\s*-2px/, 'the discs keep the sideways bleed off the hook');
   for (const selector of [
     '.mobile-pdf-properties .quick-style--colours .quick-style__dot::after',
     '.mobile-pdf-properties .quick-style__swatch::after',
   ]) {
     const body = padBody(selector);
+    assert.match(body, /inset-block:\s*-4px -18px/, `${selector} reaches 44px tall`);
     assert.match(body, /inset-inline:\s*-2px/, `${selector} stops at half the 4px gap sideways`);
     assert.match(body, /border-radius:\s*0/, `${selector} is a rectangle, so the band's edges are live`);
   }
+
+  // The toggle's segments and the two bordered buttons sit at their own heights
+  // inside the same band, so they take their own pair to land on the same 37..81.
+  assert.match(
+    padBody('.mobile-pdf-properties__segmented > button::after'),
+    /inset-block:\s*-7px -21px/,
+    'a 16px segment reaches 44px',
+  );
 });
 
 test('the strip carries only the controls its board draws', () => {

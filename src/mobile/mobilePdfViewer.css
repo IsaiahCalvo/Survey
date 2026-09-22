@@ -1383,12 +1383,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    more, so it takes no pointer events at all and its children take them back
    (base rule): a pad can reach the full 44px inside the 44px box without the bar
    stealing the page's taps in the lanes between controls.
-   -12px: a 20px control centred in the painted 36px band sits 8px below the box
-   top, so -12px reaches -4..40 - 44px of target, 4px of it over the header
-   (which paints above this bar) and 4px over the page. inset-block deliberately
-   overshoots rather than naming an exact number, because it is measured from the
-   PADDING box and lands differently on a control with a 1px border (the region
-   Confirm / Delete buttons, Keep) than on one without.
+   MEASURED 2026-09-22 (phone, 390 and 375, by hit-testing every strip control
+   with elementFromPoint): the pads were SYMMETRIC (-12px each way) and every
+   control answered over 37-40px, not 44. Two reasons, and neither shows in the
+   CSS on its own. (1) The header's own controls carry the same 44px pads, and
+   theirs reach 8px BELOW the 34px header - to y=37 - and win the overlap, so
+   everything a strip pad claims above 37 is the header's. (2) A 20px control
+   centred in the painted 36px band sits at y=42..62, so a symmetric -12px asked
+   for 30..74 and was answered 37..74.
+   So the pads are measured from y=37 DOWN: 37..81 is the 44px the ruling asks
+   for, and each control's pair of numbers is its own distance to those two lines
+   (a 20px control -5/-19, a 22px disc -4/-18, a 16px segment -7/-21, a bordered
+   20px button -6/-20, because a 1px border moves the padding box the pad is
+   measured from). The bottom 3px lie over the page just past the bar's own 44px
+   box, which is what the base rule's pointer-events dance already allows for.
    Sideways the pads stop at half the 4px gap. Two pads that overlap steal each
    other's taps, and at this gap the bar is already a continuous run of targets -
    there is no dead lane between two controls to miss into. */
@@ -1417,19 +1425,26 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__keep::after {
   content: '';
   position: absolute;
-  inset-block: -12px;
+  inset-block: -5px -19px;
   inset-inline: -2px;
 }
 
+/* The two controls on this bar with a 1px border: the border moves the padding
+   box the pad is measured from in by 1px, so they take their own pair. */
+.mobile-pdf-properties--actions > button::after,
+.mobile-pdf-properties__keep::after {
+  inset-block: -6px -20px;
+}
+
 /* One control is not 20px tall, so it takes the inset that lands IT on 44: a
-   segment inside the toggle is 16px, because the 20px well pads itself by 2px.
-   Measured in the pane at 390 and 375: 44.0 on both. The combined swatch used to
-   need a rule here too; it is the shared QuickPaintSwatch now, and it takes the
-   cluster's own hook below. */
+   segment inside the toggle is 16px, because the 20px well pads itself by 2px, so
+   it sits at y=44..60 and needs -7 / -21 to reach the same 37..81. Measured by hit
+   test at 390 and 375: 44 on both. The combined swatch used to need a rule here too; it is the shared
+   QuickPaintSwatch now, and it takes the cluster's own hook below. */
 .mobile-pdf-properties__segmented > button::after {
   content: '';
   position: absolute;
-  inset-block: -14px;
+  inset-block: -7px -21px;
   inset-inline: 0;
 }
 
@@ -1442,29 +1457,34 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties > .mobile-styled-select .mobile-styled-select__trigger::after {
   content: '';
   position: absolute;
-  inset-block: -12px;
+  inset-block: -5px -19px;
   inset-inline: -2px;
 }
 
 /* The colour discs reach 44px TALL through the picker pass's own hook rather than
    a pad written here: a pad on this side would have to sit on the group wrapper,
    which covers the discs inside it and swallows every tap on the control it was
-   meant to enlarge. -11px is the vertical half of 44 on a 22px disc. */
+   meant to enlarge. The hook is one symmetric number, so it sets the sideways
+   bleed, and the two rules below write the vertical pair that lands the disc on
+   the strip's 37..81 (a 22px disc sits at y=41..63, so -4 / -18). */
 .mobile-pdf-properties .quick-style {
-  --quick-style-hit-inset: -11px;
+  --quick-style-hit-inset: -2px;
 }
 
 /* Sideways the discs stop at half the 4px gap, exactly like every other pad on
    this bar, so a disc is hit at 26 x 44: the whole 26px pitch, and no overlap.
-   DO NOT let the -11px above run sideways as well. The discs sit on a 26px
-   pitch, so a 44px-wide box overlaps its neighbour by 18px, and among
-   overlapping siblings the LATER one wins the hit test - the right-hand 4px of
-   the red disc would apply blue. Caught by the picker pass, 2026-09-21, before
-   it shipped.
+   A 44px-WIDE box is what must never happen here: the discs sit on a 26px pitch,
+   so it would overlap its neighbour by 18px, and among overlapping siblings the
+   LATER one wins the hit test - the right-hand 4px of the red disc would apply
+   blue. Caught by the picker pass, 2026-09-21, before it shipped. 26 x 44 is the
+   disc's own pitch and is by design (owner, 2026-09-22).
+   Vertically the pad is measured from 37 down like every other pad on this bar:
+   a 22px disc sits at y=41..63, so -4 / -18 is 37..81.
    The radius goes with it: the shared pad is a circle, and a 26 x 44 ellipse
    pinches to nothing at the top and bottom of the band, which is where a thumb
    coming down on the bar lands. A rectangle is the 44px the ruling asks for. */
 .mobile-pdf-properties .quick-style--colours .quick-style__dot::after {
+  inset-block: -4px -18px;
   inset-inline: -2px;
   border-radius: 0;
 }
@@ -1472,10 +1492,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* The combined swatch takes the same 26 x 44, written out rather than hooked: the
    swatch is its own element, not a child of the .quick-style group, so the custom
    property above never reaches it and it would otherwise keep the shared 28px
-   default - a finger target smaller than the pills beside it. These are the exact
-   numbers the phone's own swatch had before it became the shared component. */
+   default - a finger target smaller than the pills beside it. */
 .mobile-pdf-properties .quick-style__swatch::after {
-  inset-block: -11px;
+  inset-block: -4px -18px;
   inset-inline: -2px;
   border-radius: 0;
 }
@@ -1681,16 +1700,27 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 auto;
 }
 
+/* MEASURED 2026-09-22 (phone, 390 and 375): a five-character value was CLIPPED.
+   "20 pt" (the highlighter's default) and "50 pt" each need 29px of text, and the
+   72px width pill left its label 25px — 8px of left padding, a 12px stroke
+   sample, two 6px gaps, a 9px chevron and 6px of right padding — so the label
+   ellipsised to "20 p…".
+   The room is taken from the pill's INSIDE, not from its width: every pill keeps
+   the width its board states (width 72 / line style 92 / arrowhead 90 / arrow
+   ends 96 / series 80 / sheet field 96), because growing the width pill to 80
+   pushes the arrow strip to 336px inside a 331px band at 375px, and that strip
+   neither scrolls nor clips. Inner gap 6 -> 4 (the strip's own gap token) and
+   left padding 8 -> 6 give the label 31px, which clears 29 with a point to
+   spare; the line-style label gains the same 6px on top of the 39 it had. */
 .mobile-styled-select__trigger {
   position: relative;
   height: var(--mobile-strip-control-h);
   min-height: var(--mobile-strip-control-h);
-  /* 6px right, 8px left: the chevron needs less air than the preview. */
-  padding: 0 6px 0 8px;
+  padding: 0 6px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--mobile-strip-gap);
   color: var(--text-1);
   background: var(--surface-3);
   border: 0;
@@ -2023,8 +2053,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-overflow: ellipsis;
 }
 
+/* MEASURED 2026-09-22 (phone, 390 and 375): the word "Done" sat in a box 43.75px
+   wide while its own hit pad reached 10px PAST that box on each side, which put
+   54px of content inside a 44px scroll box and pushed the header's scrollWidth
+   10px past the sheet — a row wider than the sheet it sits in, and a Done that
+   read as cut off.
+   The fix is in this rule and the pad below, not in the markup: the button keeps
+   its automatic width (so the word always fits whatever the label says) with a
+   44px FLOOR so the finger target is 44 wide on its own, and `white-space:
+   nowrap` so the word can never break across the baseline it shares with the
+   title. The pad then stops at the button's own edges instead of overflowing
+   them, which is what leaves scrollWidth === clientWidth on both the button and
+   the header. */
 .mobile-pdf-tool-sheet__header > button {
   position: relative;
+  width: auto;
+  min-width: 44px;
   height: auto;
   padding: 0 4px;
   flex: 0 0 auto;
@@ -2032,15 +2076,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
   border: 0;
   font: 700 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  white-space: nowrap;
 }
 
 /* Done is painted at its own 14px so it can share the title's baseline; the
    finger still gets the app's usual 44px box, the same painted-small /
-   hit-large trick the tool strip uses. */
+   hit-large trick the tool strip uses. Vertically the pad overshoots (14 + 30 =
+   44); sideways it stops at the button's edges, because the 44px min-width above
+   already gives it the full 44 and a pad that spilled past the box is what made
+   the header overrun the sheet. */
 .mobile-pdf-tool-sheet__header > button::after {
   content: '';
   position: absolute;
-  inset: -15px -10px;
+  inset: -15px 0;
 }
 
 .mobile-pdf-tool-sheet__rows {

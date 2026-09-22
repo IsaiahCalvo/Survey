@@ -7,7 +7,7 @@ import CompactColorPicker from '../components/CompactColorPicker';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
-import { ZOOM_MODE_OPTIONS } from '../viewerShared';
+import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
@@ -81,7 +81,12 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'pen', label: 'Pen', icon: 'pen' },
       { id: 'highlighter', label: 'Highlighter', icon: 'highlighter' },
-      { id: 'eraser', label: 'Partial erase' /* UX: same tool name as desktop. */, icon: 'eraser' },
+      /* UX 2026-09-22 (owner, with the desktop rail): the tool is "Eraser". It
+         was "Partial erase", which collided with the Partial half of the
+         Partial / Whole toggle its own strip carries — two different things
+         wearing one name. The toggle keeps its own names, and they are the ones
+         that mean partial and whole. */
+      { id: 'eraser', label: 'Eraser', icon: 'eraser' },
     ],
   },
   shape: {
@@ -455,6 +460,22 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   if (!rgb) return fallback;
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
+
+/**
+ * The paint the combined swatch is shown, colour AND opacity together.
+ *
+ * MEASURED 2026-09-22 (phone): a rectangle with NO fill painted a solid WHITE
+ * centre. The phone was sending the swatch `toHexColor(fillColor)`, and a hex
+ * cannot carry "none" — a fill of #ffffff at 0% opacity came out #ffffff. The
+ * desktop bar composes the two before it hands them over (AppShell:
+ * `ensureRgbaOpacity(fillColor, fillOpacity / 100)`), which is why the same
+ * rectangle reads empty there. This is that line, so the two bars now show the
+ * one mark the same way, and nothing in the phone stylesheet paints this centre.
+ */
+const toSwatchPaint = (color, opacityPercent, fallback) => ensureRgbaOpacity(
+  color || fallback,
+  Math.max(0, Math.min(1, (opacityPercent ?? 100) / 100)),
+);
 
 /* ---------------------------------------------------------------------------
  * PASS 7 PHONE STRIP PRIMITIVES (owner-approved boards 1-7 / 15 / 16).
@@ -1493,8 +1514,28 @@ export function MobileToolProperties({ api }) {
     if (arrowheadValue === 'none') api.setArrowheadStyle?.('solidTriangle');
     api.setArrowBothEnds?.(next === 'both');
   };
+  /* BOARD 15 (counter series menu) — words only: "Count 1", "Count 2", then a
+     plus and "New count". The rows come from the app's own series list, which is
+     derived from the pins already on the document (getCounterSeriesList in
+     src/utils/counterNumbering.js), so a name here can never disagree with the
+     name the desktop menu shows for the same group.
+
+     MEASURED 2026-09-22 (phone): that list alone left the strip's pill reading
+     its placeholder ("Count") and the menu holding a single "New count" row,
+     because the list counts PLACED pins and the series the next pin will join
+     has none yet — so the control looked dead. The live series is named here as
+     the count it is about to become, which gives the pill the group in force and
+     the menu something to switch between from the first tap. */
+  const counterSeriesRows = (api.counterSeriesList || []).map((series, index) => ({
+    value: series.seriesId,
+    label: series.label || `Count ${index + 1}`,
+  }));
+  const activeCounterSeriesId = api.activeCounterSeriesId || '';
+  if (!counterSeriesRows.some((row) => row.value === activeCounterSeriesId)) {
+    counterSeriesRows.push({ value: activeCounterSeriesId, label: `Count ${counterSeriesRows.length + 1}` });
+  }
   const counterSeriesOptions = [
-    ...(api.counterSeriesList || []).map((series) => ({ value: series.seriesId, label: series.label || 'Count' })),
+    ...counterSeriesRows,
     {
       value: '__new',
       label: 'New count',
@@ -1502,6 +1543,20 @@ export function MobileToolProperties({ api }) {
       menuPreview: <Icon name="plus" size={13} color="currentColor" />,
     },
   ];
+  const applyCounterSeries = (seriesId) => {
+    if (seriesId === '__new') api.onNewCounterSeries?.();
+    // The row the tool is already on (including the not-yet-drawn first count,
+    // which has no id to switch to) is a no-op rather than a failed lookup.
+    else if (seriesId && seriesId !== activeCounterSeriesId) api.onSwitchCounterSeries?.(seriesId);
+  };
+  /* The counter's SIZE. A pin is measured in points like every other mark, so
+     the field carries its unit ("24 pt"); the presets are the app's own counter
+     list and the live size is prepended when it is not one of them, so the field
+     can never read a size the tool is not on. */
+  const counterSizeOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.counter, sizeValue).map((size) => ({
+    value: size,
+    label: `${size} pt`,
+  }));
   // Which board a tool's strip follows. Multi-colour tools show ONE combined
   // swatch instead of the three preset discs (owner ruling); the counter's
   // swatch is its pin with its number.
@@ -1515,7 +1570,14 @@ export function MobileToolProperties({ api }) {
   // the strip that nobody could read (owner, 2026-09-22); it is now a named
   // row in this same sheet, so the "..." also shows for those marks.
   const canResizeRotate = !!(api.canEnterBBoxEdit && api.onEnterBBoxEdit);
-  const showMoreOnStrip = showArrowhead || canResizeRotate;
+  /* MEASURED 2026-09-22 (phone): the counter had NO "..." and no size field, so a
+     pin's size could not be set on the phone at all while the desktop bar has
+     it — the one sheet that still held it (the big annotation sheet below) is
+     only reachable from "Aa", which the counter has no reason to show, and the
+     swatch now opens the colour picker instead. The counter joins the "..."
+     tools and its sheet holds exactly what the strip leaves off: Series and
+     Size (the pass-7 brief: "counter: series + size"). */
+  const showMoreOnStrip = showArrowhead || canResizeRotate || tool === 'counter';
 
   /* PASS 7 (boards 17 and 18): the COLOUR SHEET the strip's colour controls
      open — titled "Color", with a gold Done, the shared picker's 12 presets
@@ -1638,8 +1700,15 @@ export function MobileToolProperties({ api }) {
           platform="phone"
           variant={tool === 'counter' ? 'counter' : 'shape'}
           label={tool === 'counter' ? 'Pin and number colors' : 'Border and fill colors'}
-          ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
-          center={tool === 'counter' ? '#ffffff' : toHexColor(api.fillColor, '#ffffff')}
+          ring={tool === 'counter'
+            ? toSwatchPaint(api.fillColor, api.fillOpacity, '#ef4444')
+            : toSwatchPaint(api.strokeColor, api.strokeOpacity, '#ff0000')}
+          /* Colour AND opacity, the way the desktop bar composes them: a shape
+             with no fill hands the swatch a transparent centre instead of white.
+             A counter's centre is the number printed on its pin. */
+          center={tool === 'counter'
+            ? toSwatchPaint(api.strokeColor, api.strokeOpacity, '#ffffff')
+            : toSwatchPaint(api.fillColor, api.fillOpacity, '#ffffff')}
           /* Boards 17/18: the swatch opens the Colour sheet on the channel it is
              showing — the border ring for a shape, the pin for a counter — with
              the Border / Fill tabs for the other one. It used to open the old
@@ -1673,19 +1742,17 @@ export function MobileToolProperties({ api }) {
       )}
       {/* BOARD 4 — the counter's series picker. Words only: a series is "Count
           1", not a colour, and the pin beside it already carries the colour.
-          The counter's SIZE is in its sheet (the swatch opens it), because the
-          board gives this strip two controls and a size is not one of them. */}
+          The counter's SIZE is behind this strip's "..." (board 16's sheet
+          frame), because the board gives the strip two controls and a size is
+          not one of them. */}
       {tool === 'counter' && (
         <MobileStyledSelect
           ariaLabel="Counter series"
           width="var(--mobile-strip-series-w)"
-          value={api.activeCounterSeriesId || ''}
+          value={activeCounterSeriesId}
           placeholder="Count"
           options={counterSeriesOptions}
-          onChange={(seriesId) => {
-            if (seriesId === '__new') api.onNewCounterSeries?.();
-            else api.onSwitchCounterSeries?.(seriesId);
-          }}
+          onChange={applyCounterSeries}
         />
       )}
       {showLineStyleOnStrip && (
@@ -1784,6 +1851,36 @@ export function MobileToolProperties({ api }) {
                   onChange={applyArrowEnds}
                 />
               </div>
+            )}
+            {/* BOARD 4 + 16 — the counter's two sheet rows, in board 16's frame:
+                a 40px row, the word on the left, the 96px field on the right.
+                Series is the SAME control as the strip's pill (one option list,
+                one handler), so the two can never disagree; Size is the field
+                the desktop bar has and the phone had nowhere for. */}
+            {tool === 'counter' && (
+              <>
+                <div className="mobile-pdf-tool-sheet__row">
+                  <span>Series</span>
+                  <MobileStyledSelect
+                    ariaLabel="Counter series"
+                    width="var(--mobile-sheet-field-w)"
+                    value={activeCounterSeriesId}
+                    placeholder="Count"
+                    options={counterSeriesOptions}
+                    onChange={applyCounterSeries}
+                  />
+                </div>
+                <div className="mobile-pdf-tool-sheet__row">
+                  <span>Size</span>
+                  <MobileStyledSelect
+                    ariaLabel="Counter size"
+                    width="var(--mobile-sheet-field-w)"
+                    value={String(sizeValue ?? '')}
+                    options={counterSizeOptions}
+                    onChange={(size) => { handleSizeDraft(size); handleSizeCommit(size); }}
+                  />
+                </div>
+              </>
             )}
             {/* The callout's line style lives here because its strip already
                 carries the swatch, the width and "Aa". */}
@@ -2355,25 +2452,31 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 <Icon name="download" size={16} color="currentColor" />
                 Export annotated PDF
               </button>
-              {typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoreOpen(false);
-                    const buffer = window.__consoleLogBuffer;
-                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-                      detail: {
-                        consoleText: Array.isArray(buffer) && buffer.length > 0
-                          ? buffer.join('\n')
-                          : '(no console output captured)',
-                      },
-                    }));
-                  }}
-                >
-                  <Icon name="document" size={16} color="currentColor" />
-                  Save log
-                </button>
-              )}
+              {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
+                  used to be gated on window.Capacitor.isNativePlatform(), so the
+                  menu on web mobile held ONE row and the ruling's second item
+                  simply was not there — and web mobile is the only place a phone
+                  user can hit Cmd+Shift+L from, which is to say nowhere. The row
+                  fires the same event that shortcut does (see AppShell's
+                  keyHandler), so the two paths are one path and it works wherever
+                  the app runs. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  const buffer = window.__consoleLogBuffer;
+                  window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                    detail: {
+                      consoleText: Array.isArray(buffer) && buffer.length > 0
+                        ? buffer.join('\n')
+                        : '(no console output captured)',
+                    },
+                  }));
+                }}
+              >
+                <Icon name="document" size={16} color="currentColor" />
+                Save log
+              </button>
               {/* UX (owner ruling 2026-09-17): zoom lives in exactly ONE place on
                   phone — the header's zoom menu behind the % pill. The two
                   duplicate zoom rows that used to sit here were removed so the
