@@ -8,7 +8,6 @@
    where the palette CSS variables are not in scope.
 */
 import { useEffect, useRef, useState } from 'react';
-import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from '../components/Spinner';
@@ -77,7 +76,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -119,11 +118,11 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
           </div>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button disabled={submitting} onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
+          <button disabled={submitting} onClick={onClose} className="hub-btn">Cancel</button>
           <button
             disabled={!destId || submitting}
             onClick={handleConfirm}
-            style={{ opacity: destId && !submitting ? 1 : 0.45, cursor: destId && !submitting ? 'pointer' : 'not-allowed', background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            className="hub-btn hub-btn--primary"
           >
             {/* KAL-73: ring to the left of the participle label while the batch runs. */}
             {submitting && <Spinner size={14} color="currentColor" />}
@@ -172,14 +171,17 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
             {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button disabled={submitting} onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
+          <button disabled={submitting} onClick={onClose} className="hub-btn">Cancel</button>
+          {/* A delete confirm is still the dialog's primary action, so it keeps
+              the filled shape and only swaps gold for the destructive red
+              (is-danger on PRIMARY = --danger-fill + white label). */}
           <button
             disabled={submitting}
             onClick={handleConfirm}
-            style={{ background: danger ? C.dangerFill : C.gold, color: danger ? C.onDanger : C.onGold, border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: submitting ? 0.85 : 1 }}
+            className={danger ? 'hub-btn hub-btn--primary is-danger' : 'hub-btn hub-btn--primary'}
           >
             {submitting && <Spinner size={14} color="currentColor" />}
             {submitting ? (busyLabel || `${confirmLabel}…`) : confirmLabel}
@@ -255,14 +257,15 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
               />
             </label>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={16} /></button>
+          <button onClick={onClose} title="Close" className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ minHeight: 44, background: 'transparent', border: 0, color: C.muted, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
+          <button onClick={onClose} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>
           <button
             disabled={!trimmed}
             onClick={submit}
-            style={{ minHeight: 44, opacity: trimmed ? 1 : 0.45, cursor: trimmed ? 'pointer' : 'not-allowed', background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '6px 16px', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}
+            className="hub-btn hub-btn--primary"
+            style={{ minHeight: 44 }}
           >
             Save
           </button>

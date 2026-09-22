@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { closeButtonStyle } from './hubControls';
 import Spinner from '../components/Spinner';
 import Icon from '../Icons';
 import { C } from '../uiPalette';
@@ -59,7 +58,7 @@ export default function CreateProjectModal({
             <h2 style={{ margin: 0, fontSize: 18 }}>Create project</h2>
             <p style={{ margin: '6px 0 0', color: COLORS.muted, fontSize: 12 }}>Add PDFs now or start with an empty project.</p>
           </div>
-          <button type="button" title="Close" disabled={busy} onClick={onCancel} style={closeButtonStyle({ borderColor: COLORS.rule, color: COLORS.muted })}><Icon name="close" size={16} /></button>
+          <button type="button" title="Close" disabled={busy} onClick={onCancel} className="hub-icon-btn"><Icon name="close" size={16} /></button>
         </header>
 
         <div style={{ display: 'grid', gap: 16, padding: 18 }}>
@@ -102,7 +101,7 @@ export default function CreateProjectModal({
               {files.map((file, index) => (
                 <div key={`${file.name}-${file.size}-${index}`} style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 9px', borderRadius: 7, border: `1px solid ${COLORS.rule}`, background: COLORS.deep }}>
                   <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{file.name}</span>
-                  <button type="button" disabled={busy} onClick={() => onRemoveFile?.(index)} style={{ minWidth: 44, minHeight: 44, border: 0, background: 'transparent', color: COLORS.muted, cursor: 'pointer' }} aria-label={`Remove ${file.name}`}><Icon name="close" size={16} /></button>
+                  <button type="button" disabled={busy} onClick={() => onRemoveFile?.(index)} className="hub-icon-btn" style={{ minWidth: 44, minHeight: 44 }} aria-label={`Remove ${file.name}`}><Icon name="close" size={16} /></button>
                 </div>
               ))}
             </div>
@@ -110,8 +109,8 @@ export default function CreateProjectModal({
         </div>
 
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: `1px solid ${COLORS.rule}`, background: COLORS.deep }}>
-          <button type="button" disabled={busy} onClick={onCancel} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 14px', background: 'transparent', color: COLORS.muted, font: 'inherit', cursor: 'pointer' }}>Cancel</button>
-          <button type="button" disabled={!canSubmit} onClick={onConfirm} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 16px', background: COLORS.gold, color: 'var(--accent-text)', opacity: canSubmit ? 1 : 0.45, font: 'inherit', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" disabled={busy} onClick={onCancel} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>
+          <button type="button" disabled={!canSubmit} onClick={onConfirm} className="hub-btn hub-btn--primary" style={{ minHeight: 44 }}>
             {/* KAL-73: ring + participle while the project (and any PDFs) persist. */}
             {busy && <Spinner size={14} color="currentColor" />}
             {busy ? 'Creating project…' : 'Create project'}

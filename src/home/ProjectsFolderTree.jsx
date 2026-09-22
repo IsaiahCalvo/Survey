@@ -31,7 +31,6 @@ import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
-import { miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
 
@@ -528,6 +527,53 @@ export default function ProjectsFolderTree({
     if (project && onRenameProject) void onRenameProject(project, name);
   }, [localProjects, onRenameProject]);
 
+  /* Renaming a project is an EDIT, so it offers the same Cancel / Save pair
+     Templates does, in the same place — the header's subtitle row (owner,
+     2026-09-22). Before this, the name field committed silently on blur: there
+     was no way to back out of a half-typed name and nothing told you the name
+     had already changed. `nameDraft` holds the pending text for one project;
+     while it differs from the saved name the pair appears. Enter saves, Escape
+     cancels, and the pair is the only other way out — blur no longer commits,
+     because a Save button that does not have to be pressed is a lie.
+     Everything else on this screen (reordering files, team membership,
+     preferences) still saves the moment you do it, so none of those raise the
+     pair. */
+  const [nameDraft, setNameDraft] = useState(null); // { id, value } | null
+  const draftProject = nameDraft ? (projectById.get(nameDraft.id) || null) : null;
+  const nameDirty = !!(draftProject && nameDraft.value.trim() && nameDraft.value.trim() !== draftProject.name);
+  const editProjectName = useCallback((id, value) => setNameDraft({ id, value }), []);
+  const cancelProjectName = useCallback(() => setNameDraft(null), []);
+  const saveProjectName = useCallback(() => {
+    setNameDraft((draft) => {
+      if (!draft) return null;
+      const name = draft.value.trim();
+      const project = projectById.get(draft.id);
+      if (project && name && name !== project.name) renameProject(draft.id, name);
+      return null;
+    });
+  }, [projectById, renameProject]);
+  // A draft belongs to one project. Once that project is no longer the one on
+  // screen (desktop panel or phone drill-down), the draft is dropped rather
+  // than carried across to another project's name.
+  const draftOwnerIds = `${open?.id ?? ''}|${mobileDrillProject?.id ?? ''}`;
+  useEffect(() => {
+    setNameDraft((draft) => (draft && !draftOwnerIds.split('|').includes(String(draft.id)) ? null : draft));
+  }, [draftOwnerIds]);
+  const projectNameField = (project) => ({
+    value: nameDraft && nameDraft.id === project.id ? nameDraft.value : project.name,
+    onChange: (e) => editProjectName(project.id, e.target.value),
+    onKeyDown: (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveProjectName(); e.currentTarget.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelProjectName(); e.currentTarget.blur(); }
+    },
+  });
+  const projectSaveRow = (className) => (nameDirty ? (
+    <span className={className}>
+      <button type="button" className="hub-btn" onClick={cancelProjectName}>Cancel</button>
+      <button type="button" className="hub-btn hub-btn--primary" onClick={saveProjectName}>Save</button>
+    </span>
+  ) : null);
+
   const reorderProjects = useCallback((fromId, toId) => {
     if (fromId == null || toId == null || fromId === toId) return;
     const out = [...localProjects];
@@ -725,24 +771,24 @@ export default function ProjectsFolderTree({
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
             <button
               onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+              className="hub-btn"
             >{allSel ? 'None' : 'All'}</button>
             <button
               disabled={!selCount}
               onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-              style={miniButtonStyle({ disabled: !selCount })}
+              className="hub-btn"
             >Duplicate</button>
             <button
               disabled={!selCount}
               onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-              style={miniButtonStyle({ disabled: !selCount, iconOnly: true })}
+              className="hub-btn hub-btn--icon"
               title="Share" aria-label="Share"
             ><Icon name="share" size={12} /></button>
             <button
               data-testid="delete-selected-projects"
               disabled={!selCount}
               onClick={() => { void deleteProjects([...selProj]); }}
-              style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
+              className="hub-btn hub-btn--icon is-danger"
               title="Delete" aria-label="Delete"
             ><Icon name="trash" size={12} /></button>
           </span>
@@ -766,12 +812,12 @@ export default function ProjectsFolderTree({
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
             <button
               onClick={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
-              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+              className="hub-btn"
             >{allSel ? 'None' : 'All'}</button>
             <button
               disabled={!c}
               onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-              style={miniButtonStyle({ disabled: !c })}
+              className="hub-btn"
             >Duplicate</button>
             <button
               disabled={!c}
@@ -780,18 +826,18 @@ export default function ProjectsFolderTree({
                 setMoveIds(selectedFiles.map((f) => f.id));
                 setMoveOpen(true);
               }}
-              style={miniButtonStyle({ disabled: !c })}
+              className="hub-btn"
             >Move/Copy</button>
             <button
               disabled={!c}
               onClick={() => onShare && onShare(mobileDrillProject)}
-              style={miniButtonStyle({ disabled: !c, iconOnly: true })}
+              className="hub-btn hub-btn--icon"
               title="Share" aria-label="Share"
             ><Icon name="share" size={12} /></button>
             <button
               disabled={!c}
               onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-              style={miniButtonStyle({ disabled: !c, danger: true, iconOnly: true })}
+              className="hub-btn hub-btn--icon is-danger"
               title="Delete" aria-label="Delete"
             ><Icon name="trash" size={12} /></button>
           </span>
@@ -808,11 +854,17 @@ export default function ProjectsFolderTree({
   const mobileHeaderSelectRow = mobileDrillProject ? mobileFileSelectRow : mobileProjectActions;
   const subtitle = (
     <>
-      <span className="projects-desktop-summary"><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+      {/* The count first, then Cancel / Save when a project name is being
+          edited — the same order and the same 8px gap as Templates. */}
+      <span className="projects-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+        {projectSaveRow('hub-desktop-save-row')}
+      </span>
       <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="projects-mobile-count">
           <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject ? 'files' : 'projects'}
         </span>
+        {projectSaveRow('hub-mobile-save-row')}
         {mobileHeaderSelectRow}
       </span>
     </>
@@ -849,7 +901,7 @@ export default function ProjectsFolderTree({
               setTeamMenu(null);
               setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
             }}
-            style={moreButtonStyle()}
+            className="hub-icon-btn"
             title="More" aria-label="More"
           ><Icon name="more" size={14} /></button>
         )}
@@ -875,7 +927,7 @@ export default function ProjectsFolderTree({
           <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button
               className="btn primary"
-              style={{ padding: '4px 8px', fontSize: 11, gap: 4, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
+              style={{ alignSelf: 'flex-start' }}
               onClick={handleNewProject}
             >
               <Icon name="plus" size={11} />New project
@@ -884,7 +936,7 @@ export default function ProjectsFolderTree({
               <button
                 data-testid="project-select-toggle"
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-                style={miniSelectButtonStyle()}
+                className="hub-btn hub-btn--tertiary"
               >
                 {jobsEdit ? 'Done' : 'Select'}
               </button>
@@ -895,7 +947,7 @@ export default function ProjectsFolderTree({
                     return (
                       <button
                         onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-                        style={miniButtonStyle()}
+                        className="hub-btn"
                       >{allSel ? 'None' : 'All'}</button>
                     );
                   })()}
@@ -903,13 +955,13 @@ export default function ProjectsFolderTree({
                   <button
                     disabled={!selCount}
                     onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-                    style={miniButtonStyle({ disabled: !selCount })}
+                    className="hub-btn"
                   >Duplicate</button>
                   {/* Share — opens the share flow for the first selected project. */}
                   <button
                     disabled={!selCount}
                     onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-                    style={miniButtonStyle({ disabled: !selCount, iconOnly: true })}
+                    className="hub-btn hub-btn--icon"
                     title="Share" aria-label="Share"
                   ><Icon name="share" size={11} /></button>
                   {/* Delete — removes each selected project and lets the host persist it when wired. */}
@@ -917,7 +969,7 @@ export default function ProjectsFolderTree({
                     data-testid="delete-selected-projects"
                     disabled={!selCount}
                     onClick={() => { void deleteProjects([...selProj]); }}
-                    style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
+                    className="hub-btn hub-btn--icon is-danger"
                     title="Delete" aria-label="Delete"
                   ><Icon name="trash" size={11} /></button>
                 </>
@@ -997,7 +1049,7 @@ export default function ProjectsFolderTree({
                           setFileMenu(null);
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
-                        style={moreButtonStyle()}
+                        className="hub-icon-btn"
                         title="More"
                       ><Icon name="more" size={14} /></button>
                     )}
@@ -1017,11 +1069,11 @@ export default function ProjectsFolderTree({
               <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
                 <span style={{ width: 4, height: 36, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Inline rename field — commits the new name to local state
-                      on blur / Enter so the tree and header stay in sync. */}
+                  {/* Inline rename field. Typing raises Cancel / Save in the
+                      header's subtitle row; Enter saves, Escape backs out. */}
                   <input
                     key={open.id}
-                    defaultValue={open.name}
+                    {...projectNameField(open)}
                     title="Click to rename"
                     onDoubleClick={(e) => e.currentTarget.select()}
                     style={{
@@ -1033,13 +1085,7 @@ export default function ProjectsFolderTree({
                     onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'var(--ink-500)'; }}
                     onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderBottomColor = 'transparent'; }}
                     onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--gold)'; }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderBottom = '1px dashed transparent';
-                      const name = e.currentTarget.value.trim();
-                      if (name && name !== open.name) renameProject(open.id, name);
-                      else e.currentTarget.value = open.name;
-                    }}
+                    onBlur={(e) => { e.currentTarget.style.borderBottom = '1px dashed transparent'; }}
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
@@ -1065,18 +1111,17 @@ export default function ProjectsFolderTree({
                         const selectedFiles = openFiles.filter((f) => selFiles.has(f.id));
                         const c = selectedFiles.length;
                         const allSel = c === openFiles.length && openFiles.length > 0;
-                        const baseBtn = miniButtonStyle();
                         return (
                           <>
                             <button
                               onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
-                              style={{ ...baseBtn, color: 'var(--bone-100)' }}
+                              className="hub-btn"
                             >{allSel ? 'None' : 'All'}</button>
                             {/* Duplicate — clones each selected file in place. */}
                             <button
                               disabled={!c}
                               onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-                              style={miniButtonStyle({ disabled: !c })}
+                              className="hub-btn"
                             >Duplicate</button>
                             {/* Move/Copy — opens the Move/Copy picker so the
                                 user chooses a destination project and moves or
@@ -1088,20 +1133,20 @@ export default function ProjectsFolderTree({
                                 setMoveIds(selectedFiles.map((f) => f.id));
                                 setMoveOpen(true);
                               }}
-                              style={miniButtonStyle({ disabled: !c })}
+                              className="hub-btn"
                             >Move/Copy</button>
                             {/* Share — opens the share flow for this project. */}
                             <button
                               disabled={!c}
                               onClick={() => onShare && onShare(open)}
-                              style={miniButtonStyle({ disabled: !c, iconOnly: true })}
+                              className="hub-btn hub-btn--icon"
                               title="Share"
                             ><Icon name="share" size={11} /></button>
                             {/* Delete — removes each selected file locally. */}
                             <button
                               disabled={!c}
                               onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-                              style={miniButtonStyle({ disabled: !c, danger: true, iconOnly: true })}
+                              className="hub-btn hub-btn--icon is-danger"
                               title="Delete"
                             ><Icon name="trash" size={11} /></button>
                           </>
@@ -1109,7 +1154,7 @@ export default function ProjectsFolderTree({
                       })()}
                       <button
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                        style={miniSelectButtonStyle()}
+                        className="hub-btn hub-btn--tertiary"
                       >
                         {fileSelect ? 'Done' : 'Select'}
                       </button>
@@ -1185,7 +1230,7 @@ export default function ProjectsFolderTree({
                                   setTeamMenu(null);
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
-                                style={moreButtonStyle()}
+                                className="hub-icon-btn"
                                 title="More"
                               ><Icon name="more" size={14} /></button>
                             )}
@@ -1274,14 +1319,8 @@ export default function ProjectsFolderTree({
                     <input
                       key={`mobile-project-name-${mobileDrillProject.id}`}
                       className="projects-mobile-title-input"
-                      defaultValue={mobileDrillProject.name}
+                      {...projectNameField(mobileDrillProject)}
                       title="Tap to rename"
-                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                      onBlur={(e) => {
-                        const name = e.currentTarget.value.trim();
-                        if (name && name !== mobileDrillProject.name) renameProject(mobileDrillProject.id, name);
-                        else e.currentTarget.value = mobileDrillProject.name;
-                      }}
                     />
                     <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
@@ -1377,7 +1416,7 @@ export default function ProjectsFolderTree({
                                   setFileMenu(null);
                                   setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                                 }}
-                                style={moreButtonStyle()}
+                                className="hub-icon-btn"
                                 title="More"
                               ><Icon name="more" size={14} /></button>
                             )}
@@ -1651,7 +1690,7 @@ export default function ProjectsFolderTree({
                     setFileMenu(null);
                     setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                   }}
-                  style={moreButtonStyle()}
+                  className="hub-icon-btn"
                   title="More"
                 ><Icon name="more" size={14} /></button>
               )}
@@ -1744,7 +1783,7 @@ export default function ProjectsFolderTree({
               <span style={{ width: 4, height: 32, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
               <input
                 key={`mobile-${open.id}`}
-                defaultValue={open.name}
+                {...projectNameField(open)}
                 title="Click to rename"
                 style={{
                   background: 'transparent',
@@ -1757,12 +1796,6 @@ export default function ProjectsFolderTree({
                   outline: 'none',
                   width: '100%',
                   fontFamily: 'inherit',
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                onBlur={(e) => {
-                  const name = e.currentTarget.value.trim();
-                  if (name && name !== open.name) renameProject(open.id, name);
-                  else e.currentTarget.value = open.name;
                 }}
               />
             </div>
@@ -1816,7 +1849,7 @@ export default function ProjectsFolderTree({
                           setTeamMenu(null);
                           setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                         }}
-                        style={moreButtonStyle()}
+                        className="hub-icon-btn"
                         title="More"
                       ><Icon name="more" size={14} /></button>
                     )}

@@ -20,7 +20,6 @@
 import React from 'react';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
-import { closeButtonStyle, moreButtonStyle } from './hubControls';
 import Spinner from '../components/Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import DismissBarrier from '../components/DismissBarrier';
@@ -130,7 +129,7 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
@@ -151,7 +150,7 @@ const ActivityModal = ({ member, onClose }) => {
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>{items.length} event{items.length === 1 ? "" : "s"}</span>
-          <button onClick={onClose} style={{ background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+          <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
         </div>
       </div>
     </div>
@@ -254,7 +253,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
@@ -264,7 +263,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
               <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: "none", height: 30, whiteSpace: "nowrap", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", fontSize: 11.5, cursor: busy || blockedReason ? "not-allowed" : "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{copied ? "Copied" : "Copy link"}</button>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? "Copied" : "Copy link"}</button>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this invite link can join as {linkRole}. Free users enter as Viewer until upgrade.</div>
           </div>
@@ -290,11 +289,11 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           )}
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
-          <button onClick={onClose} style={{ background: "transparent", border: 0, color: INK_200, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}>Cancel</button>
+          <button onClick={onClose} className="hub-btn">Cancel</button>
           {/* UX (KAL-73): invite sends are a network round-trip over 500ms, so the
               button takes the shared loading treatment — 14px ring on the left,
               present-participle label, disabled until the request resolves. */}
-          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ cursor: busy ? "progress" : (!emails.trim() || blockedReason ? "not-allowed" : "pointer"), background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
+          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} className="hub-btn hub-btn--primary">{busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
         </div>
       </div>
     </div>
@@ -563,8 +562,8 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const someSel = selectedIds.size > 0;
 
   const ICON_BTN = (iconName, title, onClick, color, disabled) => (
-    <button title={title} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
-      style={{ width: 28, height: 28, borderRadius: 6, padding: 0, background: "transparent", border: `1px solid ${INK_500}`, color: disabled ? INK_300 : color, display: "grid", placeItems: "center", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", flex: "none" }}>
+    <button title={title} disabled={Boolean(disabled)} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
+      className={`hub-btn hub-btn--icon${color === DANGER ? ' is-danger' : ''}`}>
       <Icon name={iconName} size={13} />
     </button>
   );
@@ -598,7 +597,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Manage Team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
-            <button onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => setInviteOpen(true)} className="hub-btn hub-btn--primary">
               <Icon name="plus" size={11}/>Invite
             </button>
           </div>
@@ -612,7 +611,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
             {editMode && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 4, flex: "none" }}>
                 <button onClick={(e) => { e.stopPropagation(); if (allSel) setSelectedIds(new Set()); else setSelectedIds(new Set(selectable.map(m => m.id))); }}
-                  style={{ padding: "0 8px", height: 28, fontSize: 11.5, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, cursor: "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{allSel ? "None" : "All"}</button>
+                  className="hub-btn">{allSel ? "None" : "All"}</button>
                 <div style={{ position: "relative", display: "inline-flex" }}>
                   {ICON_BTN(
                     "userRole",
@@ -650,7 +649,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 )}
               </div>
             )}
-            <button onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
+            <button onClick={toggleEdit} className="hub-btn hub-btn--tertiary">{editMode ? "Done" : "Edit"}</button>
           </div>
 
           {/* Column headers */}
@@ -694,7 +693,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                             area and the text's position are all unchanged.
                             Fixed 2026-09-16 (r5-icons). */}
                         <button data-kal31-role-trigger="true" onClick={(e) => { e.stopPropagation(); setOpenRoleSel(openRoleSel === m.id ? null : m.id); }}
-                          style={{ background: "transparent", border: 0, padding: 0, color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" }}>{m.role}<Icon name="chevronDown" size={14} color="var(--text-3)" style={{ display: "block", flex: "none" }} /></button>
+                          className="hub-btn hub-btn--field" style={{ maxWidth: "100%" }}>{m.role}<Icon name="chevronDown" size={14} color="var(--text-3)" style={{ display: "block", flex: "none" }} /></button>
                         {openRoleSel === m.id && (
                           <div data-kal31-role-menu="true" data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                             {ROLES.map(r => (
@@ -717,7 +716,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     ) : (
                       <button onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
                         title="More" aria-label="More"
-                        style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
+                        className="hub-icon-btn"><Icon name="more" size={14} /></button>
                     )}
                   </div>
                   {!editMode && openMenu === m.id && (
@@ -758,7 +757,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div style={{ fontSize: 11.5, color: GOLD, fontWeight: 600 }}>Pending</div>
                     <button onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
                       title="More" aria-label="More"
-                      style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
+                      className="hub-icon-btn"><Icon name="more" size={14} /></button>
                   </div>
                   {openInviteMenu === inv.id && (
                     <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
@@ -794,7 +793,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
             <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>
               {memberList.length} member{memberList.length === 1 ? "" : "s"}{pendingInvites.length ? ` · ${pendingInvites.length} pending` : ""}
             </span>
-            <button onClick={onClose} style={{ background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+            <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
           </div>
         </div>
       </div>

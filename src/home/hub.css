@@ -122,16 +122,182 @@
   display: none !important;
 }
 .survey-hub .actions { margin-left: auto; display: flex; gap: 6px; }
-.survey-hub .btn { background: var(--ink-700); color: var(--bone-100); border: 1px solid var(--ink-500); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; }
-.survey-hub .btn.primary { background: var(--gold); color: var(--accent-text); border-color: transparent; font-weight: 600; }
-/* UX 2026-09-22: a gold control's own states. It used to take the generic
-   neutral press, so the home screen's one primary button went dark grey under
-   the finger instead of darkening its gold. */
-.survey-hub .btn.primary:hover { background: var(--accent-light); }
-.survey-hub .btn.primary:active { background: var(--accent-press); }
-.survey-hub .btn:not(.primary):hover { background: var(--hover); }
-.survey-hub .btn:not(.primary):active { background: var(--pressed); }
-.survey-hub .btn.ghost { background: transparent; }
+/* ─────────────────────────────────────────────────────────────────────────
+   THE HOME BUTTON SYSTEM — four kinds, no fifth (owner, 2026-09-22)
+
+   The owner saw the Templates editor's Cancel / Save pills (20px tall, 10px
+   radius, their own border and font) sitting beside the 28px header buttons
+   and said the home screens need ONE design system. These four kinds are it.
+   Every button on Documents, Projects, Templates, Archive, the project detail
+   panel and the account menus is one of them. If a new button does not fit
+   one, the answer is to reuse the closest kind, not to add a fifth.
+
+     PRIMARY   `hub-btn hub-btn--primary` (or `btn primary` inside .survey-hub)
+               the one gold filled action per surface — New template, New
+               entity, Upload, Save.
+     SECONDARY `hub-btn` / `btn` — outlined, transparent: Add files, Last
+               edited, Members, Cancel, Duplicate, Move/Copy.
+     TERTIARY  `hub-btn hub-btn--tertiary` — gold text, no box: Select, All,
+               None, and the other in-place links.
+     ICON      `hub-icon-btn` — the 24px transparent square for "…", ×, and
+               other glyph-only controls.
+
+   Shared numbers (all four): 6px radius, 11px/600 label in the inherited
+   family, 11px icons, 6px icon-to-label gap. The first three are 28px tall
+   with 8px side padding; ICON is 24×24 with none.
+
+   The `hub-*` names are deliberately unprefixed so the portalled modals and
+   menus — which render outside `.survey-hub` — get the same buttons. The
+   legacy `.btn` / `.btn.primary` names stay wired to the same declarations so
+   the buttons the owner already likes did not have to be touched.
+
+   Hover / press follow the owner's rule: a gold fill moves to --accent-light
+   then --accent-press; anything outlined or bare takes --hover then
+   --pressed. Colour only — the app-wide `.btn` hover lift and shadow are
+   cancelled here, because a 28px chrome button that jumps 1px reads as loose.
+   ───────────────────────────────────────────────────────────────────────── */
+.hub-btn,
+.survey-hub .btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: none;
+  box-shadow: none;
+  transition:
+    color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 100ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hub-btn > svg,
+.survey-hub .btn > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+.hub-btn:not(:disabled):hover,
+.survey-hub .btn:not(:disabled):hover { background: var(--hover); transform: none; box-shadow: none; }
+.hub-btn:not(:disabled):active,
+.survey-hub .btn:not(:disabled):active { background: var(--pressed); transform: none; box-shadow: none; }
+
+/* PRIMARY — the single gold action. A gold control's own states are
+   --accent-light (hover) and --accent-press (pressed); it must never take the
+   neutral press, which turned the home screen's one gold button dark grey
+   under the finger. */
+.hub-btn.hub-btn--primary,
+.survey-hub .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.hub-btn.hub-btn--primary:not(:disabled):hover,
+.survey-hub .btn.primary:not(:disabled):hover { background: var(--accent-light); border-color: var(--accent-light); }
+.hub-btn.hub-btn--primary:not(:disabled):active,
+.survey-hub .btn.primary:not(:disabled):active { background: var(--accent-press); border-color: var(--accent-press); }
+
+/* TERTIARY — a gold label, no box. `.ghost` is the old name for the same
+   thing and stays mapped here. */
+.hub-btn.hub-btn--tertiary,
+.survey-hub .btn.tertiary,
+.survey-hub .btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+.hub-btn.hub-btn--tertiary > svg,
+.survey-hub .btn.tertiary > svg { color: var(--accent); }
+
+/* A destructive member of any kind keeps the kind's geometry and only changes
+   its colour — one red, from tokens, and the right member of the red family:
+   --danger-text for a WORD, plain --danger for a GLYPH, --danger-fill (with
+   the white --on-danger label) for the filled confirm in a delete dialog. */
+.hub-btn.is-danger,
+.survey-hub .btn.is-danger { color: var(--danger-text); }
+.hub-icon-btn.is-danger,
+.hub-btn.hub-btn--icon.is-danger { color: var(--danger); }
+.hub-btn.hub-btn--primary.is-danger,
+.survey-hub .btn.primary.is-danger {
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: var(--on-danger);
+}
+.hub-btn.hub-btn--primary.is-danger:not(:disabled):hover,
+.survey-hub .btn.primary.is-danger:not(:disabled):hover { background: var(--danger); border-color: var(--danger); }
+.hub-btn.hub-btn--primary.is-danger:not(:disabled):active,
+.survey-hub .btn.primary.is-danger:not(:disabled):active { background: var(--danger-press); border-color: var(--danger-press); }
+
+/* Icon-only SECONDARY: same box, squared off, so a Share or Delete glyph in a
+   selection row lines up with the worded buttons beside it. */
+.hub-btn.hub-btn--icon,
+.survey-hub .btn.icon-only { width: 28px; padding: 0; }
+
+/* A SECONDARY used as a dropdown TRIGGER: same box, but the label stays left
+   and the caret is pushed to the right edge, the way a field reads. Not a
+   fifth kind — a layout modifier, like hub-btn--icon. */
+.hub-btn.hub-btn--field {
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+}
+
+/* ICON — the 24px transparent square. No border: a "…" or a × does not need
+   an edge to be found, and the owner's rule is that borders identify a
+   control, not decorate one. */
+.hub-icon-btn {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transform: none;
+  box-shadow: none;
+  transition: color 100ms cubic-bezier(0.4, 0, 0.2, 1), background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hub-icon-btn:not(:disabled):hover { background: var(--hover); color: var(--text-1); }
+.hub-icon-btn:not(:disabled):active { background: var(--pressed); }
+.hub-icon-btn.is-danger:not(:disabled):hover { color: var(--danger); }
+
+/* ONE disabled look for all four kinds, from tokens — no opacity, which dims
+   a gold fill into a paler gold instead of switching it off. */
+.hub-btn:disabled,
+.survey-hub .btn:disabled,
+.hub-icon-btn:disabled {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.hub-btn.hub-btn--primary:disabled,
+.survey-hub .btn.primary:disabled { background: var(--disabled-fill); }
+.hub-btn.hub-btn--tertiary:disabled,
+.survey-hub .btn.tertiary:disabled,
+.hub-icon-btn:disabled { border-color: transparent; }
 
 .survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
 .survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
@@ -626,9 +792,11 @@
   gap: 8px;
 }
 
+/* The sort control is an ordinary SECONDARY button that only needs a floor on
+   its width so the label can change without the row jumping. Its padding is
+   the system's (see the button system above), not its own. */
 .survey-hub .archive-filter-button {
   min-width: 78px;
-  padding: 5px 8px;
 }
 
 .survey-hub .archive-filter-button span {
@@ -717,7 +885,9 @@
     --mobile-header-h: 140px;
     --mobile-tabs-h: calc(56px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
     --mobile-list-card-h: 64px;
-    --hub-mobile-primary-action-font-size: 11.5px;
+    /* The phone's gold action is the same PRIMARY button as the desktop's:
+       11px/600 (owner, 2026-09-22 — one button system on both). */
+    --hub-mobile-primary-action-font-size: 11px;
     position: relative;
     width: 100vw;
     min-height: 100dvh;
@@ -1087,7 +1257,7 @@
     width: 112px;
     min-width: 112px;
     height: 28px;
-    padding-inline: 10px;
+    padding-inline: 8px;
     font-size: var(--hub-mobile-primary-action-font-size);
     justify-content: center;
     flex-wrap: nowrap;
@@ -1119,22 +1289,12 @@
     scrollbar-width: none;
   }
 
+  /* "Select" on the phone is the TERTIARY button, nothing else: the gold label,
+     the system's radius, font and padding. This rule only widens its tap
+     target. (It used to redeclare a 2px radius, an 11.5px label and a 2px
+     padding, which is a second button system on one screen.) */
   .survey-hub .mobile-header-select-button {
-    height: 28px;
     min-width: 44px;
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: 2px;
-    color: var(--gold);
-    padding: 0 2px !important;
-    font: inherit;
-    font-size: 11.5px;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
   }
 
   .survey-hub .mobile-header-select-actions {
@@ -1870,10 +2030,9 @@
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
+  /* One system on the phone too: the drill header used to grow its buttons to
+     32px/11.5px, which is a fifth kind by the back door. */
   .survey-hub .projects-mobile-drill-header.project-tools .btn {
-    height: 32px;
-    padding: 0 9px;
-    font-size: 11.5px;
     justify-content: center;
     white-space: nowrap;
   }
@@ -2644,27 +2803,11 @@
     z-index: 2;
   }
 
+  /* The phone's Cancel / Save are the same SECONDARY + PRIMARY buttons as the
+     desktop pair (see the button system near the top of this file) — this row
+     only places them. They keep the 44px invisible tap target added above. */
   .survey-hub .templates-mobile-save-row button {
     width: auto;
-    height: 27px;
-    border: 1px solid var(--ink-500);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--bone-100);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 7px;
-    font: inherit;
-    font-size: 10.5px;
-    line-height: 1;
-    font-weight: 700;
-  }
-
-  .survey-hub .templates-mobile-save-row button.primary {
-    background: var(--gold);
-    border-color: var(--gold);
-    color: var(--accent-text);
   }
 
   .survey-hub .templates-mobile-section {
@@ -3464,29 +3607,17 @@
 /* Owner 2026-09-22: desktop Templates - Cancel / Save live in the header's
    subtitle row where the "reusable category + checklist sets" tagline was.
    Same 20px pill face as the rest of the chrome; Save is the one gold fill. */
-.survey-hub .templates-desktop-save-row {
+/* Cancel / Save while a template is dirty. The pair sits in the subtitle row,
+   after the "N templates" count, with the same 8px gap the header actions use.
+   The buttons themselves are plain system buttons — Cancel SECONDARY, Save
+   PRIMARY — so this row owns nothing but the spacing. (Owner, 2026-09-22: the
+   row's own 20px/10px-radius pills "look like shit" next to the 28px header
+   buttons.) The same row and the same pair carry the project detail panel's
+   rename/description edits, hence the shared class. */
+.survey-hub .templates-desktop-save-row,
+.survey-hub .hub-desktop-save-row,
+.survey-hub .hub-mobile-save-row {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-left: 4px;
+  gap: 8px;
 }
-.survey-hub .templates-desktop-save-row button {
-  height: 20px;
-  padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: transparent;
-  color: var(--text-1);
-  font: 600 11px/1 inherit;
-  font-family: inherit;
-  cursor: pointer;
-}
-.survey-hub .templates-desktop-save-row button:hover { background: var(--hover); }
-.survey-hub .templates-desktop-save-row button:active { background: var(--pressed); }
-.survey-hub .templates-desktop-save-row button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-}
-.survey-hub .templates-desktop-save-row button.primary:hover { background: var(--accent-light); border-color: var(--accent-light); }
-.survey-hub .templates-desktop-save-row button.primary:active { background: var(--accent-press); border-color: var(--accent-press); }

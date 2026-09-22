@@ -23,7 +23,6 @@ import { ConfirmModal } from './BulkModals';
 import DismissBarrier from '../components/DismissBarrier';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
-import { closeButtonStyle, miniButtonStyle } from './hubControls';
 import { showToast } from '../utils/toast';
 import { DELETE_FOREVER_COPY } from '../services/archiveContract';
 import {
@@ -267,23 +266,23 @@ export default function ArchiveScreen({
             setSelectMode(next);
             if (!next) setSelectedIds(new Set());
           }}
-          style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
+          className="hub-btn hub-btn--tertiary"
         >{selectMode ? 'Done' : 'Select'}</button>
         {selectMode && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
             <button
               onClick={() => setSelectedIds((prev) => nextSelectAll(prev, rows))}
-              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+              className="hub-btn"
             >{allSelected ? 'None' : 'All'}</button>
             <button
               disabled={actionsDisabled}
               onClick={doRestore}
-              style={miniButtonStyle({ disabled: actionsDisabled })}
+              className="hub-btn"
             >Restore</button>
             <button
               disabled={actionsDisabled}
               onClick={() => setConfirmDelete(true)}
-              style={miniButtonStyle({ disabled: actionsDisabled, danger: true })}
+              className="hub-btn is-danger"
             >Delete forever</button>
           </span>
         )}
@@ -1053,7 +1052,7 @@ export default function ArchiveScreen({
               <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                   <div className="section-label">Preview</div>
-                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>
+                  <button onClick={() => setPreviewOpen(false)} title="Close preview" className="hub-icon-btn">
                     <Icon name="close" size={14} />
                   </button>
                 </div>

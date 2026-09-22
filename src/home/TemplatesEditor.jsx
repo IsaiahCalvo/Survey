@@ -89,7 +89,6 @@ import {
 } from '../services/templateConfigShape';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
-import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
@@ -1677,18 +1676,6 @@ export default function TemplatesEditor({
     }
   };
 
-  const selectLinkStyle = {
-    background: 'transparent',
-    border: 0,
-    color: 'var(--accent)',
-    borderRadius: 2,
-    padding: 0,
-    fontSize: 11.5,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    whiteSpace: 'nowrap',
-    fontWeight: 600,
-  };
   const mobileTemplateSelectRow = (
     <div className="templates-mobile-select-row mobile-header-select-row">
       <button
@@ -1714,11 +1701,11 @@ export default function TemplatesEditor({
                   return next;
                 });
               }}
-              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+              className="hub-btn"
             >{allSel ? 'None' : 'All'}</button>
-            <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount })}>Duplicate</button>
-            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ disabled: !visibleSelCount, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
-            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
+            <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn">Duplicate</button>
+            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
+            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
           </span>
         );
       })()}
@@ -1728,12 +1715,12 @@ export default function TemplatesEditor({
     <>
       {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
           edits, Cancel / Save sit right here in the subtitle row instead. */}
-      <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+      <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span><b>{visibleTemplates.length}</b> templates</span>
         {dirty ? (
           <span className="templates-desktop-save-row">
-            <button type="button" onClick={handleCancelEdits}>Cancel</button>
-            <button type="button" className="primary" onClick={handleSaveTemplates}>Save</button>
+            <button type="button" className="hub-btn" onClick={handleCancelEdits}>Cancel</button>
+            <button type="button" className="hub-btn hub-btn--primary" onClick={handleSaveTemplates}>Save</button>
           </span>
         ) : null}
       </span>
@@ -1743,8 +1730,8 @@ export default function TemplatesEditor({
         </span>
         {mobileTemplateOpen && dirty ? (
           <span className="templates-mobile-save-row">
-            <button type="button" onClick={handleCancelEdits}>Cancel</button>
-            <button type="button" className="primary" onClick={handleSaveTemplates}>Save</button>
+            <button type="button" className="hub-btn" onClick={handleCancelEdits}>Cancel</button>
+            <button type="button" className="hub-btn hub-btn--primary" onClick={handleSaveTemplates}>Save</button>
           </span>
         ) : null}
         {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
@@ -1850,16 +1837,16 @@ export default function TemplatesEditor({
           }}>
             <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <button
-                className="btn-ink"
+                className="hub-btn hub-btn--primary"
                 onClick={createTemplate}
-                style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', whiteSpace: 'nowrap' }}
+                style={{ alignSelf: 'flex-start' }}
               >
                 <Icon name="plus" size={11} />New template
               </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
                 <button
                   onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                  style={miniSelectButtonStyle({ color: 'var(--accent)' })}
+                  className="hub-btn hub-btn--tertiary"
                 >
                   {tplEdit ? 'Done' : 'Select'}
                 </button>
@@ -1882,11 +1869,11 @@ export default function TemplatesEditor({
                                 return next;
                               });
                             }}
-                            style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}
+                            className="hub-btn"
                           >{allSel ? 'None' : 'All'}</button>
-                          <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount })}>Duplicate</button>
-                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                          <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn">Duplicate</button>
+                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
                     })()}
@@ -1963,7 +1950,7 @@ export default function TemplatesEditor({
                             const rect = e.currentTarget.getBoundingClientRect();
                             setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                           }}
-                          style={moreButtonStyle()}
+                          className="hub-icon-btn"
                           title="More" aria-label="More"
                         ><Icon name="more" size={14} /></button>
                       )}
@@ -2022,7 +2009,7 @@ export default function TemplatesEditor({
                   <p className="micro" style={{ margin: 0 }}>Module</p>
                   <button
                     onClick={() => { setModEdit(true); setSelMods(new Set()); }}
-                    style={{ background: 'transparent', border: 0, color: 'var(--accent)', borderRadius: 2, padding: '2px 6px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                    className="hub-btn hub-btn--tertiary"
                   >
                     Select
                   </button>
@@ -2040,17 +2027,8 @@ export default function TemplatesEditor({
                   <button
                     onClick={addModule}
                     title="New module"
-                    style={{
-                      marginLeft: 4, marginBottom: 2,
-                      background: 'transparent',
-                      border: '1px solid var(--accent)',
-                      color: 'var(--accent)',
-                      borderRadius: 4,
-                      padding: 0,
-                      fontSize: 12, lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit',
-                      width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      flex: 'none', alignSelf: 'center',
-                    }}
+                    className="hub-icon-btn"
+                    style={{ marginLeft: 4, marginBottom: 2, alignSelf: 'center' }}
                   ><Icon name="plus" size={12} /></button>
                 </SortableModuleTabs>
               </div>
@@ -2062,27 +2040,26 @@ export default function TemplatesEditor({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 20, overflow: 'hidden', flexWrap: 'nowrap' }}>
                   <button
                     onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                    style={{ ...miniSelectButtonStyle({ color: 'var(--accent)' }), flex: 'none' }}
+                    className="hub-btn hub-btn--tertiary"
                   >
                       {catEdit ? 'Done' : 'Select'}
                     </button>
                     {catEdit && (() => {
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
-                      const baseBtn = miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' });
                       return (
                         <>
-                          <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
-                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
-                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                          <button disabled={!c} onClick={() => deleteCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                          <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} className="hub-btn">{allSel ? 'None' : 'All'}</button>
+                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} className="hub-btn">Duplicate</button>
+                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn">Move/Copy</button>
+                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                          <button disabled={!c} onClick={() => deleteCategories(selCats)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
                     })()}
                   </div>
                 </div>
-                <button onClick={addCategory} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
+                <button onClick={addCategory} className="hub-btn hub-btn--primary">
                   <Icon name="plus" size={11} />New category
                 </button>
               </div>
@@ -2235,9 +2212,7 @@ export default function TemplatesEditor({
                                 <button
                                   title="Delete item" aria-label="Delete item"
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
-                                  style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
+                                  className="hub-icon-btn is-danger"
                                 ><Icon name="close" size={11} /></button>
                               </div>
                                 )}
@@ -2292,9 +2267,7 @@ export default function TemplatesEditor({
                                     <button
                                       title="Permanently delete (orphans historical responses)" aria-label="Permanently delete (orphans historical responses)"
                                       onClick={(e) => { e.stopPropagation(); hardDeleteItem(i, it.id); }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
-                                      style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
+                                      className="hub-icon-btn is-danger"
                                     ><Icon name="close" size={11} /></button>
                                   </div>
                                 ))}
@@ -2323,28 +2296,27 @@ export default function TemplatesEditor({
                 <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
                   <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--ink-quiet)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
                 </div>
-                <button onClick={addEntity} disabled={!tpl} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none', opacity: tpl ? 1 : 0.5, cursor: tpl ? 'pointer' : 'not-allowed' }}>
+                <button onClick={addEntity} disabled={!tpl} className="hub-btn hub-btn--primary">
                   <Icon name="plus" size={11} />New entity
                 </button>
               </div>
               <div style={{ padding: '6px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 28, flexWrap: 'nowrap', flex: 'none' }}>
               <button
                 onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                style={{ ...miniSelectButtonStyle({ color: 'var(--accent)' }), padding: '0 4px 0 0', flex: 'none' }}
+                className="hub-btn hub-btn--tertiary"
               >
                   {entityEdit ? 'Done' : 'Select'}
                 </button>
                 {entityEdit && tpl && (() => {
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
-                  const baseBtn = miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' });
                   return (
                     <>
-                      <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
-                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
-                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={10} /></button>
-                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={10} /></button>
+                      <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} className="hub-btn">{allSel ? 'None' : 'All'}</button>
+                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} className="hub-btn">Duplicate</button>
+                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} className="hub-btn">Move/Copy</button>
+                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={10} /></button>
+                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={10} /></button>
                     </>
                   );
                 })()}
@@ -2427,7 +2399,7 @@ export default function TemplatesEditor({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setEntityMenu((m) => (m && m.id === r.id ? null : { id: r.id, rect }));
                               }}
-                              style={moreButtonStyle({ color: 'var(--ink-muted)' })}
+                              className="hub-icon-btn"
                             ><Icon name="more" size={14} /></button>
                           )
                         )}
@@ -2596,7 +2568,7 @@ export default function TemplatesEditor({
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                                   }}
-                                  style={moreButtonStyle({ color: 'var(--ink-muted)' })}
+                                  className="hub-icon-btn"
                                   title="More" aria-label="More"
                                 ><Icon name="more" size={14} /></button>
                               )}
@@ -2674,7 +2646,7 @@ export default function TemplatesEditor({
                 </div>
                 <div className="templates-mobile-select-inline">
                   <button
-                    style={selectLinkStyle}
+                    className="hub-btn hub-btn--tertiary"
                     onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
                   >
                     {catEdit ? 'Done' : 'Select'}
@@ -2694,12 +2666,12 @@ export default function TemplatesEditor({
                             });
                             return next;
                           })}
-                          style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}
+                          className="hub-btn"
                         >{allSel ? 'None' : 'All'}</button>
-                        <button disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
-                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                        <button disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} className="hub-btn">Duplicate</button>
+                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn">Move/Copy</button>
+                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                       </span>
                     );
                   })()}
@@ -2836,7 +2808,7 @@ export default function TemplatesEditor({
                 </div>
                 <div className="templates-mobile-select-inline">
                   <button
-                    style={selectLinkStyle}
+                    className="hub-btn hub-btn--tertiary"
                     onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
                   >
                     {entityEdit ? 'Done' : 'Select'}
@@ -2854,11 +2826,11 @@ export default function TemplatesEditor({
                             else next.add(entity.id);
                           });
                           return next;
-                        })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}>{allSel ? 'None' : 'All'}</button>
-                        <button disabled={!c} onClick={() => duplicateEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
-                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                        })} className="hub-btn">{allSel ? 'None' : 'All'}</button>
+                        <button disabled={!c} onClick={() => duplicateEntities(visibleSelectedIds)} className="hub-btn">Duplicate</button>
+                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} className="hub-btn">Move/Copy</button>
+                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                       </span>
                     );
                   })()}
@@ -3040,7 +3012,7 @@ export default function TemplatesEditor({
               type="button"
               data-testid="archive-confirm-cancel"
               onClick={() => setArchiveConfirm(null)}
-              style={{ background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-2)', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+              className="hub-btn"
             >
               Cancel
             </button>
@@ -3052,7 +3024,7 @@ export default function TemplatesEditor({
                 archiveItemInModule(moduleIndex, categoryIndex, itemId);
                 setArchiveConfirm(null);
               }}
-              style={{ background: '#d8a84e', border: '1px solid #b8893a', color: '#0d0f14', borderRadius: 6, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              className="hub-btn hub-btn--primary"
             >
               Archive
             </button>
@@ -3154,13 +3126,13 @@ export default function TemplatesEditor({
               </button>
             </div>
             <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
-              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} style={{ background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-2)', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
-              <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid var(--border)', color: selCount ? 'var(--text-1)' : 'var(--text-disabled)', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
-              <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid var(--border)', color: selCount ? 'var(--text-1)' : 'var(--text-disabled)', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
-              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid var(--border)', color: selCount ? 'var(--text-1)' : 'var(--text-disabled)', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
-              <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid var(--border)', color: selCount ? 'var(--danger)' : 'var(--text-disabled)', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
+              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} className="hub-btn">{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
+              <button onClick={() => duplicateModules(selMods)} disabled={!selCount} className="hub-btn">Duplicate</button>
+              <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} className="hub-btn">Move/Copy</button>
+              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
+              <button onClick={() => deleteModules(selMods)} disabled={!selCount} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
               <span style={{ flex: 1 }} />
-              <button onClick={() => setModEdit(false)} style={{ background: 'var(--accent)', border: '1px solid var(--accent)', color: 'var(--accent-text)', borderRadius: 4, padding: '5px 16px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Done</button>
+              <button onClick={() => setModEdit(false)} className="hub-btn hub-btn--primary">Done</button>
             </div>
           </div>
         </div>
@@ -3188,7 +3160,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: 'var(--border)', color: 'var(--text-3)' })}><Icon name="close" size={13} /></button>
+            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination
@@ -3225,9 +3197,9 @@ export default function TemplatesEditor({
             })()}
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={closeMoveModal} style={{ background: 'transparent', color: 'var(--text-3)', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={closeMoveModal} style={{ background: 'transparent', color: 'var(--text-3)', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
-            <button onClick={closeMoveModal} style={{ background: '#d8a84e', color: '#15110a', border: '1px solid #d8a84e', borderRadius: 6, fontSize: 12, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Move</button>
+            <button onClick={closeMoveModal} className="hub-btn">Cancel</button>
+            <button onClick={closeMoveModal} className="hub-btn">Copy</button>
+            <button onClick={closeMoveModal} className="hub-btn hub-btn--primary">Move</button>
           </div>
         </div>
       </div>

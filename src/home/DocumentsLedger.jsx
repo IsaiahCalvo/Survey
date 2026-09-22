@@ -14,7 +14,6 @@ import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
-import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import useModalFocusTrap from './useModalFocusTrap';
@@ -268,23 +267,21 @@ export default function DocumentsLedger({
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row" ref={mobileSortRef}>
         <span className="documents-mobile-select-main">
           <button
-            className="mobile-header-select-button"
+            className="mobile-header-select-button hub-btn hub-btn--tertiary"
             onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
-            style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
           >
             {docSelectMode ? 'Done' : 'Select'}
           </button>
           {docSelectMode && (() => {
             const docSelCount = selDocs.size;
             const allSel = docSelCount === docs.length && docs.length > 0;
-            const baseBtn = miniButtonStyle();
             return (
               <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
-                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
-                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
-                <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
-                <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
+                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} className="hub-btn">{allSel ? 'None' : 'All'}</button>
+                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} className="hub-btn">Duplicate</button>
+                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} className="hub-btn">Move/Copy</button>
+                <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} className="hub-btn hub-btn--icon"><Icon name="share" size={12} /></button>
+                <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} className="hub-btn hub-btn--icon is-danger"><Icon name="trash" size={12} /></button>
               </span>
             );
           })()}
@@ -362,7 +359,7 @@ export default function DocumentsLedger({
     <button
       type="button"
       onClick={(e) => openDocMenu(e, d)}
-      style={moreButtonStyle()}
+      className="hub-icon-btn"
       title="More" aria-label="More"
     ><Icon name="more" size={14} /></button>
   );
@@ -490,7 +487,7 @@ export default function DocumentsLedger({
                             const rect = e.currentTarget.getBoundingClientRect();
                             setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
                           }}
-                          style={moreButtonStyle()}
+                          className="hub-icon-btn"
                           title="More" aria-label="More"
                         ><Icon name="more" size={14} /></button>
                       )}
@@ -533,7 +530,7 @@ export default function DocumentsLedger({
             <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
-                <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" style={closeButtonStyle()}><Icon name="close" size={13} /></button>
+                <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
@@ -629,7 +626,7 @@ export default function DocumentsLedger({
                   <span>Document details</span>
                   <strong>{mobileDetailDoc.name}</strong>
                 </div>
-                <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} style={closeButtonStyle()}><Icon name="close" size={13} /></button>
+                <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} className="hub-icon-btn"><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
                 {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}
