@@ -2917,12 +2917,15 @@
 
   .survey-hub .templates-mobile-category-row {
     grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px;
-    min-height: 44px;
+    /* Owner 2026-09-22 ("I want them thinner"): 36px painted, like the phone
+       strip band; the toggle keeps a 44px finger target through its pad. */
+    min-height: 36px;
   }
 
   .survey-hub .templates-mobile-category-toggle {
+    position: relative;
     width: 44px;
-    height: 44px;
+    height: 36px;
     border: 0;
     border-radius: 5px;
     background: transparent;
@@ -2937,6 +2940,12 @@
 
   .survey-hub .templates-mobile-category-toggle > svg {
     display: block;
+  }
+
+  .survey-hub .templates-mobile-category-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
   }
 
   .survey-hub .templates-mobile-category-toggle.open {
@@ -2959,7 +2968,7 @@
 
   .survey-hub .templates-mobile-item-row {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
-    min-height: 44px;
+    min-height: 36px;
     padding: 0;
     border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   }
@@ -3045,6 +3054,7 @@
   }
 
   .survey-hub .templates-mobile-entity-row {
+    min-height: 36px;
     grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
     min-height: 44px;
   }
