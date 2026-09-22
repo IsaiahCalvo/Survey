@@ -16,26 +16,14 @@
         19%). Dark colours look more alike than light ones, so 3% collapses
         into one flat surface and a card stops reading as a card. The new
         ramp is an even 5% apart (8 / 13 / 18 / 23%).
-     2. The borders were 1.40:1 on their own panel — invisible. --border is
-        now 1.86:1 and --border-strong 2.71:1, so a layer has an edge by
-        stroke as well as by fill.
+     2. The borders were 1.40:1 on their own panel — invisible. Revision 2
+        lifted them to 1.86:1 and 2.71:1, which was still short of the 3:1
+        a boundary needs; revision 3 below finished the job.
      3. The neutral ramp mixed temperatures: warm creams (#f4f1ea, #e8e2d4)
         for text over cool blue-greys for surfaces. One temperature now.
      4. Selected rows used #2a2218, a warm brown 172 degrees away in hue from
         anything else in the app. Selection is now a surface step plus a gold
         edge, which is what the home sidebar already did.
-
-   WHAT DID NOT CHANGE. The gold is untouched (--accent #d8a84e and its press
-   step #b6904a were already right); --accent-light is the one new gold, a
-   lighter hover step so hover and pressed stop being the same shade.
-
-   HOW STATES ARE BUILT. Never invent a colour for a state. Hover lightens by
-   +5 brightness (--hover), pressed darkens by -4 (--pressed), selected is
-   --surface-3 plus a 2px --accent edge. A gold control's own states are
-   --accent-light (hover) and --accent-press (pressed). --accent-soft is the
-   ONLY warm fill, and only on small gold controls (pills, ghost-button
-   hover) — never on a whole row or panel, because a large warm wash is how
-   the rejected brown happened in the first place.
 
    OWNER AMENDMENTS to the mockup (2026-09-17):
      (a) Text stays white where gold reads worse. Gold marks the accent or the
@@ -54,6 +42,10 @@
      - Ink / annotation colours belong to the user, not the theme:
        CompactColorPicker presets, the quick-colour row, pdfTextMarkup and
        every export paint path keep their literals.
+     - The paper a page, a page thumbnail or a print preview is drawn on is
+       paper, not chrome.
+     - Per-person identity hues (collaborator outlines, avatars, content-type
+       icons) are the same class of thing as an ink colour.
      - Email HTML keeps literal hexes; mail clients do not resolve CSS
        variables.
 
@@ -154,6 +146,9 @@
   --danger-press: #c84c49;    /* the pressed step of a --danger fill */
   --warning: #989c4a;         /* quieter than danger, and far from the gold ·
                                  5.96 on surface-1 where #7d803d was 4.17 */
+  /* The warning's own tint, derived the same way --accent-soft and
+     --danger-soft are, rather than re-typing the olive's channels. */
+  --warning-soft: rgba(152, 156, 74, 0.14);
   /* Status DOTS only (owner amendment b). Never a button, border or text. */
   --success: #548c71;
   /* The destructive twin of --accent-soft, derived from --danger the same way

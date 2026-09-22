@@ -778,8 +778,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   userSelect: 'none',
                   fontSize: 13,
                   fontWeight: 800,
-                  opacity: it.disabled ? 0.45 : 1,
-                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger)' : 'var(--text-1)'),
+                  color: it.disabled ? 'var(--text-disabled)' : (it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)'),
                 } : {
                   padding: '7px 12px',
                   borderRadius: 5,

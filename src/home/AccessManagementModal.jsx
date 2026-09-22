@@ -34,18 +34,8 @@ import {
 import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
+import { C } from '../uiPalette';
 
-const C = {
-  scrim: 'rgba(13,15,20,0.55)',
-  card: 'var(--surface-2)',
-  deep: 'var(--surface-1)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  inkSoft: 'var(--text-2)',
-  muted: 'var(--text-3)',
-  gold: 'var(--accent)',
-  danger: 'var(--danger)',
-};
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';

@@ -523,10 +523,24 @@
   cursor: pointer;
 }
 
+/* UX 2026-09-22: --text-1 on the bright --danger measures 2.83:1, so the label
+   on the most destructive button in this view was its least readable text.
+   --danger-fill is the darkened red white is allowed to sit on (6.06), and the
+   hover LIFTS to --danger, which is the video's rule for a hover. */
 .survey-hub .profile-signout-buttons button.danger {
+  border-color: var(--danger-fill);
+  background: var(--danger-fill);
+  color: var(--on-danger);
+}
+
+.survey-hub .profile-signout-buttons button.danger:hover {
   border-color: var(--danger);
   background: var(--danger);
-  color: var(--text-1);
+}
+
+.survey-hub .profile-signout-buttons button.danger:active {
+  border-color: var(--danger-press);
+  background: var(--danger-press);
 }
 
 .survey-hub .mobile-home-tabs,

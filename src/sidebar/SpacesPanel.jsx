@@ -700,7 +700,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   style={{
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
                                     color: isDisabled ? 'var(--text-disabled)' : (visibilityState ? 'var(--accent)' : 'var(--text-3)'),
-                                    opacity: isDisabled ? 0.5 : 1,
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
                                   {...tip(title, 'below')}

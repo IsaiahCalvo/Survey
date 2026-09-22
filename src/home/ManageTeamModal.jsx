@@ -25,6 +25,7 @@ import Spinner from '../components/Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import DismissBarrier from '../components/DismissBarrier';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { C } from '../uiPalette';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -42,14 +43,16 @@ import {
 
 /* Hub palette — literal hex, see header note. */
 const INK_800 = 'var(--surface-1)';
-const INK_700 = 'var(--surface-2)';
-const INK_500 = 'var(--border)';
-const INK_300 = 'var(--text-disabled)';
-const INK_200 = 'var(--text-3)';
-const BONE_100 = 'var(--text-1)';
-const BONE_200 = 'var(--text-2)';
-const GOLD = 'var(--accent)';
-const DANGER = 'var(--danger)';
+// UX 2026-09-22: these eight names are the shared palette's, aliased for the
+// rules below rather than re-declared. See src/uiPalette.js.
+const INK_700 = C.card;
+const INK_500 = C.rule;
+const INK_300 = C.disabled;
+const INK_200 = C.muted;
+const BONE_100 = C.ink;
+const BONE_200 = C.inkSoft;
+const GOLD = C.gold;
+const DANGER = C.danger;
 
 const ROLES = ["Owner", "Editor", "Viewer"];
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
@@ -261,7 +264,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
               <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
                 {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
               </select>
-              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: "none", height: 30, whiteSpace: "nowrap", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", fontSize: 11.5, cursor: busy || blockedReason ? "not-allowed" : "pointer", opacity: busy || blockedReason ? 0.5 : 1, fontFamily: "inherit", boxSizing: "border-box" }}>{copied ? "Copied" : "Copy link"}</button>
+              <button onClick={copyLink} disabled={busy || !!blockedReason} style={{ flex: "none", height: 30, whiteSpace: "nowrap", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", fontSize: 11.5, cursor: busy || blockedReason ? "not-allowed" : "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{copied ? "Copied" : "Copy link"}</button>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this invite link can join as {linkRole}. Free users enter as Viewer until upgrade.</div>
           </div>
@@ -291,7 +294,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           {/* UX (KAL-73): invite sends are a network round-trip over 500ms, so the
               button takes the shared loading treatment — 14px ring on the left,
               present-participle label, disabled until the request resolves. */}
-          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? "progress" : (!emails.trim() || blockedReason ? "not-allowed" : "pointer"), background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
+          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ cursor: busy ? "progress" : (!emails.trim() || blockedReason ? "not-allowed" : "pointer"), background: GOLD, color: "var(--accent-text)", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
         </div>
       </div>
     </div>

@@ -20,18 +20,8 @@ import { AuthContext } from '../contexts/AuthContext';
 import { RECOVERY_SESSION_GRACE_MS, resolveRecoveryPhase, validateNewPassword } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
+import { C } from '../uiPalette';
 
-const C = {
-  bg: 'var(--surface-1)',
-  card: 'var(--surface-2)',
-  rule: 'var(--border)',
-  ink: 'var(--text-1)',
-  inkSoft: 'var(--text-2)',
-  muted: 'var(--text-3)',
-  gold: 'var(--accent)',
-  danger: 'var(--danger)',
-  good: 'var(--accent)',
-};
 
 function goHome() {
   if (typeof window !== 'undefined') window.location.assign('/');

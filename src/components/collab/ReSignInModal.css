@@ -208,7 +208,10 @@
    * has one accent, so the lift is gold now. */
   width: 100%;
   background: var(--accent);
-  color: #FFFFFF;
+  /* UX 2026-09-22: white on the gold measures 2.18:1 — the app's least
+     readable text was on its primary button. --accent-text is the near-black
+     the palette keeps for exactly this, at 8.63. */
+  color: var(--accent-text);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
@@ -218,6 +221,10 @@
   cursor: pointer;
   font-family: inherit;
   transition: background-color 120ms ease-out;
+}
+
+.re-signin-modal__cta:active:not(:disabled) {
+  background: var(--accent-press);
 }
 
 .re-signin-modal__cta:hover:not(:disabled) {

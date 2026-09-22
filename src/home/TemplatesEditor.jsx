@@ -607,9 +607,9 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
           width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border)',
           borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
-          color: selected ? 'var(--text-1)' : 'var(--text-3)',
+          color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
           font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.5 : 1,
+          background: disabled ? 'var(--disabled-fill)' : 'var(--surface-1)',
           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'left',
           outline: 'none',
         }}

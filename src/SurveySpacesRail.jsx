@@ -2566,7 +2566,6 @@ const SurveySpacesRail = ({
                                       : '#fff',
                                 fontSize: '14px',
                                 cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
-                                opacity: liveSyncSupported === false ? 0.6 : gateRefused ? 0.75 : 1,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px'

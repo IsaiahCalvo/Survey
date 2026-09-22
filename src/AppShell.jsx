@@ -3218,9 +3218,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 background: 'transparent',
                 border: 'none',
                 borderRadius: '4px',
-                color: 'var(--text-3)',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.35 : 1
+                color: disabled ? 'var(--text-disabled)' : 'var(--text-3)',
+                cursor: disabled ? 'not-allowed' : 'pointer'
               });
               // Editable zoom % — Walkthru-style: plain "100%" by default,
               // click swaps to an input (it only mounts while editing so the

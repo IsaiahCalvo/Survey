@@ -159,7 +159,9 @@
 }
 
 .quick-style__dot--custom.is-current .quick-style__custom-glyph {
-  color: #fff;
+  /* Sits on the user's own colour, so it is the ink ring's partner, not a
+     chrome label — the same white the two ring tokens are made from. */
+  color: var(--text-1);
 }
 
 /* --------------------------------------------------- combined paint swatch */
