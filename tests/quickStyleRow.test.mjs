@@ -461,10 +461,11 @@ test('the phone strip reads colour, width, line style', () => {
   assert.ok(row.length > 1000, 'the phone tool-properties strip must still be where this test reads it');
   orderOf(row, [
     '<QuickColourDots',
-    // The combined swatch a multi-colour tool gets. It is MobilePaintSwatch on
-    // this branch and becomes the picker pass's shared QuickPaintSwatch at merge;
-    // either way it is the one control between the colour and the width.
-    '<MobilePaintSwatch',
+    // The combined swatch a multi-colour tool gets. The phone pass drew it with a
+    // local MobilePaintSwatch while the picker pass was landing the shared
+    // QuickPaintSwatch beside it; at the merge the local copy went and this is the
+    // shared control, as that comment said it would be.
+    '<QuickPaintSwatch',
     'ariaLabel="Line width"',
     'ariaLabel="Line style"',
   ], 'phone');
@@ -495,7 +496,7 @@ test('nothing else in either row moved', () => {
     phoneChrome.indexOf('BOARD 16'),
   );
   orderOf(phoneRow, [
-    '<MobilePaintSwatch',
+    '<QuickPaintSwatch',
     'ariaLabel="Line width"',
     'ariaLabel="Line style"',
     'aria-label="Text formatting"',

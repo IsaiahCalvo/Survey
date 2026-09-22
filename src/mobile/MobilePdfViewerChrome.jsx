@@ -5,7 +5,7 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/An
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import { matchedQuickColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
-import { QuickColourDots } from '../components/QuickStyleControls';
+import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
@@ -490,77 +490,6 @@ function MobileStripSegmented({ ariaLabel, value, options, onChange, width }) {
         );
       })}
     </div>
-  );
-}
-
-/**
- * MobilePaintSwatch — the ONE combined swatch a multi-colour tool gets instead
- * of the three preset discs (boards 2, 4 and 5). Fill in the centre, border as a
- * 2px ring; the counter variant is the app's own pin outline with its number,
- * never a circle. Tapping it opens the shared picker on the Border tab.
- *
- * WHY ONE SWATCH: a rectangle has two colours and four discs can only show one
- * of them, so a row of presets beside a two-colour shape has to lie about one.
- *
- * TO MERGE: the picker pass is landing this same control as `QuickPaintSwatch`
- * in src/components/QuickStyleControls.jsx (props ring / center / variant /
- * count / onOpen / platform). That file belongs to that pass, so it is not on
- * this branch yet; when the two branches meet, delete this component and the
- * .mobile-pdf-properties__swatch rules and render QuickPaintSwatch instead. The
- * geometry and the paint here are the board's, so nothing visible changes.
- */
-function MobilePaintSwatch({ variant = 'shape', ring, center, count = 1, label, onOpen }) {
-  if (variant === 'counter') {
-    return (
-      <button
-        type="button"
-        className="mobile-pdf-properties__swatch is-counter"
-        aria-label={label || 'Pin and number colours'}
-        onClick={onOpen}
-      >
-        <span aria-hidden="true" style={{ color: ring }}>
-          {/* The app's own counter-outline pin, at the board's 20px. */}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <g transform="translate(1.6 1.6) scale(0.0224)">
-              <path
-                d="M16.64 14.53C32.51 16.06 48.52 16.04 64.42 17.17C84.3 18.58 104.24 19.47 124.15 20.54C172.46 23.14 221 24.9 269.21 28.79C311.2 32.18 353.46 32.81 395.47 35.77C437.49 38.73 479.63 39.7 521.62 43C562.5 46.22 604.72 56.56 642.66 72C785.02 129.91 889.46 257.4 913.66 410.03C920.35 452.22 920.36 494.92 915.01 537.24C910.4 573.68 901 610.28 886.95 644.23C866.32 694.11 836.9 740.48 799.81 779.75C766.71 814.79 728.26 842.48 686.57 866.19C659.41 881.64 629.18 892.19 599.35 900.86C567.56 910.1 535.15 914.56 502.15 916.64C334.46 927.2 173.19 832.76 94.22 686.11C70.5 642.04 55.77 594.61 47.28 545.43C41.58 512.41 41.99 478.36 39.82 444.99C35.52 379.05 33.34 312.95 28.8 247.02C25.11 193.32 22.63 139.51 19.72 85.75C18.82 69.26 17.52 52.77 16.94 36.26C16.7 29.6 14.39 20.75 16.64 14.53Z"
-                fill="currentColor"
-                stroke="currentColor"
-                strokeWidth="67"
-                strokeLinejoin="round"
-              />
-              <text
-                x="478"
-                y="640"
-                textAnchor="middle"
-                fill={center}
-                fontFamily="-apple-system, Helvetica, Arial, sans-serif"
-                fontWeight="800"
-                fontSize="430"
-              >
-                {count}
-              </text>
-            </g>
-          </svg>
-        </span>
-      </button>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className="mobile-pdf-properties__swatch"
-      aria-label={label || 'Border and fill colours'}
-      onClick={onOpen}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          background: center,
-          boxShadow: `inset 0 0 0 2px ${ring}, 0 0 0 1px rgba(255,255,255,0.14)`,
-        }}
-      />
-    </button>
   );
 }
 
@@ -1585,9 +1514,13 @@ export function MobileToolProperties({ api }) {
           of the presets: fill in the centre, border as a 2px ring, and for the
           counter its real pin outline with its number. Tapping it opens the
           picker on the Border tab. Two colours cannot be shown by four discs, so
-          the discs would have had to lie about one of them. */}
+          the discs would have had to lie about one of them.
+          This is the SAME component the desktop bar shows (QuickPaintSwatch in
+          src/components/QuickStyleControls.jsx). The phone carried its own copy
+          while the two passes were built side by side; the copy is gone. */}
       {!isEraser && showStroke && isMultiColour && (
-        <MobilePaintSwatch
+        <QuickPaintSwatch
+          platform="phone"
           variant={tool === 'counter' ? 'counter' : 'shape'}
           label={tool === 'counter' ? 'Pin and number colours' : 'Border and fill colours'}
           ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
