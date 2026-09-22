@@ -2034,8 +2034,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-overflow: ellipsis;
 }
 
+/* MEASURED 2026-09-22 (phone, 390 and 375): the word "Done" sat in a box 43.75px
+   wide while its own hit pad reached 10px PAST that box on each side, which put
+   54px of content inside a 44px scroll box and pushed the header's scrollWidth
+   10px past the sheet — a row wider than the sheet it sits in, and a Done that
+   read as cut off.
+   The fix is in this rule and the pad below, not in the markup: the button keeps
+   its automatic width (so the word always fits whatever the label says) with a
+   44px FLOOR so the finger target is 44 wide on its own, and `white-space:
+   nowrap` so the word can never break across the baseline it shares with the
+   title. The pad then stops at the button's own edges instead of overflowing
+   them, which is what leaves scrollWidth === clientWidth on both the button and
+   the header. */
 .mobile-pdf-tool-sheet__header > button {
   position: relative;
+  width: auto;
+  min-width: 44px;
   height: auto;
   padding: 0 4px;
   flex: 0 0 auto;
@@ -2043,15 +2057,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
   border: 0;
   font: 700 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  white-space: nowrap;
 }
 
 /* Done is painted at its own 14px so it can share the title's baseline; the
    finger still gets the app's usual 44px box, the same painted-small /
-   hit-large trick the tool strip uses. */
+   hit-large trick the tool strip uses. Vertically the pad overshoots (14 + 30 =
+   44); sideways it stops at the button's edges, because the 44px min-width above
+   already gives it the full 44 and a pad that spilled past the box is what made
+   the header overrun the sheet. */
 .mobile-pdf-tool-sheet__header > button::after {
   content: '';
   position: absolute;
-  inset: -15px -10px;
+  inset: -15px 0;
 }
 
 .mobile-pdf-tool-sheet__rows {
