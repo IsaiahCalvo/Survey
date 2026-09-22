@@ -1,20 +1,24 @@
 /*
- * QuickStyleControls.css — the quick colour dots and the quick line widths.
+ * QuickStyleControls.css — the colour cluster and the quick line widths.
  *
- * SIZES COME FROM THE SHARED TOKENS, never from new numbers: the desktop tier
- * is --chrome-field-h / --chrome-gap (24px value chips, 4px gutter) and the
- * phone tier is --mobile-strip-control-h and the strip's own 5px pitch.
+ * EVERY NUMBER IN HERE IS OFF THE APPROVED BOARDS (pass 7, 2026-09-21), and it
+ * is the same number on both platforms: boards 1-7 (phone) and 8-14 (desktop)
+ * draw the cluster identically — a 16px disc inside a 22px button on a 4px gap,
+ * and one 22px combined swatch for the multi-colour tools. The two device tiers
+ * differ in their BARS, not in this cluster.
  *
- * WHY THE DOT IS 20px AND ITS BUTTON IS 24px (owner, 2026-09-17: "dots 20px
- * visible in 24px hit chips at the shared 4px gap; Drawboard measures
- * 20-in-22"): the dot you SEE is 20px and the gutter you see between two dots
- * is the row's own 4px, so the colour cluster reads at the same rhythm as the
- * rest of the bar. The area you can HIT is the full 24px — a transparent
- * ::after bleeds 2px into each half of the gutter, the same trick the phone
- * tool rail uses to keep a small chip and a big target. Laying the dots out at
- * a 24px box PLUS a 4px gap instead would have shown an 8px gutter between
- * neighbouring dots — double the bar's gutter — and made the colour cluster
- * 16px wider than the desktop row can spare at 1280 with Callout armed.
+ * WHY 16-IN-22 AND NOT THE OLD 20-IN-24: the owner's pass-7 boards size every
+ * colour control at --colour-button-size 22px with a 16px disc, so the cluster
+ * sits on the same rhythm as the 20px pills and the 28px tool buttons beside
+ * it. At 20-in-24 the discs read as the biggest thing in the bar.
+ *
+ * THE CHOSEN STATE IS NEVER GOLD. Owner ruling 2026-09-21: "a ring in the
+ * disc's OWN colour, a gap, and a white check in the middle. NEVER a gold ring.
+ * NEVER a gold fill or wash." The ring colour arrives as --quick-style-ring
+ * from src/utils/quickStylePresets.js, which hands back the disc's own colour
+ * and only swaps in a light fallback when the ring would be invisible against
+ * the panel (pure black). The gap is painted in --surface-1, the panel's own
+ * background, which is what makes it read as a gap.
  */
 
 .quick-style {
@@ -23,58 +27,73 @@
   flex: 0 0 auto;
 }
 
-/* The colour cluster: 20px dots on the row's own gutter. */
+/* Boards 1 and 8: the colour group is one 4px gap on both platforms. */
 .quick-style--colours {
-  gap: var(--chrome-gap, 4px);
+  gap: 4px;
 }
 
-.quick-style--colours.quick-style--phone {
-  /* The phone strip's pitch gap, as its neighbours use. */
-  gap: 5px;
-}
+/* ------------------------------------------------------------ preset discs */
 
-.quick-style__dot {
+.quick-style__dot,
+.quick-style__swatch {
   position: relative;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
   background: transparent;
   cursor: pointer;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  /* The button paints nothing itself; .quick-style__dot-fill is the disc, so
-     the gold ring can sit outside the disc and inside the hit area. */
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The 24px finger / pointer target, transparent, bleeding 2px into each half
-   of the 4px gutter. Two neighbouring targets meet and never overlap. */
-.quick-style__dot::after {
+/*
+ * The pointer / finger target, transparent, bleeding 3px past the 22px button
+ * into each half of the 4px gap. Two neighbouring targets stop 1px short of
+ * each other, so a press can never land on the wrong colour.
+ *
+ * A host that wants a bigger box sets --quick-style-hit-inset, but a 44px box
+ * on a 26px pitch would overlap its neighbour by 18px and hand presses to the
+ * wrong disc — which is why the default is the largest box that still separates.
+ */
+.quick-style__dot::after,
+.quick-style__swatch::after {
   content: '';
   position: absolute;
-  inset: -2px;
+  inset: var(--quick-style-hit-inset, -3px);
   border-radius: 50%;
 }
 
 .quick-style__dot-fill {
-  width: 100%;
-  height: 100%;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--quick-style-dot, #ff0000);
-  /* The same faint hairline .ctx-color-swatch uses to lift pure black off the
-     dark bar. Replaced by the gold ring when this dot is the current colour. */
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+  display: grid;
+  place-items: center;
   pointer-events: none;
 }
 
-/* "This is the colour you are on." Brand gold, the chrome's own current-state
-   colour, drawn OUTSIDE the 20px disc so it costs the disc no area — it grows
-   into the 2px of hit chip that is already reserved either side. */
-.quick-style__dot.is-current .quick-style__dot-fill {
-  box-shadow: 0 0 0 2px var(--accent);
+/* Boards 1-12: a disc too dark to have an edge of its own gets the faint
+   hairline, so pure black does not dissolve into the bar. */
+.quick-style__dot-fill.has-hairline {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+/* "This is the colour you are on." A 1.5px gap in the panel's own background,
+   then a 1.5px ring in the disc's own colour. Replaces the hairline. */
+.quick-style__dot.is-current .quick-style__dot-fill,
+.quick-style__dot.is-current .quick-style__dot-fill.has-hairline {
+  box-shadow:
+    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
+    0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
+}
+
+.quick-style__check {
+  line-height: 0;
+  pointer-events: none;
 }
 
 .quick-style__dot:hover .quick-style__dot-fill {
@@ -82,14 +101,107 @@
 }
 
 .quick-style__dot.is-current:hover .quick-style__dot-fill {
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow:
+    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
+    0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
+}
+
+/* ------------------------------------------------------------ custom disc */
+
+/*
+ * Boards 1, 3, 10, 12: a conic rainbow RING with a plus in the middle, so it
+ * reads as "any colour" rather than as a colour. The mask cuts the middle out
+ * at 5px, which leaves the ring the boards draw.
+ */
+.quick-style__rainbow {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 90deg,
+    #f43f5e,
+    #f59e0b,
+    #22c55e,
+    #06b6d4,
+    #3b82f6,
+    #a855f7,
+    #f43f5e
+  );
+  -webkit-mask: radial-gradient(circle, transparent 5px, #000 5.5px);
+  mask: radial-gradient(circle, transparent 5px, #000 5.5px);
+  pointer-events: none;
+}
+
+.quick-style__custom-glyph {
+  position: absolute;
+  inset: 3px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  line-height: 0;
+  pointer-events: none;
 }
 
 /*
- * The width trio. The three chips sit flush against each other and read as ONE
- * width control rather than three loose buttons — which is what they are: one
- * choice with three answers, standing next to the field that takes any other
- * answer. Flush also buys the desktop row 8px it does not have at 1280.
+ * The chosen custom disc. The ring cannot go on the rainbow itself — a CSS mask
+ * clips an element's box-shadow along with its background — so it is painted on
+ * its own layer at the same 16px inset.
+ */
+.quick-style__dot--custom.is-current::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
+    0 0 0 3px var(--quick-style-ring, var(--text-1));
+  pointer-events: none;
+}
+
+.quick-style__dot--custom.is-current .quick-style__custom-glyph {
+  color: #fff;
+}
+
+/* --------------------------------------------------- combined paint swatch */
+
+/*
+ * Boards 2, 5, 9, 12 — the one swatch a multi-colour tool shows: the fill in
+ * the centre with the border as a 2px ring drawn INSIDE the disc, so both
+ * colours of the mark are visible in 16px. The faint outer hairline is the
+ * boards' own, and lifts a white fill off the bar.
+ */
+.quick-style__swatch-disc {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--quick-style-fill, #ffffff);
+  box-shadow:
+    inset 0 0 0 2px var(--quick-style-border, #ff0000),
+    0 0 0 1px rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+/* Boards 4 and 11 — the counter's swatch IS its mark: the pin in the pin
+   colour with the number inside it, at 20px in the 22px button. */
+.quick-style__swatch-pin {
+  position: absolute;
+  inset: 1px;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.quick-style__swatch:hover .quick-style__swatch-disc {
+  box-shadow:
+    inset 0 0 0 2px var(--quick-style-border, #ff0000),
+    0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+/* ------------------------------------------------------------- width chips */
+
+/*
+ * The width trio. Held for hosts that still show chips — the approved pass-7
+ * bars show width as a dropdown only. The three chips sit flush against each
+ * other and read as ONE width control rather than three loose buttons.
  */
 .quick-style--widths {
   gap: 0;
@@ -131,32 +243,26 @@
 
 /* Current width. UX 2026-09-17 (owner ruling): "When we select a tool, the icon
    turns gold, not everything else around it. It doesn't need a fill, and it
-   doesn't need a border." The house reference is the desktop tool rail's
-   `.btn-active` (src/styles.css): ink var(--accent), background transparent,
-   border 1px solid transparent, no shadow — measured on a live Pan button as
-   rgb(216,168,78) on rgba(0,0,0,0) in a 34x34 box identical to its idle
-   siblings. This chip used to paint rgba(216,168,78,.18), the muddy gold-brown
-   wash the owner had already banned. The rule (the 22px line) IS the glyph, so
-   it is what turns gold. The hover above stays: a hover is still a hover. */
+   doesn't need a border." The rule (the 22px line) IS the glyph, so it is what
+   turns gold. The hover above stays: a hover is still a hover. */
 .quick-style__width.is-current {
   color: var(--accent);
 }
 
-/* The swatch beside the dots wears the same gold ring when the current colour
-   is NOT one of the four — so exactly one thing in the colour cluster is ever
-   ringed, and the ring always points at where the current colour came from. */
-.ctx-color-swatch.is-current-color {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 0 3px var(--accent);
-}
+/*
+ * NO `.is-current-color` GOLD RING LIVES HERE ANY MORE. It used to put a gold
+ * ring on the colour swatch beside the discs, on the phone strip's colour
+ * button and on the phone strip's swatch. The owner reversed that on
+ * 2026-09-21: the chosen mark is the disc's own colour plus a check, and the
+ * combined swatch carries no chosen mark at all (boards 2, 4, 5, 9, 11, 12 draw
+ * none). Do not reintroduce a gold ring on a colour control.
+ */
 
-/* Phone: the text-markup strip's colour button, which is a plain disc rather
-   than a two-colour swatch — the gold replaces its dark hairline. */
-.mobile-pdf-properties__color.is-current-color span {
-  box-shadow: 0 0 0 2px var(--accent);
-}
+/* ------------------------------------------------------------------- focus */
 
-/* Phone: the same ring on the strip swatch, kept outside the swatch's own inset
-   ring so the swatch still shows both of its colours underneath. */
-.mobile-pdf-properties__swatch.is-current-color {
-  box-shadow: inset 0 0 0 2px var(--mobile-swatch-ring, transparent), 0 0 0 2px var(--accent);
+.quick-style__dot:focus-visible,
+.quick-style__swatch:focus-visible,
+.quick-style__width:focus-visible {
+  outline: 2px solid var(--focus, var(--border-strong));
+  outline-offset: 2px;
 }

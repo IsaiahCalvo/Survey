@@ -21,7 +21,13 @@ async function loadPicker() {
   let source = await readFile(componentPath, 'utf8');
   source = source
     .replace("import { useState, useEffect, useMemo, useRef } from 'react';", `import { useState, useEffect, useMemo, useRef } from ${JSON.stringify(reactUrl)};`)
-    .replace("import DismissBarrier from './DismissBarrier';", 'const DismissBarrier = () => null;');
+    .replace("import DismissBarrier from './DismissBarrier';", 'const DismissBarrier = () => null;')
+    // Harness plumbing, not an assertion: the shared chosen-mark helpers are a
+    // plain ESM module, so point the import at it on disk.
+    .replace(
+      "from '../utils/quickStylePresets'",
+      `from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/utils/quickStylePresets.js')).href)}`,
+    );
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'compact-picker-test-'));

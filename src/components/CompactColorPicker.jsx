@@ -1,25 +1,101 @@
 /**
- * CompactColorPicker.jsx — the app's single shared colour picker popover.
+ * CompactColorPicker.jsx — the app's ONE shared colour picker.
  *
- * Default-exports the CompactColorPicker component: an 8-wide preset grid plus a
- * spectrum (HSV) view, an opacity slider, and a hex field. Used everywhere colours
- * are chosen (annotation fill/border, pins, etc). Supports a transparent first cell
- * or a "Match Fill" first cell (firstPreset), a minOpacity floor, and optional
- * opacity controls (showOpacity). Calls onChange(hex, alpha) live as the user drags.
+ * Every colour control in the app opens this component and no other: annotation
+ * border and fill, counter pins, text colour, Survey entity colours. Each
+ * instance keeps its own value; the component keeps no global state.
+ *
+ * THE LAYOUT IS BOARDS 17, 18 AND 19 (owner approved, pass 7, 2026-09-21), top
+ * to bottom:
+ *
+ *   Border / Fill tabs        (only when the caller passes `tabs`)
+ *   presets row, edge to edge (12 discs on the phone, 8 on the desktop)
+ *   EITHER the grid           (12 or 8 square columns x 6 rows)
+ *   OR     the gradient       (saturation/brightness area + hue slider)
+ *   Opacity label + slider    (the gradient stacks its slider under the hue one)
+ *   ONE bottom row            [Grid|Gradient] [eyedropper] [# hex] [opacity %]
+ *
+ * THE CHOSEN MARK IS NEVER GOLD (owner, verbatim): "a ring in the swatch's OWN
+ * colour, a gap, and a white check in the middle", with a dark check on a light
+ * cell. src/utils/quickStylePresets.js owns that decision so the picker's cells
+ * and the toolbar's quick discs can never disagree about what "chosen" looks
+ * like.
+ *
+ * WHAT DID NOT CHANGE, on purpose: the value contract (`onChange(hex, alpha)`
+ * fires live as the user drags), the transparent / Match Fill first grid cell,
+ * `minOpacity`, `showOpacity`, `attachedHeader`, `outsideBoundaryRef`,
+ * `dismissInsideSelector`, the DismissBarrier first-tap dismissal, the
+ * pointer-captured drags, and the keyboard handling on every slider.
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import DismissBarrier from './DismissBarrier';
+import { swatchCheckInk, swatchRingColour, needsSwatchHairline, normaliseQuickColour } from '../utils/quickStylePresets';
 
+/*
+ * The presets row, edge to edge. Boards 19 (desktop, 8) and 17/18 (phone, 12).
+ * The first three are the toolbar's own quick colours, spelled with the same
+ * hex, so a quick disc and the cell that looks identical set the same value —
+ * tests/quickStyleRow.test.mjs pins that.
+ */
 const PRESET_COLORS = [
-    'transparent', '#FF0000', '#FF0080', '#FF00FF', // Transparent + Reds/Pinks
-    '#8000FF', '#0000FF', '#0080FF', '#00FFFF',     // Purples/Blues
-    '#00FF80', '#00FF00', '#80FF00', '#FFFF00',     // Greens/Yellow
-    '#FF8000', '#FFFFFF', '#808080', '#000000',     // Orange + Greys (light grey removed)
+    '#FF0000', '#0000FF', '#000000', '#ffffff',
+    '#f97316', '#22c55e', '#0ea5e9', '#a855f7',
 ];
+
+const PHONE_PRESET_COLORS = [
+    '#FF0000', '#0000FF', '#000000', '#ffffff',
+    '#f97316', '#eab308', '#22c55e', '#0ea5e9',
+    '#a855f7', '#ec4899', '#8b5a2b', '#6b7280',
+];
+
+/*
+ * The grid. Six rows of one lightness each, one column per hue plus a
+ * greyscale column on the right, exactly as boards 17 and 19 enumerate them:
+ * the hue step is 360 / (columns - 1), the saturation is a flat 85%, and the
+ * grey column runs on its own lightness ramp so it reaches real white and real
+ * near-black rather than a washed grey.
+ */
+const GRID_LIGHTNESS = [88, 72, 56, 44, 32, 20];
+const GRID_GREY_LIGHTNESS = [100, 80, 60, 45, 25, 8];
+const GRID_SATURATION = 85;
+
+const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', sans-serif";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-// Convert a #rrggbb hex into HSV so the spectrum view opens already pointed at
+const toHexPair = (channel) => `0${Math.round(clamp(channel, 0, 255)).toString(16)}`.slice(-2);
+
+/** HSL to #rrggbb, so a grid cell hands the app a hex like every other cell. */
+const hslToHex = (h, s, l) => {
+    const sat = s / 100;
+    const light = l / 100;
+    const c = (1 - Math.abs(2 * light - 1)) * sat;
+    const hp = (((h % 360) + 360) % 360) / 60;
+    const x = c * (1 - Math.abs((hp % 2) - 1));
+    const [r1, g1, b1] = hp < 1 ? [c, x, 0]
+        : hp < 2 ? [x, c, 0]
+            : hp < 3 ? [0, c, x]
+                : hp < 4 ? [0, x, c]
+                    : hp < 5 ? [x, 0, c]
+                        : [c, 0, x];
+    const m = light - c / 2;
+    return `#${toHexPair((r1 + m) * 255)}${toHexPair((g1 + m) * 255)}${toHexPair((b1 + m) * 255)}`;
+};
+
+/** The grid's cells, row by row, for a given column count. */
+const buildGrid = (columns) => {
+    const hues = columns - 1;
+    return GRID_LIGHTNESS.map((lightness, row) => {
+        const cells = [];
+        for (let column = 0; column < hues; column += 1) {
+            cells.push(hslToHex(Math.round((column * 360) / hues), GRID_SATURATION, lightness));
+        }
+        cells.push(hslToHex(0, 0, GRID_GREY_LIGHTNESS[row]));
+        return cells;
+    });
+};
+
+// Convert a #rrggbb hex into HSV so the gradient view opens already pointed at
 // the current colour. Returns null for non-hex input (named colours, rgba()).
 const hexToHsv = (hex) => {
     const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim());
@@ -42,6 +118,47 @@ const hexToHsv = (hex) => {
     return { h, s: max === 0 ? 0 : (d / max) * 100, v: max * 100 };
 };
 
+const sameColour = (a, b) => Boolean(a) && Boolean(b)
+    && normaliseQuickColour(a) === normaliseQuickColour(b);
+
+/**
+ * The chosen mark, from boards 1-12 and 17-19: a check on the swatch, drawn at
+ * the weight the board draws it. A 1.5 stroke inside a 10px glyph renders at
+ * half a device pixel and disappears, which is why DESIGN-SYSTEM.md allows a
+ * small state glyph its own weight.
+ */
+const ChosenCheck = ({ size = 12 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <path d="M5 12.5L9.5 17L19 7.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+);
+
+/** The footer toggle's two glyphs, board 19. Both are filled, not stroked. */
+const GridGlyph = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <rect x="4" y="4" width="7" height="7" rx="1.5" fill="currentColor" />
+        <rect x="13" y="4" width="7" height="7" rx="1.5" fill="currentColor" />
+        <rect x="4" y="13" width="7" height="7" rx="1.5" fill="currentColor" />
+        <rect x="13" y="13" width="7" height="7" rx="1.5" fill="currentColor" />
+    </svg>
+);
+
+const GradientGlyph = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <path d="M12 3L15 9L21 12L15 15L12 21L9 15L3 12L9 9L12 3Z" fill="currentColor" />
+    </svg>
+);
+
+/** The eyedropper, from the boards' own review asset. Filled, no stroke. */
+const EyedropperGlyph = () => (
+    <svg width="17" height="17" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">
+        <path d="M224,67.3a35.79,35.79,0,0,0-11.26-25.66c-14-13.28-36.72-12.78-50.62,1.13L142.8,62.2a24,24,0,0,0-33.14.77l-9,9a16,16,0,0,0,0,22.64l2,2.06-51,51a39.75,39.75,0,0,0-10.53,38l-8,18.41A13.68,13.68,0,0,0,36,219.3a15.92,15.92,0,0,0,17.71,3.35L71.23,215a39.89,39.89,0,0,0,37.06-10.75l51-51,2.06,2.06a16,16,0,0,0,22.62,0l9-9a24,24,0,0,0,.74-33.18l19.75-19.87A35.75,35.75,0,0,0,224,67.3ZM97,193a24,24,0,0,1-24,6,8,8,0,0,0-5.55.31l-18.1,7.91L57,189.41a8,8,0,0,0,.25-5.75A23.88,23.88,0,0,1,63,159l51-51,33.94,34ZM202.13,82l-25.37,25.52a8,8,0,0,0,0,11.3l4.89,4.89a8,8,0,0,1,0,11.32l-9,9L112,83.26l9-9a8,8,0,0,1,11.31,0l4.89,4.89a8,8,0,0,0,11.33,0l24.94-25.09c7.81-7.82,20.5-8.18,28.29-.81a20,20,0,0,1,.39,28.7Z" />
+    </svg>
+);
+
+/** The chequerboard behind a partly transparent opacity track (boards 17-19). */
+const ALPHA_CHEQUER = 'repeating-conic-gradient(#6b7280 0 25%, #d1d5db 0 50%) 0 0 / 10px 10px';
+
 /**
  * CompactColorPicker — the app's one shared colour picker.
  *
@@ -52,6 +169,10 @@ const hexToHsv = (hex) => {
  *  - onClose
  *  - showOpacity  when false, hides the opacity slider + % field — for pickers
  *                 of things that have no transparency (e.g. counter pins)
+ *  - platform     'desktop' (276px panel, 8 presets, 8 grid columns) or 'phone'
+ *                 (full-width panel, 12 presets, 12 grid columns, 190px area)
+ *  - tabs         optional { items: [{ id, label }], active, onSelect } — draws
+ *                 the Border / Fill tablist inside the panel, boards 17-19
  *  - attachedHeader when true, joins the picker to a tab/header directly above
  *  - outsideBoundaryRef optional ref whose element contains this picker plus any
  *                 attached controls that should not dismiss it (e.g. tabs)
@@ -65,6 +186,8 @@ const CompactColorPicker = ({
     marginRight = 0,
     attachedHeader = false,
     outsideBoundaryRef = null,
+    platform = 'desktop',
+    tabs = null,
     // 2026-05-25: First preset cell behaviour.
     //   'transparent' (default) — zero-alpha picker; click sets opacity 0.
     //   { kind: 'match', color }  — Match Fill picker; click snapshots the
@@ -75,6 +198,11 @@ const CompactColorPicker = ({
     minOpacity = 0,
     dismissInsideSelector,
 }) => {
+    const isPhone = platform === 'phone';
+    const columns = isPhone ? 12 : 8;
+    const presets = isPhone ? PHONE_PRESET_COLORS : PRESET_COLORS;
+    const grid = useMemo(() => buildGrid(columns), [columns]);
+
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
     const matchFillColor = isMatchFirst ? (firstPreset.color || '#ffffff') : null;
     // 2026-05-25: When the parent supplies a fill opacity alongside the fill
@@ -100,6 +228,7 @@ const CompactColorPicker = ({
 
     const svRef = useRef(null);
     const hueRef = useRef(null);
+    const alphaRef = useRef(null);
     const containerRef = useRef(null);
     const dismissInsideRefs = useMemo(
         () => outsideBoundaryRef ? [containerRef, outsideBoundaryRef] : [containerRef],
@@ -107,9 +236,16 @@ const CompactColorPicker = ({
     );
     const svPointerId = useRef(null);
     const huePointerId = useRef(null);
+    const alphaPointerId = useRef(null);
 
-    // Keep the local hex AND the spectrum's HSV in sync with the colour prop,
-    // so opening the spectrum view starts on the real current colour.
+    // EyeDropper is Chromium-only. The button stays where the boards draw it —
+    // "eyedropper, always visible, even in grid mode" — and is disabled with a
+    // plain explanation elsewhere, so the footer never changes shape and the
+    // control is never silently broken.
+    const eyedropperSupported = typeof window !== 'undefined' && typeof window.EyeDropper === 'function';
+
+    // Keep the local hex AND the gradient's HSV in sync with the colour prop,
+    // so opening the gradient view starts on the real current colour.
     useEffect(() => {
         setLocalHex(color || '#000000');
         const hsv = hexToHsv(color);
@@ -158,6 +294,23 @@ const CompactColorPicker = ({
         updateColorFromHSV(hue, newSat, newVal);
     };
 
+    const applyOpacityPercent = (next) => {
+        const floor = Math.round(minOpacity * 100);
+        const percent = clamp(Math.round(next), floor, 100);
+        setLocalOpacity(percent);
+        setTransparentMode(false);
+        onChange(localHex, percent / 100);
+    };
+
+    // The opacity track is a real slider like hue, not an <input type=range>:
+    // boards 17-19 draw a 12px chequered track with an 18px thumb, which no
+    // browser's native range control can be made to look like.
+    const handleAlphaChange = (e) => {
+        const rect = alphaRef.current.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        applyOpacityPercent((x / rect.width) * 100);
+    };
+
     // Convert HSV to Hex and update
     const updateColorFromHSV = (h, s, v) => {
         const f = (n, k = (n + h / 60) % 6) => v / 100 - v / 100 * s / 100 * Math.max(Math.min(k, 4 - k, 1), 0);
@@ -174,7 +327,7 @@ const CompactColorPicker = ({
     };
 
     // Apply a hex value coming from a preset swatch or the hex field — keeps the
-    // spectrum's HSV indicators in step so switching views stays consistent.
+    // gradient's HSV indicators in step so switching views stays consistent.
     const applyHex = (hex) => {
         // Transparent preset: enter transparent mode (slider greys out) but
         // keep the slider's remembered value. Picking any other swatch
@@ -187,7 +340,7 @@ const CompactColorPicker = ({
         }
         // Match Fill: snapshot the current fill colour at full opacity. Border
         // tab on shapes uses this so the user can lock the border to whatever
-        // the fill currently is without picking from the spectrum.
+        // the fill currently is without picking from the gradient.
         if (hex === '__match__' && matchFillColor) {
             setLocalHex(matchFillColor.toUpperCase());
             setLocalOpacity(Math.round(matchFillOpacity * 100));
@@ -216,15 +369,28 @@ const CompactColorPicker = ({
         onChange(hex, alpha);
     };
 
+    const pickFromScreen = async () => {
+        if (!eyedropperSupported) return;
+        try {
+            const result = await new window.EyeDropper().open();
+            if (result?.sRGBHex) applyHex(result.sRGBHex);
+        } catch {
+            // The user pressed Escape, which cancels the pick. Nothing to do.
+        }
+    };
+
     // Pointer capture keeps both mouse and finger drags live when they leave
-    // the small spectrum/hue track. touchAction none prevents WebKit from
-    // turning the same gesture into page panning after it has begun.
+    // the small gradient/hue/opacity track. touchAction none prevents WebKit
+    // from turning the same gesture into page panning after it has begun.
     const beginPointerDrag = (kind, event) => {
         event.preventDefault();
         event.currentTarget.setPointerCapture?.(event.pointerId);
         if (kind === 'sv') {
             svPointerId.current = event.pointerId;
             handleSVChange(event);
+        } else if (kind === 'alpha') {
+            alphaPointerId.current = event.pointerId;
+            handleAlphaChange(event);
         } else {
             huePointerId.current = event.pointerId;
             handleHueChange(event);
@@ -232,15 +398,20 @@ const CompactColorPicker = ({
     };
 
     const movePointerDrag = (kind, event) => {
-        const activeId = kind === 'sv' ? svPointerId.current : huePointerId.current;
+        const activeId = kind === 'sv' ? svPointerId.current
+            : kind === 'alpha' ? alphaPointerId.current
+                : huePointerId.current;
         if (activeId !== event.pointerId) return;
         event.preventDefault();
         if (kind === 'sv') handleSVChange(event);
+        else if (kind === 'alpha') handleAlphaChange(event);
         else handleHueChange(event);
     };
 
     const endPointerDrag = (kind, event) => {
-        const pointerRef = kind === 'sv' ? svPointerId : huePointerId;
+        const pointerRef = kind === 'sv' ? svPointerId
+            : kind === 'alpha' ? alphaPointerId
+                : huePointerId;
         if (pointerRef.current !== event.pointerId) return;
         pointerRef.current = null;
         if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
@@ -288,6 +459,333 @@ const CompactColorPicker = ({
         updateColorFromHSV(nextHue, saturation, value);
     };
 
+    const handleAlphaKeyDown = (event) => {
+        const floor = Math.round(minOpacity * 100);
+        let next = localOpacity;
+        switch (event.key) {
+            case 'ArrowLeft':
+            case 'ArrowDown': next = localOpacity - 1; break;
+            case 'ArrowRight':
+            case 'ArrowUp': next = localOpacity + 1; break;
+            case 'PageDown': next = localOpacity - 10; break;
+            case 'PageUp': next = localOpacity + 10; break;
+            case 'Home': next = floor; break;
+            case 'End': next = 100; break;
+            default: return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        applyOpacityPercent(next);
+    };
+
+    /* ------------------------------------------------------------- pieces */
+
+    const panelBackground = 'var(--surface-1)';
+
+    /** The 18px white thumb both the hue and opacity tracks carry (board 18). */
+    const thumb = (left) => ({
+        position: 'absolute',
+        left: `${left}%`,
+        top: '50%',
+        width: '18px',
+        height: '18px',
+        margin: '-9px 0 0 -9px',
+        borderRadius: '50%',
+        background: '#fff',
+        boxShadow: '0 0 0 1px rgba(0,0,0,0.35), 0 1px 3px rgba(0,0,0,0.4)',
+        pointerEvents: 'none',
+    });
+
+    const track = {
+        position: 'relative',
+        height: '12px',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        touchAction: 'none',
+    };
+
+    const presetsRow = (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {presets.map((preset) => {
+                const isSelected = !transparentMode && sameColour(localHex, preset);
+                return (
+                    <button
+                        type="button"
+                        key={preset}
+                        aria-label={preset}
+                        aria-pressed={isSelected}
+                        title={preset}
+                        onClick={() => applyHex(preset)}
+                        style={{
+                            width: '26px',
+                            height: '26px',
+                            padding: 0,
+                            display: 'grid',
+                            placeItems: 'center',
+                            border: 0,
+                            background: 'transparent',
+                            flex: '0 0 auto',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <span style={{
+                            display: 'grid',
+                            placeItems: 'center',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: preset,
+                            boxShadow: isSelected
+                                ? `0 0 0 1.5px ${panelBackground}, 0 0 0 3px ${swatchRingColour(preset)}`
+                                : (needsSwatchHairline(preset) ? '0 0 0 1px rgba(255,255,255,0.16)' : undefined),
+                        }}>
+                            {isSelected && (
+                                <span style={{ color: swatchCheckInk(preset), lineHeight: 0 }}>
+                                    <ChosenCheck size={12} />
+                                </span>
+                            )}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+
+    const gridView = (
+        <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gap: '4px',
+            width: '100%',
+        }}>
+            {grid.flatMap((row, rowIndex) => row.map((cell, columnIndex) => {
+                // 2026-05-25: Border tab on shapes swaps the first cell from
+                // Transparent to Match Fill — shows the current fill colour with
+                // a small chain glyph so the user can sync border to fill in one
+                // click. Everything else in the grid is unchanged.
+                const isFirstCell = rowIndex === 0 && columnIndex === 0;
+                const isMatchSlot = isFirstCell && isMatchFirst;
+                const isTransparent = isFirstCell && !isMatchFirst;
+                const presetValue = isMatchSlot ? '__match__' : (isTransparent ? 'transparent' : cell);
+                const swatch = isMatchSlot ? matchFillColor : cell;
+                const isSelected = isMatchSlot
+                    ? (!transparentMode && matchFillColor && sameColour(localHex, matchFillColor) && localOpacity >= 99)
+                    : isTransparent
+                        ? transparentMode
+                        : (!transparentMode && sameColour(localHex, cell));
+                const background = isTransparent
+                    ? {
+                        backgroundColor: '#ffffff',
+                        backgroundImage:
+                            'linear-gradient(45deg, #cfcfcf 25%, transparent 25%),'
+                            + 'linear-gradient(-45deg, #cfcfcf 25%, transparent 25%),'
+                            + 'linear-gradient(45deg, transparent 75%, #cfcfcf 75%),'
+                            + 'linear-gradient(-45deg, transparent 75%, #cfcfcf 75%)',
+                        backgroundSize: '8px 8px',
+                        backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
+                    }
+                    : { background: swatch };
+                const title = isMatchSlot ? 'Match fill' : (isTransparent ? 'Transparent' : cell);
+                return (
+                    <button
+                        type="button"
+                        key={`${rowIndex}-${columnIndex}`}
+                        title={title}
+                        aria-label={title}
+                        aria-pressed={Boolean(isSelected)}
+                        onClick={() => applyHex(presetValue)}
+                        style={{
+                            position: 'relative',
+                            aspectRatio: '1',
+                            border: 0,
+                            borderRadius: '5px',
+                            ...background,
+                            boxShadow: isSelected
+                                ? `0 0 0 2px ${panelBackground}, 0 0 0 3.5px ${swatchRingColour(isTransparent ? '#ffffff' : swatch)}`
+                                : undefined,
+                            display: 'grid',
+                            placeItems: 'center',
+                            padding: 0,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {isMatchSlot && (
+                            <span style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                color: 'rgba(0,0,0,0.75)',
+                                textShadow: '0 0 2px rgba(255,255,255,0.85), 0 0 1px rgba(255,255,255,0.85)',
+                                letterSpacing: '-0.5px',
+                                pointerEvents: 'none',
+                            }}>≡</span>
+                        )}
+                        {isSelected && !isMatchSlot && !isTransparent && (
+                            <span style={{ color: swatchCheckInk(swatch), lineHeight: 0 }}>
+                                <ChosenCheck size={13} />
+                            </span>
+                        )}
+                    </button>
+                );
+            }))}
+        </div>
+    );
+
+    const opacityTrack = (labelled) => (
+        <div
+            ref={alphaRef}
+            data-color-picker-opacity="true"
+            role="slider"
+            tabIndex={transparentMode ? -1 : 0}
+            aria-label="Opacity"
+            aria-orientation="horizontal"
+            aria-valuemin={Math.round(minOpacity * 100)}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(localOpacity)}
+            aria-valuetext={`${Math.round(localOpacity)} percent`}
+            aria-disabled={transparentMode || undefined}
+            aria-description="Arrow keys adjust opacity by one percent. Page Up and Page Down adjust it by ten percent. Home and End set the minimum and maximum."
+            onKeyDown={transparentMode ? undefined : handleAlphaKeyDown}
+            onPointerDown={transparentMode ? undefined : ((event) => beginPointerDrag('alpha', event))}
+            onPointerMove={transparentMode ? undefined : ((event) => movePointerDrag('alpha', event))}
+            onPointerUp={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
+            onPointerCancel={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
+            onLostPointerCapture={() => { alphaPointerId.current = null; }}
+            style={{
+                ...track,
+                background: `linear-gradient(to right, transparent, ${localHex}), ${ALPHA_CHEQUER}`,
+                opacity: transparentMode ? 0.4 : 1,
+                cursor: transparentMode ? 'not-allowed' : 'pointer',
+                marginTop: labelled ? 0 : undefined,
+            }}
+        >
+            <span style={thumb(localOpacity)} />
+        </div>
+    );
+
+    const gradientView = (
+        <>
+            <div
+                ref={svRef}
+                data-color-picker-spectrum="true"
+                role="slider"
+                tabIndex={0}
+                aria-label="Saturation and brightness"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(saturation)}
+                aria-valuetext={`Saturation ${Math.round(saturation)}%, brightness ${Math.round(value)}%`}
+                aria-description="Left and right adjust saturation. Up and down adjust brightness. Page Up and Page Down adjust brightness by ten percent. Home and End set minimum and maximum saturation."
+                onKeyDown={handleSpectrumKeyDown}
+                onPointerDown={(event) => beginPointerDrag('sv', event)}
+                onPointerMove={(event) => movePointerDrag('sv', event)}
+                onPointerUp={(event) => endPointerDrag('sv', event)}
+                onPointerCancel={(event) => endPointerDrag('sv', event)}
+                onLostPointerCapture={() => { svPointerId.current = null; }}
+                style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: isPhone ? '190px' : '150px',
+                    borderRadius: '10px',
+                    background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hue} 100% 50%))`,
+                    cursor: 'crosshair',
+                    touchAction: 'none',
+                }}
+            >
+                <span style={{
+                    position: 'absolute',
+                    left: `${saturation}%`,
+                    top: `${100 - value}%`,
+                    width: '16px',
+                    height: '16px',
+                    margin: '-8px 0 0 -8px',
+                    borderRadius: '50%',
+                    border: '2.5px solid #fff',
+                    boxShadow: '0 0 0 1px rgba(0,0,0,0.45)',
+                    boxSizing: 'border-box',
+                    pointerEvents: 'none',
+                }} />
+            </div>
+
+            {/* Board 18 stacks the hue and opacity tracks under the area, with
+                no labels — the area above is what they obviously belong to. */}
+            <div style={{ display: 'grid', gap: '10px' }}>
+                <div
+                    ref={hueRef}
+                    data-color-picker-hue="true"
+                    role="slider"
+                    tabIndex={0}
+                    aria-label="Hue"
+                    aria-orientation="horizontal"
+                    aria-valuemin={0}
+                    aria-valuemax={360}
+                    aria-valuenow={Math.round(hue)}
+                    aria-valuetext={`${Math.round(hue)} degrees`}
+                    aria-description="Arrow keys adjust hue by one degree. Page Up and Page Down adjust hue by ten degrees. Home and End set the minimum and maximum hue."
+                    onKeyDown={handleHueKeyDown}
+                    onPointerDown={(event) => beginPointerDrag('hue', event)}
+                    onPointerMove={(event) => movePointerDrag('hue', event)}
+                    onPointerUp={(event) => endPointerDrag('hue', event)}
+                    onPointerCancel={(event) => endPointerDrag('hue', event)}
+                    onLostPointerCapture={() => { huePointerId.current = null; }}
+                    style={{
+                        ...track,
+                        background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+                    }}
+                >
+                    <span style={thumb((hue / 360) * 100)} />
+                </div>
+                {showOpacity && opacityTrack(false)}
+            </div>
+        </>
+    );
+
+    const fieldChrome = {
+        height: '30px',
+        boxSizing: 'border-box',
+        display: 'flex',
+        alignItems: 'center',
+        color: 'var(--text-1)',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--border)',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        font: `600 12px/1 ${FONT}`,
+        fontVariant: 'tabular-nums',
+        flex: '1 1 0',
+        minWidth: 0,
+    };
+
+    const modeTab = (id, label, glyph) => {
+        const on = mode === id;
+        return (
+            <button
+                type="button"
+                role="tab"
+                aria-selected={on}
+                aria-label={label}
+                title={label}
+                onClick={() => setMode(id)}
+                style={{
+                    flex: 1,
+                    height: '24px',
+                    display: 'grid',
+                    placeItems: 'center',
+                    border: 0,
+                    borderRadius: '5px',
+                    color: on ? 'var(--text-1)' : 'var(--text-3)',
+                    background: on ? 'var(--surface-3)' : 'transparent',
+                    cursor: 'pointer',
+                    padding: 0,
+                }}
+            >
+                {glyph}
+            </button>
+        );
+    };
+
+    /* ------------------------------------------------------------- render */
+
     return (
         <>
         <DismissBarrier
@@ -300,293 +798,132 @@ const CompactColorPicker = ({
             ref={containerRef}
             data-modal-focus-layer="true"
             data-testid="compact-color-picker"
+            data-color-picker-platform={platform}
             style={{
-            width: '260px',
+            /* Board 19: a 276px panel inside the 308px stage. The phone sheet
+               fills its host's width instead (boards 17/18 draw it at the
+               sheet's own 358px content band). */
+            width: isPhone ? '100%' : '276px',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
             /* UX 2026-09-17 (revision-2 palette): the picker's CHROME comes from
                the token file like every other panel. Only the preset ink swatches
                and the checkerboard behind a transparent swatch stay literal —
-               those are the user's colours, not the theme's. */
-            background: 'var(--surface-0)',
+               those are the user's colours, not the theme's. --surface-1 is the
+               boards' own --ui-toolbar, and the ring gaps are painted in it. */
+            background: panelBackground,
             border: '1px solid var(--border)',
             borderTop: attachedHeader ? 'none' : undefined,
-            borderRadius: attachedHeader ? '0 0 8px 8px' : '8px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            borderRadius: attachedHeader ? '0 0 8px 8px' : '12px',
+            boxShadow: '0 14px 32px rgba(0,0,0,0.45)',
             padding: '12px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px',
+            gap: '10px',
             userSelect: 'none',
             marginRight
         }}
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-1)', fontSize: '13px', fontWeight: 600 }}>Color</span>
-                {/* UX 2026-09-17 (owner ruling): a segmented control is a well
-                    (--surface-2) on the panel, and the chosen segment is marked by its
-                    GLYPH turning gold — no raised fill behind it. "When we select a
-                    tool, the icon turns gold, not everything else around it. It doesn't
-                    need a fill, and it doesn't need a border." The unchosen glyph stays
-                    --text-3. This matches the desktop tool rail's .btn-active exactly. */}
-                <div style={{ display: 'flex', gap: '4px', background: 'var(--surface-2)', padding: '2px', borderRadius: '4px' }}>
-                    <button
-                        type="button"
-                        aria-label="Preset colors"
-                        onClick={() => setMode('grid')}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            borderRadius: '2px',
-                            padding: '4px',
-                            cursor: 'pointer',
-                            color: mode === 'grid' ? 'var(--accent)' : 'var(--text-3)',
-                            display: 'flex'
-                        }}
-                    >
-                        <div style={{ width: 12, height: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                            <div style={{ background: 'currentColor' }} />
-                            <div style={{ background: 'currentColor' }} />
-                            <div style={{ background: 'currentColor' }} />
-                            <div style={{ background: 'currentColor' }} />
-                        </div>
-                    </button>
-                    <button
-                        type="button"
-                        aria-label="Color spectrum"
-                        onClick={() => setMode('spectrum')}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            borderRadius: '2px',
-                            padding: '4px',
-                            cursor: 'pointer',
-                            color: mode === 'spectrum' ? 'var(--accent)' : 'var(--text-3)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                    >
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                            <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill="currentColor" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            {mode === 'grid' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '6px' }}>
-                    {PRESET_COLORS.map((c, idx) => {
-                        // 2026-05-25: Border tab on shapes swaps the first cell
-                        // from Transparent to Match Fill — shows the current
-                        // fill colour with a small chain glyph so the user can
-                        // sync border to fill in one click. Everything else in
-                        // the grid is unchanged.
-                        const isMatchSlot = idx === 0 && isMatchFirst;
-                        const presetValue = isMatchSlot ? '__match__' : c;
-                        const isTransparent = !isMatchSlot && c === 'transparent';
-                        const isSelected = isMatchSlot
-                            ? (!transparentMode && matchFillColor && localHex.toLowerCase() === matchFillColor.toLowerCase() && localOpacity >= 99)
-                            : isTransparent
-                                ? transparentMode
-                                : (!transparentMode && localHex === c);
-                        const matchBg = isMatchSlot
-                            ? { background: matchFillColor }
-                            : null;
-                        const transparentBg = (!isMatchSlot && isTransparent)
-                            ? {
-                                backgroundColor: '#ffffff',
-                                backgroundImage:
-                                    'linear-gradient(45deg, #cfcfcf 25%, transparent 25%),'
-                                    + 'linear-gradient(-45deg, #cfcfcf 25%, transparent 25%),'
-                                    + 'linear-gradient(45deg, transparent 75%, #cfcfcf 75%),'
-                                    + 'linear-gradient(-45deg, transparent 75%, #cfcfcf 75%)',
-                                backgroundSize: '8px 8px',
-                                backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
-                            }
-                            : (matchBg || { background: c });
-                        const title = isMatchSlot ? 'Match fill' : (isTransparent ? 'Transparent' : c);
+            {/* Border / Fill tabs, boards 17-19. A 26px segment in a 3px well;
+                the chosen one is a raised --surface-3 segment with --text-1 ink,
+                which is the tab component the boards drew. */}
+            {tabs?.items?.length > 0 && (
+                <div role="tablist" style={{
+                    display: 'flex',
+                    gap: '2px',
+                    padding: '3px',
+                    background: 'var(--surface-2)',
+                    borderRadius: '8px',
+                }}>
+                    {tabs.items.map((item) => {
+                        const on = tabs.active === item.id;
                         return (
                             <button
+                                key={item.id}
                                 type="button"
-                                key={isMatchSlot ? '__match__' : c}
-                                title={title}
-                                onClick={() => applyHex(presetValue)}
+                                role="tab"
+                                aria-selected={on}
+                                onClick={() => tabs.onSelect?.(item.id)}
                                 style={{
-                                    width: '100%',
-                                    aspectRatio: '1',
-                                    borderRadius: '4px',
-                                    ...transparentBg,
-                                    border: isSelected ? '2px solid white' : '1px solid var(--border)',
+                                    flex: 1,
+                                    height: '26px',
+                                    border: 0,
+                                    borderRadius: '6px',
+                                    color: on ? 'var(--text-1)' : 'var(--text-3)',
+                                    background: on ? 'var(--surface-3)' : 'transparent',
+                                    font: `600 12.5px/1 ${FONT}`,
                                     cursor: 'pointer',
-                                    position: 'relative',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
                                     padding: 0,
                                 }}
                             >
-                                {isMatchSlot && (
-                                    <span style={{
-                                        fontSize: '11px',
-                                        fontWeight: 700,
-                                        lineHeight: 1,
-                                        color: 'rgba(0,0,0,0.75)',
-                                        textShadow: '0 0 2px rgba(255,255,255,0.85), 0 0 1px rgba(255,255,255,0.85)',
-                                        letterSpacing: '-0.5px',
-                                        pointerEvents: 'none',
-                                    }}>≡</span>
-                                )}
+                                {item.label}
                             </button>
                         );
                     })}
                 </div>
-            ) : (
-                <>
-                    {/* SV Box */}
-                    <div
-                        ref={svRef}
-                        data-color-picker-spectrum="true"
-                        role="slider"
-                        tabIndex={0}
-                        aria-label="Saturation and brightness"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(saturation)}
-                        aria-valuetext={`Saturation ${Math.round(saturation)}%, brightness ${Math.round(value)}%`}
-                        aria-description="Left and right adjust saturation. Up and down adjust brightness. Page Up and Page Down adjust brightness by ten percent. Home and End set minimum and maximum saturation."
-                        onKeyDown={handleSpectrumKeyDown}
-                        onPointerDown={(event) => beginPointerDrag('sv', event)}
-                        onPointerMove={(event) => movePointerDrag('sv', event)}
-                        onPointerUp={(event) => endPointerDrag('sv', event)}
-                        onPointerCancel={(event) => endPointerDrag('sv', event)}
-                        onLostPointerCapture={() => { svPointerId.current = null; }}
-                        style={{
-                            width: '100%',
-                            height: '150px',
-                            position: 'relative',
-                            borderRadius: '4px',
-                            background: `
-                linear-gradient(to top, #000, transparent),
-                linear-gradient(to right, #FFF, transparent),
-                hsl(${hue}, 100%, 50%)
-              `,
-                            cursor: 'crosshair',
-                            touchAction: 'none'
-                        }}
-                    >
-                        <div style={{
-                            position: 'absolute',
-                            left: `${saturation}%`,
-                            top: `${100 - value}%`,
-                            width: '12px',
-                            height: '12px',
-                            border: '2px solid white',
-                            borderRadius: '50%',
-                            transform: 'translate(-50%, -50%)',
-                            boxShadow: '0 0 2px rgba(0,0,0,0.5)',
-                            background: localHex
-                        }} />
-                    </div>
-
-                    {/* Hue Slider */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: 'var(--text-3)', fontSize: '10px', width: '20px' }}>HUE</span>
-                        <div
-                            ref={hueRef}
-                            data-color-picker-hue="true"
-                            role="slider"
-                            tabIndex={0}
-                            aria-label="Hue"
-                            aria-orientation="horizontal"
-                            aria-valuemin={0}
-                            aria-valuemax={360}
-                            aria-valuenow={Math.round(hue)}
-                            aria-valuetext={`${Math.round(hue)} degrees`}
-                            aria-description="Arrow keys adjust hue by one degree. Page Up and Page Down adjust hue by ten degrees. Home and End set the minimum and maximum hue."
-                            onKeyDown={handleHueKeyDown}
-                            onPointerDown={(event) => beginPointerDrag('hue', event)}
-                            onPointerMove={(event) => movePointerDrag('hue', event)}
-                            onPointerUp={(event) => endPointerDrag('hue', event)}
-                            onPointerCancel={(event) => endPointerDrag('hue', event)}
-                            onLostPointerCapture={() => { huePointerId.current = null; }}
-                            style={{
-                                flex: 1,
-                                height: '12px',
-                                borderRadius: '6px',
-                                background: 'linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)',
-                                position: 'relative',
-                                cursor: 'pointer',
-                                touchAction: 'none'
-                            }}
-                        >
-                            <div style={{
-                                position: 'absolute',
-                                left: `${(hue / 360) * 100}%`,
-                                top: '50%',
-                                width: '12px',
-                                height: '12px',
-                                background: 'white',
-                                borderRadius: '50%',
-                                transform: 'translate(-50%, -50%)',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                            }} />
-                        </div>
-                        <span style={{ color: 'var(--text-2)', fontSize: '11px', width: '24px', textAlign: 'right' }}>{Math.round(hue)}°</span>
-                    </div>
-                </>
             )}
 
-            {/* Opacity Slider */}
-            {showOpacity && (
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    opacity: transparentMode ? 0.4 : 1,
-                }}>
-                    <span style={{ color: 'var(--text-3)', fontSize: '10px', width: '40px' }}>OPACITY</span>
-                    <input
-                        type="range"
-                        min={Math.round(minOpacity * 100)}
-                        max="100"
-                        value={localOpacity}
-                        disabled={transparentMode}
-                        onChange={(e) => {
-                            if (transparentMode) return;
-                            const next = Math.max(minOpacity * 100, Number(e.target.value));
-                            setLocalOpacity(next);
-                            onChange(localHex, next / 100);
-                        }}
-                        style={{
-                            flex: 1,
-                            height: '4px',
-                            accentColor: 'var(--accent)',
-                            background: 'var(--surface-2)',
-                            borderRadius: '2px',
-                            appearance: 'auto',
-                            cursor: transparentMode ? 'not-allowed' : 'pointer',
-                        }}
-                    />
-                    <span style={{ color: 'var(--text-2)', fontSize: '11px', width: '24px', textAlign: 'right' }}>{localOpacity}%</span>
+            {presetsRow}
+
+            {mode === 'grid' ? gridView : gradientView}
+
+            {/* Boards 17 and 19 label the opacity slider in grid mode; board 18
+                folds it into the gradient's own slider stack, above. */}
+            {showOpacity && mode === 'grid' && (
+                <div style={{ display: 'grid', gap: '6px' }}>
+                    <div style={{ color: 'var(--text-3)', font: `600 11px/1 ${FONT}` }}>Opacity</div>
+                    {opacityTrack(true)}
                 </div>
             )}
 
-            {/* Footer: Hex Input */}
-            <div style={{ display: 'flex', gap: '8px', minWidth: 0, paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
-                <div style={{
-                    background: localHex,
-                    width: '32px',
-                    height: '32px',
-                    flexShrink: 0,
-                    borderRadius: '4px',
-                    border: '1px solid var(--border)',
-                    opacity: transparentMode ? 0 : (showOpacity ? localOpacity / 100 : 1)
-                }} />
-                <div style={{ flex: '1 1 auto', minWidth: 0, background: 'var(--surface-0)', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--text-disabled)', fontSize: '12px', marginRight: '4px' }}>#</span>
+            {/* ONE bottom row: the view toggle, then the eyedropper, hex and
+                opacity in a single joined field. Boards 17-19. */}
+            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                <div role="tablist" style={{
+                    display: 'flex',
+                    gap: '2px',
+                    padding: '2px',
+                    background: 'var(--surface-2)',
+                    borderRadius: '7px',
+                    width: '64px',
+                    flex: '0 0 64px',
+                    boxSizing: 'border-box',
+                }}>
+                    {modeTab('grid', 'Preset colors', <GridGlyph />)}
+                    {modeTab('spectrum', 'Color spectrum', <GradientGlyph />)}
+                </div>
+                <div style={fieldChrome}>
+                    <button
+                        type="button"
+                        aria-label="Pick a colour from the page"
+                        title={eyedropperSupported
+                            ? 'Pick a colour from the page'
+                            : 'Picking a colour from the page needs Chrome or Edge'}
+                        disabled={!eyedropperSupported}
+                        onClick={pickFromScreen}
+                        style={{
+                            width: '34px',
+                            height: '30px',
+                            padding: 0,
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: 'transparent',
+                            border: 0,
+                            borderRight: '1px solid var(--border)',
+                            flex: '0 0 34px',
+                            color: 'var(--text-2)',
+                            opacity: eyedropperSupported ? 1 : 0.4,
+                            cursor: eyedropperSupported ? 'pointer' : 'default',
+                        }}
+                    >
+                        <EyedropperGlyph />
+                    </button>
+                    <span style={{ padding: '0 9px', color: 'var(--text-3)' }}>#</span>
                     <input
                         type="text"
+                        aria-label="Hex colour"
+                        spellCheck="false"
                         value={localHex.replace('#', '')}
                         onChange={(e) => {
                             const val = e.target.value;
@@ -596,45 +933,47 @@ const CompactColorPicker = ({
                             }
                         }}
                         style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--text-1)',
-                            width: '100%',
+                            flex: '1 1 0',
                             minWidth: 0,
-                            fontSize: '12px',
+                            height: '100%',
+                            padding: 0,
+                            color: 'inherit',
+                            background: 'transparent',
+                            border: 0,
+                            font: 'inherit',
                             outline: 'none',
-                            fontFamily: 'monospace'
                         }}
                     />
+                    {showOpacity && (
+                        <>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                aria-label="Opacity percentage"
+                                value={Math.round(localOpacity)}
+                                onChange={(e) => {
+                                    const digits = e.target.value.replace(/[^0-9]/g, '');
+                                    if (!digits) return;
+                                    applyOpacityPercent(Number(digits));
+                                }}
+                                style={{
+                                    width: '42px',
+                                    flex: '0 0 42px',
+                                    height: '100%',
+                                    padding: '0 2px',
+                                    color: 'inherit',
+                                    background: 'transparent',
+                                    border: 0,
+                                    borderLeft: '1px solid var(--border)',
+                                    font: 'inherit',
+                                    textAlign: 'center',
+                                    outline: 'none',
+                                }}
+                            />
+                            <span style={{ paddingRight: '9px', color: 'var(--text-3)', flexShrink: 0 }}>%</span>
+                        </>
+                    )}
                 </div>
-                {showOpacity && (
-                    <div style={{ background: 'var(--surface-0)', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 6px', border: '1px solid var(--border)', width: '72px', flex: '0 0 72px' }}>
-                        <input
-                            type="number"
-                            aria-label="Opacity percentage"
-                            min="0"
-                            max="100"
-                            value={Math.round(localOpacity)}
-                            onChange={(e) => {
-                                const val = Math.min(100, Math.max(0, Number(e.target.value)));
-                                setLocalOpacity(val);
-                                onChange(localHex, val / 100);
-                            }}
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: 'var(--text-1)',
-                                flex: '1 1 auto',
-                                minWidth: 0,
-                                width: 'auto',
-                                fontSize: '12px',
-                                outline: 'none',
-                                textAlign: 'center'
-                            }}
-                        />
-                        <span style={{ color: 'var(--text-disabled)', fontSize: '10px', flexShrink: 0 }}>%</span>
-                    </div>
-                )}
             </div>
         </div>
         </>

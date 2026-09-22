@@ -65,6 +65,40 @@ const EXEMPT = new Set([
   'prototype/InteractiveOverlay.jsx',
 ]);
 
+/*
+ * SMALL STATE GLYPHS, added 2026-09-21. Not an exemption for a file — an
+ * allowance for three specific path shapes, wherever they appear, and nothing
+ * else in those files is waved through.
+ *
+ * RULING: DESIGN-SYSTEM.md, the size contract behind the approved pass-7
+ * boards, says "use 1.5px strokes ... UNLESS the source icon needs another
+ * weight" and "use inline SVG for small state glyphs". Boards 1-12 and 17-19
+ * draw the chosen-colour check at stroke 2.6 (and 3 in a grid cell) and the
+ * custom disc's plus at 1.8, because these render at 10-13px: a 1.5 stroke
+ * inside a 10px check paints at half a device pixel and vanishes.
+ *
+ * These are STATE marks on a colour swatch, not members of the icon set. Every
+ * one of them is matched by its exact path data, so a chrome glyph cannot hide
+ * behind the allowance.
+ */
+const STATE_GLYPHS = [
+  // The chosen-colour check (boards 1-12, 17-19), drawn at 2.6.
+  { d: 'M5 12.5L9.5 17L19 7.5', weight: 2.6 },
+  // The custom colour disc's plus (boards 1, 3, 10, 12), drawn at 1.8.
+  { d: 'M12 6V18', weight: 1.8 },
+  { d: 'M6 12H18', weight: 1.8 },
+];
+
+/*
+ * An offender is a state glyph only when BOTH hold: the file really draws that
+ * path, and the weight the parser measured is that glyph's board weight. Line
+ * numbers are deliberately not used — the parser reports the <svg>'s own offset
+ * rather than the painted child's, so a line lookup would be a guess.
+ */
+const isStateGlyph = (offender, source) => STATE_GLYPHS.some(({ d, weight }) => (
+  source.includes(d) && offender.includes(`strokes ${weight} on a`)
+));
+
 const walk = async (dir, prefix = '') => {
   const out = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -82,7 +116,9 @@ test('every chrome file that hand-draws an inline icon draws it at the house wei
   const offenders = [];
   for (const file of files) {
     const source = await readFile(path.join(SRC, file), 'utf8');
-    offenders.push(...offHouseWeight(source, `src/${file}`));
+    offenders.push(
+      ...offHouseWeight(source, `src/${file}`).filter((o) => !isStateGlyph(o, source)),
+    );
   }
 
   assert.deepEqual(

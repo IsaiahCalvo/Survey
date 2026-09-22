@@ -100,16 +100,24 @@ test('the phone tool-properties bar measures its widest tool and stays inside it
 
   // The quick styles that now open the row, read off their own stylesheet.
   const quickCss = readFileSync(path.join(here, '..', 'src', 'components', 'QuickStyleControls.css'), 'utf8');
+  // A rule may group several selectors (the 22px colour box is shared by the
+  // preset disc and the combined swatch), so look inside the whole list.
   const quickPx = (selector, property) => {
-    const index = quickCss.indexOf(`\n${selector} {`);
-    assert.ok(index !== -1, `expected a "${selector}" rule in QuickStyleControls.css`);
-    const body = quickCss.slice(quickCss.indexOf('{', index) + 1, quickCss.indexOf('}', quickCss.indexOf('{', index)));
-    const match = body.match(new RegExp(`${property}:[^;]*?(\\d+(?:\\.\\d+)?)px`));
-    assert.ok(match, `expected a px ${property} on ${selector}`);
-    return Number(match[1]);
+    const clean = quickCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const match of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selectors = match[1].split(',').map((one) => one.trim());
+      if (!selectors.includes(selector)) continue;
+      const found = match[2].match(new RegExp(`${property}:[^;]*?(\\d+(?:\\.\\d+)?)px`));
+      if (found) return Number(found[1]);
+    }
+    assert.fail(`expected a px ${property} on "${selector}" in QuickStyleControls.css`);
   };
+  // CHANGED 2026-09-21 with the pass-7 boards: the disc's BUTTON is 22px (it
+  // holds a 16px disc), the colour gap is a flat 4px on both platforms, and the
+  // cluster is three presets plus the rainbow custom disc — four buttons, not
+  // four presets. Rulings: boards 1-12.
   const dot = quickPx('.quick-style__dot', 'width');
-  const dotGap = quickPx('.quick-style--colours.quick-style--phone', 'gap');
+  const dotGap = quickPx('.quick-style--colours', 'gap');
   const widthChip = quickPx('.quick-style__width', 'width');
   const quickColours = dot * 4 + dotGap * 3;
   const quickWidths = widthChip * 3; // flush: the trio reads as one control

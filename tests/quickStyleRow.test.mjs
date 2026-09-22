@@ -53,7 +53,13 @@ const controlsCss = await read('src/components/QuickStyleControls.css');
 /* ---------------------------------------------------------------- 1. shared */
 
 test('the quick styles are one shared list, not a copy on each platform', async () => {
-  assert.deepEqual([...QUICK_COLOURS], ['#FF0000', '#0000FF', '#00FF00', '#000000']);
+  // CHANGED 2026-09-21. Was ['#FF0000', '#0000FF', '#00FF00', '#000000'].
+  // RULING (owner, pass 7, boards 1-12): "Quick colours: red #FF0000, blue
+  // #0000FF, black #000000 + ONE custom swatch." Green left because four
+  // presets plus the rainbow custom disc is five 22px buttons, which no longer
+  // fits the 375px phone strip beside the width and line-style pills. Green is
+  // still one press away in the picker's own presets row.
+  assert.deepEqual([...QUICK_COLOURS], ['#FF0000', '#0000FF', '#000000']);
   assert.deepEqual([...QUICK_WIDTHS], [1, 2, 4]);
 
   // The controls read the list from the shared module...
@@ -200,15 +206,113 @@ test('pressing a quick colour dot hands back the colour it is showing', async ()
   });
 });
 
-test('no dot is ringed when the current colour is not one of the four', async () => {
+test('no preset disc is ringed when the current colour is not one of the three', async () => {
   await withDom(async ({ QuickColourDots }, root) => {
     await act(async () => root.render(React.createElement(QuickColourDots, {
       value: '#7c3aed',
       onPick: () => {},
     })));
-    const ringed = [...document.querySelectorAll('[data-quick-colours] button')]
+    const ringed = [...document.querySelectorAll('[data-quick-colour-preset]')]
       .filter((dot) => dot.className.includes('is-current'));
-    assert.equal(ringed.length, 0, 'the ring belongs on the swatch then, not on a dot');
+    assert.equal(ringed.length, 0, 'the mark belongs on the custom disc then');
+  });
+});
+
+/* ------------------------------ 2b. the custom disc and combined swatch ---- */
+
+test('the custom disc appears only where the host can open the picker, and opens it', async () => {
+  await withDom(async ({ QuickColourDots }, root) => {
+    // No onOpenPicker: three preset discs and nothing else.
+    await act(async () => root.render(React.createElement(QuickColourDots, {
+      value: '#FF0000',
+      onPick: () => {},
+    })));
+    assert.equal(document.querySelectorAll('[data-quick-colours] button').length, 3);
+    assert.equal(document.querySelectorAll('[data-quick-colour-custom]').length, 0);
+
+    const opened = [];
+    await act(async () => root.render(React.createElement(QuickColourDots, {
+      value: '#FF0000',
+      onPick: () => {},
+      onOpenPicker: () => opened.push(true),
+    })));
+    const buttons = [...document.querySelectorAll('[data-quick-colours] button')];
+    assert.equal(buttons.length, 4, 'three presets plus the rainbow custom disc');
+    const custom = document.querySelector('[data-quick-colour-custom]');
+    assert.equal(custom.getAttribute('aria-label'), 'Custom colour');
+    // Red is current, so the custom disc is not marked.
+    assert.equal(custom.getAttribute('aria-pressed'), 'false');
+    await act(async () => { custom.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+    assert.deepEqual(opened, [true]);
+  });
+});
+
+test('the custom disc wears the chosen mark when the colour is not a preset', async () => {
+  await withDom(async ({ QuickColourDots }, root) => {
+    await act(async () => root.render(React.createElement(QuickColourDots, {
+      value: '#7c3aed',
+      onPick: () => {},
+      onOpenPicker: () => {},
+    })));
+    const custom = document.querySelector('[data-quick-colour-custom]');
+    assert.equal(custom.getAttribute('aria-pressed'), 'true');
+    assert.ok(custom.className.includes('is-current'));
+    // And the ring it wears is the CURRENT colour, never gold.
+    assert.equal(custom.style.getPropertyValue('--quick-style-ring'), '#7c3aed');
+    assert.equal(
+      [...document.querySelectorAll('[data-quick-colour-preset]')]
+        .filter((dot) => dot.className.includes('is-current')).length,
+      0,
+      'exactly one thing in the cluster is ever marked',
+    );
+  });
+});
+
+test('a multi-colour tool gets ONE combined swatch that opens the picker', async () => {
+  await withDom(async ({ QuickPaintSwatch }, root) => {
+    const opened = [];
+    await act(async () => root.render(React.createElement(QuickPaintSwatch, {
+      ring: '#FF0000',
+      center: '#ffffff',
+      onOpen: () => opened.push(true),
+    })));
+    const swatch = document.querySelector('[data-quick-paint-swatch]');
+    assert.equal(swatch.getAttribute('data-quick-paint-swatch'), 'shape');
+    assert.equal(swatch.getAttribute('aria-label'), 'Border and fill colours');
+    const disc = swatch.querySelector('.quick-style__swatch-disc');
+    assert.equal(disc.style.getPropertyValue('--quick-style-fill'), '#ffffff');
+    assert.equal(disc.style.getPropertyValue('--quick-style-border'), '#FF0000');
+    // No preset discs come with it.
+    assert.equal(document.querySelectorAll('[data-quick-colour-preset]').length, 0);
+    await act(async () => { swatch.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+    assert.deepEqual(opened, [true]);
+
+    // `border` / `fill` are accepted as aliases so either chrome file can call it.
+    await act(async () => root.render(React.createElement(QuickPaintSwatch, {
+      border: '#0000FF', fill: '#eeeeee', onOpen: () => {},
+    })));
+    const aliased = document.querySelector('.quick-style__swatch-disc');
+    assert.equal(aliased.style.getPropertyValue('--quick-style-border'), '#0000FF');
+    assert.equal(aliased.style.getPropertyValue('--quick-style-fill'), '#eeeeee');
+  });
+});
+
+test('the counter swatch is the pin with its number, not a circle', async () => {
+  await withDom(async ({ QuickPaintSwatch }, root) => {
+    await act(async () => root.render(React.createElement(QuickPaintSwatch, {
+      variant: 'counter',
+      ring: '#FF0000',
+      center: '#ffffff',
+      count: 7,
+      onOpen: () => {},
+    })));
+    const swatch = document.querySelector('[data-quick-paint-swatch="counter"]');
+    assert.equal(swatch.getAttribute('aria-label'), 'Pin and number colours');
+    const svg = swatch.querySelector('svg');
+    assert.equal(svg.querySelectorAll('circle').length, 0, 'the owner ruled out a circle');
+    assert.equal(svg.querySelector('path').getAttribute('fill'), '#FF0000');
+    assert.equal(svg.querySelector('text').getAttribute('fill'), '#ffffff');
+    assert.equal(svg.querySelector('text').textContent, '7');
   });
 });
 
@@ -361,7 +465,20 @@ test('nothing else in either row moved', () => {
 
 /* ------------------------------------------------------------------ 4. size */
 
-test('a dot is 20px of colour inside a 24px target, and a width chip is 28x24', () => {
+/*
+ * CHANGED 2026-09-21, both tests below.
+ *
+ * RULING (owner, pass 7, boards 1-12): every colour control is 22px with a 16px
+ * disc inside it, and a multi-colour tool shows ONE combined 22px swatch instead
+ * of preset discs. So:
+ *   - the dot was 20px of colour in a 24px target on a var(--chrome-gap) gutter;
+ *     it is now 16px of colour in a 22px button on the boards' flat 4px gap,
+ *     with the hit box bleeding 3px rather than 2px;
+ *   - the colour cluster now draws three small state glyphs, so "no inline icon
+ *     at all" is no longer the rule. The rule is that each one is either at the
+ *     house weight or is a documented small state glyph at the board's weight.
+ */
+test('a disc is 16px of colour inside a 22px button, and a width chip is 28x24', () => {
   const rule = (selector) => {
     const index = controlsCss.indexOf(`\n${selector} {`);
     assert.notEqual(index, -1, `expected a "${selector}" rule`);
@@ -369,13 +486,27 @@ test('a dot is 20px of colour inside a 24px target, and a width chip is 28x24', 
     return controlsCss.slice(open + 1, controlsCss.indexOf('}', open));
   };
 
-  const dot = rule('.quick-style__dot');
-  assert.match(dot, /width:\s*20px/);
-  assert.match(dot, /height:\s*20px/);
-  // The finger / pointer target is the shared 24px value-chip size: the 20px
-  // dot plus 2px into each half of the 4px gutter.
-  assert.match(rule('.quick-style__dot::after'), /inset:\s*-2px/);
-  assert.match(rule('.quick-style--colours'), /gap:\s*var\(--chrome-gap, 4px\)/);
+  // The button and the combined swatch share the 22px box.
+  const box = rule('.quick-style__dot,\n.quick-style__swatch');
+  assert.match(box, /width:\s*22px/);
+  assert.match(box, /height:\s*22px/);
+
+  const fill = rule('.quick-style__dot-fill');
+  assert.match(fill, /width:\s*16px/);
+  assert.match(fill, /height:\s*16px/);
+
+  // The pointer / finger target bleeds 3px past the button into each half of
+  // the 4px gap, so two neighbouring targets stop 1px short of each other.
+  assert.match(
+    rule('.quick-style__dot::after,\n.quick-style__swatch::after'),
+    /inset:\s*var\(--quick-style-hit-inset, -3px\)/,
+  );
+  assert.match(rule('.quick-style--colours'), /gap:\s*4px/);
+
+  // The combined swatch and the rainbow custom disc both draw their 16px area
+  // as a 3px inset of the 22px button.
+  assert.match(rule('.quick-style__swatch-disc'), /inset:\s*3px/);
+  assert.match(rule('.quick-style__rainbow'), /inset:\s*3px/);
 
   const chip = rule('.quick-style__width');
   assert.match(chip, /width:\s*28px/);
@@ -384,12 +515,55 @@ test('a dot is 20px of colour inside a 24px target, and a width chip is 28x24', 
   assert.match(rule('.quick-style__width-line'), /height:\s*var\(--quick-style-width/);
 });
 
-test('the quick controls draw no inline icon, so they cannot fight the house stroke', async () => {
-  const { offHouseWeight, stripComments } = await import('./helpers/inlineIconStrokes.mjs');
-  assert.deepEqual(offHouseWeight(controlsSource, 'src/components/QuickStyleControls.jsx'), []);
+test('the chosen disc is ringed in its own colour and never in gold', () => {
   assert.ok(
-    !/<svg/.test(stripComments(controlsSource)),
-    'a width chip has to show its real weight, which the one-weight shared icon '
-    + 'set cannot do — it draws a plain rule, not an <svg> glyph',
+    !/var\(--accent/.test(controlsCss.replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\.quick-style__width\.is-current \{[^}]*\}/, '')),
+    'only the width chip may turn gold (it is a glyph, not a colour). A colour '
+    + "disc's chosen mark is a ring in its OWN colour plus a check.",
   );
+  assert.match(controlsCss, /--quick-style-ring/);
+  assert.match(controlsCss, /0 0 0 1\.5px var\(--quick-style-gap, var\(--surface-1\)\)/);
+  // The gold ring that used to sit on the swatch beside the discs is gone.
+  assert.ok(
+    !/is-current-color\s*\{/.test(controlsCss),
+    'the .is-current-color gold rings were reversed by the owner on 2026-09-21',
+  );
+});
+
+test('the only inline glyphs in the colour cluster are the three the boards draw', async () => {
+  const { offHouseWeight, stripComments } = await import('./helpers/inlineIconStrokes.mjs');
+  const clean = stripComments(controlsSource);
+
+  // The counter pin IS at the house weight: 67 units inside scale(0.0224).
+  assert.match(clean, /strokeWidth="67"/);
+  assert.match(clean, /scale\(0\.0224\)/);
+
+  // The chosen check and the custom disc's plus are small STATE glyphs drawn at
+  // the boards' own weights, which DESIGN-SYSTEM.md allows in as many words
+  // ("use inline SVG for small state glyphs"; "1.5px strokes ... unless the
+  // source icon needs another weight"). A 1.5 stroke inside a 10px check paints
+  // at half a device pixel and disappears.
+  // Anchored to BOTH the path and its board weight, so a chrome glyph cannot
+  // hide behind the allowance.
+  const STATE_GLYPHS = [
+    { d: 'M5 12.5L9.5 17L19 7.5', weight: 2.6 },
+    { d: 'M12 6V18', weight: 1.8 },
+    { d: 'M6 12H18', weight: 1.8 },
+  ];
+  const unexplained = offHouseWeight(controlsSource, 'src/components/QuickStyleControls.jsx')
+    .filter((offender) => !STATE_GLYPHS.some(({ d, weight }) => (
+      clean.includes(d) && offender.includes(`strokes ${weight} on a`)
+    )));
+  assert.deepEqual(
+    unexplained,
+    [],
+    'a glyph in the colour cluster that is neither the house weight nor one of '
+    + 'the three the boards draw:\n  ' + unexplained.join('\n  '),
+  );
+
+  // And the width chip still draws a plain rule, not an icon: it has to show
+  // its real weight, which the one-weight shared icon set cannot do.
+  const chipBlock = clean.slice(clean.indexOf('export function QuickWidthPresets'));
+  assert.ok(!/<svg/.test(chipBlock), 'the width chip must stay a plain rule');
 });

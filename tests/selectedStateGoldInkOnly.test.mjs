@@ -83,14 +83,20 @@ const GOLD = /var\(--accent(-soft|-press|-light)?\)|var\(--gold\b[^)]*\)|var\(--
 const EXCEPTIONS = [
   {
     match: /\.quick-style__dot\.is-current/,
-    why: 'the quick-colour dots. A colour disc cannot turn gold without lying '
-      + 'about which colour is selected, so it keeps a gold RING instead — the '
-      + 'owner named this exception when he gave the ruling.',
+    why: 'NO LONGER A GOLD EXCEPTION, kept as a tripwire. The owner reversed it '
+      + 'on 2026-09-21: "Chosen quick colour = a ring in the disc\'s OWN colour, '
+      + 'a gap, and a white check in the middle. NEVER a gold ring." So the '
+      + 'quick-colour discs ring in --quick-style-ring, which is the colour '
+      + 'itself, and nothing here is gold any more. If a gold value ever comes '
+      + 'back to this selector, delete this entry rather than keep it quiet.',
   },
   {
     match: /\.ctx-color-swatch\.is-current-color|\.mobile-pdf-properties__(color|swatch)\.is-current-color/,
-    why: 'the same exception for the colour swatch beside the dots, and for the '
-      + 'phone strip\'s colour button and swatch.',
+    why: 'the same reversal for the colour swatch beside the discs and for the '
+      + 'phone strip\'s colour button and swatch. The combined border/fill '
+      + 'swatch now carries NO chosen mark at all (boards 2, 4, 5, 9, 11, 12 '
+      + 'draw none), and the rules that put a gold ring on them are gone from '
+      + 'src/components/QuickStyleControls.css.',
   },
   {
     match: /\.mobile-pdf-tools__survey-entities button\.is-active/,
