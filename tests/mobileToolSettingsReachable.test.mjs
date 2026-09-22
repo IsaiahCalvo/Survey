@@ -60,16 +60,30 @@ test('the phone tool-settings strip can reach controls that overflow it', async 
     'the text strip is supposed to be the reference that scrolls its overflow',
   );
 
-  // The non-text strip carries the same controls plus two more and does not.
+  /*
+   * RULED CHANGE 2026-09-21 (pass 7, boards 1-7: "CENTRED ... it must NEVER
+   * scroll and NEVER clip"). This used to demand the SAME scroll path on the
+   * tool strip, because Arrow / Callout / Text overflowed a 331px box by up to
+   * 85px. The approved boards fix that at the source instead: the quick width
+   * chips come off the row, the arrowhead and the arrow ends move into the
+   * tool's "..." sheet, and the widest remaining strip is 328px against a 331px
+   * band. A reachability test for a row that fits would be guarding nothing, so
+   * it asserts the reason it fits: no scroll, and every strip measured.
+   * The measurement itself lives in tests/mobileToolPropertiesReach.test.mjs.
+   */
   const base = ruleBody(css, (s) => s === '.mobile-pdf-properties');
   assert.ok(base, '.mobile-pdf-properties rule not found');
   const baseOverflow = declaration(base, 'overflow-x') || declaration(base, 'overflow');
-
   assert.match(
     String(baseOverflow),
-    /auto|scroll/,
-    'the Arrow / Callout / Text settings strip overflows its 331px box by up to 85px '
-    + 'and nothing can scroll it, so "Both ends" and "Text formatting" cannot be '
-    + `reached on a 375px phone (overflow-x is currently ${baseOverflow})`,
+    /visible/,
+    'the tool strip must not scroll: it is measured to fit 375px, and a centred '
+    + 'row with a scroll path would be back to losing its first control under the '
+    + `tool rail (overflow is currently ${baseOverflow})`,
+  );
+  assert.match(
+    String(declaration(base, 'justify-content')),
+    /center/,
+    'the boards centre this row',
   );
 });

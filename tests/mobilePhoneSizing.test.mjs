@@ -34,21 +34,32 @@ const block = (source, selector, skip = 0) => {
   return source.slice(open + 1, close);
 };
 
+/*
+ * RULED CHANGE 2026-09-21 (pass 7). The owner approved a board per tool and the
+ * boards restate every phone number, so five of the nine tokens below moved:
+ *   --mobile-rail-w          40 -> 36   board 1 ("rail 36px wide")
+ *   --mobile-rail-chip       30 -> 28   board 1 ("chips 28px / icon 17px")
+ *   --mobile-control-h       26 -> 28   board 1 (28px header controls)
+ *   --mobile-strip-control-h 24 -> 20   boards 1-7 ("controls 20px")
+ *   --mobile-strip-dropdown-w 80 -> 72  DESIGN-SYSTEM.md ("Line-width pill: 72px")
+ * What this test guards is unchanged: ONE token per tier, and every control
+ * reading its token rather than inventing a size.
+ */
 test('one token per tier drives every phone control size', () => {
   const root = block(css, ':root');
   for (const token of [
-    '--mobile-rail-w: 40px',
-    '--mobile-rail-chip: 30px',
+    '--mobile-rail-w: 36px',
+    '--mobile-rail-chip: 28px',
     '--mobile-rail-gap: 5px',
     '--mobile-rail-sub-chip: 24px',
     '--mobile-rail-sub-gap: 4px',
-    '--mobile-control-h: 26px',
-    '--mobile-strip-control-h: 24px',
-    '--mobile-strip-dropdown-w: 80px',
+    '--mobile-control-h: 28px',
+    '--mobile-strip-control-h: 20px',
+    '--mobile-strip-dropdown-w: 72px',
     '--mobile-dock-control-h: 30px',
   ]) assert.match(root, new RegExp(token.replace(/[-]/g, '\\-')));
 
-  // 30px chip + 5px gap = a 35px pitch, against Drawboard's 34.7pt.
+  // 28px chip + 5px gap = a 33px pitch.
   assert.match(block(css, '.mobile-pdf-tools'), /width: var\(--mobile-rail-w\)/);
   assert.match(block(css, '.mobile-pdf-tools__button'), /width: var\(--mobile-rail-chip\)/);
   // RULED CHANGE 2026-09-16 (r5 phone pass): the column reads its pitch through
@@ -112,35 +123,75 @@ test('every dock button sits inside the bar, centred, at one size', () => {
 });
 
 test('the header row is one height and one glyph size, and undo/redo do not move', () => {
+  // RULED CHANGE 2026-09-21 (pass 7, board 1: "Header 34px WITHOUT the PDF
+  // name"). .mobile-pdf-header__title is gone from the list because the title is
+  // gone from the phone header - the document name is the bar's accessible name
+  // now, not a pill competing with the page cluster for room.
   for (const selector of [
     '.mobile-pdf-header__icon',
     '.mobile-pdf-header__page-nav',
-    '.mobile-pdf-header__title',
     '.mobile-pdf-header__page-pill',
   ]) assert.match(block(css, selector), /height: var\(--mobile-control-h\)/);
+  assert.doesNotMatch(css, /\.mobile-pdf-header__title \{/, 'the phone header shows no PDF name');
 
-  // All three header groups share the baseline undo/redo already sat on, so
-  // the pair the owner asked to leave alone is exactly where main has it.
-  assert.match(block(css, '.mobile-pdf-header__document,\n.mobile-pdf-header__history'), /bottom: 6px/);
-  assert.match(block(css, '.mobile-pdf-header__pages'), /bottom: 6px/);
-  assert.match(block(css, '.mobile-pdf-header__history', 1), /right: 8px/);
+  // RULED CHANGE 2026-09-21: all three header groups sit 4px above the bar's
+  // bottom rule, not 6px, because the board's control is 28px in a 34px bar; and
+  // the history group's inset is 7px, mirroring the document group's 7px on the
+  // left. They still share ONE baseline, which is what this guards.
+  assert.match(block(css, '.mobile-pdf-header__document,\n.mobile-pdf-header__history'), /bottom: 4px/);
+  assert.match(block(css, '.mobile-pdf-header__pages'), /bottom: 4px/);
+  assert.match(block(css, '.mobile-pdf-header__history', 1), /right: 7px/);
 
-  // RULED CHANGE 2026-09-16 (phone sweep, owner ruling "everything reads a
-  // little big; sizing follows Drawboard's ratios uniformly"): the header glyph
-  // is 15, not 17. Drawboard's glyph fills 0.53 of its control; 17-in-26 was
-  // 0.65. The ratio is what this test guards, so the number moved with it.
-  assert.match(chrome, /const HEADER_GLYPH = 15;/);
+  // RULED CHANGE 2026-09-21 (pass 7, board 1: "chips 28px / icon 17px", and the
+  // same 17 on every header action). It was 15-in-26 from the 2026-09-16 sweep;
+  // the boards fix both numbers at 17-in-28, which is the same 0.61 fill.
+  assert.match(chrome, /const HEADER_GLYPH = 17;/);
   assert.match(chrome, /name="undo" size=\{HEADER_GLYPH\}/);
   assert.match(chrome, /name="redo" size=\{HEADER_GLYPH\}/);
   assert.match(chrome, /name="chevronLeft" size=\{HEADER_GLYPH\}/);
 });
 
-test('the width field and the line-style dropdown are the same control size', () => {
-  assert.match(chrome, /const STRIP_DROPDOWN_WIDTH = 'var\(--mobile-strip-dropdown-w\)';/);
-  assert.match(chrome, /ariaLabel="Border style"[\s\S]{0,60}minWidth=\{STRIP_DROPDOWN_WIDTH\}/);
+/*
+ * RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Shared controls"). The
+ * 2026-09-16 rule was "every strip dropdown is ONE width" (80px). The approved
+ * boards give each control its OWN stated width - width 72, line style 92,
+ * arrowhead 90, arrow ends 96, counter series 80 - because a pill is sized by the
+ * longest label it has to show, and "Dashed" needs more room than "2 pt".
+ * So the contract this test guards moves from "one width for all" to "one TOKEN
+ * per control, and no control naming a literal": that is what stops a pill
+ * drifting between the strip, the sheet and the desktop bar.
+ */
+test('every strip pill takes its width from its own shared token', () => {
+  const root = block(css, ':root');
+  for (const token of [
+    '--mobile-strip-dropdown-w: 72px',
+    '--mobile-strip-linestyle-w: 92px',
+    '--mobile-strip-arrowhead-w: 90px',
+    '--mobile-strip-arrowends-w: 96px',
+    '--mobile-strip-series-w: 80px',
+    '--mobile-sheet-field-w: 96px',
+  ]) assert.match(root, new RegExp(token.replace(/[-]/g, '\\-')));
+
+  // Every pill on the strip reads a token, never a number.
+  for (const [label, token] of [
+    ['Line width', '--mobile-strip-dropdown-w'],
+    ['Eraser size', '--mobile-strip-dropdown-w'],
+    ['Line style', '--mobile-strip-linestyle-w'],
+    ['Counter series', '--mobile-strip-series-w'],
+  ]) {
+    assert.match(
+      chrome,
+      new RegExp(`ariaLabel="${label}"[\\s\\S]{0,80}width="var\\(${token.replace(/[-]/g, '\\-')}\\)"`),
+      `${label} must take its width from ${token}`,
+    );
+  }
+
+  // One height for every one of them, from the strip's own control token. The
+  // leading newline picks the rule whose whole selector is that class, not the
+  // first compound selector that happens to end with it.
   assert.match(
-    css,
-    /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) \.annotation-size-control \{[\s\S]{0,200}width: var\(--mobile-strip-dropdown-w\);[\s\S]{0,80}height: var\(--mobile-strip-control-h\)/,
+    block(css, '\n.mobile-styled-select__trigger'),
+    /height: var\(--mobile-strip-control-h\)/,
   );
 });
 
@@ -153,7 +204,9 @@ test('rail glyphs come from one constant per tier', () => {
   assert.match(chrome, /const RAIL_GLYPH = 17;/);
   assert.match(chrome, /const SUBTOOL_GLYPH = 14;/);
   assert.match(chrome, /const DOCK_GLYPH = 17;/);
-  assert.match(chrome, /const STRIP_GLYPH = 14;/);
+  // RULED CHANGE 2026-09-21 (pass 7): 12, because the strip control is 20px on
+  // the approved boards where it was 24. 12-in-20 is the same fill 14-in-24 was.
+  assert.match(chrome, /const STRIP_GLYPH = 12;/);
   assert.match(chrome, /glyph = RAIL_GLYPH/);
   assert.match(chrome, /glyph=\{SUBTOOL_GLYPH\}/);
 });

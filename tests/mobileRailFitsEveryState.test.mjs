@@ -18,17 +18,26 @@ import test from 'node:test';
  * Security / Instillation module active - 2 categories, 5 entities.
  * `.mobile-pdf-tools__main` scrollHeight / clientHeight:
  *
- *                          claude/ux-polish      this branch
- *   nothing open                188 / 547        188 / 581
- *   Draw open                   293 / 547        293 / 581
- *   Shapes open                 405 / 547        405 / 581
- *   Text open                   265 / 547        265 / 581
- *   region editing rows         360 / 547        360 / 581
- *   survey rows                 426 / 547        426 / 581
- *   survey rows + Draw          473 / 547        448 / 581
- *   survey rows + Shapes        643 / 547        552 / 581   <- scrolled 96px
- *   survey rows + Text          447 / 547        422 / 581
- *   More menu open              188 / 547        188 / 581
+ *                          claude/ux-polish      pass 7 (28px chips)
+ *   nothing open                188 / 547        178 / 589
+ *   Draw open                   293 / 547        283 / 589
+ *   Shapes open                 405 / 547        395 / 589
+ *   Text open                   265 / 547        255 / 589
+ *   region editing rows         360 / 547        350 / 589
+ *   survey rows                 426 / 547        416 / 589
+ *   survey rows + Draw          473 / 547        438 / 589
+ *   survey rows + Shapes        643 / 547        542 / 589   <- scrolled 96px
+ *   survey rows + Text          447 / 547        412 / 589
+ *   More menu open              188 / 547        178 / 589
+ *
+ * RULED CHANGE 2026-09-21 (pass 7, board 1: "rail 36px wide, chips 28px"). Every
+ * height in the right-hand column is 10px shorter than it was, and the budget is
+ * 8px taller, for the same reason: a rail chip is 28px where it was 30, so each
+ * of the five head chips takes 2px less and the four footer chips hand 8px back.
+ * The states are RE-COMPUTED from the tokens here and the two that matter most
+ * were re-measured in the browser pane at 375x812 (nothing open, Shapes open).
+ * Nothing about the rail's arrangement changed: no control moved, and the one
+ * state that has to tighten its pitch still does.
  *
  * An iPhone 17 Pro is 402x874 with a 34px home-indicator reserve instead of the
  * 10px floor a 375x812 browser viewport reports, so its column gets 557px, not
@@ -122,7 +131,10 @@ const FOOTER = (() => {
   const stackChips = 3;
   return CHIP + marginTop + stackChips * CHIP + (stackChips - 1) * GAP;
 })();
-assert.equal(FOOTER, 134);
+// RULED CHANGE 2026-09-21 (pass 7, board 1: "rail 36px wide, chips 28px"). 126,
+// not 134: the footer is four rail chips and a 4px margin, so it shrank by
+// exactly the 4 x 2px the chip token lost. Derived from the token either way.
+assert.equal(FOOTER, 126);
 
 // A footer pushed down by a transform makes the rail reserve space nothing
 // paints in, and caps the column that far short of the screen.
@@ -228,8 +240,8 @@ const SURVEY_ENTITIES = 5;
 const states = () => {
   const relaxed = RELAXED;
   const out = [
-    ['nothing open', column(relaxed, head(relaxed)), 188],
-    ['region editing rows', column(relaxed, [...head(relaxed), divider(relaxed), regionStrip(relaxed)]), 360],
+    ['nothing open', column(relaxed, head(relaxed)), 178],
+    ['region editing rows', column(relaxed, [...head(relaxed), divider(relaxed), regionStrip(relaxed)]), 350],
     [
       'survey category + entity rows',
       column(relaxed, [
@@ -237,11 +249,11 @@ const states = () => {
         divider(relaxed), subStrip(relaxed, SURVEY_CATEGORIES),
         divider(relaxed), subStrip(relaxed, SURVEY_ENTITIES),
       ]),
-      426,
+      416,
     ],
   ];
-  const live = { draw: 293, shape: 405, review: 265 };
-  const liveDense = { draw: 448, shape: 552, review: 422 };
+  const live = { draw: 283, shape: 395, review: 255 };
+  const liveDense = { draw: 438, shape: 542, review: 412 };
   for (const [id, tools] of Object.entries(TOOL_GROUPS)) {
     out.push([
       `${id} group open`,
@@ -263,7 +275,10 @@ const states = () => {
 };
 
 test('the phone tool rail fits a 375x812 screen in every bounded state', () => {
-  assert.equal(BUDGET, 581, `the tool column has ${BUDGET}px on a 375x812 screen`);
+  // RULED CHANGE 2026-09-21 (pass 7, board 1: chips 28px): 589, not 581. The
+  // footer is four rail chips, so a 2px-smaller chip hands the tool column 8px
+  // back. Derived from the tokens; the column only ever gained room.
+  assert.equal(BUDGET, 589, `the tool column has ${BUDGET}px on a 375x812 screen`);
   const overflowing = [];
   for (const [name, height, measured] of states()) {
     if (measured !== null) {
@@ -284,7 +299,8 @@ test('the tightened state also clears a phone with a 34px home-indicator reserve
   // 34px reserve under the dock, so the column gets 557px where a 375x812
   // browser viewport gives it 581px. Measured on the simulator, 2026-09-16.
   const deviceBudget = 874 - 96 - RAIL_PAD_TOP - ((52 + 34) - 6) - FOOTER;
-  assert.equal(deviceBudget, 557);
+  // 565, not 557: the same 8px the 28px chip hands back (see above).
+  assert.equal(deviceBudget, 565);
   const worstGroup = Math.max(...Object.values(TOOL_GROUPS));
   const crowded = column(DENSE, [
     ...head(DENSE),

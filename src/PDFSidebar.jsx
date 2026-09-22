@@ -257,17 +257,25 @@ const PDFSidebar = React.forwardRef(({
     : mobileMode && activeTab === 'history'
       ? { label: 'Version history', icon: 'history' }
       : null;
-  // UX 2026-09-16 (phone reach pass): only the hub tray (Pages / Search /
-  // Bookmarks) gets the taller second detent — drag it up and it grows to 70%
-  // of the screen so you can see far more page thumbnails at once, the way
-  // Drawboard PDF's phone page list does. Spaces and Version history are
-  // content-measured standalone sheets and keep their single height.
-  // 2026-09-17: the hook now also owns the slide-UP entrance (the CSS keyframe
-  // that used to do it fought this transform), so it needs the sheet's open
-  // state — this element stays mounted and only toggles .is-collapsed.
-  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose, expanded: sheetExpanded } =
-    useMobileSheetMotion(closePanel, {
-      expandable: mobileMode && !mobileStandalonePanel,
+  // PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): the browse
+  // panels are the ones with content that can run long, so they are the ones
+  // that can be pulled taller: Pages, Search and Bookmarks (the hub tray) and
+  // Spaces. Each opens at Standard, climbs to Expanded (70%) on a pull up, and
+  // to full screen on a second pull; pulling down steps back one height at a
+  // time. Version history is not a browse list and stays at Standard.
+  // 2026-09-17: the hook also owns the slide-UP entrance (the CSS keyframe that
+  // used to do it fought this transform), so it needs the sheet's open state —
+  // this element stays mounted and only toggles .is-collapsed.
+  const browsePanel = mobileMode && activeTab !== 'history';
+  const {
+    motionStyle: sheetMotionStyle,
+    dragHandlers: sheetDragHandlers,
+    requestClose: requestSheetClose,
+    expanded: sheetExpanded,
+    fullscreen: sheetFullscreen,
+  } = useMobileSheetMotion(closePanel, {
+      expandable: browsePanel,
+      fullscreenable: browsePanel,
       open: mobileMode && !isCollapsed,
     });
   const expandedNavigationTabs = mobileMode
@@ -277,40 +285,16 @@ const PDFSidebar = React.forwardRef(({
         ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
         : []
     );
-  // UX (owner ruling 2026-09-17): the dock hub is ONE tray with three tabs, so
-  // Pages / Search / Bookmarks all stand at the same height — the Pages height.
-  // Before this, search sized itself to 232/292 and bookmarks to
-  // min(286, 84 + n*42), so tapping between tabs made the tray jump up and down
-  // and an empty bookmarks tab came up as a stub sheet. The panels inside are
-  // all flex:1, so the shared height simply lets each one fill the tray (their
-  // empty states centre themselves — see .mobile-bookmark-empty /
-  // .mobile-search-empty). Spaces and Version history are NOT part of this tray
-  // (mobile filters Spaces out of the tab row and History opens standalone), so
-  // they keep their own sizing.
-  const MOBILE_HUB_TRAY_HEIGHT = 310;
-  const mobilePanelBaseHeight = (() => {
-    if (activeTab === 'history') return 264;
-    if (activeTab === 'spaces') {
-      // 2026-07-12 (demo parity defect #4): size the sheet from the panel's
-      // MEASURED content, so it hugs real rows like the demo drawer hugged its
-      // known-height RN rows. Chrome around the measured panel: 18px grab
-      // handle (.mobile-pdf-sheet__handle) + 44px exit footer
-      // (.mobile-spaces-exit-footer) + 12px sheet bottom padding (S3). The
-      // shared .mobile-pdf-sheet max-height (100dvh - chrome top - 18px)
-      // still clamps tall content. Predicted formula remains as the
-      // pre-measurement fallback for the first frame.
-      if (mobileSpacesContentHeight != null) {
-        return 18 + mobileSpacesContentHeight + 44 + 12;
-      }
-      return Math.max(238, 106 + (spaces?.length || 0) * 54 + mobileSpacesPageRows * 50);
-    }
-    // Pages, Search and Bookmarks share one tray height (see above). This
-    // supersedes the old per-tab sizing (search 232/292, bookmarks
-    // min(286, 84 + max(n,1)*42)), which was 2026-07-12 demo-parity content
-    // hugging — the owner ruled on 2026-09-17 that one steady tray beats three
-    // snug ones.
-    return MOBILE_HUB_TRAY_HEIGHT;
-  })();
+  // RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Standard is the starting
+  // height for every current phone panel"): ONE height for every tab, and it is
+  // the shared Standard token. This supersedes every per-tab number that used to
+  // live here — Pages/Search/Bookmarks 310, Version history 264, and Spaces
+  // measured off its own rows — each of which made the tray a different size
+  // depending on which panel was in it. Every panel inside is flex:1, so the one
+  // height simply lets each fill the tray and its empty state centre itself (see
+  // .mobile-bookmark-empty / .mobile-search-empty). A long list is what the
+  // Expanded and full-screen detents above are for.
+  const MOBILE_PANEL_STANDARD = 'var(--mobile-panel-standard)';
 
   return (
     <>
@@ -322,12 +306,17 @@ const PDFSidebar = React.forwardRef(({
         onClick={requestSheetClose}
       />
     )}
-    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       // The tall detent overrides the content-measured height. It has to be
       // written here, not from the stylesheet: this inline custom property
       // always wins over a rule, so a CSS-only override would be ignored.
+      // The taller detents override the Standard height. They have to be written
+      // here, not from the stylesheet: this inline custom property always wins
+      // over a rule, so a CSS-only override would be ignored.
       '--mobile-sheet-height': mobileMode
-        ? (sheetExpanded ? SHEET_EXPANDED_HEIGHT : `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`)
+        ? (sheetFullscreen
+          ? 'calc(100dvh - var(--app-chrome-top, 34px) - 18px)'
+          : (sheetExpanded ? SHEET_EXPANDED_HEIGHT : MOBILE_PANEL_STANDARD))
         : undefined,
       width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
       height: '100%',

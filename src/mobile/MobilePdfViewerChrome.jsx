@@ -5,12 +5,12 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/An
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import { matchedQuickColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
-import { QuickColourDots, QuickWidthPresets } from '../components/QuickStyleControls';
+import { QuickColourDots } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
@@ -30,11 +30,17 @@ const RAIL_GLYPH = 17;
 // ruling 2026-09-16). Both read the same token, so neither can drift.
 const STRIP_DROPDOWN_WIDTH = 'var(--mobile-strip-dropdown-w)';
 const SUBTOOL_GLYPH = 14;
-const HEADER_GLYPH = 15;
-// The four rich-text format toggles are 28x24 strip controls, so they take the
-// strip's own glyph rather than the 18 they were drawn at (0.75 of their box -
-// the heaviest glyph on the phone).
-const STRIP_GLYPH = 14;
+// RULED CHANGE 2026-09-21 (pass 7, board 1: "rail 36px wide, chips 28px / icon
+// 17px" and the same 17px on every header action). 15-in-26 was the 2026-09-16
+// ratio; the approved boards draw a 17px glyph in a 28px box, so both numbers
+// move together and the ratio is unchanged at 0.61.
+const HEADER_GLYPH = 17;
+// RULED CHANGE 2026-09-21 (pass 7): 12, not 14. The strip control is 20px on the
+// approved boards where it was 24, so 14 would have been 0.70 of its box - by a
+// wide margin the heaviest glyph on the phone. 12-in-20 is 0.60, the same fill
+// every other tier carries, and 12 is also the glyph size the boards' own
+// segmented toggles draw (boards 6 and 7).
+const STRIP_GLYPH = 12;
 const DOCK_GLYPH = 17;
 
 /**
@@ -186,16 +192,38 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         aria-label={`Close ${title || 'color'} picker`}
         onClick={onClose}
       />
+      {/* PASS 7 (boards 17 & 18): the picker is a bottom sheet at the Standard
+          height with the shared sheet frame, not a floating panel in the middle
+          of the screen. Same handle row, same title, same gold Done as every
+          other phone panel, so it arrives from the same edge and closes the same
+          way. The panel inside it is the app's ONE shared CompactColorPicker
+          (project rule) — its presets, grid, gradient and opacity row belong to
+          the picker pass, and this only gives them the sheet to sit in. */}
       <div className="mobile-pdf-colorpicker-surface" role="dialog" aria-label={`${title || 'Color'} picker`}>
-        <CompactColorPicker
-          color={color}
-          opacity={opacity}
-          showOpacity={showOpacity}
-          firstPreset={firstPreset}
-          minOpacity={minOpacity}
-          onChange={onChange}
-          onClose={onClose}
-        />
+        <div className="mobile-pdf-sheet__handle" />
+        <header className="mobile-pdf-tool-sheet__header">
+          <strong>{title || 'Colour'}</strong>
+          <button type="button" aria-label="Done" onClick={onClose}>Done</button>
+        </header>
+        <div className="mobile-pdf-colorpicker-surface__body">
+          <CompactColorPicker
+            /* platform="phone" gives the picker its 12-preset phone layout, and
+               chrome={false} turns off its own panel background, border, radius
+               and padding, because on boards 17 and 18 the SHEET is the panel and
+               the presets run edge to edge across its band. Both props belong to
+               the picker pass; until that branch lands they are simply ignored,
+               and the desktop-width picker still fits this sheet. */
+            platform="phone"
+            chrome={false}
+            color={color}
+            opacity={opacity}
+            showOpacity={showOpacity}
+            firstPreset={firstPreset}
+            minOpacity={minOpacity}
+            onChange={onChange}
+            onClose={onClose}
+          />
+        </div>
       </div>
     </>,
     document.body,
@@ -213,7 +241,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
  * (opens up). Keyboard: Enter/Space or ArrowDown opens; arrows move; Enter
  * selects; Escape closes. Tap: outside pointerdown closes.
  */
-function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, placeholder }) {
+function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -231,7 +259,10 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
     const openUp = rect.bottom > (window.innerHeight * 0.6);
     setPos({
       left: rect.left,
-      minWidth: rect.width,
+      // Board 15: "Menus: exactly as wide as their field". The menu takes the
+      // trigger's measured width as a width, not a floor, so a long option label
+      // ellipsizes in its row instead of widening the menu past its field.
+      width: rect.width,
       openUp,
       top: openUp ? undefined : rect.bottom + 4,
       bottom: openUp ? (window.innerHeight - rect.top + 4) : undefined,
@@ -315,7 +346,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
         aria-expanded={open}
         aria-label={`${ariaLabel}: ${currentLabel}`}
         disabled={disabled}
-        style={minWidth ? { minWidth } : undefined}
+        style={width ? { width, minWidth: width } : (minWidth ? { minWidth } : undefined)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
@@ -333,8 +364,13 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
         }}
         onClick={() => (open ? closeMenu(false) : openMenu())}
       >
+        {/* Board pills read preview | label | chevron, left to right. The
+            preview is the control's own sample - a stroke at its real weight, a
+            dashed rule, an arrowhead - so it belongs to the option, not to this
+            component. */}
+        {selected?.preview ? <span className="mobile-styled-select__preview" aria-hidden="true">{selected.preview}</span> : null}
         <span>{currentLabel}</span>
-        <Icon name="chevronDown" size={11} color="currentColor" />
+        <Icon name="chevronDown" size={9} color="currentColor" />
       </button>
       {open && typeof document !== 'undefined' && pos && createPortal(
         <div
@@ -349,7 +385,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
             left: pos.left,
             top: pos.top,
             bottom: pos.bottom,
-            minWidth: pos.minWidth,
+            width: pos.width,
           }}
         >
           {options.map((option, index) => {
@@ -366,8 +402,17 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => selectOption(index)}
               >
+                {/* Board 15: a row's sample is longer horizontally than the
+                    trigger's (24px against 12-18), and the word sits right of
+                    it. The current row is gold; there are NO check marks - the
+                    gold IS the selected state, the same rule the rest of the
+                    chrome follows. */}
+                {(option.menuPreview || option.preview) ? (
+                  <span className="mobile-styled-select__row-preview" aria-hidden="true">
+                    {option.menuPreview || option.preview}
+                  </span>
+                ) : null}
                 <span>{option.label}</span>
-                {active && <Icon name="check" size={14} color="currentColor" />}
               </button>
             );
           })}
@@ -394,6 +439,288 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   if (!rgb) return fallback;
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
+
+/* ---------------------------------------------------------------------------
+ * PASS 7 PHONE STRIP PRIMITIVES (owner-approved boards 1-7 / 15 / 16).
+ *
+ * The strip is a CENTRED row of 20px controls, 4px apart, on a painted 36px
+ * band, and it must never scroll and never clip. Everything below exists so the
+ * strip can be assembled per tool out of exactly the controls its board shows:
+ * a hairline divider, a segmented toggle, and the samples the pills draw.
+ *
+ * INTENDED UX: the strip carries only what the boards call the essentials for
+ * that tool. Anything the desktop bar shows and the strip does not lives one tap
+ * away behind the "..." button, in the tool's own bottom sheet. Reference: the
+ * approved artboards; the desktop bar shows everything because it has the room.
+ * ------------------------------------------------------------------------- */
+
+/** The board's 1px x 16px hairline, with its 5px of air on each side. */
+const MobileStripDivider = () => (
+  <span aria-hidden="true" className="mobile-pdf-properties__divider" />
+);
+
+/**
+ * MobileStripSegmented — the Partial/Whole and Box/Lasso/Text toggles (boards 6
+ * and 7). One quiet well, and the chosen segment turns its word and its glyph
+ * gold. Deliberately NOT a raised thumb: the owner's selected-state ruling is
+ * "the glyph turns gold, no fill and no border", and a sliding thumb is a fill.
+ */
+function MobileStripSegmented({ ariaLabel, value, options, onChange, width }) {
+  return (
+    <div
+      className="mobile-pdf-properties__segmented"
+      role="group"
+      aria-label={ariaLabel}
+      style={{ width }}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            aria-label={option.ariaLabel || option.label}
+            className={active ? 'is-active' : ''}
+            onClick={() => onChange?.(option.value)}
+          >
+            {option.icon ? <Icon name={option.icon} size={12} color="currentColor" /> : null}
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * MobilePaintSwatch — the ONE combined swatch a multi-colour tool gets instead
+ * of the three preset discs (boards 2, 4 and 5). Fill in the centre, border as a
+ * 2px ring; the counter variant is the app's own pin outline with its number,
+ * never a circle. Tapping it opens the shared picker on the Border tab.
+ *
+ * WHY ONE SWATCH: a rectangle has two colours and four discs can only show one
+ * of them, so a row of presets beside a two-colour shape has to lie about one.
+ *
+ * TO MERGE: the picker pass is landing this same control as `QuickPaintSwatch`
+ * in src/components/QuickStyleControls.jsx (props ring / center / variant /
+ * count / onOpen / platform). That file belongs to that pass, so it is not on
+ * this branch yet; when the two branches meet, delete this component and the
+ * .mobile-pdf-properties__swatch rules and render QuickPaintSwatch instead. The
+ * geometry and the paint here are the board's, so nothing visible changes.
+ */
+function MobilePaintSwatch({ variant = 'shape', ring, center, count = 1, label, onOpen }) {
+  if (variant === 'counter') {
+    return (
+      <button
+        type="button"
+        className="mobile-pdf-properties__swatch is-counter"
+        aria-label={label || 'Pin and number colours'}
+        onClick={onOpen}
+      >
+        <span aria-hidden="true" style={{ color: ring }}>
+          {/* The app's own counter-outline pin, at the board's 20px. */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <g transform="translate(1.6 1.6) scale(0.0224)">
+              <path
+                d="M16.64 14.53C32.51 16.06 48.52 16.04 64.42 17.17C84.3 18.58 104.24 19.47 124.15 20.54C172.46 23.14 221 24.9 269.21 28.79C311.2 32.18 353.46 32.81 395.47 35.77C437.49 38.73 479.63 39.7 521.62 43C562.5 46.22 604.72 56.56 642.66 72C785.02 129.91 889.46 257.4 913.66 410.03C920.35 452.22 920.36 494.92 915.01 537.24C910.4 573.68 901 610.28 886.95 644.23C866.32 694.11 836.9 740.48 799.81 779.75C766.71 814.79 728.26 842.48 686.57 866.19C659.41 881.64 629.18 892.19 599.35 900.86C567.56 910.1 535.15 914.56 502.15 916.64C334.46 927.2 173.19 832.76 94.22 686.11C70.5 642.04 55.77 594.61 47.28 545.43C41.58 512.41 41.99 478.36 39.82 444.99C35.52 379.05 33.34 312.95 28.8 247.02C25.11 193.32 22.63 139.51 19.72 85.75C18.82 69.26 17.52 52.77 16.94 36.26C16.7 29.6 14.39 20.75 16.64 14.53Z"
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="67"
+                strokeLinejoin="round"
+              />
+              <text
+                x="478"
+                y="640"
+                textAnchor="middle"
+                fill={center}
+                fontFamily="-apple-system, Helvetica, Arial, sans-serif"
+                fontWeight="800"
+                fontSize="430"
+              >
+                {count}
+              </text>
+            </g>
+          </svg>
+        </span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="mobile-pdf-properties__swatch"
+      aria-label={label || 'Border and fill colours'}
+      onClick={onOpen}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          background: center,
+          boxShadow: `inset 0 0 0 2px ${ring}, 0 0 0 1px rgba(255,255,255,0.14)`,
+        }}
+      />
+    </button>
+  );
+}
+
+/** A line at its real weight — 12px in a pill, 24px in a menu row (board 15). */
+const strokeSample = (width, length) => (
+  <span
+    style={{
+      display: 'block',
+      width: length,
+      height: 0,
+      borderTop: `${Math.max(1, Math.min(6, Number(width) || 1))}px solid currentColor`,
+      borderRadius: 1,
+    }}
+  />
+);
+
+/* Board 15's four line-style samples, at the two lengths the board uses. Cloud
+   is the Drawboard-style scallop: three bumps plus the two half-bumps that make
+   the run read as a continuous edge. */
+const lineStyleSample = (style, length) => {
+  const w = length;
+  if (style === 'dashed') {
+    return (
+      <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
+        <path d="M1 6H6M9.5 6H14.5M18 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (style === 'dotted') {
+    return (
+      <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
+        {/* The house 1.5 weight, not the board's 1.8: every chrome glyph in this
+            app strokes 1.5 on the 24 grid (tests/chromeInlineIconWholeTree) and a
+            dotted rule reads fine at it. */}
+        <path d="M1 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />
+      </svg>
+    );
+  }
+  if (style === 'cloud') {
+    return (
+      <svg width={w} height="14" viewBox="0 0 24 14" fill="none" aria-hidden="true">
+        <path
+          d="M1 11a2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0 2.75 2.75 0 0 1 5.5 0"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width={w} height="12" viewBox="0 0 24 12" fill="none" aria-hidden="true">
+      <path d="M1 6H23" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+};
+
+/* Board 15's arrowhead drawings — the head itself, on a shaft, so the menu reads
+   as "what the end of my arrow will look like" rather than as a list of words.
+   Keys are the app's own arrowhead vocabulary (ARROWHEAD_STYLES). */
+const arrowheadSample = (style, size) => {
+  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true };
+  const stroke = { stroke: 'currentColor', strokeWidth: '1.5', strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (style === 'none') {
+    return <svg {...common}><path d="M3 12H21" {...stroke} /></svg>;
+  }
+  if (style === 'vShape' || style === 'openTriangle') {
+    return (
+      <svg {...common}>
+        <path d="M3 12H21" {...stroke} />
+        <path d="M15 7L21 12L15 17" {...stroke} />
+      </svg>
+    );
+  }
+  if (style === 'openCircle') {
+    return (
+      <svg {...common}>
+        <path d="M3 12H15" {...stroke} />
+        <circle cx="18" cy="12" r="3" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (style === 'square') {
+    return (
+      <svg {...common}>
+        <path d="M3 12H15" {...stroke} />
+        <rect x="15" y="9" width="6" height="6" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (style === 'diamond') {
+    return (
+      <svg {...common}>
+        <path d="M3 12H15" {...stroke} />
+        <path d="M18 9L21 12L18 15L15 12Z" fill="currentColor" {...stroke} />
+      </svg>
+    );
+  }
+  if (style === 'horizontalLine') {
+    return (
+      <svg {...common}>
+        <path d="M3 12H18" {...stroke} />
+        <path d="M18 7.5V16.5" {...stroke} />
+      </svg>
+    );
+  }
+  if (style === 'slash') {
+    return (
+      <svg {...common}>
+        <path d="M3 12H18" {...stroke} />
+        <path d="M15 16.5L21 7.5" {...stroke} />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M3 12H16" {...stroke} />
+      <path d="M13 8L19 12L13 16Z" fill="currentColor" {...stroke} />
+    </svg>
+  );
+};
+
+/* Board 16's Arrow-ends drawings: lucide move-right / move-horizontal / minus,
+   all the same length so the three read as one control changing its ends.
+   ICON GAP (reported to the owner): Icons.jsx carries no move-right or
+   move-horizontal, and Icons.jsx belongs to the desktop pass, so these are
+   inline here. When the shared set gains them, swap these three for <Icon>. */
+const ARROW_ENDS_OPTIONS = [
+  {
+    value: 'end',
+    label: 'End',
+    preview: (
+      <svg width="19" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M18 8L22 12L18 16" />
+        <path d="M2 12H22" />
+      </svg>
+    ),
+  },
+  {
+    value: 'both',
+    label: 'Both',
+    preview: (
+      <svg width="19" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="m18 8 4 4-4 4" />
+        <path d="M2 12h20" />
+        <path d="m6 8-4 4 4 4" />
+      </svg>
+    ),
+  },
+  {
+    value: 'none',
+    label: 'None',
+    preview: (
+      <svg width="19" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M2 12h20" />
+      </svg>
+    ),
+  },
+];
 
 /* UX 2026-09-16 (icon-set pass + sizing pass, merged): ONE glyph size per rail
    tier, and no per-glyph exceptions inside a tier. The rail used to run 19 with
@@ -498,23 +825,12 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   // gone. (demo App.tsx:462-475 inline input; :1215-1239 pill; :410-428 menu.)
   const [pageEditing, setPageEditing] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
-  // Marquee reveal for long titles (demo App.tsx:441-460, 1295-1319): tapping a
-  // title >18 chars slides the text left to reveal its tail, then springs back.
-  const [titleRevealing, setTitleRevealing] = useState(false);
   const pagesRef = useRef(null);
   const dismissInsideRefs = useMemo(() => [pagesRef], []);
   const title = documentName || 'Document';
   // Live scale, straight off the same state the desktop zoom field shows.
   const rawZoomPercent = Number.parseInt(bottomToolbarApi?.zoomInputValue, 10);
   const zoomPercent = Number.isFinite(rawZoomPercent) && rawZoomPercent > 0 ? rawZoomPercent : 100;
-
-  const revealTitle = () => {
-    // Only long titles marquee (demo gates on length > 18). The is-revealing
-    // class runs the reveal keyframe; animationend clears it back to ellipsis.
-    if (title.length <= 18) return;
-    setTitleRevealing(false);
-    requestAnimationFrame(() => setTitleRevealing(true));
-  };
 
   const openPageEdit = () => {
     setZoomOpen(false);
@@ -527,7 +843,12 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   };
 
   return (
-    <header id={id} className="mobile-pdf-header" data-mobile-pdf-header="true">
+    /* UX 2026-09-21 (pass 7, board 1): the header does NOT show the PDF name.
+       A phone header has room for three things and the name was pushing the
+       page cluster and undo/redo into each other; the name is on the document
+       list you came from, and it stays here as this bar's accessible name so a
+       screen reader still announces which document is open. */
+    <header id={id} className="mobile-pdf-header" data-mobile-pdf-header="true" aria-label={title}>
       <DismissBarrier
         active={pageEditing || zoomOpen}
         insideRefs={dismissInsideRefs}
@@ -546,20 +867,6 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
             icon. */}
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
-        </button>
-        <button
-          type="button"
-          className={`mobile-pdf-header__title${titleRevealing ? ' is-revealing' : ''}`}
-          title={title}
-          aria-label="Document title"
-          onClick={revealTitle}
-        >
-          <span
-            className="mobile-pdf-header__title-text"
-            onAnimationEnd={() => setTitleRevealing(false)}
-          >
-            {title}
-          </span>
         </button>
       </div>
 
@@ -722,7 +1029,6 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 }
 
 export function MobileToolProperties({ api }) {
-  const [counterMenuOpen, setCounterMenuOpen] = useState(false);
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
   // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
@@ -739,19 +1045,26 @@ export function MobileToolProperties({ api }) {
     dragHandlers: textSheetDragHandlers,
     requestClose: requestTextSheetClose,
   } = useMobileSheetMotion(() => setTextDefaultsOpen(false), { open: textDefaultsOpen });
+  // PASS 7: the "..." sheet. Board 16 is the arrow's — Arrowhead + Arrow ends —
+  // and the same frame holds whatever else a tool's desktop bar shows and its
+  // strip has no room for.
+  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
+  const {
+    motionStyle: moreSheetMotionStyle,
+    dragHandlers: moreSheetDragHandlers,
+    requestClose: requestMoreSheetClose,
+  } = useMobileSheetMotion(() => setMoreSheetOpen(false), { open: moreSheetOpen });
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
-  const counterMenuRef = useRef(null);
-  const counterMenuInsideRefs = useMemo(() => [counterMenuRef], []);
   const tool = api?.contextTool || api?.activeTool;
   const textMarkup = getMobileTextMarkupPresentation(api);
 
   useEffect(() => {
     // Close every tool-scoped popover/sheet when the active tool changes so a
     // stale colour picker or edit sheet never bleeds across tools.
-    setCounterMenuOpen(false);
     setColorPicker(null);
     setTextDefaultsOpen(false);
+    setMoreSheetOpen(false);
     api?.setShowAnnotationColorPicker?.(false);
   }, [tool]);
 
@@ -986,7 +1299,39 @@ export function MobileToolProperties({ api }) {
     );
   }
 
-  if (api.activeTool === 'pan' || (api.activeTool === 'select' && (!api.contextTool || api.contextTool === 'select'))) return null;
+  // Pan has nothing to set, so it has no strip and the page keeps the 36px.
+  if (api.activeTool === 'pan') return null;
+
+  // BOARD 7 — Select. The strip is the Box / Lasso / Text segmented toggle and
+  // nothing else, using the app's own three select glyphs. It is the SAME
+  // control as the desktop bar's, so a mode picked on one platform reads the
+  // same on the other. The rail's caret menu still offers the three modes; this
+  // is the reachable-without-a-menu version the board asks for.
+  // While a mark is selected, contextTool names that mark's tool and the strip
+  // belongs to the mark, not to the select mode - that gate is unchanged.
+  const selectFamilyActive = api.activeTool === 'select' || api.activeTool === 'text-select';
+  if (selectFamilyActive && (!api.contextTool || api.contextTool === api.activeTool)) {
+    const selectMode = api.activeTool === 'text-select' ? 'text' : (api.selectionMode || 'rectangle');
+    return (
+      <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings">
+        <MobileStripSegmented
+          ariaLabel="Selection mode"
+          width={150}
+          value={selectMode}
+          onChange={(mode) => {
+            const next = getSelectFamilyTransition(mode);
+            api.setSelectionMode?.(next.selectionMode);
+            api.setActiveTool?.(next.activeTool);
+          }}
+          options={[
+            { value: 'rectangle', label: 'Box', ariaLabel: 'Box select', icon: getSelectModeIconName('rectangle') },
+            { value: 'lasso', label: 'Lasso', ariaLabel: 'Lasso select', icon: getSelectModeIconName('lasso') },
+            { value: 'text', label: 'Text', ariaLabel: 'Text select', icon: getSelectModeIconName('text') },
+          ]}
+        />
+      </div>
+    );
+  }
 
   const isEraser = tool === 'eraser';
   const showWidth = isEraser || WIDTH_TOOLS.has(tool);
@@ -1043,7 +1388,6 @@ export function MobileToolProperties({ api }) {
   const hasFillSheet = FILL_TOOLS.has(tool);
   const shapeSection = hasFillSheet ? textShapeColorSection : 'stroke';
   const showBorderStyleSheet = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function';
-  const showArrowheadSheet = (tool === 'arrow' || tool === 'callout') && typeof api.setArrowheadStyle === 'function';
   const shapeColor = shapeSection === 'fill'
     ? toHexColor(api.fillColor, '#ffffff')
     : toHexColor(api.strokeColor, '#ff0000');
@@ -1067,6 +1411,90 @@ export function MobileToolProperties({ api }) {
     if (tool === 'counter') api.handleFillColorChange?.(hex);
     else api.handleStrokeColorChange?.(hex);
   };
+  // ---- PASS 7 strip option lists ------------------------------------------
+  // The strip's pills are dropdowns ONLY (owner ruling: "Width is a dropdown
+  // ONLY — stroke sample + '2 pt' + chevron. Never a bare line."), so the
+  // options are built here from the app's own preset lists rather than from a
+  // second list this file invents. A value the presets do not hold — a 2.5pt
+  // cloud line, a width typed into the sheet — is prepended so the pill always
+  // reads the width actually in force instead of falling back to a placeholder.
+  const withCurrentValue = (presets, current) => {
+    const value = String(current ?? '');
+    const list = presets.map((preset) => String(preset));
+    return list.includes(value) && value ? list : [value, ...list].filter(Boolean);
+  };
+  const widthOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
+    value: width,
+    label: `${width} pt`,
+    preview: strokeSample(width, 12),
+    menuPreview: strokeSample(width, 24),
+  }));
+  // Board 6: the eraser's size field reads a bare number with a round nib
+  // beside it — an eraser is measured in screen pixels, not in points, so it is
+  // the one numeric field on the strip with no unit.
+  const eraserSizeOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.eraser, sizeValue).map((size) => ({
+    value: size,
+    label: size,
+    preview: <span style={{ display: 'block', width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />,
+    menuPreview: <span style={{ display: 'block', width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />,
+  }));
+  const lineStyleValue = api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle
+    ? 'solid'
+    : (api.lineBorderStyle || 'solid');
+  const lineStyleOptions = [
+    { value: 'solid', label: 'Solid' },
+    { value: 'dashed', label: 'Dashed' },
+    { value: 'dotted', label: 'Dotted' },
+    /* Cloud is offered on every shape a revision cloud can enclose or trace and
+       never on an arrow, a counter or a single straight line. supportsCloudStyle
+       mirrors the desktop gate exactly. */
+    ...(api.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
+  ].map((option) => ({
+    ...option,
+    preview: lineStyleSample(option.value, 18),
+    menuPreview: lineStyleSample(option.value, 24),
+  }));
+  const arrowheadValue = api.arrowheadStyle || 'solidTriangle';
+  const arrowheadOptions = Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({
+    value,
+    label,
+    preview: arrowheadSample(value, 15),
+    menuPreview: arrowheadSample(value, 20),
+  }));
+  // Board 16's Arrow ends: End / Both / None. "None" is the app's own
+  // arrowhead style 'none' (no head at either end), "Both" is its arrowBothEnds
+  // flag, and "End" is the plain one-headed arrow — the three states the arrow
+  // already had, given the one control the board draws for them.
+  const arrowEndsValue = arrowheadValue === 'none' ? 'none' : (api.arrowBothEnds ? 'both' : 'end');
+  const applyArrowEnds = (next) => {
+    if (next === 'none') {
+      api.setArrowBothEnds?.(false);
+      api.setArrowheadStyle?.('none');
+      return;
+    }
+    // Leaving "None" restores a visible head rather than silently keeping none.
+    if (arrowheadValue === 'none') api.setArrowheadStyle?.('solidTriangle');
+    api.setArrowBothEnds?.(next === 'both');
+  };
+  const counterSeriesOptions = [
+    ...(api.counterSeriesList || []).map((series) => ({ value: series.seriesId, label: series.label || 'Count' })),
+    {
+      value: '__new',
+      label: 'New count',
+      // The app's own plus, not a redrawn one.
+      menuPreview: <Icon name="plus" size={13} color="currentColor" />,
+    },
+  ];
+  // Which board a tool's strip follows. Multi-colour tools show ONE combined
+  // swatch instead of the three preset discs (owner ruling); the counter's
+  // swatch is its pin with its number.
+  const isMultiColour = FILL_TOOLS.has(tool);
+  const showLineStyleOnStrip = showBorderStyle && tool !== 'callout';
+  // Board 3: only the arrow carries a "..." on its strip, because only the
+  // arrow has controls its board leaves off (Arrowhead, Arrow ends). Callout
+  // shares that arrowhead, so it shares the "...".
+  const showMoreOnStrip = showArrowhead;
+
   // Open the edit sheet from a strip swatch, focused on the tapped colour
   // section (demo: swatch → AnnotationEditPanel focused on that colour).
   const openSheet = (section) => {
@@ -1110,208 +1538,116 @@ export function MobileToolProperties({ api }) {
 
   return (
     <>
-    <DismissBarrier
-      active={counterMenuOpen}
-      insideRefs={counterMenuInsideRefs}
-      onDismiss={() => setCounterMenuOpen(false)}
-    />
-    <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} formatting`}>
+    {/* PASS 7 STRIP — the composition is per tool and comes straight off the
+        approved boards. Order is always: colour, a divider, the shape controls,
+        a divider, the tool's own extras. Nothing here scrolls: every strip is
+        measured to fit a 375px screen (see tests/mobileToolPropertiesReach).
+
+        board 1 pen / highlighter  discs | width
+        board 2 rectangle          combined swatch | width | line style
+        board 3 arrow              discs | width | line style | ...
+        board 4 counter            pin swatch | series
+        board 5 text box           combined swatch | width | line style | Aa
+        board 6 eraser             Partial/Whole | size
+        board 7 select             Box/Lasso/Text            */}
+    <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} settings`}>
+      {/* BOARD 6 — the eraser leads with its Partial/Whole toggle. It was a
+          104px "Partial Erase / Full Stroke" dropdown, which is two taps and a
+          menu to flip a two-state switch. */}
       {isEraser && api.setEraserMode && (
-        <MobileStyledSelect
+        <MobileStripSegmented
           ariaLabel="Eraser mode"
-          minWidth={104}
-          value={api.eraserMode || 'partial'}
+          width={100}
+          value={api.eraserMode === 'entire' ? 'entire' : 'partial'}
+          onChange={(mode) => api.setEraserMode(mode)}
           options={[
-            { value: 'partial', label: 'Partial Erase' },
-            { value: 'entire', label: 'Full Stroke' },
+            { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
+            { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
           ]}
-          onChange={(value) => api.setEraserMode(value)}
         />
       )}
-      {/* UX 2026-09-17 (owner): the same four default colours the desktop bar
-          leads with, in the same order, immediately before the swatch that
-          opens the full picker. One shared constant drives both platforms
-          (src/utils/quickStylePresets.js) so a red on the phone is the red on
-          the desktop. A tap applies straight away — armed tool and selected
-          mark — to the stroke for every tool but the counter, which takes the
-          fill because a pin's colour IS its fill. The swatch beside them shows
-          that same channel and its sheet opens on that same section, so the
-          dots, the gold ring and the swatch never show two colours. */}
-      {!isEraser && showStroke && (
+      {/* BOARDS 1 & 3 — single-colour tools get the three preset discs plus the
+          rainbow custom disc, which opens the shared picker. The discs and the
+          swatch are the picker pass's components (src/components/
+          QuickStyleControls.jsx); this file only says which tool gets which and
+          where it sits. A tap applies straight away to the armed tool and to a
+          selected mark, and it changes the paint you can SEE: the stroke of a
+          pen or an arrow, the border of a shape. */}
+      {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
           value={quickColourValue}
           onPick={applyQuickColour}
+          onOpenPicker={() => openSheet('stroke')}
         />
       )}
-      {!isEraser && showStroke && (
-        <div className="mobile-pdf-properties__color-anchor">
-          {/* UX 2026-07-12 (Phase E, demo parity — matrix §6 "Stroke color
-              swatch"/"Fill+border swatch"): the strip swatch opens the full
-              edit sheet focused on the tapped colour (demo AFB swatch →
-              AnnotationEditPanel), which hosts the shared CompactColorPicker.
-              Replaces the OS <input type=color> (project rule: one shared
-              colour picker, never the native OS picker). */}
-          <button
-            type="button"
-            className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}${matchedQuickColour(quickColourValue) ? '' : ' is-current-color'}`}
-            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Border and fill colors') : 'Stroke color'}
-            style={{
-              // UX 2026-09-17: the disc is the channel the four dots act on and
-              // the 2px ring is the other one. On a fillable shape that used to
-              // be the wrong way up — a 0%-opacity white fill filled the disc
-              // while the dots beside it set the red border — so the two
-              // neighbours showed two different colours of one shape.
-              '--mobile-swatch-core': quickColourValue,
-              '--mobile-swatch-ring': showFill && tool !== 'counter'
-                ? toHexColor(api.fillColor, '#ffffff')
-                : toHexColor(api.strokeColor, '#ff0000'),
-            }}
-            onClick={() => openSheet(tool === 'counter' ? 'fill' : 'stroke')}
-          >
-            {tool === 'counter' ? '1' : null}
-          </button>
-        </div>
+      {/* BOARDS 2, 4 & 5 — a multi-colour tool gets ONE combined swatch instead
+          of the presets: fill in the centre, border as a 2px ring, and for the
+          counter its real pin outline with its number. Tapping it opens the
+          picker on the Border tab. Two colours cannot be shown by four discs, so
+          the discs would have had to lie about one of them. */}
+      {!isEraser && showStroke && isMultiColour && (
+        <MobilePaintSwatch
+          variant={tool === 'counter' ? 'counter' : 'shape'}
+          label={tool === 'counter' ? 'Pin and number colours' : 'Border and fill colours'}
+          ring={tool === 'counter' ? toHexColor(api.fillColor, '#ef4444') : toHexColor(api.strokeColor, '#ff0000')}
+          center={tool === 'counter' ? '#ffffff' : toHexColor(api.fillColor, '#ffffff')}
+          onOpen={() => openSheet(tool === 'counter' ? 'fill' : 'stroke')}
+        />
       )}
-      {/* UX 2026-09-17 (owner): the three default line widths, drawn at the
-          weight they apply, immediately before the field that takes any other
-          number and the dropdown that lists the rest — the desktop order, on
-          the phone's own control size. Counter Size and Eraser Size keep the
-          field alone: they are not line weights. */}
+      <MobileStripDivider />
+      {/* Width is a dropdown ONLY: a stroke at its real weight, "2 pt", and a
+          chevron. The three preset width chips the 2026-09-17 pass put here are
+          gone (owner ruling) — the preset list they held is what this dropdown
+          lists, so nothing became unreachable. A width the presets do not hold
+          is still typed in the tool's own sheet. */}
       {showWidth && !isEraser && tool !== 'counter' && (
-        <QuickWidthPresets
-          platform="phone"
-          value={sizeValue}
-          onPick={(width) => {
-            const value = String(width);
-            handleSizeDraft(value);
-            handleSizeCommit(value);
+        <MobileStyledSelect
+          ariaLabel="Line width"
+          width="var(--mobile-strip-dropdown-w)"
+          value={String(sizeValue ?? '')}
+          options={widthOptions}
+          onChange={(width) => { handleSizeDraft(width); handleSizeCommit(width); }}
+        />
+      )}
+      {isEraser && (
+        <MobileStyledSelect
+          ariaLabel="Eraser size"
+          width="var(--mobile-strip-dropdown-w)"
+          value={String(sizeValue ?? '')}
+          options={eraserSizeOptions}
+          onChange={(size) => { handleSizeDraft(size); handleSizeCommit(size); }}
+        />
+      )}
+      {/* BOARD 4 — the counter's series picker. Words only: a series is "Count
+          1", not a colour, and the pin beside it already carries the colour.
+          The counter's SIZE is in its sheet (the swatch opens it), because the
+          board gives this strip two controls and a size is not one of them. */}
+      {tool === 'counter' && (
+        <MobileStyledSelect
+          ariaLabel="Counter series"
+          width="var(--mobile-strip-series-w)"
+          value={api.activeCounterSeriesId || ''}
+          placeholder="Count"
+          options={counterSeriesOptions}
+          onChange={(seriesId) => {
+            if (seriesId === '__new') api.onNewCounterSeries?.();
+            else api.onSwitchCounterSeries?.(seriesId);
           }}
         />
       )}
-      {showWidth && tool !== 'counter' && (
-        <AnnotationSizeControl
-          className="mobile-pdf-properties__size-control"
-          label={sizeLabel}
-          value={sizeValue}
-          min={sizeMin}
-          max={sizeMax}
-          decimals={isEraser ? 0 : ANNOTATION_WIDTH_DECIMALS}
-          presets={sizePresets}
-          onValueChange={handleSizeDraft}
-          onValueCommit={handleSizeCommit}
-          onFocusChange={handleSizeFocus}
-        />
-      )}
-      {tool === 'counter' && (
-        <div className="mobile-pdf-properties__menu-anchor" ref={counterMenuRef}>
-          <button
-            type="button"
-            className="mobile-pdf-properties__text-button"
-            aria-expanded={counterMenuOpen}
-            onClick={() => setCounterMenuOpen((open) => !open)}
-          >
-            {(api.counterSeriesList || []).find((series) => series.seriesId === api.activeCounterSeriesId)?.label || 'Counter Series'}
-          </button>
-          {counterMenuOpen && (
-            <div className="mobile-pdf-properties__menu">
-              <strong>Counter Series</strong>
-              <button type="button" onClick={() => { api.onNewCounterSeries?.(); setCounterMenuOpen(false); }}>+ New Count</button>
-              {!!api.counterSeriesList?.length && <span>Continue Count</span>}
-              {(api.counterSeriesList || []).map((series) => (
-                <button
-                  type="button"
-                  key={series.seriesId}
-                  className={series.seriesId === api.activeCounterSeriesId ? 'is-active' : ''}
-                  onClick={() => { api.onSwitchCounterSeries?.(series.seriesId); setCounterMenuOpen(false); }}
-                >
-                  <i style={{ background: series.color }} />
-                  <b>{series.label}</b>
-                  <em>{series.count}</em>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {showWidth && tool === 'counter' && (
-        <AnnotationSizeControl
-          className="mobile-pdf-properties__size-control"
-          label="Size"
-          value={sizeValue}
-          min={sizeMin}
-          max={sizeMax}
-          presets={sizePresets}
-          onValueChange={handleSizeDraft}
-          onValueCommit={handleSizeCommit}
-          onFocusChange={handleSizeFocus}
-        />
-      )}
-      {showBorderStyle && (
+      {showLineStyleOnStrip && (
         <MobileStyledSelect
-          ariaLabel="Border style"
-          minWidth={STRIP_DROPDOWN_WIDTH}
-          value={api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle ? 'solid' : (api.lineBorderStyle || 'solid')}
-          options={[
-            { value: 'solid', label: 'Solid' },
-            { value: 'dashed', label: 'Dashed' },
-            { value: 'dotted', label: 'Dotted' },
-            /* UX 2026-09-09: Cloud is offered on every shape a revision cloud
-               can enclose or trace (rectangle, ellipse/circle, polygon,
-               polyline) and never on arrow, counter or a single straight line.
-               supportsCloudStyle mirrors the desktop gate exactly. */
-            ...(api.supportsCloudStyle ? [{ value: 'cloud', label: 'Cloud' }] : []),
-          ]}
+          ariaLabel="Line style"
+          width="var(--mobile-strip-linestyle-w)"
+          value={lineStyleValue}
+          options={lineStyleOptions}
           onChange={(value) => api.setLineBorderStyle(value)}
         />
       )}
-      {api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
-        <label className="mobile-pdf-properties__bump">
-          <span>Bump</span>
-          <input
-            aria-label="Cloud bump size"
-            inputMode="numeric"
-            // UX 2026-09-10: numeric chrome field — yields Enter / Escape to a
-            // click-to-place draft (see draftKeyboardTarget).
-            data-draft-yields-keys="true"
-            value={api.cloudIntensity ?? 2}
-            onChange={(event) => {
-              const value = Number.parseInt(event.target.value, 10);
-              if (Number.isFinite(value)) api.setCloudIntensity(Math.max(1, Math.min(20, value)));
-            }}
-          />
-        </label>
-      )}
-      {showArrowhead && (
-        /* UX 2026-09-16 (phone sweep): 80px, the same width as the Width field
-           and the Border style dropdown beside it (--mobile-strip-dropdown-w).
-           It was 124 - half again as wide as its neighbours - and it is what
-           pushed Arrow's row 53px past a 375px screen, taking the colour swatch
-           off the left edge entirely. The literal is deliberate: the number is
-           read out of this file by tests/mobileToolPropertiesReach.test.mjs,
-           which proves the row fits a 375px phone. It must stay on the line
-           directly after ariaLabel for that test to find it. Long values
-           ellipsize in the trigger and read in full in the menu. */
-        <MobileStyledSelect
-          ariaLabel="Arrowhead style"
-          minWidth={80}
-          value={api.arrowheadStyle || 'solidTriangle'}
-          options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
-          onChange={(value) => api.setArrowheadStyle(value)}
-        />
-      )}
-      {/* "Both ends" (owner 2026-09-02) — same toggle as desktop, mobile chrome. */}
-      {showArrowhead && tool === 'arrow' && typeof api.setArrowBothEnds === 'function' && (
-        <button
-          type="button"
-          className={`mobile-pdf-properties__edit${api.arrowBothEnds ? ' is-active' : ''}`}
-          onClick={() => api.setArrowBothEnds(!api.arrowBothEnds)}
-          aria-label="Arrowhead on both ends"
-          aria-pressed={!!api.arrowBothEnds}
-        >
-          Both ends
-        </button>
-      )}
+      {(showMoreOnStrip || (api.onEnterTextEdit && (tool === 'text' || tool === 'callout'))) && <MobileStripDivider />}
+      {/* BOARD 5 — "Aa" opens text formatting: the live editor when there is
+          something to edit, otherwise the tool's text defaults. */}
       {api.onEnterTextEdit && (tool === 'text' || tool === 'callout' || api.richTextEditor) && (
         <button
           type="button"
@@ -1329,6 +1665,24 @@ export function MobileToolProperties({ api }) {
           Aa
         </button>
       )}
+      {/* BOARD 3 — "..." opens the tool's sheet holding what the strip hides.
+          For the arrow that is Arrowhead + Arrow ends (board 16); for the
+          callout it is the arrowhead and its line style. */}
+      {showMoreOnStrip && (
+        <button
+          type="button"
+          className={`mobile-pdf-properties__more${moreSheetOpen ? ' is-active' : ''}`}
+          aria-label={`More ${TOOL_LABELS[tool] || 'annotation'} settings`}
+          aria-expanded={moreSheetOpen}
+          onClick={() => setMoreSheetOpen((open) => !open)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.6" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+            <circle cx="19" cy="12" r="1.6" fill="currentColor" />
+          </svg>
+        </button>
+      )}
       {api.canEnterBBoxEdit && api.onEnterBBoxEdit && (
         <button
           type="button"
@@ -1340,6 +1694,96 @@ export function MobileToolProperties({ api }) {
         </button>
       )}
     </div>
+    {/* BOARD 16 — the "..." sheet. Standard height, the shared sheet frame, a
+        title, a gold Done, and one 40px row per control with its field aligned
+        right at the sheet's 96px field width. The Arrow-ends dropdown is the
+        IDENTICAL control the desktop bar carries. */}
+    {moreSheetOpen && typeof document !== 'undefined' && createPortal(
+      <>
+        <button
+          type="button"
+          className="mobile-pdf-sheet-backdrop"
+          aria-label={`Close ${TOOL_LABELS[tool] || 'annotation'} settings`}
+          onClick={requestMoreSheetClose}
+        />
+        <section
+          className="mobile-pdf-tool-sheet"
+          aria-label={`${TOOL_LABELS[tool] || 'Annotation'} settings`}
+          style={moreSheetMotionStyle}
+        >
+          <div
+            className="mobile-pdf-sheet__handle"
+            onTouchStart={moreSheetDragHandlers.onTouchStart}
+            onTouchMove={moreSheetDragHandlers.onTouchMove}
+            onTouchEnd={moreSheetDragHandlers.onTouchEnd}
+          />
+          <header className="mobile-pdf-tool-sheet__header">
+            <strong>{TOOL_LABELS[tool] || 'Annotation'}</strong>
+            <button type="button" aria-label="Done" onClick={requestMoreSheetClose}>Done</button>
+          </header>
+          <div className="mobile-pdf-tool-sheet__rows">
+            {showArrowhead && (
+              <div className="mobile-pdf-tool-sheet__row">
+                <span>Arrowhead</span>
+                <MobileStyledSelect
+                  ariaLabel="Arrowhead"
+                  width="var(--mobile-sheet-field-w)"
+                  value={arrowheadValue}
+                  options={arrowheadOptions}
+                  onChange={(value) => api.setArrowheadStyle?.(value)}
+                />
+              </div>
+            )}
+            {tool === 'arrow' && typeof api.setArrowBothEnds === 'function' && (
+              <div className="mobile-pdf-tool-sheet__row">
+                <span>Arrow ends</span>
+                <MobileStyledSelect
+                  ariaLabel="Arrow ends"
+                  width="var(--mobile-sheet-field-w)"
+                  value={arrowEndsValue}
+                  options={ARROW_ENDS_OPTIONS}
+                  onChange={applyArrowEnds}
+                />
+              </div>
+            )}
+            {/* The callout's line style lives here because its strip already
+                carries the swatch, the width and "Aa". */}
+            {showBorderStyle && !showLineStyleOnStrip && (
+              <div className="mobile-pdf-tool-sheet__row">
+                <span>Line style</span>
+                <MobileStyledSelect
+                  ariaLabel="Line style"
+                  width="var(--mobile-sheet-field-w)"
+                  value={lineStyleValue}
+                  options={lineStyleOptions}
+                  onChange={(value) => api.setLineBorderStyle(value)}
+                />
+              </div>
+            )}
+            {api.supportsCloudStyle && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
+              <div className="mobile-pdf-tool-sheet__row">
+                <span>Cloud bump</span>
+                <label className="mobile-pdf-properties__bump">
+                  <input
+                    aria-label="Cloud bump size"
+                    inputMode="numeric"
+                    // Numeric chrome field — yields Enter / Escape to a
+                    // click-to-place draft (see draftKeyboardTarget).
+                    data-draft-yields-keys="true"
+                    value={api.cloudIntensity ?? 2}
+                    onChange={(event) => {
+                      const value = Number.parseInt(event.target.value, 10);
+                      if (Number.isFinite(value)) api.setCloudIntensity(Math.max(1, Math.min(20, value)));
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        </section>
+      </>,
+      document.body,
+    )}
     {textDefaultsOpen && typeof document !== 'undefined' && createPortal(
       <>
         <button
@@ -1622,29 +2066,33 @@ export function MobileToolProperties({ api }) {
                   </div>
                 </section>
 
-                {showArrowheadSheet && (
+                {/* PASS 7: the Counter's series sits beside its size here, so
+                    this sheet holds "series + size" as the pass-7 brief asks,
+                    and the strip's own series pill and this one are the same
+                    control reading the same state. (Board 4 gives the counter
+                    strip a swatch and a series pill and no "...", so this sheet
+                    — which the swatch opens — is where its size lives.) */}
+                {tool === 'counter' && (
                   <section className="mobile-pdf-text-card mobile-pdf-text-card--arrowhead">
-                    <strong>Arrowhead</strong>
-                    {/* App-styled dropdown (OWNER DECISION 3). */}
+                    <strong>Counter series</strong>
                     <MobileStyledSelect
-                      ariaLabel="Arrowhead"
-                      value={api.arrowheadStyle || 'solidTriangle'}
-                      options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
-                      onChange={(value) => api.setArrowheadStyle?.(value)}
+                      ariaLabel="Counter series"
+                      width="var(--mobile-sheet-field-w)"
+                      value={api.activeCounterSeriesId || ''}
+                      placeholder="Count"
+                      options={counterSeriesOptions}
+                      onChange={(seriesId) => {
+                        if (seriesId === '__new') api.onNewCounterSeries?.();
+                        else api.onSwitchCounterSeries?.(seriesId);
+                      }}
                     />
-                    {tool === 'arrow' && typeof api.setArrowBothEnds === 'function' && (
-                      <button
-                        type="button"
-                        className={`mobile-pdf-properties__edit${api.arrowBothEnds ? ' is-active' : ''}`}
-                        onClick={() => api.setArrowBothEnds(!api.arrowBothEnds)}
-                        aria-label="Arrowhead on both ends"
-                        aria-pressed={!!api.arrowBothEnds}
-                      >
-                        Both ends
-                      </button>
-                    )}
                   </section>
                 )}
+                {/* PASS 7: the arrowhead and the arrow ends moved OUT of this
+                    sheet and into the "..." sheet (board 16), so one control has
+                    one home. The old "Both ends" text toggle is gone with them —
+                    the Arrow ends dropdown is the control the boards draw, on
+                    both platforms. */}
               </>
             )}
           </div>

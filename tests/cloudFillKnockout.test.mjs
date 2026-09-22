@@ -470,7 +470,13 @@ test('width readout: the Width control, shells and viewer handlers all carry the
   const shell = read('../src/AppShell.jsx');
   assert.match(shell, /decimals=\{bottomToolbarApi\.activeTool === 'eraser' \|\| bottomToolbarApi\.contextTool === 'counter'\s*\? 0\s*: ANNOTATION_WIDTH_DECIMALS\}/);
   const mobile = read('../src/mobile/MobilePdfViewerChrome.jsx');
-  assert.equal((mobile.match(/ANNOTATION_WIDTH_DECIMALS/g) || []).length, 3, 'both mobile Width controls');
+  // RULED CHANGE 2026-09-21 (pass 7, owner: "Width is a dropdown ONLY — stroke
+  // sample + '2 pt' + chevron"). The phone had TWO typed Width fields carrying
+  // this contract, one on the strip and one in the tool sheet. The strip's is now
+  // a dropdown of the same preset list, so it never takes a typed draft and has
+  // no decimal contract to carry; the sheet's field, where a width IS typed, is
+  // unchanged. 3 -> 2: the import plus the one remaining typed control.
+  assert.equal((mobile.match(/ANNOTATION_WIDTH_DECIMALS/g) || []).length, 2, 'the mobile sheet Width control');
   const viewer = read('../src/PDFViewer.jsx');
   const change = viewer.slice(viewer.indexOf('const handleStrokeWidthInputChange'), viewer.indexOf('const handleStrokeWidthInputBlur'));
   const blur = viewer.slice(viewer.indexOf('const handleStrokeWidthInputBlur'), viewer.indexOf('// Handle eraser size input changes'));

@@ -78,13 +78,24 @@ test('the quick styles are one shared list, not a copy on each platform', async 
       `${name} must import the shared controls`,
     );
   }
-  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner ruling "width is a
-  // dropdown ONLY, never a bare line"): the three quick WIDTH chips are gone from
-  // the desktop bar. A width is one pill that draws the stroke it will paint and
-  // says "2 pt". The phone strip keeps the shared control, so the component and
-  // its shared list stay one source of truth.
-  assert.match(phoneChrome, /QuickWidthPresets/, 'the phone strip must render the shared quick width presets');
-  assert.doesNotMatch(appShell, /QuickWidthPresets/);
+  /*
+   * RULED CHANGE 2026-09-21 (pass 7, owner: "Width is a dropdown ONLY (no preset
+   * chips): stroke sample + '2 pt' + chevron. Never a bare line").
+   *
+   * The ruling has no platform in it, and neither do the boards: boards 1-7 draw
+   * one 72px width pill on the phone strip and boards 8-14 draw one 92px width
+   * pill on the desktop bar. Neither draws a chip. So the three quick WIDTH chips
+   * come off BOTH bars. The two passes each removed them from the bar they owned
+   * and each expected the other bar to keep them; the ruling says otherwise, so
+   * this asserts what the boards show.
+   *
+   * Nothing became unreachable: the dropdown lists the very same preset widths
+   * the chips held, and a width the presets do not hold is typed in the tool's
+   * own sheet. <QuickWidthPresets> stays in the shared component, unrendered, so
+   * the one shared list still has one home.
+   */
+  assert.doesNotMatch(appShell, /QuickWidthPresets/, 'width is a dropdown only on the desktop bar');
+  assert.doesNotMatch(phoneChrome, /QuickWidthPresets/, 'width is a dropdown only on the phone strip');
 
   // The list is declared in exactly one place in the whole tree. Neither
   // chrome file even names it: they render the shared controls, which read it.
@@ -375,9 +386,15 @@ test('the desktop row wires a press to the same handlers the picker and the fiel
 test('the phone row wires a press to the same handlers its sheet uses', () => {
   assert.match(phoneChrome, /onPick=\{applyQuickColour\}/);
   assert.match(phoneChrome, /if \(tool === 'counter'\) api\.handleFillColorChange\?\.\(hex\);\s*\n\s*else api\.handleStrokeColorChange\?\.\(hex\);/);
-  const widthBlock = phoneChrome.slice(phoneChrome.indexOf('<QuickWidthPresets'), phoneChrome.indexOf('<AnnotationSizeControl'));
-  assert.match(widthBlock, /handleSizeDraft\(value\)/);
-  assert.match(widthBlock, /handleSizeCommit\(value\)/);
+  // Pass 7: the phone's width control is the dropdown, and picking a width out of
+  // it still goes through the field's own draft-then-commit pair, so a pick and a
+  // number typed into the sheet land identically. Same contract, one control.
+  const widthBlock = phoneChrome.slice(
+    phoneChrome.indexOf('ariaLabel="Line width"'),
+    phoneChrome.indexOf('ariaLabel="Eraser size"'),
+  );
+  assert.match(widthBlock, /handleSizeDraft\(width\)/);
+  assert.match(widthBlock, /handleSizeCommit\(width\)/);
 });
 
 test('a quick dot changes the paint you can see, never a transparent one', () => {
@@ -427,18 +444,29 @@ test('the desktop row reads colours, swatch, widths, width field, line style', (
   ], 'desktop');
 });
 
-test('the phone strip reads colours, swatch, widths, width field, line style', () => {
+/*
+ * RULED CHANGE 2026-09-21 (pass 7, boards 1-7). The phone strip's order is the
+ * boards' order now, and it is shorter because the boards are: colour (three
+ * preset discs plus a rainbow custom one for a single-colour tool, or ONE
+ * combined swatch for a multi-colour one), then the width dropdown, then the line
+ * style. The quick width chips are off the row (width is a dropdown only) and the
+ * typed width field moved into the tool's own sheet, so neither is in this list.
+ * "Border style" is "Line style" - the label the boards and the desktop use.
+ */
+test('the phone strip reads colour, width, line style', () => {
   const row = phoneChrome.slice(
-    phoneChrome.indexOf('<div className="mobile-pdf-properties" data-mobile-tool-properties="true"'),
-    phoneChrome.indexOf('{textDefaultsOpen &&'),
+    phoneChrome.indexOf('<div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar"'),
+    phoneChrome.indexOf('BOARD 16'),
   );
   assert.ok(row.length > 1000, 'the phone tool-properties strip must still be where this test reads it');
   orderOf(row, [
     '<QuickColourDots',
-    'mobile-pdf-properties__swatch',
-    '<QuickWidthPresets',
-    '<AnnotationSizeControl',
-    'ariaLabel="Border style"',
+    // The combined swatch a multi-colour tool gets. It is MobilePaintSwatch on
+    // this branch and becomes the picker pass's shared QuickPaintSwatch at merge;
+    // either way it is the one control between the colour and the width.
+    '<MobilePaintSwatch',
+    'ariaLabel="Line width"',
+    'ariaLabel="Line style"',
   ], 'phone');
 });
 
@@ -459,18 +487,25 @@ test('nothing else in either row moved', () => {
     'aria-label="Edit text"',
   ], 'desktop tail');
 
+  // Pass 7: the phone tail is shorter, because the arrowhead and the arrow ends
+  // moved off the strip and into the tool's "..." sheet (board 16), and the old
+  // "Arrowhead on both ends" text toggle is that sheet's Arrow-ends dropdown now.
   const phoneRow = phoneChrome.slice(
-    phoneChrome.indexOf('<div className="mobile-pdf-properties" data-mobile-tool-properties="true"'),
-    phoneChrome.indexOf('{textDefaultsOpen &&'),
+    phoneChrome.indexOf('<div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar"'),
+    phoneChrome.indexOf('BOARD 16'),
   );
   orderOf(phoneRow, [
-    'mobile-pdf-properties__swatch',
-    '<AnnotationSizeControl',
-    'ariaLabel="Border style"',
-    'ariaLabel="Arrowhead style"',
-    'aria-label="Arrowhead on both ends"',
+    '<MobilePaintSwatch',
+    'ariaLabel="Line width"',
+    'ariaLabel="Line style"',
     'aria-label="Text formatting"',
+    'More ${TOOL_LABELS[tool]',
   ], 'phone tail');
+  const phoneSheet = phoneChrome.slice(phoneChrome.indexOf('BOARD 16'));
+  orderOf(phoneSheet, [
+    'ariaLabel="Arrowhead"',
+    'ariaLabel="Arrow ends"',
+  ], 'phone "..." sheet');
 });
 
 /* ------------------------------------------------------------------ 4. size */
