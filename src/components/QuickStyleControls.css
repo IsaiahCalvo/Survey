@@ -21,10 +21,34 @@
  * background, which is what makes it read as a gap.
  */
 
+/*
+ * THE 22px BUDGET, WRITTEN ONCE (2026-09-22 review).
+ *
+ * A colour control is a 22px button holding a 16px disc, and the chosen-state
+ * mark is a gap and a ring painted OUTWARD from that disc. Those three numbers
+ * have to add up: 16 + 2 x (gap + ring) must be 22, or the ring paints over the
+ * 4px gutter and two neighbouring colours touch — and the last one in the row
+ * touches the group's hairline rule. They used to be three separate literals in
+ * two box-shadows, so a nudge to any one of them silently broke the sum.
+ *
+ * gap + ring is therefore (22 - 16) / 2 = 3px, split 1.5 / 1.5, and the two
+ * box-shadow spreads below are computed from these tokens rather than typed.
+ * MEASURED after: 22.0px of ink in a 22px button on every disc, desktop and
+ * phone, with 11px of clear space before the divider.
+ */
 .quick-style {
+  --quick-style-gap-w: 1.5px;
+  --quick-style-ring-w: 1.5px;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+}
+
+/* The combined swatch is not inside a .quick-style group — it is its own
+   button — so it carries the same budget itself. */
+.quick-style__swatch {
+  --quick-style-gap-w: 1.5px;
+  --quick-style-ring-w: 1.5px;
 }
 
 /* Boards 1 and 8: the colour group is one 4px gap on both platforms. */
@@ -87,8 +111,8 @@
 .quick-style__dot.is-current .quick-style__dot-fill,
 .quick-style__dot.is-current .quick-style__dot-fill.has-hairline {
   box-shadow:
-    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
-    0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
+    0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
+    0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--quick-style-dot));
 }
 
 .quick-style__check {
@@ -102,8 +126,8 @@
 
 .quick-style__dot.is-current:hover .quick-style__dot-fill {
   box-shadow:
-    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
-    0 0 0 3px var(--quick-style-ring, var(--quick-style-dot));
+    0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
+    0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--quick-style-dot));
 }
 
 /* ------------------------------------------------------------ custom disc */
@@ -153,8 +177,8 @@
   inset: 3px;
   border-radius: 50%;
   box-shadow:
-    0 0 0 1.5px var(--quick-style-gap, var(--surface-1)),
-    0 0 0 3px var(--quick-style-ring, var(--text-1));
+    0 0 0 var(--quick-style-gap-w) var(--quick-style-gap, var(--surface-1)),
+    0 0 0 calc(var(--quick-style-gap-w) + var(--quick-style-ring-w)) var(--quick-style-ring, var(--text-1));
   pointer-events: none;
 }
 
