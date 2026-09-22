@@ -615,41 +615,21 @@ const arrowheadSample = (style, size) => {
 
 /* Board 16's Arrow-ends drawings: lucide move-right / move-horizontal / minus,
    all the same length so the three read as one control changing its ends.
-   ICON GAP (reported to the owner): Icons.jsx carries no move-right or
-   move-horizontal, and Icons.jsx belongs to the desktop pass, so these are
-   inline here. When the shared set gains them, swap these three for <Icon>. */
+   These are the SHARED glyphs from src/Icons.jsx, which the desktop pass added
+   for the identical dropdown in its own bar (board 10) - so the bar and the
+   sheet draw the same three arrows. The phone pass had them inline because that
+   set had not landed yet.
+   The sizes are the sheet's own: 15px in the pill's preview, 18px in a menu row,
+   where board 15 draws a row's sample longer than the trigger's. */
 const ARROW_ENDS_OPTIONS = [
-  {
-    value: 'end',
-    label: 'End',
-    preview: (
-      <svg width="19" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M18 8L22 12L18 16" />
-        <path d="M2 12H22" />
-      </svg>
-    ),
-  },
-  {
-    value: 'both',
-    label: 'Both',
-    preview: (
-      <svg width="19" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="m18 8 4 4-4 4" />
-        <path d="M2 12h20" />
-        <path d="m6 8-4 4 4 4" />
-      </svg>
-    ),
-  },
-  {
-    value: 'none',
-    label: 'None',
-    preview: (
-      <svg width="19" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M2 12h20" />
-      </svg>
-    ),
-  },
-];
+  { value: 'end', label: 'End', icon: 'moveRight' },
+  { value: 'both', label: 'Both', icon: 'moveHorizontal' },
+  { value: 'none', label: 'None', icon: 'arrowEndsNone' },
+].map((option) => ({
+  ...option,
+  preview: <Icon name={option.icon} size={15} color="currentColor" />,
+  menuPreview: <Icon name={option.icon} size={18} color="currentColor" />,
+}));
 
 /* UX 2026-09-16 (icon-set pass + sizing pass, merged): ONE glyph size per rail
    tier, and no per-glyph exceptions inside a tier. The rail used to run 19 with

@@ -229,7 +229,9 @@ const ARROWHEAD_MENU_OPTIONS = Object.freeze([
 const ARROW_ENDS_OPTIONS = Object.freeze([
   Object.freeze({ value: 'end', label: 'End', icon: 'moveRight' }),
   Object.freeze({ value: 'both', label: 'Both', icon: 'moveHorizontal' }),
-  Object.freeze({ value: 'none', label: 'None', icon: 'minus' }),
+  // `arrowEndsNone` is the set's own minus: the same 2 -> 22 rule the other two
+  // ends draw, which is what board 16 shows and what "all the same length" means.
+  Object.freeze({ value: 'none', label: 'None', icon: 'arrowEndsNone' }),
 ]);
 
 /**

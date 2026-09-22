@@ -275,7 +275,7 @@ const ICON_RENDERERS = {
     /* PASS 7 (boards 10, 15, 16): the three ARROW ENDS, Lucide move-right /
        move-horizontal / minus. They are one control's three values, so they are
        drawn to the same visual length (the shaft runs 2 -> 22 in all three) and
-       at the house weight. `minus` above is the third of the set. */
+       at the house weight. `arrowEndsNone` below is the third of the set. */
     moveRight: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M18 8L22 12L18 16M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -285,6 +285,18 @@ const ICON_RENDERERS = {
     moveHorizontal: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M18 8L22 12L18 16M6 8L2 12L6 16M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    /* The third of the set: an arrow with no head on either end. It is `minus`,
+       drawn at the SET's length rather than at the general icon's - board 16
+       draws all three ends at 2 -> 22, and the owner's ruling is "all the same
+       length", so a 5 -> 19 rule beside two 2 -> 22 ones would read as a shorter
+       line rather than as the same line with its heads taken off. `minus` itself
+       is the app's decrement / zoom-out glyph and keeps its own length. */
+    arrowEndsNone: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M2 12H22" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
