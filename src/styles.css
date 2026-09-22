@@ -2097,11 +2097,6 @@ input[type="text"].space-add-pages-input:focus-visible {
    the active/focus cue rather than making an idle hover look selected. */
 /* UX: include Pan/Select icon buttons and active tools; every hover keeps
    the same neutral chip and fixed baseline as the sub-toolbar. */
-.btn[data-tool-group]:active:not(:disabled) {
-  background: var(--pressed);
-  border-color: var(--border);
-}
-
 .btn[data-tool-group]:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border-strong);
@@ -2116,6 +2111,16 @@ input[type="text"].space-add-pages-input:focus-visible {
 #chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border-strong);
+}
+
+/* UX 2026-09-22: declared AFTER both tool-group hover rules, because the two
+   have identical specificity and the later one wins — with the press first,
+   measuring a real tool button in the app showed --hover under the finger, not
+   --pressed. Verified live at 1440x900 after the move. */
+.btn[data-tool-group]:active:not(:disabled),
+#chrome-sub-toolbar-host .btn-active:active:not(:disabled) {
+  background: var(--pressed);
+  border-color: var(--border);
 }
 
 /* UX: both label copies share a cell; the hidden bold copy reserves menu width. */

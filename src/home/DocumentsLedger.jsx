@@ -392,7 +392,7 @@ export default function DocumentsLedger({
       <div
         key={`mobile-${d.id}`}
         data-document-id={d.id}
-        className="mobile-doc-card"
+        className={`mobile-doc-card${docSelectMode && isChecked ? ' is-selected' : ''}`}
         onClick={() => openMobileDoc(d)}
         role="button"
         tabIndex={0}
@@ -400,10 +400,6 @@ export default function DocumentsLedger({
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
           openMobileDoc(d);
-        }}
-        style={{
-          borderColor: docSelectMode && isChecked ? 'var(--gold)' : 'var(--ink-500)',
-          background: docSelectMode && isChecked ? 'var(--ink-600)' : 'var(--ink-700)',
         }}
       >
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>

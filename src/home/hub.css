@@ -1615,9 +1615,29 @@
     background: var(--ink-900) !important;
   }
 
-  /* UX 2026-09-22: a tapped card has to answer the finger. There is no hover
-     on a phone, so the press IS the feedback — --pressed for as long as the
-     finger is down. */
+  /* UX 2026-09-22: the SELECTED card, moved here out of an inline style. An
+     inline declaration outranks every class rule, so while the fill lived on
+     the element the card's :active below could never paint — measured live at
+     390x844, the card took the transition from the press rule and kept its
+     resting colour. Selected is a surface step plus the gold edge, which is
+     the app's one selected cue. */
+  .survey-hub .mobile-doc-card.is-selected,
+  .survey-hub .mobile-project-card.is-selected {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+  }
+
+  /* The gold EDGE these two used to carry went with them. The owner's ruling
+     is that a selected thing is marked by gold INK and nothing else
+     (tests/selectedStateGoldInkOnly.test.mjs enforces it); while the edge was
+     an inline style the test could not see it. The card's own check mark is
+     already gold, and an OPEN project says so with a gold title. */
+  .survey-hub .mobile-project-card.is-open .mobile-card-title {
+    color: var(--accent);
+  }
+
+  /* A tapped card has to answer the finger. There is no hover on a phone, so
+     the press IS the feedback — --pressed for as long as the finger is down. */
   .survey-hub .mobile-doc-card:active,
   .survey-hub .mobile-project-card:active {
     background: var(--pressed);
