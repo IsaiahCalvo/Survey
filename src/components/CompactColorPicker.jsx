@@ -209,6 +209,32 @@ const CompactColorPicker = ({
     const columns = isPhone ? 12 : 8;
     const presets = isPhone ? PHONE_PRESET_COLORS : PRESET_COLORS;
     const grid = useMemo(() => buildGrid(columns), [columns]);
+    // RULED 2026-09-22 (owner): switching grid <-> spectrum must not change the
+    // sheet's height or move the Opacity row and the bottom row. The spectrum
+    // therefore takes EXACTLY the grid's box: its area is the grid's height
+    // minus the hue track and the gap under it, so area + hue = grid. The grid
+    // height is measured from the panel's width (square cells, 4px gaps, six
+    // rows) rather than read from the DOM, so it is right before either view
+    // has painted.
+    const gridRef = useRef(null);
+    const [gridHeight, setGridHeight] = useState(null);
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return undefined;
+        const measure = () => {
+            const w = el.getBoundingClientRect().width;
+            if (!w) return;
+            const cell = (w - (columns - 1) * 4) / columns;
+            setGridHeight(6 * cell + 5 * 4);
+        };
+        measure();
+        if (typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [columns]);
+    const HUE_TRACK_H = 12;
+    const spectrumAreaHeight = gridHeight ? Math.max(96, gridHeight - HUE_TRACK_H - 10) : (isPhone ? 148 : 128);
 
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
     const matchFillColor = isMatchFirst ? (firstPreset.color || '#ffffff') : null;
@@ -699,7 +725,7 @@ const CompactColorPicker = ({
                 style={{
                     position: 'relative',
                     width: '100%',
-                    height: isPhone ? '190px' : '150px',
+                    height: `${spectrumAreaHeight}px`,
                     borderRadius: '10px',
                     background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hue} 100% 50%))`,
                     cursor: 'crosshair',
@@ -723,8 +749,10 @@ const CompactColorPicker = ({
                 }} />
             </div>
 
-            {/* Board 18 stacks the hue and opacity tracks under the area, with
-                no labels — the area above is what they obviously belong to. */}
+            {/* RULED 2026-09-22: only the hue track lives under the area. The
+                opacity slider keeps its labelled row below, in the same place
+                it has in grid mode, so the two views differ only inside the
+                grid's box. */}
             <div style={{ display: 'grid', gap: '10px' }}>
                 <div
                     ref={hueRef}
@@ -751,7 +779,6 @@ const CompactColorPicker = ({
                 >
                     <span style={thumb((hue / 360) * 100)} />
                 </div>
-                {showOpacity && opacityTrack(false)}
             </div>
         </>
     );
@@ -884,9 +911,10 @@ const CompactColorPicker = ({
 
             {mode === 'grid' ? gridView : gradientView}
 
-            {/* Boards 17 and 19 label the opacity slider in grid mode; board 18
-                folds it into the gradient's own slider stack, above. */}
-            {showOpacity && mode === 'grid' && (
+            {/* The labelled opacity row sits in the same place in both views
+                (RULED 2026-09-22: the sheet must not grow or rearrange when the
+                grid becomes the spectrum). */}
+            {showOpacity && (
                 <div style={{ display: 'grid', gap: '6px' }}>
                     <div style={{ color: 'var(--text-3)', font: `600 11px/1 ${FONT}` }}>Opacity</div>
                     {opacityTrack(true)}
