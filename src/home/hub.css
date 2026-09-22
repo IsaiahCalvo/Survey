@@ -3196,17 +3196,28 @@
   .survey-hub .templates-mobile-entity-row {
     min-height: 36px;
     grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
-    min-height: 44px;
+    min-height: 36px;
   }
 
+  /* Owner 2026-09-22 ("thinner"): the grip and the More button paint 36px
+     tall inside a 44px-wide column; a 44px finger target comes from a pad, so
+     the row itself can be 36px like the phone strip. */
   .survey-hub [data-drag-rearrange-handle] {
+    position: relative;
     width: 44px !important;
-    height: 44px !important;
+    height: 36px !important;
+  }
+  .survey-hub [data-drag-rearrange-handle]::after,
+  .survey-hub button[title="More"]::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
   }
 
   .survey-hub button[title="More"] {
+    position: relative;
     width: 44px !important;
-    height: 44px !important;
+    height: 36px !important;
   }
 
   /* Keep draggable mobile-list controls close to the card edge while
