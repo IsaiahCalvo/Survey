@@ -2,6 +2,12 @@
   --mobile-bottom-inset: max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   --mobile-viewer-dock-height: calc(52px + var(--mobile-bottom-inset));
 
+  /* How much of the screen the on-screen keyboard is covering, published by
+     src/mobile/keyboardViewport.js. Exactly 0 whenever the keyboard is down, so
+     every rule that reads it is inert at rest. See the keyboard block below the
+     shell pin for what consumes it. */
+  --keyboard-inset: 0px;
+
   /* UX 2026-09-17 (owner ruling: "the dock icons sit too high against the
      painted bar on web mobile and iOS"). The dock reserves clearance for the
      home indicator, and the indicator's OWN footprint is what needs reserving -
@@ -177,6 +183,55 @@ html.survey-viewer-open #root {
     height: 100dvh !important;
     min-height: 0 !important;
     overflow: hidden !important;
+  }
+
+  /* ON-SCREEN KEYBOARD — owner bug 2026-09-22: "the keyboard pushes/scrolls the
+     WHOLE app shell up (header, rail and dock move) instead of only the PDF
+     page scrolling".
+
+     The height + overflow pin above stops the shell GROWING, but it does not
+     stop the browser scrolling the document to reveal a focused field: iOS
+     Safari slides the visual viewport inside the layout viewport and Chrome
+     Android resizes the layout viewport, and either way the fixed chrome rides
+     up with it. Pinning body to the viewport removes the scroll range that
+     reveal needs, so there is nothing left for the browser to move.
+
+     `position: fixed` here changes NO layout at rest: body already filled a
+     100dvh, overflow-hidden document, and #root is its only child. Everything
+     that was already `position: fixed` (header, dock, sheets) resolves against
+     the same box, because a fixed body establishes no transform/filter/
+     containment context.
+
+     Scoped to <=720px and to an open viewer, exactly like the pin it extends,
+     so desktop, iPad and the hub are untouched. Guarded by
+     tests/mobileKeyboardViewport.test.mjs. */
+  html.survey-viewer-open body {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    overscroll-behavior: none;
+  }
+
+  /* The page area is the ONLY thing that reacts to the keyboard. Padding the
+     pdf.js content node (not the scroller) grows scrollHeight without touching
+     the scroller's clientHeight, which the viewer's layout maths reads — so a
+     caret on the last line of the last page can still be scrolled clear of the
+     keyboard, and the reveal in src/components/TextEditOverlay.jsx has the
+     range it needs. Inert when the keyboard is down: no `data-keyboard-open`,
+     and --keyboard-inset is 0px regardless.
+
+     `box-sizing: content-box` is load-bearing and was found the hard way
+     (measured live 2026-09-22): the app's global border-box makes the padding
+     eat into the node's JS-set inline height instead of extending its box, so
+     scrollHeight did not move by a single pixel and the caret stayed under the
+     keyboard. Content-box makes the padding ADD to that height, which is the
+     whole point. The node's children are absolutely positioned, so nothing
+     inside it shifts either way. */
+  html.survey-viewer-open[data-keyboard-open='true'] [data-mobile-pdf-surface='true'] [data-pdfjs-content='true'] {
+    box-sizing: content-box;
+    padding-bottom: var(--keyboard-inset, 0px);
   }
 }
 

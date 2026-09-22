@@ -36,6 +36,28 @@ const config: CapacitorConfig = {
     contentInset: 'never',
     backgroundColor: '#171a21'
   },
+  plugins: {
+    // UX 2026-09-22 (owner bug: "the keyboard pushes the WHOLE app shell up").
+    // The app manages the keyboard itself — src/mobile/keyboardViewport.js
+    // measures it from visualViewport, publishes --keyboard-inset, and
+    // mobilePdfViewer.css spends that inset on the PDF scroller alone so the
+    // header, rail and dock never move. The OS must therefore NOT resize or
+    // scroll the web view underneath us:
+    //   resize: 'none'         — do not touch the web view's frame or body.
+    //   resizeOnFullScreen     — off, same reason, for the Android side.
+    //   scroll: false          — do not auto-scroll the web view to the caret;
+    //                            that auto-scroll IS the reported bug.
+    // @capacitor/keyboard is not installed today, so these are inert in the
+    // current build: `npx cap sync` copies them into
+    // ios/App/App/capacitor.config.json and the plugin reads them the day it
+    // is added. The web-side fix above is what makes the Capacitor app behave
+    // right now, because the native shell runs the same bundle.
+    Keyboard: {
+      resize: 'none',
+      resizeOnFullScreen: false,
+      scroll: false
+    }
+  },
   backgroundColor: '#171a21'
 };
 

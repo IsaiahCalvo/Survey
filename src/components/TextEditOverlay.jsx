@@ -688,7 +688,9 @@ export default function TextEditOverlay({
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!vv) return undefined;
+    let frame = 0;
     const reveal = () => {
+      frame = 0;
       const box = boxRef.current;
       if (!box || committedRef.current) return;
       const keyboardInset = window.innerHeight - (vv.height + vv.offsetTop);
@@ -700,8 +702,20 @@ export default function TextEditOverlay({
       const scroller = findScrollableAncestor(box);
       if (scroller) scroller.scrollTop += overflow;
     };
-    vv.addEventListener('resize', reveal);
-    return () => vv.removeEventListener('resize', reveal);
+    // 2026-09-22: deferred one frame so the keyboard controller
+    // (src/mobile/keyboardViewport.js) has published --keyboard-inset first.
+    // That inset is what grows the PDF scroller's range; scrolling in the same
+    // tick as the resize clamps short of the keyboard for a box on the last
+    // line of the last page, and the caret stays hidden.
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(reveal);
+    };
+    vv.addEventListener('resize', schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      vv.removeEventListener('resize', schedule);
+    };
   }, []);
 
   // Mount: seed text, focus, select-all for existing text (parity with the
