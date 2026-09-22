@@ -57,7 +57,7 @@
 }
 
 .text-selection-action-bar__button:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: var(--hover) !important;
 }
 
 .text-selection-action-bar__button:focus-visible,

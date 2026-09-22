@@ -180,7 +180,7 @@ export default function ResetPasswordPage() {
           <div style={{ color: C.inkSoft, fontSize: 13, lineHeight: 1.5 }}>{description}</div>
 
           {error && (
-            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
+            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}

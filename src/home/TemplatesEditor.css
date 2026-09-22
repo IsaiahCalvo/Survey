@@ -6,7 +6,7 @@
 
 .ed-scope {
   background:
-    radial-gradient(circle at 0% 0%, rgba(216, 168, 78, 0.06), transparent 35%),
+    radial-gradient(circle at 0% 0%, var(--accent-soft), transparent 35%),
     var(--surface-0);
   color: var(--text-1);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -121,5 +121,5 @@
   padding: 7px 10px; font-size: 12px; border-radius: 4px;
   cursor: pointer; font-family: inherit;
 }
-.ed-tpl-menu button:hover { background: var(--surface-2); }
+.ed-tpl-menu button:hover { background: var(--hover); }
 .ed-tpl-menu button.danger { color: var(--danger); }

@@ -74,7 +74,7 @@
 .survey-hub .nav { margin-top: 18px; display: grid; gap: 2px; }
 .survey-hub .nav button { background: transparent; border: 0; text-align: left; padding: 6px 8px; border-radius: 6px; color: var(--ink-200); cursor: pointer; font: inherit; display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .survey-hub .nav button.active { background: var(--ink-600); color: var(--bone-100); box-shadow: inset 2px 0 var(--gold); }
-.survey-hub .nav button:disabled { opacity: 0.5; cursor: not-allowed; }
+.survey-hub .nav button:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .survey-hub .nav button .ico { width: 14px; height: 14px; opacity: .9; }
 /* KAL-280 — the Archive group takes the rail's flexible space so it settles at
    the bottom, directly above the profile chip. `.who` keeps margin-top:auto as a
@@ -97,7 +97,7 @@
   font-weight: 700;
   cursor: pointer;
 }
-.survey-hub .profile-signin:hover { background: rgba(216,168,78,0.1); }
+.survey-hub .profile-signin:hover { background: var(--accent-soft); }
 
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
@@ -118,7 +118,7 @@
 .survey-hub .btn.ghost { background: transparent; }
 
 .survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
-.survey-hub .pill.gold { background: rgba(216,168,78,0.15); color: var(--gold); }
+.survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
 .survey-hub .pill.blue { background: rgba(122,183,230,0.15); color: var(--blue); }
 .survey-hub .pill.green { background: rgba(166,224,122,0.16); color: var(--green); }
 .survey-hub .pill.rose { background: rgba(230,154,122,0.16); color: var(--rose); }
@@ -475,7 +475,7 @@
 }
 
 .survey-hub .profile-menu-signout:hover {
-  background: rgba(217, 90, 86,0.1) !important;
+  background: var(--danger-soft) !important;
 }
 
 .survey-hub .profile-signout-confirm {
@@ -484,8 +484,8 @@
   gap: 8px;
   margin-top: 2px;
   padding: 9px 10px;
-  background: rgba(217, 90, 86,0.08);
-  border: 1px solid rgba(217, 90, 86,0.22);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
   border-radius: 8px;
 }
 
@@ -514,7 +514,7 @@
 }
 
 .survey-hub .profile-signout-buttons button.danger {
-  border-color: rgba(217, 90, 86,0.42);
+  border-color: var(--danger);
   background: var(--danger);
   color: var(--text-1);
 }
@@ -880,7 +880,7 @@
   }
 
   .survey-hub .mobile-rail-nav-options button:disabled {
-    opacity: 0.5;
+    color: var(--text-disabled);
     cursor: not-allowed;
   }
 
@@ -1470,7 +1470,7 @@
   }
 
   .survey-hub .mobile-home-tabs button:disabled {
-    opacity: 0.45;
+    color: var(--text-disabled);
     cursor: not-allowed;
   }
 
@@ -1728,7 +1728,7 @@
     border-radius: 8px;
     display: grid;
     place-items: center;
-    background: rgba(216,168,78,0.16);
+    background: var(--accent-soft);
     color: var(--gold);
   }
 
@@ -2175,7 +2175,7 @@
   }
 
   .survey-hub .projects-mobile-folder-art {
-    background: rgba(216,168,78,0.16);
+    background: var(--accent-soft);
     color: var(--gold);
   }
 
@@ -2749,7 +2749,7 @@
   }
 
   .survey-hub .templates-mobile-module-group.active {
-    border-color: rgba(216,168,78,0.46);
+    border-color: var(--accent-press);
   }
 
   .survey-hub .templates-mobile-module-group-head {

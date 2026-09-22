@@ -87,7 +87,7 @@
 
 .confirm-delete-modal__close:hover {
   color: var(--text-1);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
 }
 
 .confirm-delete-modal__actions {
@@ -116,7 +116,7 @@
 
 .confirm-delete-modal__btn--cancel:hover {
   color: var(--text-1);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
 }
 
 .confirm-delete-modal__btn--danger {

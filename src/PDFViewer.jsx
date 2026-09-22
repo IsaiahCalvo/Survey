@@ -32068,7 +32068,7 @@ ${pageBlocks}
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 2000,
-              background: 'rgba(216, 168, 78, 0.9)',
+              background: 'var(--accent)',
               color: 'white',
               padding: '8px 16px',
               borderRadius: '20px',

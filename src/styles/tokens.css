@@ -57,9 +57,53 @@
      - Email HTML keeps literal hexes; mail clients do not resolve CSS
        variables.
 
-   Contrast (WCAG 2.1) on surface-1, the commonest panel: text-1 13.0,
-   text-2 9.3, text-3 5.8, accent 8.0, accent-light 10.4, danger 4.6,
-   warning 4.2, success 4.45. --text-disabled is 2.88 on purpose.
+   REVISION 3 (2026-09-22) — the audit against the same reference video found
+   seven things revision 2 still got wrong. Every change below is one of them:
+
+     1. BORDERS WERE STILL INVISIBLE. 1.86:1 and 2.71:1 both fail the 3:1 that
+        WCAG 1.4.11 asks of a non-text boundary, which is the whole job of a
+        border. Same hue (219 degrees), lifted until they pass: --border is
+        3.65:1 on surface-1 and 3.21 on surface-2; --border-strong is 3.46 on
+        surface-3, the highest layer it can land on.
+     2. HOVER AND PRESSED WERE THE WRONG WAY ROUND. --pressed (#232830) was
+        LIGHTER than --hover (#26282e), so a press looked like a hover and
+        neither read as the other; --pressed had no consumers at all and a
+        dozen rules used --surface-3, the SELECTED colour, as their hover. The
+        video's rule is literal: hover is a lighter version of the base, press
+        is a darker one.
+     3. TEXT-3 FAILED ON THE TOP LAYER (4.44 on surface-3). Lifted to 4.90.
+     4. --warning FAILED AS TEXT EVERYWHERE (4.17 and down). Lifted to 5.96 on
+        surface-1 while staying olive, nowhere near the gold.
+     5. --danger IS A FILL, NOT A LABEL: 4.05 on surface-2, 3.49 on surface-3.
+        --danger-text is the label twin (4.82 at its worst) and --danger-fill
+        the darkened fill that a white label may sit on (6.06).
+     6. THE FOCUS RING WAS INVISIBLE (2.09:1 composited) and had one consumer.
+     7. DISABLED WAS SEVEN DIFFERENT OPACITIES (0.35 / 0.4 / 0.45 / 0.5 / 0.56
+        / 0.7). One --disabled-fill plus --text-disabled, so "off" looks the
+        same everywhere.
+
+   WHAT DID NOT CHANGE. The gold is untouched (--accent #d8a84e, --accent-light
+   #edc26d, --accent-press #b6904a). The four surfaces are untouched. --success
+   is still a status dot and nothing else. Selection handles stay #4a90e2.
+
+   HOW STATES ARE BUILT. Never invent a colour for a state. There are exactly
+   six looks and all six come from here:
+     rest      the control's own surface
+     hover     --hover          (desktop pointer only)
+     pressed   --pressed        (desktop :active AND phone touch feedback)
+     selected  --surface-3 plus a --accent edge, or a gold GLYPH with no fill
+     disabled  --disabled-fill + --text-disabled, never an opacity
+     focus     a 2px --focus ring on :focus-visible
+   --surface-3 is a SELECTED or a FIELD surface. It is never a hover.
+   A gold control's own states are --accent-light (hover) and --accent-press
+   (pressed). --accent-soft is the ONLY warm fill, and only on small gold
+   controls (pills, ghost-button hover) — never on a whole row or panel,
+   because a large warm wash is how the rejected brown happened.
+
+   Contrast (WCAG 2.1) on surface-1, the commonest panel: text-1 13.02,
+   text-2 9.30, text-3 6.45, accent 7.98, accent-light 10.40, danger-text 6.35,
+   warning 5.96. --text-disabled is 2.88 on purpose. Borders: --border 3.65,
+   --border-strong 4.19 (3.21 / 3.46 on surface-2 / surface-3).
    ========================================================================== */
 
 :root {
@@ -67,30 +111,49 @@
   --surface-0: #0d0f14;   /* the page behind everything  · B 8%  */
   --surface-1: #171a21;   /* a panel, a bar, a header    · B 13% */
   --surface-2: #21252e;   /* a card or a well on a panel · B 18% */
-  --surface-3: #2b303b;   /* raised: a selected row, a menu · B 23% */
+  --surface-3: #2b303b;   /* raised: a SELECTED row, a field, a menu · B 23% */
 
-  /* --- Borders ---------------------------------------------------------- */
-  --border: #404754;          /* the default hairline · 1.86 on surface-1 */
-  --border-strong: #575f6e;   /* an edge that has to be seen · 2.71 */
+  /* --- Borders: both pass WCAG 1.4.11 (3:1) on the layers they land on --- */
+  --border: #6a7384;          /* the default hairline · 3.65 on surface-1,
+                                 3.21 on surface-2, 4.01 on surface-0 */
+  --border-strong: #7a8394;   /* an edge that has to be seen · 3.46 even on
+                                 surface-3, the highest layer there is */
 
   /* --- Text: one temperature, four tiers -------------------------------- */
   --text-1: #dadfe8;          /* headings and the row you are reading */
   --text-2: #b7bec9;          /* body */
-  --text-3: #8d96a6;          /* subtext, captions, inactive icons */
+  --text-3: #959eae;          /* subtext, captions, inactive icons · 4.90 on
+                                 surface-3, where #8d96a6 measured 4.44 */
   --text-disabled: #5c6370;   /* fails contrast on purpose */
 
   /* --- Gold: the one accent -------------------------------------------- */
   --accent-light: #edc26d;    /* hover on a gold control */
   --accent: #d8a84e;          /* base */
-  --accent-press: #b6904a;    /* pressed, and a disabled gold control */
-  --accent-text: #15110a;     /* the label ON a gold fill · 8.6 */
-  /* The one alpha token. Small gold controls only — see the comment above. */
+  --accent-press: #b6904a;    /* pressed, and a disabled gold control.
+                                 NEVER a text colour: 4.45 on surface-3. */
+  --accent-text: #15110a;     /* the label ON a gold fill · 8.63 */
+  /* The two alpha golds. Small gold controls only — see the comment above.
+     -soft is the resting tint, -soft-strong its hover/pressed step. Nothing
+     else may hand-type an rgba of the gold; ten rules used to. */
   --accent-soft: rgba(216, 168, 78, 0.14);
+  --accent-soft-strong: rgba(216, 168, 78, 0.20);
 
   /* --- Feedback -------------------------------------------------------- */
+  /* Three reds, one job each, so no component picks its own:
+       --danger       a small fill, an icon, a 3:1 boundary. NOT words.
+       --danger-text  the word "Delete" on any surface · 6.35 / 4.82 worst
+       --danger-fill  the darkened fill a WHITE label may sit on · 6.06
+     Everything that used to be #c84c49 / #dc2626 / #ff6666 / #e74c3c /
+     #b03a3a is one of these three. */
   --danger: #d95a56;
-  --danger-press: #c84c49;
-  --warning: #7d803d;         /* quieter than danger, and far from the gold */
+  --danger-text: #e57f7b;
+  --danger-fill: #a8403c;
+  --on-danger: #ffffff;       /* the label ON --danger-fill · 6.06. The twin
+                                 of --accent-text. White on the plain --danger
+                                 measures 3.79 and is not allowed. */
+  --danger-press: #c84c49;    /* the pressed step of a --danger fill */
+  --warning: #989c4a;         /* quieter than danger, and far from the gold ·
+                                 5.96 on surface-1 where #7d803d was 4.17 */
   /* Status DOTS only (owner amendment b). Never a button, border or text. */
   --success: #548c71;
   /* The destructive twin of --accent-soft, derived from --danger the same way
@@ -101,15 +164,37 @@
   --danger-soft: rgba(217, 90, 86, 0.16);
   --info: var(--text-3);      /* "informational" is just subtext */
 
+  /* --- The one ring that lifts a USER colour off dark chrome ------------- */
+  /* A colour swatch shows ink the user picked, so it cannot take a border
+     from the neutral ramp — a near-black ink would vanish into --border. It
+     takes a white hairline instead, and these are the only two white alphas
+     the app is allowed: the resting ring and the chosen one. Five components
+     used to hand-type five different alphas (0.14 / 0.16 / 0.20 / 0.22 /
+     0.28 / 0.42 / 0.55) for the same two jobs. NOT chrome: never a panel, a
+     button, a row or a hover. */
+  --ink-ring: rgba(255, 255, 255, 0.22);
+  --ink-ring-strong: rgba(255, 255, 255, 0.55);
+
   /* --- Derived states --------------------------------------------------- */
-  /* A row's hover is +5 brightness on the panel under it; its pressed is -4.
-     These are the mockup's own two steps, kept as tokens so no component
-     re-derives them by eye. */
-  --hover: #26282e;
-  --pressed: #232830;
-  /* The focus ring: gold at 35%, so it reads on any surface without becoming
-     a second selected state. */
-  --focus: rgba(216, 168, 78, 0.35);
+  /* The video's rule, literally: "for hover states use a slightly lighter
+     version of the base colour; for an active or press state use a slightly
+     darker version." --hover is lighter than every surface a chrome control
+     rests on; --pressed is darker than all of them. These two values are the
+     ONLY hover and pressed fills in the app — no component re-derives them by
+     eye, no component hand-rolls an rgba(255,255,255,...) wash, and no
+     component uses --surface-3 as a hover, because --surface-3 means
+     "selected". On the phone there is no hover, so a touch paints --pressed
+     for the duration of the press and nothing else. */
+  --hover: #232830;
+  --pressed: #12151b;
+  /* Disabled: one fill and one text colour, never an opacity. Seven different
+     opacities used to mean "off" and none of them matched. */
+  --disabled-fill: #2b303b;
+  /* The focus ring: gold at 55%, which composites to 3.38 / 3.30 / 3.12 on
+     surfaces 0-2 — a boundary you can actually see, where 35% measured 2.09
+     and was painted by exactly one rule. Always 2px on :focus-visible, never
+     on :focus, so a mouse click never draws it. */
+  --focus: rgba(216, 168, 78, 0.55);
 
   /* --- Kept from the previous token block ------------------------------ */
   /* --accent-red is the one destructive red (KAL-72, docs/ui/colors.md); it

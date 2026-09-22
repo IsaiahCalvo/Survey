@@ -344,7 +344,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               aria-label="Delete"
               onMouseEnter={(e) => {
                 tip('Delete', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'rgba(217, 90, 86, 0.15)';
+                e.currentTarget.style.background = 'var(--danger-soft)';
               }}
               onMouseLeave={(e) => {
                 tip('Delete', 'below').onMouseLeave(e);

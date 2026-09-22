@@ -276,12 +276,12 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
           </div>
           {(blockedReason || error) && (
-            <div style={{ background: "rgba(217, 90, 86, 0.10)", borderLeft: `3px solid ${DANGER}`, borderRadius: 8, padding: "8px 10px", color: BONE_100, fontSize: 11.5 }}>
+            <div style={{ background: "var(--danger-soft)", borderLeft: `3px solid ${DANGER}`, borderRadius: 8, padding: "8px 10px", color: BONE_100, fontSize: 11.5 }}>
               {blockedReason || error}
             </div>
           )}
           {success && !error && (
-            <div style={{ background: "rgba(216,168,78,0.10)", border: `1px solid ${GOLD}`, borderRadius: 6, padding: "8px 10px", color: GOLD, fontSize: 11.5 }}>
+            <div style={{ background: "var(--accent-soft)", border: `1px solid ${GOLD}`, borderRadius: 6, padding: "8px 10px", color: GOLD, fontSize: 11.5 }}>
               {success}
             </div>
           )}
@@ -745,7 +745,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               const label = isLink ? 'Link invite' : inv.target_email;
               return (
                 <div key={inv.id} data-kal31-project-invite={inv.id} style={{ position: "relative" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box", background: "rgba(216,168,78,0.03)" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box", background: "var(--accent-soft)" }}>
                     <div style={{ width: 30, height: 30, borderRadius: "50%", background: isLink ? 'var(--surface-3)' : INK_200, color: isLink ? BONE_100 : "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{isLink ? 'L' : initialsOf(inv.target_email)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>

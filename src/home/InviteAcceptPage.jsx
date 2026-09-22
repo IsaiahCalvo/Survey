@@ -226,13 +226,13 @@ export default function InviteAcceptPage() {
           <div style={{ color: C.inkSoft, fontSize: 13, lineHeight: 1.5 }}>{description}</div>
 
           {result?.status === 'accepted' && result.upgradeRequired && (
-            <div style={{ background: 'rgba(216,168,78,0.10)', border: `1px solid ${C.gold}`, borderRadius: 8, padding: '10px 12px', color: C.gold, fontSize: 12.5, lineHeight: 1.45 }}>
+            <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 8, padding: '10px 12px', color: C.gold, fontSize: 12.5, lineHeight: 1.45 }}>
               Upgrade to use {(result.intendedRole || 'editor')} permissions. Your original role ({result.intendedRole}) is preserved and activates automatically after upgrade.
             </div>
           )}
 
           {error && (
-            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
+            <div style={{ background: 'var(--danger-soft)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}

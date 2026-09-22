@@ -86,7 +86,7 @@
 }
 
 .auth-modal-close:hover {
-  background: var(--surface-3);
+  background: var(--hover);
   color: var(--text-1);
 }
 
@@ -130,7 +130,7 @@
    body text. Red is the accent, not the text colour, so the message stays
    readable rather than shouting. Same shape as .account-error. */
 .auth-error {
-  background: rgba(217, 90, 86, 0.10);
+  background: var(--danger-soft);
   border-left: 3px solid var(--danger);
   color: var(--text-1);
   padding: 10px 12px;
@@ -144,8 +144,8 @@
 
 /* Success/status — low-opacity gold background + gold border/text. */
 .auth-message {
-  background: rgba(216, 168, 78, 0.1);
-  border: 1px solid rgba(216, 168, 78, 0.5);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
   color: var(--accent);
   padding: 10px 12px;
   border-radius: 6px;
@@ -196,14 +196,14 @@
 .auth-form-group input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(216, 168, 78, 0.18);
+  box-shadow: 0 0 0 3px var(--accent-soft-strong);
   background: var(--surface-1);
 }
 
 .auth-form-group input:disabled {
   background: var(--surface-2);
   cursor: not-allowed;
-  opacity: 0.5;
+  color: var(--text-disabled);
 }
 
 /* Primary action — gold with dark text, semibold.
@@ -243,7 +243,6 @@
   background: var(--surface-3);
   color: var(--text-3);
   cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .auth-divider {
@@ -288,12 +287,12 @@
 }
 
 .auth-google-btn:hover:not(:disabled) {
-  background: var(--surface-3);
+  background: var(--hover);
   border-color: var(--border-strong);
 }
 
 .auth-google-btn:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 

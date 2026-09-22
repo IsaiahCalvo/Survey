@@ -1065,7 +1065,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
           fontSize: '11px',
           fontWeight: '600',
           color: 'var(--accent)',
-          background: 'rgba(216, 168, 78, 0.15)',
+          background: 'var(--accent-soft)',
           padding: '2px 6px',
           borderRadius: '4px'
         }}>

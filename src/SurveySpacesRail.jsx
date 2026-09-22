@@ -3432,12 +3432,12 @@ const SurveySpacesRail = ({
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 data-drag-rearrange-row
                                                 style={{
-                                                background: mobileMode ? 'var(--surface-1)' : (isDragging ? 'rgba(216, 168, 78, 0.12)' : 'transparent'),
+                                                background: mobileMode ? 'var(--surface-1)' : (isDragging ? 'var(--accent-soft)' : 'transparent'),
                                                 border: mobileMode ? '1px solid var(--border)' : '1px solid var(--border-strong)',
                                                 borderRadius: mobileMode ? '6px' : '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
-                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(216, 168, 78, 0.3)' : 'none',
+                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 2px var(--focus)' : 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
                                                 {/* UX (mobile demo parity): expanded-category item rows are

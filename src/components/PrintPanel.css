@@ -40,7 +40,7 @@
   --pp-accent-glow: 0 0 0 1px var(--focus);
   /* UX (KAL-62): the app's one modal scrim colour. */
   --pp-overlay: var(--overlay-scrim);
-  --pp-shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 0 rgba(255,255,255,0.02) inset;
+  --pp-shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 0 var(--ink-ring) inset;
   --pp-radius: 12px;
   --pp-radius-sm: 6px;
   --pp-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
@@ -277,7 +277,7 @@
   pointer-events: none;
 }
 .pp-thumb-bd {
-  background: rgba(216, 168, 78, 0.95); color: var(--pp-accent-ink);
+  background: var(--accent); color: var(--pp-accent-ink);
   font-size: 9px; font-weight: 600; padding: 1px 4px; border-radius: 3px;
 }
 .pp-thumb-bd.bd-mk { background: var(--accent-light); color: var(--accent-text); }
@@ -368,7 +368,7 @@
   padding: 4px 10px; font: 500 12px/1.4 inherit; cursor: pointer;
   white-space: nowrap; text-transform: none;
 }
-.pp-ppicker-opt:hover { background: rgba(255,255,255,0.08); }
+.pp-ppicker-opt:hover { background: var(--hover); }
 /* A row inside a dropdown menu, so it takes the app's menu-row cue: a surface
    step plus a 2px gold left edge and gold ink — the same as
    .annotation-dropdown__option.is-active and the phone's menus. Not a gold
@@ -424,7 +424,7 @@
   border: 1px solid var(--pp-border); cursor: pointer; font-size: 16px;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.pp-pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.pp-pager-btn:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .pp-pager-btn:not(:disabled):hover { background: var(--pp-accent); border-color: var(--pp-accent); }
 .pp-pager-pos strong { color: var(--pp-ink); }
 /* UX 2026-04-23: dots are clickable <button>s that jump to a specific page.
@@ -729,7 +729,7 @@
   box-sizing: border-box;
   height: 23px;
   margin: 0;
-  box-shadow: 0 2px 6px rgba(216, 168, 78, 0.35);
+  box-shadow: 0 2px 6px var(--accent-press);
 }
 .pp-btn-print:hover { background: var(--pp-accent-hover); }
 .pp-btn-print:disabled {
@@ -786,7 +786,7 @@
   cursor: pointer;
 }
 .pp-bigprev-head .pp-bigprev-zoom button:hover:not(:disabled) {
-  background: var(--surface-3);
+  background: var(--hover);
   color: var(--text-1);
 }
 .pp-bigprev-head .pp-bigprev-zoom button:active {
@@ -822,7 +822,7 @@
   transition: background 120ms ease, color 120ms ease;
 }
 .pp-bigprev-head .pp-bigprev-close:hover {
-  background: var(--surface-3);
+  background: var(--hover);
   color: var(--text-1);
 }
 .pp-bigprev-head strong { color: var(--text-1); }
@@ -847,7 +847,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   margin-left: 8px;
 }
-.pp-bigprev-close:hover { background: var(--surface-2); color: var(--text-1); }
+.pp-bigprev-close:hover { background: var(--hover); color: var(--text-1); }
 .pp-bigprev-sheet {
   background: #ececea; color: #222;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9);
@@ -864,7 +864,7 @@
   border-radius: 6px; width: 28px; height: 28px; cursor: pointer;
   font-size: 15px; font-family: inherit;
 }
-.pp-bigprev-zoom button:hover { background: var(--surface-3); color: var(--text-1); }
+.pp-bigprev-zoom button:hover { background: var(--hover); color: var(--text-1); }
 
 /* UX 2026-04-23: navigation row at the bottom of the Bigger Preview —
    mirrors the inline preview's controls (prev/next arrows, page picker,

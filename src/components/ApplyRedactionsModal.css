@@ -76,7 +76,7 @@
 
 .apply-redactions-actions button:disabled {
   cursor: wait;
-  opacity: 0.58;
+  color: var(--text-disabled);
 }
 
 @media (max-width: 520px) {

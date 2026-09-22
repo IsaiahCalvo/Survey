@@ -176,9 +176,26 @@
   outline: none;
 }
 
+/* UX 2026-09-22 (revision-3 palette): ONE disabled look, from tokens, never an
+   opacity. `opacity: 0.5` dimmed the fill AND the label AND the border by the
+   same amount, so a disabled gold button stayed unmistakably gold and a
+   disabled ghost button stayed invisible — seven different opacities across
+   the app, none of them agreeing. The rule the reference video gives is a flat
+   one: a disabled control is light grey with washed-out text, full stop. */
 .btn:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
+  border-color: var(--border);
   cursor: not-allowed;
+}
+
+/* A button that HAS a fill loses its own colour when it is off; a ghost or
+   icon button has no fill to lose and simply dims, so it is not listed. */
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-default:disabled,
+.btn-danger:disabled {
+  background: var(--disabled-fill);
+  border-color: var(--border);
 }
 
 .btn:not(:disabled):hover {
@@ -227,9 +244,8 @@
 }
 
 .btn-default:hover:not(:disabled) {
-  background: rgba(216, 168, 78, 0.14);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
+  background: var(--hover);
+  border-color: var(--border-strong);
 }
 
 .btn-primary {
@@ -253,24 +269,27 @@
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(216, 168, 78, 0.14);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
+  background: var(--hover);
+  border-color: var(--border-strong);
 }
 
 /* .btn-success (a #a6e07a green button and its #93cf68 hover) was DELETED
    2026-09-17 with the revision-2 palette. Nothing in the app ever carried the
    class, and there is no green button in the palette. */
 
+/* UX 2026-09-22: the fill is --danger-fill, not --danger. --text-1 on the
+   bright --danger measured 2.83:1 — the label on the app's most destructive
+   button was the least readable text in it. On the darkened fill white reads
+   6.06:1, and the hover still lifts (the video's rule) rather than darkens. */
 .btn-danger {
-  background: var(--danger);
-  color: var(--text-1);
-  border: 1px solid var(--danger);
+  background: var(--danger-fill);
+  color: var(--on-danger);
+  border: 1px solid var(--danger-fill);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: var(--danger-press);
-  border-color: var(--danger-press);
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 .btn-ghost {
@@ -280,8 +299,8 @@
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--hover);
+  border-color: var(--border-strong);
 }
 
 .btn-icon {
@@ -295,9 +314,29 @@
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: rgba(216, 168, 78, 0.14);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.35);
+  background: var(--hover);
+  border-color: var(--border-strong);
+}
+
+/* UX 2026-09-22 (revision-3 palette): THE PRESSED STATE, declared after every
+   hover rule above so a press on a control the pointer is already over wins
+   the cascade — before this, hover and press were the same declaration order
+   and the hover colour simply stayed put under the finger. The video's rule:
+   hover lightens the base, press darkens it. A gold or red button darkens to
+   its OWN pressed step; everything else takes the neutral one. */
+.btn:not(:disabled):active {
+  background: var(--pressed);
+  border-color: var(--border);
+}
+
+.btn-primary:not(:disabled):active {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+}
+
+.btn-danger:not(:disabled):active {
+  background: var(--danger-press);
+  border-color: var(--danger-press);
 }
 
 .btn-icon-sm {
@@ -401,20 +440,32 @@
   cursor: pointer;
 }
 
-/* Hover is a SURFACE STEP, never a gold wash (owner ruling 2026-09-17). */
-.chrome-pill:hover,
+/* Hover is a SURFACE STEP, never a gold wash (owner ruling 2026-09-17).
+   UX 2026-09-22: it was painted with --border-strong — a BORDER colour used as
+   a fill, which is why an idle pill under the pointer looked brighter than a
+   selected one. Hover is --hover; an OPEN pill is showing its menu, which is a
+   selected state, so it takes --surface-3 like every other selected thing. */
+.chrome-pill:hover {
+  color: var(--text-1);
+  background: var(--hover);
+}
+
+.chrome-pill:active {
+  background: var(--pressed);
+}
+
 .chrome-pill[data-state='open'] {
   color: var(--text-1);
-  background: var(--border-strong);
+  background: var(--surface-3);
 }
 
 .chrome-pill:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .chrome-pill:disabled {
-  opacity: 0.45;
+  color: var(--text-disabled);
   cursor: default;
 }
 
@@ -464,9 +515,13 @@
   background: var(--hover);
 }
 
+.chrome-text-toggle:active {
+  background: var(--pressed);
+}
+
 .chrome-text-toggle:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* PASS 7 (boards 13, 14): a SEGMENTED TOGGLE — Partial/Whole on the eraser and
@@ -641,9 +696,9 @@ input[type="text"].space-name-inline:focus {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
   color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
@@ -775,9 +830,9 @@ input[type="text"].space-name-inline:focus {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
   color: var(--text-2);
   cursor: pointer;
   font-family: inherit;
@@ -789,8 +844,8 @@ input[type="text"].space-name-inline:focus {
 
 .region-page-pill:hover,
 .region-page-pill:focus-visible {
-  background: rgba(216, 168, 78, 0.18);
-  border-color: rgba(216, 168, 78, 0.65);
+  background: var(--accent-soft-strong);
+  border-color: var(--accent);
   color: var(--text-1);
   outline: none;
 }
@@ -855,7 +910,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .region-delete-button:hover {
-  background: rgba(217, 90, 86, 0.15);
+  background: var(--danger-soft);
 }
 
 .survey-marker-expand-spacer {
@@ -877,7 +932,7 @@ input[type="text"].space-name-inline:focus {
   overflow-y: auto;
   padding: 9px 12px 10px;
   border-bottom: 1px solid var(--border);
-  background: rgba(217, 90, 86, 0.06);
+  background: var(--danger-soft);
   font-family: inherit;
 }
 
@@ -916,7 +971,7 @@ input[type="text"].space-name-inline:focus {
 
 .survey-unplaced-dismiss-all:hover {
   border-color: var(--accent);
-  background: rgba(216, 168, 78, 0.18);
+  background: var(--accent-soft-strong);
 }
 
 .survey-unplaced-notice {
@@ -992,7 +1047,7 @@ input[type="text"].space-name-inline:focus {
 
 .survey-unplaced-row-dismiss:hover,
 .survey-unplaced-row-dismiss:focus-visible {
-  background: rgba(220, 38, 38, 0.12);
+  background: var(--danger-soft);
   color: var(--danger);
   outline: none;
 }
@@ -1038,7 +1093,7 @@ input[type="text"].space-name-inline:focus {
 
 .survey-marker-review-button:hover,
 .survey-marker-review-button:focus-visible {
-  background: rgba(220, 38, 38, 0.12);
+  background: var(--danger-soft);
   outline: none;
 }
 
@@ -1129,7 +1184,7 @@ input[type="text"].space-name-inline:focus {
 
 .survey-marker-review-tooltip-actions button:hover {
   border-color: var(--accent);
-  background: rgba(216, 168, 78, 0.18);
+  background: var(--accent-soft-strong);
 }
 
 .survey-marker-leading-control {
@@ -1239,7 +1294,7 @@ input[type="text"].space-name-inline:focus {
    repeat is the resting colour, so it painted nothing; a declaration that
    cannot change anything is dead weight in a hover rule. */
 .survey-marker-select-mode-toggle:hover {
-  background: rgba(216, 168, 78, 0.1);
+  background: var(--accent-soft);
 }
 
 .survey-marker-select-action {
@@ -1264,7 +1319,7 @@ input[type="text"].space-name-inline:focus {
 .survey-marker-select-action:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--text-1);
-  background: rgba(216, 168, 78, 0.12);
+  background: var(--accent-soft);
 }
 
 .survey-marker-select-action:disabled {
@@ -1286,7 +1341,7 @@ input[type="text"].space-name-inline:focus {
 .survey-marker-select-action-danger:hover:not(:disabled) {
   color: var(--danger);
   border-color: var(--danger-press);
-  background: rgba(255, 102, 102, 0.12);
+  background: var(--danger-soft);
 }
 
 .survey-marker-select-action-danger:disabled {
@@ -1338,7 +1393,7 @@ input[type="text"].space-name-inline:focus {
 .survey-marker-category-select-button:hover {
   border-color: var(--accent);
   color: var(--text-1);
-  background: var(--surface-3);
+  background: var(--hover);
 }
 
 .survey-marker-category-create-button {
@@ -1435,11 +1490,10 @@ input[type="text"].space-name-inline:focus {
 
 .survey-marker-export-compact-button:disabled,
 .survey-marker-export-compact-chevron:disabled {
-  background: var(--border-strong);
-  border-color: var(--border-strong);
-  color: var(--text-2);
+  background: var(--disabled-fill);
+  border-color: var(--border);
+  color: var(--text-disabled);
   cursor: not-allowed;
-  opacity: 0.7;
 }
 
 .survey-marker-export-compact-menu {
@@ -1492,7 +1546,7 @@ input[type="text"].space-name-inline:focus {
 
 .spaces-header-export-button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  color: var(--text-disabled);
 }
 
 .spaces-header-export-menu {
@@ -1522,7 +1576,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .spaces-header-export-menu-button:hover {
-  background: var(--surface-3);
+  background: var(--hover);
 }
 
 .space-add-pages-input,
@@ -1647,12 +1701,12 @@ input[type="text"].space-add-pages-input:focus-visible {
 
 .survey-marker-category-main:hover,
 .survey-marker-category-arrow:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--hover);
 }
 
 .survey-marker-category-main:active,
 .survey-marker-category-arrow:active {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--pressed);
 }
 
 .survey-marker-category-main-label {
@@ -1727,13 +1781,13 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .survey-marker-entity-trigger:hover {
-  background: var(--surface-3);
+  background: var(--hover);
 }
 
 .survey-marker-entity-trigger:focus,
 .survey-marker-entity-trigger[aria-expanded="true"] {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(216, 168, 78, 0.3);
+  box-shadow: 0 0 0 2px var(--focus);
 }
 
 .survey-marker-entity-trigger-content,
@@ -1754,7 +1808,7 @@ input[type="text"].space-add-pages-input:focus-visible {
   flex: 0 0 10px;
   width: 10px;
   height: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--ink-ring);
   border-radius: 50%;
   overflow: hidden;
   pointer-events: none;
@@ -1871,7 +1925,7 @@ input[type="text"].space-add-pages-input:focus-visible {
 }
 
 .btn-card:hover {
-  background: var(--surface-2);
+  background: var(--hover);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border-color: var(--accent);
@@ -1910,7 +1964,7 @@ input[type="text"].space-add-pages-input:focus-visible {
    inline per-swatch on top of this base. */
 .ctx-color-swatch {
   background-color: #ffffff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0 1px var(--ink-ring);
 }
 .ctx-color-swatch::before {
   content: '';
@@ -1944,9 +1998,25 @@ input[type="text"].space-add-pages-input:focus-visible {
    Tab and programmatic focus do.
    NOTE: styles.css is the one global sheet main.jsx actually loads. The old
    src/App.css was never imported and was deleted 2026-08-11; its three cited
-   tokens now live in this file's :root block at the top. */
+   tokens now live in this file's :root block at the top.
+   UX 2026-09-22 (revision-3 palette): this rule is `!important` now, and that
+   is deliberate. Forty-seven React components set `outline: 'none'` as an
+   INLINE style and forty CSS rules set it directly, so a keyboard user Tabbing
+   through the tool bar, the rails, the menus, the modals and the home cards
+   saw no ring at all on most of them — an inline declaration beats a normal
+   author rule, and a later same-specificity rule beats an earlier one. An
+   `!important` author declaration beats both, so there is now exactly ONE
+   focus ring and nothing can quietly switch it off. A control that wants a
+   DIFFERENT focus look still may: it paints a border, a background or a
+   box-shadow, none of which this rule touches.
+   The ring is the opaque gold (7.98:1 on surface-1) rather than --focus
+   (rgba gold at 55%, 3.30:1) because an outline sits outside the control on
+   whatever surface is behind it and has to read on all four. --focus is the
+   INSET twin — the box-shadow halo used where an outline would be clipped by
+   an ancestor's overflow (THEME SHADOWS.focus, modal.hoverGlow, the print
+   panel's --pp-accent-glow, the phone sheets). */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent) !important;
   outline-offset: 2px;
 }
 
@@ -2008,9 +2078,14 @@ input[type="text"].space-add-pages-input:focus-visible {
    the active/focus cue rather than making an idle hover look selected. */
 /* UX: include Pan/Select icon buttons and active tools; every hover keeps
    the same neutral chip and fixed baseline as the sub-toolbar. */
+.btn[data-tool-group]:active:not(:disabled) {
+  background: var(--pressed);
+  border-color: var(--border);
+}
+
 .btn[data-tool-group]:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--hover);
+  border-color: var(--border-strong);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   transform: none;
 }
@@ -2020,8 +2095,8 @@ input[type="text"].space-add-pages-input:focus-visible {
    top row, so every button in a row answers the pointer the same way. Gold
    stays the active cue; the border stays 1px so the box never jiggles. */
 #chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--hover);
+  border-color: var(--border-strong);
 }
 
 /* UX: both label copies share a cell; the hidden bold copy reserves menu width. */

@@ -123,8 +123,8 @@
   line-height: 1.5;
   letter-spacing: 0;
   color: var(--danger);
-  background: rgba(217, 90, 86, 0.1);
-  border: 1px solid rgba(217, 90, 86, 0.45);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 0 0 16px 0;
@@ -140,8 +140,8 @@
   line-height: 1.5;
   letter-spacing: 0;
   color: var(--text-2);
-  background: rgba(216, 168, 78, 0.1);
-  border: 1px solid rgba(216, 168, 78, 0.45);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-press);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 0 0 16px 0;
@@ -187,14 +187,14 @@
 .re-signin-modal__input:focus {
   /* UX: 2px focus halo at 0.4 opacity — same pattern as banner action button.
    * Visible keyboard focus without overpowering the surrounding chrome. */
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
 }
 
 .re-signin-modal__input:disabled {
   /* UX: while submitting, inputs visually dim to 0.6 opacity so the user
    * sees the form is locked. Cursor:not-allowed reinforces the disabled
    * state on hover. */
-  opacity: 0.6;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
@@ -231,14 +231,14 @@
 .re-signin-modal__cta:focus {
   /* UX: keyboard focus halo matches input focus pattern for visual consistency. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
 }
 
 .re-signin-modal__cta:disabled {
   /* UX: disabled state — opacity 0.5 + cursor:not-allowed signals the button
    * isn't actionable yet (waiting for both fields to fill, or a submit is
    * already in flight). Matches UI-SPEC contract verbatim. */
-  opacity: 0.5;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
@@ -266,7 +266,7 @@
 
 .re-signin-modal__link-primary:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
   border-radius: 2px;
 }
 
@@ -295,6 +295,6 @@
 
 .re-signin-modal__link-secondary:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
   border-radius: 2px;
 }

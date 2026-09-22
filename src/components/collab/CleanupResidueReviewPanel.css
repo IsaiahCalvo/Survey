@@ -164,7 +164,7 @@
   /* UX: keyboard focus ring — same shape as the rest of the collab surface
      family. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
+  box-shadow: 0 0 0 2px var(--focus);
 }
 
 .cleanup-residue-review__action--secondary {

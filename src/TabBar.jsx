@@ -157,7 +157,7 @@ function TabItem({
         fontSize: '12px',
         color: isActive ? TAB_TEXT_ACTIVE : TAB_TEXT,
         zIndex: isDragging ? 5 : undefined,
-        boxShadow: isDragging ? '0 10px 26px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(216,168,78,0.28)' : 'none',
+        boxShadow: isDragging ? '0 10px 26px rgba(0,0,0,0.35), inset 0 0 0 1px var(--accent-press)' : 'none',
         touchAction: isHome ? undefined : 'none',
       }}
       onMouseEnter={(e) => {
