@@ -7,7 +7,7 @@ import { matchedQuickColour, withQuickColoursFirst } from '../utils/quickStylePr
 import CompactColorPicker from '../components/CompactColorPicker';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
-import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
+import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
@@ -120,14 +120,6 @@ const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'text', 'callout', 'co
 // UX 2026-09-09: polygon and polyline join the shape tools that get a border
 // style picker on mobile, so their Cloud option has somewhere to live.
 const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout']);
-const MOBILE_ARROWHEAD_STYLE_LABELS = {
-  ...ARROWHEAD_STYLE_LABELS,
-  solidTriangle: 'Solid Triangle',
-  vShape: 'V-Shape',
-  openCircle: 'Open Circle',
-  openTriangle: 'Open Triangle',
-  horizontalLine: 'Horizontal Line',
-};
 
 // UX 2026-09-17 (owner): the settings sheet's palette opens with the same four
 // quick colours the strip's dots offer, then its own longer tail. Its old first
@@ -1364,9 +1356,22 @@ export function MobileToolProperties({ api }) {
     menuPreview: lineStyleSample(option.value, 24),
   }));
   const arrowheadValue = api.arrowheadStyle || 'solidTriangle';
-  const arrowheadOptions = Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({
+  /* PASS 7 (boards 15 + 16): the six heads the boards offer, in board order,
+     each named with ONE word — None, Solid, Open, Circle, Square, Bar. The list
+     and the words are the shared ARROWHEAD_MENU_ORDER / ARROWHEAD_SHORT_LABELS
+     (src/components/Callout/types.js), which the desktop bar reads too, so the
+     phone sheet and the desktop pill can never name the same head differently.
+     This used to hold the app's PROSE names, stretched longer still ("Solid
+     Triangle", "Horizontal Line"), and a 96px field sliced them mid-word.
+     An imported-only head (open triangle, diamond, slash) is prepended when it
+     is the live one, exactly as the desktop bar does, so the pill never lies
+     about the mark in force. */
+  const arrowheadOptions = [
+    ...(ARROWHEAD_MENU_ORDER.includes(arrowheadValue) ? [] : [arrowheadValue]),
+    ...ARROWHEAD_MENU_ORDER,
+  ].map((value) => ({
     value,
-    label,
+    label: ARROWHEAD_SHORT_LABELS[value] || 'Arrowhead',
     preview: arrowheadSample(value, 15),
     menuPreview: arrowheadSample(value, 20),
   }));

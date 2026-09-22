@@ -475,7 +475,15 @@ test('mobile Fit Page settles through the native viewer in one pass', () => {
 
 test('mobile viewer exposes the preserved dynamic tool and page controls', () => {
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Partial Erase/);
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Solid Triangle/);
+  // DELIBERATE ASSERTION CHANGE (2026-09-22, pass 7 integration). Was
+  // /Solid Triangle/. RULING (owner, boards 15 and 16): an arrowhead is named in
+  // ONE word — None, Solid, Open, Circle, Square, Bar — because the field that
+  // holds the name is 96px in the phone sheet and was slicing "Solid Triangle"
+  // mid-word. The point of this line is that the phone still OFFERS the
+  // arrowhead picker, so it now asserts the shared list the picker is built
+  // from (src/components/Callout/types.js), which the desktop bar reads too.
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ARROWHEAD_SHORT_LABELS\[value\]/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ARROWHEAD_MENU_ORDER/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Text formatting"/);
   assert.match(PAGES_PANEL_SOURCE, /aria-label="Page actions"/);
   assert.match(PAGES_PANEL_SOURCE, /onInsertBlankPage\?\.\(pageNum\)/);

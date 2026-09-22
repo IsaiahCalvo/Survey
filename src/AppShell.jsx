@@ -35,7 +35,7 @@ import {
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
 import YDocProvider from './components/collab/YDocProvider.jsx';
-import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
+import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
@@ -207,14 +207,23 @@ const LINE_STYLE_SAMPLE_ICONS = Object.freeze({
  * the list below prepends whichever of those is live so the pill never lies
  * about a mark the user has selected.
  */
-const ARROWHEAD_MENU_OPTIONS = Object.freeze([
-  Object.freeze({ value: 'none', label: 'None', icon: 'arrowheadNone' }),
-  Object.freeze({ value: 'solidTriangle', label: 'Solid', icon: 'arrowheadSolid' }),
-  Object.freeze({ value: 'vShape', label: 'Open', icon: 'arrowheadOpen' }),
-  Object.freeze({ value: 'openCircle', label: 'Circle', icon: 'arrowheadCircle' }),
-  Object.freeze({ value: 'square', label: 'Square', icon: 'arrowheadSquare' }),
-  Object.freeze({ value: 'horizontalLine', label: 'Bar', icon: 'arrowheadBar' }),
-]);
+/* The words come from the shared ARROWHEAD_SHORT_LABELS, which the phone's arrow
+   sheet reads too, so the same head is never "Solid" on one screen and
+   "Solid Triangle" on the other. Only the drawing is the bar's own. */
+const ARROWHEAD_MENU_ICONS = Object.freeze({
+  none: 'arrowheadNone',
+  solidTriangle: 'arrowheadSolid',
+  vShape: 'arrowheadOpen',
+  openCircle: 'arrowheadCircle',
+  square: 'arrowheadSquare',
+  horizontalLine: 'arrowheadBar',
+});
+
+const ARROWHEAD_MENU_OPTIONS = Object.freeze(ARROWHEAD_MENU_ORDER.map((value) => Object.freeze({
+  value,
+  label: ARROWHEAD_SHORT_LABELS[value],
+  icon: ARROWHEAD_MENU_ICONS[value],
+})));
 
 /*
  * PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is one dropdown with three
@@ -2891,7 +2900,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   const live = bottomToolbarApi.arrowheadStyle;
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
                     ? ARROWHEAD_MENU_OPTIONS
-                    : [{ value: live, label: ARROWHEAD_STYLE_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
+                    : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
                   const iconFor = (value) => options.find((option) => option.value === value)?.icon || 'arrowheadSolid';
                   return (
                   <AnnotationDropdown

@@ -34,6 +34,46 @@ export const ARROWHEAD_STYLE_LABELS = {
 };
 
 /**
+ * PASS 7 (boards 15 and 16, owner ruling): the names the ARROWHEAD PICKER shows.
+ *
+ * INTENDED UX: every arrowhead is ONE word, because the pill that holds it is
+ * 90px on the desktop bar and 96px in the phone sheet, and a two-word name fits
+ * neither. The phone sheet was showing "Solid Triangle" sliced at the field's
+ * edge, so the pill reported a head the user could not read. The drawing beside
+ * each word already says "triangle"; the word only has to say WHICH one.
+ *
+ * The longer names in ARROWHEAD_STYLE_LABELS above stay where prose wants them
+ * (history entries, descriptions of an imported mark); only pickers use these.
+ *
+ * ARROWHEAD_MENU_ORDER is the six heads a user may CHOOSE, in board order. The
+ * three left out — open triangle, diamond, slash — only ever arrive from an
+ * imported PDF, so a picker PREPENDS whichever of them is live instead of
+ * offering them. Both chrome files read this one list, so the desktop bar and
+ * the phone sheet cannot drift apart on either the words or the order.
+ */
+export const ARROWHEAD_SHORT_LABELS = {
+  [ARROWHEAD_STYLES.NONE]: 'None',
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'Open',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
+  [ARROWHEAD_STYLES.SQUARE]: 'Square',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Bar',
+  // Imported-only heads, one word each so a prepended row fits the pill too.
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Triangle',
+  [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
+  [ARROWHEAD_STYLES.SLASH]: 'Slash'
+};
+
+export const ARROWHEAD_MENU_ORDER = Object.freeze([
+  ARROWHEAD_STYLES.NONE,
+  ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  ARROWHEAD_STYLES.V_SHAPE,
+  ARROWHEAD_STYLES.OPEN_CIRCLE,
+  ARROWHEAD_STYLES.SQUARE,
+  ARROWHEAD_STYLES.HORIZONTAL_LINE
+]);
+
+/**
  * Leader line-style options (the toolbar's Style picker for callouts).
  * Values match the shared lineBorderStyle vocabulary the shape tools use
  * ('solid' | 'dashed' | 'dotted') so one picker drives both families.
