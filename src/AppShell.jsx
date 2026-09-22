@@ -2405,7 +2405,18 @@ export default function App({ devPreviewReturnTab = null }) {
                       ? bottomToolbarApi.counterSeriesList
                       : [];
                     const activeSeries = seriesList.find((s) => s.seriesId === bottomToolbarApi.activeCounterSeriesId);
-                    const seriesLabel = activeSeries?.label || 'Counter series';
+                    /* PASS 7 (boards 11 + 15, owner ruling): the pill NAMES THE
+                       COUNT it is on — "Count 1" — the way the width pill says
+                       "2 pt". It used to fall back to the words "Counter
+                       series", which is the control's job description, not its
+                       value: 76px of text in a 51px slot, so it arrived chopped
+                       on a fresh document, which is exactly when a user is most
+                       likely to look at it.
+                       A count only enters counterSeriesList once it has a pin,
+                       so before the first pin (and right after "New") there is
+                       no entry to read. The next count's number is the one the
+                       next pin will carry: one past however many exist. */
+                    const seriesLabel = activeSeries?.label || `Count ${seriesList.length + 1}`;
                     return (
                       <AnnotationDropdown
                         open={showCounterSeriesMenu}
@@ -2499,12 +2510,16 @@ export default function App({ devPreviewReturnTab = null }) {
                                 bottomToolbarApi.onNewCounterSeries();
                                 setShowCounterSeriesMenu(false);
                               }}
+                              aria-label="New count"
                             >
-                              {/* Board 15: a plus glyph, not a "+" typed into
-                                  the label, so the row matches every other
-                                  drawing-then-words row in the chrome. */}
-                              <Icon name="plus" size={13} color="currentColor" />
-                              New count
+                              {/* PASS 7 (owner ruling, 2026-09-22): the series
+                                  menu is WORDS ONLY, and that includes this
+                                  row. It read "New count" beside a plus glyph —
+                                  a drawing and two words under three rows that
+                                  are one word and a number. "New" is what it
+                                  does; the full phrase stays the accessible
+                                  name for a screen reader. */}
+                              New
                             </button>
                           </div>
                         {showCounterSeriesMenu && counterSeriesContextMenu && typeof document !== 'undefined' && createPortal((
