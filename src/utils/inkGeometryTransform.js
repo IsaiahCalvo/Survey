@@ -253,7 +253,18 @@ export function createInkPathAffine(
   const rawCenterX = safeMidpoint(bounds.minX, bounds.maxX);
   const rawCenterY = safeMidpoint(bounds.minY, bounds.maxY);
   const geometryOrigin = object?.inkGeometryOrigin || object?.data?.inkGeometryOrigin;
-  const hasExplicitFabricOrigin = object?.originX != null || object?.originY != null;
+  // An explicit page-space declaration outranks any Fabric origin found on the
+  // same row: `inkGeometrySpace: 'page'` means the commands already hold page
+  // coordinates, so applying Fabric's origin offset on top of them would place
+  // the stroke by its own half-size (left/top 0 parks its centre on the page
+  // origin — the top-left corner). Rows saved with that stale pair, by an
+  // eraser survivor bake before 2026-09-22, therefore keep rendering where
+  // their commands say they are.
+  const declaredPageSpace = (
+    object?.inkGeometrySpace === 'page' || object?.data?.inkGeometrySpace === 'page'
+  );
+  const hasExplicitFabricOrigin = !declaredPageSpace
+    && (object?.originX != null || object?.originY != null);
   const centerOrigin = geometryOrigin === INK_CENTER_ORIGIN;
   const pathOffsetX = Number.isFinite(Number(object?.pathOffset?.x))
     ? Number(object.pathOffset.x)

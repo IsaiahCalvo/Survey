@@ -788,6 +788,16 @@ function bakePagePathResult(object, result) {
     width: _width,
     height: _height,
     pathOffset: _pathOffset,
+    // A page-space survivor's commands ARE page coordinates, so it must not
+    // carry a Fabric origin — exactly why createProductionPaperInk strips
+    // originX/originY (see PEN_FABRIC_RESIDUE in annotationCreationCommit).
+    // Before this, a stroke that had been MOVED (the move stamps
+    // originX/originY 'center') leaked that pair back through `...metadata`,
+    // and createInkPathAffine applied the centre offset a second time: the
+    // survivor's own centre landed on the page origin, parking the stroke in
+    // the top-left corner. 2026-09-22.
+    originX: _originX,
+    originY: _originY,
     scaleX: _scaleX,
     scaleY: _scaleY,
     angle: _angle,
