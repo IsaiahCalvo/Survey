@@ -445,6 +445,28 @@ test('the desktop row reads colours, swatch, widths, width field, line style', (
 });
 
 /*
+ * ADDED at the pass-7 integration (board 12). The desktop text-formatting bar
+ * showed the colour cluster AND a separate round font-colour swatch next to it -
+ * five circles, two of them meaning the same thing - because the cluster had no
+ * way to open a picker when that bar was built. The rainbow custom disc is that
+ * way, so board 12's four circles are what the bar draws, and the cluster is the
+ * only colour control on it.
+ */
+test('the desktop text bar shows the colour cluster and nothing else for colour', () => {
+  const bar = appShell.slice(
+    appShell.indexOf('<div data-rich-text-toolbar'),
+    appShell.indexOf('Font family — custom dropdown'),
+  );
+  assert.ok(bar.length > 400, 'the text-formatting bar must still be where this test reads it');
+  assert.match(bar, /<QuickColourDots/, 'the cluster is the colour control');
+  assert.match(bar, /onOpenPicker=\{\(\) => setShowFontColorPicker/, 'its custom disc opens the picker');
+  assert.doesNotMatch(bar, /aria-label="Font color"/, 'the second swatch is gone');
+  assert.doesNotMatch(bar, /ctx-color-swatch/, 'and so is its swatch styling');
+  // The picker it opens is still the one shared picker, anchored under the cluster.
+  assert.match(bar, /<CompactColorPicker/);
+});
+
+/*
  * RULED CHANGE 2026-09-21 (pass 7, boards 1-7). The phone strip's order is the
  * boards' order now, and it is shorter because the boards are: colour (three
  * preset discs plus a rainbow custom one for a single-colour tool, or ONE

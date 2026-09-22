@@ -1919,40 +1919,24 @@ export default function App({ devPreviewReturnTab = null }) {
                         size, then B / I / U / S, then the two alignments —
                         appearance, then shape, then position, each pair behind
                         its own rule. */}
-                    {/* The quick text colours, the same four the drawing tools
-                        show, acting on the text instead of on a stroke. */}
-                    <QuickColourDots
-                      value={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
-                      onPick={(hex) => bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex)}
-                    />
-                    {/* Font color — reuses the shared color picker, just like
-                        the stroke/fill swatches above. The picker drops DOWN
-                        below the swatch via an absolute wrapper (top:100%) so
-                        it lines up with the other top-bar pickers. */}
+                    {/* PASS 7 (board 12): the text colour is the SAME cluster the
+                        drawing tools show - three preset discs and the rainbow
+                        custom disc, which opens the shared picker - acting on the
+                        text instead of on a stroke. The chosen disc wears a ring
+                        in its own colour with a white check.
+
+                        This bar used to show the cluster AND a separate round
+                        font-colour swatch beside it: five circles, two of which
+                        meant the same thing, because the cluster had no way to
+                        open a picker when it was built. The custom disc is that
+                        way, so the extra swatch is gone and board 12's four
+                        circles are what the bar draws. */}
                     <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                      <button
-                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={() => setShowFontColorPicker((v) => !v)}
-                        className="ctx-color-swatch"
-                        style={{
-                          width: 'var(--chrome-colour-btn)',
-                          height: 'var(--chrome-colour-btn)',
-                          padding: 0,
-                          borderRadius: '50%',
-                          border: 'none',
-                          position: 'relative',
-                          overflow: 'hidden',
-                          boxSizing: 'border-box',
-                          cursor: 'pointer',
-                        }}
-                        {...chromeTip('Font color', 'below')}
-                        aria-label="Font color"
-                      >
-                        <span
-                          className="ctx-color-fill"
-                          style={{ background: bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b' }}
-                        />
-                      </button>
+                      <QuickColourDots
+                        value={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
+                        onPick={(hex) => bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex)}
+                        onOpenPicker={() => setShowFontColorPicker((v) => !v)}
+                      />
                       {showFontColorPicker && (
                         /* UX 2026-09-16: same 140ms fade-and-slide as every
                            other popover (Drawboard's 100ms fade+grow in). */
