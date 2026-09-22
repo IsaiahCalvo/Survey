@@ -23,6 +23,7 @@ import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoadingSkeletons from './HubLoadingSkeletons';
+import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
 
@@ -82,6 +83,13 @@ export default function SurveyHub({
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
   }, [tab]);
+
+  /* UX 2026-09-22: every scrolling list on the home screens gets the canvas's
+     scrollbar manners — a thin overlay thumb that appears while you scroll and
+     fades once you stop, and nothing at all when the content fits. One
+     document-level listener covers the lists, the sheets and the portalled
+     menus, so no list has to wire itself up. */
+  useEffect(() => installOverlayScrollbars(), []);
 
   // Documents, Projects, and Templates are primary navigation, not optional
   // features. Keep their code eager and retain the current frame while React

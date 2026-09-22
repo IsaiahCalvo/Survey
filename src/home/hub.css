@@ -609,13 +609,16 @@
 
 .survey-hub::-webkit-scrollbar { display: none; }
 
-/* Slim aesthetic scrollbars */
-.survey-hub .slim-scroll { overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--ink-400) transparent; }
+/* Scrolling lists (owner, 2026-09-22): `.slim-scroll` no longer paints a
+   native bar. It marks a container as one that gets the CANVAS's scrollbar —
+   a thin overlay thumb that appears while you scroll, fades 600ms after you
+   stop, and never shows when the content fits. That thumb is drawn by
+   utils/overlayScrollbars.js (installed once by SurveyHub) because a native
+   `::-webkit-scrollbar` steals layout width and cannot fade. The old
+   6px webkit rules here were dead anyway: the app-wide
+   `::-webkit-scrollbar { display: none }` in styles.css outranked them. */
+.survey-hub .slim-scroll { overflow-x: hidden; }
 .survey-hub .slim-scroll * { min-width: 0; }
-.survey-hub .slim-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-.survey-hub .slim-scroll::-webkit-scrollbar-track { background: transparent; }
-.survey-hub .slim-scroll::-webkit-scrollbar-thumb { background: var(--ink-400); border-radius: 6px; }
-.survey-hub .slim-scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-300); }
 
 .survey-hub .section-label { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-200); font-weight: 700; }
 
