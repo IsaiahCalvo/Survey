@@ -87,8 +87,11 @@ test('mounted CompactColorPicker follows pointer-captured spectrum and hue drags
       hue.dispatchEvent(pointerEvent(dom.window, 'pointerdown', { clientX: 48, clientY: 206, pointerId: 2 }));
       // RULED 2026-09-23: the value is read on the thumb's inner run (10px in
       // from each end), so 75% of a 180px track is 30 + 10 + 0.75 * 160 = 160.
-      hue.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 160, clientY: 206, pointerId: 2 }));
-      hue.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 160, clientY: 206, pointerId: 2 }));
+      // RULED 2026-09-23 (owner: desktop picker smaller, slimmer): this
+      // default picker is the desktop one, whose 12px thumb runs 6px in from
+      // each end, so 75% of the same track is 30 + 6 + 0.75 * 168 = 162.
+      hue.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 162, clientY: 206, pointerId: 2 }));
+      hue.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 162, clientY: 206, pointerId: 2 }));
     });
     // CHANGED with the same ruling: the thumb's travel is inset by half the
     // thumb, so 75% of the track reads as 75 degrees of hue on the slider.
@@ -96,7 +99,10 @@ test('mounted CompactColorPicker follows pointer-captured spectrum and hue drags
     // RULED 2026-09-23 (owner: micka_design sliders): the thumb is 16px and
     // travels inset 10px from each round end, so the calc is 10px / 20px. The
     // point of the assertion — a drag to 75% lands the thumb at 75% — is kept.
-    assert.match(hue.firstElementChild.style.left, /^calc\(10px \+ 0\.75 \* \(100% - 20px\)\)$/);
+    // RULED 2026-09-23 (owner: desktop picker smaller, slimmer): the desktop
+    // thumb is 12px and travels 6px in from each end, so the calc is 6px /
+    // 12px. The point — a drag to 75% lands the thumb at 75% — is unchanged.
+    assert.match(hue.firstElementChild.style.left, /^calc\(6px \+ 0\.75 \* \(100% - 12px\)\)$/);
     assert.ok(changes.length >= 4);
   } finally {
     await act(async () => root.unmount());

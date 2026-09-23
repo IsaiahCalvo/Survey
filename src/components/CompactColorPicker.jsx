@@ -59,6 +59,18 @@ const GRID_LIGHTNESS = [88, 72, 56, 44, 32, 20];
 const GRID_GREY_LIGHTNESS = [100, 80, 60, 45, 25, 8];
 const GRID_SATURATION = 85;
 
+/*
+ * RULED 2026-09-23 (owner, desktop popover: "everything smaller ... put back
+ * those options, but shrink down the grid so that it still fits"). The desktop
+ * keeps the same eight presets and the same 8 x 6 grid, on a smaller scale:
+ * 20px cells on the grid's 4px gap, so the grid and everything under it is
+ * 8 * 20 + 7 * 4 = 188px wide, inside 10px of padding and a 1px edge — a
+ * 210px popover, down from board 19's 276px.
+ */
+const DESKTOP_CELL = 20;
+const DESKTOP_CONTENT_W = 8 * DESKTOP_CELL + 7 * 4;
+const DESKTOP_PANEL_W = DESKTOP_CONTENT_W + 2 * 10 + 2;
+
 const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', sans-serif";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -134,8 +146,8 @@ const ChosenCheck = ({ size = 12 }) => (
 );
 
 /** The footer toggle's two glyphs, board 19. Both are filled, not stroked. */
-const GridGlyph = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+const GridGlyph = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
         <rect x="4" y="4" width="7" height="7" rx="1.5" fill="currentColor" />
         <rect x="13" y="4" width="7" height="7" rx="1.5" fill="currentColor" />
         <rect x="4" y="13" width="7" height="7" rx="1.5" fill="currentColor" />
@@ -143,8 +155,8 @@ const GridGlyph = () => (
     </svg>
 );
 
-const GradientGlyph = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+const GradientGlyph = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
         <path d="M12 3L15 9L21 12L15 15L12 21L9 15L3 12L9 9L12 3Z" fill="currentColor" />
     </svg>
 );
@@ -199,6 +211,9 @@ const LinkGlyph = ({ size = 14 }) => (
 
 /** The chequerboard behind a partly transparent opacity track (boards 17-19). */
 const ALPHA_CHEQUER = 'repeating-conic-gradient(#6b7280 0 25%, #d1d5db 0 50%) 0 0 / 10px 10px';
+// The desktop's 6px band takes a 6px chequer (two 3px squares tall), so the
+// pattern still reads as a chequer instead of a cut-off stripe.
+const ALPHA_CHEQUER_DESKTOP = 'repeating-conic-gradient(#6b7280 0 25%, #d1d5db 0 50%) 0 0 / 6px 6px';
 
 /**
  * CompactColorPicker — the app's one shared colour picker.
@@ -261,16 +276,28 @@ const CompactColorPicker = ({
      * (chrome={false}) sits in a ~250px column with 234px of content, not the
      * 276px popover the boards drew. It gets the DENSE sizes: one 8px rhythm
      * between blocks, 22px tabs and swatches, 14px round sliders and a 26px
-     * bottom row whose hex stays fully readable. The standalone canvas picker
-     * (chrome=true) and the phone keep their ruled board-17/18/19 sizes.
+     * bottom row whose hex stays fully readable. (Superseded on the desktop
+     * by the slim scale below; the phone keeps its board-17/18 sizes.)
      */
-    // denseLayout lets a host ask for the compact sizes on the phone too (the
-    // Templates Entities sheet); undefined keeps the default rule.
-    const dense = typeof denseLayout === 'boolean' ? denseLayout : (!chrome && !isPhone);
-    const PANEL_GAP = dense ? 8 : 10;
-    const THUMB_SIZE = dense ? 12 : 16;
-    // The thumb's centre travels this far in from each round end.
-    const THUMB_INSET = dense ? 8 : 10;
+    // denseLayout lets a host ask for the compact sizes on the phone (the
+    // Templates Entities sheet); undefined keeps the full phone sizes.
+    /*
+     * RULED 2026-09-23 (owner, desktop popover: "too big ... sliders way too
+     * thick, input field too thick, text too thick ... not so bulky"; then
+     * "put back those options, but shrink down the grid"). EVERY desktop picker — the canvas popover (chrome on) and the
+     * Templates entity panel (chrome off) — now takes one slim desktop scale,
+     * which replaces both the old 276px board-19 sizes and the old desktop
+     * dense sizes. `dense` is therefore a PHONE-only switch now (the Templates
+     * Entities sheet); the phone's own board-17/18 sizes are untouched.
+     */
+    const isDesktop = !isPhone;
+    const dense = isPhone && denseLayout === true;
+    const PANEL_GAP = isDesktop ? 8 : (dense ? 8 : 10);
+    const THUMB_SIZE = isDesktop ? 12 : (dense ? 12 : 16);
+    // The thumb's centre travels this far in from each round end. On the
+    // desktop the thumb is wider than the thin track, so its travel is inset
+    // by exactly half the thumb: flush with the ends at 0% and 100%.
+    const THUMB_INSET = isDesktop ? 6 : (dense ? 8 : 10);
     const columns = isPhone ? 12 : 8;
     const presets = isPhone ? PHONE_PRESET_COLORS : PRESET_COLORS;
     const grid = useMemo(() => buildGrid(columns), [columns]);
@@ -278,17 +305,21 @@ const CompactColorPicker = ({
     // sheet's height or move the Opacity row and the bottom row. The spectrum
     // therefore takes EXACTLY the grid's box: its area is the grid's height
     // minus the hue track and the gap under it, so area + hue = grid. The grid
-    // height is measured from the panel's width (square cells, 4px gaps, six
-    // rows) rather than read from the DOM, so it is right before either view
-    // has painted.
+    // height is measured from the panel's CONTENT width (square cells, 4px
+    // gaps, six rows) rather than read from the DOM, so it is right
+    // before either view has painted. The panel's own padding is taken off
+    // first — it used to be counted, which made the desktop spectrum taller
+    // than the grid it replaces.
     const gridRef = useRef(null);
     const [gridHeight, setGridHeight] = useState(null);
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return undefined;
         const measure = () => {
-            const w = el.getBoundingClientRect().width;
-            if (!w) return;
+            const style = typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(el) : null;
+            const pad = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) : 0;
+            const w = (el.clientWidth || el.getBoundingClientRect().width) - pad;
+            if (!w || w <= 0) return;
             const cell = (w - (columns - 1) * 4) / columns;
             setGridHeight(6 * cell + 5 * 4);
         };
@@ -300,7 +331,11 @@ const CompactColorPicker = ({
     }, [columns]);
     // UX 2026-09-23 (owner: sliders like 21st.dev micka_design color-picker):
     // an 18px fully-round track. The spectrum still takes grid - track - gap.
-    const HUE_TRACK_H = dense ? 14 : 18;
+    // RULED 2026-09-23 (owner: desktop sliders "way too thick"): on the
+    // desktop the track PAINTS only 6px, centred in a 16px box that is still
+    // the slider — so it stays easy to grab with a mouse while looking thin.
+    const HUE_TRACK_H = isDesktop ? 16 : (dense ? 14 : 18);
+    const TRACK_PAINT_PAD = isDesktop ? 5 : 0;
     const spectrumAreaHeight = gridHeight ? Math.max(96, gridHeight - HUE_TRACK_H - PANEL_GAP) : (isPhone ? 148 : 128);
 
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
@@ -684,7 +719,20 @@ const CompactColorPicker = ({
         borderRadius: '9999px',
         cursor: 'ew-resize',
         touchAction: 'none',
+        // Desktop: the box stays 16px tall to grab; the colour is painted in
+        // the middle 6px only (each background layer is clipped to the content
+        // box below), and the corners are 3px across by 8px down so that
+        // painted band still ends in true half-circles.
+        ...(TRACK_PAINT_PAD ? {
+            boxSizing: 'border-box',
+            padding: `${TRACK_PAINT_PAD}px 0`,
+            borderRadius: `${HUE_TRACK_H / 2 - TRACK_PAINT_PAD}px / ${HUE_TRACK_H / 2}px`,
+        } : null),
     };
+    // Appended to each background layer so the thin desktop band paints only
+    // its content box. Inside the layer (not a separate backgroundClip) so a
+    // later background update can never reset it.
+    const paintBox = TRACK_PAINT_PAD ? ' content-box' : '';
 
     // Hover readout: the value UNDER THE CURSOR (not the thumb), snapped to a
     // whole number, in a small pill above the track. Mouse only; hidden while
@@ -710,9 +758,10 @@ const CompactColorPicker = ({
     const lockedStyle = locked ? { opacity: 0.4, pointerEvents: 'none' } : null;
 
     const presetsRow = (
-        <div style={dense
-            /* Dense: the presets sit on the grid's own eight columns, one disc
-               centred over each column, so the two blocks line up. */
+        <div style={(dense || isDesktop)
+            /* Dense and desktop: the presets sit on the grid's own eight
+               columns, one disc centred over each column, so the two blocks
+               line up. */
             ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center', ...lockedStyle }
             : { display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...lockedStyle }}>
             {presets.map((preset) => {
@@ -740,6 +789,8 @@ const CompactColorPicker = ({
                             width: '26px',
                             height: '26px',
                             ...(dense ? { width: '22px', height: '22px' } : null),
+                            // RULED 2026-09-23 (desktop slim): 20px discs.
+                            ...(isDesktop ? { width: '20px', height: '20px' } : null),
                             borderRadius: '50%',
                             flex: '0 0 auto',
                             '--hero-swatch-ring': swatchRingColour(preset),
@@ -751,7 +802,7 @@ const CompactColorPicker = ({
                         >
                             {isSelected && (
                                 <span className="hero-swatch__check" style={{ color: swatchCheckInk(preset) }}>
-                                    <ChosenCheck size={dense ? 11 : 12} />
+                                    <ChosenCheck size={isDesktop ? 10 : (dense ? 11 : 12)} />
                                 </span>
                             )}
                         </span>
@@ -803,6 +854,8 @@ const CompactColorPicker = ({
                             aspectRatio: '1',
                             borderRadius: '7px',
                             ...(dense ? { borderRadius: '6px' } : null),
+                            // Desktop's 20px cell takes the one-scale CELL radius, 5.
+                            ...(isDesktop ? { borderRadius: '5px' } : null),
                             /* The Match fill cell stays live while locked: it is
                                the one control that unlinks the border. */
                             ...(isMatchSlot && matchIsToggle ? null : lockedStyle),
@@ -815,7 +868,7 @@ const CompactColorPicker = ({
                                 className={`hero-swatch__morph${morphOn && isMatchSlot ? ' is-on' : ''}`}
                                 style={{ background: lastMatchRef.current.color, color: swatchCheckInk(lastMatchRef.current.color) }}
                             >
-                                <LinkGlyph size={dense ? 16 : 17} />
+                                <LinkGlyph size={isDesktop ? 13 : (dense ? 16 : 17)} />
                             </span>
                         )}
                         {isMatchSlot && !matchIsToggle && (
@@ -831,7 +884,7 @@ const CompactColorPicker = ({
                         )}
                         {isSelected && !isMatchSlot && !isTransparent && (
                             <span className="hero-swatch__check" style={{ color: swatchCheckInk(swatch) }}>
-                                <ChosenCheck size={13} />
+                                <ChosenCheck size={isDesktop ? 11 : 13} />
                             </span>
                         )}
                         </span>
@@ -872,8 +925,8 @@ const CompactColorPicker = ({
                    transitioned like any other colour. Without the
                    registration a gradient stop cannot animate at all. */
                 '--picker-alpha-ink': localHex,
-                background: 'linear-gradient(to right, transparent, var(--picker-alpha-ink)),'
-                    + ` ${ALPHA_CHEQUER}`,
+                background: `linear-gradient(to right, transparent, var(--picker-alpha-ink))${paintBox},`
+                    + ` ${isDesktop ? ALPHA_CHEQUER_DESKTOP : ALPHA_CHEQUER}${paintBox}`,
                 transition: glideAlpha
                     ? `--picker-alpha-ink ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
                     : 'none',
@@ -944,7 +997,7 @@ const CompactColorPicker = ({
                 opacity slider keeps its labelled row below, in the same place
                 it has in grid mode, so the two views differ only inside the
                 grid's box. */}
-            <div style={{ display: 'grid', gap: '10px' }}>
+            <div style={{ display: 'grid', gap: `${PANEL_GAP}px` }}>
                 <div
                     ref={hueRef}
                     data-color-picker-hue="true"
@@ -968,7 +1021,7 @@ const CompactColorPicker = ({
                     onLostPointerCapture={() => { huePointerId.current = null; }}
                     style={{
                         ...track,
-                        background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+                        background: `linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)${paintBox}`,
                     }}
                 >
                     <span style={thumb((hue / 360) * 100, undefined, `hsl(${hue} 100% 50%)`)} />
@@ -998,6 +1051,9 @@ const CompactColorPicker = ({
         minWidth: 0,
         // Dense: the row is 26 tall, the same as the tabs above it.
         ...(dense ? { height: '26px', font: `600 11.5px/1 ${FONT}` } : null),
+        // RULED 2026-09-23 (owner, desktop: "the input field is too thick, the
+        // text is too thick"): a 24px field, and regular-weight 11px digits.
+        ...(isDesktop ? { height: '24px', font: `400 11px/1 ${FONT}` } : null),
     };
 
     const modeTab = (id, label, glyph) => {
@@ -1021,6 +1077,8 @@ const CompactColorPicker = ({
                        the field's 30. */
                     height: '26px',
                     ...(dense ? { height: '22px' } : null),
+                    // Desktop: a 20px segment in the 24px well.
+                    ...(isDesktop ? { height: '20px' } : null),
                     display: 'grid',
                     placeItems: 'center',
                     border: 0,
@@ -1063,7 +1121,10 @@ const CompactColorPicker = ({
                sheet's own 358px content band). */
             /* A host that paints the panel (chrome={false}) sets the width
                too: the picker fills it instead of forcing 276px into it. */
-            width: (isPhone || !chrome) ? '100%' : '276px',
+            /* RULED 2026-09-23 (owner: desktop picker smaller, slimmer): the
+               popover is 210px — the 188px grid plus 10px padding and a 1px
+               edge — down from board 19's 276px. */
+            width: (isPhone || !chrome) ? '100%' : `${DESKTOP_PANEL_W}px`,
             maxWidth: '100%',
             boxSizing: 'border-box',
             /* UX 2026-09-17 (revision-2 palette): the picker's CHROME comes from
@@ -1079,7 +1140,8 @@ const CompactColorPicker = ({
                and the owner ruled one scale over one board's number. */
             borderRadius: attachedHeader ? '0 0 9px 9px' : '9px',
             boxShadow: chrome ? '0 14px 32px rgba(0,0,0,0.45)' : 'none',
-            padding: chrome ? '12px' : 0,
+            // RULED 2026-09-23 (desktop slim): 10px of padding, was 12.
+            padding: chrome ? (isPhone ? '12px' : '10px') : 0,
             display: 'flex',
             flexDirection: 'column',
             gap: `${PANEL_GAP}px`,
@@ -1095,7 +1157,7 @@ const CompactColorPicker = ({
                 <div role="tablist" style={{
                     display: 'flex',
                     gap: '2px',
-                    padding: dense ? '2px' : '3px',
+                    padding: (dense || isDesktop) ? '2px' : '3px',
                     background: 'var(--surface-2)',
                     /* ONE RADIUS SCALE (2026-09-22): pills 10, sheet tops 16,
                        popovers and the wells on them 9, cells 5, buttons 6.
@@ -1113,12 +1175,12 @@ const CompactColorPicker = ({
                                 onClick={() => tabs.onSelect?.(item.id)}
                                 style={{
                                     flex: 1,
-                                    height: dense ? '22px' : '26px',
+                                    height: isDesktop ? '20px' : (dense ? '22px' : '26px'),
                                     border: 0,
                                     borderRadius: '6px',
                                     color: on ? 'var(--text-1)' : 'var(--text-3)',
                                     background: on ? 'var(--surface-3)' : 'transparent',
-                                    font: `600 ${dense ? '11.5px' : '12px'}/1 ${FONT}`,
+                                    font: isDesktop ? `500 11px/1 ${FONT}` : `600 ${dense ? '11.5px' : '12px'}/1 ${FONT}`,
                                     cursor: 'pointer',
                                     padding: 0,
                                 }}
@@ -1138,8 +1200,10 @@ const CompactColorPicker = ({
                 (RULED 2026-09-22: the sheet must not grow or rearrange when the
                 grid becomes the spectrum). */}
             {showOpacity && (
-                <div style={{ display: 'grid', gap: '6px', ...lockedStyle }}>
-                    <div style={{ color: 'var(--text-3)', font: `600 ${dense ? '10.5px' : '11px'}/1 ${FONT}` }}>Opacity</div>
+                <div style={{ display: 'grid', gap: isDesktop ? '2px' : '6px', ...lockedStyle }}>
+                    {/* Desktop: a regular-weight label; the 16px track box
+                        below adds 5px of air above its thin painted band. */}
+                    <div style={{ color: 'var(--text-3)', font: `${isDesktop ? 400 : 600} ${(dense || isDesktop) ? '10.5px' : '11px'}/1 ${FONT}` }}>Opacity</div>
                     {opacityTrack(true)}
                 </div>
             )}
@@ -1148,7 +1212,7 @@ const CompactColorPicker = ({
                 opacity in a single joined field. Boards 17-19. */}
             {/* In a narrow host panel (chrome={false}, 224px of content) the row
                 tightens its gaps so the six hex digits stay readable. */}
-            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: dense ? '6px' : '8px', width: '100%', ...lockedStyle }}>
+            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: (dense || isDesktop) ? '6px' : '8px', width: '100%', ...lockedStyle }}>
                 <div role="tablist" style={{
                     display: 'flex',
                     gap: '2px',
@@ -1164,9 +1228,11 @@ const CompactColorPicker = ({
                     boxSizing: 'border-box',
                     // Dense: 52 wide, 26 tall, like the field beside it.
                     ...(dense ? { width: '52px', flex: '0 0 52px', height: '26px' } : null),
+                    // Desktop slim: 46 wide, 24 tall, like the field beside it.
+                    ...(isDesktop ? { width: '46px', flex: '0 0 46px', height: '24px' } : null),
                 }}>
-                    {modeTab('grid', 'Preset colors', <GridGlyph />)}
-                    {modeTab('spectrum', 'Color spectrum', <GradientGlyph />)}
+                    {modeTab('grid', 'Preset colors', <GridGlyph size={isDesktop ? 12 : 14} />)}
+                    {modeTab('spectrum', 'Color spectrum', <GradientGlyph size={isDesktop ? 12 : 14} />)}
                 </div>
                 <div style={fieldChrome}>
                     <button
@@ -1192,14 +1258,15 @@ const CompactColorPicker = ({
                             borderRight: '1px solid var(--border)',
                             flex: '0 0 34px',
                             ...(dense ? { width: '28px', flex: '0 0 28px' } : null),
+                            ...(isDesktop ? { width: '22px', flex: '0 0 22px' } : null),
                             color: 'var(--text-2)',
                             opacity: eyedropperSupported ? 1 : 0.4,
                             cursor: eyedropperSupported ? 'pointer' : 'default',
                         }}
                     >
-                        <EyedropperGlyph size={dense ? 14 : 17} />
+                        <EyedropperGlyph size={isDesktop ? 12 : (dense ? 14 : 17)} />
                     </button>
-                    <span style={{ padding: dense ? '0 3px 0 7px' : '0 9px', color: 'var(--text-3)' }}>#</span>
+                    <span style={{ padding: isDesktop ? '0 2px 0 5px' : (dense ? '0 3px 0 7px' : '0 9px'), color: 'var(--text-3)' }}>#</span>
                     <input
                         type="text"
                         aria-label="Hex color"
@@ -1240,8 +1307,9 @@ const CompactColorPicker = ({
                                     width: '42px',
                                     flex: '0 0 42px',
                                     ...(dense ? { width: '32px', flex: '0 0 32px' } : null),
+                                    ...(isDesktop ? { width: '24px', flex: '0 0 24px' } : null),
                                     height: '100%',
-                                    padding: '0 2px',
+                                    padding: isDesktop ? '0 1px' : '0 2px',
                                     color: 'inherit',
                                     background: 'transparent',
                                     border: 0,
@@ -1251,7 +1319,7 @@ const CompactColorPicker = ({
                                     outline: 'none',
                                 }}
                             />
-                            <span style={{ paddingRight: '9px', color: 'var(--text-3)', flexShrink: 0, ...(dense ? { paddingRight: '7px' } : null) }}>%</span>
+                            <span style={{ paddingRight: '9px', color: 'var(--text-3)', flexShrink: 0, ...(dense ? { paddingRight: '7px' } : null), ...(isDesktop ? { paddingRight: '5px' } : null) }}>%</span>
                         </>
                     )}
                 </div>
