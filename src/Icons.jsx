@@ -48,6 +48,9 @@ export const ICON_STROKE_WIDTH = 1.5;
 export const ICON_NODE_RADIUS = 2;
 export const ICON_INK_ENVELOPE = 20;
 export const ICON_CORNER_RADIUS_RATIO = 1 / 9;
+// The chevron-down geometry, shared so the morphing grip (DragRearrangeHandle)
+// draws the SAME arrow the icon set does rather than a copy of it.
+export const CHEVRON_DOWN_PATH = 'M6 9L12 15L18 9';
 
 /** Rounded-box corner radius for a box whose shorter side is `shorterSide`. */
 export const iconCornerRadius = (shorterSide) => (
@@ -243,7 +246,7 @@ const ICON_RENDERERS = {
 
     chevronDown: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M6 9L12 15L18 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={CHEVRON_DOWN_PATH} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 

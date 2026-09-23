@@ -747,6 +747,26 @@ export default function TemplatesEditor({
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [openColor, setOpenColor] = useState(null);   // entity id whose picker is open
+  // UX 2026-09-23 (owner: the collapse was "too abrupt"). A user fold keeps the
+  // panel mounted for 260ms while it shrinks away (hub.css
+  // hub-color-panel-fold), from its own measured height, then unmounts it.
+  // Programmatic closes (switching template, deleting) stay instant.
+  const [foldingColor, setFoldingColor] = useState(null);
+  const foldTimerRef = useRef(0);
+  const foldColor = (next) => {
+    clearTimeout(foldTimerRef.current);
+    if (next === null && openColor) {
+      document.querySelectorAll('[data-entity-color-panel]').forEach((el) => {
+        el.style.setProperty('--panel-h', `${el.getBoundingClientRect().height}px`);
+      });
+      setFoldingColor(openColor);
+      foldTimerRef.current = setTimeout(() => { setOpenColor(null); setFoldingColor(null); }, 260);
+      return;
+    }
+    setFoldingColor(null);
+    setOpenColor(next);
+  };
+  useEffect(() => () => clearTimeout(foldTimerRef.current), []);
   // UX 2026-09-23 (owner: the phone colour panel "overflows/clips at the
   // bottom of the modal"). Opening a colour panel under a low row scrolls the
   // Entities sheet just enough to show the whole panel, once, on open.
@@ -2498,9 +2518,11 @@ export default function TemplatesEditor({
                           {...listeners}
                           isDragging={isDragging}
                           style={{ width: 24, height: 24 }}
+                          collapseOpen={isOpen && foldingColor !== r.id}
+                          onCollapse={() => foldColor(null)}
                         />
                         <button
-                          onClick={() => setOpenColor(isOpen ? null : r.id)}
+                          onClick={() => foldColor(isOpen ? null : r.id)}
                           title="Edit color" aria-label="Edit color"
                           style={{
                             width: 18, height: 18, borderRadius: '50%',
@@ -2570,7 +2592,7 @@ export default function TemplatesEditor({
                           markEdited();
                         };
                         return (
-                          <div data-entity-color-panel style={{
+                          <div data-entity-color-panel data-folding={foldingColor === r.id ? 'true' : undefined} style={{
                             margin: '-4px 0 6px', padding: 0,
                             background: 'var(--paper-deep)', border: '1px solid var(--rule)', borderTop: 0, borderRadius: '0 0 4px 4px',
                             display: 'flex', flexDirection: 'column',
@@ -2584,7 +2606,7 @@ export default function TemplatesEditor({
                                   color={activeColor}
                                   opacity={activeOp}
                                   onChange={applyColor}
-                                  onClose={() => setOpenColor(null)}
+                                  onClose={() => foldColor(null)}
                                   dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                   /* The entity panel is already the box (owner
                                      2026-09-23: "not a box within a box"). */
@@ -2985,11 +3007,11 @@ export default function TemplatesEditor({
                           {({ attributes, listeners, isDragging }) => (
                             <>
                               <div data-drag-rearrange-row className={`templates-mobile-entity-row${entityEdit && isSel ? ' is-selected' : ''}`}>
-                                <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
+                                <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button
                                   type="button"
                                   title="Edit color" aria-label="Edit color"
-                                  onClick={() => setOpenColor(isOpen ? null : r.id)}
+                                  onClick={() => foldColor(isOpen ? null : r.id)}
                                   style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
                                 ><span aria-hidden="true" /></button>
                                 <input
@@ -3045,12 +3067,12 @@ export default function TemplatesEditor({
                                      picker draws its own Fill / Border tabs,
                                      and Match fill is the Border tab's first
                                      grid cell, so nothing moves between tabs. */
-                                  <div className="templates-mobile-color-panel" data-entity-color-panel>
+                                  <div className="templates-mobile-color-panel" data-entity-color-panel data-folding={foldingColor === r.id ? 'true' : undefined}>
                                     <CompactColorPicker
                                       color={activeData.color}
                                       opacity={activeData.opacity}
                                       onChange={applyColor}
-                                      onClose={() => setOpenColor(null)}
+                                      onClose={() => foldColor(null)}
                                       dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                       platform="phone"
                                       chrome={false}

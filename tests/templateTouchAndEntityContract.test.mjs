@@ -26,11 +26,13 @@ test('responsive reorder measurement selects rendered duplicate-id node', () => 
   assert.match(reorder, /\|\| matches\[0\]/);
 });
 
+// RULED 2026-09-23 (owner): the open entity's own row also counts as inside
+// the picker, so tapping its name/grip/More does not collapse it.
 test('entity color panel protects its tabs and persists duplicate styling fallbacks', () => {
   assert.match(picker, /dismissInsideSelector/);
   assert.match(picker, /insideSelector=\{dismissInsideSelector\}/);
   assert.ok((editor.match(/data-entity-color-panel/g) || []).length >= 4);
-  assert.match(editor, /dismissInsideSelector="\[data-entity-color-panel\]"/);
+  assert.match(editor, /dismissInsideSelector="\[data-entity-color-panel\](?:, \[data-sortable-rearrange-item\]:has\(\[data-entity-color-panel\]\))?"/);
   assert.match(editor, /e\.opacity \?\? 0\.35/);
   assert.match(editor, /: !!e\.matchFill/);
   assert.match(editor, /color: e\.borderColor \|\| fillColor/);

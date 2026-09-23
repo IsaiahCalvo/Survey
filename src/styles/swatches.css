@@ -146,3 +146,47 @@
 @media (prefers-reduced-motion: reduce) {
   :is(button[title="Edit color"], button[aria-label="Edit color"], .quick-style__swatch) { transition: none; }
 }
+
+/* Morph grip: dots glide onto the V (220ms), then the arrow line draws over
+   them; closing undraws the line first, then the dots glide home. */
+.morph-grip { overflow: visible; transition: transform 220ms cubic-bezier(0.33, 1, 0.68, 1); }
+.morph-grip.is-open { transform: scale(1.2); }
+.morph-grip__dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 220ms cubic-bezier(0.33, 1, 0.68, 1) 60ms, opacity 120ms linear 60ms;
+}
+.morph-grip.is-open .morph-grip__dot {
+  transform: translate(var(--dx), var(--dy)) scale(0.6);
+  opacity: 0;
+  transition: transform 220ms cubic-bezier(0.33, 1, 0.68, 1), opacity 120ms linear 160ms;
+}
+.morph-grip__arrow {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transition: stroke-dashoffset 120ms ease-in, opacity 60ms linear 60ms;
+}
+.morph-grip.is-open .morph-grip__arrow {
+  stroke-dashoffset: 0;
+  opacity: 1;
+  transition: stroke-dashoffset 200ms cubic-bezier(0.33, 1, 0.68, 1) 120ms, opacity 60ms linear 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .morph-grip, .morph-grip__dot, .morph-grip__arrow { transition: none; }
+}
+
+/* THE GRIP (owner 2026-09-23): hover like a colour swatch — the glyph grows
+   to 110%, no plate; press is its own gesture — the glyph tightens to 90% and
+   brightens, the way a grip "takes hold". No grey box on either. */
+[data-drag-rearrange-handle] > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+@media (hover: hover) {
+  [data-drag-rearrange-handle]:hover > svg { transform: scale(1.1); }
+  [data-drag-rearrange-handle]:hover > svg.morph-grip.is-open { transform: scale(1.32); }
+}
+[data-drag-rearrange-handle] { background: transparent !important; }
+[data-drag-rearrange-handle]:active { color: var(--text-1) !important; }
+[data-drag-rearrange-handle]:active > svg { transform: scale(0.9); }
+[data-drag-rearrange-handle]:active > svg.morph-grip.is-open { transform: scale(1.08); }
