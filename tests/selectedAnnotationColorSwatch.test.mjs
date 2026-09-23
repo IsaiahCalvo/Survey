@@ -29,9 +29,16 @@ test('selected text markup publishes its own base color and opacity to the edit 
   assert.match(viewerSource, /strokeOpacity: selectedTextMarkupPaint\?\.opacity \?\? counterToolStrokeOpacity,/);
   assert.match(viewerSource, /strokeColorStateRef\.current = paint\.color;[\s\S]*?strokeOpacityStateRef\.current = paint\.opacity;/);
   assert.match(viewerSource, /const color = getHexFromColor\(strokeColorStateRef\.current\) \|\| paint\.color;/);
-  assert.match(viewerSource, /handleTextMarkupPaintChange,/);
+  // RULED 2026-09-23 (owner: sliders must be smooth). Was `handleTextMarkupPaintChange,`
+  // and an exact `(hex, Math.round(alpha * 100))` call. The toolbar now gets the
+  // handler through its drag-phase wrapper, and the call also passes the colour
+  // picker's drag phase so a drag previews live and lands as one undo step. What
+  // is guarded is unchanged: the markup's own paint handler is what the toolbar
+  // calls, with the picker's colour and opacity.
+  assert.match(viewerSource, /handleTextMarkupPaintChange: handleTextMarkupPaintChangePhased,/);
+  assert.match(viewerSource, /runWithPaintPhase\(options, \(\) => handleTextMarkupPaintChange\(color, opacity\)\)/);
   assert.match(appShellSource, /isTextMarkupPalette && bottomToolbarApi\.handleTextMarkupPaintChange/);
-  assert.match(appShellSource, /handleTextMarkupPaintChange\(hex, Math\.round\(alpha \* 100\)\)/);
+  assert.match(appShellSource, /handleTextMarkupPaintChange\(hex, Math\.round\(alpha \* 100\)(, meta)?\)/);
 });
 
 test('live Text Select paint focus hands the active saved mark to the edit transaction', () => {

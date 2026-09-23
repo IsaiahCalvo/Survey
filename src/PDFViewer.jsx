@@ -3282,6 +3282,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
   const commitTextMarkupDocumentTransactionRef = useRef(null);
+  // UX 2026-09-23 (owner: "dragging this is laggy" — the colour picker's
+  // sliders). The phase of the paint change being applied right now: 'preview'
+  // while a slider is still being dragged, 'commit' when it is released, null
+  // for every other edit. A preview repaints and saves the mark like any edit
+  // but records NO undo step and no history row (checkpointPolicy 'skip', the
+  // same live-preview contract drags on the canvas already use); the commit
+  // records the whole drag as ONE step from the value it started on. 'settle'
+  // is the commit's leading writes (a colour write before the opacity write
+  // that commits): no undo step yet, but the tool's setting is saved. Before
+  // this, every pointer move wrote an undo step and a history row, which is
+  // both why a drag stuttered and why undoing it took dozens of presses.
+  const paintPhaseRef = useRef(null);
+  const textMarkupPaintBaselineRef = useRef(null);
+  // While a slider drag previews, the shared-document capture (useAnnotationDoc)
+  // holds off: the drag's in-between values stay on this screen and only the
+  // released value is written — one write instead of one per frame, and no
+  // late echo of an in-between value can land after the release. The hold is
+  // time-boxed: if a release never arrives, it lifts itself after 1.5s and
+  // captures whatever is on screen, so nothing can be left unsaved.
+  const annotationCapturePauseRef = useRef({ until: 0, timer: null });
+  // The hold belongs to one open document and one mounted viewer.
+  useEffect(() => () => {
+    clearTimeout(annotationCapturePauseRef.current.timer);
+    annotationCapturePauseRef.current = { until: 0, timer: null };
+  }, [pdfFile?.id]);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
@@ -3302,21 +3327,66 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       && patch.fill != null
       && patch.stroke != null
       && patch.opacity != null) {
+      // A slider drag (paintPhaseRef): preview frames repaint the mark with
+      // no undo step. The group's STARTING paint (only its paint, per id) is
+      // kept from the first preview; the release builds ONE transaction whose
+      // "before" is today's document with just that paint put back, so undo
+      // restores the starting paint and nothing else (edits made elsewhere
+      // during the drag are left alone).
+      const paintPhase = paintPhaseRef.current;
+      const isPaintPreview = paintPhase === 'preview' || paintPhase === 'settle';
+      const groupId = current.data?.selectionGroupId;
+      const byPageNow = annotationsByPageRef.current || {};
+      let startPaint = textMarkupPaintBaselineRef.current;
+      if (startPaint && startPaint.groupId !== groupId) {
+        startPaint = null;
+        textMarkupPaintBaselineRef.current = null;
+      }
+      if (isPaintPreview && !startPaint) {
+        const paintById = new Map();
+        Object.values(byPageNow).forEach((page) => (page?.objects || []).forEach((candidate) => {
+          if (candidate?.data?.type === 'text-markup' && candidate.data.selectionGroupId === groupId) {
+            paintById.set(getAnnotationRenderIdentity(candidate).annotationId, {
+              fill: candidate.fill,
+              stroke: candidate.stroke,
+              opacity: candidate.opacity,
+            });
+          }
+        }));
+        startPaint = { groupId, paintById };
+        textMarkupPaintBaselineRef.current = startPaint;
+      }
+      if (paintPhase === 'commit') textMarkupPaintBaselineRef.current = null;
+      let sourceByPage = byPageNow;
+      if (paintPhase === 'commit' && startPaint) {
+        sourceByPage = {};
+        Object.entries(byPageNow).forEach(([pageKey, page]) => {
+          const objects = Array.isArray(page?.objects) ? page.objects : null;
+          if (!objects) { sourceByPage[pageKey] = page; return; }
+          let touched = false;
+          const restored = objects.map((candidate) => {
+            const paint = startPaint.paintById.get(getAnnotationRenderIdentity(candidate).annotationId);
+            if (!paint || candidate?.data?.type !== 'text-markup') return candidate;
+            touched = true;
+            return { ...candidate, ...paint };
+          });
+          sourceByPage[pageKey] = touched ? { ...page, objects: restored } : page;
+        });
+      }
+      const sourceAnnotation = (sourceByPage[sel.pageNumber]?.objects || []).find((annotation) => (
+        getAnnotationRenderIdentity(annotation).annotationId === selectedId
+      )) || current;
       const transaction = buildTextMarkupPaintEditTransaction({
-        annotationsByPage: annotationsByPageRef.current || {},
-        annotation: current,
+        annotationsByPage: sourceByPage,
+        annotation: sourceAnnotation,
         color: patch.stroke,
         opacity: patch.opacity,
       });
-      if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
-        source: 'text-markup:paint-edit',
-        action: 'text-markup-update',
-        selectionGroupIds: transaction.selectionGroupIds,
-      })) {
-        const updated = transaction.updated.find((entry) => (
+      const followTransactionSelection = (applied) => {
+        const updated = applied.updated.find((entry) => (
           entry.pageNumber === Number(sel.pageNumber)
           && getAnnotationRenderIdentity(entry.annotation).annotationId === selectedId
-        )) || transaction.updated[0];
+        )) || applied.updated[0];
         if (updated) {
           const nextSelection = {
             pageNumber: updated.pageNumber,
@@ -3326,6 +3396,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           selectedToolbarAnnotationRef.current = nextSelection;
           setSelectedToolbarAnnotation(nextSelection);
         }
+      };
+      if (isPaintPreview) {
+        // Same ownership rules as a real edit, just no undo step.
+        if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
+          source: 'text-markup:paint-preview',
+          action: 'text-markup-update',
+          selectionGroupIds: transaction.selectionGroupIds,
+          skipHistory: true,
+        })) {
+          followTransactionSelection(transaction);
+        }
+        return;
+      }
+      if (!transaction && paintPhase === 'commit' && startPaint) {
+        // Released on the paint it started with: put the whole group back
+        // as it was, and record nothing.
+        if (sourceByPage !== byPageNow) {
+          annotationsByPageRef.current = sourceByPage;
+          setAnnotationsByPage(sourceByPage);
+        }
+        return;
+      }
+      if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
+        source: 'text-markup:paint-edit',
+        action: 'text-markup-update',
+        selectionGroupIds: transaction.selectionGroupIds,
+      })) {
+        followTransactionSelection(transaction);
         return;
       }
     }
@@ -7995,7 +8093,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
+    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
@@ -8028,7 +8126,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { ...current, [focusedTextMarkupPaint]: { color, opacity: normalizedOpacity } }
         : current
     ));
-    if (pdfId && activeTool !== 'select') {
+    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') {
       updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
     }
     if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
@@ -8055,7 +8153,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
+    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
@@ -8089,7 +8187,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillColor: color });
+    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillColor: color });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
@@ -8114,7 +8212,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setCounterUITick((tick) => tick + 1);
       }
     }
-    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillOpacity: opacity });
+    if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillOpacity: opacity });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
@@ -8123,6 +8221,63 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       patchSelectedFill(nextFillColor);
     }
   }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+
+  // The paint handlers as the toolbars see them: the same writes, plus the
+  // colour picker's optional drag phase (see paintPhaseRef). The phase is set
+  // only for the synchronous duration of the write it belongs to.
+  const runWithPaintPhase = (options, write) => {
+    const phase = options?.phase;
+    const pause = annotationCapturePauseRef.current;
+    if (phase === 'preview' || phase === 'settle') {
+      pause.until = Date.now() + 1500;
+      clearTimeout(pause.timer);
+      pause.timer = setTimeout(() => {
+        pause.until = 0;
+        pause.timer = null;
+        // Nudge the capture so the last previewed value is written.
+        setAnnotationsByPage((current) => ({ ...current }));
+      }, 1600);
+    } else if (phase === 'commit') {
+      // Lift the hold BEFORE the commit's write, so its render is captured.
+      pause.until = 0;
+      clearTimeout(pause.timer);
+      pause.timer = null;
+    }
+    const previous = paintPhaseRef.current;
+    paintPhaseRef.current = (phase === 'preview' || phase === 'settle' || phase === 'commit') ? phase : null;
+    try {
+      return write();
+    } finally {
+      paintPhaseRef.current = previous;
+      if (phase !== 'preview' && phase !== 'settle') {
+        // Whatever the write did, a drag is over: its text-markup starting
+        // paint must never carry into a later, unrelated drag.
+        textMarkupPaintBaselineRef.current = null;
+      }
+      if (phase === 'commit') {
+        // The released value always reaches the shared document, even when
+        // the commit itself changed nothing on screen (the last preview was
+        // already the released value, or the selection went away mid-drag):
+        // a fresh reference makes the capture run once more.
+        setAnnotationsByPage((current) => ({ ...current }));
+      }
+    }
+  };
+  const handleStrokeColorChangePhased = useCallback((color, options) => (
+    runWithPaintPhase(options, () => handleStrokeColorChange(color))
+  ), [handleStrokeColorChange]);
+  const handleStrokeOpacityChangePhased = useCallback((opacity, options) => (
+    runWithPaintPhase(options, () => handleStrokeOpacityChange(opacity))
+  ), [handleStrokeOpacityChange]);
+  const handleFillColorChangePhased = useCallback((color, options) => (
+    runWithPaintPhase(options, () => handleFillColorChange(color))
+  ), [handleFillColorChange]);
+  const handleFillOpacityChangePhased = useCallback((opacity, options) => (
+    runWithPaintPhase(options, () => handleFillOpacityChange(opacity))
+  ), [handleFillOpacityChange]);
+  const handleTextMarkupPaintChangePhased = useCallback((color, opacity, options) => (
+    runWithPaintPhase(options, () => handleTextMarkupPaintChange(color, opacity))
+  ), [handleTextMarkupPaintChange]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
@@ -19740,6 +19895,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // retired: the [pageSizes]-keyed re-projection effect below owns the
     // measured-late correction; pageSizes resets + re-measures every open.)
     pageSizesRef,
+    // UX 2026-09-23 (smooth sliders): while a colour slider is dragged the
+    // mark repaints every frame but only the RELEASED value is written to the
+    // shared document (see paintPhaseRef / annotationCapturePauseRef).
+    capturePauseRef: annotationCapturePauseRef,
     // Resolved document role from YDocProvider (get_my_document_role). The
     // hook only runs the calloutsList meta migration when this is a confirmed
     // writable role ('owner'/'editor') — annotation_updates INSERT is
@@ -24342,8 +24501,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       fillColor: counterToolFillColor,
       fillOpacity: counterToolFillOpacity,
       selectedFillColor: selectedPreviewColors.fill,
-      handleFillColorChange,
-      handleFillOpacityChange,
+      handleFillColorChange: handleFillColorChangePhased,
+      handleFillOpacityChange: handleFillOpacityChangePhased,
       zoomInputValue,
       isZoomMenuOpen,
       zoomDropdownLabel,
@@ -24358,9 +24517,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
-      handleStrokeColorChange,
-      handleStrokeOpacityChange,
-      handleTextMarkupPaintChange,
+      handleStrokeColorChange: handleStrokeColorChangePhased,
+      handleStrokeOpacityChange: handleStrokeOpacityChangePhased,
+      handleTextMarkupPaintChange: handleTextMarkupPaintChangePhased,
       handleStrokeWidthInputChange,
       handleStrokeWidthInputBlur,
       setIsStrokeWidthFocused: handleStrokeWidthFocusChange,
@@ -24446,8 +24605,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
-    handleFillColorChange,
-    handleFillOpacityChange,
+    handleFillColorChangePhased,
+    handleFillOpacityChangePhased,
     zoomInputValue,
     isZoomMenuOpen,
     zoomDropdownLabel,
@@ -24457,9 +24616,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pageInputValue,
     numPages,
     setTooltip,
-    handleStrokeColorChange,
-    handleStrokeOpacityChange,
-    handleTextMarkupPaintChange,
+    handleStrokeColorChangePhased,
+    handleStrokeOpacityChangePhased,
+    handleTextMarkupPaintChangePhased,
     handleStrokeWidthFocusChange,
     handleStrokeWidthInputChange,
     handleStrokeWidthInputBlur,
@@ -25159,7 +25318,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const interactionId = typeof normalizedSaveContext?.interactionId === 'string' && normalizedSaveContext.interactionId.trim()
       ? normalizedSaveContext.interactionId.trim()
       : null;
-    const checkpointPolicyRaw = typeof normalizedSaveContext?.checkpointPolicy === 'string'
+    // A slider drag's preview frames never checkpoint (see paintPhaseRef).
+    const checkpointPolicyRaw = (paintPhaseRef.current === 'preview' || paintPhaseRef.current === 'settle')
+      ? 'skip'
+      : typeof normalizedSaveContext?.checkpointPolicy === 'string'
       ? normalizedSaveContext.checkpointPolicy.trim().toLowerCase()
       : 'normal';
     const checkpointPolicy = checkpointPolicyRaw === 'skip' || checkpointPolicyRaw === 'force'
@@ -25221,6 +25383,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       currentPageFingerprint.serialized === nextPageFingerprint.serialized
       && (!previewBaseline || previousPageFingerprint.serialized === nextPageFingerprint.serialized)
     ) {
+      // A gesture that ends exactly where it began is over too: drop its
+      // preview baseline, or the next unrelated save on this page would diff
+      // from it and fold this gesture into that undo step.
+      if (!shouldSkipCheckpointByPolicy && previewBaseline) {
+        previewBaselineByPageRef.current.delete(interactionPageKey);
+      }
       pushHistoryDebugEvent('annotations_save_noop', {
         reason: 'annotations:save',
         source,
@@ -25634,7 +25802,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       documentOwnerId,
     );
     if (!scopedAction) return false;
-    pushLocalAnnotationHistoryAction(scopedAction);
+    // A colour-slider preview frame (paintPhaseRef) repaints without an undo
+    // step; its release commits the one step for the whole drag.
+    if (!saveContext?.skipHistory) pushLocalAnnotationHistoryAction(scopedAction);
     setLocallyDeletedPdfAnnotations((previous) => {
       const keyFor = (entry) => `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`;
       const next = new Map(previous.map((entry) => [keyFor(entry), entry]));

@@ -22,7 +22,8 @@
  * like.
  *
  * WHAT DID NOT CHANGE, on purpose: the value contract (`onChange(hex, alpha)`
- * fires live as the user drags), the transparent / Match Fill first grid cell,
+ * fires live as the user drags — once per frame at most since 2026-09-23, with
+ * a third `{ phase }` argument during a drag; see "UX 2026-09-23" below), the transparent / Match Fill first grid cell,
  * `minOpacity`, `showOpacity`, `attachedHeader`, `outsideBoundaryRef`,
  * `dismissInsideSelector`, the DismissBarrier first-tap dismissal, the
  * pointer-captured drags, and the keyboard handling on every slider.
@@ -221,7 +222,8 @@ const ALPHA_CHEQUER_DESKTOP = 'repeating-conic-gradient(#6b7280 0 25%, #d1d5db 0
  * Props:
  *  - color        current hex colour
  *  - opacity      current opacity 0..1 (default 1)
- *  - onChange(hex, alpha)
+ *  - onChange(hex, alpha, meta) — meta is { phase: "preview" | "commit" } during
+ *                 a slider drag (see "UX 2026-09-23" below), undefined otherwise
  *  - onClose
  *  - showOpacity  when false, hides the opacity slider + % field — for pickers
  *                 of things that have no transparency (e.g. counter pins)
@@ -419,6 +421,119 @@ const CompactColorPicker = ({
     const huePointerId = useRef(null);
     const alphaPointerId = useRef(null);
 
+    /*
+     * UX 2026-09-23 (owner: "Dragging this is laggy ... make sure this
+     * animation across all color pickers, even any slider in general, is super
+     * smooth"). A DRAG on the spectrum, hue or opacity slider moves the thumb,
+     * the readout and the swatch from this picker's own state on every pointer
+     * event — that is cheap, and it is all the eye tracks. What the drag does
+     * to the rest of the app (repainting the selected mark, saving it) is the
+     * expensive part, so it is published upstream at most ONCE PER FRAME, and
+     * less often still when the host is slow: after a publish that took N ms
+     * the next one waits at least N ms, so the host can never take more than
+     * half of the main thread away from the thumb. The value under the pointer
+     * when the drag ends is ALWAYS delivered, on release, so nothing is lost.
+     *
+     * The third onChange argument tells a host which is which:
+     *   { phase: 'preview' } — the drag is still going; show it, do not record it
+     *   { phase: 'commit' }  — the drag ended on this value; record it once
+     * Clicks and key presses pass no third argument, exactly as before, and
+     * hosts that ignore the argument simply see fewer, coalesced calls.
+     * Reference: every native range control and Figma/Procreate sliders —
+     * the thumb stays under the finger and the canvas follows as fast as it can.
+     */
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
+    const dragEmit = useRef({ active: false, latest: null, pending: false, frame: 0, notBefore: 0, emittedAt: 0 });
+    const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    // One frame loop runs while a drag has work: it publishes the newest value
+    // when the host is ready, and it times the frame right after each publish.
+    const scheduleDragEmit = () => {
+        const state = dragEmit.current;
+        if (state.frame || typeof requestAnimationFrame !== 'function') return;
+        const tick = () => {
+            state.frame = 0;
+            if (!state.active) return;
+            const now = clock();
+            // Adaptive back-off. Most of a publish's cost lands AFTER the call
+            // returns (the host re-renders the page and saves), so it shows up
+            // as a long frame right after it. Wait out the part beyond a
+            // normal frame before publishing again: a slow host gets at most
+            // about half the main thread, and the thumb keeps the rest.
+            if (state.emittedAt) {
+                const cost = now - state.emittedAt;
+                if (cost > 20) state.notBefore = Math.max(state.notBefore, now + (cost - 16));
+                state.emittedAt = 0;
+            }
+            if (!state.pending) return;
+            if (now < state.notBefore) { state.frame = requestAnimationFrame(tick); return; }
+            state.pending = false;
+            emitNow(state.latest, 'preview');
+        };
+        state.frame = requestAnimationFrame(tick);
+    };
+    const emitNow = (args, phase) => {
+        const fn = onChangeRef.current;
+        if (typeof fn !== 'function') return;
+        const start = clock();
+        fn(args[0], args[1], { phase });
+        const end = clock();
+        const state = dragEmit.current;
+        if (phase !== 'preview' || !state.active) return;
+        // The call itself counts too, and the next frame times what followed.
+        state.notBefore = end + (end - start);
+        state.emittedAt = end;
+        scheduleDragEmit();
+    };
+    // Every value change goes through here. Outside a drag it is the plain,
+    // immediate onChange it always was.
+    const publish = (hex, alpha) => {
+        const state = dragEmit.current;
+        if (!state.active) {
+            onChangeRef.current?.(hex, alpha);
+            return;
+        }
+        const first = !state.latest;
+        state.latest = [hex, alpha];
+        // The press itself answers at once, so a click on the track is felt
+        // immediately; only the moves after it are coalesced.
+        if (first || typeof requestAnimationFrame !== 'function') { emitNow(state.latest, 'preview'); return; }
+        state.pending = true;
+        scheduleDragEmit();
+    };
+    const startDragEmit = () => {
+        const state = dragEmit.current;
+        if (state.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.frame);
+        dragEmit.current = { active: true, latest: null, pending: false, frame: 0, notBefore: 0, emittedAt: 0 };
+        // Belt to the track's own pointerup: if the track is swapped out or
+        // loses its handlers mid-drag (a view or tab change), its lost-capture
+        // event never reaches React, so the release is also heard here.
+        if (typeof window !== 'undefined') {
+            const end = () => finishDragEmitRef.current();
+            window.addEventListener('pointerup', end, true);
+            window.addEventListener('pointercancel', end, true);
+            dragEmit.current.detach = () => {
+                window.removeEventListener('pointerup', end, true);
+                window.removeEventListener('pointercancel', end, true);
+            };
+        }
+    };
+    // Idempotent: pointerup, pointercancel, lost capture and unmount all end
+    // the drag, and whichever comes first delivers the released value once.
+    const finishDragEmit = () => {
+        const state = dragEmit.current;
+        if (!state.active) return;
+        state.active = false;
+        state.pending = false;
+        state.detach?.();
+        if (state.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.frame);
+        state.frame = 0;
+        if (state.latest) emitNow(state.latest, 'commit');
+    };
+    const finishDragEmitRef = useRef(finishDragEmit);
+    finishDragEmitRef.current = finishDragEmit;
+    useEffect(() => () => finishDragEmitRef.current(), []);
+
     // EyeDropper is Chromium-only. The button stays where the boards draw it —
     // "eyedropper, always visible, even in grid mode" — and is disabled with a
     // plain explanation elsewhere, so the footer never changes shape and the
@@ -428,6 +543,11 @@ const CompactColorPicker = ({
     // Keep the local hex AND the gradient's HSV in sync with the colour prop,
     // so opening the gradient view starts on the real current colour.
     useEffect(() => {
+        // Mid-drag the host echoes back values the picker already shows — and,
+        // since publishing is coalesced, sometimes an OLDER one than the thumb
+        // is at. Taking it would pull the thumb backwards under the pointer.
+        // The picker's own state is the truth until the drag is released.
+        if (dragEmit.current.active) return;
         setLocalHex(color || '#000000');
         const hsv = hexToHsv(color);
         if (hsv) {
@@ -443,6 +563,8 @@ const CompactColorPicker = ({
     // preserved so the user can pick a real colour and immediately see it
     // again at the remembered opacity.
     useEffect(() => {
+        // See the colour sync above: a mid-drag echo never moves the thumb.
+        if (dragEmit.current.active) return;
         const pct = (opacity ?? 0);
         // The thumb glides ONLY when the value arrived from outside — a tab
         // switch hands the picker the other slot's opacity. A drag or a key
@@ -495,7 +617,7 @@ const CompactColorPicker = ({
         const percent = clamp(Math.round(next), floor, 100);
         setLocalOpacity(percent);
         setTransparentMode(false);
-        onChange(localHex, percent / 100);
+        publish(localHex, percent / 100);
     };
 
     // The opacity track is a real slider like hue, not an <input type=range>:
@@ -517,7 +639,7 @@ const CompactColorPicker = ({
 
         setLocalHex(hex.toUpperCase());
         setTransparentMode(false);
-        onChange(hex, localOpacity / 100);
+        publish(hex, localOpacity / 100);
     };
 
     // Apply a hex value coming from a preset swatch or the hex field — keeps the
@@ -582,7 +704,11 @@ const CompactColorPicker = ({
     // from turning the same gesture into page panning after it has begun.
     const beginPointerDrag = (kind, event) => {
         event.preventDefault();
+        // One drag at a time: a second finger landing mid-drag is ignored
+        // rather than stealing (and never committing) the first one's drag.
+        if (dragEmit.current.active) return;
         event.currentTarget.setPointerCapture?.(event.pointerId);
+        startDragEmit();
         if (kind === 'sv') {
             svPointerId.current = event.pointerId;
             handleSVChange(event);
@@ -621,6 +747,7 @@ const CompactColorPicker = ({
         if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
             event.currentTarget.releasePointerCapture(event.pointerId);
         }
+        finishDragEmit();
     };
 
     const handleSpectrumKeyDown = (event) => {
@@ -916,7 +1043,7 @@ const CompactColorPicker = ({
             onPointerLeave={clearReadout}
             onPointerUp={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onPointerCancel={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
-            onLostPointerCapture={() => { alphaPointerId.current = null; alphaDragging.current = false; }}
+            onLostPointerCapture={() => { alphaPointerId.current = null; alphaDragging.current = false; finishDragEmit(); }}
             className="picker-alpha-track"
             style={{
                 ...track,
@@ -962,7 +1089,7 @@ const CompactColorPicker = ({
                 onPointerMove={(event) => movePointerDrag('sv', event)}
                 onPointerUp={(event) => endPointerDrag('sv', event)}
                 onPointerCancel={(event) => endPointerDrag('sv', event)}
-                onLostPointerCapture={() => { svPointerId.current = null; }}
+                onLostPointerCapture={() => { svPointerId.current = null; finishDragEmit(); }}
                 style={{
                     position: 'relative',
                     width: '100%',
@@ -1018,7 +1145,7 @@ const CompactColorPicker = ({
                     onPointerLeave={clearReadout}
                     onPointerUp={(event) => endPointerDrag('hue', event)}
                     onPointerCancel={(event) => endPointerDrag('hue', event)}
-                    onLostPointerCapture={() => { huePointerId.current = null; }}
+                    onLostPointerCapture={() => { huePointerId.current = null; finishDragEmit(); }}
                     style={{
                         ...track,
                         background: `linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)${paintBox}`,
@@ -1307,7 +1434,14 @@ const CompactColorPicker = ({
                                     width: '42px',
                                     flex: '0 0 42px',
                                     ...(dense ? { width: '32px', flex: '0 0 32px' } : null),
-                                    ...(isDesktop ? { width: '24px', flex: '0 0 24px' } : null),
+                                    /* RULED 2026-09-23 (owner, desktop: at 100% the
+                                       "100" sat against the divider). The box is
+                                       29px, not 24: the divider moves 5px left and
+                                       "100" gets ~5px of air each side. The hex
+                                       cell (flex) gives up those 5px and still
+                                       holds six of the widest hex digits; the
+                                       row's width and height do not change. */
+                                    ...(isDesktop ? { width: '29px', flex: '0 0 29px' } : null),
                                     height: '100%',
                                     padding: isDesktop ? '0 1px' : '0 2px',
                                     color: 'inherit',

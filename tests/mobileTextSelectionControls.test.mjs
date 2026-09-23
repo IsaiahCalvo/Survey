@@ -76,8 +76,13 @@ test('mobile text markup toolbar wires color, opacity, overlap, and the action-b
   assert.match(source, /data-mobile-text-markup-controls=/);
   assert.match(source, /aria-label="Text markup color and opacity"/);
   assert.match(source, /api\.showAnnotationColorPicker/);
-  assert.match(source, /api\.handleTextMarkupPaintChange\(hex, opacity\)/);
-  assert.match(source, /api\.handleStrokeColorChange\?\.\(hex\)/);
+  // RULED 2026-09-23 (owner: sliders must be smooth). Was an exact
+  // `(hex, opacity)` / `(hex)` call. The paint writes now also carry the colour
+  // picker's drag phase (preview while dragging, commit on release) so a drag
+  // repaints live and lands as one undo step. What is guarded is unchanged:
+  // the markup row writes its colour and opacity through these two handlers.
+  assert.match(source, /api\.handleTextMarkupPaintChange\(hex, opacity(, meta)?\)/);
+  assert.match(source, /api\.handleStrokeColorChange\?\.\(hex(,[^)]*)?\)/);
   assert.match(source, /api\.handleStrokeOpacityChange\?\.\(/);
   assert.match(source, /minOpacity=\{0\.05\}/);
   assert.match(source, /ariaLabel="Highlight overlap mode"/);

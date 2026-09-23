@@ -5,6 +5,7 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/An
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import { needsSwatchHairline, normaliseQuickColour, swatchCheckInk, swatchRingColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
+import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
@@ -1277,7 +1278,7 @@ export function MobileToolProperties({ api }) {
           onPointerDown={keepTextEditFocus}
           onClick={() => setColorPicker('fontColorLive')}
         >
-          <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
+          <span style={{ background: composeTextColor(splitTextColor(state.fontColor).hex, splitTextColor(state.fontColor).opacity) }} />
         </button>
         <MobileStripDivider />
         {/* The font name ellipsises rather than widening the pill: a strip is a
@@ -1349,9 +1350,17 @@ export function MobileToolProperties({ api }) {
       {colorPicker === 'fontColorLive' && (
         <MobileColorPickerSurface
           title="Font color"
-          color={toHexColor(state.fontColor, '#1e293b')}
-          showOpacity={false}
-          onChange={(hex) => editorApi.setFontColor?.(hex)}
+          /* UX 2026-09-23 (owner: text colour opacity everywhere text colour
+             is picked). The Opacity row the desktop text popover has; the
+             sheet hugs its content, so the row adds its own height and
+             nothing else moves. 5% floor, as for a highlight; the
+             Transparent cell never makes text invisible. */
+          color={splitTextColor(state.fontColor).hex}
+          opacity={splitTextColor(state.fontColor).opacity}
+          minOpacity={0.05}
+          onChange={(hex, alpha) => editorApi.setFontColor?.(
+            composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(state.fontColor).opacity),
+          )}
           onClose={() => setColorPicker(null)}
         />
       )}
@@ -1457,12 +1466,14 @@ export function MobileToolProperties({ api }) {
     // the picker's slider is what moved, so a dot passes no alpha and the mark
     // keeps the opacity it had; 5% is the floor below which a highlight stops
     // marking anything at all.
-    const applyMarkupPaint = (hex, alpha) => {
+    // `meta` is the picker's drag phase (UX 2026-09-23, CompactColorPicker):
+    // a drag previews live and lands as ONE undo step on release.
+    const applyMarkupPaint = (hex, alpha, meta) => {
       const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
-      if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+      if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity, meta);
       else {
-        api.handleStrokeColorChange?.(hex);
-        api.handleStrokeOpacityChange?.(opacity);
+        api.handleStrokeColorChange?.(hex, meta?.phase === 'commit' ? { phase: 'settle' } : meta);
+        api.handleStrokeOpacityChange?.(opacity, meta);
       }
     };
     // 2026-09-22 (owner ruling: a selected mark's own controls must appear in
@@ -1795,9 +1806,14 @@ export function MobileToolProperties({ api }) {
   const colorPickerConfig = colorPicker === 'textColor'
     ? {
       title: 'Text color',
-      color: toHexColor(textDefaults.fontColor, '#1e293b'),
-      showOpacity: false,
-      onChange: (hex) => updateTextDefaults({ fontColor: hex }),
+      // UX 2026-09-23: text colour carries its opacity (see fontColorLive).
+      color: splitTextColor(textDefaults.fontColor).hex,
+      opacity: splitTextColor(textDefaults.fontColor).opacity,
+      showOpacity: true,
+      minOpacity: 0.05,
+      onChange: (hex, alpha) => updateTextDefaults({
+        fontColor: composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(textDefaults.fontColor).opacity),
+      }),
     }
     : colorPicker === 'fill'
       ? {
@@ -1807,9 +1823,11 @@ export function MobileToolProperties({ api }) {
         opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)),
         showOpacity: typeof api.handleFillOpacityChange === 'function',
         firstPreset: 'transparent',
-        onChange: (hex, alpha) => {
-          api.handleFillColorChange?.(hex);
-          api.handleFillOpacityChange?.(Math.round((alpha ?? 1) * 100));
+        // `meta` is the picker's drag phase (UX 2026-09-23): the colour write
+        // settles, the opacity write after it commits the drag as one step.
+        onChange: (hex, alpha, meta) => {
+          api.handleFillColorChange?.(hex, meta?.phase === 'commit' ? { phase: 'settle' } : meta);
+          api.handleFillOpacityChange?.(Math.round((alpha ?? 1) * 100), meta);
         },
       }
       : colorPicker === 'stroke'
@@ -1820,9 +1838,9 @@ export function MobileToolProperties({ api }) {
           opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
           showOpacity: typeof api.handleStrokeOpacityChange === 'function',
           firstPreset: 'transparent',
-          onChange: (hex, alpha) => {
-            api.handleStrokeColorChange?.(hex);
-            api.handleStrokeOpacityChange?.(Math.round((alpha ?? 1) * 100));
+          onChange: (hex, alpha, meta) => {
+            api.handleStrokeColorChange?.(hex, meta?.phase === 'commit' ? { phase: 'settle' } : meta);
+            api.handleStrokeOpacityChange?.(Math.round((alpha ?? 1) * 100), meta);
           },
         }
         : null;
@@ -2132,7 +2150,7 @@ export function MobileToolProperties({ api }) {
                         color={color}
                         chosen={normaliseQuickColour(color) === normaliseQuickColour(toHexColor(textDefaults.fontColor, '#1e293b'))}
                         label={`Set Text color ${color}`}
-                        onPick={() => updateTextDefaults({ fontColor: color })}
+                        onPick={() => updateTextDefaults({ fontColor: composeTextColor(color, splitTextColor(textDefaults.fontColor).opacity) })}
                       />
                     ))}
                   </div>
@@ -2385,6 +2403,7 @@ export function MobileToolProperties({ api }) {
         showOpacity={colorPickerConfig.showOpacity}
         firstPreset={colorPickerConfig.firstPreset}
         tabs={colorPickerConfig.tabs}
+        minOpacity={colorPickerConfig.minOpacity}
         onChange={colorPickerConfig.onChange}
         onClose={() => setColorPicker(null)}
       />

@@ -55,6 +55,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
+import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
@@ -131,25 +132,34 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
     tab: useFill ? 'fill' : 'border',
     color: useFill ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor,
     opacity: useFill ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : ((bottomToolbarApi.strokeOpacity ?? 100) / 100),
-    apply: (hex, alpha) => {
+    // `meta` is the picker's drag phase (CompactColorPicker, UX 2026-09-23):
+    // { phase: 'preview' } while a slider is dragged, { phase: 'commit' } on
+    // release, undefined for a click or key press. One picker change is up to
+    // three writes below, and a drag must land as ONE undo step, so every
+    // write but the LAST is sent as 'settle' (saved and remembered as the
+    // tool's setting, but no undo step) and only the last one carries the
+    // commit — which records the whole drag, from the value it started on, in
+    // one step.
+    apply: (hex, alpha, meta) => {
+      const leading = meta?.phase === 'commit' ? { phase: 'settle' } : meta;
       if (isTextMarkupPalette && bottomToolbarApi.handleTextMarkupPaintChange) {
-        bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100));
+        bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100), meta);
         return;
       }
       if (useFill) {
         const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
         if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
-          bottomToolbarApi.handleStrokeOpacityChange(100);
+          bottomToolbarApi.handleStrokeOpacityChange(100, leading);
         }
-        bottomToolbarApi.handleFillColorChange(hex);
-        bottomToolbarApi.handleFillOpacityChange(Math.round(alpha * 100));
+        bottomToolbarApi.handleFillColorChange(hex, leading);
+        bottomToolbarApi.handleFillOpacityChange(Math.round(alpha * 100), meta);
       } else {
         const otherAlpha = (bottomToolbarApi.fillOpacity ?? 100) / 100;
         if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
-          bottomToolbarApi.handleFillOpacityChange(100);
+          bottomToolbarApi.handleFillOpacityChange(100, leading);
         }
-        bottomToolbarApi.handleStrokeColorChange(hex);
-        bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+        bottomToolbarApi.handleStrokeColorChange(hex, leading);
+        bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100), meta);
       }
     },
   });
@@ -813,6 +823,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // what font the next one would use.
   const [showTextFormatBar, setShowTextFormatBar] = useState(true);
   const textFormatSource = resolveTextFormatting(bottomToolbarApi);
+  // UX 2026-09-23 (owner: text colour opacity everywhere text colour is
+  // picked). The text colour carries its own opacity (utils/textColorOpacity):
+  // the picker edits both, and a quick dot changes the colour but keeps the
+  // opacity, the way a highlight's dots keep its strength.
+  const textColorParts = splitTextColor(textFormatSource?.state?.fontColor || '#1e293b');
   // The bar is the live editor's whenever there is one; armed, it is the tool's
   // defaults and the "Aa" button decides whether it is on screen.
   const showTextFormatting = !!textFormatSource
@@ -2107,8 +2122,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         Text
                       </span>
                       <QuickColourDots
-                        value={textFormatSource?.state?.fontColor || '#1e293b'}
-                        onPick={(hex) => textFormatSource?.api?.setFontColor?.(hex)}
+                        value={textColorParts.hex}
+                        onPick={(hex) => textFormatSource?.api?.setFontColor?.(composeTextColor(hex, textColorParts.opacity))}
                         onOpenPicker={() => setShowFontColorPicker((v) => !v)}
                       />
                       {showFontColorPicker && (
@@ -2124,11 +2139,17 @@ export default function App({ devPreviewReturnTab = null }) {
                         }}>
                           <Suspense fallback={null}>
                             <CompactColorPicker
-                              color={textFormatSource?.state?.fontColor || '#1e293b'}
-                              opacity={1}
+                              color={textColorParts.hex}
+                              opacity={textColorParts.opacity}
+                              /* 5% floor: below it text stops reading at all
+                                 (the same floor a highlight keeps). */
+                              minOpacity={0.05}
                               marginRight="0"
-                              onChange={(hex) => {
-                                textFormatSource?.api?.setFontColor?.(hex);
+                              onChange={(hex, alpha) => {
+                                // The Transparent cell hands 0; text is never
+                                // made invisible, so it keeps its opacity.
+                                const nextAlpha = alpha > 0 ? alpha : textColorParts.opacity;
+                                textFormatSource?.api?.setFontColor?.(composeTextColor(hex, nextAlpha));
                               }}
                               onClose={() => setShowFontColorPicker(false)}
                               firstPreset="transparent"

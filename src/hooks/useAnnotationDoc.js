@@ -197,6 +197,12 @@ export function useAnnotationDoc({
   docRole = null,
   eraseEffectConsumer = null,
   onHistoryQuarantine = null,
+  // Optional { current: { until } }: while Date.now() < until the capture
+  // below skips writing. PDFViewer holds it during a colour-slider drag so
+  // only the released value reaches the document (UX 2026-09-23, smooth
+  // sliders); it always lifts on release or after 1.5s and then re-renders,
+  // so the next capture writes the full current state.
+  capturePauseRef = null,
 }) {
   const handleRef = useRef(null);
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
@@ -494,6 +500,7 @@ export function useAnnotationDoc({
   useEffect(() => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
+    if (capturePauseRef?.current?.until && Date.now() < capturePauseRef.current.until) return;
     const capturedByPage = stripMetaFallbackCallouts(
       annotationsByPage,
       metaFallbackIdsRef.current,

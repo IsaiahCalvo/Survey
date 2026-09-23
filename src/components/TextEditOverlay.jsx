@@ -32,6 +32,7 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { isTextColorValue } from '../utils/textColorOpacity';
 import {
   buildPlainTextContentStyle,
   buildCalloutTextContentStyle,
@@ -485,7 +486,9 @@ export default function TextEditOverlay({
       setVerticalAlign: (v) => applyStyle('verticalAlign', ['top', 'middle', 'bottom'].includes(v) ? v : 'top'),
       // Single-name fonts only (fabric/CSS measurement contract, CLAUDE.md).
       setFontFamily: (f) => applyStyle('fontFamily', typeof f === 'string' && f.length > 0 && !f.includes(',') ? f : 'Arial'),
-      setFontColor: (c) => applyStyle('fill', typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#000000'),
+      // #rrggbb, or rgba() when the text colour carries an opacity
+      // (utils/textColorOpacity, UX 2026-09-23).
+      setFontColor: (c) => applyStyle('fill', isTextColorValue(c) ? c : '#000000'),
     };
     onRichTextEditorChange({
       api,

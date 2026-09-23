@@ -133,5 +133,8 @@ test('RULED 2026-09-23: every desktop picker takes one slim scale (thin sliders,
   assert.match(SOURCE, /\.\.\.\(isDesktop \? \{ height: '24px', font: `400 11px\/1 \$\{FONT\}` \} : null\)/);
   assert.match(SOURCE, /\.\.\.\(isDesktop \? \{ width: '46px', flex: '0 0 46px', height: '24px' \} : null\)/);
   assert.match(SOURCE, /\.\.\.\(isDesktop \? \{ width: '22px', flex: '0 0 22px' \} : null\)/);
-  assert.match(SOURCE, /\.\.\.\(isDesktop \? \{ width: '24px', flex: '0 0 24px' \} : null\)/);
+  // RULED 2026-09-23 (owner, desktop: "100%" sat too close to the divider).
+  // Was 24px; the opacity box is 29px so the divider moves left and "100" has
+  // room both sides, inside the same row width and height.
+  assert.match(SOURCE, /\.\.\.\(isDesktop \? \{ width: '29px', flex: '0 0 29px' \} : null\)/);
 });
