@@ -464,6 +464,24 @@ export function collectAnnotationFieldTouches(previousPage, nextPage, record = c
   );
 }
 
+/**
+ * End a page's live-preview gesture: forget its pre-gesture baseline and its
+ * touch record (pageKey null = every page). A one-shot write that saves as a
+ * preview frame (checkpointPolicy 'skip' — the embedded-PDF import, the
+ * counter-series delete) must call this, or the NEXT ordinary save on that
+ * page diffs from before the write and records the write's marks as its own
+ * creates — undoing that edit would then delete them.
+ */
+export function endPagePreviewGesture(previewBaselines, gestureTouches, pageKey = null) {
+  if (pageKey == null) {
+    previewBaselines?.clear?.();
+    gestureTouches?.clear?.();
+    return;
+  }
+  previewBaselines?.delete?.(String(pageKey));
+  gestureTouches?.delete?.(String(pageKey));
+}
+
 function shapeHistoryAction(pageNumber, created, deleted, updated) {
   const total = created.length + deleted.length + updated.length;
   if (total === 0) return null;
@@ -512,7 +530,11 @@ export function restrictAnnotationHistoryActionFields(action, record) {
   const deleted = entries.deleted.filter((entry) => record.deleted.has(entryStorageKey(entry)));
   const updated = entries.updated
     .map((entry) => {
-      const paths = record.fields.get(entryStorageKey(entry));
+      const key = entryStorageKey(entry);
+      // Deleted and re-added (same id) within this gesture: the whole mark is
+      // the gesture's own work, so its full change stays in the step.
+      if (record.created.has(key) && record.deleted.has(key)) return entry;
+      const paths = record.fields.get(key);
       if (!paths || paths.size === 0) return null;
       const fields = [...paths.values()];
       const changes = restrictFieldChanges(diffAnnotationFields(entry.before, entry.after), fields);

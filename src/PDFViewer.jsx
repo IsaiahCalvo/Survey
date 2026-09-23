@@ -109,7 +109,7 @@ import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool 
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
-import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
+import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, endPagePreviewGesture, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
 import { normalizeMergedHistoryObject } from './utils/historyMergeNormalize';
 import {
   buildAtomicTextMarkupPageMutation,
@@ -19933,7 +19933,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       localAnnotationRedoRef.current = [];
       suppressBatchCheckpointsRef.current = 0;
       objectModifiedInteractionCheckpointRef.current.clear();
-      previewBaselineByPageRef.current.clear();
+      endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current);
       setErasePreviewPages(new Set());
       setUndoHistory([]);
       setRedoHistory([]);
@@ -26528,6 +26528,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               action: 'import-pdf-annotations',
               checkpointPolicy: 'skip',
             });
+            // The import is not a gesture: drop the page snapshot its 'skip'
+            // save left, or the user's first edit here would record the
+            // imported marks as its own creates (and Undo would delete them).
+            endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
           });
           appDebug('[PDFImport] imported embedded PDF annotations (once) ' + JSON.stringify({
             documentId,
@@ -26649,6 +26653,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             action: 'import-pdf-annotations',
             checkpointPolicy: 'skip',
           });
+          endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
         }
       });
 
@@ -27362,7 +27367,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           checkpointPolicy: 'skip',
           deletedCount: removedCount,
         });
-        previewBaselineByPageRef.current.delete(String(pageNumber));
+        endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
       });
       pushLocalAnnotationHistoryAction(scopedDocumentAction);
 
