@@ -3724,33 +3724,39 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-actions {
+  /* UX 2026-09-22 (owner: "too big, it doesn't fit well"): the floating
+     action pill drops from a 42px bar of 34px/13px-bold buttons to the phone
+     chip scale — 32px pill, 28px chips, 11px/600 labels, 14px glyphs. */
   align-self: center;
-  height: 42px;
-  flex: 0 0 42px;
+  height: 32px;
+  flex: 0 0 32px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  gap: 2px;
+  padding: 0 4px;
   box-sizing: border-box;
   color: var(--text-1);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 21px;
+  border-radius: 16px;
 }
 
 .mobile-pages-actions > button {
-  min-width: 72px;
-  height: 34px;
-  padding: 0 9px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 5px;
   color: var(--text-1);
   background: transparent;
   border: 0;
-  border-radius: 17px;
-  font: 700 13px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  border-radius: 14px;
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: -0.01em;
 }
+.mobile-pages-actions > button > svg { width: 14px; height: 14px; flex: 0 0 auto; }
 
 .mobile-pages-actions > button:disabled {
   color: var(--text-disabled);
@@ -3762,7 +3768,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pages-actions > i {
   width: 1px;
-  height: 18px;
+  height: 14px;
   flex: 0 0 1px;
   background: var(--surface-3);
 }
