@@ -2,6 +2,7 @@
 /* tokens.css decides what a state looks like; states.css is what applies it to
    every control. Imported second so its rules sit after the token block. */
 @import './styles/states.css';
+@import './styles/swatches.css';
 
 * {
   margin: 0;

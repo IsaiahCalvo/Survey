@@ -600,35 +600,25 @@ const CompactColorPicker = ({
                         aria-pressed={isSelected}
                         title={preset}
                         onClick={() => applyHex(preset)}
+                        /* HeroUI swatch (owner 2026-09-23): hover grows the
+                           colour, choosing rings it in its own colour and pops
+                           the check in. See src/styles/swatches.css. */
+                        className="hero-swatch"
+                        data-selected={isSelected ? 'true' : 'false'}
                         style={{
                             width: '26px',
                             height: '26px',
-                            padding: 0,
-                            display: 'grid',
-                            placeItems: 'center',
-                            border: 0,
-                            background: 'transparent',
+                            borderRadius: '50%',
                             flex: '0 0 auto',
-                            cursor: 'pointer',
+                            '--hero-swatch-ring': swatchRingColour(preset),
                         }}
                     >
-                        <span style={{
-                            display: 'grid',
-                            placeItems: 'center',
-                            width: '20px',
-                            height: '20px',
-                            borderRadius: '50%',
-                            background: preset,
-                            boxShadow: isSelected
-                                ? `0 0 0 1.5px ${panelBackground}, 0 0 0 3px ${swatchRingColour(preset)}`
-                                // UX: the resting hairline that lifts a dark
-                                // preset ink off the dark panel. It rings a
-                                // USER colour, so it uses the shared ink ring
-                                // rather than a hand-typed white alpha.
-                                : (needsSwatchHairline(preset) ? '0 0 0 1px var(--ink-ring)' : undefined),
-                        }}>
+                        <span
+                            className={`hero-swatch__fill${needsSwatchHairline(preset) ? ' has-hairline' : ''}`}
+                            style={{ background: preset }}
+                        >
                             {isSelected && (
-                                <span style={{ color: swatchCheckInk(preset), lineHeight: 0 }}>
+                                <span className="hero-swatch__check" style={{ color: swatchCheckInk(preset) }}>
                                     <ChosenCheck size={12} />
                                 </span>
                             )}
@@ -684,21 +674,15 @@ const CompactColorPicker = ({
                         aria-label={title}
                         aria-pressed={Boolean(isSelected)}
                         onClick={() => applyHex(presetValue)}
+                        className="hero-swatch"
+                        data-selected={isSelected ? 'true' : 'false'}
                         style={{
-                            position: 'relative',
                             aspectRatio: '1',
-                            border: 0,
-                            borderRadius: '5px',
-                            ...background,
-                            boxShadow: isSelected
-                                ? `0 0 0 2px ${panelBackground}, 0 0 0 3.5px ${swatchRingColour(isTransparent ? '#ffffff' : swatch)}`
-                                : undefined,
-                            display: 'grid',
-                            placeItems: 'center',
-                            padding: 0,
-                            cursor: 'pointer',
+                            borderRadius: '7px',
+                            '--hero-swatch-ring': swatchRingColour(isTransparent ? '#ffffff' : swatch),
                         }}
                     >
+                        <span className="hero-swatch__fill" style={background}>
                         {isMatchSlot && (
                             <span style={{
                                 fontSize: '11px',
@@ -711,10 +695,11 @@ const CompactColorPicker = ({
                             }}>≡</span>
                         )}
                         {isSelected && !isMatchSlot && !isTransparent && (
-                            <span style={{ color: swatchCheckInk(swatch), lineHeight: 0 }}>
+                            <span className="hero-swatch__check" style={{ color: swatchCheckInk(swatch) }}>
                                 <ChosenCheck size={13} />
                             </span>
                         )}
+                        </span>
                     </button>
                 );
             }))}

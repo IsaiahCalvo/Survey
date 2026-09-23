@@ -77,8 +77,13 @@ test('the presets row and the grid mark the chosen colour in its own colour, nev
   // The ring colour and the check ink both come from the one shared module, so
   // a picker cell and a toolbar disc can never disagree about "chosen".
   assert.match(SOURCE, /import \{ swatchCheckInk, swatchRingColour, needsSwatchHairline, normaliseQuickColour \}/);
-  assert.match(SOURCE, /0 0 0 1\.5px \$\{panelBackground\}, 0 0 0 3px \$\{swatchRingColour\(preset\)\}/);
-  assert.match(SOURCE, /0 0 0 2px \$\{panelBackground\}, 0 0 0 3\.5px \$\{swatchRingColour\(/);
+  // RULED 2026-09-23 (owner: copy HeroUI's ColorSwatchPicker): the chosen
+  // ring is now the item's 2px border in the swatch's own colour with the fill
+  // shrunk to 77% inside it (src/styles/swatches.css), not a box-shadow gap.
+  // The colour is still swatchRingColour, never gold.
+  assert.match(SOURCE, /'--hero-swatch-ring': swatchRingColour\(preset\)/);
+  assert.match(SOURCE, /'--hero-swatch-ring': swatchRingColour\(isTransparent/);
+  assert.match(SOURCE, /data-selected=\{isSelected \? 'true' : 'false'\}/);
   assert.ok(
     !/var\(--accent/.test(SOURCE),
     'the picker must not reach for the brand gold at all: the chosen mark is the '

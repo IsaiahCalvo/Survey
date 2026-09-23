@@ -2549,26 +2549,29 @@ export default function TemplatesEditor({
                             display: 'flex', flexDirection: 'column',
                             overflow: 'hidden',
                           }}>
-                            {/* Fill / Border tabs */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '1px solid var(--rule)' }}>
-                              {[['fill', 'Fill'], ['border', 'Border']].map(([k, label], i) => (
-                                <button
-                                  key={k}
-                                  onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}
-                                  style={{
-                                    position: 'relative', padding: '7px 0', fontSize: 11,
-                                    background: layer === k ? 'rgba(20,30,43,0.65)' : 'rgba(12,18,27,0.35)',
-                                    color: layer === k ? 'var(--ink)' : 'var(--ink-muted)',
-                                    fontWeight: 600, border: 0,
-                                    borderRight: i === 0 ? '1px solid var(--rule)' : 0,
-                                    cursor: 'pointer', fontFamily: 'inherit',
-                                  }}
-                                >{label}
-                                  {layer === k && <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'var(--accent)' }} />}
-                                </button>
-                              ))}
-                            </div>
                             <div style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {/* Shared colour picker — the app's one picker. Dimmed +
+                                  read-only while a border is matched to the fill. */}
+                              <div>
+                                <CompactColorPicker
+                                  color={activeColor}
+                                  opacity={activeOp}
+                                  onChange={applyColor}
+                                  onClose={() => setOpenColor(null)}
+                                  dismissInsideSelector="[data-entity-color-panel]"
+                                  /* The entity panel is already the box (owner
+                                     2026-09-23: "not a box within a box"). */
+                                  chrome={false}
+                                  /* The picker's own Fill / Border tabs — the
+                                     same segmented control the canvas picker
+                                     uses (owner 2026-09-23: "look like that"). */
+                                  tabs={{
+                                    items: [{ id: 'fill', label: 'Fill' }, { id: 'border', label: 'Border' }],
+                                    active: layer,
+                                    onSelect: (k) => setLayerTab({ ...layerTab, [r.id]: k }),
+                                  }}
+                                />
+                              </div>
                               {/* Match Fill row — only on Border tab */}
                               {layer === 'border' && (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
@@ -2582,20 +2585,7 @@ export default function TemplatesEditor({
                                   {match && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 'auto' }}>using fill color &amp; opacity</span>}
                                 </label>
                               )}
-                              {/* Shared colour picker — the app's one picker. Dimmed +
-                                  read-only while a border is matched to the fill. */}
-                              <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                <CompactColorPicker
-                                  color={activeColor}
-                                  opacity={activeOp}
-                                  onChange={applyColor}
-                                  onClose={() => setOpenColor(null)}
-                                  dismissInsideSelector="[data-entity-color-panel]"
-                                  /* The entity panel is already the box (owner
-                                     2026-09-23: "not a box within a box"). */
-                                  chrome={false}
-                                />
-                              </div>
+
                             </div>
                           </div>
                         );

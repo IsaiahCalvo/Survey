@@ -141,11 +141,15 @@ export function QuickColourDots({
           <button
             key={colour}
             type="button"
-            className={`quick-style__dot${isCurrent ? ' is-current' : ''}`}
+            /* HeroUI swatch behaviour (owner 2026-09-23), src/styles/swatches.css. */
+            className={`quick-style__dot hero-swatch${isCurrent ? ' is-current' : ''}`}
+            data-selected={isCurrent ? 'true' : 'false'}
             data-quick-colour-preset={colour}
             style={{
               '--quick-style-dot': colour,
               '--quick-style-ring': swatchRingColour(colour),
+              '--hero-swatch-ring': swatchRingColour(colour),
+              borderRadius: '50%',
             }}
             // KAL-65: a control carries chromeTip OR a native title=, never
             // both. On the phone there is no tooltip provider, so this is a
@@ -157,11 +161,11 @@ export function QuickColourDots({
             onClick={() => onPick?.(colour)}
           >
             <span
-              className={`quick-style__dot-fill${needsSwatchHairline(colour) ? ' has-hairline' : ''}`}
+              className={`quick-style__dot-fill hero-swatch__fill${needsSwatchHairline(colour) ? ' has-hairline' : ''}`}
             >
               {isCurrent && (
                 <span
-                  className="quick-style__check"
+                  className="quick-style__check hero-swatch__check"
                   style={{ color: swatchCheckInk(colour) }}
                   aria-hidden="true"
                 >
