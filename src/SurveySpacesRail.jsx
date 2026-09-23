@@ -26,6 +26,9 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+// Phone Survey panel look (layout B, one card divided). Every rule in it is
+// scoped to .mobile-survey-sheet, which only the phone sheet carries.
+import './mobile/mobileSurveyPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -512,12 +515,14 @@ const SurveySpacesRail = ({
   const mobileDetailChecklist = mobileDetailCategory
     ? (mobileDetailCategory.checklist || []).filter((item) => item && item.archived !== true)
     : [];
-  // Demo pageUtils.ts:1-12 — the checklist window is 36px rows with 5px gaps,
-  // max 4 visible before it scrolls. It still sizes the window INSIDE the panel;
+  // Demo pageUtils.ts:1-12 — the checklist window shows at most 4 rows before
+  // it scrolls. It still sizes the window INSIDE the panel;
   // it no longer sizes the panel, which stands at Standard like every other one
   // (pass 7 — see the sheet's own style block below).
   const mobileChecklistVisibleCount = Math.min(4, Math.max(1, mobileDetailChecklist.length));
-  const mobileChecklistWindowHeight = (mobileChecklistVisibleCount * 36) + ((mobileChecklistVisibleCount - 1) * 5);
+  // UX 2026-09-23 (phone Survey panel integrated): checklist rows are 40px lines
+  // parted by a hairline (each row's 1px top edge is inside its 40), no gaps.
+  const mobileChecklistWindowHeight = mobileChecklistVisibleCount * 40;
 
   // Phase F (motion & feel): the survey sheet gets the same finger-follow drag +
   // velocity dismiss (dy>82 or vy>0.65) + spring-back + slide-down exit as the
@@ -1219,7 +1224,7 @@ const SurveySpacesRail = ({
                 instead of pushing or sitting below it, mirroring the left rail's
                 top collapse row. */}
             <div
-              className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
+              className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
                 // Standard - 448px plus the bottom safe area - so the tray does
@@ -1431,8 +1436,17 @@ const SurveySpacesRail = ({
 
                   {selectedTemplate && showSurveyPanel ? (
                   <>
-                  {/* Template title lives below the rail tabs, not in the collapse row. */}
-                  <div style={{
+                  {/* Template title lives below the rail tabs, not in the collapse row.
+                      UX 2026-09-23 (owner: phone Survey panel integrated): on the
+                      phone this is ONE slim 44px line - the template name as its
+                      own switcher, then Exit Survey as a quiet red word, the
+                      export glyph and the close glyph. The "SURVEY TEMPLATE"
+                      eyebrow and the round plated buttons are gone, and Exit
+                      Survey no longer takes a whole footer band. Desktop keeps
+                      its own inline header, unchanged. */}
+                  <div
+                    className={mobileMode ? 'mobile-survey-head' : undefined}
+                    style={mobileMode ? undefined : {
                     padding: '12px 12px 10px',
                     borderBottom: '1px solid var(--border)',
                     background: 'var(--surface-1)',
@@ -1443,10 +1457,9 @@ const SurveySpacesRail = ({
                   }}>
                     <div
                       ref={mobileMode ? templateSelectorRef : undefined}
-                      className={mobileMode ? 'mobile-survey-sheet-title' : undefined}
+                      className={mobileMode ? 'mobile-survey-head-title' : undefined}
                       style={{ flex: 1, minWidth: 0, position: 'relative' }}
                     >
-                      {mobileMode ? <span className="mobile-survey-sheet-eyebrow">Survey template</span> : null}
                       {mobileMode ? (
                         <>
                           <button
@@ -1519,7 +1532,15 @@ const SurveySpacesRail = ({
                         );
                       })()}
                     </div>
-                    <div className={mobileMode ? 'mobile-survey-sheet-header-actions' : undefined}>
+                    <div className={mobileMode ? 'mobile-survey-head-actions' : undefined}>
+                      {/* UX 2026-09-23 (owner: phone Survey panel integrated): Exit
+                          Survey moved up from its own full-width outlined footer
+                          band into this line as a quiet red word. Same handler. */}
+                      {mobileMode && (
+                        <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
+                          Exit Survey
+                        </button>
+                      )}
                       {/* UX (mobile demo parity): 34px round export button in the sheet
                           header opening a 218px menu with 48px rows (demo
                           SurveySheet.tsx:324-348, styles.ts:2731-2775; accent gold, not
@@ -1583,9 +1604,9 @@ const SurveySpacesRail = ({
                             exitSurveyMode();
                           }
                         }}
-                        className="btn btn-icon btn-icon-sm"
+                        className={mobileMode ? 'mobile-survey-close' : 'btn btn-icon btn-icon-sm'}
                         aria-label="Close Survey panel"
-                        style={{
+                        style={mobileMode ? undefined : {
                           background: 'transparent',
                           border: 'none',
                           color: 'var(--text-2)',
@@ -1602,8 +1623,45 @@ const SurveySpacesRail = ({
                     </div>
                   </div>
 
-                  {/* Module navigator */}
-                  {surveyModuleOptions.length > 0 && (
+                  {/* UX 2026-09-23 (owner: phone Survey panel integrated, "layout B -
+                      one card, divided"): on the phone everything under the header -
+                      the module tabs, the categories and their Survey Markers, or a
+                      Survey Marker's detail - sits in ONE rounded lighter panel whose
+                      rows are parted by hairlines that reach both edges, the same
+                      object as the home Documents, Projects and Templates lists. No
+                      card per row. On desktop this wrapper is display: contents, so
+                      the rail's layout is exactly what it was. */}
+                  <div
+                    className={mobileMode ? 'mobile-survey-card' : undefined}
+                    style={mobileMode ? undefined : { display: 'contents' }}
+                  >
+                  {/* Module navigator. Phone: a row of module TABS pinned to the top
+                      of the panel (active = bright ink with a 2px ink bar, the home
+                      template editor's tabs; no gold) instead of the old boxed
+                      prev / pill / next navigator. Same selectSurveyModule handler. */}
+                  {surveyModuleOptions.length > 0 && mobileMode && (
+                    <div className="mobile-survey-module-tabs" role="tablist" aria-label="Modules">
+                      {surveyModuleOptions.map((module) => {
+                        const isActive = module.id === selectedModuleId;
+                        return (
+                          <button
+                            key={module.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            className={isActive ? 'is-active' : undefined}
+                            onClick={(event) => {
+                              event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                              selectSurveyModule(module.id);
+                            }}
+                          >
+                            <span>{module.name || 'Untitled module'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {surveyModuleOptions.length > 0 && !mobileMode && (
                     <div className={mobileMode ? 'mobile-survey-module-row' : undefined} style={{
                       padding: '8px 12px',
                       borderBottom: '1px solid var(--border)',
@@ -1921,20 +1979,24 @@ const SurveySpacesRail = ({
 
                     return (
                       <div className="mobile-survey-detail">
-                        <span className="mobile-survey-detail-label">Category</span>
+                        {/* UX 2026-09-23 (owner: phone Survey panel integrated): the
+                            detail is lines in the one panel now - "Category" and its
+                            value on ONE row, the Survey Marker's own row under a
+                            hairline, then the checklist rows - instead of uppercase
+                            labels stacked over separate boxed fields. */}
                         {/* Category re-assign is DEFERRED: the new side has no existing
                             mutation that moves a Survey Marker between categories
                             (item/Excel linkage is keyed by category), so this field is
                             read-only for now — demo SurveySheet.tsx:396-425 offers a
                             dropdown. Do not wire a raw categoryId patch here. */}
                         <div className="mobile-survey-detail-field is-static">
-                          <span>{detailCategory?.name || 'No category'}</span>
+                          <span className="mobile-survey-detail-label">Category</span>
+                          <span className="mobile-survey-detail-field-value">{detailCategory?.name || 'No category'}</span>
                           {detailCategory ? (
-                            <span className="mobile-survey-detail-field-meta">{mobileDetailChecklist.length}</span>
+                            <span className="mobile-survey-detail-field-meta" aria-label={`${mobileDetailChecklist.length} checklist items`}>{mobileDetailChecklist.length}</span>
                           ) : null}
                         </div>
 
-                        <span className="mobile-survey-detail-label">Category item</span>
                         <div className="mobile-survey-detail-tools mobile-survey-detail-dropdown-wrap">
                           <button
                             type="button"
@@ -2101,7 +2163,7 @@ const SurveySpacesRail = ({
                       </div>
                     );
                   })() : (
-                  <div style={{
+                  <div className={mobileMode ? 'mobile-survey-list' : undefined} style={mobileMode ? undefined : {
                     flex: categorySelectModeActive ? '1 1 auto' : 1,
                     overflowY: 'auto',
                     padding: '12px 10px',
@@ -3016,8 +3078,8 @@ const SurveySpacesRail = ({
                           ) : null}
 
                           {/* Categories List */}
-                          <div style={{ marginBottom: '20px' }}>
-                            <h3 className={mobileMode ? 'mobile-survey-categories-heading' : undefined} style={{
+                          <div style={mobileMode ? undefined : { marginBottom: '20px' }}>
+                            <h3 className={mobileMode ? 'mobile-survey-categories-heading' : undefined} style={mobileMode ? undefined : {
                               fontSize: '13px',
                               fontWeight: '600',
                               color: 'var(--text-2)',
@@ -3033,7 +3095,7 @@ const SurveySpacesRail = ({
                             }}>
                               {/* Vocabulary rule: "Survey Marker" in full on mobile copy —
                                   never bare "marker"/"highlight". Mobile copy unchanged. */}
-                              <span>{mobileMode ? 'Select category' : 'Categories'}</span>
+                              <span>Categories</span>
                               {mobileMode ? <small>Tap category to place a Survey Marker</small> : null}
                               {/* Same button look/size as before (shared
                                   .survey-marker-category-create-button class); it now opens
@@ -3057,7 +3119,7 @@ const SurveySpacesRail = ({
                                 ids={module.categories.map((category) => category.id)}
                                 onReorder={(activeId, overId) => handleReorderSurveyCategories(selectedModuleId, activeId, overId)}
                                 variableHeight
-                                gap={6}
+                                gap={mobileMode ? 0 : 6}
                                 dropSettleMs={160}
                                 suppressDropTransforms
                               >
@@ -3171,7 +3233,9 @@ const SurveySpacesRail = ({
                                               }}
                                               className="survey-marker-category-main"
                                               style={{
-                                                color: buttonTextColor,
+                                                // Phone: a resting category name is the bright
+                                                // row ink of the home lists; desktop keeps text-2.
+                                                color: (mobileMode && !isCategoryActive) ? 'var(--text-1)' : buttonTextColor,
                                               }}
                                             >
                                               <span className="survey-marker-category-main-label">
@@ -3194,8 +3258,9 @@ const SurveySpacesRail = ({
                                                     [category.id]: !prev[category.id]
                                                   }));
                                                 }}
+                                                aria-label={isExpanded ? `Hide Survey Markers in ${category.name || 'category'}` : `Show Survey Markers in ${category.name || 'category'}`}
                                                 style={{
-                                                  color: isArrowActive ? 'var(--accent)' : '#fff'
+                                                  color: isArrowActive ? 'var(--accent)' : (mobileMode ? 'var(--text-3)' : '#fff')
                                                 }}
                                               >
                                                 <span
@@ -3223,7 +3288,7 @@ const SurveySpacesRail = ({
 
                                       {/* Expanded surveyMarkers list */}
                                       {isExpanded && surveyMarkerCount > 0 && (
-                                        <div style={{
+                                        <div className={mobileMode ? 'mobile-survey-item-list' : undefined} style={mobileMode ? undefined : {
                                           marginTop: '5px',
                                           padding: '0 0 1px',
                                           background: 'transparent',
@@ -3380,7 +3445,7 @@ const SurveySpacesRail = ({
                                             onDragEnd={() => restoreSurveyMarkerAfterDrag()}
                                             onDragCancel={() => restoreSurveyMarkerAfterDrag()}
                                             variableHeight
-                                            gap={5}
+                                            gap={mobileMode ? 0 : 5}
                                             dropSettleMs={160}
                                             suppressDropTransforms
                                           >
@@ -3460,9 +3525,12 @@ const SurveySpacesRail = ({
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 data-drag-rearrange-row
                                                 style={{
-                                                background: mobileMode ? 'var(--surface-1)' : (isDragging ? 'var(--accent-soft)' : 'transparent'),
-                                                border: '1px solid var(--border)',
-                                                borderRadius: mobileMode ? '6px' : '4px',
+                                                // Phone (2026-09-23, layout B): a Survey Marker is a
+                                                // line in the panel, no box; its hairline is drawn by
+                                                // mobileSurveyPanel.css on the sortable wrapper.
+                                                background: mobileMode ? 'transparent' : (isDragging ? 'var(--accent-soft)' : 'transparent'),
+                                                border: mobileMode ? 0 : '1px solid var(--border)',
+                                                borderRadius: mobileMode ? 0 : '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
                                                 boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 2px var(--focus)' : 'none',
@@ -4113,6 +4181,7 @@ const SurveySpacesRail = ({
                     )}
                   </div>
                   )}
+                  </div>
                   </>
                   ) : (
                     <div style={{
@@ -4123,7 +4192,11 @@ const SurveySpacesRail = ({
                       background: 'var(--surface-1)',
                       fontFamily: FONT_FAMILY
                     }}>
-                      <div className={mobileMode ? 'mobile-survey-picker-header' : undefined} style={{
+                      {/* UX 2026-09-23 (owner: phone Survey panel integrated): the
+                          phone header is one slim line - a one-line title, Exit
+                          Survey as a quiet red word, and the standard close glyph -
+                          where it was an eyebrow, an 18px title and a round plated X. */}
+                      <div className={mobileMode ? 'mobile-survey-head' : undefined} style={mobileMode ? undefined : {
                         padding: '12px 12px 10px',
                         borderBottom: '1px solid var(--border)',
                         background: 'var(--surface-1)',
@@ -4132,8 +4205,10 @@ const SurveySpacesRail = ({
                         gap: '10px',
                         flexShrink: 0
                       }}>
-                        <div className={mobileMode ? 'mobile-survey-sheet-title' : undefined} style={{ flex: 1, minWidth: 0 }}>
-                        {mobileMode ? <span className="mobile-survey-sheet-eyebrow">Survey template</span> : null}
+                        {mobileMode ? (
+                          <h2 className="mobile-survey-head-title">Choose a survey template</h2>
+                        ) : (
+                        <div style={{ flex: 1, minWidth: 0 }}>
                         <h2 style={{
                           flex: 1,
                           minWidth: 0,
@@ -4147,10 +4222,15 @@ const SurveySpacesRail = ({
                           Choose survey template
                         </h2>
                         </div>
+                        )}
                         {mobileMode && (
+                          <div className="mobile-survey-head-actions">
+                          <button type="button" className="mobile-survey-exit" onClick={exitSurveyMode}>
+                            Exit Survey
+                          </button>
                           <button
                             type="button"
-                            className="mobile-survey-picker-close"
+                            className="mobile-survey-close"
                             aria-label="Close Survey panel"
                             onClick={() => {
                               setIsSurveyPanelCollapsed(true);
@@ -4159,9 +4239,10 @@ const SurveySpacesRail = ({
                           >
                             <Icon name="close" size={18} color="currentColor" />
                           </button>
+                          </div>
                         )}
                       </div>
-                      <div style={{
+                      <div className={mobileMode ? 'mobile-survey-picker-body' : undefined} style={mobileMode ? undefined : {
                         flex: 1,
                         minHeight: 0,
                         overflowY: 'auto',
@@ -4185,7 +4266,15 @@ const SurveySpacesRail = ({
                             </div>
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          /* UX 2026-09-23 (owner: "I don't think the templates should be
+                             these different cards"): on the phone the templates are
+                             lines in ONE panel - name, then its module count and a
+                             chevron on the right - parted by hairlines, like the home
+                             Templates list. Desktop keeps its cards. */
+                          <div
+                            className={mobileMode ? 'mobile-survey-card mobile-survey-template-list' : undefined}
+                            style={mobileMode ? undefined : { display: 'flex', flexDirection: 'column', gap: '8px' }}
+                          >
                             {availableSurveyTemplates.map(template => {
                               const modules = (template.modules || template.spaces) || [];
                               const moduleCount = modules.length;
@@ -4194,14 +4283,14 @@ const SurveySpacesRail = ({
                                 <button
                                   key={template.id}
                                   type="button"
-                                  /* UX (mobile demo parity): 42px rows with a :active pressed
-                                     state (demo styles.ts:2694-2705) — hover styling is a dead
-                                     affordance on touch, so the mouse handlers are desktop-only. */
+                                  /* Phone: a 44px line with a :active pressed fill — hover
+                                     styling is a dead affordance on touch, so the mouse
+                                     handlers are desktop-only. */
                                   className={mobileMode ? 'mobile-survey-template-row' : undefined}
                                   onClick={() => {
                                     onSelectSurveyTemplate?.(template);
                                   }}
-                                  style={{
+                                  style={mobileMode ? undefined : {
                                     width: '100%',
                                     minHeight: '58px',
                                     textAlign: 'left',
@@ -4226,6 +4315,16 @@ const SurveySpacesRail = ({
                                     event.currentTarget.style.borderColor = 'var(--border)';
                                   }}
                                 >
+                                  {mobileMode ? (
+                                    <>
+                                      <span className="mobile-survey-template-name">{template.name || 'Untitled template'}</span>
+                                      <span className="mobile-survey-template-meta">
+                                        {moduleCount} module{moduleCount === 1 ? '' : 's'}
+                                      </span>
+                                      <Icon name="chevronRight" size={14} color="currentColor" />
+                                    </>
+                                  ) : (
+                                  <>
                                   <Icon name="template" size={18} color="var(--text-2)" />
                                   <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                     <span style={{
@@ -4242,6 +4341,8 @@ const SurveySpacesRail = ({
                                       {moduleCount} module{moduleCount === 1 ? '' : 's'}
                                     </span>
                                   </span>
+                                  </>
+                                  )}
                                 </button>
                               );
                             })}
@@ -4302,11 +4403,6 @@ const SurveySpacesRail = ({
                 </div>
               )}
 
-              {mobileMode && !isSurveyPanelCollapsed && (
-                <div className="mobile-survey-exit-footer">
-                  <button type="button" onClick={exitSurveyMode}>Exit Survey</button>
-                </div>
-              )}
             </div>
             {/* Desktop-only Create Category modal (opened by the heading-row
                 plus button). Duplicate-name data comes straight from props the

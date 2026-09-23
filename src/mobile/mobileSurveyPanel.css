@@ -1,0 +1,1090 @@
+/* ==========================================================================
+   PHONE SURVEY PANEL — LAYOUT B, "ONE CARD, DIVIDED" (owner 2026-09-23)
+   --------------------------------------------------------------------------
+   Owner: "We have to polish up this whole survey panel. It looks very bulky.
+   I don't think the templates should be these different cards in here. It
+   should be a little more in line and integrated, similar to how we made the
+   documents, projects, and templates look more integrated."
+
+   Intended UX, every state of the phone Survey sheet:
+   - HEADER: one slim 44px line. A one-line title (or the chosen template's
+     name, which is its own switcher), then Exit Survey as a quiet red WORD,
+     the export glyph and the standard close glyph. No eyebrow, no round
+     plated buttons, and Exit Survey no longer eats a full-width footer band.
+   - BODY: ONE rounded lighter blue-grey panel (--surface-2, a --border edge,
+     radius 10 - the home lists' panel, see src/home/hub.css "ONE PANEL PER
+     LIST" and "TEMPLATE DETAIL — LAYOUT B"). Inside it, rows are lines parted
+     by 1px hairlines that reach both edges. No card per row.
+       * template picker: one line per template (name, module count, chevron);
+       * chosen template: module TABS pinned on top (active = bright ink with a
+         2px ink bar, like the home template editor's tabs - never gold), the
+         "Categories" head line, then the categories as 40px lines; expanding
+         one lists its Survey Markers as indented lines under it;
+       * Survey Marker detail: "Category" + value on one line, the Survey
+         Marker's own line (entity dot, name field, locate, notes), the
+         "Checklist" head line, then 40px checklist lines;
+       * notes: the text field, the attachments and Cancel / Save as sections
+         of the same panel.
+   - Gold stays a minimal accent: the selected thing is gold INK (the active
+     category name, the chosen checklist answer, a note that exists), never a
+     gold box, ring or underline.
+   - Glyph buttons have invisible hit areas: no hover or press plate; the
+     glyph shrinks to 0.88 while pressed. A full-width ROW still takes the
+     house --pressed fill while the finger is down, as the home rows do.
+
+   Every selector is scoped to .mobile-survey-sheet, which only the PHONE
+   sheet carries (SurveySpacesRail adds it in mobileMode), so the desktop
+   rail cannot be reached from this file. Two classes deep on purpose: the
+   shared phone press list at the end of mobilePdfViewer.css gives several of
+   these controls a --pressed plate at one class, and this file must win over
+   it without depending on stylesheet load order.
+   ========================================================================== */
+
+.mobile-survey-sheet {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+/* ---------- HEADER ------------------------------------------------------- */
+
+/* The grab-handle row drops its full-width rule: the header now sits on the
+   sheet's own surface, so that line only split the handle from the title.
+   (!important: the row's border is an inline style shared with desktop.) */
+.mobile-survey-sheet > .mobile-pdf-sheet__handle {
+  border-bottom: 0 !important;
+}
+
+.mobile-survey-sheet .mobile-survey-head {
+  flex: 0 0 auto;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 6px 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-head-title {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.mobile-survey-sheet h2.mobile-survey-head-title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The chosen template's name IS the template switcher. */
+.mobile-survey-sheet .mobile-survey-template-button {
+  max-width: 100%;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-template-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-template-button > svg {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.mobile-survey-sheet .mobile-survey-template-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 2px);
+  z-index: 40;
+  width: min(286px, calc(100vw - 82px));
+  padding: 4px;
+  display: grid;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.mobile-survey-sheet .mobile-survey-template-menu > button {
+  min-height: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.mobile-survey-sheet .mobile-survey-template-menu > button:active {
+  background: var(--pressed);
+}
+
+/* Selected = gold ink and the check glyph. No fill, no gold edge. */
+.mobile-survey-sheet .mobile-survey-template-menu > button.is-active {
+  color: var(--accent);
+}
+
+.mobile-survey-sheet .mobile-survey-head-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* Exit Survey: a quiet red word, not an outlined block in its own band. */
+.mobile-survey-sheet .mobile-survey-exit {
+  height: 32px;
+  padding: 0 8px;
+  color: var(--danger-text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 90ms ease-out;
+}
+
+.mobile-survey-sheet .mobile-survey-exit:active {
+  opacity: 0.6;
+}
+
+/* Export and close: bare glyphs, invisible 32px hit areas. */
+.mobile-survey-sheet .mobile-survey-sheet-export-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export,
+.mobile-survey-sheet .mobile-survey-close {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export.is-open {
+  color: var(--accent);
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export-menu {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  z-index: 80;
+  width: 232px;
+  padding: 4px;
+  display: grid;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button {
+  min-height: 44px;
+  padding: 6px 10px;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  text-align: left;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:active { background: var(--pressed); }
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button:disabled { opacity: 0.38; cursor: not-allowed; }
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button > strong { font-size: 13px; font-weight: 600; }
+.mobile-survey-sheet .mobile-survey-sheet-export-menu > button > span { color: var(--text-3); font-size: 11px; font-weight: 400; }
+
+/* ---------- THE ONE PANEL ------------------------------------------------ */
+
+.mobile-survey-sheet .mobile-survey-card {
+  /* Hugs its rows; when the rows outgrow the sheet it stops at the sheet's
+     foot and the list inside it scrolls, so the module tabs stay put. */
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 2px 12px 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  /* Visible, so the Survey Marker detail's dropdowns can reach past the
+     panel's edge. The scrolling list below clips itself to the corners. */
+  overflow: visible;
+}
+
+/* Template picker: the panel is the list of templates. */
+.mobile-survey-sheet .mobile-survey-picker-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 12px 12px;
+}
+
+.mobile-survey-sheet .mobile-survey-card.mobile-survey-template-list {
+  margin: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.mobile-survey-sheet .mobile-survey-template-row {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 10px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-template-row:first-child {
+  border-top: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-template-row:active {
+  background: var(--pressed);
+  transition: background 90ms ease-out;
+}
+
+.mobile-survey-sheet .mobile-survey-template-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-template-meta {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- MODULE TABS -------------------------------------------------- */
+
+.mobile-survey-sheet .mobile-survey-module-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-survey-sheet .mobile-survey-module-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-survey-sheet .mobile-survey-module-tabs > button {
+  flex: 1 1 0;
+  min-width: 76px;
+  max-width: 160px;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 2px 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  /* The bar sits ON the hairline under the tabs, not 1px above it. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-module-tabs > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-module-tabs > button.is-active {
+  color: var(--text-1);
+  font-weight: 600;
+  border-bottom-color: var(--text-1);
+}
+
+.mobile-survey-sheet .mobile-survey-module-tabs > button:active > span {
+  opacity: 0.6;
+}
+
+/* ---------- CATEGORIES AND THEIR SURVEY MARKERS -------------------------- */
+
+.mobile-survey-sheet .mobile-survey-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Clip a pressed last row to the panel's rounded corner. */
+  border-radius: 0 0 9px 9px;
+}
+
+.mobile-survey-sheet .mobile-survey-categories-heading {
+  min-height: 36px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.mobile-survey-sheet .mobile-survey-categories-heading > span {
+  flex: none;
+}
+
+.mobile-survey-sheet .mobile-survey-categories-heading small {
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A category is a line in the panel: a hairline above it (the first one
+   parts the rows from the "Categories" head line), no edge, corner or fill
+   of its own. The active category shows as gold INK on its name (inline),
+   so its line stays the ordinary hairline - no gold edge. */
+.mobile-survey-sheet .survey-marker-category-card,
+.mobile-survey-sheet .survey-marker-category-card.is-active {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.mobile-survey-sheet .survey-marker-category-row {
+  min-height: 40px;
+  gap: 0;
+}
+
+.mobile-survey-sheet .survey-marker-category-body {
+  border-radius: 0;
+}
+
+.mobile-survey-sheet .survey-marker-category-main {
+  min-height: 40px;
+  padding: 0 12px;
+  gap: 8px;
+  font-size: 13px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* No chevron (no Survey Markers yet): the count keeps the column it has on
+   rows that do have a chevron, so the counts line up down the list. */
+.mobile-survey-sheet .survey-marker-category-body > .survey-marker-category-main:only-child {
+  padding-right: 52px;
+}
+
+.mobile-survey-sheet .survey-marker-category-main-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.mobile-survey-sheet .survey-marker-category-main-count {
+  margin: 0;
+  font-size: 12px;
+  opacity: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-survey-sheet .survey-marker-category-main:hover {
+  background: transparent;
+}
+
+.mobile-survey-sheet .survey-marker-category-main:active {
+  background: var(--pressed);
+}
+
+.mobile-survey-sheet .survey-marker-category-arrow,
+.mobile-survey-sheet .survey-marker-category-arrow:hover,
+.mobile-survey-sheet .survey-marker-category-arrow:active {
+  width: 40px;
+  min-height: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .survey-marker-category-arrow svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* A category's Survey Markers: indented lines under it, each with its own
+   full-width hairline above. */
+.mobile-survey-sheet .mobile-survey-item-list [data-sortable-rearrange-item] {
+  border-top: 1px solid var(--border);
+}
+
+.mobile-survey-sheet .mobile-survey-item-row {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 0 14px 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-item-row:active {
+  background: var(--pressed);
+  transition: background 90ms ease-out;
+}
+
+.mobile-survey-sheet .mobile-survey-item-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+}
+
+.mobile-survey-sheet .mobile-survey-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- SURVEY MARKER DETAIL ----------------------------------------- */
+
+.mobile-survey-sheet .mobile-survey-detail {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: visible;
+}
+
+/* "Category" and its value on one line. */
+.mobile-survey-sheet .mobile-survey-detail-field {
+  min-height: 40px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-label {
+  margin: 0;
+  flex: none;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-field-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-field-meta {
+  flex: none;
+  min-width: 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Survey Marker's own line: entity dot, name field, locate, notes. */
+.mobile-survey-sheet .mobile-survey-detail-tools {
+  position: relative;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 4px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-top: 1px solid var(--border);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-swatch-btn,
+.mobile-survey-sheet .mobile-survey-detail-icon-btn,
+.mobile-survey-sheet .mobile-survey-detail-swatch-btn:active,
+.mobile-survey-sheet .mobile-survey-detail-icon-btn:active {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* A Survey Marker that already has a note shows its notes glyph in gold -
+   the selected-state ink, nothing more. */
+.mobile-survey-sheet .mobile-survey-detail-icon-btn.has-note {
+  color: var(--accent);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-swatch {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid var(--text-3);
+}
+
+/* The name is a field, so it keeps a grey well - no edge, no gold. */
+.mobile-survey-sheet .mobile-survey-detail-name-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  height: 30px;
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  background: var(--surface-1);
+  border: 0;
+  border-radius: 6px;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-name {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-name-dd,
+.mobile-survey-sheet .mobile-survey-detail-name-dd:active {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-menu {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  right: 0;
+  z-index: 95;
+  max-height: 176px;
+  overflow-y: auto;
+  padding: 4px;
+  display: grid;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-entity-menu {
+  top: 40px;
+  left: 6px;
+  right: auto;
+  width: 230px;
+  max-width: calc(100vw - 64px);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-menu > button {
+  min-height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-menu > button:active { background: var(--pressed); }
+
+/* Selected = gold ink, no fill. */
+.mobile-survey-sheet .mobile-survey-detail-menu > button.is-active { color: var(--accent); }
+
+.mobile-survey-sheet .mobile-survey-detail-menu > button > span:last-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-menu-empty {
+  min-height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-entity-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+
+/* "Checklist" head line, with the entity on the right. */
+.mobile-survey-sheet .mobile-survey-detail-check-header {
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.mobile-survey-sheet .mobile-survey-detail-check-header .mobile-survey-detail-label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-assigned {
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-detail-checklist {
+  flex: 0 0 auto;
+  margin: 0;
+  display: block;
+  overflow-y: auto;
+  border-radius: 0 0 9px 9px;
+}
+
+.mobile-survey-sheet .mobile-survey-check-item {
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 6px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-check-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Y / N / N/A sit in one grey well (a control, so it reads as one); the
+   answers are words with invisible hit areas and the chosen one is lit ink. */
+.mobile-survey-sheet .mobile-survey-check-group {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface-1);
+  border-radius: 6px;
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn,
+.mobile-survey-sheet .mobile-survey-check-btn:active {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn:active {
+  transform: scale(0.88);
+}
+
+.mobile-survey-sheet .mobile-survey-check-btn.is-active { font-weight: 700; }
+.mobile-survey-sheet .mobile-survey-check-btn.is-yes { color: var(--accent); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-no { color: var(--danger-text); }
+.mobile-survey-sheet .mobile-survey-check-btn.is-na { color: var(--text-1); }
+
+.mobile-survey-sheet .mobile-survey-detail-empty {
+  box-sizing: border-box;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* ---------- SURVEY MARKER NOTES ------------------------------------------ */
+
+.mobile-survey-sheet .mobile-survey-notes-title {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  margin: 0;
+  display: grid;
+  align-content: center;
+  gap: 1px;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-title .mobile-survey-detail-label {
+  font-size: 11px;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-name {
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: block;
+  overflow-y: auto;
+}
+
+/* The note and the attachments are sections of the one panel. */
+.mobile-survey-sheet .mobile-survey-notes-card {
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-card textarea {
+  min-height: 88px;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  border: 0;
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-attach-header {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-attach-header .mobile-survey-detail-label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Photo / Video: quiet gold words with their glyph - no box. */
+.mobile-survey-sheet .mobile-survey-notes-upload,
+.mobile-survey-sheet .mobile-survey-notes-upload:active {
+  min-height: 28px;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-upload:active {
+  opacity: 0.6;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-attachment {
+  min-height: 40px;
+  margin: 0 -12px;
+  padding: 0 6px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-thumb {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: var(--surface-1);
+  border: 0;
+  border-radius: 6px;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-attachment-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-attachment > button,
+.mobile-survey-sheet .mobile-survey-notes-attachment > button:active {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-empty {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-footer {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  display: flex;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.mobile-survey-sheet .mobile-survey-notes-cancel,
+.mobile-survey-sheet .mobile-survey-notes-save {
+  flex: 1;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mobile-survey-sheet .mobile-survey-notes-cancel {
+  color: var(--text-1);
+  background: var(--surface-1);
+}
+
+/* Save is the panel's one primary action, the one gold fill (as the home
+   editors' Save is). */
+.mobile-survey-sheet .mobile-survey-notes-save {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+.mobile-survey-sheet .mobile-survey-notes-cancel:active {
+  background: var(--pressed);
+}
+
+.mobile-survey-sheet .mobile-survey-notes-save:active {
+  background: var(--accent-press, var(--accent));
+}
+
+/* ---------- THE GLYPH PRESS ---------------------------------------------- */
+/* Invisible hit areas: the glyph itself shrinks while pressed. */
+.mobile-survey-sheet .mobile-survey-sheet-export > svg,
+.mobile-survey-sheet .mobile-survey-close > svg,
+.mobile-survey-sheet .survey-marker-category-arrow svg,
+.mobile-survey-sheet .mobile-survey-detail-swatch-btn > span,
+.mobile-survey-sheet .mobile-survey-detail-icon-btn > svg,
+.mobile-survey-sheet .mobile-survey-detail-name-dd > svg,
+.mobile-survey-sheet .mobile-survey-notes-attachment > button > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mobile-survey-sheet .mobile-survey-sheet-export:not(:disabled):active > svg,
+.mobile-survey-sheet .mobile-survey-close:active > svg,
+.mobile-survey-sheet .survey-marker-category-arrow:active svg,
+.mobile-survey-sheet .mobile-survey-detail-swatch-btn:active > span,
+.mobile-survey-sheet .mobile-survey-detail-icon-btn:active > svg,
+.mobile-survey-sheet .mobile-survey-detail-name-dd:active > svg,
+.mobile-survey-sheet .mobile-survey-notes-attachment > button:active > svg {
+  transform: scale(0.88);
+}
