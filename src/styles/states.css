@@ -93,9 +93,26 @@
      carries no `.primary` class of its own, so without this exclusion the
      neutral hover would paint the one gold button on the screen grey — the
      fault the gold ladder below exists to prevent. */
-  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not(.hub-title-switch):not([title='Edit color']):not([aria-label='Edit color']):not(.hero-swatch):not([title='More']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):hover:not(:active),
-  .survey-hub [role='button']:not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):hover:not(:active) {
+  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not(.hub-title-switch):not([title='Edit color']):not([aria-label='Edit color']):not(.hero-swatch):not([title='More']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-icon-btn):not(.hub-btn--icon):not([data-glyph-only]):not(:has(> svg:only-child)):hover:not(:active),
+  .survey-hub [role='button']:not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not([data-drag-rearrange-handle]):not([data-glyph-only]):hover:not(:active) {
     background-color: var(--hover) !important;
+  }
+
+  /* Owner 2026-09-23: "there shouldn't be a visible box regardless". A
+     glyph-only control (grip, More, X, share, a lone icon) is often wider
+     than its glyph and carries an invisible 44px finger pad, so a hover
+     plate paints a box that spills over its neighbours (the grip's plate
+     covered the file icon beside it). These never paint a plate: the glyph
+     brightens and grows a touch instead, matching the swatch hover. */
+  .survey-hub [data-glyph-only]:not(.hero-swatch):not([title='Edit color']):not([aria-label='Edit color']):not(:disabled):not([aria-disabled='true']):hover:not(:active) {
+    background-color: transparent !important;
+    color: var(--text-1);
+  }
+  .survey-hub [data-glyph-only]:not(.hero-swatch):not([title='Edit color']):not([aria-label='Edit color']):not(:disabled):not([aria-disabled='true']):hover:not(:active) > * {
+    transform: scale(1.12);
+  }
+  .survey-hub [data-glyph-only]:not(.hero-swatch) > * {
+    transition: transform 120ms ease-out;
   }
 
   /* The phone chrome renders at desktop widths too (hidden, or on a narrow
