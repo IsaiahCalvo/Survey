@@ -124,6 +124,7 @@ import {
   resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDragHistory.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
@@ -3294,6 +3295,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // this, every pointer move wrote an undo step and a history row, which is
   // both why a drag stuttered and why undoing it took dozens of presses.
   const paintPhaseRef = useRef(null);
+  // pageKey -> Set of object keys a slider drag's frames have edited.
+  const paintDragTouchedByPageRef = useRef(new Map());
   const textMarkupPaintBaselineRef = useRef(null);
   // While a slider drag previews, the shared-document capture (useAnnotationDoc)
   // holds off: the drag's in-between values stay on this screen and only the
@@ -8253,6 +8256,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Whatever the write did, a drag is over: its text-markup starting
         // paint must never carry into a later, unrelated drag.
         textMarkupPaintBaselineRef.current = null;
+        // Nor may any page snapshot it left: a commit that never reached the
+        // save path (the mark was deleted remotely, the selection changed,
+        // a counter's other pages) would otherwise fold this drag into the
+        // next unrelated undo step on that page.
+        paintDragTouchedByPageRef.current.forEach((_keys, pageKey) => {
+          previewBaselineByPageRef.current.delete(pageKey);
+        });
+        paintDragTouchedByPageRef.current.clear();
       }
       if (phase === 'commit') {
         // The released value always reaches the shared document, even when
@@ -25338,7 +25349,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const previewBaseline = checkpointPolicy === 'skip'
       ? null
       : (previewBaselineByPageRef.current.get(interactionPageKey) || null);
-    const historyPreviousAnnotations = previewBaseline || normalizedCurrentAnnotations;
+    // A colour-slider drag (paintPhaseRef) remembers which objects its frames
+    // edited on this page. Its release records the step against the CURRENT
+    // page with only those objects put back to their pre-drag versions, so an
+    // undo never reverts a collaborator's change that landed mid-drag (see
+    // utils/paintDragHistory.js).
+    const paintPhaseNow = paintPhaseRef.current;
+    if (paintPhaseNow) {
+      const touched = paintDragTouchedByPageRef.current.get(interactionPageKey) || new Set();
+      collectChangedObjectKeys(normalizedCurrentAnnotations, normalizedIncomingAnnotations)
+        .forEach((key) => touched.add(key));
+      paintDragTouchedByPageRef.current.set(interactionPageKey, touched);
+    }
+    const historyPreviousAnnotations = (previewBaseline && paintPhaseNow === 'commit')
+      ? restoreTouchedObjects(
+        normalizedCurrentAnnotations,
+        previewBaseline,
+        paintDragTouchedByPageRef.current.get(interactionPageKey),
+      )
+      : (previewBaseline || normalizedCurrentAnnotations);
     const lastInteractionIdForPage = objectModifiedInteractionCheckpointRef.current.get(interactionPageKey) || null;
     const shouldSkipCheckpointByPolicy = checkpointPolicy === 'skip';
     const shouldSkipCheckpointByInteraction = checkpointPolicy !== 'force'

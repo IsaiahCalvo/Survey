@@ -255,6 +255,8 @@ const CompactColorPicker = ({
     chrome = true,
     // 2026-05-25: First preset cell behaviour.
     //   'transparent' (default) — zero-alpha picker; click sets opacity 0.
+    //   'none'                  — the first cell is an ordinary colour (text:
+    //     a text colour is never see-through-to-nothing).
     //   { kind: 'match', color }  — Match Fill picker; click snapshots the
     //     given color at full opacity. Lets the Border tab on shapes show a
     //     swatch that matches the current fill without ever offering zero
@@ -484,6 +486,16 @@ const CompactColorPicker = ({
         state.notBefore = end + (end - start);
         state.emittedAt = end;
         scheduleDragEmit();
+        // While the thumb is held still, re-send the value now and then: if a
+        // collaborator's change replaces the page mid-drag, the mark shows
+        // the dragged value again within half a second instead of waiting
+        // for the next move.
+        clearTimeout(state.heartbeat);
+        state.heartbeat = setTimeout(() => {
+            if (dragEmit.current === state && state.active && state.latest && !state.pending) {
+                emitNow(state.latest, 'preview');
+            }
+        }, 500);
     };
     // Every value change goes through here. Outside a drag it is the plain,
     // immediate onChange it always was.
@@ -501,20 +513,32 @@ const CompactColorPicker = ({
         state.pending = true;
         scheduleDragEmit();
     };
-    const startDragEmit = () => {
+    const startDragEmit = (pointerId) => {
         const state = dragEmit.current;
         if (state.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.frame);
-        dragEmit.current = { active: true, latest: null, pending: false, frame: 0, notBefore: 0, emittedAt: 0 };
+        dragEmit.current = { active: true, latest: null, pending: false, frame: 0, notBefore: 0, emittedAt: 0, pointerId };
         // Belt to the track's own pointerup: if the track is swapped out or
         // loses its handlers mid-drag (a view or tab change), its lost-capture
-        // event never reaches React, so the release is also heard here.
+        // event never reaches React, so the release is also heard here. Only
+        // THIS drag's pointer ends it: another finger lifting does not.
+        // Losing the window (app switch, tab hidden) ends it too, so a drag
+        // whose release never arrives can never be left half-open.
         if (typeof window !== 'undefined') {
-            const end = () => finishDragEmitRef.current();
-            window.addEventListener('pointerup', end, true);
-            window.addEventListener('pointercancel', end, true);
+            const endFor = (event) => {
+                if (event?.pointerId != null && pointerId != null && event.pointerId !== pointerId) return;
+                endDragFromOutside();
+            };
+            const endNow = () => endDragFromOutside();
+            const onVisibility = () => { if (typeof document !== 'undefined' && document.hidden) endDragFromOutside(); };
+            window.addEventListener('pointerup', endFor, true);
+            window.addEventListener('pointercancel', endFor, true);
+            window.addEventListener('blur', endNow);
+            if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
             dragEmit.current.detach = () => {
-                window.removeEventListener('pointerup', end, true);
-                window.removeEventListener('pointercancel', end, true);
+                window.removeEventListener('pointerup', endFor, true);
+                window.removeEventListener('pointercancel', endFor, true);
+                window.removeEventListener('blur', endNow);
+                if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
             };
         }
     };
@@ -526,9 +550,19 @@ const CompactColorPicker = ({
         state.active = false;
         state.pending = false;
         state.detach?.();
+        clearTimeout(state.heartbeat);
         if (state.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.frame);
         state.frame = 0;
         if (state.latest) emitNow(state.latest, 'commit');
+    };
+    // A release heard outside the track also drops the track's own pointer
+    // bookkeeping, so a stray later move is never taken for a drag.
+    const endDragFromOutside = () => {
+        svPointerId.current = null;
+        huePointerId.current = null;
+        alphaPointerId.current = null;
+        alphaDragging.current = false;
+        finishDragEmitRef.current();
     };
     const finishDragEmitRef = useRef(finishDragEmit);
     finishDragEmitRef.current = finishDragEmit;
@@ -708,7 +742,7 @@ const CompactColorPicker = ({
         // rather than stealing (and never committing) the first one's drag.
         if (dragEmit.current.active) return;
         event.currentTarget.setPointerCapture?.(event.pointerId);
-        startDragEmit();
+        startDragEmit(event.pointerId);
         if (kind === 'sv') {
             svPointerId.current = event.pointerId;
             handleSVChange(event);
@@ -953,7 +987,10 @@ const CompactColorPicker = ({
                 // click. Everything else in the grid is unchanged.
                 const isFirstCell = rowIndex === 0 && columnIndex === 0;
                 const isMatchSlot = isFirstCell && isMatchFirst;
-                const isTransparent = isFirstCell && !isMatchFirst;
+                // firstPreset="none" (text colour, UX 2026-09-23): text is never
+                // made invisible, so the first cell is the grid's own colour
+                // and nothing greys the Opacity slider out.
+                const isTransparent = isFirstCell && !isMatchFirst && firstPreset !== 'none';
                 const presetValue = isMatchSlot ? '__match__' : (isTransparent ? 'transparent' : cell);
                 const swatch = isMatchSlot ? matchFillColor : cell;
                 const isSelected = isMatchSlot

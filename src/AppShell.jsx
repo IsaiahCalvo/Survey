@@ -2152,7 +2152,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 textFormatSource?.api?.setFontColor?.(composeTextColor(hex, nextAlpha));
                               }}
                               onClose={() => setShowFontColorPicker(false)}
-                              firstPreset="transparent"
+                              firstPreset="none"
                             />
                           </Suspense>
                         </div>

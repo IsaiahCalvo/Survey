@@ -186,3 +186,44 @@ test('a hue drag commits the released colour, and unmounting mid-drag still comm
     assert.deepEqual(meta, { phase: 'commit' });
   });
 });
+
+test('another finger lifting does not end the drag; the drag\'s own release does, and so does leaving the window', async () => {
+  await withPicker({}, async ({ dom, changes, flushFrame }) => {
+    const alpha = document.querySelector('[data-color-picker-opacity="true"]');
+    alpha.getBoundingClientRect = () => ({ left: 30, top: 200, width: 180, height: 16, right: 210, bottom: 216 });
+    const windowPointer = (type, pointerId) => {
+      const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'pointerId', { value: pointerId });
+      return event;
+    };
+    await act(async () => { alpha.dispatchEvent(pointerEvent(dom.window, 'pointerdown', { clientX: at(50), pointerId: 7 })); });
+    // A second finger lifts somewhere else on the screen.
+    await act(async () => { dom.window.dispatchEvent(windowPointer('pointerup', 9)); });
+    await act(async () => { alpha.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: at(30), pointerId: 7 })); });
+    assert.equal(changes.filter((c) => c[2]?.phase === 'commit').length, 0, 'the drag is still going');
+    assert.equal(changes.filter((c) => c[2] === undefined).length, 0, 'no un-phased per-move writes');
+    await flushFrame();
+    assert.deepEqual(changes[changes.length - 1].slice(1), [0.3, { phase: 'preview' }]);
+    // The drag's own pointer lifts outside the track.
+    await act(async () => { dom.window.dispatchEvent(windowPointer('pointerup', 7)); });
+    assert.deepEqual(changes[changes.length - 1].slice(1), [0.3, { phase: 'commit' }]);
+
+    // A new drag, and the window loses focus before any release arrives.
+    await act(async () => { alpha.dispatchEvent(pointerEvent(dom.window, 'pointerdown', { clientX: at(60), pointerId: 8 })); });
+    await act(async () => { dom.window.dispatchEvent(new dom.window.Event('blur')); });
+    assert.deepEqual(changes[changes.length - 1].slice(1), [0.6, { phase: 'commit' }]);
+    const count = changes.length;
+    // A stray move with the old pointer is not taken for a drag.
+    await act(async () => { alpha.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: at(10), pointerId: 8 })); });
+    assert.equal(changes.length, count);
+    await flushFrame();
+  });
+});
+
+test('text colour pickers can drop the Transparent cell (firstPreset "none")', async () => {
+  await withPicker({ firstPreset: 'none', minOpacity: 0.05 }, async () => {
+    assert.equal(document.querySelector('button[title="Transparent"]'), null);
+    const alpha = document.querySelector('[data-color-picker-opacity="true"]');
+    assert.notEqual(alpha.getAttribute('aria-disabled'), 'true');
+  });
+});

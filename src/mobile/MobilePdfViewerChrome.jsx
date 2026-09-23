@@ -1358,6 +1358,7 @@ export function MobileToolProperties({ api }) {
           color={splitTextColor(state.fontColor).hex}
           opacity={splitTextColor(state.fontColor).opacity}
           minOpacity={0.05}
+          firstPreset="none"
           onChange={(hex, alpha) => editorApi.setFontColor?.(
             composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(state.fontColor).opacity),
           )}
@@ -1811,6 +1812,7 @@ export function MobileToolProperties({ api }) {
       opacity: splitTextColor(textDefaults.fontColor).opacity,
       showOpacity: true,
       minOpacity: 0.05,
+      firstPreset: 'none',
       onChange: (hex, alpha) => updateTextDefaults({
         fontColor: composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(textDefaults.fontColor).opacity),
       }),
@@ -2132,14 +2134,16 @@ export function MobileToolProperties({ api }) {
                   <div className="mobile-pdf-text-card__header">
                     <div>
                       <strong>Text color</strong>
-                      <span>{toHexColor(textDefaults.fontColor, '#1e293b').toUpperCase()}</span>
+                      {/* The colour AND its opacity (UX 2026-09-23): "#1E293B" at
+                          full strength, "#1E293B · 40%" when see-through. */}
+                      <span>{splitTextColor(textDefaults.fontColor).hex.toUpperCase()}{splitTextColor(textDefaults.fontColor).opacity < 1 ? ` · ${Math.round(splitTextColor(textDefaults.fontColor).opacity * 100)}%` : ''}</span>
                     </div>
                     {/* The big swatch opens the NEW shared colour picker sheet. */}
                     <button
                       type="button"
                       className="mobile-pdf-text-card__large-swatch"
                       aria-label="Open Text color picker"
-                      style={{ '--mobile-text-color': toHexColor(textDefaults.fontColor, '#1e293b') }}
+                      style={{ '--mobile-text-color': composeTextColor(splitTextColor(textDefaults.fontColor).hex, splitTextColor(textDefaults.fontColor).opacity) }}
                       onClick={() => setColorPicker('textColor')}
                     />
                   </div>
@@ -2148,7 +2152,7 @@ export function MobileToolProperties({ api }) {
                       <MobilePanelColorSwatch
                         key={color}
                         color={color}
-                        chosen={normaliseQuickColour(color) === normaliseQuickColour(toHexColor(textDefaults.fontColor, '#1e293b'))}
+                        chosen={normaliseQuickColour(color) === normaliseQuickColour(splitTextColor(textDefaults.fontColor).hex)}
                         label={`Set Text color ${color}`}
                         onPick={() => updateTextDefaults({ fontColor: composeTextColor(color, splitTextColor(textDefaults.fontColor).opacity) })}
                       />
