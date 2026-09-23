@@ -73,3 +73,29 @@
   .quick-style__dot--custom:hover .quick-style__rainbow { transform: scale(1.1); }
 }
 .quick-style__rainbow { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+
+/* Slider hover readout (owner 2026-09-23, after 21st.dev micka_design): the
+   number under the cursor, in a small light pill 4px above the track. It fades
+   and rises in after a 100ms rest so a quick pass does not flicker it. */
+.picker-slider-readout {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: var(--text-1);
+  color: var(--surface-0);
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+  animation: picker-readout-in 80ms cubic-bezier(0.33, 1, 0.68, 1) 100ms both;
+}
+@keyframes picker-readout-in {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .picker-slider-readout { animation: none; }
+}

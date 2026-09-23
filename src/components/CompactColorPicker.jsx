@@ -233,7 +233,9 @@ const CompactColorPicker = ({
         ro.observe(el);
         return () => ro.disconnect();
     }, [columns]);
-    const HUE_TRACK_H = 12;
+    // UX 2026-09-23 (owner: sliders like 21st.dev micka_design color-picker):
+    // an 18px fully-round track. The spectrum still takes grid - track - gap.
+    const HUE_TRACK_H = 18;
     const spectrumAreaHeight = gridHeight ? Math.max(96, gridHeight - HUE_TRACK_H - 10) : (isPhone ? 148 : 128);
 
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
@@ -258,6 +260,10 @@ const CompactColorPicker = ({
      */
     const ALPHA_GLIDE_MS = 200;
     const [glideAlpha, setGlideAlpha] = useState(false);
+    // The hover readout: { kind: 'hue'|'alpha', x, value } while a mouse rests
+    // over a track (not while dragging). Only the number shows — the source
+    // component's cursor-following wash is left out on purpose (owner).
+    const [readout, setReadout] = useState(null);
     const glideTimer = useRef(null);
     const alphaDragging = useRef(false);
     useEffect(() => () => clearTimeout(glideTimer.current), []);
@@ -560,27 +566,47 @@ const CompactColorPicker = ({
      * "nothing may spill, collide or clip", and 100% opacity is the default
      * every picker opens on. Every real slider is built this way.
      */
-    const thumb = (percent, transition) => ({
+    // UX 2026-09-23 (owner, micka_design reference): a 16px thumb filled with
+    // the LIVE colour, a thin white edge and a soft shadow, travelling inset
+    // by 10px so it never reaches past the track's round ends.
+    const thumb = (percent, transition, fill = '#fff') => ({
         transition: transition || undefined,
         position: 'absolute',
-        left: `calc(9px + (100% - 18px) * ${clamp(percent, 0, 100) / 100})`,
+        left: `calc(10px + (100% - 20px) * ${clamp(percent, 0, 100) / 100})`,
         top: '50%',
-        width: '18px',
-        height: '18px',
-        margin: '-9px 0 0 -9px',
+        width: '16px',
+        height: '16px',
+        margin: '-8px 0 0 -8px',
+        boxSizing: 'border-box',
         borderRadius: '50%',
-        background: '#fff',
-        boxShadow: '0 0 0 1px rgba(0,0,0,0.35), 0 1px 3px rgba(0,0,0,0.4)',
+        background: fill,
+        border: '1px solid rgba(255,255,255,0.9)',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
         pointerEvents: 'none',
     });
 
     const track = {
         position: 'relative',
-        height: '12px',
-        borderRadius: '6px',
-        cursor: 'pointer',
+        height: `${HUE_TRACK_H}px`,
+        borderRadius: '9999px',
+        cursor: 'ew-resize',
         touchAction: 'none',
     };
+
+    // Hover readout: the value UNDER THE CURSOR (not the thumb), snapped to a
+    // whole number, in a small pill above the track. Mouse only; hidden while
+    // a button is down, the way the reference hides it mid-drag.
+    const trackHover = (kind, max) => (event) => {
+        if (event.pointerType !== 'mouse' || event.buttons) { setReadout(null); return; }
+        const rect = event.currentTarget.getBoundingClientRect();
+        const travel = Math.max(1, rect.width - 20);
+        const t = clamp((event.clientX - rect.left - 10) / travel, 0, 1);
+        setReadout({ kind, x: 10 + t * travel, value: Math.round(t * max) });
+    };
+    const clearReadout = () => setReadout(null);
+    const readoutPill = (kind) => (readout && readout.kind === kind ? (
+        <span className="picker-slider-readout" style={{ left: `${readout.x}px` }}>{readout.value}</span>
+    ) : null);
 
     const presetsRow = (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -722,7 +748,8 @@ const CompactColorPicker = ({
             aria-description="Arrow keys adjust opacity by one percent. Page Up and Page Down adjust it by ten percent. Home and End set the minimum and maximum."
             onKeyDown={transparentMode ? undefined : handleAlphaKeyDown}
             onPointerDown={transparentMode ? undefined : ((event) => beginPointerDrag('alpha', event))}
-            onPointerMove={transparentMode ? undefined : ((event) => movePointerDrag('alpha', event))}
+            onPointerMove={transparentMode ? undefined : ((event) => { movePointerDrag('alpha', event); trackHover('alpha', 100)(event); })}
+            onPointerLeave={clearReadout}
             onPointerUp={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onPointerCancel={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onLostPointerCapture={() => { alphaPointerId.current = null; alphaDragging.current = false; }}
@@ -740,14 +767,16 @@ const CompactColorPicker = ({
                     ? `--picker-alpha-ink ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
                     : 'none',
                 opacity: transparentMode ? 0.4 : 1,
-                cursor: transparentMode ? 'not-allowed' : 'pointer',
+                cursor: transparentMode ? 'not-allowed' : 'ew-resize',
                 marginTop: labelled ? 0 : undefined,
             }}
         >
             <span style={thumb(
                 localOpacity,
                 glideAlpha ? `left ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : undefined,
+                localHex,
             )} />
+            {readoutPill('alpha')}
         </div>
     );
 
@@ -819,7 +848,8 @@ const CompactColorPicker = ({
                     aria-description="Arrow keys adjust hue by one degree. Page Up and Page Down adjust hue by ten degrees. Home and End set the minimum and maximum hue."
                     onKeyDown={handleHueKeyDown}
                     onPointerDown={(event) => beginPointerDrag('hue', event)}
-                    onPointerMove={(event) => movePointerDrag('hue', event)}
+                    onPointerMove={(event) => { movePointerDrag('hue', event); trackHover('hue', 360)(event); }}
+                    onPointerLeave={clearReadout}
                     onPointerUp={(event) => endPointerDrag('hue', event)}
                     onPointerCancel={(event) => endPointerDrag('hue', event)}
                     onLostPointerCapture={() => { huePointerId.current = null; }}
@@ -828,7 +858,8 @@ const CompactColorPicker = ({
                         background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
                     }}
                 >
-                    <span style={thumb((hue / 360) * 100)} />
+                    <span style={thumb((hue / 360) * 100, undefined, `hsl(${hue} 100% 50%)`)} />
+                    {readoutPill('hue')}
                 </div>
             </div>
         </>

@@ -91,7 +91,10 @@ test('mounted CompactColorPicker follows pointer-captured spectrum and hue drags
     // CHANGED with the same ruling: the thumb's travel is inset by half the
     // thumb, so 75% of the track reads as 75 degrees of hue on the slider.
     assert.equal(hue.getAttribute('aria-valuenow'), '270');
-    assert.match(hue.firstElementChild.style.left, /^calc\(9px \+ 0\.75 \* \(100% - 18px\)\)$/);
+    // RULED 2026-09-23 (owner: micka_design sliders): the thumb is 16px and
+    // travels inset 10px from each round end, so the calc is 10px / 20px. The
+    // point of the assertion — a drag to 75% lands the thumb at 75% — is kept.
+    assert.match(hue.firstElementChild.style.left, /^calc\(10px \+ 0\.75 \* \(100% - 20px\)\)$/);
     assert.ok(changes.length >= 4);
   } finally {
     await act(async () => root.unmount());
