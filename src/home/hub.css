@@ -2118,6 +2118,13 @@
     gap: 2px;
   }
 
+  /* UX 2026-09-23 (vertical symmetry): the name's glyph box is 16px, so a
+     16px line puts no spare leading above it; the inherited 18.2px line sat
+     the name + team stack 0.5px low in the row. */
+  .survey-hub .projects-mobile-folder-copy > strong {
+    line-height: 16px;
+  }
+
   .survey-hub .projects-mobile-folder-copy strong,
   .survey-hub .projects-mobile-file-copy div,
   .survey-hub .projects-mobile-tile-grid strong,
@@ -2338,6 +2345,13 @@
     display: grid;
     gap: 2px;
   }
+
+  /* UX 2026-09-23 (vertical symmetry): the name's glyph box is 16px and the
+     meta line's is 12px. Lines of 18px and 14px leave exactly 1px above the
+     name and 1px below the meta, so the two-line stack centres on its ink;
+     the inherited 18.2px / 15.4px lines sat it 0.7px high. */
+  .survey-hub .projects-mobile-file-copy > div { line-height: 18px; }
+  .survey-hub .projects-mobile-file-copy > span { line-height: 14px; }
 
   .survey-hub .projects-mobile-check {
     width: 17px;
@@ -2943,6 +2957,10 @@
     font-size: 12.5px;
     font-weight: 650;
     padding: 1px 0;
+    /* UX 2026-09-23 (vertical symmetry): a transparent top edge to match the
+       1px underline, so the name sits on the row's centre line, not 0.5px
+       above it. */
+    border-top: 1px solid transparent;
   }
 
   .survey-hub .templates-mobile-title-input:focus,
@@ -3319,19 +3337,15 @@
     font-size: 16px;
   }
 
+  /* UX 2026-09-23 (owner: All, Duplicate, Move/Copy, Share and Delete
+     "should be evenly distributed horizontally, or look better and match
+     desktop"). The footer is the desktop footer on the phone too: one row,
+     the bare actions left-aligned on a 6px gap, the gold Done pushed right by
+     the spacer. It fits in 342px with room to spare, so the old grid (which
+     stretched Move/Copy across the middle and dropped a full-width Done under
+     it) is gone. */
   .templates-module-edit-modal .templates-module-edit-actions {
-    display: grid !important;
-    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-    align-items: center;
-  }
-
-  .templates-module-edit-modal .templates-module-edit-actions > span {
-    display: none;
-  }
-
-  .templates-module-edit-modal .templates-module-edit-actions > button:last-child {
-    grid-column: 1 / -1;
-    width: 100%;
+    flex-wrap: nowrap;
   }
 
   .survey-hub .templates-mobile-entity-row {
@@ -3499,49 +3513,14 @@
     padding: 0;
   }
 
+  /* UX 2026-09-23 (owner: "match desktop, where it's not a box within a
+     box"). The panel is the one surface; the shared picker inside it draws no
+     panel of its own (chrome off) and brings its own Fill / Border tabs. The
+     hand-rolled tab strip and the Match fill checkbox row are gone: Match fill
+     is the Border tab's first grid cell now. */
   .survey-hub .templates-mobile-color-panel {
     margin-top: -8px;
-    overflow: hidden;
-  }
-
-  .survey-hub .templates-mobile-color-tabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    border-bottom: 1px solid var(--ink-500);
-  }
-
-  .survey-hub .templates-mobile-color-tabs button {
-    min-height: 34px;
-    border: 0;
-    border-right: 1px solid var(--ink-500);
-    background: var(--ink-800);
-    color: var(--ink-200);
-    font: inherit;
-    font-size: 11.5px;
-    font-weight: 700;
-  }
-
-  .survey-hub .templates-mobile-color-tabs button:last-child {
-    border-right: 0;
-  }
-
-  .survey-hub .templates-mobile-color-tabs button.active {
-    color: var(--bone-100);
-    box-shadow: inset 0 -2px var(--gold);
-  }
-
-  .survey-hub .templates-mobile-match-fill {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px 0;
-    color: var(--ink-200);
-    font-size: 11.5px;
-    font-weight: 700;
-  }
-
-  .survey-hub .templates-mobile-color-panel > div:last-child {
-    padding: 12px;
+    padding: 8px 12px 12px;
   }
 
   .survey-hub .templates-mobile-empty {
@@ -3554,6 +3533,17 @@
     place-items: center;
     padding: 12px;
     font-size: 12px;
+  }
+
+  /* UX 2026-09-23 (owner: the empty category "is way too tall. It should be
+     the same height as it looks when there's a checklist item in it"). Inside
+     an open category the empty note is exactly one checklist row: the row is
+     a 44px line (its delete target) under a 1px rule, so the note is 45px
+     from edge to edge, and the text sits on the same centre line. */
+  .survey-hub .templates-mobile-items > .templates-mobile-empty {
+    min-height: 0;
+    height: 45px;
+    padding: 0 12px;
   }
 
   .survey-hub .mobile-project-detail.compact {

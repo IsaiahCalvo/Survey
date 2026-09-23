@@ -1008,7 +1008,10 @@ export default function ProjectsFolderTree({
                       display: 'grid',
                       gridTemplateColumns: '28px 1fr auto',
                       gap: 8, alignItems: 'center',
-                      padding: '8px 8px', borderRadius: 6,
+                      /* UX 2026-09-23 (vertical symmetry): the 50px height sets
+                         the row; an 8px vertical pad left 34px for a 38.5px
+                         name + team stack, which pushed every child ~2px down. */
+                      padding: '0 8px', borderRadius: 6,
                       background: jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
                       cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
@@ -1032,7 +1035,8 @@ export default function ProjectsFolderTree({
                       />
                     )}
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
+                      {/* lineHeight 1.2 so the stack centres on its ink (2026-09-23). */}
+                      <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
                       {/* Owner-avatar stack (first 3 team members) + member
                           count. Every project shows at least the owner glyph —
                           ids are resolved to real initials, never shown raw. */}
@@ -1223,14 +1227,17 @@ export default function ProjectsFolderTree({
                               isDragging={isDragging}
                               style={{ width: 24, height: 24 }}
                             />
-                            <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                            <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{f.name}</div>
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                               <Avatar initials={ownerInitials} size={18} color={owner?.color} />
                               <span className="meta" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerFirst}</span>
                             </div>
-                            <span className="mono meta" style={{ fontSize: 11 }}>{shortWhen(f)}</span>
+                            {/* 16px line: the mono glyph box is 14px, so an even
+                                leading keeps it on the row's centre line (an
+                                inherited 15.4px line sat it 0.7px high). */}
+                            <span className="mono meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
                             {fileSelect ? (
                               <span
                                 onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}

@@ -747,6 +747,17 @@ export default function TemplatesEditor({
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [openColor, setOpenColor] = useState(null);   // entity id whose picker is open
+  // UX 2026-09-23 (owner: the phone colour panel "overflows/clips at the
+  // bottom of the modal"). Opening a colour panel under a low row scrolls the
+  // Entities sheet just enough to show the whole panel, once, on open.
+  useEffect(() => {
+    if (!openColor || !mobileEntitiesOpen) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const panel = mobileEntitiesModalRef.current?.querySelector('.templates-mobile-color-panel');
+      panel?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [openColor, mobileEntitiesOpen]);
   const [roleColors, setRoleColors] = useState({});   // { entityId: { color, opacity } } picker fill state
   const [openMod, setOpenMod] = useState(0);
   const [modEdit, setModEdit] = useState(false);
@@ -2014,7 +2025,10 @@ export default function TemplatesEditor({
                         display: 'grid',
                         gridTemplateColumns: '28px 1fr auto',
                         gap: 8, alignItems: 'center',
-                        padding: '8px 8px', borderRadius: 6,
+                        /* UX 2026-09-23 (vertical symmetry): the 50px height
+                           sets the row; an 8px vertical pad left 34px for a
+                           34.5px stack, which pushed every child down. */
+                        padding: '0 8px', borderRadius: 6,
                         height: 50, boxSizing: 'border-box',
                         background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
                         cursor: 'pointer',
@@ -2028,7 +2042,10 @@ export default function TemplatesEditor({
                         isDragging={isDragging}
                       />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
+                        {/* lineHeight 1.2: the line box hugs the glyphs, so the
+                            name + swatches stack is centred by its ink, not by
+                            spare leading above the name. */}
+                        <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             {/* Up to 10 entity swatches fit before the row gets crowded;
@@ -2464,7 +2481,12 @@ export default function TemplatesEditor({
                       <>
                       <div data-drag-rearrange-row className="card-line" style={{
                         display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
-                        padding: '8px 10px', alignItems: 'center',
+                        /* UX 2026-09-23 (vertical symmetry): no vertical pad.
+                           8px top + bottom left a 20px content box for 24px
+                           controls, so the grid overflowed downward and every
+                           child sat 2.3px below the row's centre. The fixed
+                           38px height already sets the row. */
+                        padding: '0 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
@@ -2551,7 +2573,7 @@ export default function TemplatesEditor({
                             display: 'flex', flexDirection: 'column',
                             overflow: 'hidden',
                           }}>
-                            <div style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                               {/* Shared colour picker — the app's one picker. Dimmed +
                                   read-only while a border is matched to the fill. */}
                               <div>
@@ -2572,22 +2594,21 @@ export default function TemplatesEditor({
                                     active: layer,
                                     onSelect: (k) => setLayerTab({ ...layerTab, [r.id]: k }),
                                   }}
+                                  /* UX 2026-09-23 (owner: the "Match fill"
+                                     row "shoves things out of the way"). Match
+                                     fill is the Border tab's first grid cell,
+                                     where the Fill tab keeps Transparent, so
+                                     the panel is the same height on both tabs.
+                                     It is a link: while on, the border takes
+                                     the fill's colour and opacity and the rest
+                                     of the picker dims; click it to unlink. */
+                                  firstPreset={layer === 'border' ? {
+                                    kind: 'match', color: c, opacity: op, linked: match,
+                                    onToggle: () => { setMatchFill({ ...matchFill, [r.id]: !match }); markEdited(); },
+                                  } : 'transparent'}
+                                  locked={isBorderMatched}
                                 />
                               </div>
-                              {/* Match Fill row — only on Border tab */}
-                              {layer === 'border' && (
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={match}
-                                    onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }}
-                                    style={{ width: 13, height: 13, margin: 0, accentColor: 'var(--accent)' }}
-                                  />
-                                  <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match fill</span>
-                                  {match && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 'auto' }}>using fill color &amp; opacity</span>}
-                                </label>
-                              )}
-
                             </div>
                           </div>
                         );
@@ -3013,21 +3034,34 @@ export default function TemplatesEditor({
                                   markEdited();
                                 };
                                 return (
+                                  /* UX 2026-09-23 (owner: the phone picker
+                                     and its tabs must "match desktop, where
+                                     it's not a box within a box"). The same
+                                     picker as the desktop panel: the row's
+                                     panel paints the surface (chrome off), the
+                                     picker draws its own Fill / Border tabs,
+                                     and Match fill is the Border tab's first
+                                     grid cell, so nothing moves between tabs. */
                                   <div className="templates-mobile-color-panel" data-entity-color-panel>
-                                    <div className="templates-mobile-color-tabs">
-                                      {['fill', 'border'].map((k) => (
-                                        <button key={k} type="button" className={layer === k ? 'active' : ''} onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}>{k === 'fill' ? 'Fill' : 'Border'}</button>
-                                      ))}
-                                    </div>
-                                    {layer === 'border' ? (
-                                      <label className="templates-mobile-match-fill">
-                                        <input type="checkbox" checked={match} onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }} />
-                                        <span>Match fill</span>
-                                      </label>
-                                    ) : null}
-                                    <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" />
-                                    </div>
+                                    <CompactColorPicker
+                                      color={activeData.color}
+                                      opacity={activeData.opacity}
+                                      onChange={applyColor}
+                                      onClose={() => setOpenColor(null)}
+                                      dismissInsideSelector="[data-entity-color-panel]"
+                                      platform="phone"
+                                      chrome={false}
+                                      tabs={{
+                                        items: [{ id: 'fill', label: 'Fill' }, { id: 'border', label: 'Border' }],
+                                        active: layer,
+                                        onSelect: (k) => setLayerTab({ ...layerTab, [r.id]: k }),
+                                      }}
+                                      firstPreset={layer === 'border' ? {
+                                        kind: 'match', color: c, opacity: op, linked: match,
+                                        onToggle: () => { setMatchFill({ ...matchFill, [r.id]: !match }); markEdited(); },
+                                      } : 'transparent'}
+                                      locked={isBorderMatched}
+                                    />
                                   </div>
                                 );
                               })() : null}
@@ -3227,7 +3261,7 @@ export default function TemplatesEditor({
                           key={mod.id + ':' + mod.name}
                           onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
-                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: 'var(--text-1)', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
+                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', borderTop: '1px solid transparent' /* matches the underline so the name sits on the row's centre line, 2026-09-23 */, color: 'var(--text-1)', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                         />
                         <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
                       </div>

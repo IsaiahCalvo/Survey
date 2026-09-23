@@ -64,8 +64,13 @@
 .ed-scope .btn-ghost:hover { color: var(--text-1); }
 
 /* Inputs / editable feel */
+/* UX 2026-09-23 (owner: "contents within each of these rows are perfectly
+   centered vertically"): the underline is 1px at the bottom, so a matching
+   transparent 1px at the TOP keeps the text on the input's centre line. With
+   the bottom edge alone the text sat 0.5px above every row's centre. */
 .ed-scope .inline-edit {
   background: transparent; border: 0; border-bottom: 1px solid transparent;
+  border-top: 1px solid transparent;
   color: var(--ink); font: inherit; font-size: 13px; padding: 4px 0;
   width: 100%; outline: none;
 }

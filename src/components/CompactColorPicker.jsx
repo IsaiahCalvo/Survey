@@ -150,9 +150,17 @@ const GradientGlyph = () => (
 );
 
 /** The eyedropper, from the boards' own review asset. Filled, no stroke. */
-const EyedropperGlyph = () => (
-    <svg width="17" height="17" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">
+const EyedropperGlyph = ({ size = 17 }) => (
+    <svg width={size} height={size} viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">
         <path d="M224,67.3a35.79,35.79,0,0,0-11.26-25.66c-14-13.28-36.72-12.78-50.62,1.13L142.8,62.2a24,24,0,0,0-33.14.77l-9,9a16,16,0,0,0,0,22.64l2,2.06-51,51a39.75,39.75,0,0,0-10.53,38l-8,18.41A13.68,13.68,0,0,0,36,219.3a15.92,15.92,0,0,0,17.71,3.35L71.23,215a39.89,39.89,0,0,0,37.06-10.75l51-51,2.06,2.06a16,16,0,0,0,22.62,0l9-9a24,24,0,0,0,.74-33.18l19.75-19.87A35.75,35.75,0,0,0,224,67.3ZM97,193a24,24,0,0,1-24,6,8,8,0,0,0-5.55.31l-18.1,7.91L57,189.41a8,8,0,0,0,.25-5.75A23.88,23.88,0,0,1,63,159l51-51,33.94,34ZM202.13,82l-25.37,25.52a8,8,0,0,0,0,11.3l4.89,4.89a8,8,0,0,1,0,11.32l-9,9L112,83.26l9-9a8,8,0,0,1,11.31,0l4.89,4.89a8,8,0,0,0,11.33,0l24.94-25.09c7.81-7.82,20.5-8.18,28.29-.81a20,20,0,0,1,.39,28.7Z" />
+    </svg>
+);
+
+/** Match fill as a LINK (Templates entities): two chain links, stroked. */
+const LinkGlyph = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l2.8-2.8a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-2.8 2.8a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
 
@@ -204,8 +212,29 @@ const CompactColorPicker = ({
     firstPreset = 'transparent',
     minOpacity = 0,
     dismissInsideSelector,
+    // UX 2026-09-23 (owner, Templates entity Border tab): the value follows
+    // something else — the entity's border is matched to its fill. Every
+    // control dims and stops answering EXCEPT the tabs and the Match fill
+    // cell, which is how the user turns the link back off. The grid is shown
+    // while locked so that cell is always on screen.
+    locked = false,
 }) => {
     const isPhone = platform === 'phone';
+    /*
+     * UX 2026-09-23 (owner, Templates entity colour panel on the desktop:
+     * "resize these things so everything doesn't look so bulky and everything
+     * looks like it fits neatly"). A desktop host that paints the panel itself
+     * (chrome={false}) sits in a ~250px column with 234px of content, not the
+     * 276px popover the boards drew. It gets the DENSE sizes: one 8px rhythm
+     * between blocks, 22px tabs and swatches, 14px round sliders and a 26px
+     * bottom row whose hex stays fully readable. The standalone canvas picker
+     * (chrome=true) and the phone keep their ruled board-17/18/19 sizes.
+     */
+    const dense = !chrome && !isPhone;
+    const PANEL_GAP = dense ? 8 : 10;
+    const THUMB_SIZE = dense ? 12 : 16;
+    // The thumb's centre travels this far in from each round end.
+    const THUMB_INSET = dense ? 8 : 10;
     const columns = isPhone ? 12 : 8;
     const presets = isPhone ? PHONE_PRESET_COLORS : PRESET_COLORS;
     const grid = useMemo(() => buildGrid(columns), [columns]);
@@ -235,11 +264,15 @@ const CompactColorPicker = ({
     }, [columns]);
     // UX 2026-09-23 (owner: sliders like 21st.dev micka_design color-picker):
     // an 18px fully-round track. The spectrum still takes grid - track - gap.
-    const HUE_TRACK_H = 18;
-    const spectrumAreaHeight = gridHeight ? Math.max(96, gridHeight - HUE_TRACK_H - 10) : (isPhone ? 148 : 128);
+    const HUE_TRACK_H = dense ? 14 : 18;
+    const spectrumAreaHeight = gridHeight ? Math.max(96, gridHeight - HUE_TRACK_H - PANEL_GAP) : (isPhone ? 148 : 128);
 
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
     const matchFillColor = isMatchFirst ? (firstPreset.color || '#ffffff') : null;
+    // A Match fill cell with `onToggle` is a persistent LINK (Templates
+    // entities), not a one-shot snapshot (canvas shapes): clicking it calls the
+    // host, and it reads as chosen while `linked` is true.
+    const matchIsToggle = isMatchFirst && typeof firstPreset.onToggle === 'function';
     // 2026-05-25: When the parent supplies a fill opacity alongside the fill
     // colour, Match Fill snapshots both — border opacity locks to the fill
     // opacity in one click. Defaults to fully opaque when no opacity given.
@@ -343,8 +376,8 @@ const CompactColorPicker = ({
 
     const trackFraction = (el, clientX) => {
         const rect = el.getBoundingClientRect();
-        const travel = Math.max(1, rect.width - 20);
-        return clamp((clientX - rect.left - 10) / travel, 0, 1);
+        const travel = Math.max(1, rect.width - 2 * THUMB_INSET);
+        return clamp((clientX - rect.left - THUMB_INSET) / travel, 0, 1);
     };
 
     // Handle Hue Change
@@ -416,6 +449,10 @@ const CompactColorPicker = ({
         // Match Fill: snapshot the current fill colour at full opacity. Border
         // tab on shapes uses this so the user can lock the border to whatever
         // the fill currently is without picking from the gradient.
+        if (hex === '__match__' && matchIsToggle) {
+            firstPreset.onToggle();
+            return;
+        }
         if (hex === '__match__' && matchFillColor) {
             setLocalHex(matchFillColor.toUpperCase());
             setLocalOpacity(Math.round(matchFillOpacity * 100));
@@ -577,11 +614,11 @@ const CompactColorPicker = ({
     const thumb = (percent, transition, fill = '#fff') => ({
         transition: transition || undefined,
         position: 'absolute',
-        left: `calc(10px + (100% - 20px) * ${clamp(percent, 0, 100) / 100})`,
+        left: `calc(${THUMB_INSET}px + (100% - ${2 * THUMB_INSET}px) * ${clamp(percent, 0, 100) / 100})`,
         top: '50%',
-        width: '16px',
-        height: '16px',
-        margin: '-8px 0 0 -8px',
+        width: `${THUMB_SIZE}px`,
+        height: `${THUMB_SIZE}px`,
+        margin: `-${THUMB_SIZE / 2}px 0 0 -${THUMB_SIZE / 2}px`,
         boxSizing: 'border-box',
         borderRadius: '50%',
         background: fill,
@@ -605,16 +642,24 @@ const CompactColorPicker = ({
         if (event.buttons) { setReadout(null); return; }
         const el = event.currentTarget;
         const t = trackFraction(el, event.clientX);
-        const travel = Math.max(1, el.getBoundingClientRect().width - 20);
-        setReadout({ kind, x: 10 + t * travel, value: Math.round(t * max) });
+        const travel = Math.max(1, el.getBoundingClientRect().width - 2 * THUMB_INSET);
+        setReadout({ kind, x: THUMB_INSET + t * travel, value: Math.round(t * max) });
     };
     const clearReadout = () => setReadout(null);
     const readoutPill = (kind) => (readout && readout.kind === kind ? (
         <span className="picker-slider-readout" style={{ left: `${readout.x}px` }}>{readout.value}</span>
     ) : null);
 
+    // While locked, everything but the tabs and the Match fill cell dims and
+    // stops answering (see `locked`).
+    const lockedStyle = locked ? { opacity: 0.4, pointerEvents: 'none' } : null;
+
     const presetsRow = (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={dense
+            /* Dense: the presets sit on the grid's own eight columns, one disc
+               centred over each column, so the two blocks line up. */
+            ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center', ...lockedStyle }
+            : { display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...lockedStyle }}>
             {presets.map((preset) => {
                 const isSelected = !transparentMode && sameColour(localHex, preset);
                 return (
@@ -639,6 +684,7 @@ const CompactColorPicker = ({
                         style={{
                             width: '26px',
                             height: '26px',
+                            ...(dense ? { width: '22px', height: '22px' } : null),
                             borderRadius: '50%',
                             flex: '0 0 auto',
                             '--hero-swatch-ring': swatchRingColour(preset),
@@ -650,7 +696,7 @@ const CompactColorPicker = ({
                         >
                             {isSelected && (
                                 <span className="hero-swatch__check" style={{ color: swatchCheckInk(preset) }}>
-                                    <ChosenCheck size={12} />
+                                    <ChosenCheck size={dense ? 11 : 12} />
                                 </span>
                             )}
                         </span>
@@ -678,7 +724,7 @@ const CompactColorPicker = ({
                 const presetValue = isMatchSlot ? '__match__' : (isTransparent ? 'transparent' : cell);
                 const swatch = isMatchSlot ? matchFillColor : cell;
                 const isSelected = isMatchSlot
-                    ? (!transparentMode && matchFillColor && sameColour(localHex, matchFillColor) && localOpacity >= 99)
+                    ? (matchIsToggle ? Boolean(firstPreset.linked) : (!transparentMode && matchFillColor && sameColour(localHex, matchFillColor) && localOpacity >= 99))
                     : isTransparent
                         ? transparentMode
                         : (!transparentMode && sameColour(localHex, cell));
@@ -694,7 +740,9 @@ const CompactColorPicker = ({
                         backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
                     }
                     : { background: swatch };
-                const title = isMatchSlot ? 'Match fill' : (isTransparent ? 'Transparent' : cell);
+                const title = isMatchSlot
+                    ? (matchIsToggle && firstPreset.linked ? 'Match fill (on) - click to unlink' : 'Match fill')
+                    : (isTransparent ? 'Transparent' : cell);
                 return (
                     <button
                         type="button"
@@ -710,11 +758,20 @@ const CompactColorPicker = ({
                         style={{
                             aspectRatio: '1',
                             borderRadius: '7px',
+                            ...(dense ? { borderRadius: '6px' } : null),
+                            /* The Match fill cell stays live while locked: it is
+                               the one control that unlinks the border. */
+                            ...(isMatchSlot && matchIsToggle ? null : lockedStyle),
                             '--hero-swatch-ring': swatchRingColour(isTransparent ? '#ffffff' : swatch),
                         }}
                     >
                         <span className="hero-swatch__fill" style={background}>
-                        {isMatchSlot && (
+                        {isMatchSlot && matchIsToggle && (
+                            <span className="hero-swatch__check" style={{ color: swatchCheckInk(swatch), lineHeight: 0 }}>
+                                <LinkGlyph size={dense ? 16 : 17} />
+                            </span>
+                        )}
+                        {isMatchSlot && !matchIsToggle && (
                             <span style={{
                                 fontSize: '11px',
                                 fontWeight: 600,
@@ -890,6 +947,8 @@ const CompactColorPicker = ({
         fontVariant: 'tabular-nums',
         flex: '1 1 0',
         minWidth: 0,
+        // Dense: the row is 26 tall, the same as the tabs above it.
+        ...(dense ? { height: '26px', font: `600 11.5px/1 ${FONT}` } : null),
     };
 
     const modeTab = (id, label, glyph) => {
@@ -912,6 +971,7 @@ const CompactColorPicker = ({
                        sit on one baseline, so the segment is 26 and its well is
                        the field's 30. */
                     height: '26px',
+                    ...(dense ? { height: '22px' } : null),
                     display: 'grid',
                     placeItems: 'center',
                     border: 0,
@@ -969,7 +1029,7 @@ const CompactColorPicker = ({
             padding: chrome ? '12px' : 0,
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
+            gap: `${PANEL_GAP}px`,
             userSelect: 'none',
             marginRight
         }}
@@ -982,7 +1042,7 @@ const CompactColorPicker = ({
                 <div role="tablist" style={{
                     display: 'flex',
                     gap: '2px',
-                    padding: '3px',
+                    padding: dense ? '2px' : '3px',
                     background: 'var(--surface-2)',
                     /* ONE RADIUS SCALE (2026-09-22): pills 10, sheet tops 16,
                        popovers and the wells on them 9, cells 5, buttons 6.
@@ -1000,12 +1060,12 @@ const CompactColorPicker = ({
                                 onClick={() => tabs.onSelect?.(item.id)}
                                 style={{
                                     flex: 1,
-                                    height: '26px',
+                                    height: dense ? '22px' : '26px',
                                     border: 0,
                                     borderRadius: '6px',
                                     color: on ? 'var(--text-1)' : 'var(--text-3)',
                                     background: on ? 'var(--surface-3)' : 'transparent',
-                                    font: `600 12px/1 ${FONT}`,
+                                    font: `600 ${dense ? '11.5px' : '12px'}/1 ${FONT}`,
                                     cursor: 'pointer',
                                     padding: 0,
                                 }}
@@ -1019,14 +1079,14 @@ const CompactColorPicker = ({
 
             {presetsRow}
 
-            {mode === 'grid' ? gridView : gradientView}
+            {(mode === 'grid' || locked) ? gridView : gradientView}
 
             {/* The labelled opacity row sits in the same place in both views
                 (RULED 2026-09-22: the sheet must not grow or rearrange when the
                 grid becomes the spectrum). */}
             {showOpacity && (
-                <div style={{ display: 'grid', gap: '6px' }}>
-                    <div style={{ color: 'var(--text-3)', font: `600 11px/1 ${FONT}` }}>Opacity</div>
+                <div style={{ display: 'grid', gap: '6px', ...lockedStyle }}>
+                    <div style={{ color: 'var(--text-3)', font: `600 ${dense ? '10.5px' : '11px'}/1 ${FONT}` }}>Opacity</div>
                     {opacityTrack(true)}
                 </div>
             )}
@@ -1035,7 +1095,7 @@ const CompactColorPicker = ({
                 opacity in a single joined field. Boards 17-19. */}
             {/* In a narrow host panel (chrome={false}, 224px of content) the row
                 tightens its gaps so the six hex digits stay readable. */}
-            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: (!chrome && !isPhone) ? '4px' : '8px', width: '100%' }}>
+            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: dense ? '6px' : '8px', width: '100%', ...lockedStyle }}>
                 <div role="tablist" style={{
                     display: 'flex',
                     gap: '2px',
@@ -1049,6 +1109,8 @@ const CompactColorPicker = ({
                        see the segment height below. */
                     height: '30px',
                     boxSizing: 'border-box',
+                    // Dense: 52 wide, 26 tall, like the field beside it.
+                    ...(dense ? { width: '52px', flex: '0 0 52px', height: '26px' } : null),
                 }}>
                     {modeTab('grid', 'Preset colors', <GridGlyph />)}
                     {modeTab('spectrum', 'Color spectrum', <GradientGlyph />)}
@@ -1076,14 +1138,15 @@ const CompactColorPicker = ({
                             border: 0,
                             borderRight: '1px solid var(--border)',
                             flex: '0 0 34px',
+                            ...(dense ? { width: '28px', flex: '0 0 28px' } : null),
                             color: 'var(--text-2)',
                             opacity: eyedropperSupported ? 1 : 0.4,
                             cursor: eyedropperSupported ? 'pointer' : 'default',
                         }}
                     >
-                        <EyedropperGlyph />
+                        <EyedropperGlyph size={dense ? 14 : 17} />
                     </button>
-                    <span style={{ padding: (!chrome && !isPhone) ? '0 4px 0 6px' : '0 9px', color: 'var(--text-3)' }}>#</span>
+                    <span style={{ padding: dense ? '0 3px 0 7px' : '0 9px', color: 'var(--text-3)' }}>#</span>
                     <input
                         type="text"
                         aria-label="Hex color"
@@ -1123,6 +1186,7 @@ const CompactColorPicker = ({
                                 style={{
                                     width: '42px',
                                     flex: '0 0 42px',
+                                    ...(dense ? { width: '32px', flex: '0 0 32px' } : null),
                                     height: '100%',
                                     padding: '0 2px',
                                     color: 'inherit',
@@ -1134,7 +1198,7 @@ const CompactColorPicker = ({
                                     outline: 'none',
                                 }}
                             />
-                            <span style={{ paddingRight: '9px', color: 'var(--text-3)', flexShrink: 0 }}>%</span>
+                            <span style={{ paddingRight: '9px', color: 'var(--text-3)', flexShrink: 0, ...(dense ? { paddingRight: '7px' } : null) }}>%</span>
                         </>
                     )}
                 </div>
