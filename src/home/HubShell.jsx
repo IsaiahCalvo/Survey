@@ -291,9 +291,50 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
   );
 };
 
+/* Phone section switcher (owner 2026-09-23, replacing the header's menu
+   button and its floating "Navigate" card). UX: the page TITLE is the switcher.
+   "Documents" plus a small chevron is one button; tapping it drops a quiet menu
+   straight out of the title, listing only the OTHER sections — the current one
+   is already the word you tapped, so repeating it (or badging it gold) is noise.
+   Why: the owner found a separate hamburger plus a card of coloured icons too
+   busy; tying the menu to the title reads as one integrated control. Reference:
+   the title-as-menu pattern of iOS Files / Notes folder pickers and Linear's
+   workspace title. Rows use the app's dropdown skin (the phone styled-select
+   menu: surface-2, 1px border, 9px radius, the same soft shadow), with grey
+   outline icons so nothing in the menu competes with the page.
+   Rendered in `?mobileNav=rail` only (the phone web default); the tabs mode
+   keeps its bottom bar, and desktop hides this and shows the plain title. */
 const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
   const [open, setOpen] = useState(false);
-  const touchStart = useRef(null);
+  const rootRef = useRef(null);
+  const buttonRef = useRef(null);
+  const itemRefs = useRef([]);
+  const menuId = `hub-section-menu-${tab}`;
+  const options = (navItems || []).filter(([key]) => key !== tab);
+  itemRefs.current.length = options.length;
+
+  const focusItem = (index) => {
+    const items = itemRefs.current.filter(Boolean);
+    if (!items.length) return;
+    items[(index + items.length) % items.length].focus();
+  };
+
+  // Focus moves into the menu when it opens, so arrow keys work at once.
+  useEffect(() => {
+    if (!open) return undefined;
+    const frame = requestAnimationFrame(() => focusItem(0));
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
 
   if (mode !== 'rail') return null;
 
@@ -303,61 +344,64 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
     onNav && onNav(key);
   };
 
-  const onTouchStart = (e) => {
-    const touch = e.touches?.[0];
-    if (touch) touchStart.current = { x: touch.clientX, y: touch.clientY };
+  const onButtonKeyDown = (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+    }
   };
 
-  const onTouchEnd = (e) => {
-    const start = touchStart.current;
-    const touch = e.changedTouches?.[0];
-    touchStart.current = null;
-    if (!start || !touch) return;
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    if (dx < -36 && Math.abs(dx) > Math.abs(dy)) setOpen(false);
+  const onMenuKeyDown = (event) => {
+    const items = itemRefs.current.filter(Boolean);
+    const current = items.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown') { event.preventDefault(); focusItem(current + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); focusItem(current - 1); }
+    else if (event.key === 'Home') { event.preventDefault(); focusItem(0); }
+    else if (event.key === 'End') { event.preventDefault(); focusItem(items.length - 1); }
+    else if (event.key === 'Tab') setOpen(false);
   };
 
   return (
-    <div className="mobile-rail-nav">
-      <button
-        type="button"
-        className="mobile-rail-nav-trigger"
-        aria-label="Open navigation"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+    <div className={`mobile-rail-nav${open ? ' is-open' : ''}`} ref={rootRef}>
+      <DismissBarrier active={open} insideRefs={[rootRef]} dismissOnEscape={false} onDismiss={() => setOpen(false)} />
+      <h1 className="title">
+        <button
+          ref={buttonRef}
+          type="button"
+          className="hub-title-switch"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          onClick={() => setOpen((value) => !value)}
+          onKeyDown={onButtonKeyDown}
+        >
+          <span className="hub-title-switch__label">{title}</span>
+          <Icon name="chevronDown" size={12} color="currentColor" className="hub-title-switch__chevron" />
+        </button>
+      </h1>
+      <div
+        id={menuId}
+        className="hub-section-menu"
+        role="menu"
+        aria-label="Go to"
+        onKeyDown={onMenuKeyDown}
       >
-        <Icon name="menu" size={16} />
-      </button>
-      {open && (
-        <div className="mobile-rail-nav-scrim" onClick={() => setOpen(false)}>
-          <aside
-            className="mobile-rail-nav-panel"
-            aria-label="Mobile navigation"
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
+        {options.map(([key, icon, label, disabled], index) => (
+          <button
+            key={key}
+            ref={(node) => { itemRefs.current[index] = node; }}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            aria-disabled={disabled || undefined}
+            onClick={() => choose(key, disabled)}
           >
-            <div className="mobile-rail-nav-label">Navigate</div>
-            <div className="mobile-rail-nav-title">{title}</div>
-            <div className="mobile-rail-nav-options">
-              {navItems.map(([key, icon, label, disabled]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={tab === key ? 'active' : ''}
-                  disabled={disabled}
-                  onClick={() => choose(key, disabled)}
-                >
-                  <Icon name={icon} size={15} />
-                  <span>{label}</span>
-                  {disabled ? <Icon name="lock" size={12} color="var(--ink-200)" /> : null}
-                </button>
-              ))}
-            </div>
-          </aside>
-        </div>
-      )}
+            <Icon name={icon} size={14} color="var(--text-3)" />
+            <span>{label}</span>
+            {disabled ? <Icon name="lock" size={11} color="var(--text-3)" /> : null}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };
