@@ -33,7 +33,11 @@ test('attached color picker joins its header without changing standalone corners
 });
 
 test('the panel is the board 19 panel: 276px desktop, full width on the phone', () => {
-  assert.match(SOURCE, /width:\s*isPhone\s*\?\s*'100%'\s*:\s*'276px'/);
+  // RULED 2026-09-23 (owner: the Templates entity color panel was "a box within
+  // a box" and too big): a desktop host that paints the panel itself
+  // (chrome={false}) gets a picker that fills it; a standalone desktop picker
+  // is still the 276px board-19 panel.
+  assert.match(SOURCE, /width:\s*\(isPhone\s*\|\|\s*!chrome\)\s*\?\s*'100%'\s*:\s*'276px'/);
   assert.match(SOURCE, /boxShadow:\s*chrome\s*\?\s*'0 14px 32px rgba\(0,0,0,0\.45\)'\s*:\s*'none'/);
   // A host that owns the phone bottom sheet turns the picker's own panel off so
   // the presets row runs edge to edge across the sheet's 358px band.
