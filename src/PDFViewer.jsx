@@ -109,7 +109,8 @@ import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool 
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
-import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, collectAnnotationFieldTouches, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
+import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
+import { normalizeMergedHistoryObject } from './utils/historyMergeNormalize';
 import {
   buildAtomicTextMarkupPageMutation,
   buildRequestedRedactionSnapshot,
@@ -8285,6 +8286,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // next unrelated undo step on that page.
         paintDragTouchedByPageRef.current.forEach((_keys, pageKey) => {
           previewBaselineByPageRef.current.delete(pageKey);
+          gestureFieldTouchesByPageRef.current.delete(pageKey);
         });
         paintDragTouchedByPageRef.current.clear();
       }
@@ -12439,22 +12441,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return false;
     }
     // Undo/Redo writes only the fields the action changed onto each mark as it
-    // is now. When that leaves a callout in a state neither snapshot had (a
-    // collaborator changed another field meanwhile), rebuild its drawn parts
-    // from data.legacyCallout, the callout's source of truth, so the leader,
-    // box and text agree with the merged settings.
+    // is now. When that leaves a mark in a state neither snapshot had (a
+    // collaborator changed another field meanwhile), a callout is re-projected
+    // from data.legacyCallout and a text box / callout whose text or font no
+    // longer matches its restored height grows to fit (never clipped) — see
+    // utils/historyMergeNormalize.js.
     const nextAnnotationsByPage = applyAnnotationHistoryAction(annotationsByPageRef.current || {}, scopedAction, {
-      normalizeUpdatedObject: (object, { pageNumber: updatedPage }) => {
-        if (object?.data?.type !== 'callout' || !object?.data?.legacyCallout) return object;
-        try {
-          const page = Number(updatedPage);
-          const callout = deriveCalloutsFromByPage({ [page]: { objects: [object] } })[0];
-          const pageSize = pageSizesRef.current?.[page] || { width: 612, height: 792 };
-          return callout ? calloutToAnnotationObject(callout, pageSize) : object;
-        } catch (_err) {
-          return object;
-        }
-      },
+      normalizeUpdatedObject: (object, { pageNumber: updatedPage, entry }) => normalizeMergedHistoryObject(
+        object,
+        entry?.after,
+        {
+          pageNumber: updatedPage,
+          pageSize: pageSizesRef.current?.[Number(updatedPage)] || pageSizesRef.current?.[String(updatedPage)],
+          measure: measureTextLayoutHeight,
+        },
+      ),
     });
     if (nextAnnotationsByPage === annotationsByPageRef.current) return false;
 
@@ -25553,6 +25554,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // from it and fold this gesture into that undo step.
       if (!shouldSkipCheckpointByPolicy && previewBaseline) {
         previewBaselineByPageRef.current.delete(interactionPageKey);
+        gestureFieldTouchesByPageRef.current.delete(interactionPageKey);
       }
       pushHistoryDebugEvent('annotations_save_noop', {
         reason: 'annotations:save',
@@ -25686,13 +25688,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       logCounterRenumberSkip();
     }
     // Field-level undo: every save inside a gesture (preview frames and the
-    // release) records which fields it changed, diffed against the page as it
-    // was just before this save — so a collaborator's edit that landed between
-    // frames is never counted as ours. The release's step keeps only those.
+    // release) records what it changed — fields per mark, marks created,
+    // marks deleted — diffed against the page as it was just before this save,
+    // so a collaborator's edit that landed between frames is never counted as
+    // ours. The release's step keeps only those. A preview frame's own action
+    // already IS that diff (no baseline), so it is reused rather than
+    // re-comparing every mark each frame; only the release diffs once more.
     const gestureInProgress = checkpointPolicy === 'skip' || Boolean(previewBaseline);
-    if (gestureInProgress) {
-      const touches = gestureFieldTouchesByPageRef.current.get(interactionPageKey) || new Map();
-      collectAnnotationFieldTouches(normalizedCurrentAnnotations, finalIncomingAnnotations, touches);
+    if (gestureInProgress && !isEraserCommit) {
+      const touches = gestureFieldTouchesByPageRef.current.get(interactionPageKey) || createGestureTouchRecord();
+      recordGestureTouchesFromAction(
+        historyPreviousAnnotations === normalizedCurrentAnnotations
+          ? finalLocalHistoryAction
+          : buildAnnotationHistoryAction({
+            pageNumber,
+            previousPage: normalizedCurrentAnnotations,
+            nextPage: finalIncomingAnnotations,
+          }),
+        touches,
+      );
       gestureFieldTouchesByPageRef.current.set(interactionPageKey, touches);
     }
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {

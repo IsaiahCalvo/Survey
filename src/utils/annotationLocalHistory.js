@@ -14,12 +14,22 @@
  * collaborator's change to any other field of the same mark survives.
  *   - Fields are nested-aware: plain objects are walked key by key
  *     (data.legacyCallout.style.fontColor is a different field from
- *     ...style.fontSize); arrays (points, path, a group's objects) and
- *     primitives are one field each.
- *   - An entry may carry `fields` (a list of paths) when the action's
- *     before/after diff can hold more than the user's own edit — a drag's
- *     pre-drag baseline vs its release also contains whatever a collaborator
- *     changed mid-drag. Only diff paths that overlap `fields` are applied.
+ *     ...style.fontSize); arrays (points, path, a group's objects),
+ *     primitives and ATOMIC_FIELD_PATHS (a text markup's textRange /
+ *     textRangeModel) are one field each. Linked groups (a text markup's range
+ *     + drawn box; a point shape's points/path + position/size/transform) are
+ *     written whole whenever any member changed.
+ *   - A key the merge adds back keeps the snapshot's key order.
+ *   - A gesture's release step is limited to what its own saves did
+ *     (restrictAnnotationHistoryActionFields): updates carry `fields` (only
+ *     diff paths overlapping them are applied), updates to marks it never
+ *     wrote are dropped, and only creates/deletes its own saves made are kept
+ *     — a drag's pre-drag baseline vs its release also contains whatever a
+ *     collaborator changed mid-drag, on this mark or any other.
+ *   - The protection covers collaborator edits already RECEIVED when you press
+ *     Undo. The shared store still writes whole marks (annotationDocStore
+ *     syncByPageToDoc), so an edit to another field of the same mark that is
+ *     still in flight at that instant can be overwritten (pre-existing).
  *   - Concurrency choice: if a collaborator changed the SAME field after your
  *     action, your Undo still puts that field back to your "before" value
  *     (plain last-writer-wins on that one field — the same rule Figma and
@@ -180,48 +190,136 @@ function isPlainRecord(value) {
   return proto === Object.prototype || proto === null;
 }
 
+function hasOwn(record, key) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
 function hasField(record, key) {
-  return Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined;
+  return hasOwn(record, key) && record[key] !== undefined;
+}
+
+function samePath(left, right) {
+  return left.length === right.length
+    && left.every((segment, index) => String(segment) === String(right[index]));
+}
+
+// Plain objects that must still travel as ONE field: a text markup's character
+// range and its text-layer model describe one selection and are never merged
+// key by key (a half-restored range would point at different characters).
+const ATOMIC_FIELD_PATHS = [
+  ['data', 'textRange'],
+  ['data', 'textRangeModel'],
+];
+
+// Linked fields: when any one of a group differs, Undo/Redo writes the WHOLE
+// group from the snapshot, because the values only make sense together.
+//  - Text markups: the drawn box (left/top/width/height) and data.quads are
+//    computed from the same selection as data.selectedText / textRange.
+//  - Point-based shapes (polygon, polyline, ink path, line): a vertex edit or
+//    move rewrites points/path together with left/top/size/pathOffset (and a
+//    rotated one its transform), so restoring only some of them would bend or
+//    shift the shape.
+// Rects, ellipses, text boxes and callouts have independent geometry fields
+// (a move is left/top, a resize width/height/scale) and are not grouped.
+const TEXT_MARKUP_LINKED_FIELDS = [
+  ['left'], ['top'], ['width'], ['height'],
+  ['data', 'quads'], ['data', 'selectedText'], ['data', 'textRange'], ['data', 'textRangeModel'],
+];
+const POINT_GEOMETRY_LINKED_FIELDS = [
+  'left', 'top', 'width', 'height', 'points', 'path', 'pathOffset',
+  'x1', 'y1', 'x2', 'y2', 'scaleX', 'scaleY', 'angle', 'flipX', 'flipY',
+].map((key) => [key]);
+const POINT_GEOMETRY_TYPES = new Set(['polygon', 'polyline', 'path', 'line']);
+
+function linkedFieldGroupsFor(before, after) {
+  const probe = isPlainRecord(after) ? after : before;
+  if (!isPlainRecord(probe)) return [];
+  if (probe.data?.type === 'text-markup' || Array.isArray(probe.data?.quads)) {
+    return [TEXT_MARKUP_LINKED_FIELDS];
+  }
+  if (POINT_GEOMETRY_TYPES.has(String(probe.type || '').toLowerCase())) {
+    return [POINT_GEOMETRY_LINKED_FIELDS];
+  }
+  return [];
+}
+
+function readAtPath(record, path) {
+  let cursor = record;
+  for (const key of path) {
+    if (!isPlainRecord(cursor) || !hasField(cursor, key)) return { present: false, value: undefined };
+    cursor = cursor[key];
+  }
+  return { present: true, value: cursor };
+}
+
+function diffFieldsRecursive(before, after, prefix, changes) {
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of keys) {
+    const hadBefore = hasField(before, key);
+    const hasAfter = hasField(after, key);
+    if (!hadBefore && !hasAfter) continue;
+    const path = [...prefix, key];
+    const left = hadBefore ? before[key] : undefined;
+    const right = hasAfter ? after[key] : undefined;
+    if (
+      hadBefore && hasAfter
+      && isPlainRecord(left) && isPlainRecord(right)
+      && !ATOMIC_FIELD_PATHS.some((atomic) => samePath(atomic, path))
+    ) {
+      diffFieldsRecursive(left, right, path, changes);
+      continue;
+    }
+    if (hadBefore === hasAfter && sameJson(left, right)) continue;
+    changes.push({
+      path,
+      before: hadBefore ? cloneJson(left) : undefined,
+      after: hasAfter ? cloneJson(right) : undefined,
+      hadBefore,
+      hasAfter,
+    });
+  }
+  return changes;
 }
 
 /**
  * Field-level diff of two annotation snapshots. Returns one entry per changed
  * leaf field: { path: string[], before, after, hadBefore, hasAfter }.
- * Plain objects are walked key by key; arrays and primitives are leaves (an
- * ink path or a polygon's points change as one unit). Two non-object
- * snapshots compare as one whole-value entry with path [].
+ * Plain objects are walked key by key; arrays, primitives and the
+ * ATOMIC_FIELD_PATHS are leaves (an ink path or a polygon's points change as
+ * one unit). When any field of a linked group changed, every field of that
+ * group is listed (see linkedFieldGroupsFor). Two non-object snapshots
+ * compare as one whole-value entry with path [].
  */
-export function diffAnnotationFields(before, after, prefix = []) {
+export function diffAnnotationFields(before, after) {
   if (!isPlainRecord(before) || !isPlainRecord(after)) {
     if (sameJson(before, after)) return [];
     return [{
-      path: prefix,
+      path: [],
       before: before === undefined ? undefined : cloneJson(before),
       after: after === undefined ? undefined : cloneJson(after),
       hadBefore: before !== undefined,
       hasAfter: after !== undefined,
     }];
   }
-  const changes = [];
-  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-  for (const key of keys) {
-    const hadBefore = hasField(before, key);
-    const hasAfter = hasField(after, key);
-    if (!hadBefore && !hasAfter) continue;
-    const left = hadBefore ? before[key] : undefined;
-    const right = hasAfter ? after[key] : undefined;
-    if (hadBefore && hasAfter && isPlainRecord(left) && isPlainRecord(right)) {
-      changes.push(...diffAnnotationFields(left, right, [...prefix, key]));
-      continue;
+  const changes = diffFieldsRecursive(before, after, [], []);
+  for (const group of linkedFieldGroupsFor(before, after)) {
+    const touchesGroup = changes.some((change) => (
+      group.some((path) => pathsOverlap(path, change.path))
+    ));
+    if (!touchesGroup) continue;
+    for (const path of group) {
+      if (changes.some((change) => samePath(change.path, path))) continue;
+      const left = readAtPath(before, path);
+      const right = readAtPath(after, path);
+      if (!left.present && !right.present) continue;
+      changes.push({
+        path: [...path],
+        before: left.present ? cloneJson(left.value) : undefined,
+        after: right.present ? cloneJson(right.value) : undefined,
+        hadBefore: left.present,
+        hasAfter: right.present,
+      });
     }
-    if (hadBefore === hasAfter && sameJson(left, right)) continue;
-    changes.push({
-      path: [...prefix, key],
-      before: hadBefore ? cloneJson(left) : undefined,
-      after: hasAfter ? cloneJson(right) : undefined,
-      hadBefore,
-      hasAfter,
-    });
   }
   return changes;
 }
@@ -240,98 +338,194 @@ function restrictFieldChanges(changes, fields) {
   return changes.filter((change) => paths.some((path) => pathsOverlap(path, change.path)));
 }
 
-function setFieldAtPath(root, path, value, present) {
-  if (path.length === 0) return present ? cloneJson(value) : root;
-  const out = isPlainRecord(root) ? { ...root } : {};
-  let cursor = out;
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const key = path[index];
-    const next = cursor[key];
-    if (!isPlainRecord(next)) {
-      // Nothing to remove under a branch that no longer exists.
-      if (!present) return out;
-      cursor[key] = {};
-    } else {
-      cursor[key] = { ...next };
-    }
-    cursor = cursor[key];
-  }
-  const leaf = path[path.length - 1];
-  if (present) cursor[leaf] = cloneJson(value);
-  else delete cursor[leaf];
+// A key that the merge ADDS back (it had been removed) is put where the
+// snapshot has it, not at the end: string fingerprints of the object (the
+// save pipeline's history hashes, sameJson) are key-order sensitive, and an
+// order-only difference would otherwise read as a change later.
+function orderKeysLike(record, template) {
+  if (!isPlainRecord(template)) return record;
+  const out = {};
+  Object.keys(template).forEach((key) => {
+    if (hasOwn(record, key)) out[key] = record[key];
+  });
+  Object.keys(record).forEach((key) => {
+    if (!hasOwn(out, key)) out[key] = record[key];
+  });
   return out;
+}
+
+function setFieldAtPath(node, path, value, present, template) {
+  if (path.length === 0) return present ? cloneJson(value) : node;
+  const [key, ...rest] = path;
+  const base = isPlainRecord(node) ? node : {};
+  if (rest.length === 0 && !present) {
+    if (!hasOwn(base, key)) return node;
+    const { [key]: _removed, ...others } = base;
+    return others;
+  }
+  let child;
+  if (rest.length === 0) {
+    child = cloneJson(value);
+  } else {
+    const next = base[key];
+    // Nothing to remove under a branch that no longer exists.
+    if (!isPlainRecord(next) && !present) return node;
+    child = setFieldAtPath(
+      isPlainRecord(next) ? next : {},
+      rest,
+      value,
+      present,
+      isPlainRecord(template) ? template[key] : undefined,
+    );
+  }
+  const existed = hasOwn(base, key);
+  const out = { ...base, [key]: child };
+  return existed ? out : orderKeysLike(out, template);
 }
 
 /**
  * Write the fields an update changed (before -> after, optionally limited to
  * `fields`) onto `current`, leaving every other field of `current` as it is.
  * With no concurrent change (`current` equals `before`) the result equals
- * `after`, so single-user Undo/Redo is unchanged.
+ * `after` (key order included), so single-user Undo/Redo is unchanged.
  */
 export function mergeAnnotationUpdateOntoCurrent(current, before, after, fields = null) {
   const changes = restrictFieldChanges(diffAnnotationFields(before, after), fields);
   return changes.reduce(
-    (object, change) => setFieldAtPath(object, change.path, change.after, change.hasAfter),
+    (object, change) => setFieldAtPath(object, change.path, change.after, change.hasAfter, after),
     current,
   );
 }
 
 /**
- * Field paths each object's save changed, accumulated into `touches`
- * (Map<storageKey, Map<pathKey, path>>). A gesture (live-preview frames plus
- * its release) calls this once per save so its single undo step can be limited
- * to the fields the gesture itself wrote, not whatever else differs between
- * its pre-gesture baseline and its release.
+ * What one gesture's own saves did on one page: the fields they wrote per
+ * object (fields: Map<storageKey, Map<pathKey, path>>) and the objects they
+ * created / deleted. A gesture (live-preview frames plus its release) records
+ * every save so its single undo step can be limited to its own work, never
+ * whatever else differs between its pre-gesture baseline and its release.
  */
-export function collectAnnotationFieldTouches(previousPage, nextPage, touches = new Map()) {
-  const { previousById, nextById } = buildComparableIdMaps(
-    getObjects(previousPage),
-    getObjects(nextPage),
-  );
-  for (const [storageKey, entry] of nextById.entries()) {
-    const previous = previousById.get(storageKey);
-    if (!previous || previous.obj === entry.obj) continue;
-    const changes = diffAnnotationFields(previous.obj, entry.obj);
-    if (changes.length === 0) continue;
-    const paths = touches.get(storageKey) || new Map();
-    changes.forEach((change) => paths.set(JSON.stringify(change.path), change.path));
-    touches.set(storageKey, paths);
-  }
-  return touches;
+export function createGestureTouchRecord() {
+  return { fields: new Map(), created: new Set(), deleted: new Set() };
 }
 
-function fieldsForEntry(entry, touches) {
+function entryStorageKey(entry) {
   const key = entry?.storageKey ?? entry?.id;
-  if (key == null || !touches.has(String(key))) return null;
-  return [...touches.get(String(key)).values()];
+  return key == null ? null : String(key);
+}
+
+function actionEntries(action) {
+  if (!action || typeof action !== 'object') return { created: [], deleted: [], updated: [] };
+  if (action.type === 'fabric:create') return { created: [action], deleted: [], updated: [] };
+  if (action.type === 'fabric:delete') return { created: [], deleted: [action], updated: [] };
+  if (action.type === 'fabric:update') return { created: [], deleted: [], updated: [action] };
+  if (action.type === 'fabric:batch') {
+    return {
+      created: action.created || [],
+      deleted: action.deleted || [],
+      updated: action.updated || [],
+    };
+  }
+  return { created: [], deleted: [], updated: [] };
 }
 
 /**
- * Limit an action's update entries to the fields in `touches`. Entries for
- * objects with no recorded touches keep their full diff (conservative: the
- * change may have come through a path that does not report touches). An
- * update whose limited diff is empty is dropped; an action left with nothing
- * returns null. Creates and deletes are untouched.
+ * Record one save's own diff (an action built from the page just before that
+ * save to the page it wrote) into a gesture's touch record. Reusing the save's
+ * already-built action keeps a drag frame from re-comparing every mark; only
+ * the objects that changed are diffed field by field.
  */
-export function restrictAnnotationHistoryActionFields(action, touches) {
-  if (!action || !(touches instanceof Map) || touches.size === 0) return action;
-  const limit = (entry) => {
-    const fields = fieldsForEntry(entry, touches);
-    if (!fields) return entry;
-    const changes = restrictFieldChanges(diffAnnotationFields(entry.before, entry.after), fields);
-    return changes.length > 0 ? { ...entry, fields } : null;
-  };
-  if (action.type === 'fabric:update') return limit(action);
-  if (action.type === 'fabric:batch') {
-    const updated = (action.updated || []).map(limit).filter(Boolean);
-    if (
-      updated.length === 0
-      && (action.created || []).length === 0
-      && (action.deleted || []).length === 0
-    ) return null;
-    return { ...action, updated };
+export function recordGestureTouchesFromAction(action, record = createGestureTouchRecord()) {
+  const { created, deleted, updated } = actionEntries(action);
+  created.forEach((entry) => {
+    const key = entryStorageKey(entry);
+    if (key) record.created.add(key);
+  });
+  deleted.forEach((entry) => {
+    const key = entryStorageKey(entry);
+    if (key) record.deleted.add(key);
+  });
+  updated.forEach((entry) => {
+    const key = entryStorageKey(entry);
+    if (!key) return;
+    const changes = diffAnnotationFields(entry.before, entry.after);
+    if (changes.length === 0) return;
+    const paths = record.fields.get(key) || new Map();
+    changes.forEach((change) => paths.set(JSON.stringify(change.path), change.path));
+    record.fields.set(key, paths);
+  });
+  return record;
+}
+
+/** Record the diff between two pages (one save) into a gesture touch record. */
+export function collectAnnotationFieldTouches(previousPage, nextPage, record = createGestureTouchRecord()) {
+  return recordGestureTouchesFromAction(
+    buildAnnotationHistoryAction({ pageNumber: 0, previousPage, nextPage }),
+    record,
+  );
+}
+
+function shapeHistoryAction(pageNumber, created, deleted, updated) {
+  const total = created.length + deleted.length + updated.length;
+  if (total === 0) return null;
+  if (total === 1) {
+    const [entry, type] = created.length
+      ? [created[0], 'fabric:create']
+      : deleted.length
+        ? [deleted[0], 'fabric:delete']
+        : [updated[0], 'fabric:update'];
+    const base = {
+      type,
+      pageNumber,
+      annotationId: entry.annotationId || entry.id || entry.storageKey,
+      storageKey: entry.storageKey ?? entry.id,
+      index: entry.index ?? null,
+    };
+    return type === 'fabric:update'
+      ? {
+        ...base,
+        before: entry.before,
+        after: entry.after,
+        ...(Array.isArray(entry.fields) ? { fields: entry.fields } : {}),
+      }
+      : { ...base, annotation: entry.annotation };
   }
-  return action;
+  return { type: 'fabric:batch', pageNumber, created, deleted, updated };
+}
+
+/**
+ * Limit a gesture's release step to what the gesture's own saves did
+ * (`record` from createGestureTouchRecord / recordGestureTouchesFromAction):
+ *  - an update keeps only the fields the gesture wrote (`fields`), and is
+ *    dropped when it wrote none of them or they ended where they began;
+ *  - a create / delete is kept only when one of the gesture's saves made it,
+ *    so a mark a collaborator added or removed mid-drag is never deleted or
+ *    brought back by our Undo.
+ * Returns null when nothing of the gesture's own is left (e.g. a drag dropped
+ * back where it started while someone else edited the page).
+ */
+export function restrictAnnotationHistoryActionFields(action, record) {
+  if (!action || !record || !(record.fields instanceof Map)) return action;
+  if (action.type !== 'fabric:update' && action.type !== 'fabric:batch'
+    && action.type !== 'fabric:create' && action.type !== 'fabric:delete') return action;
+  const entries = actionEntries(action);
+  const created = entries.created.filter((entry) => record.created.has(entryStorageKey(entry)));
+  const deleted = entries.deleted.filter((entry) => record.deleted.has(entryStorageKey(entry)));
+  const updated = entries.updated
+    .map((entry) => {
+      const paths = record.fields.get(entryStorageKey(entry));
+      if (!paths || paths.size === 0) return null;
+      const fields = [...paths.values()];
+      const changes = restrictFieldChanges(diffAnnotationFields(entry.before, entry.after), fields);
+      return changes.length > 0 ? { ...entry, fields } : null;
+    })
+    .filter(Boolean);
+  if (
+    action.type !== 'fabric:batch'
+    && created.length + deleted.length + updated.length === 1
+  ) {
+    return updated.length === 1 ? updated[0] : action;
+  }
+  return shapeHistoryAction(action.pageNumber, created, deleted, updated);
 }
 
 export function buildPreciseAnnotationHistoryAction({

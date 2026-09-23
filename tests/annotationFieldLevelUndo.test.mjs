@@ -13,6 +13,7 @@ import {
   applyAnnotationHistoryAction,
   buildAnnotationHistoryAction,
   collectAnnotationFieldTouches,
+  createGestureTouchRecord,
   diffAnnotationFields,
   filterAnnotationHistoryActionByOwner,
   invertAnnotationHistoryAction,
@@ -24,6 +25,7 @@ import {
   deriveCalloutsFromByPage,
 } from '../src/utils/calloutAnnotationBridge.js';
 import { docToByPage, syncByPageToDoc } from '../src/services/annotationDocStore.js';
+import { normalizeMergedHistoryObject } from '../src/utils/historyMergeNormalize.js';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const page = (...objects) => ({ version: '5.3.0', objects });
@@ -171,7 +173,7 @@ test('creates and deletes still undo and redo whole marks', () => {
 test('a drag step keeps only the fields its own frames wrote, not a mid-drag collaborator edit', () => {
   // Pre-drag baseline.
   const baseline = page(textbox());
-  const touches = new Map();
+  const touches = createGestureTouchRecord();
   // Frame 1 (ours): colour moves.
   const frame1 = page(textbox({ fill: '#aa0000' }));
   collectAnnotationFieldTouches(baseline, frame1, touches);
@@ -270,7 +272,7 @@ const reproject = (object) => {
 test('callout: undo of a text-colour drag keeps a collaborator\'s mid-drag 24pt size (one step, redo works)', () => {
   const start = baseCallout();
   const baseline = page(project(start));
-  const touches = new Map();
+  const touches = createGestureTouchRecord();
   // A's first colour frame.
   const f1 = page(project({ ...start, style: { ...start.style, fontColor: '#884400' } }));
   collectAnnotationFieldTouches(baseline, f1, touches);
@@ -355,4 +357,165 @@ test('two sessions: A recolours, B resizes, A undoes -> B\'s size survives in bo
     equal(mark.fill, '#ff0000', `${name}: redo restores A's colour`);
     equal(mark.fontSize, 24, `${name}: and keeps B's size`);
   }
+});
+
+// ---- Review fixes (2026-09-23, second pass) ----------------------------------
+
+const rect = (id, overrides = {}) => ({ type: 'rect', left: 10, top: 10, width: 40, height: 30, stroke: '#000000', data: { id, authorId: 'user-a' }, ...overrides });
+
+test('a drag step never includes a collaborator\'s mid-drag edit to ANOTHER mark', () => {
+  // Reviewer repro: baseline {A,B}; preview moves A; collaborator sets B red;
+  // release -> the step must hold A only, and its undo must not reset B.
+  const baseline = page(rect('A'), rect('B', { left: 200 }));
+  const record = createGestureTouchRecord();
+  const frame1 = page(rect('A', { left: 30 }), rect('B', { left: 200 }));
+  collectAnnotationFieldTouches(baseline, frame1, record);
+  const withRemote = page(rect('A', { left: 30 }), rect('B', { left: 200, stroke: '#ff0000' }));
+  const release = page(rect('A', { left: 60 }), rect('B', { left: 200, stroke: '#ff0000' }));
+  collectAnnotationFieldTouches(withRemote, release, record);
+
+  const raw = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: baseline, nextPage: release });
+  equal(raw.type, 'fabric:batch', 'the raw baseline-vs-release diff holds both marks');
+  const step = restrictAnnotationHistoryActionFields(raw, record);
+  equal(step.type, 'fabric:update');
+  equal(step.storageKey, 'A');
+  const undone = applyAnnotationHistoryAction({ 1: release }, invertAnnotationHistoryAction(step));
+  equal(objectsOf(undone)[0].left, 10, 'A goes back');
+  equal(objectsOf(undone)[1].stroke, '#ff0000', 'B keeps the collaborator\'s red');
+});
+
+test('a drag step never deletes a mark a collaborator added, nor restores one they removed, mid-drag', () => {
+  const baseline = page(rect('A'), rect('GONE', { left: 300 }));
+  const record = createGestureTouchRecord();
+  collectAnnotationFieldTouches(baseline, page(rect('A', { left: 30 }), rect('GONE', { left: 300 })), record);
+  // Collaborator removes GONE and adds NEW; our release moves A once more.
+  const withRemote = page(rect('A', { left: 30 }), rect('NEW', { left: 400 }));
+  const release = page(rect('A', { left: 60 }), rect('NEW', { left: 400 }));
+  collectAnnotationFieldTouches(withRemote, release, record);
+  const step = restrictAnnotationHistoryActionFields(
+    buildAnnotationHistoryAction({ pageNumber: 1, previousPage: baseline, nextPage: release }),
+    record,
+  );
+  equal(step.type, 'fabric:update');
+  const undone = applyAnnotationHistoryAction({ 1: release }, invertAnnotationHistoryAction(step));
+  deepStrictEqual(objectsOf(undone).map((o) => [o.data.id, o.left]), [['A', 10], ['NEW', 400]]);
+});
+
+test('a gesture\'s own create and delete stay in its step', () => {
+  const baseline = page(rect('A'));
+  const record = createGestureTouchRecord();
+  const release = page(rect('B', { left: 90 }));
+  collectAnnotationFieldTouches(baseline, release, record);
+  const step = restrictAnnotationHistoryActionFields(
+    buildAnnotationHistoryAction({ pageNumber: 1, previousPage: baseline, nextPage: release }),
+    record,
+  );
+  equal(step.type, 'fabric:batch');
+  equal(step.created.length, 1);
+  equal(step.deleted.length, 1);
+  const undone = applyAnnotationHistoryAction({ 1: release }, invertAnnotationHistoryAction(step));
+  deepStrictEqual(objectsOf(undone).map((o) => o.data.id), ['A']);
+});
+
+test('a drag dropped back where it started records no step, even if someone else edited the mark', () => {
+  const baseline = page(rect('A'));
+  const record = createGestureTouchRecord();
+  collectAnnotationFieldTouches(baseline, page(rect('A', { left: 40 })), record);
+  const withRemote = page(rect('A', { left: 40, stroke: '#00f' }));
+  const release = page(rect('A', { left: 10, stroke: '#00f' }));
+  collectAnnotationFieldTouches(withRemote, release, record);
+  const raw = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: baseline, nextPage: release });
+  equal(raw.type, 'fabric:update', 'the raw diff holds only the collaborator\'s stroke');
+  equal(restrictAnnotationHistoryActionFields(raw, record), null);
+});
+
+// Fake measurer: one line per "\n"-separated line, fontSize * lineHeight each.
+const measure = ({ text, fontSize, lineHeight }) => String(text).split('\n').length * fontSize * lineHeight;
+
+test('text box: undoing a size change after someone added lines grows the box instead of clipping', () => {
+  // Reviewer repro: font 12 -> 24 grows height 30 -> 44; collaborator types 4
+  // more lines -> height 160; undo would leave {fontSize 12, height 30, 5 lines}.
+  const small = textbox({ fontSize: 12, height: 30, text: 'one' });
+  const big = textbox({ fontSize: 24, height: 44, text: 'one' });
+  const action = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: page(small), nextPage: page(big) });
+  const fiveLines = 'one\ntwo\nthree\nfour\nfive';
+  const current = { 1: page(textbox({ fontSize: 24, height: 160, text: fiveLines })) };
+  const options = { normalizeUpdatedObject: (object, { entry }) => normalizeMergedHistoryObject(object, entry.after, { measure }) };
+
+  const [raw] = objectsOf(applyAnnotationHistoryAction(current, invertAnnotationHistoryAction(action)));
+  equal(raw.height, 30, 'without the refit the merge clips the text');
+  const [mark] = objectsOf(applyAnnotationHistoryAction(current, invertAnnotationHistoryAction(action), options));
+  equal(mark.fontSize, 12);
+  equal(mark.text, fiveLines);
+  const needed = 5 * 12 * 1.16 * 1.13 + 12;
+  ok(Math.abs(mark.height - needed) < 0.01, `box grew to fit: ${mark.height} vs ${needed}`);
+});
+
+test('text box: a merge that already matches its snapshot is never re-measured', () => {
+  const merged = textbox({ height: 30 });
+  equal(normalizeMergedHistoryObject(merged, clone(merged), { measure: () => 999 }), merged);
+});
+
+test('callout: an undone size change after someone added lines grows the box to fit', () => {
+  const start = baseCallout();
+  const small = project({ ...start, style: { ...start.style, fontSize: 12 }, textBoxHeight: 0.04 });
+  const big = project({ ...start, style: { ...start.style, fontSize: 24 }, textBoxHeight: 0.06 });
+  const action = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: page(small), nextPage: page(big) });
+  const text = 'a\nb\nc\nd\ne';
+  const current = { 1: page(project({ ...start, text, style: { ...start.style, fontSize: 24 }, textBoxHeight: 0.2 })) };
+  const options = {
+    normalizeUpdatedObject: (object, { pageNumber, entry }) => normalizeMergedHistoryObject(object, entry.after, { pageNumber, pageSize: PAGE_SIZE, measure }),
+  };
+  const [callout] = deriveCalloutsFromByPage(applyAnnotationHistoryAction(current, invertAnnotationHistoryAction(action), options));
+  equal(callout.style.fontSize, 12);
+  equal(callout.text, text);
+  const needed = (5 * 12 * 1.13) / PAGE_SIZE.height;
+  ok(Math.abs(callout.textBoxHeight - needed) < 1e-9, `grew to ${callout.textBoxHeight} (needed ${needed})`);
+  deepStrictEqual(callout.knee, start.knee, 'the knee never moves');
+});
+
+test('text markup: range, quads, text and drawn box restore together; textRange is one field', () => {
+  const markup = (start, end, left, width, text) => ({
+    type: 'rect', left, top: 100, width, height: 12,
+    fill: '#ffff00',
+    data: { id: 'm1', type: 'text-markup', quads: [{ x1: left, x2: left + width }], selectedText: text, textRange: { start, end } },
+  });
+  const before = markup(10, 20, 50, 60, 'ten chars.');
+  const after = markup(10, 30, 50, 120, 'twenty chars here..');
+  const paths = diffAnnotationFields(before, after).map((c) => c.path.join('.')).sort();
+  ok(paths.includes('data.textRange'), 'textRange travels whole');
+  ok(!paths.includes('data.textRange.end'));
+  ok(paths.includes('left') && paths.includes('top'), 'the linked drawn box is written with the range');
+
+  const action = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: page(before), nextPage: page(after) });
+  // A collaborator recolours it and nudges its top in the meantime.
+  const current = { 1: page({ ...after, fill: '#00ff00', top: 104 }) };
+  const [mark] = objectsOf(applyAnnotationHistoryAction(current, invertAnnotationHistoryAction(action)));
+  deepStrictEqual(mark.data.textRange, { start: 10, end: 20 });
+  equal(mark.width, 60);
+  equal(mark.top, 100, 'the drawn box follows the restored range');
+  equal(mark.fill, '#00ff00', 'the colour is not part of the range');
+});
+
+test('polygon: points and position restore as one group; stroke stays independent', () => {
+  const poly = { type: 'polygon', left: 10, top: 10, width: 20, height: 20, pathOffset: { x: 10, y: 10 }, points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 10, y: 20 }], stroke: '#000', data: { id: 'p1' } };
+  const moved = { ...poly, left: 60, top: 40 };
+  const action = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: page(poly), nextPage: page(moved) });
+  // A collaborator then drags a vertex (points + box + offset change together).
+  const edited = { ...moved, left: 55, width: 25, pathOffset: { x: 12.5, y: 10 }, points: [{ x: -5, y: 0 }, { x: 20, y: 0 }, { x: 10, y: 20 }], stroke: '#f00' };
+  const [mark] = objectsOf(applyAnnotationHistoryAction({ 1: page(edited) }, invertAnnotationHistoryAction(action)));
+  deepStrictEqual(
+    { left: mark.left, top: mark.top, width: mark.width, pathOffset: mark.pathOffset, points: mark.points },
+    { left: poly.left, top: poly.top, width: poly.width, pathOffset: poly.pathOffset, points: poly.points },
+    'the geometry is restored whole, never half-shifted',
+  );
+  equal(mark.stroke, '#f00');
+});
+
+test('a key the undo adds back lands where the snapshot has it (key order kept)', () => {
+  const before = { type: 'rect', left: 1, shadow: 'x', top: 2, data: { id: 'k1' } };
+  const after = { type: 'rect', left: 1, top: 2, data: { id: 'k1' } };
+  const action = buildAnnotationHistoryAction({ pageNumber: 1, previousPage: page(before), nextPage: page(after) });
+  const [mark] = objectsOf(applyAnnotationHistoryAction({ 1: page(clone(after)) }, invertAnnotationHistoryAction(action)));
+  equal(JSON.stringify(mark), JSON.stringify(before));
 });
