@@ -71,7 +71,10 @@ test('mobile project list rows omit the decorative folder icon', () => {
 test('desktop and mobile project rows share team metadata without invented file or age copy', () => {
   assert.match(projects, /const ProjectTeamSummary = \(\{ memberIds, lookupMember \}\) =>/);
   assert.equal((projects.match(/<ProjectTeamSummary memberIds=\{projMembers\} lookupMember=\{lookupMember\} \/>/g) || []).length, 2);
-  const mobileRowStart = projects.indexOf('className="projects-mobile-folder-row drill reorderable"');
+  /* The class list is built in a template literal now (the row appends
+     is-selected when a project is picked), so this anchors on the class names
+     themselves rather than on a whole quoted attribute. */
+  const mobileRowStart = projects.indexOf('projects-mobile-folder-row drill reorderable');
   const mobileRowEnd = projects.indexOf('</SortableRearrangeRow>', mobileRowStart);
   const mobileRow = projects.slice(mobileRowStart, mobileRowEnd);
   assert.match(mobileRow, /<ProjectTeamSummary memberIds=\{projMembers\} lookupMember=\{lookupMember\} \/>/);

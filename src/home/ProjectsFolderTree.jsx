@@ -876,11 +876,14 @@ export default function ProjectsFolderTree({
     const isChecked = selFiles.has(f.id);
     const ownerId = f.user_id ?? f.owner ?? projectTeam(projectById.get(f.project_id))[0] ?? null;
     const owner = lookupMember(ownerId);
+    /* Selected in the panel is a --surface-3 step and a gold left edge, the same
+       cue the desktop file ledger uses. The check box on its own was the only
+       mark a picked row carried. */
     return (
       <div
         key={`${keyPrefix}-${f.id}`}
         data-document-id={f.id}
-        className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}`}
+        className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
         {dragHandle}
@@ -1386,7 +1389,11 @@ export default function ProjectsFolderTree({
                             data-project-id={p.id}
                             role="button"
                             tabIndex={0}
-                            className="projects-mobile-folder-row drill reorderable"
+                            /* Selected takes the panel's cue — a --surface-3
+                               step and a 2px gold left edge — so a picked
+                               project reads from across the room, not only from
+                               its 17px check box. */
+                            className={`projects-mobile-folder-row drill reorderable${jobsEdit && isSel ? ' is-selected' : ''}`}
                             onClick={() => {
                               if (jobsEdit) {
                                 toggleProjSel(p.id);
