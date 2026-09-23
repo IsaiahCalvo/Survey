@@ -121,14 +121,29 @@
   .mobile-doc-card:not(.is-selected):hover:not(:active),
   .mobile-header-select-button:hover:not(:active),
   .documents-mobile-filter:hover:not(:active),
+  .mobile-pdf-header__page-frac:hover:not(:active) {
+    background-color: var(--hover);
+  }
+
+  /* Owner 2026-09-23 ("there shouldn't be a visible box regardless"): the
+     phone PDF chrome's lone icons (back, zoom chevron, rail tools, sync, dock)
+     never paint a hover box. The glyph brightens and grows a touch instead,
+     the same hover as the home screens' grips and swatches. */
   .mobile-pdf-header__icon:not(:disabled):hover:not(:active),
-  .mobile-pdf-header__page-frac:hover:not(:active),
   .mobile-pdf-header__page-chevron:not(:disabled):hover:not(:active),
   .mobile-pdf-tools__button:not(.is-active):not(:disabled):hover:not(:active),
   .mobile-pdf-tools__sync:hover:not(:active),
   .mobile-pdf-dock__side:not(:disabled):hover:not(:active),
   .mobile-pdf-dock__center:hover:not(:active) {
-    background-color: var(--hover);
+    background-color: transparent;
+    color: var(--text-1);
+  }
+  .mobile-pdf-header__icon:not(:disabled):hover:not(:active) > svg,
+  .mobile-pdf-header__page-chevron:not(:disabled):hover:not(:active) > svg,
+  .mobile-pdf-tools__button:not(.is-active):not(:disabled):hover:not(:active) > svg,
+  .mobile-pdf-tools__sync:hover:not(:active) > svg,
+  .mobile-pdf-dock__side:not(:disabled):hover:not(:active) > svg {
+    transform: scale(1.12);
   }
 }
 

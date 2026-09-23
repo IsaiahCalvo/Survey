@@ -293,7 +293,10 @@
   box-shadow: none;
   transition: color 100ms cubic-bezier(0.4, 0, 0.2, 1), background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.hub-icon-btn:not(:disabled):hover { background: var(--hover); }
+/* Owner 2026-09-23: no visible box on a lone-icon button, ever. Hover
+   brightens and grows the glyph; the button itself stays clear. */
+.hub-icon-btn:not(:disabled):hover { background: transparent; }
+.hub-icon-btn:not(:disabled):hover:not(:active) > svg { transform: scale(1.12); }
 /* A destructive glyph already rests at --danger, so only a NEUTRAL icon button
    brightens its glyph on hover — otherwise the red × would turn grey under the
    pointer, and a hover rule that repaints a colour with itself is dead CSS. */
@@ -4712,5 +4715,21 @@ button[title="Edit color"]:active > span,
     border-top: 1px solid var(--border);
     border-radius: 0;
     background: transparent;
+  }
+}
+
+/* Owner 2026-09-23 ("that box covers shit"): in the three lists whose grip
+   column is only 24px (project rows, file rows, template rows) the 44px-wide
+   grip spilled 20px into the next column, so pointing at the file icon or
+   the first letters of a title woke the grip and grabbed the tap. The grip
+   now paints 24px inside its own column, its dots stay where the other lists
+   put them, and its 44px finger pad reaches LEFT into the card margin only. */
+@media screen and (max-width: 720px) {
+  .survey-hub :is(.projects-mobile-folder-row, .projects-mobile-file-row, .templates-mobile-row).reorderable > [data-drag-rearrange-handle] {
+    width: 24px !important;
+    transform: translateX(2px);
+  }
+  .survey-hub :is(.projects-mobile-folder-row, .projects-mobile-file-row, .templates-mobile-row).reorderable > [data-drag-rearrange-handle]::after {
+    inset: -4px 0 -4px -20px;
   }
 }
