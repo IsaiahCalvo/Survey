@@ -958,18 +958,73 @@ export default function TemplatesEditor({
      single source of truth for "make every button function".
      ============================================================ */
 
-  /* Map over one template by id and replace it with `fn`'s result. */
-  const mutateTpl = useCallback((tid, fn) => {
+  /* Map over one template by id and replace it with `fn`'s result.
+
+     `quiet` skips the dirty flag. It exists for ONE case: the placeholder blank
+     checklist row that "Add checklist item" drops in. Owner 2026-09-22 — a
+     blank row the user walks away from must "act like it was never created",
+     and a Save / Cancel bar appearing out of nowhere is a visible trace that it
+     was. Adding the blank row and discarding it again are therefore both quiet;
+     the moment the user types into it, the normal (dirty) path takes over. */
+  const mutateTpl = useCallback((tid, fn, { quiet = false } = {}) => {
     setRich((prev) => prev.map((t) => (t.id === tid ? fn(t) : t)));
-    markEdited();
+    if (!quiet) markEdited();
   }, [markEdited]);
 
   /* --- template-level --- */
   const renameTemplate = (tid, name) => {
     const v = name.trim();
     if (!v) return;
+    /* An unchanged name is a no-op and must NOT raise the Save bar. The old
+       Escape path tripped this: Escape restored the field text and then blur
+       re-committed the same name, leaving the editor falsely dirty. */
+    if (rich.some((t) => t.id === tid && t.name === v)) return;
     mutateTpl(tid, (t) => (t.name === v ? t : { ...t, name: v }));
   };
+
+  /* Renaming a template is an EDIT, so the big title offers the same
+     Cancel / Save pair the project detail panel does, in the same place — the
+     header's subtitle row (owner, 2026-09-22). Before this, the title committed
+     silently on blur: there was no way to back out of a half-typed name and
+     nothing told you the name had already changed. `titleDraft` holds the
+     pending text for one template; while it differs from the saved name the
+     pair appears. Enter saves, Escape cancels, and the pair is the only other
+     way out — blur no longer commits, because a Save button that does not have
+     to be pressed is a lie. */
+  const [titleDraft, setTitleDraft] = useState(null); // { id, value } | null
+  const titleDraftTemplate = titleDraft ? (rich.find((t) => t.id === titleDraft.id) || null) : null;
+  const titleDirty = !!(titleDraftTemplate
+    && titleDraft.value.trim()
+    && titleDraft.value.trim() !== titleDraftTemplate.name);
+  const cancelTitleDraft = () => setTitleDraft(null);
+  /* Applies the pending title to `rich` AND returns the post-rename snapshot,
+     because Save has to hand the payload straight to the persistence call —
+     reading `rich` back after setState would still see the old name. */
+  const commitTitleDraft = () => {
+    if (!titleDraft) return rich;
+    const name = titleDraft.value.trim();
+    const target = rich.find((t) => t.id === titleDraft.id);
+    setTitleDraft(null);
+    if (!target || !name || name === target.name) return rich;
+    renameTemplate(target.id, name);
+    return rich.map((t) => (t.id === target.id ? { ...t, name } : t));
+  };
+  /* A draft belongs to one template. Once that template is no longer the one on
+     screen, the draft is dropped rather than carried across to another name. */
+  useEffect(() => {
+    setTitleDraft((draft) => (draft && draft.id !== tpl?.id ? null : draft));
+  }, [tpl?.id]);
+  /* Spread onto both the desktop and the phone title input so the two copies
+     can never drift apart. */
+  const templateTitleField = (template) => ({
+    value: titleDraft && titleDraft.id === template.id ? titleDraft.value : template.name,
+    onChange: (e) => setTitleDraft({ id: template.id, value: e.target.value }),
+    onKeyDown: (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commitTitleDraft(); e.currentTarget.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelTitleDraft(); e.currentTarget.blur(); }
+    },
+  });
+
   const liveEntityStyle = (entity) => {
     const fill = roleColors[entity.id] || {
       color: entity.color || '#8c8c8a',
@@ -1230,14 +1285,14 @@ export default function TemplatesEditor({
   };
 
   /* --- category-level (desktop scopes to open module; mobile can target any module) --- */
-  const mutateModuleAt = (moduleIndex, fn) => {
+  const mutateModuleAt = (moduleIndex, fn, options) => {
     if (!tpl) return;
     mutateTpl(tpl.id, (t) => {
       const modules = t.modules.slice();
       if (!modules[moduleIndex]) return t;
       modules[moduleIndex] = fn(modules[moduleIndex]);
       return { ...t, modules };
-    });
+    }, options);
   };
   const mutateOpenModule = (fn) => mutateModuleAt(openMod, fn);
   const addCategoryToModule = (moduleIndex) => {
@@ -1335,37 +1390,61 @@ export default function TemplatesEditor({
   const reorderCategories = (activeId, overId) => reorderCategoriesInModule(openMod, activeId, overId);
 
   /* --- checklist-item-level (scoped to a category in the open module) --- */
-  const mutateCategoryInModule = (moduleIndex, ci, fn) => {
+  const mutateCategoryInModule = (moduleIndex, ci, fn, options) => {
     mutateModuleAt(moduleIndex, (m) => {
       const categories = m.categories.slice();
       if (!categories[ci]) return m;
       categories[ci] = fn(categories[ci]);
       return { ...m, categories };
-    });
+    }, options);
   };
   const mutateCategory = (ci, fn) => mutateCategoryInModule(openMod, ci, fn);
+  /* Ids of the blank placeholder rows THIS session added and the user has not
+     typed into yet. Two rules hang off this set (owner 2026-09-22): walking away
+     from such a row deletes it silently, and neither adding nor deleting it
+     raises the Save bar. A blank row that arrived from the backend is not in the
+     set, so it keeps the old behaviour and its removal is a real edit. */
+  const freshBlankItemsRef = useRef(new Set());
+  const isFreshBlankItem = (itemId) => freshBlankItemsRef.current.has(itemId);
+  /* Put the caret in a checklist row by id. The fresh blank row MUST be focused
+     the moment it appears: the only thing that dismisses it is losing focus
+     (blur) or Escape, and a row nobody ever focused can never fire either — that
+     is how blank rows used to survive Escape, a click on the page and a click on
+     the sidebar alike. */
+  const focusChecklistItem = (itemId) => {
+    if (typeof document === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+    requestAnimationFrame(() => {
+      /* The desktop tree and the phone tree are BOTH in the DOM — one of them is
+         just hidden by CSS — so every row exists twice under the same id. Focus
+         the copy the user can actually see; focusing the hidden one is a silent
+         no-op that leaves the blank row undismissable. */
+      const el = [...document.querySelectorAll(`input[data-checklist-item-id="${itemId}"]`)]
+        .find((candidate) => candidate.offsetParent !== null);
+      el?.focus();
+    });
+  };
   // UX 2026-09-22 (owner): "I should not be allowed to add an infinite amount
   // of empty checklist items." One blank row per category at a time: if the
   // category already holds an empty item, Add does not add another - it puts
   // the cursor in the blank row that is already there.
   const addItemToModule = (moduleIndex, ci) => {
     const current = tpl?.modules?.[moduleIndex]?.categories?.[ci];
-    const hasBlank = (current?.items || []).some((item) => !String(item?.text || '').trim());
-    if (hasBlank) {
-      if (typeof document !== 'undefined') {
-        requestAnimationFrame(() => {
-          const empty = [...document.querySelectorAll('input.inline-edit[placeholder="Add checklist item"]')].find((el) => !el.value.trim());
-          empty?.focus();
-        });
-      }
-      return;
-    }
-    mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
+    const blank = (current?.items || []).find((item) => !String(item?.text || '').trim());
+    if (blank) { focusChecklistItem(blank.id); return; }
+    const id = newId('i');
+    freshBlankItemsRef.current.add(id);
+    mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id, text: '' }] }), { quiet: true });
+    focusChecklistItem(id);
   };
   const addItem = (ci) => addItemToModule(openMod, ci);
-  const renameItemInModule = (moduleIndex, ci, itemId, text) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
-    ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
-  }));
+  const renameItemInModule = (moduleIndex, ci, itemId, text) => {
+    // Real text: the row has graduated from placeholder to content, so it loses
+    // the silent-discard exemption and this edit does raise the Save bar.
+    freshBlankItemsRef.current.delete(itemId);
+    mutateCategoryInModule(moduleIndex, ci, (c) => ({
+      ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
+    }));
+  };
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
 
   /* UX (KAL-69): required-row commit rules, shared by the desktop and mobile
@@ -1447,10 +1526,19 @@ export default function TemplatesEditor({
      marker references, or as the resolved action from the archive modal's
      "Permanently delete" path (currently unused — the modal only offers
      Cancel / Archive). */
-  const hardDeleteItemInModule = (moduleIndex, ci, itemId) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
+  const hardDeleteItemInModule = (moduleIndex, ci, itemId, options) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
     ...c, items: c.items.filter((it) => it.id !== itemId),
-  }));
+  }), options);
   const hardDeleteItem = (ci, itemId) => hardDeleteItemInModule(openMod, ci, itemId);
+  /* The "walked away from a blank row" exit. Owner 2026-09-22: "if I click in an
+     empty input field and then I click outside of it, it should just get
+     dismissed ... act like it was never created" — so for a row this session
+     added, removing it is quiet and leaves no Save bar behind. */
+  const discardFreshItem = (ci, itemId) => {
+    const fresh = isFreshBlankItem(itemId);
+    freshBlankItemsRef.current.delete(itemId);
+    hardDeleteItemInModule(openMod, ci, itemId, fresh ? { quiet: true } : undefined);
+  };
 
   /* Mark an item as archived in the rich tree. The marker UI keeps showing
      its responses under an "Archived" section using lastKnownLabel. */
@@ -1630,7 +1718,12 @@ export default function TemplatesEditor({
     };
   };
 
-  const handleSaveTemplates = () => {
+  /* `snapshot` lets a caller persist a list it just derived (Save committing a
+     pending title rename) instead of the `rich` this render closed over, which
+     would still hold the old name. Anything else passes nothing. It is never
+     wired straight to onClick — a click event must not land here as a list. */
+  const handleSaveTemplates = (snapshot) => {
+    const payload = Array.isArray(snapshot) ? snapshot : rich;
     /* BL-23: dirty clears only when the save RESOLVES (the host now rethrows
        persistence failures), and only if no newer edit happened while it was
        in flight — an older promise settling must not clear dirty over newer
@@ -1640,7 +1733,7 @@ export default function TemplatesEditor({
     if (!onSaveTemplates) { setDirty(false); return; }
     const rev = editRevisionRef.current;
     const req = ++saveReqSeqRef.current;
-    dispatchTemplatesSave(rich.map(richToTemplate))
+    dispatchTemplatesSave(payload.map(richToTemplate))
       .then(() => {
         if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
           setDirty(false);
@@ -1680,6 +1773,24 @@ export default function TemplatesEditor({
       setPersistenceError('Could not reload templates. Your edits are still here; try Cancel again.');
     }
   };
+
+  /* One Cancel / Save pair serves the whole editor, so a pending template-title
+     draft raises the same pair and is committed or dropped by the same buttons.
+     Save applies the title FIRST (renameTemplate bumps the edit revision
+     synchronously) and then persists the post-rename snapshot, so the new name
+     is in the payload and the save can still clear the Save bar. */
+  const saveRowVisible = dirty || titleDirty;
+  const handleSaveAll = () => { handleSaveTemplates(commitTitleDraft()); };
+  const handleCancelAll = async () => {
+    cancelTitleDraft();
+    if (dirty) await handleCancelEdits();
+  };
+  const saveRow = (className) => (saveRowVisible ? (
+    <span className={className}>
+      <button type="button" className="hub-btn" onClick={handleCancelAll}>Cancel</button>
+      <button type="button" className="hub-btn hub-btn--primary" onClick={handleSaveAll}>Save</button>
+    </span>
+  ) : null);
 
   const mobileTemplateSelectRow = (
     <div className="templates-mobile-select-row mobile-header-select-row">
@@ -1722,23 +1833,13 @@ export default function TemplatesEditor({
           edits, Cancel / Save sit right here in the subtitle row instead. */}
       <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span><b>{visibleTemplates.length}</b> templates</span>
-        {dirty ? (
-          <span className="templates-desktop-save-row">
-            <button type="button" className="hub-btn" onClick={handleCancelEdits}>Cancel</button>
-            <button type="button" className="hub-btn hub-btn--primary" onClick={handleSaveTemplates}>Save</button>
-          </span>
-        ) : null}
+        {saveRow('templates-desktop-save-row')}
       </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="templates-mobile-count">
           <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
         </span>
-        {mobileTemplateOpen && dirty ? (
-          <span className="templates-mobile-save-row">
-            <button type="button" className="hub-btn" onClick={handleCancelEdits}>Cancel</button>
-            <button type="button" className="hub-btn hub-btn--primary" onClick={handleSaveTemplates}>Save</button>
-          </span>
-        ) : null}
+        {mobileTemplateOpen ? saveRow('templates-mobile-save-row') : null}
         {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
       </span>
     </>
@@ -1990,14 +2091,15 @@ export default function TemplatesEditor({
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--rule)', display: 'flex', alignItems: 'center', gap: 14 }}>
               <span style={{ width: 4, height: 36, background: tpl.accent, borderRadius: 2, flex: 'none' }}></span>
               <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Inline rename field. Typing raises Cancel / Save in the
+                    header's subtitle row; Enter saves, Escape backs out. Blur
+                    deliberately does NOT commit. */}
                 <input
                   key={tpl.id}
                   className="inline-edit cat-title"
-                  defaultValue={tpl.name}
+                  {...templateTitleField(tpl)}
                   title="Click to rename"
                   onDoubleClick={(e) => e.currentTarget.select()}
-                  onBlur={(e) => renameTemplate(tpl.id, e.currentTarget.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = tpl.name; e.currentTarget.blur(); } }}
                   style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2, width: '100%' }}
                 />
               </div>
@@ -2155,7 +2257,7 @@ export default function TemplatesEditor({
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
                         />
                         <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-3)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-                          {items.length} items{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
+                          {items.length} {items.length === 1 ? 'item' : 'items'}{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
                         </span>
                         {catEdit && (
                           <span
@@ -2208,11 +2310,12 @@ export default function TemplatesEditor({
                                 />
                                 <input
                                   className="inline-edit"
+                                  data-checklist-item-id={it.id}
                                   defaultValue={it.text}
                                   placeholder="Add checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
-                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => hardDeleteItem(i, it.id))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
+                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 <button
                                   title="Delete item" aria-label="Delete item"
@@ -2593,12 +2696,10 @@ export default function TemplatesEditor({
                   <input
                     key={`mobile-template-title-${tpl.id}`}
                     className="templates-mobile-title-input"
-                    defaultValue={tpl.name}
+                    {...templateTitleField(tpl)}
                     title="Tap to rename"
-                    onBlur={(e) => renameTemplate(tpl.id, e.currentTarget.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = tpl.name; e.currentTarget.blur(); } }}
                   />
-                  <span>{orderedMods.length} modules · {totalCategoryCount} categories · {tpl.roster.length} entities</span>
+                  <span>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'} · {totalCategoryCount} {totalCategoryCount === 1 ? 'category' : 'categories'} · {tpl.roster.length} {tpl.roster.length === 1 ? 'entity' : 'entities'}</span>
                 </div>
                 <button
                   type="button"
@@ -2724,7 +2825,7 @@ export default function TemplatesEditor({
                                   }}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                                 />
-                                <span title={archivedItems.length ? `${items.length} active, ${archivedItems.length} archived` : `${items.length} active`}>{items.length}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
+                                <span title={archivedItems.length ? `${items.length} active ${items.length === 1 ? 'item' : 'items'}, ${archivedItems.length} archived` : `${items.length} active ${items.length === 1 ? 'item' : 'items'}`}>{items.length}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
                                 {catEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : null}
@@ -2740,11 +2841,12 @@ export default function TemplatesEditor({
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
                                               className="templates-mobile-inline-input"
+                                              data-checklist-item-id={it.id}
                                               defaultValue={it.text}
                                               placeholder="Add checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
-                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => hardDeleteItem(ci, it.id))}
-                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
+                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
+                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
