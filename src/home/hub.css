@@ -3482,7 +3482,7 @@
   .survey-hub .templates-mobile-entity-row > button[title="Edit color"] > span {
     width: 20px;
     height: 20px;
-    border: 1.5px solid var(--entity-border-color, currentColor);
+    border: 0; /* owner 2026-09-23: entity dots carry no edge */
     border-radius: 50%;
     background: var(--entity-color, currentColor);
   }
@@ -4159,4 +4159,22 @@
 .hub-btn.hub-btn--bare,
 .hub-btn.hub-btn--icon {
   border-color: transparent !important;
+}
+
+/* UX 2026-09-23 (owner: Cancel / Save "can't just shove everything out of
+   the way — they need to appear in line and integrated"). The subtitle row
+   always stands 22px tall, whether the pair is showing or not, and the pair
+   is drawn at 22px inside it, so it appearing moves nothing: not the title,
+   not the panels below. */
+@media (min-width: 861px) {
+  .survey-hub .header .header-subtitle {
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+  }
+  .survey-hub .templates-desktop-save-row .hub-btn,
+  .survey-hub .hub-desktop-save-row .hub-btn {
+    height: 22px;
+    padding: 0 8px;
+  }
 }

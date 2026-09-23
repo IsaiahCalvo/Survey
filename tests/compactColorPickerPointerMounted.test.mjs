@@ -85,8 +85,10 @@ test('mounted CompactColorPicker follows pointer-captured spectrum and hue drags
 
     await act(async () => {
       hue.dispatchEvent(pointerEvent(dom.window, 'pointerdown', { clientX: 48, clientY: 206, pointerId: 2 }));
-      hue.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 165, clientY: 206, pointerId: 2 }));
-      hue.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 165, clientY: 206, pointerId: 2 }));
+      // RULED 2026-09-23: the value is read on the thumb's inner run (10px in
+      // from each end), so 75% of a 180px track is 30 + 10 + 0.75 * 160 = 160.
+      hue.dispatchEvent(pointerEvent(dom.window, 'pointermove', { clientX: 160, clientY: 206, pointerId: 2 }));
+      hue.dispatchEvent(pointerEvent(dom.window, 'pointerup', { clientX: 160, clientY: 206, pointerId: 2 }));
     });
     // CHANGED with the same ruling: the thumb's travel is inset by half the
     // thumb, so 75% of the track reads as 75 degrees of hue on the slider.

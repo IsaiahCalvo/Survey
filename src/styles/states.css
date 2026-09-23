@@ -93,7 +93,7 @@
      carries no `.primary` class of its own, so without this exclusion the
      neutral hover would paint the one gold button on the screen grey — the
      fault the gold ladder below exists to prevent. */
-  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):hover:not(:active),
+  .survey-hub button:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([title='Edit color']):not([aria-label='Edit color']):not(.hero-swatch):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):hover:not(:active),
   .survey-hub [role='button']:not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']):not([aria-current]):not(.active):not(.is-active):not(.is-selected):hover:not(:active) {
     background-color: var(--hover) !important;
   }

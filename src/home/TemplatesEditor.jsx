@@ -2483,7 +2483,9 @@ export default function TemplatesEditor({
                                colours stay vibrant and easy to tell apart — the picked
                                opacity drives the PDF annotation, not this identifier. */
                             background: c,
-                            border: `1.5px solid ${rowBorderColor}`,
+                            /* No edge (owner 2026-09-23): no other template
+                               colour dot has one. */
+                            border: 0,
                             cursor: 'pointer', padding: 0,
                           }}
                         ></button>

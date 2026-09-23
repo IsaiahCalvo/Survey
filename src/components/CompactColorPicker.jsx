@@ -341,11 +341,18 @@ const CompactColorPicker = ({
         }
     }, [opacity]);
 
+    const trackFraction = (el, clientX) => {
+        const rect = el.getBoundingClientRect();
+        const travel = Math.max(1, rect.width - 20);
+        return clamp((clientX - rect.left - 10) / travel, 0, 1);
+    };
+
     // Handle Hue Change
     const handleHueChange = (e) => {
-        const rect = hueRef.current.getBoundingClientRect();
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const newHue = (x / rect.width) * 360;
+        // The thumb travels 10px in from each round end, so the value under
+        // the cursor is measured on that same inner run — the click, the thumb
+        // and the hover number always agree (owner 2026-09-23).
+        const newHue = trackFraction(hueRef.current, e.clientX) * 360;
         setHue(newHue);
         updateColorFromHSV(newHue, saturation, value);
     };
@@ -376,9 +383,7 @@ const CompactColorPicker = ({
     // boards 17-19 draw a 12px chequered track with an 18px thumb, which no
     // browser's native range control can be made to look like.
     const handleAlphaChange = (e) => {
-        const rect = alphaRef.current.getBoundingClientRect();
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        applyOpacityPercent((x / rect.width) * 100);
+        applyOpacityPercent(trackFraction(alphaRef.current, e.clientX) * 100);
     };
 
     // Convert HSV to Hex and update
@@ -597,10 +602,10 @@ const CompactColorPicker = ({
     // whole number, in a small pill above the track. Mouse only; hidden while
     // a button is down, the way the reference hides it mid-drag.
     const trackHover = (kind, max) => (event) => {
-        if (event.pointerType !== 'mouse' || event.buttons) { setReadout(null); return; }
-        const rect = event.currentTarget.getBoundingClientRect();
-        const travel = Math.max(1, rect.width - 20);
-        const t = clamp((event.clientX - rect.left - 10) / travel, 0, 1);
+        if (event.buttons) { setReadout(null); return; }
+        const el = event.currentTarget;
+        const t = trackFraction(el, event.clientX);
+        const travel = Math.max(1, el.getBoundingClientRect().width - 20);
         setReadout({ kind, x: 10 + t * travel, value: Math.round(t * max) });
     };
     const clearReadout = () => setReadout(null);
@@ -748,8 +753,9 @@ const CompactColorPicker = ({
             aria-description="Arrow keys adjust opacity by one percent. Page Up and Page Down adjust it by ten percent. Home and End set the minimum and maximum."
             onKeyDown={transparentMode ? undefined : handleAlphaKeyDown}
             onPointerDown={transparentMode ? undefined : ((event) => beginPointerDrag('alpha', event))}
-            onPointerMove={transparentMode ? undefined : ((event) => { movePointerDrag('alpha', event); trackHover('alpha', 100)(event); })}
-            onPointerLeave={clearReadout}
+            onPointerMove={transparentMode ? undefined : ((event) => movePointerDrag('alpha', event))}
+            onMouseMove={transparentMode ? undefined : trackHover('alpha', 100)}
+            onMouseLeave={clearReadout}
             onPointerUp={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onPointerCancel={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onLostPointerCapture={() => { alphaPointerId.current = null; alphaDragging.current = false; }}
@@ -848,8 +854,9 @@ const CompactColorPicker = ({
                     aria-description="Arrow keys adjust hue by one degree. Page Up and Page Down adjust hue by ten degrees. Home and End set the minimum and maximum hue."
                     onKeyDown={handleHueKeyDown}
                     onPointerDown={(event) => beginPointerDrag('hue', event)}
-                    onPointerMove={(event) => { movePointerDrag('hue', event); trackHover('hue', 360)(event); }}
-                    onPointerLeave={clearReadout}
+                    onPointerMove={(event) => movePointerDrag('hue', event)}
+                    onMouseMove={trackHover('hue', 360)}
+                    onMouseLeave={clearReadout}
                     onPointerUp={(event) => endPointerDrag('hue', event)}
                     onPointerCancel={(event) => endPointerDrag('hue', event)}
                     onLostPointerCapture={() => { huePointerId.current = null; }}
