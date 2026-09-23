@@ -1801,10 +1801,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--chrome-tool-gap)',
-                // This row runs on the 2px tool gutter, so the rule inside it
-                // subtracts 2 rather than the settings row's 6 (see
-                // .chrome-divider in styles.css). Without this the rule sat
-                // 10px from Select and 8px from Draw.
+                // This row states its own gutter so the rule inside it subtracts
+                // the right number (see .chrome-divider in styles.css). Without
+                // this the rule sat 10px from Select and 8px from Draw.
+                // 2026-09-22: the tool gutter is now the same 6px as the
+                // settings row, so the two agree, but the declaration stays —
+                // it is what keeps the divider's 8px inset honest if either
+                // gutter ever moves again.
                 '--chrome-row-gap': 'var(--chrome-tool-gap)',
                 whiteSpace: 'nowrap'
               }}>
@@ -1874,23 +1877,33 @@ export default function App({ devPreviewReturnTab = null }) {
               })}
 
               {/* PASS 7 (boards 8-14): the rule between two tool GROUPS. It is
-                  16px tall with 8px of clear space either side, against the 2px
-                  gutter that separates two buttons inside one group — that
-                  contrast is the only thing telling the eye where a group ends.
-                  Both numbers come from the shared .chrome-divider class, so no
-                  bar can write its own. */}
+                  16px tall with 8px of clear space either side, against the 6px
+                  gutter between two chips inside one group — the rule plus that
+                  wider air is what tells the eye where a group ends. Both
+                  numbers come from the shared .chrome-divider class, so no bar
+                  can write its own. */}
               <div className="chrome-divider" />
               </div>
 
               {/* Draw category */}
               <button
                 onClick={() => {
-                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'draw';
-                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'draw');
-                  if (!isActive) {
-                    if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
-                      bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool);
-                    }
+                  /* UX 2026-09-22 (desktop critic round): a second click on the
+                     LIT category button is a NO-OP — the sub-row stays open.
+                     Intended UX: while one of a group's tools is armed you can
+                     always see and change WHICH tool it is. The old toggle
+                     closed the sub-row but left the tool armed, so you were
+                     still about to draw with no row on screen to say so and no
+                     way to pick a different tool — a live, invisible tool.
+                     Closing the row is not how you disarm; Pan, Select or
+                     Escape is. Reference behaviour matched: Drawboard PDF,
+                     whose tool group keeps its sub-row for as long as one of
+                     that group's tools is the armed tool. Shapes and Text below
+                     carry the same guard, so all three behave alike. */
+                  if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
+                  bottomToolbarApi.setActiveCategoryDropdown('draw');
+                  if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool);
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
@@ -1904,12 +1917,13 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Shapes category */}
               <button
                 onClick={() => {
-                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'shape';
-                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'shape');
-                  if (!isActive) {
-                    if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
-                      bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool);
-                    }
+                  /* UX 2026-09-22: see Draw above — a second click on the lit
+                     Shapes button keeps the shape row, because closing it used
+                     to leave a shape tool armed and unseeable. */
+                  if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
+                  bottomToolbarApi.setActiveCategoryDropdown('shape');
+                  if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool);
                   }
                 }}
                 {...chromeTip('Shapes', 'below')}
@@ -1923,12 +1937,12 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Text category */}
               <button
                 onClick={() => {
-                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'review';
-                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'review');
-                  if (!isActive) {
-                    if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
-                      bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool);
-                    }
+                  /* UX 2026-09-22: see Draw above — a second click on the lit
+                     Text button keeps its row, for the same reason. */
+                  if (bottomToolbarApi.activeCategoryDropdown === 'review') return;
+                  bottomToolbarApi.setActiveCategoryDropdown('review');
+                  if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
+                    bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool);
                   }
                 }}
                 {...chromeTip('Text', 'below')}
@@ -2231,7 +2245,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     <div className="chrome-divider" />
                     {[
                       ['alignLeft', 'left', 'Align left'],
-                      ['alignCenter', 'center', 'Align centre'],
+                      /* US spelling, app-wide ruling (owner 2026-09-22): the UI
+                         says "Color" and "center", never the British form. */
+                      ['alignCenter', 'center', 'Align center'],
                       ['alignRight', 'right', 'Align right'],
                     ].map(([iconName, value, title]) => {
                       const on = (textFormatSource?.state?.textAlign || 'left') === value;
@@ -3394,8 +3410,14 @@ export default function App({ devPreviewReturnTab = null }) {
                 padding: 0,
                 background: 'transparent',
                 border: 'none',
-                borderRadius: '4px',
-                color: disabled ? 'var(--text-disabled)' : 'var(--text-3)',
+                // UX 2026-09-22 (desktop critic round): the house radius is 6
+                // and a rail button is not an exception. This footer ran 4 here,
+                // 3 on its two number fields and 2 on Fit — four corners in one
+                // 48px column, against 6 everywhere else in the chrome.
+                // Colour: a resting chrome icon is --text-2, the same grey the
+                // top bar's tool glyphs and the left rail's tabs now draw.
+                borderRadius: 'var(--chrome-radius)',
+                color: disabled ? 'var(--text-disabled)' : 'var(--text-2)',
                 cursor: disabled ? 'not-allowed' : 'pointer'
               });
               // Editable zoom % — Walkthru-style: plain "100%" by default,
@@ -3420,7 +3442,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Zoom percentage"
-                  style={{ width: '36px', background: 'transparent', color: 'var(--text-3)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  /* UX 2026-09-22: while you type, the box is the same height
+                     and the same ink as the value it replaced, so the rail does
+                     not twitch when it swaps in. */
+                  style={{ width: '36px', background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
               ) : (
                 <button
@@ -3429,7 +3454,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   onDoubleClick={() => setIsEditingRailZoom(true)}
                   aria-label="Edit zoom percentage"
                   {...chromeTip('Zoom level — click to type a percentage', 'left')}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
+                  /* UX 2026-09-22 (desktop critic round): a value you can click
+                     into is a FIELD, so it is the chrome's field height (20)
+                     and the house radius (6). It measured 12px tall with a 3px
+                     corner — a hit target half the size of every other field in
+                     the app, in a column that also held a 13px one. */
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
                 >
                   <RailLiveZoomText
                     fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
@@ -3458,7 +3488,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   aria-label="Current page"
-                  style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
               ) : (
                 <button
@@ -3467,7 +3497,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   onDoubleClick={() => setIsEditingRailPage(true)}
                   aria-label="Edit page number"
                   {...chromeTip('Page — click to jump', 'left')}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1 }}
+                  /* UX 2026-09-22: the page number is the zoom field's twin —
+                     same field height, same house radius. */
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', padding: '0 4px', borderRadius: 'var(--chrome-radius)', cursor: 'pointer', lineHeight: 1 }}
                 >
                   {api.pageNum}
                 </button>
@@ -3573,7 +3605,12 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
-                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)' }}
+                        /* UX 2026-09-22 (desktop critic round): Fit keeps the
+                           shared footer corner (6) — its own 2px was the third
+                           radius in this column. An engaged fit mode is GOLD,
+                           the app's one active colour, because both greys it
+                           used to switch between are now the same --text-2. */
+                        style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: fitMode !== ZOOM_MODES.MANUAL ? 'var(--accent)' : 'var(--text-2)' }}
                       >
                         {/* UX 2026-09-16 (desktop sweep): the shared <Icon>, not a
                             hand-written <svg>. This caret was drawn inline at

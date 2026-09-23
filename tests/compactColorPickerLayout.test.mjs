@@ -50,7 +50,19 @@ test('the bottom row is one joined field: eyedropper, hex, then a 42px opacity b
   assert.match(SOURCE, /flex:\s*'1 1 0',\s*\n?\s*minWidth:\s*0,/);
   // The eyedropper is always drawn, in its own 34px cell on the field's left.
   assert.match(SOURCE, /aria-label="Pick a color from the page"/);
-  assert.match(SOURCE, /width:\s*'34px',\s*\n?\s*height:\s*'30px'/);
+  /* DELIBERATE ASSERTION CHANGE (2026-09-22, desktop critic round). The cell is
+     still 34px wide — that is what this line is for — but it no longer asks for
+     a literal 30px height. The field around it is 30px with a 1px border, so its
+     content box is 28: a 30px child overflowed by 2px and only `overflow:
+     hidden` hid it, which made the eyedropper a THIRD height in a row that is
+     meant to have one (the Grid/Gradient well came to 28, the field to 30).
+     `height: '100%'` makes the cell exactly as tall as the field it sits in,
+     whatever that field is, so the row cannot fall out of step again. The row's
+     one height is now asserted on the well and the field below instead. */
+  assert.match(SOURCE, /width:\s*'34px',[\s\S]{0,400}?height:\s*'100%'/);
+  // ONE height across the bottom row: the toggle well matches the joined field.
+  assert.match(SOURCE, /flex:\s*'0 0 64px',[\s\S]{0,200}?height:\s*'30px'/);
+  assert.match(SOURCE, /const fieldChrome = \{\s*\n\s*height:\s*'30px'/);
   // The opacity box and its percent sign close the field.
   assert.match(SOURCE, /aria-label="Opacity percentage"/);
   assert.match(SOURCE, /width:\s*'42px',\s*\n?\s*flex:\s*'0 0 42px'/);

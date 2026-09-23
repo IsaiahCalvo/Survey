@@ -713,7 +713,8 @@ const mobileFontSizeOptions = (current) => {
    platforms. */
 const HORIZONTAL_ALIGNMENTS = [
   { value: 'left', icon: 'alignLeft', label: 'Align left' },
-  { value: 'center', icon: 'alignCenter', label: 'Align centre' },
+  // US spelling, app-wide ruling (owner 2026-09-22): "center", never "centre".
+  { value: 'center', icon: 'alignCenter', label: 'Align center' },
   { value: 'right', icon: 'alignRight', label: 'Align right' },
 ];
 
