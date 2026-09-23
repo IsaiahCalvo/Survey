@@ -1795,7 +1795,7 @@ export default function TemplatesEditor({
   const mobileTemplateSelectRow = (
     <div className="templates-mobile-select-row mobile-header-select-row">
       <button
-        className="mobile-header-select-button"
+        className="mobile-header-select-button hub-btn hub-btn--tertiary"
         onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
       >
         {tplEdit ? 'Done' : 'Select'}

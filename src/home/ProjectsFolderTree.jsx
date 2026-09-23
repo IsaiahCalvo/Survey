@@ -760,7 +760,7 @@ export default function ProjectsFolderTree({
     <div className="projects-mobile-select-row mobile-header-select-row">
       <button
         data-testid="project-select-toggle"
-        className="mobile-header-select-button"
+        className="mobile-header-select-button hub-btn hub-btn--tertiary"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
       >
         {jobsEdit ? 'Done' : 'Select'}
@@ -799,7 +799,7 @@ export default function ProjectsFolderTree({
   const mobileFileSelectRow = mobileDrillProject ? (
     <div className="projects-mobile-select-row mobile-header-select-row">
       <button
-        className="mobile-header-select-button"
+        className="mobile-header-select-button hub-btn hub-btn--tertiary"
         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
       >
         {fileSelect ? 'Done' : 'Select'}
