@@ -752,11 +752,14 @@ export default function TemplatesEditor({
   // Entities sheet just enough to show the whole panel, once, on open.
   useEffect(() => {
     if (!openColor || !mobileEntitiesOpen) return undefined;
-    const frame = requestAnimationFrame(() => {
+    // Wait for the panel's drop-down (280ms, hub.css) so the user first
+    // SEES the rows below slide down — the sheet reads as one scrolling list
+    // growing, not a new window (owner 2026-09-23) — then nudge it into view.
+    const timer = setTimeout(() => {
       const panel = mobileEntitiesModalRef.current?.querySelector('.templates-mobile-color-panel');
       panel?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-    });
-    return () => cancelAnimationFrame(frame);
+    }, 380);
+    return () => clearTimeout(timer);
   }, [openColor, mobileEntitiesOpen]);
   const [roleColors, setRoleColors] = useState({});   // { entityId: { color, opacity } } picker fill state
   const [openMod, setOpenMod] = useState(0);

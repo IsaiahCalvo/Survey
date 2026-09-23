@@ -4168,3 +4168,20 @@
     padding: 0 8px;
   }
 }
+
+/* UX 2026-09-23 (owner): an entity's colour panel DROPS DOWN out of its row
+   instead of popping in. The panel grows from nothing to its full height and
+   the rows beneath slide down with it, so the Entities list visibly grows and
+   reads as one scrollable list with more entities below, not a new window. */
+@keyframes hub-color-panel-drop {
+  from { max-height: 0; opacity: 0; }
+  60%  { opacity: 1; }
+  to   { max-height: 420px; opacity: 1; }
+}
+.survey-hub [data-entity-color-panel] {
+  overflow: hidden;
+  animation: hub-color-panel-drop 360ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .survey-hub [data-entity-color-panel] { animation: none; }
+}
