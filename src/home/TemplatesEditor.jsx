@@ -135,8 +135,12 @@ const restrictSortableToHorizontalAxis = ({ transform }) => ({
 
 const getModuleTabClampBounds = (activeId) => {
   if (typeof document === 'undefined') return null;
+  // The desktop editor stays mounted (hidden) on phones, so the same tab id
+  // exists twice. Use the copy that is actually on screen: the hidden one
+  // measures 0 wide, which left the drag with no limit on phones.
   const activeNode = Array.from(document.querySelectorAll('[data-module-tab-id]'))
-    .find((node) => node.getAttribute('data-module-tab-id') === String(activeId ?? ''));
+    .find((node) => node.getAttribute('data-module-tab-id') === String(activeId ?? '')
+      && node.getBoundingClientRect().width > 0);
   const listNode = activeNode?.closest?.('[data-module-tab-list]');
   if (!activeNode || !listNode) return null;
 
@@ -2848,7 +2852,19 @@ export default function TemplatesEditor({
                     onCancelRename={() => setModRename(null)}
                     onReorderModules={reorderMods}
                     showCounts={false}
-                  />
+                  >
+                    {/* Owner 2026-09-23: keep the "+" at the end of the tabs,
+                        the same add-a-tab button desktop has, alongside the
+                        "New module" word in the header. */}
+                    <button
+                      type="button"
+                      onClick={addModule}
+                      title="New module"
+                      aria-label="New module"
+                      className="hub-icon-btn templates-mobile-add-tab"
+                      style={{ marginLeft: 4, alignSelf: 'center' }}
+                    ><Icon name="plus" size={12} /></button>
+                  </SortableModuleTabs>
                 </div>
               </section>
 
