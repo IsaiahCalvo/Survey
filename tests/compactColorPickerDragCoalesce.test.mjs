@@ -67,8 +67,17 @@ async function withPicker(props, run) {
   const savedCaf = globalThis.cancelAnimationFrame;
   globalThis.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
   globalThis.cancelAnimationFrame = (id) => { frames[id - 1] = null; };
+  // A hand-cranked clock too (2026-09-23): the picker backs off when a frame
+  // arrives long after its last publish, and in a busy full-suite run the
+  // real clock made that gap look like a slow host, so the "one publish per
+  // frame" check failed only under load. Time now advances exactly one 16ms
+  // frame per flushFrame, which is what the drag sees in a real browser.
+  const realNow = performance.now.bind(performance);
+  let fakeNow = realNow();
+  performance.now = () => fakeNow;
   const flushFrame = async () => {
     await sleep(2);
+    fakeNow += 16;
     const due = frames.splice(0);
     await act(async () => { due.forEach((cb) => cb && cb(performance.now())); });
   };
@@ -91,6 +100,7 @@ async function withPicker(props, run) {
     await cleanup();
     globalThis.requestAnimationFrame = savedRaf;
     globalThis.cancelAnimationFrame = savedCaf;
+    performance.now = realNow;
     dom.window.close();
     delete globalThis.window;
     delete globalThis.document;
