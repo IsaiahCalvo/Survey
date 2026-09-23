@@ -25,7 +25,7 @@ import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
 // Module scope so it keeps a stable component identity across PDFSidebar renders.
-const HistoryButton = ({ isActive, onClick }) => {
+const HistoryButton = ({ isActive, onClick, round = false }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
   // two showed users two different tooltips on the same control).
@@ -41,15 +41,15 @@ const HistoryButton = ({ isActive, onClick }) => {
     // collaboration footer used a size nothing else in that rail used — a 48px
     // column showing 14, 16, 17 and 18 at once.
     style={{
-      width: `${RAIL_CONTROL}px`,
-      height: `${RAIL_CONTROL}px`,
+      width: round ? '24px' : `${RAIL_CONTROL}px`,
+      height: round ? '24px' : `${RAIL_CONTROL}px`,
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: 'transparent',
       border: 0,
       color: isActive ? 'var(--accent)' : 'var(--text-2)',
-      borderRadius: '6px',
+      borderRadius: round ? '50%' : '6px',
       cursor: 'pointer',
       fontSize: '12px',
       fontFamily: FONT_FAMILY,
@@ -58,7 +58,30 @@ const HistoryButton = ({ isActive, onClick }) => {
       whiteSpace: 'nowrap'
     }}
   >
-    <Icon name="history" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+    {round ? (
+      /* Owner 2026-09-23: in the one-row footer the history control is a
+         circle about the size of the active-user faces (22px) and the same
+         24px height as the sync pill beside it, filled and edged like it, so the
+         row reads as three matching tokens. The circle is a child, not the
+         button's own background, so the app's glyph-only press rule shrinks
+         the whole circle instead of wiping its fill. */
+      <span style={{
+        width: '24px',
+        height: '24px',
+        boxSizing: 'border-box',
+        borderRadius: '50%',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--border)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <Icon name="history" size={14} color="currentColor" />
+      </span>
+    ) : (
+      <Icon name="history" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+    )}
   </button>
   );
 };
@@ -799,13 +822,13 @@ const PDFSidebar = React.forwardRef(({
           background: 'var(--surface-1)'
         } : {
           /* Owner 2026-09-23: the expanded footer is ONE row - active users
-             on the left, version history in the middle, sync status on the
-             right - so it takes a single short band instead of three stacked
-             lines. Equal side columns keep the history button in the true
-             middle whatever the sides hold (one face or three plus "+N"; "Up
-             to date", "Saving...", "Offline · 3"); the status column may
-             shrink and its label then trims with an ellipsis. Everything in
-             the row is 22-24px tall so the three read as one family. */
+             on the left, sync status in the middle, version history on the
+             right as a face-sized circle - so it takes a single short band
+             instead of three stacked lines. Equal side columns keep the
+             status pill in the true middle whatever the sides hold (one face
+             or three plus "+N"); a long status label trims with an ellipsis.
+             Faces, pill and circle are all ~24-26px so the row reads as one
+             family of round tokens. */
           borderTop: '1px solid var(--border)',
           padding: '8px 12px',
           display: 'grid',
@@ -845,10 +868,7 @@ const PDFSidebar = React.forwardRef(({
                   row
                 />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: `${RAIL_CONTROL}px` }}>
-                {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
-              </div>
-              <div style={{ justifySelf: 'end', minWidth: 0, maxWidth: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ minWidth: 0, maxWidth: '100%', display: 'flex', justifyContent: 'center' }}>
                 <SyncStatusChip
                   status={cloudSyncStatus}
                   queueSize={cloudSyncQueueSize}
@@ -856,6 +876,9 @@ const PDFSidebar = React.forwardRef(({
                   row
                   onRetry={cloudSyncOnRetry}
                 />
+              </div>
+              <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center' }}>
+                {documentId && <HistoryButton round isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
               </div>
             </>
           )}
