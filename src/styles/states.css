@@ -60,7 +60,7 @@
    -------------------------------------------------------------------------- */
 /* :where() keeps the element list at zero specificity so the gold and
    destructive ladders below win on their class alone. */
-:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([title='Edit color']):not([aria-label='Edit color']):not([title='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.mobile-rail-nav-trigger):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.survey-marker-category-create-button):not(.survey-marker-export-compact-button):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
+:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([title='Edit color']):not([aria-label='Edit color']):not([title='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not([data-glyph-only]):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.mobile-rail-nav-trigger):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.survey-marker-category-create-button):not(.survey-marker-export-compact-button):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
   background-color: var(--pressed) !important;
 }
 /* A GOLD-FILLED control is excluded above by class. Its press is the darker
@@ -263,3 +263,14 @@
 .chrome-control:not(:disabled):active > svg {
   transform: scale(0.88);
 }
+
+/* EVERY BUTTON WITH NO TEXT (marked data-glyph-only by
+   src/utils/glyphOnlyButtons.js): no press plate, ever, whatever other rule
+   would paint one; the glyph or dot inside tightens to 88% instead. */
+[data-glyph-only][data-glyph-only]:active {
+  background-color: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+}
+[data-glyph-only] { -webkit-tap-highlight-color: transparent; }
+[data-glyph-only] > * { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+[data-glyph-only]:not(:disabled):active > * { transform: scale(0.88); }

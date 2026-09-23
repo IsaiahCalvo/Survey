@@ -359,6 +359,9 @@ import './utils/cursorScoping';
 import { installNetworkLogger } from './utils/networkLogger';
 installNetworkLogger();
 import './styles.css';
+import { installGlyphOnlyButtons } from './utils/glyphOnlyButtons';
+// No grey press box on any glyph-only button (see the module's note).
+if (typeof document !== 'undefined') installGlyphOnlyButtons();
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings
