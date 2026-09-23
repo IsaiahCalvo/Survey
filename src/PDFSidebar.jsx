@@ -436,7 +436,13 @@ const PDFSidebar = React.forwardRef(({
                     setActiveTab(tab.id);
                   }}
                   style={{
-                    flex: '1 1 0',
+                    /* Owner 2026-09-23 ("evenly spaced across"): on desktop
+                       each tab starts at its label's width and the spare room
+                       is shared out equally, so the GAPS between the words
+                       match. Equal-width tabs ('1 1 0') left short words like
+                       "Pages" floating wide and "Search text" / "Bookmarks"
+                       crowding each other. */
+                    flex: mobileMode ? '1 1 0' : '1 1 auto',
                     minWidth: 0,
                     maxWidth: 'none',
                     // UX 2026-09-17: 9px on the desktop, where the glyph above
@@ -783,31 +789,76 @@ const PDFSidebar = React.forwardRef(({
           scrolled off with the PDF area on page change.
           Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
       {cloudSyncEnabled && !mobileMode && (
-        <div style={{
+        <div style={isCollapsed ? {
           borderTop: '1px solid var(--border)',
-          padding: isCollapsed ? '10px 6px' : '12px',
+          padding: '10px 6px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: '10px',
           background: 'var(--surface-1)'
+        } : {
+          /* Owner 2026-09-23: the expanded footer is ONE row - active users
+             on the left, version history in the middle, sync status on the
+             right - so it takes a single short band instead of three stacked
+             lines. Equal side columns keep the history button in the true
+             middle whatever the sides hold (one face or three plus "+N"; "Up
+             to date", "Saving...", "Offline · 3"); the status column may
+             shrink and its label then trims with an ellipsis. Everything in
+             the row is 22-24px tall so the three read as one family. */
+          borderTop: '1px solid var(--border)',
+          padding: '8px 12px',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+          alignItems: 'center',
+          columnGap: '8px',
+          background: 'var(--surface-1)'
         }}>
-          <SyncStatusChip
-            status={cloudSyncStatus}
-            queueSize={cloudSyncQueueSize}
-            enabled
-            compact={isCollapsed}
-            onRetry={cloudSyncOnRetry}
-          />
-          {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
-          <PresenceAvatars
-            presence={presence}
-            currentUserId={currentUserId}
-            currentUserEmail={currentUserEmail}
-            currentUserDisplayName={currentUserDisplayName}
-            enabled
-            compact={isCollapsed}
-          />
+          {isCollapsed ? (
+            <>
+              <SyncStatusChip
+                status={cloudSyncStatus}
+                queueSize={cloudSyncQueueSize}
+                enabled
+                compact
+                onRetry={cloudSyncOnRetry}
+              />
+              {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
+              <PresenceAvatars
+                presence={presence}
+                currentUserId={currentUserId}
+                currentUserEmail={currentUserEmail}
+                currentUserDisplayName={currentUserDisplayName}
+                enabled
+                compact
+              />
+            </>
+          ) : (
+            <>
+              <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+                <PresenceAvatars
+                  presence={presence}
+                  currentUserId={currentUserId}
+                  currentUserEmail={currentUserEmail}
+                  currentUserDisplayName={currentUserDisplayName}
+                  enabled
+                  row
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: `${RAIL_CONTROL}px` }}>
+                {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
+              </div>
+              <div style={{ justifySelf: 'end', minWidth: 0, maxWidth: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+                <SyncStatusChip
+                  status={cloudSyncStatus}
+                  queueSize={cloudSyncQueueSize}
+                  enabled
+                  row
+                  onRetry={cloudSyncOnRetry}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

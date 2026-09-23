@@ -29,7 +29,13 @@ export default function PresenceAvatars({
   currentUserEmail = null,
   currentUserDisplayName = null,
   enabled = true,
-  compact = false
+  compact = false,
+  // Owner 2026-09-23: in the expanded desktop sidebar the footer is ONE row
+  // (faces left, history middle, sync status right). `row` drops the caption
+  // under the faces (the count still reads from the faces and the +N disc,
+  // and the stack's tooltip says "just you" / "N viewing") and opens every
+  // hover layer UPWARD, since the row sits on the bottom edge of the window.
+  row = false
 }) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   if (!enabled) return null;
@@ -134,7 +140,7 @@ export default function PresenceAvatars({
             offset={idx > 0 ? `${overlap}px` : '0'}
             size={avatarSize}
             fontSize={initialsFontSize}
-            tooltipDirection={compact ? 'right' : 'bottom'}
+            tooltipDirection={compact ? 'right' : row ? 'top' : 'bottom'}
           />
         ))}
         {hasOverflow && (
@@ -176,7 +182,9 @@ export default function PresenceAvatars({
                   // anchored to the right of the pile.
                   ...(compact
                     ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
-                    : { top: 'calc(100% + 6px)', right: 0 }),
+                    : row
+                      ? { bottom: 'calc(100% + 6px)', left: 0 }
+                      : { top: 'calc(100% + 6px)', right: 0 }),
                   background: '#11131a',
                   /* UX: the popover already reads as a separate layer from its
                      own dark fill and drop shadow, so its edge is decorative —
@@ -256,7 +264,7 @@ export default function PresenceAvatars({
           existing tab / sync-status tooltips (reference behavior). When the
           user is alone, compact mode stays caption-less so the collapsed
           rail keeps its minimal look. */}
-      {!compact && (
+      {!compact && !row && (
         <div style={{ fontSize: '10px', color: '#9aa0a8', lineHeight: 1 }}>
           {total === 1 ? 'just you' : `${total} viewing`}
         </div>
@@ -309,7 +317,11 @@ function Avatar({ initials, background, email, offset = '0', size = 22, fontSize
   const [hover, setHover] = useState(false);
   const tooltipPosition = tooltipDirection === 'right'
     ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
-    : { top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)' };
+    : tooltipDirection === 'top'
+      // Anchored to the face's left edge so it never runs off the sidebar's
+      // left side from the first face in the row.
+      ? { bottom: 'calc(100% + 6px)', left: 0 }
+      : { top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)' };
   return (
     <div
       style={{ position: 'relative', marginLeft: offset }}

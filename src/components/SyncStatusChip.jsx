@@ -31,7 +31,12 @@ import { AnchoredTooltip } from './Tooltip';
  * cloud sync is gated). The local-only fallback path makes a chip meaningless
  * since there is nothing to sync.
  */
-export default function SyncStatusChip({ status, queueSize = 0, enabled = true, compact = false, onRetry = null }) {
+// `row` (owner 2026-09-23): the expanded desktop sidebar footer is one row,
+// with this pill on its right end. The pill is 24px tall to match the faces
+// and the history button, a long label shortens ("Offline · 3 saved locally"
+// reads "Offline · 3"), the full label stays in the tooltip, and the details
+// card opens upward, lined up with the pill's right edge so it stays on screen.
+export default function SyncStatusChip({ status, queueSize = 0, enabled = true, compact = false, onRetry = null, row = false }) {
   // UX: when the user manually clicks the chip, force the chip into the orange
   // syncing-spinner state for ~1.2s so they get visible feedback that the click
   // landed — even when the underlying sync resolves instantly or fails silently
@@ -132,7 +137,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   };
 
   return (
-    <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
+    <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex', ...(row ? { minWidth: 0, maxWidth: '100%' } : null) }}>
       <DismissBarrier
         active={detailsOpen}
         insideRefs={dismissInsideRefs}
@@ -140,7 +145,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
       />
       {compact
         ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} dotColor={dotColor} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />
-        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} dotColor={dotColor} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />}
+        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} dotColor={dotColor} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} row={row} />}
       {detailsOpen && state !== 'synced' && (
         <div
           id="sync-status-details"
@@ -149,9 +154,10 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
           aria-label="Sync status details"
           style={{
             position: 'absolute',
-            left: compact ? '36px' : '50%',
+            left: compact ? '36px' : row ? undefined : '50%',
+            right: row ? 0 : undefined,
             bottom: compact ? '-12px' : 'calc(100% + 8px)',
-            transform: compact ? undefined : 'translateX(-50%)',
+            transform: compact || row ? undefined : 'translateX(-50%)',
             width: 'min(320px, calc(100vw - 32px))',
             padding: '7px 8px 7px 10px',
             borderRadius: '10px',
@@ -249,7 +255,14 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
   );
 }
 
-function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detailsOpen, onActivate }) {
+const shortRowLabel = (label) => {
+  const offline = /^Offline · (\d+)/.exec(label || '');
+  if (offline) return `Offline · ${offline[1]}`;
+  if (label === 'Syncing now...') return 'Syncing...';
+  return label;
+};
+
+function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detailsOpen, onActivate, row = false }) {
   return (
     <div
       role="button"
@@ -264,8 +277,9 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detai
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '8px',
-        padding: '5px 10px',
+        gap: row ? '6px' : '8px',
+        padding: row ? '0 9px' : '5px 10px',
+        ...(row ? { height: '24px', boxSizing: 'border-box', maxWidth: '100%', minWidth: 0 } : null),
         borderRadius: '999px',
         /* UX: the chip is a raised pill on the sidebar footer, which paints
            --surface-1, so it takes the next surface step up rather than a
@@ -277,7 +291,7 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detai
         /* UX: the LABEL is plain information, so it reads in --text-2 in every
            state; the dot next to it is what turns green / amber / red. */
         color: 'var(--text-2)',
-        fontSize: '12px',
+        fontSize: row ? '11.5px' : '12px',
         fontWeight: 500,
         userSelect: 'none',
         whiteSpace: 'nowrap',
@@ -294,7 +308,7 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detai
           background: dotColor
         }} />
       )}
-      <span>{label}</span>
+      <span style={row ? { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } : undefined}>{row ? shortRowLabel(label) : label}</span>
     </div>
   );
 }
