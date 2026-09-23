@@ -33,7 +33,7 @@ const MENU_HEX = {
   rule: 'var(--border)',
   ink: 'var(--text-1)',
   muted: 'var(--text-3)',
-  danger: 'var(--danger)',
+  danger: 'var(--danger-text)', // the WORD Delete: --danger is a fill and measures 4.05:1 on the menu
 };
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {

@@ -60,8 +60,17 @@
    -------------------------------------------------------------------------- */
 /* :where() keeps the element list at zero specificity so the gold and
    destructive ladders below win on their class alone. */
-:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]) {
+:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.survey-marker-category-create-button):not(.survey-marker-export-compact-button):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
   background-color: var(--pressed) !important;
+}
+/* A GOLD-FILLED control is excluded above by class. Its press is the darker
+   gold (--accent-press), never the neutral --pressed: the round-3 colour grade
+   (2026-09-22) measured every gold button going near-black under the finger
+   because this !important out-ranked the gold ladders in hub.css/styles.css.
+   Add a new gold class to that list when you create one. */
+:where(.primary, .btn-primary, .hub-btn--primary, .btn-ink, .auth-submit-btn, .account-btn-primary, .account-btn-purple, .re-signin-modal__cta, .survey-marker-category-create-button, .survey-marker-export-compact-button, .space-add-pages-icon-button, .mobile-pdf-properties__primary, .mobile-survey-notes-save):active:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--accent-press) !important;
+  border-color: var(--accent-press);
 }
 
 /* --------------------------------------------------------------------------

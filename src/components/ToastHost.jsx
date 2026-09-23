@@ -12,7 +12,7 @@ const TYPE_ACCENT = {
   info: 'var(--accent)',    // gold — status (design.md: success/status uses gold)
   success: 'var(--accent)', // gold
   error: 'var(--danger)',   // danger
-  warn: '#e69a7a',    // rose supporting accent — caution, softer than danger
+  warn: 'var(--warning)',    // rose supporting accent — caution, softer than danger
 };
 const AUTO_DISMISS_MS = 4500; // UX: long enough to read a short error, short enough not to nag.
 

@@ -283,7 +283,7 @@ const BookmarkTreeRow = ({
         >
           ▾
         </button>
-        <Icon name={isFolder ? 'folder' : 'bookmark'} size={11} color={isFolder ? '#7ab7e6' : 'var(--text-3)'} />
+        <Icon name={isFolder ? 'folder' : 'bookmark'} size={11} color="var(--text-3)" />
         {isEditMode && !isClone ? (
           <input
             value={editName}
@@ -382,7 +382,7 @@ const BookmarkTreeRow = ({
               height: 22,
               background: 'var(--surface-0)',
               border: '1px solid var(--border)',
-              color: '#7ab7e6',
+              color: 'var(--text-3)',
               borderRadius: 5,
               padding: 0,
               cursor: 'pointer',
@@ -392,7 +392,7 @@ const BookmarkTreeRow = ({
               flexShrink: 0,
             }}
           >
-            <Icon name="plus" size={11} color="#7ab7e6" />
+            <Icon name="plus" size={11} color="var(--text-3)" />
           </button>
         )}
         {isEditMode && !isClone && (
