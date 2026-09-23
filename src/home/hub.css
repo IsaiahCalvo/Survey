@@ -4269,3 +4269,34 @@
     place-items: center;
   }
 }
+@media (max-width: 860px) {
+  /* The last row's invisible 44px tap pads (grip / More ::after, 4px above
+     and below the 36px row) poked 4px out of the list, which made the
+     sheet's section scrollable by 4px — so a drag held at the bottom kept
+     auto-scrolling "forever" and the row never settled (owner 2026-09-23).
+     The list clips its own overflow; nothing visible lives outside it. */
+  .survey-hub .templates-mobile-entity-panel > [data-sortable-rearrange-list] {
+    overflow: clip;
+  }
+}
+@media (max-width: 860px) {
+  /* Owner 2026-09-23: the Entities sheet was "a little wide". 360px wide at
+     most, centred; its colour picker uses the compact 8-column layout (same as
+     the desktop column) instead of the 12-column phone sheet layout. */
+  .survey-hub .templates-mobile-entity-modal { width: min(100%, 360px) !important; }
+}
+
+/* HOVER FOR THE ROW'S SMALL GLYPH BUTTONS (owner 2026-09-23): the grip and
+   the "…" More button answer alike, and more clearly than before, since both
+   are faint dots — the glyph grows to 115% and brightens to full text white.
+   Press tightens it to 90%. No plate on either. */
+@media (hover: hover) {
+  [data-drag-rearrange-handle]:hover { color: var(--text-1) !important; }
+  [data-drag-rearrange-handle]:hover > svg { transform: scale(1.15); }
+  [data-drag-rearrange-handle]:hover > svg.morph-grip.is-open { transform: scale(1.38); }
+  button[title="More"]:not(:disabled):hover { color: var(--text-1) !important; background: transparent !important; }
+  button[title="More"]:not(:disabled):hover > svg { transform: scale(1.15); }
+}
+button[title="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+button[title="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
+button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }

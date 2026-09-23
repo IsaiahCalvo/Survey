@@ -3085,6 +3085,7 @@ export default function TemplatesEditor({
                                       onClose={() => foldColor(null)}
                                       dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                       platform="phone"
+                                      denseLayout
                                       chrome={false}
                                       tabs={{
                                         items: [{ id: 'fill', label: 'Fill' }, { id: 'border', label: 'Border' }],

@@ -212,6 +212,7 @@ const CompactColorPicker = ({
     firstPreset = 'transparent',
     minOpacity = 0,
     dismissInsideSelector,
+    denseLayout,
     // UX 2026-09-23 (owner, Templates entity Border tab): the value follows
     // something else — the entity's border is matched to its fill. Every
     // control dims and stops answering EXCEPT the tabs and the Match fill
@@ -230,7 +231,9 @@ const CompactColorPicker = ({
      * bottom row whose hex stays fully readable. The standalone canvas picker
      * (chrome=true) and the phone keep their ruled board-17/18/19 sizes.
      */
-    const dense = !chrome && !isPhone;
+    // denseLayout lets a host ask for the compact sizes on the phone too (the
+    // Templates Entities sheet); undefined keeps the default rule.
+    const dense = typeof denseLayout === 'boolean' ? denseLayout : (!chrome && !isPhone);
     const PANEL_GAP = dense ? 8 : 10;
     const THUMB_SIZE = dense ? 12 : 16;
     // The thumb's centre travels this far in from each round end.
