@@ -938,7 +938,7 @@ export default function ProjectsFolderTree({
             >
               <Icon name="plus" size={11} />New project
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
+            <div className="hub-select-actions" style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
               <button
                 data-testid="project-select-toggle"
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
@@ -982,7 +982,7 @@ export default function ProjectsFolderTree({
               )}
             </div>
           </div>
-          <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+          <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
             {filtered.length === 0 && (
               <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
                 {localProjects.length === 0 ? 'No projects yet.' : 'No projects match your search.'}

@@ -1953,7 +1953,7 @@ export default function TemplatesEditor({
               >
                 <Icon name="plus" size={11} />New template
               </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
+              <div className="hub-select-actions" style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
                 <button
                   onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
                   className="hub-btn hub-btn--tertiary"
@@ -1991,7 +1991,7 @@ export default function TemplatesEditor({
                 )}
               </div>
             </div>
-            <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+            <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
               {visibleTemplates.length === 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>
                   {rich.length === 0 ? 'No templates yet.' : 'No templates match your search.'}
@@ -2412,7 +2412,9 @@ export default function TemplatesEditor({
                   <Icon name="plus" size={11} />New entity
                 </button>
               </div>
-              <div style={{ padding: '6px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 28, flexWrap: 'nowrap', flex: 'none' }}>
+              {/* UX 2026-09-23: this Select sits on the same line as the Module
+                  column's Select beside it (owner: "should be in line"). */}
+              <div style={{ padding: '12px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 34, flexWrap: 'nowrap', flex: 'none' }}>
               <button
                 onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
                 className="hub-btn hub-btn--tertiary"

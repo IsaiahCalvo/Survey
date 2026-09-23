@@ -4100,3 +4100,35 @@
   align-items: center;
   gap: 8px;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   UX 2026-09-23 (owner, desktop Templates sidebar)
+
+   1. SELECTION ACTIONS HAVE NO BOX. "All", "Duplicate", Share and Delete in a
+      Select row were outlined buttons clipped by a 22px row into bracket
+      shapes. Every button that sits beside a Select/Done word is now bare text
+      or a bare glyph; the hover fill is the only box it ever shows. Covers the
+      desktop rows on Projects and Templates, the Documents desktop row, and the
+      phone header row.
+   2. SIDEBAR LISTS GET DIVIDERS. The desktop Templates and Projects lists were
+      rows floating on a panel; a hairline now parts each row from the next,
+      like the one-panel lists on the phone. */
+.survey-hub .hub-select-actions {
+  height: auto !important;
+  overflow: visible !important;
+}
+.survey-hub .hub-select-actions > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
+.survey-hub .documents-select-actions > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
+.survey-hub .mobile-header-select-actions > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
+.survey-hub .mobile-header-select-actions button:not(.hub-btn--primary):not(.hub-btn--tertiary) {
+  border-color: transparent !important;
+}
+.survey-hub .hub-side-list {
+  gap: 0 !important;
+}
+.survey-hub .hub-side-list > [data-sortable-rearrange-list] {
+  gap: 0 !important;
+}
+.survey-hub .hub-side-list [data-sortable-rearrange-item] + [data-sortable-rearrange-item] {
+  border-top: 1px solid var(--border);
+}
