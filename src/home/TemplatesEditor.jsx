@@ -755,7 +755,11 @@ export default function TemplatesEditor({
   const [foldIsSwitch, setFoldIsSwitch] = useState(false);
   const foldTimerRef = useRef(0);
   const markPanelHeights = () => {
+    // Only the panel you can SEE: the phone and desktop trees both render,
+    // and the hidden twin measures 0, which made the new panel drop to 0 and
+    // then pop open at the end of the motion.
     document.querySelectorAll('[data-entity-color-panel]').forEach((el) => {
+      if (el.getBoundingClientRect().height <= 0) return;
       el.style.setProperty('--panel-h', `${el.getBoundingClientRect().height}px`);
       // The next panel to open is the same picker, so it drops to this height:
       // fold and drop then trade pixels one for one.
@@ -800,7 +804,7 @@ export default function TemplatesEditor({
       setFoldingColor(openColor);
       setOpenColor(next);
       holdRowStill(anchorEl);
-      foldTimerRef.current = setTimeout(() => setFoldingColor(null), 320);
+      foldTimerRef.current = setTimeout(() => setFoldingColor(null), 340);
       return;
     }
     setFoldingColor(null);
