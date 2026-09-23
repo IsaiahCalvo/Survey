@@ -73,22 +73,32 @@ const aaButton = 31;
 const moreButton = disc;
 
 // Every strip, exactly as its board draws it. `null` marks a divider.
+/*
+ * RULED 2026-09-23 (owner: restore the per-tool panels). EVERY tool strip now
+ * ends in a divider and "...", which opens that tool's restored "<Tool>
+ * settings" panel - it used to show only on the arrow, callout and counter,
+ * where a row sheet had something to hold. So pen, highlighter, line, the four
+ * shapes, text box and eraser are priced with the divider and the button that
+ * came with it (the text box's "..." sits right after its "Aa", as the
+ * callout's always did). Widest is still the arrow/line/polyline row at 328px in
+ * a 331px band at 375px.
+ */
 const STRIPS = {
-  pen: [colourGroup, null, widthPill],
-  highlighter: [colourGroup, null, widthPill],
-  line: [colourGroup, null, widthPill, linePill],
+  pen: [colourGroup, null, widthPill, null, moreButton],
+  highlighter: [colourGroup, null, widthPill, null, moreButton],
+  line: [colourGroup, null, widthPill, linePill, null, moreButton],
   arrow: [colourGroup, null, widthPill, linePill, null, moreButton],
-  rect: [disc, null, widthPill, linePill],
-  ellipse: [disc, null, widthPill, linePill],
-  polygon: [disc, null, widthPill, linePill],
-  polyline: [disc, null, widthPill, linePill],
+  rect: [disc, null, widthPill, linePill, null, moreButton],
+  ellipse: [disc, null, widthPill, linePill, null, moreButton],
+  polygon: [disc, null, widthPill, linePill, null, moreButton],
+  polyline: [colourGroup, null, widthPill, linePill, null, moreButton],
   /* 2026-09-22: the counter grew a "..." (its Size had no home on the phone at
-     all — see the sheet rows in MobilePdfViewerChrome), so its row is priced
-     with the divider and the button that came with it. */
+     all), so its row is priced with the divider and the button that came with
+     it. Since 2026-09-23 that "..." opens the restored settings panel. */
   counter: [disc, null, seriesPill, null, moreButton],
-  text: [disc, null, widthPill, linePill, null, aaButton],
+  text: [disc, null, widthPill, linePill, null, aaButton, moreButton],
   callout: [disc, null, widthPill, null, aaButton, moreButton],
-  eraser: [100, null, widthPill],
+  eraser: [100, null, widthPill, null, moreButton],
   select: [150],
   /*
    * ADDED 2026-09-22 — the LIVE TEXT-EDIT strip, the one strip no board draws and
@@ -265,7 +275,8 @@ test('the strip carries only the controls its board draws', () => {
   // The quick width chips are off the row (owner: "Width is a dropdown ONLY - no
   // preset chips"), and the row no longer renders them.
   assert.doesNotMatch(jsx, /<QuickWidthPresets/, 'the width chips are off the phone strip');
-  // Arrowhead and Arrow ends live in the "..." sheet (board 16), not on the strip.
+  // Arrowhead and Arrow ends live in the settings panel's arrowhead card (board
+  // 16's content, folded into the restored panel 2026-09-23), not on the strip.
   const stripStart = jsx.indexOf('role="toolbar" aria-label={`${tool || \'Annotation\'} settings`}');
   const stripEnd = jsx.indexOf('BOARD 16', stripStart);
   assert.ok(stripStart > 0 && stripEnd > stripStart, 'expected to find the strip and the sheet after it');

@@ -551,30 +551,24 @@ test('mobile live text formatting fits its band with 44px touch targets', () => 
 
 test('mobile annotation settings retain the preserved app geometry and controls', () => {
   /*
-   * RULED CHANGE 2026-09-22 (the "Aa" sheet rebuilt to the pass-7 sheet
-   * vocabulary). A reviewer found this was the one sheet in the app built to no
-   * shared vocabulary at all: a fixed-height panel with a blank band under its
-   * last control, Shape / Text tabs, nine large colour circles with their own
-   * chosen ring, 108x43 alignment buttons, a bare "16" size box with no unit, and
-   * no font picker while the desktop bar has one. It is the same frame as the
-   * arrow "..." sheet now - handle, title, gold Done, one 40px row per control
-   * with a right-aligned 96px field - so two of the things this test pinned are
-   * deliberately gone:
-   *   MOBILE_ANNOTATION_COLORS → the nine circles are one swatch opening the ONE
-   *     shared picker, whose presets live with the picker (color_picker_unified);
-   *   "Shape settings" → the Shape tab is gone. Nothing moved out of reach: the
-   *     text box's and callout's shape controls are all on their strip (the
-   *     combined swatch opens the Colour sheet on Border and Fill, with the width
-   *     and line-style pills beside it), and the two the strip cannot express -
-   *     a TYPED width and the Cloud bump - are rows in this sheet.
-   * What replaces them is asserted below: a font picker, a "pt" size field, and
-   * the typed width's decimal contract (tests/cloudFillKnockout counts it).
+   * RULED 2026-09-23 (owner: restore the per-tool panels): "We had panels for
+   * every single annotation ... The only thing that we had fixed regarding this
+   * lower panel regarding annotations was the color picker." The "<Tool>
+   * settings" panel the 2026-09-22 row-list rebuild deleted is back, so this
+   * test's original assertions are back with it: the panel's colour circles
+   * (MOBILE_ANNOTATION_COLORS), its Shape / Text tabs, both alignment rows, the
+   * in-panel arrowhead, and its own stylesheet's content-height rules. The
+   * rebuild's replacements that pinned the row sheet are removed: "the sheet is
+   * rows, not cards" and "it has no Shape / Text tabs" (both now false by the
+   * owner's ruling), "<span>Font</span>" (the row label) and the five
+   * .mobile-pdf-tool-sheet frame / __rows / __row rules (that sheet is gone).
+   * What the rebuild added and the owner did not take away is still pinned: the
+   * font picker, now a card in the panel's Text side.
    */
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /<span>Font<\/span>/, 'the sheet has the font picker it never had');
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_ANNOTATION_COLORS/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Shape settings/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /<strong>Font<\/strong>/, 'the panel keeps the font picker the row sheet added');
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_FONT_FAMILY_OPTIONS/, 'on the desktop bar\'s own list');
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /mobileFontSizeOptions/, 'and the size field carries its "pt"');
-  assert.doesNotMatch(MOBILE_VIEWER_CHROME_SOURCE, /mobile-pdf-text-card/, 'the sheet is rows, not cards');
-  assert.doesNotMatch(MOBILE_VIEWER_CHROME_SOURCE, /mobile-pdf-text-defaults__tabs/, 'and it has no Shape / Text tabs');
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Text alignment/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Vertical text alignment/);
   // 2026-07-12 Phase E stage 2 (OWNER DECISION 3): the in-sheet arrowhead
@@ -583,22 +577,24 @@ test('mobile annotation settings retain the preserved app geometry and controls'
   // prop. Guard the control's presence via that prop.
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Arrowhead"/);
   /*
-   * RULED CHANGE 2026-09-22 (the "Aa" sheet rebuilt). Everything below used to
-   * pin the old sheet's own stylesheet - .mobile-pdf-text-defaults's height,
-   * max-height and scroll body, and two fixed card heights (150px, 85px). The
-   * sheet renders the SHARED .mobile-pdf-tool-sheet frame now, so those rules
-   * have no markup behind them and were deleted with the sheet. The contract
-   * they were defending - "a settings sheet is exactly as tall as its content,
-   * never taller, under one max-height cap" (owner, 2026-09-22) - is the shared
-   * frame's own rule, so it is asserted there instead, once, for every sheet in
-   * the app rather than twice with two sets of numbers.
+   * RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Phone bottom panels"):
+   * ONE height rule for the panel, never one per tool variant (it used to pick
+   * 432 for text, 368 for a shape, 448 for a callout).
+   * RULED CHANGE 2026-09-22 (owner): the panel is a SETTINGS sheet, and "a
+   * settings sheet is exactly as tall as its content, never taller", so that one
+   * rule is content height under the shared cap, never the Standard token.
    */
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}\n  height: auto;/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}max-height: calc\(100dvh/);
-  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-tool-sheet__rows \{[\s\S]{0,120}flex: 1 1 auto/);
-  // And no fixed row or card heights come back with it: a row is a min-height.
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-tool-sheet__row \{[\s\S]{0,60}min-height: 40px/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}\n  height: auto;/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[^}]{0,1600}max-height: calc\(100dvh/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\) \{\s*height:/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults__scroll \{[\s\S]{0,120}flex: 1 1 auto/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--shape-color[\s\S]{0,120}height: 150px/);
+  /* RULED 2026-09-23 (owner: restore the per-tool panels; fold board 16 into the
+     arrowhead card): the arrowhead card holds the arrow's Arrow ends under the
+     Arrowhead now, so its 85px is a floor (one row) rather than a fixed height -
+     a fixed 85px would clip the second row. Was: height: 85px. */
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-card--arrowhead \{[\s\S]{0,80}min-height: 85px/);
 });
 
 test('native mobile home remains viewport-contained with a solid full-width tab bar', () => {
