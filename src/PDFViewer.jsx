@@ -60,6 +60,7 @@ import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import Icon from './Icons';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
+import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
 import NewColumnsModal from './components/NewColumnsModal';
 import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import PDFPageCanvas from './components/PDFPageCanvas';
@@ -26493,6 +26494,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     return () => { cancelled = true; };
   }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations]);
+
+  // Keep this document's list thumbnail current (page 1 with its markup),
+  // debounced after edits settle and never while drawing — see the hook.
+  useDocumentThumbnailCapture({
+    pdfFile,
+    pdfDoc,
+    pageOneAnnotations: annotationsByPage?.[1],
+    callouts,
+    hydrationReady: normalAnnotationHydration?.ready === true,
+  });
 
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;

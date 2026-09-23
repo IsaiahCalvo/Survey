@@ -62,6 +62,7 @@ export function usePageOperations({
       newFile.id = currentPdfFile.id;
       newFile.projectId = currentPdfFile.projectId;
       newFile.supabaseFilePath = currentPdfFile.supabaseFilePath;
+      newFile.contentSha256 = currentPdfFile.contentSha256 || null;
       newFile.user_id = currentPdfFile.user_id || null;
       newFile.filePath = currentPdfFile.filePath || null;
 

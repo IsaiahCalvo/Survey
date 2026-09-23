@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
+import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
@@ -209,6 +210,13 @@ export default function DocumentsLedger({
     return arr;
   }, [mapped, search, sortKey, sortDir]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
+
+  /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
+     time, in the order shown, only while this list is on screen. The
+     sentinel below is how it knows: hidden hub → no client rects → paused. */
+  const backfillHostRef = useRef(null);
+  const backfillDocs = useMemo(() => docs.map((d) => d.raw), [docs]);
+  useThumbnailBackfill(backfillDocs, { downloadDocument, hostRef: backfillHostRef });
 
   useEffect(() => {
     if (selId == null && docs.length) setSelId(docs[0].id);
@@ -430,6 +438,7 @@ export default function DocumentsLedger({
 
   return (
     <>
+    <span ref={backfillHostRef} aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }} />
     <HubShell
       tab="documents"
       onNav={onNav}
