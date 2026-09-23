@@ -61,8 +61,7 @@
 }
 
 .text-selection-action-bar__button:focus-visible,
-.text-selection-action-bar__link-form button:focus-visible,
-.text-selection-action-bar__link-input:focus-visible {
+.text-selection-action-bar__link-form button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

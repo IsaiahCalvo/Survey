@@ -156,6 +156,27 @@ const EyedropperGlyph = ({ size = 17 }) => (
     </svg>
 );
 
+/* Every control that OPENS a colour picker (not the swatches inside one). */
+const COLOUR_TRIGGER_SELECTOR = [
+    'button[title="Edit color"]',
+    'button[aria-label="Edit color"]',
+    'button[title="Text color"]',
+    'button[title="Font color"]',
+    'button[title="Text markup color and opacity"]',
+    'button[aria-label="Open Text color picker"]',
+    '.quick-style__swatch',
+    '.quick-style__dot--custom',
+    '.mobile-pdf-tool-sheet__swatch',
+    '.mobile-pdf-properties__color',
+    '.mobile-survey-detail-swatch-btn',
+    // A text field outside the picker (an entity name, a title): the tap closes
+    // the picker AND lands in the field, so you can type at once (owner
+    // 2026-09-23: "I shouldn't have to click twice").
+    'input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"])',
+    'textarea',
+    '[contenteditable="true"]',
+].join(', ');
+
 /* The see-through swatch: a checkerboard of paper colours (user ink, not chrome). */
 const CHECKER_FILL = {
     backgroundColor: '#ffffff',
@@ -1025,6 +1046,10 @@ const CompactColorPicker = ({
             active={typeof onClose === 'function'}
             insideRefs={dismissInsideRefs}
             insideSelector={dismissInsideSelector}
+            /* Owner 2026-09-23: with one picker open, tapping ANOTHER colour
+               swatch opens that one at once — the tap closes this picker and
+               still reaches the other swatch, no second tap needed. */
+            passthroughSelector={COLOUR_TRIGGER_SELECTOR}
             onDismiss={onClose}
         />
         <div

@@ -297,9 +297,9 @@
 
 .account-form-group input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--text-3); /* owner 2026-09-23: no gold on a text field */
   background: var(--surface-3);
-  box-shadow: 0 0 0 2px var(--accent-soft-strong);
+  box-shadow: none;
 }
 
 .account-form-group input:disabled {

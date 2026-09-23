@@ -15,6 +15,18 @@ const resolvesInside = (target, insideRefs, insideSelector) => {
   });
 };
 
+// Owner 2026-09-23: "the first click out of an input field should just be a
+// dismissal of that input field." While you are typing in a field INSIDE the
+// protected surface, the first outside tap (or Escape) only leaves the field
+// (it blurs, which commits what you typed); the surface stays open, and the
+// next outside tap closes it as usual.
+const TYPING_SELECTOR = 'input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]), textarea, [contenteditable="true"], [contenteditable=""]';
+const typingInside = (insideRefs, insideSelector) => {
+  const active = typeof document !== 'undefined' ? document.activeElement : null;
+  if (!active || !active.matches?.(TYPING_SELECTOR)) return null;
+  return resolvesInside(active, insideRefs, insideSelector) ? active : null;
+};
+
 const consume = (event) => {
   event.preventDefault();
   event.stopPropagation();
@@ -62,6 +74,13 @@ export default function DismissBarrier({
     };
     const onPointerDown = (event) => {
       if (resolvesInside(event.target, insideRefs, insideSelector)) return;
+      const field = typingInside(insideRefs, insideSelector);
+      if (field) {
+        consume(event);
+        armTrailingClickBlocker();
+        field.blur();
+        return;
+      }
       if (passthroughSelector && eventTargetElement(event.target)?.closest(passthroughSelector)) {
         onDismiss(event);
         return;
@@ -71,6 +90,14 @@ export default function DismissBarrier({
       onDismiss(event);
     };
     const onClick = (event) => {
+      // The click that trails a press this barrier already handled (a dismiss,
+      // or a tap that only left a text field) belongs to that press: swallow
+      // it here, before it can count as a second, separate outside click.
+      if (trailingClickCleanup) {
+        consume(event);
+        clearTrailingClick();
+        return;
+      }
       if (resolvesInside(event.target, insideRefs, insideSelector)) return;
       if (passthroughSelector && eventTargetElement(event.target)?.closest(passthroughSelector)) {
         onDismiss(event);
@@ -81,6 +108,8 @@ export default function DismissBarrier({
     };
     const onKeyDown = (event) => {
       if (!dismissOnEscape || event.key !== 'Escape') return;
+      const field = typingInside(insideRefs, insideSelector);
+      if (field) { consume(event); field.blur(); return; }
       consume(event);
       onDismiss(event);
     };

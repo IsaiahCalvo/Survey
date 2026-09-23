@@ -2219,7 +2219,7 @@
   }
 
   .survey-hub .projects-mobile-title-input:focus {
-    border-bottom-color: var(--gold);
+    border-bottom-color: var(--text-3);
   }
 
   .survey-hub .projects-mobile-drag-slot {
@@ -2965,7 +2965,7 @@
 
   .survey-hub .templates-mobile-title-input:focus,
   .survey-hub .templates-mobile-inline-input:focus {
-    border-bottom-color: var(--gold);
+    border-bottom-color: var(--text-3);
   }
 
   /* UX (KAL-69): greyed italic placeholder, matching the desktop editor, so an

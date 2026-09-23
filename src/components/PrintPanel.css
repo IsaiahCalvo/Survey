@@ -184,8 +184,8 @@
   font-weight: 600; min-width: 120px; outline: none;
 }
 .pp-range-input:focus {
-  border-color: var(--pp-accent);
-  box-shadow: var(--pp-accent-glow);
+  border-color: var(--text-3);
+  box-shadow: none;
 }
 .pp-quicks { display: inline-flex; gap: 4px; }
 .pp-quick {
@@ -360,7 +360,7 @@
   font: 600 12px/1 inherit; text-transform: none;
   padding: 4px 6px; width: 38px; text-align: center;
 }
-.pp-preview-page-input:focus { outline: none; border-color: var(--pp-accent); }
+.pp-preview-page-input:focus { outline: none; border-color: var(--text-3); }
 
 /* UX 2026-04-23: custom combo-box shell around the page picker. The input
    and caret sit side by side with a shared border-radius so it reads as a
@@ -576,7 +576,7 @@
   border-radius: 5px; padding: 5px 8px; font-size: 12px; flex: 1;
   font-family: inherit; outline: none;
 }
-.pp-scope-select-input input:focus { border-color: var(--pp-accent); box-shadow: var(--pp-accent-glow); }
+.pp-scope-select-input input:focus { border-color: var(--text-3); box-shadow: none; }
 
 /* UX 2026-04-24: the native select fills the entire pill so clicking
    anywhere on the dropdown opens it — not just a narrow strip of text.
