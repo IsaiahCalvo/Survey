@@ -2792,6 +2792,12 @@ export default function TemplatesEditor({
             </div>
           ) : tpl ? (
             <div className="templates-mobile-detail">
+              {/* Owner 2026-09-23 picked layout B, "one card, divided": the
+                  template name, Modules and Categories share ONE panel (the
+                  phone list panel's fill, edge and radius), parted by
+                  full-width hairlines, with no card nested inside it. Section
+                  actions are quiet gold words in each header row. */}
+              <div className="templates-mobile-detail-card">
               <div className="templates-mobile-template-card">
                 <div className="templates-mobile-title-stack">
                   <input
@@ -2822,10 +2828,10 @@ export default function TemplatesEditor({
                   <div className="templates-mobile-section-actions">
                     <button
                       type="button"
-                      className="templates-mobile-section-select"
+                      className="templates-mobile-section-select hub-btn hub-btn--tertiary"
                       onClick={() => { setModEdit(true); setSelMods(new Set()); }}
                     >Select</button>
-                    <button type="button" onClick={addModule}><Icon name="plus" size={11} />New module</button>
+                    <button type="button" className="hub-btn hub-btn--tertiary" onClick={addModule}><Icon name="plus" size={11} />New module</button>
                   </div>
                 </div>
                 <div className="templates-mobile-module-tabs">
@@ -2847,41 +2853,52 @@ export default function TemplatesEditor({
               </section>
 
               <section className="templates-mobile-section templates-mobile-categories-section">
+                {/* Select swaps the header's right side for the selection
+                    actions in place, so the row keeps its height and nothing
+                    under it moves when select mode starts or ends. */}
                 <div className="templates-mobile-section-head">
                   <span>Categories</span>
-                  <button type="button" data-search-dismiss-action onClick={addCategory}><Icon name="plus" size={11} />New category</button>
-                </div>
-                <div className="templates-mobile-select-inline">
-                  <button
-                    className="hub-btn hub-btn--tertiary"
-                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                  >
-                    {catEdit ? 'Done' : 'Select'}
-                  </button>
-                  {catEdit && (() => {
-                    const visibleSelectedIds = new Set(mobileVisibleCats.filter((cat) => selCats.has(cat.id)).map((cat) => cat.id));
-                    const c = visibleSelectedIds.size;
-                    const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
-                    return (
-                      <span className="templates-mobile-select-actions">
+                  <div className={`templates-mobile-section-actions${catEdit ? ' templates-mobile-select-actions' : ''}`}>
+                    {catEdit ? (() => {
+                      const visibleSelectedIds = new Set(mobileVisibleCats.filter((cat) => selCats.has(cat.id)).map((cat) => cat.id));
+                      const c = visibleSelectedIds.size;
+                      const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setSelCats((prev) => {
+                              const next = new Set(prev);
+                              mobileVisibleCats.forEach((cat) => {
+                                if (allSel) next.delete(cat.id);
+                                else next.add(cat.id);
+                              });
+                              return next;
+                            })}
+                            className="hub-btn hub-btn--bare"
+                          >{allSel ? 'None' : 'All'}</button>
+                          <button type="button" disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} className="hub-btn hub-btn--bare">Duplicate</button>
+                          <button type="button" disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn hub-btn--bare">Move/Copy</button>
+                          <button type="button" disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                          <button type="button" disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
+                          <button
+                            type="button"
+                            className="templates-mobile-section-select hub-btn hub-btn--tertiary"
+                            onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
+                          >Done</button>
+                        </>
+                      );
+                    })() : (
+                      <>
                         <button
-                          onClick={() => setSelCats((prev) => {
-                            const next = new Set(prev);
-                            mobileVisibleCats.forEach((cat) => {
-                              if (allSel) next.delete(cat.id);
-                              else next.add(cat.id);
-                            });
-                            return next;
-                          })}
-                          className="hub-btn hub-btn--bare"
-                        >{allSel ? 'None' : 'All'}</button>
-                        <button disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} className="hub-btn hub-btn--bare">Duplicate</button>
-                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} className="hub-btn hub-btn--bare">Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} className="hub-btn hub-btn--icon" title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} className="hub-btn hub-btn--icon is-danger" title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
-                      </span>
-                    );
-                  })()}
+                          type="button"
+                          className="templates-mobile-section-select hub-btn hub-btn--tertiary"
+                          onClick={() => { setCatEdit(true); }}
+                        >Select</button>
+                        <button type="button" className="hub-btn hub-btn--tertiary" data-search-dismiss-action onClick={addCategory}><Icon name="plus" size={11} />New category</button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {mobileVisibleCats.length === 0 ? (
                   <div className="templates-mobile-empty">No categories match this view.</div>
@@ -2981,6 +2998,7 @@ export default function TemplatesEditor({
                   </SortableRearrangeList>
                 )}
               </section>
+              </div>
 
               {mobileEntitiesOpen ? (
                 <div

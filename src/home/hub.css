@@ -4379,3 +4379,170 @@ button[title="Edit color"]:active > span,
 .templates-mobile-more:active > svg { transform: scale(0.88); }
 [data-drag-rearrange-handle] { -webkit-tap-highlight-color: transparent; }
 [data-drag-rearrange-handle]:active > svg { transform: scale(0.88); }
+
+/* ==========================================================================
+   TEMPLATE DETAIL — LAYOUT B, "ONE CARD, DIVIDED" (owner picked 2026-09-23)
+   --------------------------------------------------------------------------
+   Phone only. The open template used to be three stacked cards (name, Modules,
+   Categories) with the category rows as a fourth layer inside the last one.
+   Now it is ONE panel — the same lighter blue-grey fill, edge and radius as
+   the phone list panels — holding, top to bottom: the name block, a
+   full-width hairline, the Modules header row and its tabs, another
+   full-width hairline, the Categories header row, then the category rows as
+   lines in the same panel. No card inside the card. The panel hugs its rows.
+
+   The header actions are quiet gold words (tertiary: Select, + New module,
+   + New category) — no boxes, no borders. The selection actions for
+   categories replace those words in the same row, so select mode never
+   pushes anything down. Desktop never renders any of this (the phone layout
+   is display: none above 720px), and every rule is scoped to it anyway.
+   ========================================================================== */
+@media screen and (max-width: 720px) {
+  .survey-hub .templates-mobile-detail-card {
+    min-width: 0;
+    background: var(--ink-700);
+    border: 1px solid var(--ink-500);
+    border-radius: 10px;
+    /* Clips a selected or pressed last row at the rounded corner, as the
+       list panels do. Menus are fixed at the screen root and a dragged row is
+       clamped to its list, so nothing needs to escape. */
+    overflow: hidden;
+    align-self: start;
+  }
+
+  /* The three blocks inside lose their own card: no edge, no corner, no fill. */
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-template-card,
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-section {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-template-card {
+    padding: 12px;
+  }
+
+  /* THE HAIRLINES. Each section's top edge is the line that parts it from
+     the block above, and it runs the panel's full width. */
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-section {
+    border-top: 1px solid var(--border);
+    gap: 0;
+  }
+
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-modules-section {
+    /* The tabs sit on the next hairline, so no bottom pad. */
+    padding: 10px 12px 0;
+  }
+
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-categories-section {
+    padding: 10px 12px 0;
+  }
+
+  /* HEADER ROW: label left, gold words right, one 28px line. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head {
+    min-height: 28px;
+    min-width: 0;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head > span {
+    flex: none;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-actions {
+    min-width: 0;
+    gap: 10px;
+  }
+
+  /* In select mode the row carries five actions and Done; they tighten and,
+     on the narrowest phones, scroll sideways rather than wrap. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-actions.templates-mobile-select-actions {
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-actions.templates-mobile-select-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The gold words. The older rule above gave every header button a boxed,
+     filled look; here they are the tertiary kind — gold ink, no box. The
+     tertiary kind's own hover / press (brighter / darker gold) still apply. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--tertiary {
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent);
+    padding: 0 2px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--tertiary > svg {
+    color: currentColor;
+  }
+
+  /* The selection actions keep the bare kind: no border, no fill at rest. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--bare,
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--icon {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  /* Sized so All, Duplicate, Move/Copy, Share, Delete and Done fit beside
+     the "Categories" label at 390px without scrolling. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--bare {
+    color: var(--text-1);
+    padding: 0 4px;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--icon {
+    width: 26px;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn.hub-btn--icon.is-danger {
+    color: var(--danger);
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-section-head .hub-btn:disabled {
+    opacity: 0.38;
+  }
+
+  /* MODULE TABS sit straight on the hairline under them: the tab list drops
+     its own underline (the section's line does that job), and the active
+     tab's 2px bar lands on the hairline instead of hanging 1px over it. */
+  .survey-hub .templates-mobile-detail-card .templates-mobile-module-tabs {
+    padding-bottom: 0;
+    margin-top: 2px;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-module-tabs [data-module-tab-list] {
+    border-bottom: 0 !important;
+  }
+
+  .survey-hub .templates-mobile-detail-card .templates-mobile-module-tabs [data-module-tab-id] {
+    margin-bottom: 0 !important;
+  }
+
+  /* CATEGORY ROWS are lines in the panel. The list steps out over the
+     section's 12px side pad so every hairline reaches both edges; the rows'
+     own pad keeps the text where it was. The header row gets 8px under it
+     before the first line. */
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-categories-section > .templates-mobile-section-head {
+    margin-bottom: 8px;
+  }
+
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-categories-section > [data-sortable-rearrange-list] {
+    margin: 0 -12px;
+    width: calc(100% + 24px) !important;
+  }
+
+  /* An empty module's note is a line in the panel too, not a dashed box. */
+  .survey-hub .templates-mobile-detail-card > .templates-mobile-categories-section > .templates-mobile-empty {
+    margin: 0 -12px;
+    min-height: 44px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+  }
+}
