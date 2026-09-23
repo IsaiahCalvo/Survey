@@ -142,8 +142,12 @@ test('mobile navigation exits transient surfaces and scopes tabs or the rail', (
   assert.match(runtime, /getByRole\('button', \{ name: 'Back to documents', exact: true \}\)/);
   assert.match(runtime, /locator\('\.projects-mobile-back-button'\)/);
   assert.match(runtime, /getByRole\('navigation', \{ name: 'Home sections', exact: true \}\)/);
-  assert.match(runtime, /getByRole\('button', \{ name: 'Open navigation', exact: true \}\)/);
-  assert.match(runtime, /getByRole\('complementary', \{ name: 'Mobile navigation', exact: true \}\)/);
+  // RULED 2026-09-23 (owner: title is the section switcher). The phone rail's
+  // menu button and "Mobile navigation" card are gone; the harness opens the
+  // title's section menu and picks the section from it.
+  assert.match(runtime, /locator\('\.hub-title-switch'\)/);
+  assert.match(runtime, /getByRole\('menu', \{ name: 'Go to', exact: true \}\)/);
+  assert.match(runtime, /getByRole\('menuitem', \{ name: title, exact: true \}\)/);
   assert.match(runtime, /desktopNavigation\.getByRole\('button', \{ name: title, exact: true \}\)/);
   assert.doesNotMatch(runtime, /clickVisible\(page\.getByRole\('button', \{ name: title/);
 });

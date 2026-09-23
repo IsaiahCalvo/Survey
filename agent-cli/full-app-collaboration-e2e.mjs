@@ -67,12 +67,13 @@ async function navigateHub(page, title) {
   if (bottomTarget) {
     await bottomTarget.click();
   } else {
-    const railTrigger = await firstVisible(page.getByRole('button', { name: 'Open navigation', exact: true }));
-    if (railTrigger) {
-      await railTrigger.click();
-      const rail = page.getByRole('complementary', { name: 'Mobile navigation', exact: true });
-      await rail.waitFor({ state: 'visible', timeout: 10_000 });
-      await clickVisible(rail.getByRole('button', { name: title, exact: true }), `${title} mobile rail navigation`);
+    // Phone rail mode: the page title is the section switcher (2026-09-23).
+    const titleSwitch = await firstVisible(page.locator('.hub-title-switch'));
+    if (titleSwitch) {
+      await titleSwitch.click();
+      const sectionMenu = page.getByRole('menu', { name: 'Go to', exact: true });
+      await sectionMenu.waitFor({ state: 'visible', timeout: 10_000 });
+      await clickVisible(sectionMenu.getByRole('menuitem', { name: title, exact: true }), `${title} title section menu`);
     } else {
       const desktopNavigation = page.locator('.side .nav');
       await clickVisible(

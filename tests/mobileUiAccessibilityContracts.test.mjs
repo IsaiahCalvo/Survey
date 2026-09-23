@@ -215,7 +215,10 @@ test('named compact mobile controls expose 44px hit areas without resizing heade
   // its 44px from a transparent pad, exactly like every other header control.
   assert.match(hubCss, /\.survey-hub \.mobile-profile \.who > button \{[\s\S]{0,140}width: 28px !important;[\s\S]{0,50}height: 28px/);
   assert.match(hubCss, /\.survey-hub \.mobile-profile \.who > button::after \{[\s\S]{0,160}inset-block: -8px;[\s\S]{0,40}inset-inline: -8px/);
-  assert.match(hubCss, /\.survey-hub \.mobile-rail-nav-trigger::after \{[\s\S]{0,160}inset-block: -8px/);
+  // RULED 2026-09-23 (owner: title is the section switcher). The header's menu
+  // button is gone; the title itself opens the section menu, and it takes its
+  // 44px from a transparent pad centred on the title, whatever the title's height.
+  assert.match(hubCss, /\.survey-hub \.hub-title-switch::after \{[\s\S]{0,160}inset-block: calc\(\(100% - 44px\) \/ 2\)/);
   // Owner ruling 2026-09-22: phone list rows are 36px one-liners. The grip and
   // the More button paint 36px tall so they cannot prop the row up, and a
   // ::after pad of 4px above and below restores the 44px touch target.

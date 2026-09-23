@@ -1053,10 +1053,16 @@
     display: none;
   }
 
+  /* Phone section switcher: the title IS the navigation (owner 2026-09-23).
+     It takes the title's own slot in row 1 (order 1, baseline with the count),
+     so the header keeps its two rows and its centre lines; the plain title is
+     hidden in its place. */
   .survey-hub .mobile-rail-nav {
     display: none;
     order: 1;
     flex: none;
+    min-width: 0;
+    align-self: baseline;
     position: relative;
     z-index: 170;
   }
@@ -1065,103 +1071,125 @@
     display: block;
   }
 
-  /* The menu button is a SECONDARY button in square form: the system's 28px
-     height and 6px radius, so it lines up with the gold action below it and the
-     avatar beside it instead of being a 32x30 one-off. */
-  .survey-hub .mobile-rail-nav-trigger {
-    width: var(--mobile-header-row-h);
-    height: var(--mobile-header-row-h);
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--bone-100);
-    display: grid;
-    place-items: center;
-    padding: 0;
-    font: inherit;
-    cursor: pointer;
-    position: relative;
+  .survey-hub.hub-mobile-nav-rail .header-title-block > h1.title {
+    display: none;
   }
 
-  /* 28px painted, 44px tapped — the same trick every other control on this
-     header uses. It reaches up into the header's own top padding, never down
-     into the search row. */
-  .survey-hub .mobile-rail-nav-trigger::after {
+  /* No plate, no border: it is a word you can tap. The chevron is the only
+     tell, and it brightens on hover and turns over while the menu is open. */
+  .survey-hub .hub-title-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 44px tall to the finger whatever the title's painted height. It reaches
+     up into the header's top padding and stops short of row 2. */
+  .survey-hub .hub-title-switch::after {
     content: '';
     position: absolute;
-    inset-block: -8px;
+    inset-block: calc((100% - 44px) / 2);
     inset-inline: -6px;
-    z-index: 1;
-    background: transparent;
-    pointer-events: auto;
-  }
-
-  .survey-hub .mobile-rail-nav-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 150;
     background: transparent;
   }
 
-  .survey-hub .mobile-rail-nav-panel {
+  .survey-hub .hub-title-switch__chevron {
+    flex: none;
+    color: var(--text-3);
+    transition: transform 160ms cubic-bezier(0.33, 1, 0.68, 1), color 120ms ease-out;
+  }
+
+  @media (hover: hover) {
+    .survey-hub .hub-title-switch:hover .hub-title-switch__chevron {
+      color: var(--text-1);
+    }
+  }
+
+  .survey-hub .mobile-rail-nav.is-open .hub-title-switch__chevron {
+    color: var(--text-1);
+  }
+
+  .survey-hub .mobile-rail-nav.is-open .hub-title-switch__chevron {
+    transform: rotate(180deg);
+  }
+
+  .survey-hub .hub-title-switch:active .hub-title-switch__label {
+    opacity: 0.82;
+  }
+
+  /* The app's dropdown skin, read from .mobile-styled-select__menu
+     (src/mobile/mobilePdfViewer.css), copied not imported. */
+  .survey-hub .hub-section-menu {
     position: absolute;
-    top: calc(var(--mobile-header-row-h) + 8px);
+    top: calc(100% + 10px);
     left: 0;
-    width: 208px;
+    min-width: 164px;
+    box-sizing: border-box;
     padding: 5px;
-    background: var(--ink-700);
-    border: 1px solid var(--ink-500);
-    border-radius: 10px;
-    box-shadow: 0 16px 40px rgba(0,0,0,0.48);
-    animation: mobile-rail-menu-in 140ms ease-out;
-    touch-action: pan-y;
-  }
-
-  .survey-hub .mobile-rail-nav-label {
-    display: none;
-  }
-
-  .survey-hub .mobile-rail-nav-title {
-    display: none;
-  }
-
-  .survey-hub .mobile-rail-nav-options {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
+    color: var(--text-1);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 0s linear 140ms;
   }
 
-  .survey-hub .mobile-rail-nav-options button {
-    width: 100%;
-    min-height: 38px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: var(--bone-100);
-    display: grid;
-    grid-template-columns: 18px minmax(0, 1fr) auto;
+  .survey-hub .mobile-rail-nav.is-open .hub-section-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 0s;
+  }
+
+  .survey-hub .hub-section-menu > button {
+    height: 32px;
+    padding: 0 10px 0 8px;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 9px;
-    font: inherit;
-    font-size: 12.5px;
+    gap: 9px;
+    color: var(--text-1);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+    letter-spacing: -0.01em;
     text-align: left;
+    white-space: nowrap;
     cursor: pointer;
   }
 
-  .survey-hub .mobile-rail-nav-options button.active {
-    background: var(--ink-600);
-    box-shadow: inset 2px 0 var(--gold);
+  .survey-hub .hub-section-menu > button > span {
+    flex: 1 1 auto;
   }
 
-  .survey-hub .mobile-rail-nav-options button:disabled {
+  .survey-hub .hub-section-menu > button[aria-disabled='true'] {
     color: var(--text-disabled);
     cursor: not-allowed;
   }
 
-  @keyframes mobile-rail-menu-in {
-    from { transform: translate(-6px, -4px); opacity: 0.4; }
-    to { transform: translate(0, 0); opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .survey-hub .hub-title-switch__chevron,
+    .survey-hub .hub-section-menu,
+    .survey-hub .mobile-rail-nav.is-open .hub-section-menu {
+      transition: none;
+    }
   }
 
   .survey-hub h1.title {
@@ -4066,8 +4094,7 @@
 }
 
 @media (max-width: 860px) {
-  .survey-hub .mobile-rail-nav-trigger:active,
-  .survey-hub .mobile-rail-nav-options button:not(.active):active,
+  .survey-hub .hub-section-menu > button:not([aria-disabled='true']):active,
   .survey-hub .mobile-header-select-button:active,
   .survey-hub .mobile-home-tabs button:not(.active):active,
   .survey-hub .projects-mobile-iteration-switcher button:not(.active):active,
