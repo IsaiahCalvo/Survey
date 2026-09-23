@@ -1,6 +1,11 @@
 :root {
   --mobile-bottom-inset: max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   --mobile-viewer-dock-height: calc(52px + var(--mobile-bottom-inset));
+  /* The dock's PAINTED bar: 36px plus the home-indicator inset. Same sum as
+     .mobile-pdf-dock__surface's height (left as its own literal because the
+     dock-centring test evaluates that declaration). The page area stops here -
+     see "PHONE CANVAS INSIDE THE BARS" below. */
+  --mobile-dock-bar-height: calc(36px + var(--mobile-bottom-inset));
 
   /* How much of the screen the on-screen keyboard is covering, published by
      src/mobile/keyboardViewport.js. Exactly 0 whenever the keyboard is down, so
@@ -279,6 +284,30 @@ html.survey-viewer-open #root {
 html[data-native-shell="expo"] .mobile-pdf-header {
   height: 34px;
   min-height: 34px;
+}
+
+/* PHONE CANVAS INSIDE THE BARS.
+   RULED 2026-09-23 (owner: phone canvas sits inside the bars): "the canvas
+   window needs to be resized on mobile so that it sits inside of the top,
+   bottom, and left bars." The header and the tool rail are already in flow, so
+   the page scroller starts below the header and right of the rail. The dock is
+   `position: fixed` over the bottom of the work area, so the scroller used to
+   run the full height underneath it and the bottom of the last page could never
+   be scrolled clear of the layers button / Pages pill / survey button.
+   The pdf.js host now stops at the top of the dock's painted bar (36px + the
+   home-indicator inset, so it tracks the iOS safe area). Only the scroller's
+   host moves: the rail still runs to the bottom edge, and the tool strips and
+   sheets are fixed to the viewport, so they open above the dock exactly as
+   before. Fit and zoom need no change - PdfjsViewerContainer measures the real
+   scroller box (container-aware rule), so fit-to-width fits the new, shorter
+   area on its own. The inset is constant (it does not drop while a panel hides
+   the dock) so opening a panel never resizes the page area and re-fits it.
+   `.mobile-pdf-work-area` exists only in the phone shell (<=720px), so the
+   tablet and desktop viewers are untouched. `!important` beats the host's
+   inline `inset: 0` in PDFViewer.jsx without editing that file. Guarded by
+   tests/mobileCanvasInsideBars.test.mjs. */
+.mobile-pdf-work-area .pdf-engine-host {
+  bottom: var(--mobile-dock-bar-height) !important;
 }
 
 .mobile-pdf-header button,
