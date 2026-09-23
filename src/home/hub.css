@@ -4349,3 +4349,25 @@ button[title="Edit color"]:active > span,
 .templates-mobile-more:active > svg { transform: scale(0.88); }
 [data-drag-rearrange-handle] { -webkit-tap-highlight-color: transparent; }
 [data-drag-rearrange-handle]:active > svg { transform: scale(0.88); }
+@media (max-width: 860px) {
+  /* NO BOX INSIDE THE BOX (owner 2026-09-23, after the Kole Jain layout
+     video): the phone lists on Documents, Projects, Templates and Archive run
+     edge to edge — they step out over the page's 10px gutter, lose the
+     rounded card, its side edges and its separate fill, and keep only the
+     horizontal hairlines (one above the first row, one under each row). */
+  .survey-hub .documents-mobile-list,
+  .survey-hub .archive-mobile-list,
+  .survey-hub .hub-loading-mobile-panel,
+  .survey-hub .projects-mobile-drill-view > [data-sortable-rearrange-list],
+  .survey-hub .projects-mobile-file-list > [data-sortable-rearrange-list],
+  .survey-hub .templates-mobile-browser > [data-sortable-rearrange-list] {
+    margin-left: -10px !important;
+    margin-right: -10px !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-top: 0 !important; /* the header's own divider already sits above */
+    border-bottom: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+}
