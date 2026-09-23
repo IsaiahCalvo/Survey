@@ -34233,8 +34233,15 @@ ${pageBlocks}
                                       // R2.2 Slice 3: text-edit commit lands as ONE fabric:update
                                       // delta via the shared pipeline (Cmd+Z reverts just this
                                       // callout's edit instead of a whole-document snapshot).
+                                      // UX: text-bar style picks (colour, bold, size…) already
+                                      // committed onto the live callout mid-edit via
+                                      // handleCalloutTextStyleChange; updatedReactCallout spreads
+                                      // the edit-START snapshot, so keep the live style or the
+                                      // pick is silently reverted on commit.
                                       commitCalloutMutation(pageNumber, (prev) => prev.map((c) =>
-                                        c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
+                                        c.id === editingAnnotation.reactCalloutId
+                                          ? { ...updatedReactCallout, style: c.style || updatedReactCallout.style }
+                                          : c
                                       ), {
                                         source: 'callout:edit-commit',
                                         action: 'callout-edit-commit',
