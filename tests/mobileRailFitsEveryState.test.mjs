@@ -153,6 +153,10 @@ const BUDGET = VIEWPORT.height - HEADER - RAIL_PAD_TOP - RAIL_PAD_BOTTOM - FOOTE
 const MAIN = ruleBody('.mobile-pdf-tools__main');
 const MAIN_PAD = px(decl(MAIN, 'padding-block'), 'tool column padding-block');
 const SUB_CHIP = token('--mobile-rail-sub-chip');
+// RULED CHANGE 2026-09-22: the survey strips draw 24px letter/colour DISCS, which
+// are not the sub-tool chip and did not move with it. Their own token, so this
+// arithmetic keeps describing what the rail actually paints.
+const SURVEY_DISC = token('--mobile-rail-disc');
 const SUB_STRIP_BORDER = 1; // 1px all round on every sub-strip
 
 const tokenDefault = (body, name) => {
@@ -236,24 +240,40 @@ const regionStrip = (pitch) => subStrip(pitch, 5, { extras: [divider(pitch)] });
 // The survey strips, at the counts the Security / Instillation module ships.
 const SURVEY_CATEGORIES = 2;
 const SURVEY_ENTITIES = 5;
+/** A survey strip: the same box, but its rows are 24px discs, not sub-tool chips. */
+const surveyStrip = (pitch, n) => subStrip(pitch, n, { chip: SURVEY_DISC });
 
 const states = () => {
   const relaxed = RELAXED;
   const out = [
     ['nothing open', column(relaxed, head(relaxed)), 178],
-    ['region editing rows', column(relaxed, [...head(relaxed), divider(relaxed), regionStrip(relaxed)]), 350],
+    ['region editing rows', column(relaxed, [...head(relaxed), divider(relaxed), regionStrip(relaxed)]), 370],
     [
       'survey category + entity rows',
       column(relaxed, [
         ...head(relaxed),
-        divider(relaxed), subStrip(relaxed, SURVEY_CATEGORIES),
-        divider(relaxed), subStrip(relaxed, SURVEY_ENTITIES),
+        divider(relaxed), surveyStrip(relaxed, SURVEY_CATEGORIES),
+        divider(relaxed), surveyStrip(relaxed, SURVEY_ENTITIES),
       ]),
       416,
     ],
   ];
-  const live = { draw: 283, shape: 395, review: 255 };
-  const liveDense = { draw: 438, shape: 542, review: 412 };
+  // RULED CHANGE 2026-09-22 (owner, phone build: one chip size on the phone). A
+  // sub-tool chip is 28px where it was 24, so every state with a tool sub-strip
+  // open is taller by 4px per chip in that strip: Draw 283 -> 295 (3 chips),
+  // Shapes 395 -> 423 (7), Text 255 -> 263 (2), the region strip 350 -> 370 (5).
+  // Re-measured live at 390x844 (Playwright, mobile UA + touch) for Draw, Shapes
+  // and Text. "Nothing open" and the survey rows are unchanged, because neither
+  // contains a sub-tool chip.
+  // The three DENSE states are recomputed from the same tokens rather than
+  // re-measured (they need a survey module loaded): Draw 438 -> 437, Shapes
+  // 542 -> 553, Text 412 -> 408. They do not all grow, because the crowded state
+  // also gave up its sub-strip padding and half its gap to stay inside the
+  // 565px an iPhone 17 Pro allows. This arithmetic reproduced all six of the
+  // previously recorded live numbers to the pixel before the change, which is
+  // what makes recomputing them trustworthy.
+  const live = { draw: 295, shape: 423, review: 263 };
+  const liveDense = { draw: 437, shape: 553, review: 408 };
   for (const [id, tools] of Object.entries(TOOL_GROUPS)) {
     out.push([
       `${id} group open`,
@@ -265,8 +285,8 @@ const states = () => {
       column(DENSE, [
         ...head(DENSE),
         divider(DENSE), subStrip(DENSE, tools),
-        divider(DENSE), subStrip(DENSE, SURVEY_CATEGORIES),
-        divider(DENSE), subStrip(DENSE, SURVEY_ENTITIES),
+        divider(DENSE), surveyStrip(DENSE, SURVEY_CATEGORIES),
+        divider(DENSE), surveyStrip(DENSE, SURVEY_ENTITIES),
       ]),
       liveDense[id] ?? null,
     ]);
@@ -305,8 +325,8 @@ test('the tightened state also clears a phone with a 34px home-indicator reserve
   const crowded = column(DENSE, [
     ...head(DENSE),
     divider(DENSE), subStrip(DENSE, worstGroup),
-    divider(DENSE), subStrip(DENSE, SURVEY_CATEGORIES),
-    divider(DENSE), subStrip(DENSE, SURVEY_ENTITIES),
+    divider(DENSE), surveyStrip(DENSE, SURVEY_CATEGORIES),
+    divider(DENSE), surveyStrip(DENSE, SURVEY_ENTITIES),
   ]);
   assert.ok(
     crowded <= deviceBudget,
@@ -328,8 +348,8 @@ test('the survey rows are the only unbounded part of the rail, and the limit is 
   const withRows = (rows) => column(DENSE, [
     ...head(DENSE),
     divider(DENSE), subStrip(DENSE, worstGroup),
-    divider(DENSE), subStrip(DENSE, Math.ceil(rows / 2)),
-    divider(DENSE), subStrip(DENSE, Math.floor(rows / 2)),
+    divider(DENSE), surveyStrip(DENSE, Math.ceil(rows / 2)),
+    divider(DENSE), surveyStrip(DENSE, Math.floor(rows / 2)),
   ]);
   let rows = SURVEY_CATEGORIES + SURVEY_ENTITIES;
   assert.ok(

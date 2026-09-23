@@ -51,7 +51,12 @@ test('one token per tier drives every phone control size', () => {
     '--mobile-rail-w: 36px',
     '--mobile-rail-chip: 28px',
     '--mobile-rail-gap: 5px',
-    '--mobile-rail-sub-chip: 24px',
+    // RULED CHANGE 2026-09-22 (owner, phone build): 28, not 24. The sub-tool
+    // chip is the same chip as the tool that opened it, so the phone has ONE
+    // chip size. The 24px circles the survey strips draw moved to their own
+    // token (--mobile-rail-disc) because a letter disc is not a chip.
+    '--mobile-rail-sub-chip: 28px',
+    '--mobile-rail-disc: 24px',
     '--mobile-rail-sub-gap: 4px',
     '--mobile-control-h: 28px',
     '--mobile-strip-control-h: 20px',
@@ -210,7 +215,11 @@ test('rail glyphs come from one constant per tier', () => {
   // header 15-in-26, dock 17-in-30 — one ratio, all four tiers. The hit pads
   // are untouched, so no target shrank with the glyph.
   assert.match(chrome, /const RAIL_GLYPH = 17;/);
-  assert.match(chrome, /const SUBTOOL_GLYPH = 14;/);
+  // RULED CHANGE 2026-09-22 (owner, phone build: "the sub-tools are smaller than
+  // the tools above them"): 17, not 14, because the chip it sits in is 28, not
+  // 24. 17-in-28 = 0.607 is the same fill the rail tier carries, so the band
+  // this file guards is unchanged — there is simply one chip size now.
+  assert.match(chrome, /const SUBTOOL_GLYPH = 17;/);
   assert.match(chrome, /const DOCK_GLYPH = 17;/);
   // RULED CHANGE 2026-09-21 (pass 7): 12, because the strip control is 20px on
   // the approved boards where it was 24. 12-in-20 is the same fill 14-in-24 was.
