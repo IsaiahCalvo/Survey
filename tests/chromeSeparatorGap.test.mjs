@@ -95,5 +95,12 @@ test('the shared separator reads its size and inset from the chrome tokens', () 
   assert.match(rule, /background: var\(--border\)/);
   assert.match(STYLES, /--chrome-divider-h: 16px;/);
   assert.match(STYLES, /--chrome-divider-inset: 8px;/);
-  assert.match(STYLES, /--chrome-tool-gap: 2px;/);
+  /* CHANGED 2026-09-22 (desktop critic round, owner's desktop numbers): the
+     gutter between chips is 6px, not 2px. This file's original point — one
+     gutter across the whole bar — is what the change restores: pass 7's 2px
+     tool gutter against the 6px pill gutter put THREE spacings in one 36px bar
+     and made it read as two strips. The owner's desktop set is chip 28 / icon
+     16 / gap 6 / divider margin 8, and DESIGN-SYSTEM.md lists one desktop gap,
+     6. The assertion still pins the value so no bar can hand-roll its own. */
+  assert.match(STYLES, /--chrome-tool-gap: 6px;/);
 });

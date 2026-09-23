@@ -361,12 +361,15 @@ const PDFSidebar = React.forwardRef(({
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'var(--text-3)',
+            // UX 2026-09-22 (desktop critic round): resting chrome icon =
+            // --text-2, and a chrome button's corner is the house 6, not a
+            // rail-only 4. See the note on the rail tabs below.
+            color: 'var(--text-2)',
             cursor: 'pointer',
             ...(mobileMode
               ? { padding: '4px' }
               : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
-            borderRadius: '4px',
+            borderRadius: 'var(--chrome-radius)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -375,7 +378,7 @@ const PDFSidebar = React.forwardRef(({
           onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
-          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
+          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
         </button>
       </div>
 
@@ -453,7 +456,7 @@ const PDFSidebar = React.forwardRef(({
                     justifyContent: 'center',
                     gap: '4px',
                     fontSize: '11px',
-                    color: isActive ? 'var(--text-2)' : 'var(--text-3)',
+                    color: isActive ? 'var(--text-1)' : 'var(--text-2)',
                     fontWeight: isActive ? '500' : '400',
                     fontFamily: FONT_FAMILY,
                     transition: 'all 0.15s ease',
@@ -487,10 +490,12 @@ const PDFSidebar = React.forwardRef(({
                       same height it was and nothing under it shifts. The phone
                       keeps 16: its glyph sizes come from the phone tier's own
                       tokens, not the desktop rail's. */}
+                  {/* UX 2026-09-22: the resting grey is --text-2, the same one
+                      the collapsed rail draws — see the note there. */}
                   <Icon
                     name={tab.icon}
                     size={mobileMode ? 16 : RAIL_GLYPH}
-                    color={isActive ? 'var(--accent)' : 'var(--text-3)'}
+                    color={isActive ? 'var(--accent)' : 'var(--text-2)'}
                   />
                   <span style={{
                     maxWidth: '100%',
@@ -750,10 +755,19 @@ const PDFSidebar = React.forwardRef(({
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
+                {/* UX 2026-09-22 (desktop critic round): ONE grey for a
+                    resting chrome icon, and it is --text-2. Intended UX: the
+                    left rail, the right rail and the top bar are one tier of
+                    chrome, so an icon that is merely sitting there must be the
+                    same weight in all three. They used to disagree — these rail
+                    tabs and the Survey button drew --text-3 while Version
+                    history, Fit, Export and every top-bar tool glyph drew
+                    --text-2, which read as two different rails. Gold still
+                    marks the active one; --text-3 is left to real subtext. */}
                 <Icon
                   name={tab.icon}
                   size={RAIL_GLYPH}
-                  color="var(--text-3)"
+                  color="var(--text-2)"
                   style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
                 />
               </button>

@@ -1286,11 +1286,15 @@ const SurveySpacesRail = ({
                       // else in the column used. The box measures the same 24 as
                       // before, so the strip's 35px height and the rail's centre
                       // line are unchanged — nothing moves.
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+                      /* UX 2026-09-22 (desktop critic round): a resting chrome
+                         icon is --text-2 on every rail and on the top bar — see
+                         the note on the left rail's tabs in PDFSidebar.jsx.
+                         The box radius is the house 6, not a rail-only 4. */
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', cursor: 'pointer', ...(mobileMode ? { padding: '4px' } : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }), borderRadius: 'var(--chrome-radius)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
                     >
-                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
+                      <Icon name="chevronLeft" size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
                     </button>
                   </div>
                   <div style={{
@@ -1326,7 +1330,9 @@ const SurveySpacesRail = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: showSurveyPanel ? 'var(--accent)' : 'var(--text-3)',
+                          /* UX 2026-09-22: resting chrome icon = --text-2, one
+                             grey across both rails and the top bar. */
+                          color: showSurveyPanel ? 'var(--accent)' : 'var(--text-2)',
                           cursor: 'pointer',
                           padding: '11px 6px',
                           borderRadius: '6px',
@@ -1401,12 +1407,16 @@ const SurveySpacesRail = ({
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: 'rgb(153, 153, 153)',
+                        /* UX 2026-09-22: was a raw rgb(153,153,153) — the one
+                           chrome icon in the app painting a hand-typed grey.
+                           It is the Expand chevron's twin, so it takes the same
+                           resting token and the same house radius. */
+                        color: 'var(--text-2)',
                         cursor: 'pointer',
                         ...(mobileMode
                           ? { padding: '4px' }
                           : { padding: 0, width: `${RAIL_CONTROL}px`, height: `${RAIL_CONTROL}px` }),
-                        borderRadius: '4px',
+                        borderRadius: 'var(--chrome-radius)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1415,7 +1425,7 @@ const SurveySpacesRail = ({
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-3)" />
+                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={mobileMode ? 16 : RAIL_CONTROL_GLYPH} color="var(--text-2)" />
                     </button>
                   </div>
 

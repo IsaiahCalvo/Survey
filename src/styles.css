@@ -40,10 +40,11 @@
   /* PASS 7 (owner-approved artboards 8-15, 2026-09-21). The desktop document
      chrome is THREE bars of 36px: the tool bar, the armed group's sub-tool row,
      and the text-formatting row that only a text box or callout shows. Inside a
-     bar: a 28px tool button with a 16px glyph, a 2px gutter between buttons in a
-     group, an 8px inset either side of a group rule, and 20px-tall setting pills
-     with a 6px gutter between them. Every number below is read off the boards;
-     no control in the chrome may write its own. */
+     bar: a 28px tool button with a 16px glyph, a 6px gutter between chips
+     (2026-09-22: one gutter, see --chrome-tool-gap), an 8px inset either side of
+     a group rule, and 20px-tall setting pills with the same 6px gutter. Every
+     number below is read off the boards; no control in the chrome may write its
+     own. */
   --chrome-bar-h: 36px;            /* every desktop chrome bar (boards 8-14) */
   --chrome-control-h: 28px;        /* tool button (board: 28) */
   --chrome-control-w: 28px;        /* square, as the boards draw it */
@@ -53,7 +54,16 @@
   --chrome-glyph: 16px;            /* every chrome tool glyph (board: 16) */
   --chrome-field-glyph: 14px;      /* glyph inside a setting pill */
   --chrome-gap: 6px;               /* gutter between setting pills (board: 6) */
-  --chrome-tool-gap: 2px;          /* gutter between tool buttons in a group (board: 2) */
+  /* UX 2026-09-22 (desktop critic round): ONE gutter between chips, 6px.
+     Intended UX: a bar that reads as one bar. The pass-7 boards drew a 2px
+     gutter inside a tool group against 6px between setting pills, so a single
+     36px bar showed tool icons 2 apart and dropdowns 6 apart and looked like
+     two strips pushed together. The owner's desktop numbers are one set — chip
+     28, icon 16, gap 6, divider margin 8 — and DESIGN-SYSTEM.md lists exactly
+     one desktop gap, 6. The group rule still reads as a break, because the
+     divider keeps its 8px inset either side: 6 inside a group, 8 + rule + 8
+     between two. */
+  --chrome-tool-gap: 6px;          /* gutter between tool buttons in a group */
   --chrome-divider-h: 16px;        /* the group rule's own height (board: 16) */
   --chrome-divider-inset: 8px;     /* clear space either side of a group rule (board: 8) */
   --chrome-row-gap: var(--chrome-gap); /* the gutter of the row a divider sits in */
@@ -583,16 +593,24 @@
 }
 
 /* PASS 7 (boards 13, 14): a SEGMENTED TOGGLE — Partial/Whole on the eraser and
-   Box/Lasso/Text on Select. One quiet well, and the chosen segment is marked by
-   its word and glyph turning gold on a single surface step. Owner ruling: no
-   raised thumb, no gold fill, no border. */
+   Box/Lasso/Text on Select. The chosen segment is marked by its word and glyph
+   turning gold. Owner ruling: no raised thumb, no gold fill, no border.
+   UX 2026-09-22 (desktop critic round): the WELL and the chosen segment's fill
+   are gone too. Intended UX: "selected is a gold glyph only — no fill, no
+   border, no raised plate" (owner 2026-09-17) has exactly one exception, the
+   Border/Fill tabs and the grid/gradient toggle inside the colour picker, and
+   this control is neither. It kept a --surface-2 well with a --surface-3 fill
+   on the chosen segment, which is a raised plate and a raised thumb by any
+   other name — the one control in the tool bar that still boxed its choice.
+   The BOX is unchanged (same height, same 2px inset, same 150px), so nothing
+   in the bar moves; only the two fills are dropped. */
 .chrome-segmented {
   height: var(--chrome-field-h);
   padding: 2px;
   display: inline-flex;
   flex: 0 0 auto;
   box-sizing: border-box;
-  background: var(--surface-2);
+  background: transparent;
   border-radius: var(--chrome-field-radius);
 }
 
@@ -625,9 +643,10 @@
   background: var(--hover);
 }
 
+/* Gold word and gold glyph, and nothing else. */
 .chrome-segmented > button[aria-pressed='true'] {
   color: var(--accent);
-  background: var(--surface-3);
+  background: transparent;
 }
 
 .survey-marker-name-fit {

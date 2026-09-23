@@ -881,7 +881,14 @@ const CompactColorPicker = ({
                 onClick={() => setMode(id)}
                 style={{
                     flex: 1,
-                    height: '24px',
+                    /* UX 2026-09-22 (desktop critic round): ONE height across
+                       the picker's bottom row. The row held three: this toggle
+                       well came to 28 (24 + a 2px inset each side), the joined
+                       hex field is 30, and the eyedropper inside it asked for a
+                       fourth. A row of controls that all do the same job must
+                       sit on one baseline, so the segment is 26 and its well is
+                       the field's 30. */
+                    height: '26px',
                     display: 'grid',
                     placeItems: 'center',
                     border: 0,
@@ -1011,6 +1018,9 @@ const CompactColorPicker = ({
                     borderRadius: '9px',
                     width: '64px',
                     flex: '0 0 64px',
+                    /* UX 2026-09-22: 30px, the same as the hex field beside it —
+                       see the segment height below. */
+                    height: '30px',
                     boxSizing: 'border-box',
                 }}>
                     {modeTab('grid', 'Preset colors', <GridGlyph />)}
@@ -1027,7 +1037,11 @@ const CompactColorPicker = ({
                         onClick={pickFromScreen}
                         style={{
                             width: '34px',
-                            height: '30px',
+                            /* UX 2026-09-22: fill the field's inner box instead
+                               of asking for 30 inside a 28px content area —
+                               that overflow was the third height in this row and
+                               only `overflow: hidden` was keeping it tidy. */
+                            height: '100%',
                             padding: 0,
                             display: 'grid',
                             placeItems: 'center',
