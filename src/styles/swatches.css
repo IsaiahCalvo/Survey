@@ -190,3 +190,29 @@
 [data-drag-rearrange-handle]:active { color: var(--text-1) !important; }
 [data-drag-rearrange-handle]:active > svg { transform: scale(0.9); }
 [data-drag-rearrange-handle]:active > svg.morph-grip.is-open { transform: scale(1.08); }
+
+/* First grid cell morph (owner 2026-09-23): on the Border tab the Match fill
+   link grows out of the see-through square; back on Fill it shrinks away the
+   same way, instead of snapping. */
+.hero-swatch__morph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  line-height: 0;
+  opacity: 0;
+  transform: scale(0.4);
+  /* Colour and size change together (owner 2026-09-23): the link colour fades
+     in as it grows out of the see-through square, and fades out as it
+     shrinks back into it — one curve, one duration for both. */
+  transition: transform 240ms cubic-bezier(0.33, 1, 0.68, 1), opacity 240ms cubic-bezier(0.33, 1, 0.68, 1);
+  pointer-events: none;
+}
+.hero-swatch__morph.is-on { opacity: 1; transform: scale(1); }
+.hero-swatch__morph > svg { transform: scale(0.5); transition: transform 240ms cubic-bezier(0.33, 1, 0.68, 1) 40ms; }
+.hero-swatch__morph.is-on > svg { transform: scale(1); }
+.hero-swatch__fill { position: relative; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-swatch__morph, .hero-swatch__morph > svg { transition: none; }
+}

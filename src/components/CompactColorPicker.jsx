@@ -156,6 +156,18 @@ const EyedropperGlyph = ({ size = 17 }) => (
     </svg>
 );
 
+/* The see-through swatch: a checkerboard of paper colours (user ink, not chrome). */
+const CHECKER_FILL = {
+    backgroundColor: '#ffffff',
+    backgroundImage:
+        'linear-gradient(45deg, #cfcfcf 25%, transparent 25%),'
+        + 'linear-gradient(-45deg, #cfcfcf 25%, transparent 25%),'
+        + 'linear-gradient(45deg, transparent 75%, #cfcfcf 75%),'
+        + 'linear-gradient(-45deg, transparent 75%, #cfcfcf 75%)',
+    backgroundSize: '8px 8px',
+    backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
+};
+
 /** Match fill as a LINK (Templates entities): two chain links, stroked. */
 const LinkGlyph = ({ size = 14 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
@@ -276,6 +288,21 @@ const CompactColorPicker = ({
     // entities), not a one-shot snapshot (canvas shapes): clicking it calls the
     // host, and it reads as chosen while `linked` is true.
     const matchIsToggle = isMatchFirst && typeof firstPreset.onToggle === 'function';
+    // The first grid cell MORPHS between see-through (Fill tab) and the Match
+    // fill link (Border tab) both ways (owner 2026-09-23: switching back "just
+    // snaps"). The link layer stays mounted and scales/fades, so it needs the
+    // last colour it showed while it fades out on the Fill tab.
+    const lastMatchRef = useRef({ color: '#ffffff', toggle: false });
+    if (isMatchFirst) lastMatchRef.current = { color: matchFillColor, toggle: matchIsToggle };
+    // Flip the layer on/off a frame AFTER it mounts, so even the first visit to
+    // the Border tab animates in rather than appearing already grown.
+    const [morphOn, setMorphOn] = useState(false);
+    useEffect(() => {
+        const next = Boolean(isMatchFirst && matchIsToggle);
+        if (typeof requestAnimationFrame !== 'function') { setMorphOn(next); return undefined; }
+        const frame = requestAnimationFrame(() => setMorphOn(next));
+        return () => cancelAnimationFrame(frame);
+    }, [isMatchFirst, matchIsToggle]);
     // 2026-05-25: When the parent supplies a fill opacity alongside the fill
     // colour, Match Fill snapshots both — border opacity locks to the fill
     // opacity in one click. Defaults to fully opaque when no opacity given.
@@ -731,18 +758,7 @@ const CompactColorPicker = ({
                     : isTransparent
                         ? transparentMode
                         : (!transparentMode && sameColour(localHex, cell));
-                const background = isTransparent
-                    ? {
-                        backgroundColor: '#ffffff',
-                        backgroundImage:
-                            'linear-gradient(45deg, #cfcfcf 25%, transparent 25%),'
-                            + 'linear-gradient(-45deg, #cfcfcf 25%, transparent 25%),'
-                            + 'linear-gradient(45deg, transparent 75%, #cfcfcf 75%),'
-                            + 'linear-gradient(-45deg, transparent 75%, #cfcfcf 75%)',
-                        backgroundSize: '8px 8px',
-                        backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
-                    }
-                    : { background: swatch };
+                const background = isTransparent ? CHECKER_FILL : { background: swatch };
                 const title = isMatchSlot
                     ? (matchIsToggle && firstPreset.linked ? 'Match fill (on) - click to unlink' : 'Match fill')
                     : (isTransparent ? 'Transparent' : cell);
@@ -768,9 +784,12 @@ const CompactColorPicker = ({
                             '--hero-swatch-ring': swatchRingColour(isTransparent ? '#ffffff' : swatch),
                         }}
                     >
-                        <span className="hero-swatch__fill" style={background}>
-                        {isMatchSlot && matchIsToggle && (
-                            <span className="hero-swatch__check" style={{ color: swatchCheckInk(swatch), lineHeight: 0 }}>
+                        <span className="hero-swatch__fill" style={isFirstCell && lastMatchRef.current.toggle ? CHECKER_FILL : background}>
+                        {isFirstCell && lastMatchRef.current.toggle && (
+                            <span
+                                className={`hero-swatch__morph${morphOn && isMatchSlot ? ' is-on' : ''}`}
+                                style={{ background: lastMatchRef.current.color, color: swatchCheckInk(lastMatchRef.current.color) }}
+                            >
                                 <LinkGlyph size={dense ? 16 : 17} />
                             </span>
                         )}
