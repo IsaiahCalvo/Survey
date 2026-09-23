@@ -671,6 +671,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         file.id = resolvedDoc.id;
         file.projectId = resolvedDoc.project_id ?? projectId ?? null;
         file.supabaseFilePath = resolvedDoc.file_path ?? null;
+        // The list's thumbnail cache key prefers content_sha256; carry it so the
+        // viewer refreshes the same cached thumbnail the list shows.
+        file.contentSha256 = resolvedDoc.content_sha256 ?? null;
         file.uploadStartTime = performance.now();
         if (openAfterUpload) onDocumentSelect(file, filePath);
 
@@ -847,6 +850,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       file.id = resolvedDoc.id;
       file.projectId = resolvedDoc.project_id ?? projectId ?? null;
       file.supabaseFilePath = resolvedDoc.file_path ?? null;
+      file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
       file.uploadStartTime = performance.now();
       if (openAfterUpload) onDocumentSelect(file);
 
@@ -1453,6 +1457,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         file.id = doc.id;  // Supabase document ID
         file.projectId = doc.projectId || doc.project_id;  // Project ID
         file.supabaseFilePath = filePath;  // Storage path
+        file.contentSha256 = doc.content_sha256 ?? null; // thumbnail cache key
         // Phase 35 Plan 03 — owner identity for the per-user delete authority
         // gate (resolved in PDFViewer's documentOwnerId useMemo).
         file.user_id = doc.user_id || doc.userId || null;
