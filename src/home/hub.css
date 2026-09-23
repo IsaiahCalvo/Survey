@@ -911,7 +911,28 @@
   }
 
   .survey-hub {
-    --mobile-header-h: 140px;
+    /* THE PHONE HEADER — two rows, nothing else (owner, 2026-09-22: "there's too
+       much blank space in this header").
+         row 1  ☰ · Title · count ·········· Select · avatar
+         row 2  search ································· gold action
+       It used to be three loose rows in a hardcoded 140px box, which left a
+       dead band above the divider and put the menu button, the title, the count
+       and the avatar on four different centre lines. The height is DERIVED from
+       the four numbers below so the box can never disagree with its contents
+       again: change a number and the padding-top of the list, the viewer-open
+       rules and the loading skeletons all follow. Every control in both rows is
+       one height — 28px, the same as the rest of the button system — and the
+       ones you tap keep a 44px transparent pad. */
+    --mobile-header-pad-x: 12px;
+    --mobile-header-pad-y: 14px;
+    --mobile-header-row-h: 28px;
+    --mobile-header-row-gap: 12px;
+    --mobile-header-h: calc(
+      (var(--mobile-header-pad-y) * 2)
+      + (var(--mobile-header-row-h) * 2)
+      + var(--mobile-header-row-gap)
+      + 1px /* the divider under the last row */
+    );
     --mobile-tabs-h: calc(56px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
     --mobile-list-card-h: 64px;
     /* The phone's gold action is the same PRIMARY button as the desktop's:
@@ -993,10 +1014,15 @@
     height: var(--mobile-header-h);
     min-height: var(--mobile-header-h);
     box-sizing: border-box;
-    align-items: flex-start;
+    /* One centre line per row: the menu button, the gold action and the avatar
+       are all 28px, so centring them makes the rows read as rows. The title and
+       the count opt back out to `baseline` below, because 22px type and 11.5px
+       type sitting on one baseline is what makes them look like one line
+       rather than two things that happen to be next to each other. */
+    align-items: center;
     flex-wrap: wrap;
-    gap: 10px;
-    padding: 14px 14px 10px;
+    gap: var(--mobile-header-row-gap) 8px;
+    padding: var(--mobile-header-pad-y) var(--mobile-header-pad-x);
     flex: none;
     background: var(--ink-900);
     border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
@@ -1014,6 +1040,7 @@
     order: 1;
     flex: none;
     min-width: 0;
+    align-self: baseline;
   }
 
   .survey-hub.hub-mobile-nav-rail .main {
@@ -1036,19 +1063,35 @@
     display: block;
   }
 
+  /* The menu button is a SECONDARY button in square form: the system's 28px
+     height and 6px radius, so it lines up with the gold action below it and the
+     avatar beside it instead of being a 32x30 one-off. */
   .survey-hub .mobile-rail-nav-trigger {
-    width: 32px;
-    height: 30px;
-    border: 1px solid var(--ink-500);
-    border-radius: 7px;
-    background: var(--ink-700);
+    width: var(--mobile-header-row-h);
+    height: var(--mobile-header-row-h);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: transparent;
     color: var(--bone-100);
     display: grid;
     place-items: center;
     padding: 0;
-    margin-right: -2px;
     font: inherit;
     cursor: pointer;
+    position: relative;
+  }
+
+  /* 28px painted, 44px tapped — the same trick every other control on this
+     header uses. It reaches up into the header's own top padding, never down
+     into the search row. */
+  .survey-hub .mobile-rail-nav-trigger::after {
+    content: '';
+    position: absolute;
+    inset-block: -8px;
+    inset-inline: -6px;
+    z-index: 1;
+    background: transparent;
+    pointer-events: auto;
   }
 
   .survey-hub .mobile-rail-nav-scrim {
@@ -1060,8 +1103,8 @@
 
   .survey-hub .mobile-rail-nav-panel {
     position: absolute;
-    top: calc(14px + 30px + 8px);
-    left: 14px;
+    top: calc(var(--mobile-header-row-h) + 8px);
+    left: 0;
     width: 208px;
     padding: 5px;
     background: var(--ink-700);
@@ -1121,6 +1164,7 @@
 
   .survey-hub h1.title {
     font-size: 22px;
+    font-weight: 700;
     line-height: 1.05;
     /* Spec guard (docs/design/design.md): no negative tracking on mobile. */
     letter-spacing: 0;
@@ -1141,13 +1185,11 @@
      header. Sit them inline after the title, one line, ellipsized — same
      placement as the Documents file count below. (Documents' own subtitle is
      the flattened .documents-mobile-summary and is excluded here.) */
-  .survey-hub .header-subtitle > span:not(.documents-mobile-summary):not(.projects-mobile-summary):not(.templates-mobile-summary) {
+  .survey-hub .header-subtitle > span:not(.documents-mobile-summary):not(.projects-mobile-summary):not(.templates-mobile-summary):not(.archive-mobile-summary) {
     order: 1;
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
-    align-self: flex-start;
-    margin-top: 8px;
-    margin-left: 10px;
+    align-self: baseline;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1165,6 +1207,10 @@
     display: contents !important;
   }
 
+  .survey-hub .archive-mobile-summary {
+    display: contents !important;
+  }
+
   .survey-hub .projects-desktop-summary {
     display: none !important;
   }
@@ -1173,24 +1219,37 @@
     display: none !important;
   }
 
+  /* The count is quiet grey text that shares the title's baseline — the fact,
+     not a heading of its own. It yields first when the row runs out of room.
+     It also takes the row's slack (flex-grow), which is what holds the avatar
+     against the right edge on a screen that has no Select — an open template,
+     say. When Select IS there its own auto margin claims the slack first, so
+     the count stays tight against the title. */
   .survey-hub .documents-file-count,
   .survey-hub .projects-mobile-count,
-  .survey-hub .templates-mobile-count {
+  .survey-hub .templates-mobile-count,
+  .survey-hub .archive-mobile-count {
     order: 1;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     min-width: 0;
-    align-self: flex-start;
-    margin-top: 8px;
-    margin-left: 10px;
+    align-self: baseline;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
+  /* ROW 2 — the work row. It holds the search field and, at its right end, the
+     one gold action; on Documents the sort control sits between them, and in a
+     drill-in the back button leads. A flex row (it was a fixed two-column grid)
+     so a row can carry two, three or four controls without a bespoke grid
+     template for each combination, and the search field simply takes what is
+     left. */
   .survey-hub .actions {
-    order: 3;
+    order: 4;
     width: 100%;
     margin-left: 0;
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
+    align-items: center;
     gap: 8px;
   }
 
@@ -1199,26 +1258,29 @@
   }
 
   .survey-hub .hub-mobile-search-actions {
-    display: grid !important;
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) 112px;
+    display: flex !important;
+    align-items: center;
     gap: 8px;
     width: 100%;
+    min-width: 0;
   }
 
-  .survey-hub .projects-mobile-search-actions.with-back,
-  .survey-hub .templates-mobile-search-actions.with-back {
-    grid-template-columns: auto minmax(0, 1fr);
+  /* The Search component's own box. It is the only unclassed <div> in the row,
+     and it is what absorbs the leftover width. */
+  .survey-hub .hub-mobile-search-actions > div {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto !important;
   }
 
-  .survey-hub .projects-mobile-search-actions.with-create,
-  .survey-hub .templates-mobile-search-actions.with-create {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .survey-hub .hub-mobile-search-actions > button,
+  .survey-hub .hub-mobile-search-actions > span {
+    flex: none;
   }
 
   .survey-hub .projects-mobile-search-actions .projects-mobile-back-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-back-button {
-    height: 28px;
+    height: var(--mobile-header-row-h);
     padding: 0 9px;
   }
 
@@ -1259,13 +1321,14 @@
     pointer-events: auto;
   }
 
-  /* Header actions and the lower sort/filter row are only ~38px apart. Keep
-     each target at 44px without letting their transparent hit layers overlap:
-     primary actions grow upward, while the sort control grows downward. */
+  /* Row 2's controls take their 44px out of the header's own bottom padding
+     rather than upward into row 1, where the Select word's pad already hangs
+     8px below its box. 4px up + 28px painted + 12px down = 44px, and nothing
+     reaches past the divider into the first card. */
   .survey-hub .hub-mobile-primary-action::after,
   .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
   .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after {
-    inset-block: -16px 0;
+    inset-block: -4px -12px;
   }
 
   .survey-hub .documents-mobile-filter::after {
@@ -1274,19 +1337,20 @@
 
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-create-button {
-    height: 28px;
-    width: 112px;
-    min-width: 112px;
+    height: var(--mobile-header-row-h);
     padding: 0 10px;
     justify-content: center;
     white-space: nowrap;
   }
 
+  /* The gold action sizes to its own label now. It was pinned to 112px, which
+     left "Upload" swimming in 40px of empty button and stole width the search
+     field needed on a 390px phone. */
   .survey-hub .hub-mobile-primary-action {
-    width: 112px;
-    min-width: 112px;
-    height: 28px;
-    padding-inline: 8px;
+    width: auto;
+    min-width: 0;
+    height: var(--mobile-header-row-h);
+    padding-inline: 10px;
     font-size: var(--hub-mobile-primary-action-font-size);
     justify-content: center;
     flex-wrap: nowrap;
@@ -1302,9 +1366,13 @@
     white-space: nowrap;
   }
 
+  /* "Select" lives at the RIGHT END OF ROW 1, just left of the avatar — the two
+     controls that act on the whole screen, together. (It used to own a third
+     row of its own, which is most of what made the header feel loose.) The row
+     paints nothing: it is a 44px tap box pulled back to the 28px row height. */
   .survey-hub .mobile-header-select-row {
-    order: 4;
-    width: 100%;
+    order: 2;
+    margin-left: auto;
     height: 44px;
     margin-block: -8px;
     padding-block: 8px;
@@ -1316,6 +1384,45 @@
     overflow-y: hidden;
     white-space: nowrap;
     scrollbar-width: none;
+  }
+
+  /* SELECT MODE. Done stays exactly where Select was, and the bulk actions take
+     over row 2 from the search field — the header never changes height, and the
+     control you just tapped never moves out from under your thumb. Flattening
+     the row and (on Documents) its inner scroller lets one child sit in row 1
+     while its sibling becomes row 2. */
+  .survey-hub .header:has(.mobile-header-select-actions) .mobile-header-select-row,
+  .survey-hub .header:has(.mobile-header-select-actions) .documents-mobile-select-main {
+    /* !important because Archive's row carries an inline display for the
+       desktop, exactly as the four *-mobile-summary wrappers above do. */
+    display: contents !important;
+  }
+
+  .survey-hub .header:has(.mobile-header-select-actions) .actions {
+    display: none;
+  }
+
+  .survey-hub .header:has(.mobile-header-select-actions) .mobile-header-select-button {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .survey-hub .header .mobile-header-select-actions {
+    order: 4;
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    margin-block: -8px !important;
+    margin-left: 0 !important;
+    padding-block: 8px;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .survey-hub .header .mobile-header-select-actions::-webkit-scrollbar {
+    display: none;
   }
 
   /* "Select" on the phone is the TERTIARY button, nothing else: the gold label,
@@ -1350,10 +1457,10 @@
     display: none;
   }
 
+  /* Documents' select row no longer shares its line with the sort control (that
+     moved down to row 2, beside the search field it belongs with), so this is
+     just the select row again. */
   .survey-hub .documents-mobile-select-sort-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 112px;
-    gap: 8px;
     overflow: visible;
   }
 
@@ -1375,10 +1482,16 @@
     display: none;
   }
 
+  /* The sort control sits in row 2 between the search field and Upload: all
+     three narrow or act on the list you are looking at. It sizes to its label
+     ("Last edited", "File", "Size") with a cap, so a long label never squeezes
+     the search field below a usable width. */
   .survey-hub .documents-mobile-sort-control {
     display: flex;
     align-items: center;
-    width: 112px;
+    flex: 0 1 auto;
+    width: auto;
+    max-width: 112px;
     height: 44px;
     margin-block: -8px;
     box-sizing: border-box;
@@ -1392,8 +1505,8 @@
   }
 
   .survey-hub .documents-mobile-filter {
-    width: 112px;
-    min-width: 112px;
+    width: 100%;
+    min-width: 84px;
     height: 44px;
     padding: 0;
     border: 0;
@@ -1406,7 +1519,7 @@
   }
 
   .survey-hub .documents-mobile-filter-visual {
-    width: 112px;
+    width: 100%;
     height: 28px;
     box-sizing: border-box;
     padding: 5px 10px;
@@ -1588,14 +1701,16 @@
     display: none;
   }
 
+  /* The avatar is the last thing in row 1, in the flow — it used to be absolutely
+     pinned to the header's top-right corner, which is why it sat on its own
+     centre line and why anything else on that row had to be positioned around
+     it with hardcoded offsets. */
   .survey-hub .mobile-profile {
     display: block;
-    order: 2;
+    order: 3;
     flex: none;
     max-width: none;
-    position: absolute;
-    top: 14px;
-    right: 14px;
+    position: relative;
     z-index: 2;
   }
 
@@ -1605,11 +1720,24 @@
     margin-top: 0;
   }
 
+  /* 28px painted so the avatar matches the menu button and the gold action on
+     one centre line; a transparent pad restores the 44px target. */
   .survey-hub .mobile-profile .who > button {
-    width: 44px !important;
-    height: 44px;
+    width: 28px !important;
+    height: 28px;
     padding: 0 !important;
     justify-content: center;
+    position: relative;
+  }
+
+  .survey-hub .mobile-profile .who > button::after {
+    content: '';
+    position: absolute;
+    inset-block: -8px;
+    inset-inline: -8px;
+    z-index: 1;
+    background: transparent;
+    pointer-events: auto;
   }
 
   .survey-hub .mobile-profile .who > button.profile-signin {
@@ -2829,19 +2957,18 @@
     font-style: italic;
   }
 
-  .survey-hub .templates-mobile-save-row {
-    order: 1;
+  /* Cancel / Save sit at the right end of ROW 2, in the same place the gold
+     "New template" occupies when nothing is being edited — one screen, one spot
+     for its gold action. They used to be absolutely positioned against the
+     header's top-right corner with a hardcoded 62px offset for the avatar. */
+  .survey-hub .templates-mobile-save-row,
+  .survey-hub .hub-mobile-save-row {
     flex: none;
-    align-self: flex-start;
-    position: absolute;
-    top: 19px;
-    right: 62px;
     margin: 0;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 4px;
-    z-index: 2;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   /* The phone's Cancel / Save are the same SECONDARY + PRIMARY buttons as the
@@ -3610,23 +3737,44 @@
     min-width: 0;
   }
 
-  /* Archive's header actions mirror .documents-mobile-search-row exactly. */
+  /* Archive's row 2 is Documents' row 2: the search field first, then the sort
+     control at the right end. (It used to lead with the sort button, so the one
+     screen that shares this header started its rows in a different place.) */
   .survey-hub .archive-mobile-search-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    display: flex;
+    align-items: center;
     gap: 8px;
     position: relative;
     min-width: 0;
+    width: 100%;
+  }
+
+  .survey-hub .archive-mobile-search-row > div:not(.archive-sort-menu) {
+    order: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto !important;
+  }
+
+  /* The menu hangs off the control that opens it, which is now the right end of
+     the row. */
+  .survey-hub .archive-mobile-search-row > .archive-sort-menu {
+    left: auto;
+    right: 0;
+  }
+
+  /* Archive's labels run long ("Most recently archived"), so this control takes
+     its natural width — capped at half the row so a long label can never starve
+     the search field. */
+  .survey-hub .archive-mobile-search-row > .archive-filter-button {
+    order: 2;
+    flex: 0 1 auto;
+    height: var(--mobile-header-row-h);
+    max-width: 50%;
   }
 
   .survey-hub .archive-desktop-search {
     display: none;
-  }
-}
-
-@media (max-width: 420px) {
-  .survey-hub .actions {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 

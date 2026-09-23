@@ -20,12 +20,16 @@ const LoadingHeader = ({ tab }) => {
     </div>
   );
 
+  /* The skeleton mirrors the real header row for row, at the same heights, so
+     nothing shifts when the data arrives: row 2 is the search field, then (on
+     Documents) the sort control, then the gold action. */
   if (tab === 'documents') {
     return (
       <>
         <div className="documents-mobile-search-actions hub-mobile-search-actions hub-loading-mobile-actions">
-          <Block style={{ width: '100%', height: 28 }} />
-          <Block style={{ width: 112, height: 28 }} />
+          <div style={{ flex: '1 1 0', minWidth: 0 }}><Block style={{ width: '100%', height: 28 }} /></div>
+          <Block style={{ width: 96, height: 28 }} />
+          <Block style={{ width: 78, height: 28 }} />
         </div>
         {desktopSearch('documents-desktop-search', 'Search documents')}
         <Block className="hub-loading-primary-action documents-desktop-upload" style={{ width: 76, height: 28 }} />
@@ -34,14 +38,14 @@ const LoadingHeader = ({ tab }) => {
   }
 
   const mobileClass = tab === 'projects'
-    ? 'projects-mobile-search-actions hub-mobile-search-actions with-create'
-    : 'templates-mobile-search-actions hub-mobile-search-actions with-create';
+    ? 'projects-mobile-search-actions hub-mobile-search-actions'
+    : 'templates-mobile-search-actions hub-mobile-search-actions';
   const desktopClass = tab === 'projects' ? 'projects-desktop-search' : 'templates-desktop-search';
   return (
     <>
       <div className={`${mobileClass} hub-loading-mobile-actions`}>
-        <Block style={{ width: '100%', height: 28 }} />
-        <Block style={{ width: tab === 'projects' ? 104 : 112, height: 28 }} />
+        <div style={{ flex: '1 1 0', minWidth: 0 }}><Block style={{ width: '100%', height: 28 }} /></div>
+        <Block style={{ width: tab === 'projects' ? 96 : 104, height: 28 }} />
       </div>
       {desktopSearch(desktopClass, tab === 'projects' ? 'Search projects' : 'Search templates')}
     </>
@@ -58,9 +62,6 @@ const LoadingSubtitle = ({ tab }) => {
             <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
               Select<Block style={{ width: 34, height: 9 }} />
             </button>
-          </span>
-          <span className="documents-mobile-sort-control">
-            <Block style={{ width: 112, height: 28 }} />
           </span>
         </span>
       </span>

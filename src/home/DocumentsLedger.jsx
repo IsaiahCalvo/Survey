@@ -264,7 +264,7 @@ export default function DocumentsLedger({
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> files</span>
-      <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row" ref={mobileSortRef}>
+      <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
         <span className="documents-mobile-select-main">
           <button
             className="mobile-header-select-button hub-btn hub-btn--tertiary"
@@ -286,39 +286,47 @@ export default function DocumentsLedger({
             );
           })()}
         </span>
-        <span className="documents-mobile-sort-control">
-          <button
-            className="btn documents-mobile-filter"
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={mobileSortOpen}
-            onClick={() => setMobileSortOpen((open) => !open)}
-          >
-            <span className="documents-mobile-filter-visual">
-              <Icon name="filter" size={12} />
-              <span>{activeSortLabel}</span>
-            </span>
-          </button>
-          {mobileSortOpen && (
-            <div className="documents-mobile-sort-menu" role="menu">
-              {sortOptions.map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="menuitem"
-                  className={sortKey === key ? 'active' : ''}
-                  onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
-                >
-                  <span>{label}</span>
-                  <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </span>
       </span>
     </span>
     </>
+  );
+
+  /* The sort control. It belongs with the search field in the header's second
+     row — both narrow the list you are looking at — so it renders inside the
+     actions slot below rather than beside "Select" on a row of its own. Its
+     label IS the live sort, which is why it keeps a visible label instead of
+     collapsing to a glyph. */
+  const mobileSortControl = (
+    <span className="documents-mobile-sort-control" ref={mobileSortRef}>
+      <button
+        className="btn documents-mobile-filter"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={mobileSortOpen}
+        onClick={() => setMobileSortOpen((open) => !open)}
+      >
+        <span className="documents-mobile-filter-visual">
+          <Icon name="filter" size={12} />
+          <span>{activeSortLabel}</span>
+        </span>
+      </button>
+      {mobileSortOpen && (
+        <div className="documents-mobile-sort-menu" role="menu">
+          {sortOptions.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="menuitem"
+              className={sortKey === key ? 'active' : ''}
+              onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
+            >
+              <span>{label}</span>
+              <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 
   /* KAL-73: cloud uploads run in the background after the picker closes; the
@@ -331,6 +339,7 @@ export default function DocumentsLedger({
     <>
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
+        {mobileSortControl}
         <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       </div>
       <div className="documents-desktop-search">

@@ -256,20 +256,25 @@ export default function ArchiveScreen({
   /* Bulk actions live in the header subtitle, exactly like Documents, so the
      ledger itself stays a pure list — and, like Documents, they only appear
      once the user has turned selection on. */
+  /* The classes are the shared phone-header ones (see hub.css): on a phone the
+     count sits on the title's baseline in row 1, Select sits at the right end of
+     that row beside the avatar, and the bulk actions take over row 2. Archive
+     used to be the one screen that shared this header without sharing its
+     layout, so its count and buttons ran off the end of the title line. */
   const subtitle = (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="archive-mobile-count"><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
+      <span className="archive-mobile-select-row mobile-header-select-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <button
           onClick={() => {
             const next = !selectMode;
             setSelectMode(next);
             if (!next) setSelectedIds(new Set());
           }}
-          className="hub-btn hub-btn--tertiary"
+          className="mobile-header-select-button hub-btn hub-btn--tertiary"
         >{selectMode ? 'Done' : 'Select'}</button>
         {selectMode && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+          <span className="mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
             <button
               onClick={() => setSelectedIds((prev) => nextSelectAll(prev, rows))}
               className="hub-btn"

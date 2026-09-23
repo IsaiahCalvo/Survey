@@ -1839,14 +1839,13 @@ export default function TemplatesEditor({
         <span className="templates-mobile-count">
           <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
         </span>
-        {mobileTemplateOpen ? saveRow('templates-mobile-save-row') : null}
         {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
       </span>
     </>
   );
   const actions = (
     <>
-      <div className={`templates-mobile-search-actions hub-mobile-search-actions ${mobileTemplateOpen ? 'with-back' : 'with-create'}`}>
+      <div className="templates-mobile-search-actions hub-mobile-search-actions">
         {mobileTemplateOpen ? (
           <button
             type="button"
@@ -1863,6 +1862,11 @@ export default function TemplatesEditor({
           width="100%"
           dismissActionSelector={mobileTemplateOpen ? '[data-search-dismiss-action]' : ''}
         />
+        {/* Cancel / Save take the gold action's place at the right end of this
+            row while the open template has unsaved edits — the same slot "New
+            template" holds on the list, so the header's one gold button never
+            moves. */}
+        {mobileTemplateOpen ? saveRow('templates-mobile-save-row') : null}
         {!mobileTemplateOpen ? (
           <button className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={createTemplate}>
             <Icon name="plus" size={12} />New template

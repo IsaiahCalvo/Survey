@@ -729,7 +729,7 @@ export default function ProjectsFolderTree({
 
   const actions = (
     <>
-      <div className={`projects-mobile-search-actions hub-mobile-search-actions ${mobileDrillProject ? 'with-back' : 'with-create'}`}>
+      <div className="projects-mobile-search-actions hub-mobile-search-actions">
         {mobileDrillProject ? (
           <button
             type="button"
@@ -745,6 +745,10 @@ export default function ProjectsFolderTree({
           value={mobileDrillProject ? fileSearch : search}
           onChange={mobileDrillProject ? setFileSearch : setSearch}
         />
+        {/* Cancel / Save take the gold action's place at the right end of this
+            row while a project name is being edited — the same slot "New
+            project" holds otherwise. */}
+        {projectSaveRow('hub-mobile-save-row')}
         {!mobileDrillProject ? (
           <button className="btn primary projects-mobile-create-button hub-mobile-primary-action" onClick={handleNewProject}>
             <Icon name="plus" size={12} />New project
@@ -864,7 +868,6 @@ export default function ProjectsFolderTree({
         <span className="projects-mobile-count">
           <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject ? 'files' : 'projects'}
         </span>
-        {projectSaveRow('hub-mobile-save-row')}
         {mobileHeaderSelectRow}
       </span>
     </>
