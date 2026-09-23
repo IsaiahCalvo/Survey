@@ -669,20 +669,13 @@ const PDFSidebar = React.forwardRef(({
                 mobileMode={mobileMode}
                 mobilePanelVisible={mobileMode && activeTab === 'spaces' && !isCollapsed}
                 onMobilePanelMetricsChange={handleMobileSpacesMetricsChange}
+                // UX 2026-09-23 (owner: phone Spaces panel polished): Exit is a
+                // quiet red word at the end of the list, not a footer band.
+                onExitSpacesAction={mobileMode ? () => {
+                  onExitSpaceMode?.();
+                  closePanel();
+                } : null}
               />
-              {mobileMode && (
-                <div className="mobile-spaces-exit-footer">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onExitSpaceMode?.();
-                      closePanel();
-                    }}
-                  >
-                    Exit Spaces / Regions
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Version History Panel */}
