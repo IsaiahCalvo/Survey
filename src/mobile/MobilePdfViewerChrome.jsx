@@ -199,9 +199,21 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
   if (typeof document === 'undefined') return null;
   return createPortal(
     <>
+      {/* data-rich-text-toolbar (2026-09-23, owner: tapping the rainbow in the
+          Font color sheet closed the whole sheet): this sheet portals to
+          document.body, outside the text strip that opened it, so without
+          TextEditOverlay's opt-out the FIRST touch anywhere in it - the rainbow,
+          a swatch, the hex field, even the title - landed on the editor's
+          document-level pointerdown listener, which commits and closes the text
+          box. Closing the editor takes its strip and this sheet down with it,
+          so the tap never reached the picker. The backdrop carries it too: a
+          tap there closes only the sheet and leaves the text box open, the
+          same as the text settings panel's backdrop. In every other colour
+          sheet no text box is open, so the attribute changes nothing there. */}
       <button
         type="button"
         className="mobile-pdf-colorpicker-backdrop"
+        data-rich-text-toolbar
         aria-label={`Close ${title || 'color'} picker`}
         onClick={onClose}
       />
@@ -213,7 +225,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
           way. The panel inside it is the app's ONE shared CompactColorPicker
           (project rule) — its presets, grid, gradient and opacity row belong to
           the picker pass, and this only gives them the sheet to sit in. */}
-      <div className="mobile-pdf-colorpicker-surface" role="dialog" aria-label={`${title || 'Color'} picker`}>
+      <div className="mobile-pdf-colorpicker-surface" data-rich-text-toolbar role="dialog" aria-label={`${title || 'Color'} picker`}>
         <div className="mobile-pdf-sheet__handle" />
         <header className="mobile-pdf-tool-sheet__header">
           <strong>{title || 'Color'}</strong>
