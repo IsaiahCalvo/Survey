@@ -184,13 +184,18 @@ const ProjectsSkeleton = () => (
     </div>
     <div className="projects-mobile-layout">
       <div className="projects-mobile-browser projects-mobile-drill-view">
-        {MOBILE_ROWS.map((row) => (
-          <div key={row} className="projects-mobile-folder-row drill reorderable hub-loading-mobile-row">
-            <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-            <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '64%' : '80%', height: 11 }} /><Block style={{ width: '48%', height: 8 }} /></span>
-            <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
-          </div>
-        ))}
+        {/* The rows sit in a panel here for the same reason the real list does:
+            one card, hairline-parted lines. The real list gets its panel from
+            the reorder wrapper, which a skeleton has no use for. */}
+        <div className="hub-loading-mobile-panel">
+          {MOBILE_ROWS.map((row) => (
+            <div key={row} className="projects-mobile-folder-row drill reorderable hub-loading-mobile-row">
+              <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
+              <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '64%' : '80%', height: 11 }} /><Block style={{ width: '48%', height: 8 }} /></span>
+              <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   </div>
@@ -220,13 +225,15 @@ const TemplatesSkeleton = () => (
       </div>
       <div className="templates-mobile-layout">
         <div className="templates-mobile-browser">
-          {MOBILE_ROWS.map((row) => (
-            <div key={row} className="templates-mobile-row reorderable hub-loading-mobile-row">
-              <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-              <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '66%' : '82%', height: 11 }} /><Block style={{ width: '50%', height: 8 }} /></span>
-              <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
-            </div>
-          ))}
+          <div className="hub-loading-mobile-panel">
+            {MOBILE_ROWS.map((row) => (
+              <div key={row} className="templates-mobile-row reorderable hub-loading-mobile-row">
+                <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
+                <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '66%' : '82%', height: 11 }} /><Block style={{ width: '50%', height: 8 }} /></span>
+                <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

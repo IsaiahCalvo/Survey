@@ -3622,6 +3622,239 @@
   .survey-hub .archive-desktop-search {
     display: none;
   }
+
+  /* ==========================================================================
+     ONE PANEL PER LIST (owner, 2026-09-22)
+     --------------------------------------------------------------------------
+     "On desktop these look like line items in one unified panel; on mobile they
+     look like individual row items. I like the desktop style more. Same goes
+     for Projects and Templates."
+
+     The desktop ledger is a single .card — one border, one radius, one surface
+     — and its rows are line items inside it, parted by a 1px --border hairline,
+     with the selected row taking a --surface-3 step plus a 2px gold left edge
+     (the row style in DocumentsLedger.jsx). The phone now builds that same
+     object: the LIST is the card, the rows are lines in it. Documents, Projects
+     (the folder list and the drilled-in file list), Templates (the template
+     list and the editor's category and entity rows) and Archive all read off
+     these rules, so the five lists cannot drift apart again.
+
+     WHY THIS BLOCK IS LAST. It unwinds the per-card border, radius and
+     background declared for each row above, and being last it does that without
+     !important. The resting fills here still lose to the press states, because
+     a selector carrying :active outranks the same selector without it.
+     ========================================================================== */
+
+  /* THE PANEL. Two shapes reach it: a list container that is already its own
+     element (Documents, Archive, the loading skeletons), and the flex box
+     SortableRearrangeList renders, which is the row group for every reorderable
+     list. Both are the card. */
+  .survey-hub .documents-mobile-list,
+  .survey-hub .archive-mobile-list,
+  .survey-hub .hub-loading-mobile-panel,
+  .survey-hub .projects-mobile-drill-view > [data-sortable-rearrange-list],
+  .survey-hub .projects-mobile-file-list > [data-sortable-rearrange-list],
+  .survey-hub .templates-mobile-browser > [data-sortable-rearrange-list] {
+    background: var(--ink-700);
+    border: 1px solid var(--ink-500);
+    border-radius: 10px;
+    /* The panel clips, so a selected or pressed row at either end stops at the
+       rounded corner instead of squaring it off, and no row needs a radius of
+       its own. Nothing that has to escape the list lives inside it: every row
+       menu is position: fixed at the screen root, and a dragged row is clamped
+       to the list box by the reorder modifier. */
+    overflow: hidden;
+    /* SortableRearrangeList writes its `gap` as an inline style, which only
+       !important outranks. Rows are parted by a hairline now, not by space. */
+    gap: 0 !important;
+  }
+
+  /* THE PANEL RUNS TO THE FOOT OF THE SCREEN, the way the desktop card does,
+     on every tab. Documents and Archive already stood a screen tall; Projects
+     and Templates stopped under their last row, so with the panel now visible
+     the four tabs would have read as two different objects. `flex: 1 0 auto`
+     takes the space that is left over and never squeezes the rows, and a `1fr`
+     track grows but never shrinks below its content — so a row can never be
+     caught by the panel's clip. Each rule names the shape it stretches, which
+     leaves the empty states and the dashed "no files" card at their own size. */
+  .survey-hub .projects-mobile-drill-view:has(> [data-sortable-rearrange-list]),
+  .survey-hub .projects-mobile-drill-view:has(> .projects-mobile-file-list),
+  .survey-hub .projects-mobile-drill-view:has(> .hub-loading-mobile-panel),
+  .survey-hub .templates-mobile-browser:has(> [data-sortable-rearrange-list]),
+  .survey-hub .templates-mobile-browser:has(> .hub-loading-mobile-panel) {
+    flex: 1 0 auto;
+    min-height: 0;
+  }
+
+  .survey-hub .projects-mobile-drill-view:has(> [data-sortable-rearrange-list]),
+  .survey-hub .projects-mobile-drill-view:has(> .hub-loading-mobile-panel),
+  .survey-hub .templates-mobile-browser:has(> [data-sortable-rearrange-list]),
+  .survey-hub .templates-mobile-browser:has(> .hub-loading-mobile-panel) {
+    grid-template-rows: 1fr;
+  }
+
+  /* Drilled into a project: the name and its buttons keep their own height and
+     the file panel takes the rest. */
+  .survey-hub .projects-mobile-drill-view:has(> .projects-mobile-file-list) {
+    grid-template-rows: auto 1fr;
+  }
+
+  .survey-hub .projects-mobile-file-list {
+    align-content: start;
+  }
+
+  .survey-hub .projects-mobile-file-list:has(> [data-sortable-rearrange-list]) {
+    grid-template-rows: 1fr;
+  }
+
+  /* A row is a line in the panel: no edge, no corner, no fill of its own. */
+  .survey-hub .mobile-doc-card,
+  .survey-hub .archive-mobile-card,
+  .survey-hub .projects-mobile-folder-row,
+  .survey-hub .projects-mobile-file-row,
+  .survey-hub .templates-mobile-row,
+  .survey-hub .templates-mobile-category-card,
+  .survey-hub .templates-mobile-entity-row {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  /* THE HAIRLINE, on a list whose panel stands a full screen tall. The line
+     under the LAST row is kept on purpose: it closes the list the way the
+     desktop ledger closes it, and it can never collide with the panel's own
+     bottom edge, which is far below. */
+  .survey-hub .documents-mobile-list > .mobile-doc-card,
+  .survey-hub .archive-mobile-list > .archive-mobile-card,
+  .survey-hub .hub-loading-mobile-panel > .hub-loading-mobile-row {
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* THE HAIRLINE on a panel that hugs its rows. It goes on the wrapper
+     SortableRearrangeRow renders, not on the row, because the row is an only
+     child and could never find the end of the list. The last line is dropped so
+     it does not double the panel's own bottom edge. (While a finger is actually
+     dragging, the row that LOOKS last is a different one for a moment, so one
+     1px line sits above the bottom edge until the finger lifts.) */
+  .survey-hub .projects-mobile-drill-view > [data-sortable-rearrange-list] > [data-sortable-rearrange-item],
+  .survey-hub .projects-mobile-file-list > [data-sortable-rearrange-list] > [data-sortable-rearrange-item],
+  .survey-hub .templates-mobile-browser > [data-sortable-rearrange-list] > [data-sortable-rearrange-item] {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .survey-hub .projects-mobile-drill-view > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child,
+  .survey-hub .projects-mobile-file-list > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child,
+  .survey-hub .templates-mobile-browser > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child {
+    border-bottom: 0;
+  }
+
+  /* THE TEMPLATES EDITOR. Its category rows and its entity rows already sit in
+     a card — the section panel and the entities sheet — so they become a flush
+     group inside it rather than a second card. Every row takes a line above it,
+     including the first, which parts the group from the Select control over it;
+     nothing keys off first or last, so a drag cannot disturb the ruling. */
+  .survey-hub .templates-mobile-categories-section > [data-sortable-rearrange-list] {
+    /* Reach the section's own edges so a line runs the full width. The section
+       pads 10px and each row pads 10px, so the text column does not move. */
+    margin: 0 -10px -10px;
+    gap: 0 !important;
+  }
+
+  .survey-hub .templates-mobile-entity-panel {
+    /* Side padding moves off the panel so the row lines reach the sheet's
+       edges. This panel scrolls, so it cannot be widened with a negative
+       margin the way the categories section is — the heading and the Select
+       control take the 10px back below instead. */
+    padding: 10px 0 0;
+  }
+
+  .survey-hub .templates-mobile-entity-panel > .templates-mobile-section-head,
+  .survey-hub .templates-mobile-entity-panel > .templates-mobile-select-inline {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .survey-hub .templates-mobile-entity-panel > [data-sortable-rearrange-list] {
+    gap: 0 !important;
+  }
+
+  .survey-hub .templates-mobile-categories-section > [data-sortable-rearrange-list] > [data-sortable-rearrange-item],
+  .survey-hub .templates-mobile-entity-panel > [data-sortable-rearrange-list] > [data-sortable-rearrange-item] {
+    border-top: 1px solid var(--border);
+  }
+
+  /* The colour editor opens under the entity row it belongs to, so it reads as
+     part of that row and not as a card that drifted in. */
+  .survey-hub .templates-mobile-entity-panel .templates-mobile-color-panel {
+    margin-top: 0;
+    border-width: 0;
+    border-radius: 0;
+    background: var(--ink-800);
+  }
+
+  /* SELECTED — the desktop row, exactly: a surface step and a 2px gold edge
+     down the left. Drawn with an inset shadow so the row keeps its size and so
+     the cue survives the panel's clip at the top and bottom corners. */
+  .survey-hub .mobile-doc-card.is-selected,
+  .survey-hub .archive-mobile-card.is-selected,
+  .survey-hub .projects-mobile-folder-row.is-selected,
+  .survey-hub .projects-mobile-file-row.is-selected,
+  .survey-hub .templates-mobile-row.is-selected,
+  .survey-hub .templates-mobile-category-row.is-selected,
+  .survey-hub .templates-mobile-entity-row.is-selected {
+    background: var(--surface-3);
+    box-shadow: inset 2px 0 var(--gold);
+  }
+
+  /* A pointer at this width is a narrow desktop window, so it gets a hover; a
+     phone has none and gets the press below instead. */
+  @media (hover: hover) and (pointer: fine) {
+    .survey-hub .mobile-doc-card:not(.is-selected):hover,
+    .survey-hub .archive-mobile-card:not(.is-selected):hover,
+    .survey-hub .projects-mobile-folder-row:not(.is-selected):hover,
+    .survey-hub .projects-mobile-file-row:not(.is-selected):hover,
+    .survey-hub .templates-mobile-row:not(.is-selected):hover,
+    .survey-hub .templates-mobile-category-row:not(.is-selected):hover,
+    .survey-hub .templates-mobile-entity-row:not(.is-selected):hover {
+      background: var(--hover);
+    }
+  }
+
+  /* PRESSED. The rows that already answered a finger keep their rule further up
+     the file; these three never had one. */
+  .survey-hub .archive-mobile-card:active,
+  .survey-hub .templates-mobile-category-row:active,
+  .survey-hub .templates-mobile-entity-row:active {
+    background: var(--pressed);
+    transition: background 90ms ease-out;
+  }
+
+  /* ARCHIVE's row carried the card's 10px pad on all four sides, which is what
+     made it 74px against every other list's 64px. As a line item it keeps the
+     side inset and drops the rest, so a mixed Archive list beats in time with
+     Documents. Its child documents still hang under the row they belong to. */
+  .survey-hub .archive-mobile-card {
+    padding: 4px 10px;
+  }
+
+  .survey-hub .archive-mobile-card:has(.archive-mobile-children) {
+    padding-bottom: 10px;
+  }
+
+  /* The entity row asks for 36px like the category row beside it, but its colour
+     button painted a 44px box and pushed the row to 44px — measured at 390x844.
+     It now paints 36px and keeps a 44px finger target through a pad, which is
+     the same trick the grip and the More button already use just above. */
+  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
+    position: relative;
+    height: 36px;
+  }
+
+  .survey-hub .templates-mobile-entity-row > button[title="Edit color"]::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
+  }
 }
 
 @media (max-width: 420px) {

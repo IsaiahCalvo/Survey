@@ -2630,7 +2630,10 @@ export default function TemplatesEditor({
                               data-drag-rearrange-row
                               role="button"
                               tabIndex={0}
-                              className="templates-mobile-row reorderable"
+                              /* Selected takes the panel's cue: a --surface-3
+                                 step and a 2px gold left edge, matching the
+                                 desktop template list. */
+                              className={`templates-mobile-row reorderable${tplEdit && isSel ? ' is-selected' : ''}`}
                               onClick={() => {
                                 if (tplEdit) {
                                   toggleTplSel(t.id);
@@ -2799,7 +2802,7 @@ export default function TemplatesEditor({
                             <div className="templates-mobile-category-card">
                               <div
                                 data-drag-rearrange-row
-                                className="templates-mobile-category-row"
+                                className={`templates-mobile-category-row${catEdit && isSel ? ' is-selected' : ''}`}
                                 onClick={() => { if (catEdit) toggleCatSel(c.id); }}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
@@ -2956,7 +2959,7 @@ export default function TemplatesEditor({
                         <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <>
-                              <div data-drag-rearrange-row className="templates-mobile-entity-row">
+                              <div data-drag-rearrange-row className={`templates-mobile-entity-row${entityEdit && isSel ? ' is-selected' : ''}`}>
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
                                   type="button"
@@ -2975,9 +2978,15 @@ export default function TemplatesEditor({
                                 {entityEdit ? (
                                   <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : (
+                                  /* Named "More" like every other row menu: it
+                                     reads out loud now, and the app-wide rule
+                                     for a More button paints it 36px with a
+                                     44px pad, which is what holds the entity
+                                     row to the 36px the owner asked for. */
                                   <button
                                     type="button"
                                     className="templates-mobile-more"
+                                    title="More" aria-label="More"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const rect = e.currentTarget.getBoundingClientRect();

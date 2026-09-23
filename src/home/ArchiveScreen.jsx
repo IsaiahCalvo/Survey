@@ -888,10 +888,15 @@ export default function ArchiveScreen({
        behind a collapsed chevron. */
     const expanded = isRowExpanded(expandedIds, item.id) || matchedOnChildOnly(item, search);
     const isProject = item.type === 'project' && item.childCount > 0;
+    /* UX 2026-09-22: the row is a line item in the one Archive panel, so its
+       selected look is the panel's — a --surface-3 step and a 2px gold left
+       edge, set in hub.css. It used to be an inline border and fill, which
+       outranked every class rule and drew a gold box all the way round the
+       card; the owner's ruling is a single edge, never a box. */
     return (
       <div
         key={`mobile-${item.id}`}
-        className="archive-mobile-card"
+        className={`archive-mobile-card${checked ? ' is-selected' : ''}`}
         role="button"
         tabIndex={0}
         onClick={() => { if (selectMode) toggleRow(item.id); }}
@@ -899,10 +904,6 @@ export default function ArchiveScreen({
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
           if (selectMode) toggleRow(item.id);
-        }}
-        style={{
-          borderColor: checked ? 'var(--gold)' : 'var(--ink-500)',
-          background: checked ? 'var(--ink-600)' : 'var(--ink-700)',
         }}
       >
         {/* THREE grid children, ALWAYS — never conditionally rendered.
