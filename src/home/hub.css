@@ -3933,6 +3933,9 @@
     /* Reach the section's own edges so a line runs the full width. The section
        pads 10px and each row pads 10px, so the text column does not move. */
     margin: 0 -10px -10px;
+    /* The inline width:100% kept the list its old width, so stepping left 10px
+       left a 20px gap on the right (owner 2026-09-23). Widen by both steps. */
+    width: calc(100% + 20px) !important;
     gap: 0 !important;
   }
 
