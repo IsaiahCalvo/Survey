@@ -4126,20 +4126,22 @@
 .survey-hub .hub-side-list {
   gap: 0 !important;
 }
-/* Same object as the phone list (owner 2026-09-23: "make it look the same
-   as it does on mobile"): one panel with its own edge, fill and 10px corners,
-   rows flat inside it and parted by hairlines, the last row closed by a line
-   that the panel clips away when the rows fill it. */
+/* Owner 2026-09-23: the rows run to the column's own edges — no box inside
+   the box, no side lines. Only the horizontal hairlines remain: one above
+   the first row and one under every row. The list steps out over the
+   aside's 8px padding so a line spans the full column width, and the row
+   padding keeps the text where it was. */
+.survey-hub .hub-side-list {
+  margin: 0 -8px -8px;
+  padding-right: 0 !important;
+}
 .survey-hub .hub-side-list > [data-sortable-rearrange-list] {
   gap: 0 !important;
-  flex: 1 0 auto;
-  background: var(--ink-700);
-  border: 1px solid var(--ink-500);
-  border-radius: 10px;
-  overflow: hidden;
+  border-top: 1px solid var(--border);
 }
 .survey-hub .hub-side-list [data-drag-rearrange-row] {
   border-radius: 0 !important;
+  padding-inline: 16px !important;
 }
 .survey-hub .hub-side-list [data-sortable-rearrange-item] {
   border-bottom: 1px solid var(--border);
