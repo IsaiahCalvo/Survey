@@ -81,6 +81,17 @@ const ACTION_GLYPH_SIZE = 10;
 // ACTION_BOX_GAP + 10, close to Drawboard's ~18px.
 const ACTION_BOX_GAP = 4;
 const ACTION_EDGE_MARGIN = 6;
+// UX 2026-09-23 (owner: "that should never happen"): the tick/cross pair is
+// part of the page, so it paints above the page and the text box and BELOW
+// every bar, sheet, menu and modal. It used to sit at 2147483000, so with the
+// phone's Font color sheet open the two discs showed on top of the sheet. The
+// pair lives in a body portal (it has to escape the page's clipping), and the
+// viewer tab wrapper that holds the page and the editor is a stacking context
+// at z 5000 on desktop and phone alike (AppShell). Every chrome host starts at
+// 5400 on desktop (Tooltip.jsx) and 5600 on the phone (rail 5600/5750, dock
+// 5850, header 5900, sheets and backdrops 6400-7400 in mobilePdfViewer.css),
+// so 5100 is one step above the page and under all of them.
+const ACTION_PAIR_Z_INDEX = 5100;
 
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -1015,7 +1026,7 @@ export default function TextEditOverlay({
               justifyContent: 'center',
               gap: ACTION_PAIR_GAP,
               pointerEvents: 'auto',
-              zIndex: 2147483000,
+              zIndex: ACTION_PAIR_Z_INDEX,
             }}
             onPointerDown={(e) => { e.stopPropagation(); }}
             // preventDefault on mousedown keeps the caret and selection exactly
