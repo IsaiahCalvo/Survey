@@ -277,9 +277,9 @@ export default function DocumentsLedger({
             const allSel = docSelCount === docs.length && docs.length > 0;
             return (
               <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} className="hub-btn">{allSel ? 'None' : 'All'}</button>
-                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} className="hub-btn">Duplicate</button>
-                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} className="hub-btn">Move/Copy</button>
+                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} className="hub-btn hub-btn--bare">{allSel ? 'None' : 'All'}</button>
+                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} className="hub-btn hub-btn--bare">Duplicate</button>
+                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} className="hub-btn hub-btn--bare">Move/Copy</button>
                 <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} className="hub-btn hub-btn--icon"><Icon name="share" size={12} /></button>
                 <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} className="hub-btn hub-btn--icon is-danger"><Icon name="trash" size={12} /></button>
               </span>

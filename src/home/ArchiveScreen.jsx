@@ -277,7 +277,7 @@ export default function ArchiveScreen({
           <span className="mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
             <button
               onClick={() => setSelectedIds((prev) => nextSelectAll(prev, rows))}
-              className="hub-btn"
+              className="hub-btn hub-btn--bare"
             >{allSelected ? 'None' : 'All'}</button>
             <button
               disabled={actionsDisabled}

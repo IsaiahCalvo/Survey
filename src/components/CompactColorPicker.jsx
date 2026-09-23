@@ -925,7 +925,9 @@ const CompactColorPicker = ({
             /* Board 19: a 276px panel inside the 308px stage. The phone sheet
                fills its host's width instead (boards 17/18 draw it at the
                sheet's own 358px content band). */
-            width: isPhone ? '100%' : '276px',
+            /* A host that paints the panel (chrome={false}) sets the width
+               too: the picker fills it instead of forcing 276px into it. */
+            width: (isPhone || !chrome) ? '100%' : '276px',
             maxWidth: '100%',
             boxSizing: 'border-box',
             /* UX 2026-09-17 (revision-2 palette): the picker's CHROME comes from
@@ -1008,7 +1010,9 @@ const CompactColorPicker = ({
 
             {/* ONE bottom row: the view toggle, then the eyedropper, hex and
                 opacity in a single joined field. Boards 17-19. */}
-            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+            {/* In a narrow host panel (chrome={false}, 224px of content) the row
+                tightens its gaps so the six hex digits stay readable. */}
+            <div className="picker-footer" style={{ display: 'flex', alignItems: 'center', gap: (!chrome && !isPhone) ? '4px' : '8px', width: '100%' }}>
                 <div role="tablist" style={{
                     display: 'flex',
                     gap: '2px',
@@ -1056,7 +1060,7 @@ const CompactColorPicker = ({
                     >
                         <EyedropperGlyph />
                     </button>
-                    <span style={{ padding: '0 9px', color: 'var(--text-3)' }}>#</span>
+                    <span style={{ padding: (!chrome && !isPhone) ? '0 4px 0 6px' : '0 9px', color: 'var(--text-3)' }}>#</span>
                     <input
                         type="text"
                         aria-label="Hex color"

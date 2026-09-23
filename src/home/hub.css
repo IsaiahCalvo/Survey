@@ -4117,6 +4117,10 @@
   height: auto !important;
   overflow: visible !important;
 }
+/* Any button that shares a row with a Select/Done word — found by the row,
+   not by a class list, so a new select row cannot miss it. */
+.survey-hub :has(> .hub-btn--tertiary) > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
+.survey-hub :has(> .hub-btn--tertiary) > * > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
 .survey-hub .hub-select-actions > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
 .survey-hub .documents-select-actions > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
 .survey-hub .mobile-header-select-actions > .hub-btn:not(.hub-btn--primary):not(.hub-btn--tertiary),
@@ -4145,4 +4149,14 @@
 }
 .survey-hub .hub-side-list [data-sortable-rearrange-item] {
   border-bottom: 1px solid var(--border);
+}
+
+/* UX 2026-09-23 (owner, twice): the selection bar buttons — All / None,
+   Duplicate, Move/Copy, Share, Delete — have no outline anywhere: page rows,
+   panels, and the modal footers. A soft fill on hover is their only box.
+   hub-btn--bare marks the text ones; the icon kind is only ever used for
+   Share/Delete in these bars. */
+.hub-btn.hub-btn--bare,
+.hub-btn.hub-btn--icon {
+  border-color: transparent !important;
 }

@@ -775,12 +775,12 @@ export default function ProjectsFolderTree({
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
             <button
               onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-              className="hub-btn"
+              className="hub-btn hub-btn--bare"
             >{allSel ? 'None' : 'All'}</button>
             <button
               disabled={!selCount}
               onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-              className="hub-btn"
+              className="hub-btn hub-btn--bare"
             >Duplicate</button>
             <button
               disabled={!selCount}
@@ -816,12 +816,12 @@ export default function ProjectsFolderTree({
           <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
             <button
               onClick={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
-              className="hub-btn"
+              className="hub-btn hub-btn--bare"
             >{allSel ? 'None' : 'All'}</button>
             <button
               disabled={!c}
               onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-              className="hub-btn"
+              className="hub-btn hub-btn--bare"
             >Duplicate</button>
             <button
               disabled={!c}
@@ -830,7 +830,7 @@ export default function ProjectsFolderTree({
                 setMoveIds(selectedFiles.map((f) => f.id));
                 setMoveOpen(true);
               }}
-              className="hub-btn"
+              className="hub-btn hub-btn--bare"
             >Move/Copy</button>
             <button
               disabled={!c}
@@ -953,7 +953,7 @@ export default function ProjectsFolderTree({
                     return (
                       <button
                         onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-                        className="hub-btn"
+                        className="hub-btn hub-btn--bare"
                       >{allSel ? 'None' : 'All'}</button>
                     );
                   })()}
@@ -961,7 +961,7 @@ export default function ProjectsFolderTree({
                   <button
                     disabled={!selCount}
                     onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-                    className="hub-btn"
+                    className="hub-btn hub-btn--bare"
                   >Duplicate</button>
                   {/* Share — opens the share flow for the first selected project. */}
                   <button
@@ -1127,13 +1127,13 @@ export default function ProjectsFolderTree({
                           <>
                             <button
                               onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
-                              className="hub-btn"
+                              className="hub-btn hub-btn--bare"
                             >{allSel ? 'None' : 'All'}</button>
                             {/* Duplicate — clones each selected file in place. */}
                             <button
                               disabled={!c}
                               onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-                              className="hub-btn"
+                              className="hub-btn hub-btn--bare"
                             >Duplicate</button>
                             {/* Move/Copy — opens the Move/Copy picker so the
                                 user chooses a destination project and moves or
@@ -1145,7 +1145,7 @@ export default function ProjectsFolderTree({
                                 setMoveIds(selectedFiles.map((f) => f.id));
                                 setMoveOpen(true);
                               }}
-                              className="hub-btn"
+                              className="hub-btn hub-btn--bare"
                             >Move/Copy</button>
                             {/* Share — opens the share flow for this project. */}
                             <button
