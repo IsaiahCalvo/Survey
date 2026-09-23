@@ -47,20 +47,25 @@ test('the page pill total never wraps', () => {
 });
 
 /*
- * RULED CHANGE 2026-09-22 (the "Aa" sheet rebuilt to the pass-7 sheet vocabulary).
- * The sheet had its OWN copy of B / I / U / S - .mobile-pdf-text-defaults__format
- * > button - and that copy is what this test guarded. The rebuilt sheet reuses the
- * strip's .mobile-pdf-properties__format group instead, so the rule is gone and
- * the contract it protected now has exactly one home, guarded by the test below.
- * That is strictly stronger than what was here: there is no second rule left for a
- * merge to drop the structural properties from.
+ * RULED 2026-09-23 (owner: restore the per-tool panels). This test is back as it
+ * was before the 2026-09-22 row-list rebuild: the restored settings panel has its
+ * own B / I / U / S again (.mobile-pdf-text-defaults__format > button), so the
+ * structural guard on that rule returns with it. The 2026-09-22 replacement
+ * ("there is only ONE phone rule for B / I / U / S" - asserting zero occurrences
+ * of the panel's selector) pinned the deleted row sheet and is removed.
  */
-test('there is only ONE phone rule for B / I / U / S', () => {
-  assert.equal(
-    (CSS.match(/mobile-pdf-text-defaults__format/g) || []).length,
-    0,
-    'the "Aa" sheet must not grow its own copy of the format buttons again: it '
-    + 'reuses the strip\'s .mobile-pdf-properties__format group',
+test('the text-defaults format buttons centre their glyph on the box, not a baseline', () => {
+  const body = ruleBody('.mobile-pdf-text-defaults__format > button');
+  assert.match(
+    body,
+    /display:\s*grid/,
+    'B / I / U / S must stay display: grid (main 1e5a18dc9); a block button centres its '
+    + `glyph on a font baseline and sits 1.5px high. Rule body is "${body.trim()}"`,
+  );
+  assert.match(
+    body,
+    /place-items:\s*center/,
+    `B / I / U / S must keep place-items: center. Rule body is "${body.trim()}"`,
   );
 });
 
@@ -73,8 +78,9 @@ test('the live strip format buttons centre the same way', () => {
 test('the page total and the format buttons paint tokens, not the old literals', () => {
   for (const selector of [
     '.mobile-pdf-header__page-total',
-    // The sheet's own copy of these buttons is gone (2026-09-22); the strip's
-    // group below is the one rule left to check.
+    // RULED 2026-09-23 (owner: restore the per-tool panels): the panel's own
+    // B / I / U / S rule is back, so it is checked again beside the strip's.
+    '.mobile-pdf-text-defaults__format > button',
     '.mobile-pdf-properties__format {',
   ]) {
     const body = ruleBody(selector);

@@ -69,14 +69,21 @@ test('every browse panel opens at Standard; a settings sheet fits its content', 
    * under the unchanged max-height cap, and must never name a panel height
    * again.
    */
-  assert.match(mobileCss, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}\n  height: auto;/);
-  assert.doesNotMatch(mobileCss, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
+  /*
+   * RULED 2026-09-23 (owner: restore the per-tool panels). The tool "..." row
+   * sheet (.mobile-pdf-tool-sheet) is gone; "..." opens the restored
+   * "<Tool> settings" panel (.mobile-pdf-text-defaults) again. The same
+   * content-height contract is asserted on that panel instead: `height: auto`,
+   * never a panel height, under the same cap, scrolling inside its body.
+   */
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults \{[^}]{0,1600}\n  height: auto;/);
+  assert.doesNotMatch(mobileCss, /\.mobile-pdf-text-defaults \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
   assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface \{[^}]{0,1600}\n  height: auto;/);
   assert.doesNotMatch(mobileCss, /\.mobile-pdf-colorpicker-surface \{[^}]{0,1600}height: var\(--mobile-panel-standard\)/);
   // The cap and the internal scroll are what replace the fixed height.
-  assert.match(mobileCss, /\.mobile-pdf-tool-sheet \{[^}]{0,1600}max-height: calc\(100dvh/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults \{[^}]{0,1600}max-height: calc\(100dvh/);
   assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface \{[^}]{0,1600}max-height: calc\(100dvh/);
-  assert.match(mobileCss, /\.mobile-pdf-tool-sheet__rows \{[^}]{0,400}overflow-y: auto/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults__scroll \{[^}]{0,400}overflow-y: auto/);
   assert.match(mobileCss, /\.mobile-pdf-colorpicker-surface__body \{[^}]{0,400}overflow-y: auto/);
 
   // ADDED at the pass-7 integration: the Survey panel is a phone panel too, and
