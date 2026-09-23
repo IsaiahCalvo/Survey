@@ -1075,13 +1075,13 @@
     display: none;
   }
 
-  /* No plate, no border: it is a word you can tap. The chevron is the only
-     tell, and it brightens on hover and turns over while the menu is open. */
+  /* No plate, no border: the menu glyph and the title are one control. The glyph is the only
+     tell, and it brightens on hover and while the menu is open. */
   .survey-hub .hub-title-switch {
     position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 8px;
     margin: 0;
     padding: 0;
     border: 0;
@@ -1104,24 +1104,32 @@
     background: transparent;
   }
 
-  .survey-hub .hub-title-switch__chevron {
+  /* Menu glyph on the left (owner 2026-09-23: "keep it as the sandwich").
+     Grey at rest so the title word leads; it brightens on hover and while the
+     menu is open. Stroke thickened to 2 so it holds its own beside a bold
+     22px title (the owner found the old chevron too thin). */
+  .survey-hub .hub-title-switch__menu {
     flex: none;
-    color: var(--text-3);
-    transition: transform 160ms cubic-bezier(0.33, 1, 0.68, 1), color 120ms ease-out;
+    color: var(--text-2);
+    transition: color 120ms ease-out, transform 120ms ease-out;
+  }
+
+  .survey-hub .hub-title-switch__menu path {
+    stroke-width: 2;
   }
 
   @media (hover: hover) {
-    .survey-hub .hub-title-switch:hover .hub-title-switch__chevron {
+    .survey-hub .hub-title-switch:hover .hub-title-switch__menu {
       color: var(--text-1);
     }
   }
 
-  .survey-hub .mobile-rail-nav.is-open .hub-title-switch__chevron {
+  .survey-hub .mobile-rail-nav.is-open .hub-title-switch__menu {
     color: var(--text-1);
   }
 
-  .survey-hub .mobile-rail-nav.is-open .hub-title-switch__chevron {
-    transform: rotate(180deg);
+  .survey-hub .hub-title-switch:active .hub-title-switch__menu {
+    transform: scale(0.88);
   }
 
   .survey-hub .hub-title-switch:active .hub-title-switch__label {
@@ -1185,7 +1193,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .survey-hub .hub-title-switch__chevron,
+    .survey-hub .hub-title-switch__menu,
     .survey-hub .hub-section-menu,
     .survey-hub .mobile-rail-nav.is-open .hub-section-menu {
       transition: none;

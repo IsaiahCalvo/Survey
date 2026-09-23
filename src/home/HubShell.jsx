@@ -375,8 +375,10 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
           onClick={() => setOpen((value) => !value)}
           onKeyDown={onButtonKeyDown}
         >
+          {/* Owner 2026-09-23: the menu glyph sits LEFT of the title, not a
+              thin chevron after it; the glyph and the word are one button. */}
+          <Icon name="menu" size={20} color="currentColor" className="hub-title-switch__menu" />
           <span className="hub-title-switch__label">{title}</span>
-          <Icon name="chevronDown" size={12} color="currentColor" className="hub-title-switch__chevron" />
         </button>
       </h1>
       <div
