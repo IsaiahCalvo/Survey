@@ -4741,6 +4741,17 @@ button[title="Edit color"]:active > span,
    the Documents list began lower. On desktop they paint 22px - the height of
    the subtitle line - and keep a taller invisible pad for the pointer. */
 @media screen and (min-width: 721px) {
+  /* The subtitle line itself is one fixed 22px band on every tab and at every
+     window width (Projects measured 16px below 860px wide and 22px above it,
+     Documents 22-28px), so the header - and the list under it - never moves
+     between Documents, Projects and Templates. */
+  .survey-hub .header .crumb.header-subtitle {
+    height: 22px;
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+  }
   .survey-hub .header .documents-select-row .hub-btn {
     height: 22px;
     position: relative;
