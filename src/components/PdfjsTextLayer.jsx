@@ -21,8 +21,11 @@ import {
 import { readPdfjsTextContent } from '../utils/pdfjsTextContent';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
+// Exported for the text-search measurement layer (sidebar/SearchTextPanel.jsx),
+// which renders its own off-screen pdf.js TextLayer and needs the same
+// contract, or every measured match box comes out at the wrong place and size.
 let stylesInjected = false;
-function ensureTextLayerStyles() {
+export function ensureTextLayerStyles() {
   if (stylesInjected || typeof document === 'undefined') return;
   stylesInjected = true;
   const style = document.createElement('style');

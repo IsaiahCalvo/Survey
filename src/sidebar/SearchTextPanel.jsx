@@ -12,8 +12,36 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
 import { useTooltip } from '../components/Tooltip';
+import { ensureTextLayerStyles } from '../components/PdfjsTextLayer';
+import { buildSearchSnippet, needsTextItemSeparator } from '../utils/searchMatchNavigation';
+import './searchTextPanel.css';
+
+// UX (owner 2026-09-23: "When I type something in, I should see related things
+// showing up as I'm typing"): results stream in while you type. Two letters is
+// the shortest query we run — one letter matches nearly every line of a
+// drawing set and the list would be noise. The pause before a search starts is
+// short enough to feel live but long enough that each keystroke doesn't start
+// (and throw away) a full pass over the document.
+export const SEARCH_MIN_QUERY_LENGTH = 2;
+export const SEARCH_DEBOUNCE_MS = 120;
+
+// Hand the main thread back between pages so typing never stalls while a long
+// document is searched.
+const yieldToMain = () => new Promise((resolve) => {
+  if (typeof globalThis.scheduler?.yield === 'function') {
+    globalThis.scheduler.yield().then(resolve, resolve);
+    return;
+  }
+  setTimeout(resolve, 0);
+});
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+
+// The query you typed, per document, kept across the panel unmounting. The
+// phone sheet (and the collapsed desktop rail) unmounts the panel when it
+// closes; tapping a result closes the sheet, so without this, reopening Search
+// came back empty and the results you were stepping through were gone.
+const lastQueryByDocument = new Map();
 
 // Search result ID generator
 const createResultId = (() => {
@@ -101,8 +129,15 @@ const resolveTextHighlightPad = (fontHeight, ratio, minimum) => {
 const createSearchTextMeasureLayer = (viewport) => {
   if (typeof document === 'undefined') return null;
 
+  // The measurement layer needs pdf.js's `.textLayer` CSS contract (the
+  // --total-scale-factor / --scale-round-* variables and the span font-size and
+  // transform rules) — the same one PdfjsTextLayer injects (KAL-239). Without
+  // it TextLayer.render()'s inline `round(down, var(--total-scale-factor) * …)`
+  // size is invalid, the layer collapses and every span sits at the wrong spot
+  // in a 16px default font, so match boxes landed far off the real words.
+  ensureTextLayerStyles();
   const container = document.createElement('div');
-  container.className = 'textLayer search-text-measurement-layer';
+  container.className = 'textLayer pdfjsTextLayer search-text-measurement-layer';
   container.setAttribute('aria-hidden', 'true');
   Object.assign(container.style, {
     position: 'fixed',
@@ -153,9 +188,22 @@ const waitForSearchTextFonts = async () => {
   }
 };
 
+// One frame for the measurement layer's fonts/layout to settle — capped with a
+// short timer, because a browser throttles animation frames in a hidden or
+// unfocused window (down to ~1 per second), and waiting on a real frame per
+// page then made a 36-page search take most of a minute.
 const waitForSearchTextLayout = async () => {
   if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return;
-  await new Promise(resolve => window.requestAnimationFrame(resolve));
+  await new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    window.requestAnimationFrame(finish);
+    setTimeout(finish, 34);
+  });
 };
 
 const withSearchTextMeasurementTimeout = (promise) => new Promise((resolve, reject) => {
@@ -768,21 +816,6 @@ const getPdfDocumentKey = (pdfDoc, numPages, explicitKey) => {
   return `pages:${pageCount}`;
 };
 
-// Create snippet with context around match
-const createSnippet = (text, start, end, radius = 60) => {
-  if (!text || typeof text !== 'string') {
-    return { snippet: '', matchIndex: -1 };
-  }
-  const snippetStart = Math.max(0, start - radius);
-  const snippetEnd = Math.min(text.length, end + radius);
-  const prefix = snippetStart > 0 ? '...' : '';
-  const suffix = snippetEnd < text.length ? '...' : '';
-  const snippetText = `${prefix}${text.slice(snippetStart, snippetEnd)}${suffix}`;
-  const highlightOffset = prefix ? 3 : 0;
-  const matchIndex = highlightOffset + (start - snippetStart);
-  return { snippet: snippetText, matchIndex };
-};
-
 // Build rectangles for a text match - converts character positions to visual coordinates
 const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
   const { items, ranges, viewportTransform, styles } = pageData;
@@ -892,6 +925,24 @@ const calculateMatchBounds = (rectangles) => {
   };
 };
 
+// Height of the text line a match sits on, in PDF points — what the viewer
+// zooms against so the jump lands at a comfortable reading size.
+const resolveMatchLineHeight = (pageData, matchStart, matchLength) => {
+  const { items, ranges } = pageData || {};
+  if (!Array.isArray(items) || !Array.isArray(ranges)) return null;
+  const matchEnd = matchStart + matchLength;
+  let height = 0;
+  for (const range of ranges) {
+    if (range.end <= matchStart) continue;
+    if (range.start >= matchEnd) break;
+    const item = items[range.itemIndex];
+    const itemHeight = Math.abs(Number(item?.height)) ||
+      Math.hypot(Number(item?.transform?.[2]) || 0, Number(item?.transform?.[3]) || 0);
+    if (Number.isFinite(itemHeight)) height = Math.max(height, itemHeight);
+  }
+  return height > 0 ? Math.round(height * 100) / 100 : null;
+};
+
 const toFiniteNumber = (value) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -994,18 +1045,17 @@ const collectNativeTextMatches = (rawResults) => {
   return byPage;
 };
 
-// Pure: wraps the matched substring in a highlight. Hoisted to module scope so
-// it isn't reallocated per render and can be shared by the memoized row below.
-const highlightMatch = (text, matchIndex, queryLength) => {
-  if (matchIndex < 0 || !text) return text;
-  const beforeMatch = text.substring(0, matchIndex);
-  const match = text.substring(matchIndex, matchIndex + queryLength);
-  const afterMatch = text.substring(matchIndex + queryLength);
+// Pure: splits the snippet around the match. Hoisted to module scope so it
+// isn't reallocated per render and can be shared by the memoized row below.
+// UX (owner 2026-09-23, "gold is a minimal accent"): the match is set apart by
+// weight and the brightest text colour only — no filled gold chip behind it.
+const highlightMatch = (text, matchIndex, matchLength) => {
+  if (matchIndex < 0 || !text || !(matchLength > 0)) return text;
   return (
     <>
-      {beforeMatch}
-      <strong style={{ background: 'var(--accent)', color: 'var(--accent-text)', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
-      {afterMatch}
+      {text.substring(0, matchIndex)}
+      <mark className="search-text-result__match">{text.substring(matchIndex, matchIndex + matchLength)}</mark>
+      {text.substring(matchIndex + matchLength)}
     </>
   );
 };
@@ -1013,74 +1063,23 @@ const highlightMatch = (text, matchIndex, queryLength) => {
 // One row of the results list. Memoized so that navigating between matches
 // (which only flips `isActive` on two rows) re-renders just those rows instead
 // of every row in a large result set.
-const SearchResultRow = memo(function SearchResultRow({ result, index, isActive, queryLength, onSelect }) {
+// UX (owner 2026-09-23 polish): a plain list row — hairline divider, no card,
+// no index chip, no gold border. The page number lives in the group header
+// above the rows, so each row is just its line of text. The row you are on
+// takes the app's "selected row" surface (--surface-3), like Bookmarks.
+const SearchResultRow = memo(function SearchResultRow({ result, index, isActive, onSelect }) {
+  const matchLength = Number.isFinite(result.snippetMatchLength) ? result.snippetMatchLength : result.length;
   return (
     <div
+      role="option"
+      aria-selected={isActive}
+      tabIndex={-1}
       data-result-index={index}
+      data-result-page={result.pageNumber}
+      className={`search-text-result${isActive ? ' is-active' : ''}`}
       onClick={() => onSelect(result, index)}
-      style={{
-        padding: '10px 12px',
-        background: isActive ? 'var(--surface-3)' : 'var(--surface-2)',
-        border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        transition: 'all 0.15s ease',
-        fontSize: '12px',
-        color: 'var(--text-2)',
-        // Off-screen result rows skip layout/paint on big searches.
-        // 'auto' lets the browser remember each row's real height.
-        contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 56px'
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = 'var(--hover)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = 'var(--surface-2)';
-        }
-      }}
     >
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '4px',
-        gap: '8px'
-      }}>
-        <span style={{
-          fontSize: '10px',
-          fontWeight: '600',
-          color: 'var(--text-1)',
-          background: isActive ? 'var(--accent)' : 'var(--border-strong)',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          minWidth: '20px',
-          textAlign: 'center'
-        }}>
-          {index + 1}
-        </span>
-        <span style={{
-          fontSize: '11px',
-          fontWeight: '600',
-          color: 'var(--accent)',
-          background: 'var(--accent-soft)',
-          padding: '2px 6px',
-          borderRadius: '4px'
-        }}>
-          Page {result.pageNumber}
-        </span>
-      </div>
-      <div style={{
-        fontSize: '12px',
-        lineHeight: '1.4',
-        color: 'var(--text-3)',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis'
-      }}>
-        {highlightMatch(result.snippet, result.snippetMatchIndex, queryLength)}
-      </div>
+      {highlightMatch(result.snippet, result.snippetMatchIndex, matchLength)}
     </div>
   );
 });
@@ -1100,18 +1099,30 @@ const SearchTextPanel = ({
   focusRequestToken = 0,
   selectOnFocus = false,
   pdfDocumentKey = null,
-  mobileMode = false
+  mobileMode = false,
+  onRequestSheetClose = null
 }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
   // Internal state for standalone use
-  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState(() => {
+    const key = getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey);
+    return (key && lastQueryByDocument.get(key)) || '';
+  });
   const [internalSearchResults, setInternalSearchResults] = useState([]);
   const [internalCurrentMatchIndex, setInternalCurrentMatchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchProgress, setSearchProgress] = useState({ current: 0, total: 0 });
+  const [, setSearchProgress] = useState({ current: 0, total: 0 });
+  // The query the results on screen belong to (trimmed). While it differs from
+  // what is typed, the status line reads "Searching…".
+  const [searchedQuery, setSearchedQuery] = useState(() => {
+    // Coming back to results that are still on screen: they belong to the
+    // restored query, so don't show "Searching…" for them.
+    const restored = (internalSearchQuery || '').trim();
+    return restored && Array.isArray(externalSearchResults) && externalSearchResults.length > 0 ? restored : '';
+  });
   const searchInputRef = useRef(null);
   const resultsContainerRef = useRef(null);
   const pageDataCacheRef = useRef(new Map());
@@ -1120,8 +1131,12 @@ const SearchTextPanel = ({
   const documentKeyRef = useRef(null);
   const searchResultsRef = useRef([]);
   const currentMatchIndexRef = useRef(-1);
-  const lastSearchQueryRef = useRef('');
-  const lastPerformedSearchKeyRef = useRef('');
+  const lastSearchQueryRef = useRef(searchedQuery);
+  // When the panel remounts over results it already produced, mark that search
+  // as done so the remount doesn't re-run (or clear) it.
+  const lastPerformedSearchKeyRef = useRef(searchedQuery
+    ? `${getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey) || 'missing'}::${searchedQuery}`
+    : '');
 
   // Use external state if provided, otherwise use internal state
   const searchResults = externalSearchResults !== undefined ? externalSearchResults : internalSearchResults;
@@ -1134,6 +1149,10 @@ const SearchTextPanel = ({
   useEffect(() => {
     searchResultsRef.current = Array.isArray(searchResults) ? searchResults : [];
   }, [searchResults]);
+
+  useEffect(() => {
+    if (resolvedDocumentKey) lastQueryByDocument.set(resolvedDocumentKey, internalSearchQuery || '');
+  }, [resolvedDocumentKey, internalSearchQuery]);
 
   useEffect(() => {
     currentMatchIndexRef.current = Number.isFinite(currentMatchIndex) ? currentMatchIndex : -1;
@@ -1238,6 +1257,21 @@ const SearchTextPanel = ({
     }
   ), []);
 
+  // Dev-only handle for end-to-end search checks (a headless browser script):
+  // read the current results and a page's extracted text without poking React.
+  useEffect(() => {
+    if (!import.meta.env?.DEV || typeof window === 'undefined') return undefined;
+    const api = {
+      results: () => searchResultsRef.current,
+      currentIndex: () => currentMatchIndexRef.current,
+      pageText: (pageNumber) => pageDataCacheRef.current.get(Number(pageNumber))?.text ?? null
+    };
+    window.__searchTextDebug = api;
+    return () => {
+      if (window.__searchTextDebug === api) delete window.__searchTextDebug;
+    };
+  }, []);
+
   useEffect(() => {
     if (!isActive || !searchInputRef.current) {
       return undefined;
@@ -1304,13 +1338,30 @@ const SearchTextPanel = ({
       let fullText = '';
       const ranges = [];
       let textDivIndex = 0;
+      let previousItem = null;
+      let pendingLineBreak = false;
 
       (textContent.items || []).forEach((item, index) => {
         if (typeof item?.str !== 'string') return;
         const str = item.str || '';
         const currentTextDivIndex = textDivIndex;
         textDivIndex += 1;
-        if (!str) return;
+        if (!str) {
+          if (item.hasEOL) pendingLineBreak = true;
+          return;
+        }
+
+        // Separate labels that pdf.js hands over as neighbouring items with no
+        // space between them (common on drawings). The space sits OUTSIDE every
+        // range, so match → rectangle mapping is unchanged.
+        if (previousItem && (
+          (pendingLineBreak && !/\s$/.test(fullText) && !/^\s/.test(str)) ||
+          needsTextItemSeparator(previousItem, item)
+        )) {
+          fullText += ' ';
+        }
+        pendingLineBreak = Boolean(item.hasEOL);
+        previousItem = item;
 
         const start = fullText.length;
         fullText += str;
@@ -1378,7 +1429,21 @@ const SearchTextPanel = ({
     const trimmedQuery = (query || '').trim();
     lastSearchQueryRef.current = trimmedQuery;
 
+    if (trimmedQuery && trimmedQuery.length < SEARCH_MIN_QUERY_LENGTH) {
+      // One letter: stop any running pass and show nothing yet, but this is not
+      // a "clear" — the viewer keeps its zoom and place.
+      searchIdRef.current += 1;
+      setSearchedQuery(trimmedQuery);
+      setSearchResults([], 'short-query');
+      setCurrentMatchIndex(-1, 'short-query');
+      setIsSearching(false);
+      setSearchProgress({ current: 0, total: 0 });
+      return [];
+    }
+
     if (!trimmedQuery) {
+      searchIdRef.current += 1;
+      setSearchedQuery('');
       emitTextSearchDiag('search_clear_empty_query', {
         previousResultCount: searchResultsRef.current.length,
         previousIndex: currentMatchIndexRef.current,
@@ -1405,6 +1470,7 @@ const SearchTextPanel = ({
     }
 
     const searchId = ++searchIdRef.current;
+    setSearchedQuery(trimmedQuery);
     emitTextSearchDiag('search_start', {
       query: trimmedQuery,
       searchId,
@@ -1413,9 +1479,13 @@ const SearchTextPanel = ({
     });
     setIsSearching(true);
     setSearchProgress({ current: 0, total: numPages });
+    // A new query: the old "current match" belongs to the old results.
+    setCurrentMatchIndex(-1, 'search-start');
 
     const normalizedQuery = trimmedQuery.toLowerCase();
     const results = [];
+    let publishedCount = 0;
+    let lastPublishAt = 0;
     const nativeMatchOffsetsByPage = new Map();
     let nativeMatchesByPage = null;
 
@@ -1445,11 +1515,12 @@ const SearchTextPanel = ({
           const nativeMatch = nativePageMatches[nativeMatchIndex] || null;
           nativeMatchOffsetsByPage.set(pageNumber, nativeMatchIndex + 1);
 
-          const { snippet, matchIndex } = createSnippet(
+          const { snippet, matchIndex, matchLength: snippetMatchLength } = buildSearchSnippet(
             pageData.text,
             searchIndex,
             searchIndex + normalizedQuery.length
           );
+          const lineHeight = resolveMatchLineHeight(pageData, searchIndex, normalizedQuery.length);
           const textLayerRectangles = nativeMatch?.rectangles?.length
             ? []
             : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length, pageNumber);
@@ -1472,6 +1543,8 @@ const SearchTextPanel = ({
             length: normalizedQuery.length,
             snippet,
             snippetMatchIndex: matchIndex,
+            snippetMatchLength,
+            lineHeight,
             rectangles,
             bounds,
             geometrySource
@@ -1480,19 +1553,37 @@ const SearchTextPanel = ({
           searchIndex = normalizedText.indexOf(normalizedQuery, searchIndex + 1);
         }
 
+        if (searchIdRef.current !== searchId) return results;
         setSearchProgress({ current: pageNumber, total: numPages });
 
-        // Progressive results update
-        if (pageNumber % 3 === 0 || pageNumber === numPages) {
-          if (searchIdRef.current === searchId) {
-            setSearchResults([...results], 'progressive');
+        // Stream results into the list as pages finish (at most every ~90ms, so
+        // a long document doesn't re-render the list for every page). Only
+        // publish once there is something to show, so the previous query's rows
+        // stay put (instead of blinking to empty) until the new query has hits.
+        const now = Date.now();
+        if (results.length > publishedCount && now - lastPublishAt >= 90) {
+          // A row picked from the previous query's list before this query's
+          // first hits arrived points into the old list — drop it.
+          if (publishedCount === 0 && currentMatchIndexRef.current >= 0) {
+            setCurrentMatchIndex(-1, 'stale-pick');
           }
+          publishedCount = results.length;
+          lastPublishAt = now;
+          setSearchResults([...results], 'progressive');
         }
+        await yieldToMain();
       }
 
       if (searchIdRef.current === searchId) {
+        if (publishedCount === 0 && currentMatchIndexRef.current >= 0) {
+          setCurrentMatchIndex(-1, 'stale-pick');
+        }
         setSearchResults(results, 'search-complete');
-        setCurrentMatchIndex(results.length > 0 ? 0 : -1, 'search-complete');
+        // The current match was reset when this search started, so it is only
+        // set now if you picked a row while results were still streaming in —
+        // and results only ever append, so that pick is still the same match.
+        // Otherwise nothing is "current": the counter reads "104 matches", and
+        // Enter / the down arrow goes to the first one.
         setIsSearching(false);
         const totalRectangles = results.reduce(
           (sum, result) => sum + (Array.isArray(result.rectangles) ? result.rectangles.length : 0),
@@ -1544,13 +1635,13 @@ const SearchTextPanel = ({
     const timer = setTimeout(() => {
       lastPerformedSearchKeyRef.current = nextSearchKey;
       performSearch(internalSearchQuery);
-    }, 200);
+    }, trimmedQuery ? SEARCH_DEBOUNCE_MS : 0);
 
     return () => clearTimeout(timer);
   }, [internalSearchQuery, performSearch, resolvedDocumentKey]);
 
   // Navigate to match and trigger callback
-  const navigateToMatch = useCallback((index) => {
+  const navigateToMatch = useCallback((index, navigationOptions = undefined) => {
     if (index < 0 || index >= searchResults.length) return;
 
     emitTextSearchDiag('match_navigate_request', {
@@ -1564,7 +1655,7 @@ const SearchTextPanel = ({
     const result = searchResults[index];
 
     if (onNavigateToMatch) {
-      onNavigateToMatch(result, index);
+      onNavigateToMatch(result, index, navigationOptions);
     } else if (onNavigateToPage) {
       onNavigateToPage(result.pageNumber);
     }
@@ -1588,10 +1679,23 @@ const SearchTextPanel = ({
     navigateToMatch(prevIndex);
   }, [searchResults, currentMatchIndex, navigateToMatch]);
 
-  // Handle result click
+  // Handle result click.
+  // UX (owner 2026-09-23, phone): tapping a result closes the Search sheet and
+  // centres the match in the whole screen above the dock. The sheet dims the
+  // PDF behind it and covers roughly half of a phone screen, so a match
+  // "centred above the sheet" would be small, dim and cramped. Your results
+  // stay put: reopen Search and the row you picked is marked, and the up/down
+  // arrows there step on from it (while the sheet is open, stepping centres
+  // each match in the strip above the sheet). Desktop keeps the panel open —
+  // it sits beside the page, not over it.
   const handleResultClick = useCallback((result, index) => {
-    navigateToMatch(index);
-  }, [navigateToMatch]);
+    const dismissSheet = mobileMode && typeof onRequestSheetClose === 'function';
+    navigateToMatch(index, dismissSheet ? { dismissingSheet: true } : undefined);
+    if (dismissSheet) {
+      searchInputRef.current?.blur?.();
+      onRequestSheetClose();
+    }
+  }, [mobileMode, navigateToMatch, onRequestSheetClose]);
 
   // Scroll selected result into view in the list
   useEffect(() => {
@@ -1673,8 +1777,40 @@ const SearchTextPanel = ({
     clearSearchRef.current = clearSearch;
   }, [clearSearch]);
 
+  const typedQuery = (internalSearchQuery || '').trim();
+  const queryTooShort = typedQuery.length > 0 && typedQuery.length < SEARCH_MIN_QUERY_LENGTH;
+  const searchPending = typedQuery.length >= SEARCH_MIN_QUERY_LENGTH && (isSearching || typedQuery !== searchedQuery);
+  const hasResults = searchResults.length > 0;
+
+  // Rows grouped under a quiet "Page N" header, in document order.
+  const resultGroups = useMemo(() => {
+    const groups = [];
+    searchResults.forEach((result, index) => {
+      const last = groups[groups.length - 1];
+      if (last && last.pageNumber === result.pageNumber) {
+        last.rows.push({ result, index });
+      } else {
+        groups.push({ pageNumber: result.pageNumber, rows: [{ result, index }] });
+      }
+    });
+    return groups;
+  }, [searchResults]);
+
+  let statusText = '';
+  if (queryTooShort) {
+    statusText = 'Keep typing…';
+  } else if (typedQuery && !hasResults && searchPending) {
+    statusText = 'Searching…';
+  } else if (typedQuery && !hasResults) {
+    statusText = 'No matches';
+  } else if (hasResults && currentMatchIndex >= 0) {
+    statusText = `${currentMatchIndex + 1} of ${searchResults.length}`;
+  } else if (hasResults) {
+    statusText = `${searchResults.length} ${searchResults.length === 1 ? 'match' : 'matches'}`;
+  }
+
   return (
-    <div className={mobileMode ? 'mobile-search-panel' : undefined} style={{
+    <div className={`search-text-panel${mobileMode ? ' mobile-search-panel' : ''}`} style={{
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
@@ -1682,8 +1818,8 @@ const SearchTextPanel = ({
       background: 'var(--surface-1)'
     }}>
       {/* Search Bar */}
-      <div className={mobileMode ? 'mobile-search-panel__bar' : undefined} style={{
-        padding: '12px',
+      <div className={`search-text-panel__bar${mobileMode ? ' mobile-search-panel__bar' : ''}`} style={{
+        padding: '12px 12px 0',
         boxSizing: 'border-box',
         background: 'var(--surface-1)',
         borderBottom: '1px solid var(--border)',
@@ -1707,182 +1843,93 @@ const SearchTextPanel = ({
           <input
             ref={searchInputRef}
             type="text"
+            className="search-text-panel__input"
             value={internalSearchQuery}
             onChange={(e) => setInternalSearchQuery(e.target.value)}
             placeholder={mobileMode ? 'Search text' : 'Search text in PDF...'}
+            aria-label="Search text in PDF"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             style={{
               width: '100%',
               height: '25px',
               boxSizing: 'border-box',
-              padding: '0 10px 0 36px',
+              padding: '0 30px 0 36px',
               background: 'var(--surface-2)',
               border: '1px solid var(--border-strong)',
               borderRadius: '6px',
               fontSize: '13px',
               fontFamily: FONT_FAMILY,
               color: 'var(--text-2)',
-              outline: 'none',
-              transition: 'border-color 0.15s ease'
+              outline: 'none'
             }}
-            onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
           />
           {internalSearchQuery && (
             <button
+              type="button"
+              className="search-text-panel__icon-button search-text-panel__clear"
               onClick={clearSearch}
-              style={{
-                position: 'absolute',
-                right: '8px',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '4px'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              aria-label="Clear search"
+              {...tip('Clear search', 'below')}
             >
               <Icon name="close" size={14} color="var(--text-3)" />
             </button>
           )}
         </div>
 
-        {/* Navigation Controls - shown when there are results */}
-        {searchResults.length > 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: '10px',
-            padding: '6px 8px',
-            background: 'var(--surface-2)',
-            borderRadius: '6px',
-            border: '1px solid var(--border)'
-          }}>
-            {/* Result Counter */}
-            <div style={{
-              fontSize: '12px',
-              color: 'var(--text-2)',
-              fontWeight: '500'
-            }}>
-              {currentMatchIndex >= 0 ? (
-                <span>
-                  <span style={{ color: 'var(--accent)' }}>{currentMatchIndex + 1}</span>
-                  <span style={{ color: 'var(--text-3)' }}> of </span>
-                  <span style={{ color: 'var(--accent)' }}>{searchResults.length}</span>
-                </span>
-              ) : (
-                <span style={{ color: 'var(--text-3)' }}>{searchResults.length} results</span>
-              )}
-            </div>
-
-            {/* Navigation Buttons */}
-            <div style={{
-              display: 'flex',
-              gap: '4px'
-            }}>
-              <button
-                onClick={goToPrevMatch}
-                disabled={searchResults.length === 0}
-                {...tip('Previous match (Shift+Enter)', 'below')}
-                aria-label="Previous match (Shift+Enter)"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--border-strong)',
-                  borderRadius: '4px',
-                  cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
-                  padding: '4px 8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: searchResults.length > 0 ? 1 : 0.5
-                }}
-                onMouseEnter={(e) => {
-                  tip('Previous match (Shift+Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--hover)';
-                }}
-                onMouseLeave={(e) => {
-                  tip('Previous match (Shift+Enter)', 'below').onMouseLeave(e);
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <Icon name="chevronUp" size={14} color="var(--text-2)" />
-              </button>
-              <button
-                onClick={goToNextMatch}
-                disabled={searchResults.length === 0}
-                {...tip('Next match (Enter)', 'below')}
-                aria-label="Next match (Enter)"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--border-strong)',
-                  borderRadius: '4px',
-                  cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
-                  padding: '4px 8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: searchResults.length > 0 ? 1 : 0.5
-                }}
-                onMouseEnter={(e) => {
-                  tip('Next match (Enter)', 'below').onMouseEnter(e);
-                  if (searchResults.length > 0) e.currentTarget.style.background = 'var(--hover)';
-                }}
-                onMouseLeave={(e) => {
-                  tip('Next match (Enter)', 'below').onMouseLeave(e);
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <Icon name="chevronDown" size={14} color="var(--text-2)" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Search Progress */}
-        {isSearching && searchProgress.total > 0 && (
-          <div style={{
-            marginTop: '8px',
-            height: '3px',
-            background: 'var(--surface-3)',
-            borderRadius: '2px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: `${(searchProgress.current / searchProgress.total) * 100}%`,
-              height: '100%',
-              background: 'var(--accent)',
-              transition: 'width 0.1s ease'
-            }} />
-          </div>
-        )}
+        {/* Status line: one fixed-height row that is always there once you
+            start typing, so the count appearing, changing or going away never
+            shoves the list up or down. */}
+        <div
+          className="search-text-panel__status"
+          aria-live="polite"
+          data-search-status={queryTooShort ? 'short' : (searchPending ? 'searching' : (hasResults ? 'results' : (typedQuery ? 'empty' : 'idle')))}
+          hidden={!typedQuery}
+        >
+          <span className="search-text-panel__count">{statusText}</span>
+          {hasResults && searchPending && (
+            <span className="search-text-panel__pending">Searching…</span>
+          )}
+          <span className="search-text-panel__steps">
+            <button
+              type="button"
+              className="search-text-panel__icon-button"
+              onClick={goToPrevMatch}
+              disabled={!hasResults}
+              aria-label="Previous match (Shift+Enter)"
+              {...tip('Previous match (Shift+Enter)', 'below')}
+            >
+              <Icon name="chevronUp" size={14} color="var(--text-2)" />
+            </button>
+            <button
+              type="button"
+              className="search-text-panel__icon-button"
+              onClick={goToNextMatch}
+              disabled={!hasResults}
+              aria-label="Next match (Enter)"
+              {...tip('Next match (Enter)', 'below')}
+            >
+              <Icon name="chevronDown" size={14} color="var(--text-2)" />
+            </button>
+          </span>
+        </div>
+        {!typedQuery && <div style={{ height: '12px' }} />}
       </div>
 
       {/* Search Results */}
       <div
         ref={resultsContainerRef}
-        className={mobileMode ? 'mobile-search-panel__results' : undefined}
+        className={`search-text-panel__results${mobileMode ? ' mobile-search-panel__results' : ''}`}
+        role="listbox"
+        aria-label="Search results"
         style={{
           flex: 1,
-          overflowY: 'auto',
-          padding: '8px'
+          overflowY: 'auto'
         }}
       >
-        {isSearching && (
-          <div style={{
-            padding: '20px',
-            textAlign: 'center',
-            color: 'var(--text-3)',
-            fontSize: '13px'
-          }}>
-            Searching... ({searchProgress.current}/{searchProgress.total} pages)
-          </div>
-        )}
-
-        {!isSearching && internalSearchQuery && searchResults.length === 0 && (
+        {!searchPending && !queryTooShort && typedQuery && !hasResults && (
           mobileMode ? (
             <div className="mobile-search-empty">
               <Icon name="search" size={44} color="var(--text-3)" />
@@ -1890,18 +1937,13 @@ const SearchTextPanel = ({
               <span>Try another word from the PDF.</span>
             </div>
           ) : (
-            <div style={{
-              padding: '40px 20px',
-              textAlign: 'center',
-              color: 'var(--text-3)',
-              fontSize: '13px'
-            }}>
-              No results found
+            <div className="search-text-panel__empty">
+              No matches for “{typedQuery}”
             </div>
           )
         )}
 
-        {!isSearching && !internalSearchQuery && (
+        {!typedQuery && (
           mobileMode ? (
             <div className="mobile-search-empty">
               <Icon name="search" size={54} color="var(--text-3)" />
@@ -1909,35 +1951,29 @@ const SearchTextPanel = ({
               <span>Search visible PDF text and jump to the matching page.</span>
             </div>
           ) : (
-            <div style={{
-              padding: '40px 20px',
-              textAlign: 'center',
-              color: 'var(--text-3)',
-              fontSize: '13px'
-            }}>
-              Enter a search term to find text in the PDF
+            <div className="search-text-panel__empty">
+              Type a word to find it in the PDF
             </div>
           )
         )}
 
-        {!isSearching && searchResults.length > 0 && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '2px'
-          }}>
-            {searchResults.map((result, index) => (
+        {hasResults && typedQuery && !queryTooShort && resultGroups.map((group) => (
+          <div key={`page-${group.pageNumber}-${group.rows[0].index}`} className="search-text-group">
+            <div className="search-text-group__header">
+              <span>Page {group.pageNumber}</span>
+              <span>{group.rows.length}</span>
+            </div>
+            {group.rows.map(({ result, index }) => (
               <SearchResultRow
                 key={result.id}
                 result={result}
                 index={index}
                 isActive={index === currentMatchIndex}
-                queryLength={internalSearchQuery.length}
                 onSelect={handleResultClick}
               />
             ))}
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
