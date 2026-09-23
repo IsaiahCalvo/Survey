@@ -4176,11 +4176,11 @@
 @keyframes hub-color-panel-drop {
   from { max-height: 0; opacity: 0; }
   60%  { opacity: 1; }
-  to   { max-height: 420px; opacity: 1; }
+  to   { max-height: var(--entity-panel-h, 420px); opacity: 1; }
 }
 .survey-hub [data-entity-color-panel] {
   overflow: hidden;
-  animation: hub-color-panel-drop 360ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation: hub-color-panel-drop 300ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .survey-hub [data-entity-color-panel] { animation: none; }
@@ -4300,3 +4300,24 @@
 button[title="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
 button[title="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
 button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }
+
+/* SWITCHING between two entities' panels (owner 2026-09-23: "disorienting").
+   The old panel folds and the new one opens over the SAME 300ms on the SAME
+   easing, so one panel's loss is the other's gain frame for frame: the sheet
+   keeps its height and the rows between glide as one piece instead of the list
+   lurching. (The tapped row is also held still wherever the list can scroll.) */
+.survey-hub [data-entity-color-panel][data-folding="switch"] {
+  animation: hub-color-panel-fold 300ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  pointer-events: none;
+}
+.survey-hub [data-entity-color-panel]:not([data-folding]) {
+  animation-duration: 300ms;
+}
+@keyframes hub-color-panel-fold-even {
+  from { max-height: var(--panel-h, 420px); opacity: 1; }
+  to   { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
+}
+.survey-hub [data-entity-color-panel][data-folding="switch"] { animation-name: hub-color-panel-fold-even; }
+@media (prefers-reduced-motion: reduce) {
+  .survey-hub [data-entity-color-panel][data-folding="switch"] { animation: none; }
+}

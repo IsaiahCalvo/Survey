@@ -752,15 +752,55 @@ export default function TemplatesEditor({
   // hub-color-panel-fold), from its own measured height, then unmounts it.
   // Programmatic closes (switching template, deleting) stay instant.
   const [foldingColor, setFoldingColor] = useState(null);
+  const [foldIsSwitch, setFoldIsSwitch] = useState(false);
   const foldTimerRef = useRef(0);
-  const foldColor = (next) => {
+  const markPanelHeights = () => {
+    document.querySelectorAll('[data-entity-color-panel]').forEach((el) => {
+      el.style.setProperty('--panel-h', `${el.getBoundingClientRect().height}px`);
+      // The next panel to open is the same picker, so it drops to this height:
+      // fold and drop then trade pixels one for one.
+      document.documentElement.style.setProperty('--entity-panel-h', `${el.getBoundingClientRect().height}px`);
+    });
+  };
+  // SWITCHING straight from one entity's panel to another's (owner
+  // 2026-09-23: "one collapse while the other one expands ... is very
+  // disorienting"). Both run at once — the old panel folds, the new one drops
+  // — and the row you tapped is held still on screen for the whole motion:
+  // each frame, whatever the fold above it removed is scrolled back, so only
+  // the panels move and your row never jumps.
+  const holdRowStill = (anchorEl) => {
+    const row = anchorEl?.closest?.('[data-sortable-rearrange-item]') || anchorEl;
+    if (!row) return;
+    let scroller = row.parentElement;
+    while (scroller && !(/(auto|scroll)/.test(getComputedStyle(scroller).overflowY) && scroller.scrollHeight > scroller.clientHeight)) {
+      scroller = scroller.parentElement;
+    }
+    const startTop = row.getBoundingClientRect().top;
+    const began = performance.now();
+    const step = () => {
+      if (!row.isConnected) return;
+      const drift = row.getBoundingClientRect().top - startTop;
+      if (scroller && Math.abs(drift) > 0.5) scroller.scrollTop += drift;
+      if (performance.now() - began < 420) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  const foldColor = (next, anchorEl) => {
     clearTimeout(foldTimerRef.current);
     if (next === null && openColor) {
-      document.querySelectorAll('[data-entity-color-panel]').forEach((el) => {
-        el.style.setProperty('--panel-h', `${el.getBoundingClientRect().height}px`);
-      });
+      markPanelHeights();
+      setFoldIsSwitch(false);
       setFoldingColor(openColor);
       foldTimerRef.current = setTimeout(() => { setOpenColor(null); setFoldingColor(null); }, 260);
+      return;
+    }
+    if (next && openColor && next !== openColor) {
+      markPanelHeights();
+      setFoldIsSwitch(true);
+      setFoldingColor(openColor);
+      setOpenColor(next);
+      holdRowStill(anchorEl);
+      foldTimerRef.current = setTimeout(() => setFoldingColor(null), 320);
       return;
     }
     setFoldingColor(null);
@@ -2494,6 +2534,7 @@ export default function TemplatesEditor({
                     ? c
                     : ((borderColors[r.id] || {}).color || c);
                   const isOpen = openColor === r.id;
+                  const showPanel = isOpen || foldingColor === r.id;
                   const isSel = selEntities.has(r.id);
                   return (
                     <SortableRearrangeRow
@@ -2522,7 +2563,7 @@ export default function TemplatesEditor({
                           onCollapse={() => foldColor(null)}
                         />
                         <button
-                          onClick={() => foldColor(isOpen ? null : r.id)}
+                          onClick={(e) => foldColor(isOpen ? null : r.id, e.currentTarget)}
                           title="Edit color" aria-label="Edit color"
                           style={{
                             width: 18, height: 18, borderRadius: '50%',
@@ -2567,7 +2608,7 @@ export default function TemplatesEditor({
                           )
                         )}
                       </div>
-                      {isOpen && (() => {
+                      {showPanel && (() => {
                         const tab = colorTab[r.id] || 'presets';
                         const layer = layerTab[r.id] || 'fill';
                         const match = !!matchFill[r.id];
@@ -2592,7 +2633,7 @@ export default function TemplatesEditor({
                           markEdited();
                         };
                         return (
-                          <div data-entity-color-panel data-folding={foldingColor === r.id ? 'true' : undefined} style={{
+                          <div data-entity-color-panel data-folding={foldingColor === r.id ? (foldIsSwitch ? 'switch' : 'true') : undefined} style={{
                             margin: '-4px 0 6px', padding: 0,
                             background: 'var(--paper-deep)', border: '1px solid var(--rule)', borderTop: 0, borderRadius: '0 0 4px 4px',
                             display: 'flex', flexDirection: 'column',
@@ -3011,6 +3052,7 @@ export default function TemplatesEditor({
                       const op = roleColors[r.id]?.opacity ?? 0.35;
                       const rowBorderColor = !!matchFill[r.id] ? c : ((borderColors[r.id] || {}).color || c);
                       const isOpen = openColor === r.id;
+                      const showPanel = isOpen || foldingColor === r.id;
                       const isSel = selEntities.has(r.id);
                       return (
                         <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
@@ -3021,7 +3063,7 @@ export default function TemplatesEditor({
                                 <button
                                   type="button"
                                   title="Edit color" aria-label="Edit color"
-                                  onClick={() => foldColor(isOpen ? null : r.id)}
+                                  onClick={(e) => foldColor(isOpen ? null : r.id, e.currentTarget)}
                                   style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
                                 ><span aria-hidden="true" /></button>
                                 <input
@@ -3052,7 +3094,7 @@ export default function TemplatesEditor({
                                   ><Icon name="more" size={14} /></button>
                                 )}
                               </div>
-                              {isOpen ? (() => {
+                              {showPanel ? (() => {
                                 const layer = layerTab[r.id] || 'fill';
                                 const match = !!matchFill[r.id];
                                 const fillData = { color: c, opacity: op };
@@ -3077,7 +3119,7 @@ export default function TemplatesEditor({
                                      picker draws its own Fill / Border tabs,
                                      and Match fill is the Border tab's first
                                      grid cell, so nothing moves between tabs. */
-                                  <div className="templates-mobile-color-panel" data-entity-color-panel data-folding={foldingColor === r.id ? 'true' : undefined}>
+                                  <div className="templates-mobile-color-panel" data-entity-color-panel data-folding={foldingColor === r.id ? (foldIsSwitch ? 'switch' : 'true') : undefined}>
                                     <CompactColorPicker
                                       color={activeData.color}
                                       opacity={activeData.opacity}
