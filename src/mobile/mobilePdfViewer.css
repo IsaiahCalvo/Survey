@@ -555,17 +555,23 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      is, so growing the pill can never leave the menu overlapping it. */
   top: calc(var(--mobile-control-h) + 3px);
   left: 50%;
-  width: 138px;
+  /* UX 2026-09-22 (owner: "too loud, bulky, big"): this is a dropdown like the
+     width / line-style menus, so it wears the styled-select skin — hug the
+     content (min 108px so the steppers have room), --surface-2, 9px radius,
+     the same quiet shadow, 26px rows at the 11px/600 chrome label size. It
+     was a 138px card with 34px rows, 800-weight numbers and a 28px shadow. */
+  width: max-content;
+  min-width: 108px;
   padding: 5px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   color: var(--text-1);
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  border-radius: 9px;
+  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
   z-index: 7200;
   /* Phase F (demo App.tsx:410-428): closed state — the menu fades/scales/slides
      UP-and-out over 130ms (in-cubic-out); visibility flips off only after that
@@ -613,9 +619,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
-  margin-bottom: 3px;
-  padding-bottom: 3px;
+  gap: 0;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -659,32 +665,39 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-width: 0;
   flex: 1 1 auto;
   color: var(--text-1);
-  font-size: 13px;
-  font-weight: 800;
+  /* ONE TYPE SCALE: the live percentage reads at the chrome label size. */
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   text-align: center;
+  padding: 0 6px;
 }
 
 .mobile-pdf-header__zoom-fits {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 
 .mobile-pdf-header__zoom-fits > button {
-  min-height: 34px;
+  height: 26px;
+  min-height: 26px;
   padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--text-2);
+  gap: 12px;
+  color: var(--text-1);
   background: transparent;
   border: 0;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 700;
+  border-radius: 6px;
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
   text-align: left;
+  white-space: nowrap;
 }
+.mobile-pdf-header__zoom-fits > button > svg { width: 12px; height: 12px; flex: 0 0 auto; }
 
 .mobile-pdf-header__zoom-fits > button.is-active {
   color: var(--accent);
@@ -3647,20 +3660,26 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      against the screen edge while the segment row above it and the action row
      below it were both inset, so the strip read as clipped. scroll-padding
      keeps scrolled cards stopping on the same rule. */
-  padding: 2px 16px !important;
-  scroll-padding-inline: 16px;
-  flex-direction: row !important;
-  gap: 16px !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  scroll-snap-type: x proximity;
+  /* UX 2026-09-22 (owner): the strip was a sideways row of 130px cards. It
+     is now a two-column grid that scrolls DOWN, like every other page list,
+     so 99 pages are a thumb-scroll away instead of a 99-card swipe. */
+  padding: 8px 16px 16px !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* max-content, not auto: the cards hide their overflow, so an auto row in
+     this fixed-height scroller collapsed to the card's padding (18px). */
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 12px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
 }
 
 .mobile-page-card {
-  flex: 0 0 130px !important;
-  width: 130px !important;
-  height: 146px !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0;
   padding: 8px !important;
   display: grid;
   place-items: center;
@@ -3668,25 +3687,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: var(--surface-2) !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
-  scroll-snap-align: start;
 }
 
 .mobile-page-card.is-active {
   background: var(--surface-3) !important;
   border-color: var(--accent) !important;
-  box-shadow: inset 2px 0 var(--accent);
 }
 
-.mobile-page-card.is-active::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 40px;
-  bottom: 40px;
-  width: 5px;
-  background: var(--accent);
-  border-radius: 3px;
-}
+/* UX 2026-09-22 (owner: "remove this"): the current page card carried a
+   5px gold pill down its left edge on top of the gold border — two "current"
+   marks on one card. The border alone says it now. */
 
 .mobile-page-card.is-selected {
   border-color: var(--accent) !important;
@@ -3758,9 +3768,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-page-preview {
-  width: 92px !important;
-  height: 112px !important;
-  padding-bottom: 0 !important;
+  /* UX 2026-09-22: in the two-column grid the thumbnail fills its card and
+     keeps the page's own shape (the inline padding-bottom ratio), instead of
+     a fixed 92x112 portrait box floating in a wider card. */
+  width: 100% !important;
+  height: auto !important;
   flex: 0 0 auto;
   /* A page thumbnail is a picture of PAPER, so it keeps paper colours — the
      one class of value tokens.css exempts along with ink. */

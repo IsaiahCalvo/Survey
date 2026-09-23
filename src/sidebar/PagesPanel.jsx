@@ -839,15 +839,14 @@ const PagesPanel = ({
               style={{
                 position: 'relative',
                 padding: mobileMode ? '8px' : '4px',
-                flex: mobileMode ? '0 0 130px' : undefined,
-                width: mobileMode ? '130px' : undefined,
-                height: mobileMode ? '146px' : undefined,
+                /* Phone: the card takes its grid cell (two columns, see
+                   .mobile-pages-track in mobilePdfViewer.css); no fixed box. */
                 boxSizing: 'border-box',
                 background: isSelected ? 'var(--surface-3)' : (dragOverPage === pageNumber ? 'var(--surface-3)' : 'transparent'),
                 border: isSelected ? '1px solid var(--accent)' : (dragOverPage === pageNumber ? '1px solid var(--accent)' : '1px solid transparent'),
                 borderRadius: '4px',
                 cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
-                touchAction: mobileMode ? 'pan-x' : undefined,
+                touchAction: mobileMode ? 'pan-y' : undefined,
                 opacity: draggedPage === pageNumber ? 0.82 : 1,
                 zIndex: draggedPage === pageNumber ? 1 : 'auto',
                 transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
