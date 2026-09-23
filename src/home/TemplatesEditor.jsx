@@ -2946,24 +2946,31 @@ export default function TemplatesEditor({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="templates-mobile-entity-modal-head">
+                      {/* UX 2026-09-23 (owner: "slim this down, and change the
+                          close button to an exit button"): one line — the
+                          title, the count beside it in grey, and the app's
+                          standard X, the same one every hub modal uses. */}
                       <div>
                         <strong>Entities</strong>
-                        <span>{tpl.roster.length} entities in {tpl.name}</span>
+                        <span>{tpl.roster.length} in {tpl.name}</span>
                       </div>
                       <button
                         ref={mobileEntitiesCloseRef}
                         type="button"
                         onClick={closeMobileEntities}
+                        className="hub-icon-btn"
+                        title="Close"
+                        aria-label="Close"
                       >
-                        Close
+                        <Icon name="close" size={13} />
                       </button>
                     </div>
                     <section className="templates-mobile-section templates-mobile-entity-panel">
-                <div className="templates-mobile-section-head">
-                  <span>Entities</span>
-                  <button type="button" onClick={addEntity}><Icon name="plus" size={11} />New entity</button>
-                </div>
-                <div className="templates-mobile-select-inline">
+                {/* UX 2026-09-23 (owner: the "Entities / New entity" row and the
+                    Select row "need to be one header that is way slimmer"). The
+                    sheet's own title already says Entities, so the label goes;
+                    Select sits left and New entity right on one row. */}
+                <div className="templates-mobile-select-inline templates-mobile-entity-toolbar">
                   <button
                     className="hub-btn hub-btn--tertiary"
                     onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
@@ -2991,6 +2998,9 @@ export default function TemplatesEditor({
                       </span>
                     );
                   })()}
+                  {!entityEdit && (
+                    <button type="button" className="hub-btn templates-mobile-new-entity" onClick={addEntity}><Icon name="plus" size={11} />New entity</button>
+                  )}
                 </div>
                 {mobileVisibleEntities.length === 0 ? (
                   <div className="templates-mobile-empty">No entities match this view.</div>

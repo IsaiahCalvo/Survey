@@ -4202,3 +4202,70 @@
 @media (prefers-reduced-motion: reduce) {
   .survey-hub [data-entity-color-panel][data-folding="true"] { animation: none; }
 }
+
+/* Phone Entities sheet, slimmed (owner 2026-09-23). The head is one 44px line;
+   the panel's own header is one 36px toolbar (Select left, New entity right). */
+@media (max-width: 860px) {
+  .survey-hub .templates-mobile-entity-modal-head {
+    padding: 6px 8px 6px 14px !important;
+    min-height: 44px;
+  }
+  .survey-hub .templates-mobile-entity-modal-head > div {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .survey-hub .templates-mobile-entity-panel {
+    padding-top: 0 !important;
+  }
+  .survey-hub .templates-mobile-entity-toolbar {
+    margin: 0 !important;
+    height: 36px !important;
+    padding: 0 10px !important;
+    display: flex;
+    align-items: center;
+  }
+  .survey-hub .templates-mobile-entity-toolbar > .templates-mobile-new-entity {
+    margin-left: auto;
+  }
+}
+@media (max-width: 860px) {
+  /* The section is a grid whose 8px gap also fell after the list, around the
+     drag library's two invisible helper nodes — the "invisible row" under the
+     last entity. The rows are parted by lines, so the grid needs no gap. */
+  .survey-hub .templates-mobile-entity-panel { row-gap: 0 !important; gap: 0 !important; }
+  .survey-hub .templates-mobile-entity-toolbar { min-height: 36px !important; }
+  .survey-hub .templates-mobile-entity-modal-head .hub-icon-btn {
+    position: relative;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+  }
+  .survey-hub .templates-mobile-entity-modal-head .hub-icon-btn::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}
+@media (max-width: 860px) {
+  /* The sheet was held at least 360px tall, so a short list was stretched and
+     left an empty band under its last row. It hugs its rows now (up to the
+     same 74dvh cap), and the rows stay at the top of their section. */
+  .survey-hub .templates-mobile-entity-modal { min-height: 0 !important; }
+  .survey-hub .templates-mobile-entity-panel { align-content: start !important; }
+}
+@media (max-width: 860px) {
+  /* The X is the plain hub icon button — no outline, no gold (those belonged
+     to the old "Close" text button that sat here). */
+  .survey-hub .templates-mobile-entity-modal-head .hub-icon-btn {
+    border: 0 !important;
+    background: transparent;
+    color: var(--text-2) !important;
+    border-radius: 6px;
+    padding: 0 !important;
+    display: grid;
+    place-items: center;
+  }
+}
