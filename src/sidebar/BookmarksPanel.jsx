@@ -66,6 +66,32 @@ const MOBILE_BOOKMARK_INDENT_PX = 14;
  */
 export const MOBILE_BOOKMARK_DRAG_ACTIVATION = { delay: 250, tolerance: 5 };
 
+/*
+ * UX 2026-09-23 (owner: bookmarks look like the home lists, header reads
+ * "+ Add … Edit", no title) — the desktop header's two quiet actions. The
+ * button box is the full-height, invisible tap pad; only the glyph and word
+ * paint. No fill, no border, no hover plate: hover brightens the ink.
+ */
+const bookmarkHeaderActionStyle = (color) => ({
+  height: '100%',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: 0,
+  background: 'transparent',
+  border: 'none',
+  color,
+  fontSize: '13px',
+  fontWeight: 600,
+  fontFamily: FONT_FAMILY,
+  lineHeight: 1,
+  cursor: 'pointer',
+  transition: 'color 0.12s ease',
+});
+
+// Desktop row height (the home lists' row family: a 38px line + 1px divider).
+const BOOKMARK_ROW_HEIGHT_PX = 38;
+
 // Helper to generate unique IDs
 const generateId = () => crypto.randomUUID();
 
@@ -189,12 +215,17 @@ const BookmarkTreeRow = ({
       style={{
         listStyle: 'none',
         margin: 0,
-        padding: '1px 0',
+        // UX 2026-09-23 (owner: "These should not look like individual cards
+        // … look how we made documents, projects, and templates look"): rows
+        // are lines in the panel. No gap between them, and the depth indent
+        // moved INSIDE the row (paddingLeft below) so every divider still runs
+        // from edge to edge while nested rows step their content in.
+        padding: 0,
         opacity: isDragging && !isClone ? 0.92 : 1,
         position: 'relative',
+        zIndex: isActiveRow ? 2 : undefined,
         width: isClone ? `${cloneWidth}px` : 'auto',
         boxSizing: 'border-box',
-        marginLeft: (isClone || isActiveRow) ? undefined : `${rowInset}px`,
         paddingLeft: 0,
         overflow: groupAnimationState ? 'hidden' : undefined,
         transition: isClone ? 'padding-left 120ms ease-out' : undefined,
@@ -218,36 +249,40 @@ const BookmarkTreeRow = ({
           transition: groupAnimationState || isGroupAnimationActive ? undefined : transition,
           display: 'flex',
           alignItems: 'center',
-          gap: 3,
-          height: 31,
-          padding: '3px 4px',
-          borderRadius: 5,
-          background: isClone ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
-          border: '1px solid var(--border)',
+          gap: 6,
+          height: BOOKMARK_ROW_HEIGHT_PX + 1,
+          // 5px + the grip's own 7px ink inset puts the visible grip dots on
+          // the header's 12px edge gap (the same line as the "+" of Add);
+          // nested rows add their depth inset here.
+          padding: `0 12px 0 ${5 + (isClone ? 0 : rowInset)}px`,
+          borderRadius: 0,
+          // Quiet states only: the hover step or the SELECTED surface, never
+          // a gold box. The lifted (dragging) row keeps a raised surface.
+          background: isClone || isActiveRow ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'transparent',
+          border: 'none',
+          borderBottom: '1px solid var(--border)',
           color: 'var(--text-2)',
-          boxShadow: isClone ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
+          boxShadow: isClone || isActiveRow ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
           cursor: isEditMode ? 'default' : 'pointer',
           pointerEvents: isSorting ? 'none' : undefined,
-          marginLeft: isClone ? `${cloneRelativeInset}px` : isActiveRow ? `${rowInset}px` : undefined,
+          marginLeft: isClone ? `${cloneRelativeInset}px` : undefined,
           width: isClone
             ? `calc(100% - ${cloneRelativeInset}px)`
-            : isActiveRow
-              ? `calc(100% - ${rowInset}px)`
-              : '100%',
+            : '100%',
           boxSizing: 'border-box',
         }}
         onMouseEnter={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--hover)';
+          if (!isSelected && !isClone && !isActiveRow) event.currentTarget.style.background = 'var(--hover)';
         }}
         onMouseLeave={(event) => {
-          if (!isSelected && !isClone) event.currentTarget.style.background = 'var(--surface-1)';
+          if (!isSelected && !isClone && !isActiveRow) event.currentTarget.style.background = 'transparent';
         }}
       >
         <div
           {...mergeDragHandleProps(tip('Drag to reorder', 'below'), handleProps)}
           style={{
             width: 18,
-            height: 22,
+            height: BOOKMARK_ROW_HEIGHT_PX,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -259,31 +294,43 @@ const BookmarkTreeRow = ({
           }}
           onClick={(event) => event.stopPropagation()}
         >
-          ☰
+          {/* The app's shared grip icon (it replaced a hamburger text glyph). */}
+          <Icon name="grip" size={12} color="currentColor" />
         </div>
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggle?.(item.id);
-          }}
-          disabled={!isFolder || !item.children?.length || isClone}
-          {...tip((isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group', 'below')}
-          style={{
-            width: 16,
-            height: 18,
-            border: 0,
-            padding: 0,
-            background: 'transparent',
-            color: isFolder && item.children?.length ? 'var(--text-3)' : 'transparent',
-            cursor: isFolder && item.children?.length && !isClone ? 'pointer' : 'default',
-            transform: (isCollapsed || isVisuallyCollapsed) ? 'rotate(-90deg)' : 'rotate(0deg)',
-            transition: `transform ${GROUP_COLLAPSE_ANIMATION_MS}ms ease`,
-            flexShrink: 0,
-          }}
-        >
-          ▾
-        </button>
-        <Icon name={isFolder ? 'folder' : 'bookmark'} size={11} color="var(--text-3)" />
+        {/* Fold arrow only on a folder that has something to fold — a row
+            without children no longer keeps an empty arrow-sized gap. */}
+        {isFolder && item.children?.length ? (
+          <button
+            className="tertiary"
+            data-glyph-only
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle?.(item.id);
+            }}
+            disabled={isClone}
+            aria-label={(isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group'}
+            aria-expanded={!(isCollapsed || isVisuallyCollapsed)}
+            {...tip((isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group', 'below')}
+            style={{
+              width: 12,
+              height: BOOKMARK_ROW_HEIGHT_PX,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 0,
+              padding: 0,
+              background: 'transparent',
+              color: 'var(--text-3)',
+              cursor: isClone ? 'default' : 'pointer',
+              transform: (isCollapsed || isVisuallyCollapsed) ? 'rotate(0deg)' : 'rotate(90deg)',
+              transition: `transform ${GROUP_COLLAPSE_ANIMATION_MS}ms ease`,
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="chevronRight" size={12} color="currentColor" />
+          </button>
+        ) : null}
+        <Icon name={isFolder ? 'folder' : 'bookmark'} size={13} color="var(--text-3)" />
         {isEditMode && !isClone ? (
           <input
             value={editName}
@@ -318,8 +365,8 @@ const BookmarkTreeRow = ({
             style={{
               flex: 1,
               minWidth: 0,
-              color: 'var(--text-2)',
-              fontSize: 12,
+              color: 'var(--text-1)',
+              fontSize: 13,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -363,7 +410,7 @@ const BookmarkTreeRow = ({
             />
           ) : (
             item.pageIds?.[0] ? (
-              <span style={{ width: 36, color: 'var(--text-3)', fontSize: 10, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
+              <span style={{ color: 'var(--text-3)', fontSize: 11, textAlign: 'right', flexShrink: 0, userSelect: 'none', fontVariantNumeric: 'tabular-nums' }}>
                 P {item.pageIds[0]}
               </span>
             ) : null
@@ -377,13 +424,17 @@ const BookmarkTreeRow = ({
             }}
             {...tip('Add bookmark to group', 'below')}
             aria-label="Add bookmark to group"
+            className="tertiary"
+            data-glyph-only
+            // Glyph only (owner 2026-09-23: no boxes on lone icons) — it was a
+            // bordered well; the invisible pad is the full row height.
             style={{
-              width: 24,
-              height: 22,
-              background: 'var(--surface-0)',
-              border: '1px solid var(--border)',
+              width: 22,
+              height: BOOKMARK_ROW_HEIGHT_PX,
+              background: 'transparent',
+              border: 'none',
               color: 'var(--text-3)',
-              borderRadius: 5,
+              borderRadius: 0,
               padding: 0,
               cursor: 'pointer',
               display: 'flex',
@@ -454,8 +505,17 @@ const BookmarkTreeRow = ({
  *      still jumps to the page;
  *   2. the row indents by MOBILE_BOOKMARK_INDENT_PX per depth instead of the
  *      desktop width, because the phone row is only ~315px wide.
- * The grip is deliberately the same ☰ affordance the desktop row uses, and its
- * hit area is padded out to 44px via ::before so the row height never changes.
+ * The grip is the app's shared six-dot "grip" icon (UX 2026-09-23, owner:
+ * phone bookmarks match desktop — it replaced a hamburger text glyph), and its hit
+ * area is padded out to 44px via an invisible ::before so the row height never
+ * changes.
+ *
+ * UX 2026-09-23 (owner: "the shit on this page is too bulky … match desktop
+ * more closely") — the row reads like the desktop tree row: grip, fold arrow
+ * column, small plain folder/bookmark glyph (no bubble), one line of name and
+ * a quiet "P n" page tag on the right. Rows are lines in one list divided by
+ * edge-to-edge hairlines, not a bordered card each; the old "Page n · PDF
+ * outline" second line is gone because the page tag already says it.
  *
  * The sheet's own drag-to-dismiss cannot fight this: useMobileSheetMotion's
  * touch handlers are attached only to the 35px grab-handle strip at the top of
@@ -475,6 +535,7 @@ const MobileBookmarkRow = ({
   depth,
   projectedDepth,
   isDraggingAny,
+  isEditMode = false,
   onToggle,
   onNavigate,
   onEdit,
@@ -495,22 +556,29 @@ const MobileBookmarkRow = ({
 
   const isFolder = item.type === 'folder';
   const rowDepth = projectedDepth ?? depth;
-  const pageLabel = isFolder
-    ? 'Folder'
-    : (item.pageIds?.[0] ? `Page ${item.pageIds[0]}` : 'Bookmark');
+  const isCollapsed = isFolder && item.collapsed && item.children?.length;
+  const pageNumber = !isFolder ? item.pageIds?.[0] : null;
+  // UX 2026-09-23 (owner: phone bookmarks match desktop) — the lifted row moves
+  // vertically only, exactly like the desktop tree's active row; the projected
+  // nesting depth shows as the row's own indent instead of a sideways slide.
+  const rowTransform = isDragging && transform
+    ? CSS.Translate.toString({ ...transform, x: 0 })
+    : CSS.Translate.toString(transform);
 
   return (
     <div
       ref={setDroppableNodeRef}
       data-bookmark-row-id={item.id}
       className="mobile-bookmark-slot"
-      style={{ marginLeft: rowDepth * MOBILE_BOOKMARK_INDENT_PX }}
     >
       <div
         ref={setDraggableNodeRef}
         className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
         style={{
-          transform: CSS.Translate.toString(transform),
+          // The depth indent lives INSIDE the row (padding), so every row's
+          // hairline still runs edge to edge while nested rows step in.
+          '--mobile-bookmark-depth-inset': `${rowDepth * MOBILE_BOOKMARK_INDENT_PX}px`,
+          transform: rowTransform,
           transition,
         }}
       >
@@ -525,12 +593,13 @@ const MobileBookmarkRow = ({
           style={{ touchAction: isDraggingAny ? 'none' : 'manipulation' }}
           onClick={(event) => event.stopPropagation()}
         >
-          ☰
+          <Icon name="grip" size={14} color="currentColor" />
         </div>
         <button
           type="button"
-          className="mobile-bookmark-open"
+          className="mobile-bookmark-open tertiary"
           aria-label={isFolder ? `Toggle ${item.name}` : `Open bookmark ${item.name}`}
+          aria-expanded={isFolder ? !isCollapsed : undefined}
           onClick={() => {
             if (isFolder) {
               onToggle?.(item.id);
@@ -539,14 +608,26 @@ const MobileBookmarkRow = ({
             onNavigate?.(item);
           }}
         >
-          <span className="mobile-bookmark-bubble">
-            <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? '#8fb7ff' : '#a8b0bf'} />
+          {/* Fold arrow only on a folder with something to fold, as on
+              desktop — a row without children keeps no empty gap. */}
+          {isFolder && item.children?.length ? (
+            <span
+              className={`mobile-bookmark-caret${isCollapsed ? '' : ' is-open'}`}
+              aria-hidden="true"
+            >
+              <Icon name="chevronRight" size={12} color="currentColor" />
+            </span>
+          ) : null}
+          <span className="mobile-bookmark-icon" aria-hidden="true">
+            <Icon name={isFolder ? 'folder' : 'bookmark'} size={14} color="currentColor" />
           </span>
-          <span className="mobile-bookmark-copy">
-            <span className="mobile-bookmark-title">{item.name}</span>
-            <span className="mobile-bookmark-meta">{pageLabel} · PDF outline</span>
-          </span>
+          <span className="mobile-bookmark-title">{item.name}</span>
+          {pageNumber ? (
+            <span className="mobile-bookmark-page">P {pageNumber}</span>
+          ) : null}
         </button>
+        {/* Rename + delete show in Edit mode only, like the desktop tree. */}
+        {isEditMode && (
         <div className="mobile-bookmark-moves">
           {!isFolder && (
             <button
@@ -555,7 +636,7 @@ const MobileBookmarkRow = ({
               aria-label={`Edit bookmark ${item.name}`}
               onClick={() => onEdit?.(item)}
             >
-              <Icon name="edit" size={13} color="currentColor" />
+              <Icon name="edit" size={14} color="currentColor" />
             </button>
           )}
           <button
@@ -564,9 +645,10 @@ const MobileBookmarkRow = ({
             aria-label={`Delete bookmark ${item.name}`}
             onClick={() => onDelete?.(item.id)}
           >
-            <Icon name="trash" size={13} color="currentColor" />
+            <Icon name="trash" size={14} color="currentColor" />
           </button>
         </div>
+        )}
       </div>
     </div>
   );
@@ -1292,6 +1374,7 @@ const BookmarksPanel = ({
 
     setNewFolderName('');
     setShowMobileFolderEditor(false);
+    setShowCreateMenu(false);
   }, [bookmarks, newFolderName, onBookmarkCreate]);
 
   // Existing create/modal handlers remain the same
@@ -1604,6 +1687,9 @@ const BookmarksPanel = ({
   }, [targetGroupId, addToGroupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
 
   if (mobileMode) {
+    // The phone's Add is open while either inline editor (bookmark or folder)
+    // is showing; its toggle then reads "Cancel".
+    const isAddOpen = showCreateMenu || showMobileFolderEditor;
     // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the
     // demo (BookmarkRow.tsx / HubTray bookmarks branch). flattenedItems already
     // honours folder collapse state and carries per-row depth. Tapping a folder
@@ -1631,39 +1717,51 @@ const BookmarksPanel = ({
         className={`mobile-bookmark-list${activeId ? ' is-dragging-active' : ''}`}
         data-bookmark-tree-list
       >
+        {/* UX 2026-09-23 (owner: "Add with a + sign on the left … Edit on the
+            right … well integrated and perfectly aligned"; then "We don't need
+            the title of bookmarks … the tab already says it") — the SAME
+            header as the desktop panel and the Spaces panel: 44px on the phone
+            with a hairline under it, "+ Add" left, "Edit" right. Both actions
+            are quiet (text-2 ink, no fill, no border, the 44px-tall button box
+            is the invisible tap pad); gold is only the "Done" word while
+            editing. Edit mode is what shows each row's rename and delete
+            glyphs, exactly as desktop hides them until Edit — so a resting row
+            is just its grip, glyph, name and page. */}
         <div className="mobile-bookmark-toolbar">
-          {/* UX 2026-09-22 (owner ruling): folder creation lives in the phone
-              panel's own action row, beside "Add bookmark". It is a neutral
-              pill whose glyph turns gold while its name field is open — the
-              app's phone control language (gold glyph marks the active
-              control, never a gold fill). */}
           <button
             type="button"
-            className={`mobile-bookmark-newfolder${showMobileFolderEditor ? ' is-active' : ''}`}
-            aria-label={showMobileFolderEditor ? 'Cancel new folder' : 'New folder'}
-            aria-expanded={showMobileFolderEditor}
+            className={`mobile-bookmark-add tertiary${isAddOpen ? ' is-active' : ''}`}
+            aria-label={isAddOpen ? 'Cancel new bookmark' : 'Add bookmark'}
+            aria-expanded={isAddOpen}
             onClick={() => {
-              setShowMobileFolderEditor((shown) => !shown);
+              const next = !isAddOpen;
+              setShowCreateMenu(next);
+              setShowMobileFolderEditor(false);
               setNewFolderName('');
-              setShowCreateMenu(false);
             }}
           >
-            <Icon name={showMobileFolderEditor ? 'close' : 'folder'} size={13} color="currentColor" />
-            {showMobileFolderEditor ? 'Cancel' : 'New folder'}
+            <Icon name={isAddOpen ? 'close' : 'plus'} size={14} color="currentColor" />
+            {isAddOpen ? 'Cancel' : 'Add'}
           </button>
           <button
             type="button"
-            className="mobile-bookmark-add"
-            aria-label={showCreateMenu ? 'Cancel new bookmark' : 'Add bookmark'}
+            className={`mobile-bookmark-edit tertiary${isEditMode ? ' is-active' : ''}`}
+            aria-label={isEditMode ? 'Done editing bookmarks' : 'Edit bookmarks'}
+            aria-pressed={isEditMode}
             onClick={() => {
-              setShowCreateMenu((shown) => !shown);
-              setShowMobileFolderEditor(false);
+              setIsEditMode((editing) => !editing);
+              setMobileEditingBookmarkId(null);
             }}
           >
-            <Icon name={showCreateMenu ? 'close' : 'plus'} size={13} color="currentColor" />
-            {showCreateMenu ? 'Cancel' : 'Add bookmark'}
+            <Icon name="edit" size={14} color="currentColor" />
+            {isEditMode ? 'Done' : 'Edit'}
           </button>
         </div>
+        {/* Add opens ONE inline line: the bookmark fields, or — via the quiet
+            "New folder" switch under them (UX 2026-09-22 owner ruling: the
+            phone can make a folder) — the folder-name field. This mirrors the
+            desktop Add menu, which offers the bookmark form and "New bookmark
+            group" in one place. */}
         {showMobileFolderEditor && (
           <div className="mobile-bookmark-editor mobile-bookmark-editor-folder" aria-label="New folder">
             <input
@@ -1681,16 +1779,17 @@ const BookmarksPanel = ({
                 }
               }}
             />
-            <button type="button" onClick={handleCreateMobileFolder}>Create folder</button>
+            <button type="button" className="tertiary" onClick={handleCreateMobileFolder}>Create</button>
           </div>
         )}
-        {showCreateMenu && (
+        {showCreateMenu && !showMobileFolderEditor && (
           <div className="mobile-bookmark-editor" aria-label="New bookmark">
             <input
               type="text"
               aria-label="Bookmark name"
               value={newBookmarkName}
               placeholder="Bookmark name"
+              autoFocus
               onChange={(event) => setNewBookmarkName(event.target.value)}
             />
             <input
@@ -1703,7 +1802,24 @@ const BookmarksPanel = ({
               placeholder="Page"
               onChange={(event) => setNewBookmarkPages(event.target.value)}
             />
-            <button type="button" onClick={handleCreateBookmark}>Create</button>
+            <button type="button" className="tertiary" onClick={handleCreateBookmark}>Create</button>
+          </div>
+        )}
+        {isAddOpen && (
+          <div className="mobile-bookmark-addkind">
+            <button
+              type="button"
+              className={`mobile-bookmark-newfolder tertiary${showMobileFolderEditor ? ' is-active' : ''}`}
+              aria-label={showMobileFolderEditor ? 'Cancel new folder' : 'New folder'}
+              aria-expanded={showMobileFolderEditor}
+              onClick={() => {
+                setShowMobileFolderEditor((shown) => !shown);
+                setNewFolderName('');
+              }}
+            >
+              <Icon name={showMobileFolderEditor ? 'bookmark' : 'folder'} size={14} color="currentColor" />
+              {showMobileFolderEditor ? 'New bookmark instead' : 'New folder instead'}
+            </button>
           </div>
         )}
         {flattenedItems.length === 0 ? (
@@ -1722,7 +1838,7 @@ const BookmarksPanel = ({
                   key={item.id}
                   className="mobile-bookmark-editor mobile-bookmark-editor-existing"
                   aria-label={`Edit bookmark ${item.name}`}
-                  style={{ marginLeft: depth * 14 }}
+                  style={{ '--mobile-bookmark-depth-inset': `${depth * MOBILE_BOOKMARK_INDENT_PX}px` }}
                 >
                   <input
                     type="text"
@@ -1739,8 +1855,8 @@ const BookmarksPanel = ({
                     value={mobileEditPage}
                     onChange={(event) => setMobileEditPage(event.target.value)}
                   />
-                  <button type="button" onClick={() => saveMobileBookmarkEdit(item)}>Save</button>
-                  <button type="button" className="secondary" onClick={() => setMobileEditingBookmarkId(null)}>Cancel</button>
+                  <button type="button" className="tertiary" onClick={() => saveMobileBookmarkEdit(item)}>Save</button>
+                  <button type="button" className="secondary tertiary" onClick={() => setMobileEditingBookmarkId(null)}>Cancel</button>
                 </div>
               ) : (
                 <MobileBookmarkRow
@@ -1749,6 +1865,7 @@ const BookmarksPanel = ({
                   depth={depth}
                   projectedDepth={item.id === activeId && projected ? projected.depth : null}
                   isDraggingAny={Boolean(activeId)}
+                  isEditMode={isEditMode}
                   onToggle={toggleExpand}
                   onNavigate={handleNavigate}
                   onEdit={beginMobileBookmarkEdit}
@@ -1772,11 +1889,27 @@ const BookmarksPanel = ({
       fontFamily: FONT_FAMILY,
       background: 'var(--surface-1)'
     }}>
-      {/* Header */}
+      {/*
+        UX 2026-09-23 (owner, desktop Bookmarks header): "Add with a + sign on
+        the left … Edit on the right. Everything should look well integrated
+        and perfectly aligned." The big gold footer bar is gone; Add opens the
+        same create menu, now dropping DOWN from here. Later the same day: "We
+        don't need the title of bookmarks in the middle … because the tab
+        already says it" — so the row is just the two actions.
+        Shared header spec with the Spaces panel (one design for both panels):
+        40px row on desktop (44 on the phone) with a hairline under it; two
+        quiet glyph-and-word actions of equal weight — text-2 ink, no fill, no
+        border, the button box is an invisible full-height tap pad; hover/press
+        only brighten the ink to text-1, never a plate (`tertiary` keeps
+        states.css's press plate off). The 12px edge gaps are measured to the
+        visible glyph/word. Gold appears only as the minimal "Done" accent
+        while editing.
+      */}
       <div style={{
-        padding: '12px',
-        height: '50px',
+        position: 'relative',
+        height: '40px',
         boxSizing: 'border-box',
+        padding: '0 12px',
         background: 'var(--surface-1)',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
@@ -1784,56 +1917,177 @@ const BookmarksPanel = ({
         alignItems: 'center',
         flexShrink: 0
       }}>
-        <h3 style={{
-          margin: 0,
-          fontSize: '13px',
-          fontWeight: '600',
-          color: 'var(--text-2)'
-        }}>
-          Bookmarks
-        </h3>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div ref={menuRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+          <DismissBarrier
+            active={showCreateMenu}
+            insideRefs={createMenuInsideRefs}
+            onDismiss={() => setShowCreateMenu(false)}
+          />
           <button
-            onClick={() => setIsEditMode(!isEditMode)}
-            style={{
-              height: '26px',
-              /* UX: this button must answer the pointer. It rests one step
-                 below its own hover (--surface-2 -> --surface-3), exactly like
-                 the five secondary buttons further down this panel; the gold
-                 "Done" state rests on --accent and hovers to --accent-light,
-                 the gold hover step tokens.css defines. */
-              background: isEditMode ? 'var(--accent)' : 'var(--surface-2)',
-              color: isEditMode ? 'var(--accent-text)' : 'var(--text-2)',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '0 10px',
-              fontSize: '12px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontFamily: FONT_FAMILY
-            }}
-            onMouseEnter={(e) => {
-              if (!isEditMode) {
-                e.currentTarget.style.background = 'var(--hover)';
-              } else {
-                e.currentTarget.style.background = 'var(--accent-light)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isEditMode) {
-                e.currentTarget.style.background = 'var(--surface-2)';
-              } else {
-                e.currentTarget.style.background = 'var(--accent)';
-              }
-            }}
+            type="button"
+            className="tertiary"
+            onClick={() => setShowCreateMenu(!showCreateMenu)}
+            aria-label="Add bookmark"
+            aria-expanded={showCreateMenu}
+            // -2.5px: the plus glyph's ink starts 2.5px inside its 14px box,
+            // so this lands the visible "+" on the 12px edge gap.
+            style={{ ...bookmarkHeaderActionStyle(showCreateMenu ? 'var(--text-1)' : 'var(--text-2)'), marginLeft: '-2.5px' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = showCreateMenu ? 'var(--text-1)' : 'var(--text-2)'; }}
           >
-            <Icon name="edit" size={12} color={isEditMode ? 'var(--accent-text)' : 'var(--text-2)'} />
-            {isEditMode ? 'Done' : 'Edit'}
+            <Icon name="plus" size={14} color="currentColor" />
+            Add
           </button>
+              {showCreateMenu && (
+                <div style={{
+                  position: 'absolute',
+                  // Opens DOWN from the header now that Add lives there (was the
+                  // footer bar, where it opened upward).
+                  top: '100%',
+                  left: '8px',
+                  right: '8px',
+                  marginTop: '4px',
+                  background: 'var(--surface-3)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '4px',
+                  zIndex: 1000,
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                }}>
+                  <button
+                    onClick={handleCreateFolder}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: 'var(--text-2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Icon name="folder" size={14} color="var(--text-3)" />
+                    New bookmark group
+                  </button>
+                  <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
+                    <input
+                      type="text"
+                      placeholder="Bookmark name"
+                      value={newBookmarkName}
+                      onChange={(e) => setNewBookmarkName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-2)',
+                        border: '1px solid var(--border-strong)',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontFamily: FONT_FAMILY,
+                        marginBottom: '8px',
+                        outline: 'none',
+                        transition: 'border-color 0.15s ease'
+                      }}
+                      // UX 2026-09-23: focus lifts the border to a lighter
+                      // neutral — no gold ring on a field (owner rule).
+                      onFocus={(e) => e.currentTarget.style.borderColor = 'var(--text-3)'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Page number"
+                      value={newBookmarkPages}
+                      onChange={(e) => handleNewBookmarkPageChange(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-2)',
+                        border: '1px solid var(--border-strong)',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontFamily: FONT_FAMILY,
+                        marginBottom: '8px',
+                        outline: 'none',
+                        transition: 'border-color 0.15s ease'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = 'var(--text-3)'}
+                      onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                    />
+                    <button
+                      onClick={() => {
+                        if (pageNum) {
+                          const clampedPage = numPages ? Math.min(pageNum, numPages) : pageNum;
+                          if (clampedPage > 0) {
+                            handleNewBookmarkPageChange(clampedPage.toString());
+                          }
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '6px 12px',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-2)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        fontFamily: FONT_FAMILY,
+                        marginBottom: '8px',
+                        transition: 'background 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
+                    >
+                      Current page
+                    </button>
+                    <button
+                      onClick={handleCreateBookmark}
+                      style={{
+                        width: '100%',
+                        padding: '6px 12px',
+                        background: 'var(--accent)',
+                        /* UX: the label ON a gold fill is --accent-text. --text-1 on
+                           --accent-light measures 1.5:1; --accent-text is 8.6:1. */
+                        color: 'var(--accent-text)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        fontFamily: FONT_FAMILY
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                    >
+                      Create bookmark
+                    </button>
+                  </div>
+                </div>
+              )}
         </div>
+        <button
+          type="button"
+          className="tertiary"
+          onClick={() => setIsEditMode(!isEditMode)}
+          aria-pressed={isEditMode}
+          style={bookmarkHeaderActionStyle(isEditMode ? 'var(--accent)' : 'var(--text-2)')}
+          onMouseEnter={(e) => { e.currentTarget.style.color = isEditMode ? 'var(--accent-light)' : 'var(--text-1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = isEditMode ? 'var(--accent)' : 'var(--text-2)'; }}
+        >
+          <Icon name="edit" size={14} color="currentColor" />
+          {isEditMode ? 'Done' : 'Edit'}
+        </button>
       </div>
 
       {/* Bookmarks List with Drag-and-Drop */}
@@ -1841,7 +2095,8 @@ const BookmarksPanel = ({
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '6px',
+          // 0, not the old 6px: row dividers run to both panel edges.
+          padding: 0,
           position: 'relative'
         }}
       >
@@ -1855,18 +2110,18 @@ const BookmarksPanel = ({
             }
             to {
               opacity: 1;
-              max-height: 33px;
-              padding-top: 1px;
-              padding-bottom: 1px;
+              max-height: 39px;
+              padding-top: 0;
+              padding-bottom: 0;
             }
           }
 
           @keyframes bookmarkGroupCollapse {
             from {
               opacity: 1;
-              max-height: 33px;
-              padding-top: 1px;
-              padding-bottom: 1px;
+              max-height: 39px;
+              padding-top: 0;
+              padding-bottom: 0;
             }
             to {
               opacity: 0;
@@ -1926,181 +2181,6 @@ const BookmarksPanel = ({
             )}
           </SortableContext>
         </DndContext>
-      </div>
-
-      {/* Add Button at Bottom */}
-      <div style={{
-        padding: '12px',
-        background: 'var(--surface-1)',
-        borderTop: '1px solid var(--border)'
-      }}>
-        <div style={{ position: 'relative' }} ref={menuRef}>
-          <DismissBarrier
-            active={showCreateMenu}
-            insideRefs={createMenuInsideRefs}
-            onDismiss={() => setShowCreateMenu(false)}
-          />
-          <button
-            onClick={() => setShowCreateMenu(!showCreateMenu)}
-            style={{
-              width: '100%',
-              background: 'var(--accent)',
-              color: 'var(--accent-text)',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 12px',
-              fontSize: '13px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              fontFamily: FONT_FAMILY
-            }}
-            /* UX: a gold control hovers UP to --accent-light and only presses
-               DOWN to --accent-press (tokens.css "HOW STATES ARE BUILT"). This
-               used to darken on hover, which reads as already-pressed. */
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-          >
-            <Icon name="plus" size={14} color="var(--accent-text)" />
-            Add bookmark
-          </button>
-          {showCreateMenu && (
-            <div style={{
-              position: 'absolute',
-              bottom: '100%',
-              left: 0,
-              right: 0,
-              marginBottom: '4px',
-              background: 'var(--surface-3)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              padding: '4px',
-              zIndex: 1000,
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-            }}>
-              <button
-                onClick={handleCreateFolder}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  color: 'var(--text-2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                <Icon name="folder" size={14} color="var(--text-3)" />
-                New bookmark group
-              </button>
-              <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
-                <input
-                  type="text"
-                  placeholder="Bookmark name"
-                  value={newBookmarkName}
-                  onChange={(e) => setNewBookmarkName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--surface-2)',
-                    color: 'var(--text-2)',
-                    border: '1px solid var(--border-strong)',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontFamily: FONT_FAMILY,
-                    marginBottom: '8px',
-                    outline: 'none',
-                    transition: 'border-color 0.15s ease'
-                  }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
-                />
-                <input
-                  type="text"
-                  placeholder="Page number"
-                  value={newBookmarkPages}
-                  onChange={(e) => handleNewBookmarkPageChange(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--surface-2)',
-                    color: 'var(--text-2)',
-                    border: '1px solid var(--border-strong)',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontFamily: FONT_FAMILY,
-                    marginBottom: '8px',
-                    outline: 'none',
-                    transition: 'border-color 0.15s ease'
-                  }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                />
-                <button
-                  onClick={() => {
-                    if (pageNum) {
-                      const clampedPage = numPages ? Math.min(pageNum, numPages) : pageNum;
-                      if (clampedPage > 0) {
-                        handleNewBookmarkPageChange(clampedPage.toString());
-                      }
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '6px 12px',
-                    background: 'var(--surface-2)',
-                    color: 'var(--text-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    fontFamily: FONT_FAMILY,
-                    marginBottom: '8px',
-                    transition: 'background 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
-                >
-                  Current page
-                </button>
-                <button
-                  onClick={handleCreateBookmark}
-                  style={{
-                    width: '100%',
-                    padding: '6px 12px',
-                    background: 'var(--accent)',
-                    /* UX: the label ON a gold fill is --accent-text. --text-1 on
-                       --accent-light measures 1.5:1; --accent-text is 8.6:1. */
-                    color: 'var(--accent-text)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    fontFamily: FONT_FAMILY
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-                >
-                  Create bookmark
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Modals remain the same as before... (I'll include the complete modal code) */}

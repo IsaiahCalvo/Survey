@@ -4349,101 +4349,167 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    action, the hub tab - are gold now, matching the desktop. The one green
    that survives is the SYNC STATUS DOT, and it lives in JS. */
 
-/* --- Bookmarks: mobile rows (demo BookmarkRow.tsx / styles.ts:1306-1391) --- */
+/* ==========================================================================
+   Bookmarks: phone panel (BookmarksPanel.jsx mobile branch, .mobile-bookmark-*)
+
+   UX 2026-09-23 (owner: "The shit on this page is too bulky. Somehow, desktop
+   seems to make everything fit neater and cleaner. Try and match desktop more
+   closely.") Reference: the desktop Bookmarks panel at 1280x800 — a quiet
+   header (name left, plain Edit action right), 31px one-line rows of grip,
+   fold arrow, small plain glyph, name, "P n". The phone now reads the same:
+     - the header is "+ Add" left and "Edit" right, no title (the tab says
+       it) (owner, same day, for desktop AND phone), two quiet actions of
+       equal weight — no outlined pill, no gold block; gold is only the
+       "Done" word while editing. Rename/delete glyphs show in Edit mode, as
+       on desktop; "New folder" lives inside Add, as desktop's Add menu holds
+       "New bookmark group";
+     - rows are lines in ONE list with hairlines that run edge to edge — no
+       bordered card per row, no gaps between them;
+     - one line per row (name + "P n"), the app's grip icon, a small plain
+       folder/bookmark glyph with no bubble, tighter type;
+     - every hit area is INVISIBLE: grip, edit and delete keep a finger-sized
+       pad with no plate, and glyph buttons press by shrinking the glyph, never
+       by painting a box (owner rule). Rows stay a 44px band (the 2026-09-22
+       iOS-minimum ruling) with their content vertically centred.
+   ========================================================================== */
 .mobile-bookmark-list {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 10px 16px calc(var(--mobile-bottom-inset, 10px) + 8px);
+  padding: 0 0 calc(var(--mobile-bottom-inset, 10px) + 8px);
   overflow-y: auto;
   background: var(--surface-2);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
 }
 
+/* The header: "+ Add" left, "Edit" right, one hairline under it — the same
+   header as the desktop panel and the Spaces panel (shared spec 2026-09-23).
+   No title: the sheet's tab already says "Bookmarks" (owner, same day). The
+   16px edge gaps are measured to the visible glyph (button padding is 0). */
 .mobile-bookmark-toolbar {
+  position: relative;
+  flex: 0 0 auto;
+  height: 44px;
   display: flex;
-  justify-content: flex-end;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
 }
 
-/* UX 2026-09-22 (owner ruling: the phone needs a way to make a bookmark
-   folder) — "New folder" sits beside "Add bookmark" in the panel's own action
-   row. It is the app's neutral phone pill: a surface fill with a border, never
-   a gold fill; while its name field is open the GLYPH turns gold, which is the
-   one active-state signal the phone chrome uses (owner: "selected = gold glyph
-   only"). Same 36px min-height as the Add pill, so the row stays one line. */
+/* Quiet glyph-and-word actions of equal weight. The 44px-tall button box is
+   the invisible tap pad: no fill, no border; only the glyph and word paint.
+   Pressing brightens the ink to text-1 — never a plate. */
+.mobile-bookmark-add,
+.mobile-bookmark-edit,
 .mobile-bookmark-newfolder {
-  min-height: 36px;
+  position: relative;
+  flex: 0 0 auto;
+  height: 44px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 12px;
+  gap: 4px;
+  padding: 0;
   color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: transparent;
+  border: 0;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-bookmark-newfolder.is-active {
+.mobile-bookmark-add:active,
+.mobile-bookmark-edit:active,
+.mobile-bookmark-newfolder:active,
+.mobile-bookmark-add.is-active {
+  color: var(--text-1);
+}
+
+/* The plus glyph's ink starts 2.5px inside its 14px box: pull it out so the
+   visible "+" sits exactly on the 16px edge gap. */
+.mobile-bookmark-add {
+  margin-left: -2.5px;
+}
+
+/* Edit mode: the one gold on the header is the "Done" word + glyph. */
+.mobile-bookmark-edit.is-active {
   color: var(--accent);
 }
 
-/* One field plus its Create button — the two-field bookmark editor's grid minus
-   the page column. */
+/* The quiet "New folder instead" / "New bookmark instead" switch under the
+   Add line — a word, not a pill. */
+.mobile-bookmark-addkind {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-bookmark-newfolder {
+  height: 36px;
+  font-weight: 500;
+}
+
+/* Inline editors (new folder, new bookmark, edit a bookmark): a line in the
+   list like any row — hairline under it, same side inset — holding grey-filled
+   fields and a quiet gold "Create"/"Save" word. No box around the editor, no
+   gold ring on a focused field. */
+.mobile-bookmark-editor {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px auto;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px 5px calc(16px + var(--mobile-bookmark-depth-inset, 0px));
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
+}
+
 .mobile-bookmark-editor-folder {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.mobile-bookmark-add,
+.mobile-bookmark-editor-existing {
+  grid-template-columns: minmax(0, 1fr) 56px auto auto;
+}
+
+/* 16px text keeps iOS from zooming the page when the field takes focus. */
+.mobile-bookmark-editor input {
+  min-width: 0;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+  font: 400 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+}
+
+.mobile-bookmark-editor input:focus {
+  border-color: var(--border-strong);
+}
+
 .mobile-bookmark-editor button {
-  min-height: 36px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 0 12px;
-  color: var(--accent-text);
-  background: var(--accent);
-  border: 0;
-  border-radius: 6px;
-  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-}
-
-.mobile-bookmark-editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 68px auto;
-  gap: 6px;
-  align-items: center;
-  padding: 7px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.mobile-bookmark-editor-existing {
-  grid-template-columns: minmax(0, 1fr) 58px auto auto;
-}
-
-.mobile-bookmark-editor input {
-  min-width: 0;
-  height: 36px;
-  box-sizing: border-box;
   padding: 0 8px;
-  color: var(--text-1);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  font: 600 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-bookmark-editor button.secondary {
   color: var(--text-2);
-  background: var(--surface-3);
 }
 
 /* UX 2026-09-17 (owner ruling: the phone bookmarks list drags and drops like the
@@ -4458,51 +4524,52 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overscroll-behavior: contain;
 }
 
-/* Depth indent lives on the slot so the row itself can carry the drag transform
-   without the two fighting. */
 .mobile-bookmark-slot {
-  transition: margin-left 120ms ease-out;
+  flex: 0 0 auto;
 }
 
-/* UX 2026-09-22 (owner ruling): the row is a 44px touch target. It used to
-   paint 43px — its two lines of copy, not the old 38px min-height, set the
-   height — which left the row's own tap area (.mobile-bookmark-open, the thing
-   you press to jump to the page) 1px under the iOS minimum. The floor now
-   states the 44 outright so no future copy change can drop it again. */
+/* One line of the list. The depth indent is padding INSIDE the row (set per
+   row as --mobile-bookmark-depth-inset), so the hairline still runs from edge
+   to edge while nested rows step in. 44px band, content centred. */
 .mobile-bookmark-row {
   min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 7px 6px 5px;
+  gap: 4px;
+  /* 6.5px + the grip's 9.5px ink inset (5px centring + the dots' own 4.4px)
+     puts the visible grip dots on the header's 16px edge gap, the same line
+     as the "+" of Add; the right 16px is the page tag's edge gap (the edit /
+     delete group pulls itself outward so ITS glyph ink lands on 16px too). */
+  padding: 0 16px 0 calc(6.5px + var(--mobile-bookmark-depth-inset, 0px));
   box-sizing: border-box;
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border-bottom: 1px solid var(--border);
+  transition: padding-left 120ms ease-out;
 }
 
 /* Lifted row while dragging — the phone equivalent of the desktop clone's
    shadow + lighter surface, so the finger has something that looks picked up. */
 .mobile-bookmark-row.is-dragging {
+  position: relative;
+  z-index: 2;
   background: var(--surface-3);
-  border-color: var(--accent);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
 }
 
-/* Same ☰ affordance as the desktop row. 26px wide keeps the row height at 38px;
-   the ::before pad grows the touch target to 44x44 without changing layout. */
+/* The app's grip icon, quiet like the desktop's. 24px wide in the layout; an
+   invisible ::before pad grows the touch target to 44x44 without changing the
+   row. */
 .mobile-bookmark-grip {
   position: relative;
-  flex: 0 0 26px;
-  align-self: stretch;
+  flex: 0 0 24px;
+  height: 44px;
   display: grid;
   place-items: center;
   color: var(--text-3);
-  font-size: 14px;
-  line-height: 1;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-bookmark-grip::before {
@@ -4520,53 +4587,66 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: grabbing;
 }
 
+/* The row's own tap area (jump to the page / fold a folder). Transparent: the
+   whole line is the target, nothing is painted behind it. */
 .mobile-bookmark-open {
   flex: 1;
   min-width: 0;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   padding: 0;
+  color: var(--text-3);
   background: transparent;
   border: 0;
   text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.mobile-bookmark-bubble {
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
+/* Fold-arrow column, as on desktop: a folder shows a right chevron that turns
+   down while open; a bookmark keeps the empty column so names line up. */
+.mobile-bookmark-caret {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
   display: grid;
   place-items: center;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 11px;
+  color: var(--text-3);
+  transition: transform 160ms ease;
 }
 
-.mobile-bookmark-copy {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.mobile-bookmark-caret.is-open {
+  transform: rotate(90deg);
+}
+
+/* Small plain glyph, no bubble — the desktop row's folder/bookmark mark. */
+.mobile-bookmark-icon {
+  flex: 0 0 14px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
 }
 
 .mobile-bookmark-title {
+  flex: 1;
+  min-width: 0;
   color: var(--text-1);
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mobile-bookmark-meta {
+/* The desktop's "P n" page tag. */
+.mobile-bookmark-page {
+  flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -4574,50 +4654,72 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  margin-right: -12.3px;
 }
 
+/* Edit / delete: the 36x44 button box is the invisible hit area — no fill,
+   no border — and only the 14px glyph is painted. */
 .mobile-bookmark-move {
-  width: 22px;
-  height: 24px;
+  width: 36px;
+  height: 44px;
   display: grid;
   place-items: center;
-  color: var(--text-1);
-  background: var(--surface-2);
+  padding: 0;
+  color: var(--text-3);
+  background: transparent;
   border: 0;
-  border-radius: 5px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Only Edit and Delete live here now — the up/down chevrons were removed with
-   the 2026-09-22 ruling, and with them the only disabled state this row had. */
 .mobile-bookmark-delete {
   color: var(--danger-text);
 }
 
+/* Press feedback: glyphs shrink, text dims — never a plate. These beat the
+   shared phone press rule further down this file, which paints --pressed on
+   .mobile-bookmark-open / .mobile-bookmark-move. */
+.mobile-bookmark-list .mobile-bookmark-open:active,
+.mobile-bookmark-list .mobile-bookmark-move:not(:disabled):active {
+  background: transparent;
+}
+
+.mobile-bookmark-grip svg,
+.mobile-bookmark-move svg {
+  transition: transform 90ms ease-out;
+}
+
+.mobile-bookmark-grip:active svg,
+.mobile-bookmark-move:active svg {
+  transform: scale(0.84);
+}
+
+.mobile-bookmark-open:active .mobile-bookmark-title,
+.mobile-bookmark-editor button:active {
+  opacity: 0.6;
+}
+
 /* UX (owner ruling 2026-09-17): matches .mobile-search-empty — with one shared
    hub-tray height, "No bookmarks yet" grows to fill the tray (flex:1 inside the
-   flex-column .mobile-bookmark-list) and centres itself, instead of leaving a
-   short card above a big empty gap. */
+   flex-column .mobile-bookmark-list) and centres itself. 2026-09-23: plain
+   text on the panel like desktop's empty line, no card around it. */
 .mobile-bookmark-empty {
   flex: 1;
   min-height: 76px;
-  margin: 8px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  padding: 16px;
 }
 
 .mobile-bookmark-empty span {
   color: var(--text-3);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 500;
 }
+/* ====================== end Bookmarks: phone panel ====================== */
 
 /* --- Version history: mobile rows (demo VersionHistoryDrawer / styles.ts:1994-2025).
    Geometry-only restyle: keeps the real revision data + inline selected/restore
