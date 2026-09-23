@@ -3901,6 +3901,19 @@
     border-bottom: 0;
   }
 
+  /* The LAST row still closes the list with a line when the panel runs on
+     below it (owner 2026-09-23: "the last item also needs a divider line").
+     It is a 1px shadow, not a border: the panel clips, so when the last row
+     sits flush on the panel's own bottom edge the shadow is cut off and the
+     edge is never doubled; when there is room below, the line shows. */
+  .survey-hub .documents-mobile-list > .mobile-doc-card:last-child,
+  .survey-hub .archive-mobile-list > .archive-mobile-card:last-child,
+  .survey-hub .projects-mobile-drill-view > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child,
+  .survey-hub .projects-mobile-file-list > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child,
+  .survey-hub .templates-mobile-browser > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child {
+    box-shadow: 0 1px 0 var(--border);
+  }
+
   /* THE HAIRLINE on a panel that hugs its rows. It goes on the wrapper
      SortableRearrangeRow renders, not on the row, because the row is an only
      child and could never find the end of the list. The last line is dropped so
