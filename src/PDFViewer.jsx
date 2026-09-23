@@ -125,6 +125,12 @@ import {
 } from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDragHistory.js';
+import {
+  buildSelectedTextStylePatch,
+  isFormattableTextObject,
+  readCalloutTextStyle,
+  readTextboxTextStyle,
+} from './utils/selectedTextFormatting.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
@@ -3783,10 +3789,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return null;
   }, []);
 
-  const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch) => {
+  const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch, options) => {
     if (!calloutId || !stylePatch) return;
     const pageNumber = resolveCalloutPageNumber(calloutId);
     if (!Number.isFinite(pageNumber)) return;
+    // UX 2026-09-23: a text-colour slider drag in the live editor carries the
+    // picker's phase, so it previews per frame and records ONE undo step on
+    // release, like every other colour drag (runWithPaintPhase, below).
+    if (options?.phase) {
+      runWithPaintPhase(options, () => handleCalloutTextStyleChange(calloutId, stylePatch));
+      return;
+    }
     // R2.2 Slice 3: text-style writes commit through the shared save pipeline —
     // they GAIN a per-object undo entry (previously style changes carried NO
     // history checkpoint at all, so Cmd+Z skipped straight past them).
@@ -8289,6 +8302,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleTextMarkupPaintChangePhased = useCallback((color, opacity, options) => (
     runWithPaintPhase(options, () => handleTextMarkupPaintChange(color, opacity))
   ), [handleTextMarkupPaintChange]);
+
+  // UX 2026-09-23 (bug: a selected callout's text colour did not change from
+  // the text bar): the text bar and the phone Text card write through ONE
+  // handler. With a text box or callout selected (the publish effect below
+  // records which, in selectedTextTargetRef) the change lands on THAT object -
+  // through the same save pipeline as its border/fill, so it saves, syncs and
+  // undoes; a colour-slider drag previews per frame and records one undo step
+  // on release (runWithPaintPhase). With the tool merely armed it is still the
+  // tool's defaults for the next box. See utils/selectedTextFormatting.js.
+  const selectedTextTargetRef = useRef(null);
+  const handleTextStyleSourceChange = useCallback((next, options) => {
+    const target = selectedTextTargetRef.current;
+    if (!target) {
+      setTextStyleDefaults(next);
+      return;
+    }
+    const patch = buildSelectedTextStylePatch(target.kind, target.style, next, {
+      forceColor: Boolean(options?.phase),
+    });
+    if (!patch) return;
+    runWithPaintPhase(options, () => {
+      if (target.kind === 'callout') handlePatchSelectedCallout(patch);
+      else handlePatchSelectedAnnotation(patch);
+    });
+  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
@@ -24409,6 +24447,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
       ? resolveTextMarkupEditPaint(selectedAnnot, strokeColor)
       : null;
+    // UX 2026-09-23: with one callout or text box selected (and no live
+    // editor, whose own bridge wins), the text bar reads and writes THAT
+    // object's text style, not the tool's defaults (handleTextStyleSourceChange).
+    const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
+      ? (selectedToolbarCallout?.callout
+        ? { kind: 'callout', style: readCalloutTextStyle(selectedToolbarCallout.callout) }
+        : (isFormattableTextObject(selectedAnnot)
+          ? { kind: 'textbox', style: readTextboxTextStyle(selectedAnnot) }
+          : null))
+      : null;
+    selectedTextTargetRef.current = selectedTextTarget;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -24477,8 +24526,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           || type === 'polyline';
       })()),
       richTextEditor,
-      textStyleDefaults,
-      onTextStyleDefaultsChange: setTextStyleDefaults,
+      // The selected text box / callout's own text style while one is
+      // selected, else the tool's defaults (see selectedTextTarget above).
+      textStyleDefaults: selectedTextTarget ? selectedTextTarget.style : textStyleDefaults,
+      onTextStyleDefaultsChange: handleTextStyleSourceChange,
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
       // UX 2026-09-09: the Style picker offers "Cloud" (and, once picked, the
@@ -24602,6 +24653,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleEnterBBoxEditFromStrip,
     richTextEditor,
     textStyleDefaults,
+    handleTextStyleSourceChange,
     lineBorderStyle,
     handleLineBorderStyleChange,
     cloudIntensity,

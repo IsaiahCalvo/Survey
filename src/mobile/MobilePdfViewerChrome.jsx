@@ -1359,8 +1359,9 @@ export function MobileToolProperties({ api }) {
           opacity={splitTextColor(state.fontColor).opacity}
           minOpacity={0.05}
           firstPreset="none"
-          onChange={(hex, alpha) => editorApi.setFontColor?.(
+          onChange={(hex, alpha, meta) => editorApi.setFontColor?.(
             composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(state.fontColor).opacity),
+            meta,
           )}
           onClose={() => setColorPicker(null)}
         />
@@ -1588,7 +1589,10 @@ export function MobileToolProperties({ api }) {
     textAlign: 'left',
     verticalAlign: 'top',
   };
-  const updateTextDefaults = (patch) => api.onTextStyleDefaultsChange?.({ ...textDefaults, ...patch });
+  // UX 2026-09-23: with a text box or callout selected, PDFViewer publishes
+  // ITS text style here and writes changes to it (utils/selectedTextFormatting);
+  // `meta` is the colour picker's drag phase, so a drag is one undo step.
+  const updateTextDefaults = (patch, meta) => api.onTextStyleDefaultsChange?.({ ...textDefaults, ...patch }, meta);
   // 2026-07-12 (Phase E, demo parity — matrix §6): the full edit panel opens
   // for EVERY annotation tool (demo AnnotationEditPanel), not just text/callout.
   // Non-text tools show only the shape-side cards; the eraser shows its own card.
@@ -1813,9 +1817,9 @@ export function MobileToolProperties({ api }) {
       showOpacity: true,
       minOpacity: 0.05,
       firstPreset: 'none',
-      onChange: (hex, alpha) => updateTextDefaults({
+      onChange: (hex, alpha, meta) => updateTextDefaults({
         fontColor: composeTextColor(hex, alpha > 0 ? alpha : splitTextColor(textDefaults.fontColor).opacity),
-      }),
+      }, meta),
     }
     : colorPicker === 'fill'
       ? {

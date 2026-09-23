@@ -202,6 +202,11 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
  * pair with the same field names, so the bar is written once and neither case is
  * a special case.
  *
+ * UX 2026-09-23: with ONE text box or callout selected (context tool 'text' /
+ * 'callout' too), PDFViewer publishes that object's own text style in
+ * `textStyleDefaults` and writes the change back to it, so the bar formats the
+ * selection, never the next box (utils/selectedTextFormatting.js).
+ *
  * Returns null when neither applies, which is every other tool.
  */
 const resolveTextFormatting = (api) => {
@@ -213,12 +218,14 @@ const resolveTextFormatting = (api) => {
   if (!armed || typeof api.onTextStyleDefaultsChange !== 'function') return null;
   const defaults = api.textStyleDefaults;
   if (!defaults) return null;
-  const patch = (fields) => api.onTextStyleDefaultsChange({ ...defaults, ...fields });
+  // `meta` is the colour picker's drag phase; PDFViewer uses it when the
+  // source is a SELECTED text box or callout (one undo step per drag).
+  const patch = (fields, meta) => api.onTextStyleDefaultsChange({ ...defaults, ...fields }, meta);
   const toggle = (key) => () => patch({ [key]: !defaults[key] });
   return {
     state: defaults,
     api: {
-      setFontColor: (hex) => patch({ fontColor: hex }),
+      setFontColor: (hex, meta) => patch({ fontColor: hex }, meta),
       setFontFamily: (family) => patch({ fontFamily: family }),
       setFontSize: (size) => patch({ fontSize: size }),
       toggleBold: toggle('bold'),
@@ -2145,11 +2152,13 @@ export default function App({ devPreviewReturnTab = null }) {
                                  (the same floor a highlight keeps). */
                               minOpacity={0.05}
                               marginRight="0"
-                              onChange={(hex, alpha) => {
+                              onChange={(hex, alpha, meta) => {
                                 // The Transparent cell hands 0; text is never
                                 // made invisible, so it keeps its opacity.
+                                // `meta` (drag phase) rides along so a slider
+                                // drag is one undo step on the text it edits.
                                 const nextAlpha = alpha > 0 ? alpha : textColorParts.opacity;
-                                textFormatSource?.api?.setFontColor?.(composeTextColor(hex, nextAlpha));
+                                textFormatSource?.api?.setFontColor?.(composeTextColor(hex, nextAlpha), meta);
                               }}
                               onClose={() => setShowFontColorPicker(false)}
                               firstPreset="none"

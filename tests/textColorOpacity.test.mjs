@@ -34,14 +34,23 @@ test('the live text editor accepts a colour with opacity', () => {
   assert.equal(isTextColorValue('url(javascript:alert(1))'), false);
   assert.equal(isTextColorValue('red; background: x'), false);
   const overlay = read('src/components/TextEditOverlay.jsx');
-  assert.match(overlay, /setFontColor: \(c\) => applyStyle\('fill', isTextColorValue\(c\) \? c : '#000000'\)/);
+  // RULED 2026-09-23 (w13, callout text colour fix): was
+  // `setFontColor: (c) => applyStyle('fill', isTextColorValue(c) ? c : '#000000')`.
+  // The setter now also carries the colour picker's drag phase (`meta`) so a
+  // callout's text-colour drag is ONE undo step. What is guarded is unchanged:
+  // the editor only stores a validated colour, else black.
+  assert.match(overlay, /setFontColor: \(c, meta\) => applyStyle\('fill', isTextColorValue\(c\) \? c : '#000000', meta\)/);
 });
 
 test('every text colour picker shows and writes opacity', () => {
   const shell = read('src/AppShell.jsx');
   // Desktop text bar: the picker opens on the text's own opacity and writes it.
   assert.match(shell, /color=\{textColorParts\.hex\}\s*opacity=\{textColorParts\.opacity\}/);
-  assert.match(shell, /setFontColor\?\.\(composeTextColor\(hex, nextAlpha\)\)/);
+  // RULED 2026-09-23 (w13, callout text colour fix): was
+  // `setFontColor?.(composeTextColor(hex, nextAlpha))`. The call also passes the
+  // picker's drag phase so a drag on a selected text box / callout lands as one
+  // undo step. Still guarded: the picker writes the colour WITH its opacity.
+  assert.match(shell, /setFontColor\?\.\(composeTextColor\(hex, nextAlpha\), meta\)/);
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
   // Phone: the live Font color sheet and the Text settings colour sheet.
   const live = mobile.slice(mobile.indexOf("colorPicker === 'fontColorLive' && ("), mobile.indexOf("colorPicker === 'fontColorLive' && (") + 1200);

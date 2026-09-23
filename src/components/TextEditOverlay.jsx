@@ -463,11 +463,14 @@ export default function TextEditOverlay({
     if (committedRef.current) return;
     if (typeof onRichTextEditorChange !== 'function') return;
     const s = styleRef.current;
-    const applyStyle = (key, val) => {
+    // `meta` is the colour picker's drag phase (CompactColorPicker): a
+    // callout's text colour drag previews per frame and records one undo step
+    // on release (PDFViewer handleCalloutTextStyleChange).
+    const applyStyle = (key, val, meta) => {
       styleRef.current = { ...styleRef.current, [key]: val };
       if (isCallout && typeof onCalloutTextStyleChange === 'function') {
         const patch = calloutStylePatch(key, val);
-        if (patch) onCalloutTextStyleChange(reactCalloutId, patch);
+        if (patch) onCalloutTextStyleChange(reactCalloutId, patch, meta);
       }
       forceRender((n) => n + 1);
       // Style changes reflow the text — re-measure + rebroadcast after paint.
@@ -488,7 +491,7 @@ export default function TextEditOverlay({
       setFontFamily: (f) => applyStyle('fontFamily', typeof f === 'string' && f.length > 0 && !f.includes(',') ? f : 'Arial'),
       // #rrggbb, or rgba() when the text colour carries an opacity
       // (utils/textColorOpacity, UX 2026-09-23).
-      setFontColor: (c) => applyStyle('fill', isTextColorValue(c) ? c : '#000000'),
+      setFontColor: (c, meta) => applyStyle('fill', isTextColorValue(c) ? c : '#000000', meta),
     };
     onRichTextEditorChange({
       api,
