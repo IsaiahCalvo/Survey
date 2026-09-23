@@ -668,7 +668,11 @@ const CompactColorPicker = ({
     // Hover readout: the value UNDER THE CURSOR (not the thumb), snapped to a
     // whole number, in a small pill above the track. Mouse only; hidden while
     // a button is down, the way the reference hides it mid-drag.
+    // Read on POINTER events (fractional coordinates, the same ones the click
+    // uses) so the number and the clicked value are always identical; and
+    // any press hides it at once (the page swallows mouse events mid-drag).
     const trackHover = (kind, max) => (event) => {
+        if (event.pointerType && event.pointerType !== 'mouse') return;
         if (event.buttons) { setReadout(null); return; }
         const el = event.currentTarget;
         const t = trackFraction(el, event.clientX);
@@ -833,8 +837,9 @@ const CompactColorPicker = ({
             onKeyDown={transparentMode ? undefined : handleAlphaKeyDown}
             onPointerDown={transparentMode ? undefined : ((event) => beginPointerDrag('alpha', event))}
             onPointerMove={transparentMode ? undefined : ((event) => movePointerDrag('alpha', event))}
-            onMouseMove={transparentMode ? undefined : trackHover('alpha', 100)}
-            onMouseLeave={clearReadout}
+            onPointerMoveCapture={transparentMode ? undefined : trackHover('alpha', 100)}
+            onPointerDownCapture={clearReadout}
+            onPointerLeave={clearReadout}
             onPointerUp={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onPointerCancel={transparentMode ? undefined : ((event) => endPointerDrag('alpha', event))}
             onLostPointerCapture={() => { alphaPointerId.current = null; alphaDragging.current = false; }}
@@ -934,8 +939,9 @@ const CompactColorPicker = ({
                     onKeyDown={handleHueKeyDown}
                     onPointerDown={(event) => beginPointerDrag('hue', event)}
                     onPointerMove={(event) => movePointerDrag('hue', event)}
-                    onMouseMove={trackHover('hue', 360)}
-                    onMouseLeave={clearReadout}
+                    onPointerMoveCapture={trackHover('hue', 360)}
+                    onPointerDownCapture={clearReadout}
+                    onPointerLeave={clearReadout}
                     onPointerUp={(event) => endPointerDrag('hue', event)}
                     onPointerCancel={(event) => endPointerDrag('hue', event)}
                     onLostPointerCapture={() => { huePointerId.current = null; }}
