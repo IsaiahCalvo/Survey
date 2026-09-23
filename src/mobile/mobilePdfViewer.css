@@ -47,9 +47,24 @@
   --mobile-rail-w: 36px;           /* board 1: the rail is 36 wide */
   --mobile-rail-chip: 28px;        /* board 1: 28px chip, 17px glyph */
   --mobile-rail-gap: 5px;          /* 28 + 5 = a 33px pitch */
-  --mobile-rail-sub-w: 32px;       /* the open sub-tool strip */
-  --mobile-rail-sub-chip: 24px;
-  --mobile-rail-sub-gap: 4px;      /* 28px sub pitch */
+  /* RULED CHANGE 2026-09-22 (owner, phone build: a sub-tool chip is the SAME
+     chip as the tool that opened it). The sub-strip was 32px wide with a 24px
+     chip and a 14px glyph while the rail above it is 36 with a 28px chip and a
+     17px glyph, so Pen / Highlighter / Eraser and the whole shape list read one
+     size smaller than the Draw and Shapes buttons they hang off — two chip
+     sizes where DESIGN-SYSTEM.md states one. Both numbers move together (the
+     glyph ratio is unchanged at 17-in-28 = 0.607) and the strip grows to 34px so
+     the bigger chip still clears both its edges. 34, not the rail's 36: the rail
+     spends 1px on its right border, so the tool column's content box is 35 and a
+     36px strip reported a pixel of sideways scroll on it — the one thing the
+     phone sizing pass says the rail must never do.
+     The survey category and entity DISCS are not chips — they are 24px circles
+     carrying a 9px letter or a 14px colour dot — so they keep their own token
+     below, which is also what keeps the crowded rail state fitting a phone. */
+  --mobile-rail-sub-w: 34px;       /* the open sub-tool strip */
+  --mobile-rail-sub-chip: 28px;
+  --mobile-rail-disc: 24px;        /* survey category / entity / presence discs */
+  --mobile-rail-sub-gap: 4px;      /* 32px sub pitch */
   --mobile-control-h: 28px;        /* every header control, one height */
   --mobile-strip-control-h: 20px;  /* every tool-properties control, one height */
   --mobile-strip-gap: 4px;         /* board: the setting-toolbar gap */
@@ -758,9 +773,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    Only spacing tightens. Every chip keeps its painted size, and each chip's own
    hit pad tracks the tightened gap (half of it, as always) so two pads still
    never overlap and steal each other's taps. The cost is a visibly tight rail
-   while three strips are stacked - 2px between chips, and a 24px sub-chip is a
-   24px target rather than 26 - which is the trade the owner's "a rail is never
+   while three strips are stacked - a sub-chip's target is its painted size
+   rather than its pitch - which is the trade the owner's "a rail is never
    scrollable" asks for, and it is paid in this state only.
+   RULED CHANGE 2026-09-22: the sub-strips give up their inner padding and half
+   their gap here (0 / 1px, where they were 1 / 2px). The sub-tool chip is 28px
+   now instead of 24 - one chip size on the phone - and the worst state (Shapes
+   open beside 7 survey rows) went from 542px to 570px, 5px past the 565px an
+   iPhone 17 Pro allows. Dropping the sub-strip padding and gap brings it to
+   553px. Spacing only, as before; no chip shrank. Pinned by
+   tests/mobileRailFitsEveryState.test.mjs.
    What this does NOT do: guarantee a fit for any survey template. The category
    and entity lists are data - each extra row is another 26px - so past about
    eight rows the column overflows again and `overflow-y: auto` on it is the
@@ -771,8 +793,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__main:has(.mobile-pdf-tools__subtools):has(.mobile-pdf-tools__survey-entities) {
   --rail-pitch-gap: 2px;
   --rail-divider-margin: 0px;
-  --rail-sub-gap: 2px;
-  --rail-sub-pad: 1px;
+  --rail-sub-gap: 1px;
+  --rail-sub-pad: 0px;
 }
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
@@ -905,8 +927,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: var(--mobile-rail-sub-chip);
 }
 
-/* Sub-tool chips get the same treatment one tier down: a 24px square inside a
-   28px slot that fills the strip's width. */
+/* Sub-tool chips get the same treatment: a 28px square whose transparent pad
+   fills the strip's whole 34px box, so the chip's target is the full slot. */
 .mobile-pdf-tools__subtools .mobile-pdf-tools__button::after {
   content: '';
   position: absolute;
@@ -927,8 +949,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-categories button {
-  width: var(--mobile-rail-sub-chip);
-  height: var(--mobile-rail-sub-chip);
+  width: var(--mobile-rail-disc);
+  height: var(--mobile-rail-disc);
   padding: 0;
   color: var(--text-1);
   background: var(--surface-2);
@@ -957,8 +979,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-entities button {
-  width: var(--mobile-rail-sub-chip);
-  height: var(--mobile-rail-sub-chip);
+  width: var(--mobile-rail-disc);
+  height: var(--mobile-rail-disc);
   padding: 0;
   display: grid;
   place-items: center;
@@ -1041,6 +1063,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0;
   display: grid;
   place-items: center;
+  /* UX 2026-09-22: the one rail control that named no colour, so it fell back to
+     the browser's own button text - pure white in a dark scheme - where More,
+     Version history, the active-users chip and every tool chip are --text-2.
+     Nothing in it paints with currentColor today (the state dot carries its own
+     --success / --warning / --danger, owner ruling 2026-09-17, and that is NOT
+     changed here), but a control whose colour is the UA default is one edit away
+     from painting the wrong white. */
+  color: var(--text-2);
   background: transparent;
   border: 0;
 }
@@ -1095,8 +1125,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__avatar {
-  width: var(--mobile-rail-sub-chip);
-  height: var(--mobile-rail-sub-chip);
+  width: var(--mobile-rail-disc);
+  height: var(--mobile-rail-disc);
   display: grid;
   place-items: center;
   color: var(--text-2);

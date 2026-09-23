@@ -28,7 +28,12 @@ const RAIL_GLYPH = 17;
 // The line-style dropdown and the width field are one control size (owner
 // ruling 2026-09-16). Both read the same token, so neither can drift.
 const STRIP_DROPDOWN_WIDTH = 'var(--mobile-strip-dropdown-w)';
-const SUBTOOL_GLYPH = 14;
+// RULED CHANGE 2026-09-22 (owner, phone build: the sub-tools read a size smaller
+// than the tools above them). A sub-tool chip is the SAME chip as the tool that
+// opened it — 28px — so its glyph is the rail's 17, not 14. 17-in-28 is 0.607,
+// the identical fill the rail, header and dock tiers carry, so this is one chip
+// size on the phone rather than a second, smaller one.
+const SUBTOOL_GLYPH = 17;
 // RULED CHANGE 2026-09-21 (pass 7, board 1: "rail 36px wide, chips 28px / icon
 // 17px" and the same 17px on every header action). 15-in-26 was the 2026-09-16
 // ratio; the approved boards draw a 17px glyph in a 28px box, so both numbers
@@ -728,8 +733,11 @@ const VERTICAL_ALIGNMENTS = [
    tier, and no per-glyph exceptions inside a tier. The rail used to run 19 with
    the Select cursor at 21, so Select was visibly the odd one out down a column
    where everything else lined up. The size now comes from RAIL_GLYPH for a rail
-   tool and SUBTOOL_GLYPH for a sub-tool, because those are the two chip sizes
-   (30px and 24px) and each glyph sits at the same fill inside its own chip -
+   tool and SUBTOOL_GLYPH for a sub-tool. 2026-09-22: those two constants are now
+   the SAME 17, because the owner ruled the sub-tool chip up to the rail's 28px -
+   one chip size on the phone. They stay two names so a future tier can move on
+   its own, and because the region sub-strip passes no glyph at all and so already
+   drew the rail's. Each glyph sits at the same fill inside its own chip -
    0.57 since the 2026-09-16 phone sweep, where it used to be two thirds.
    Do not pass a bare number here. */
 const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
