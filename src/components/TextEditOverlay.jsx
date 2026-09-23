@@ -505,6 +505,9 @@ export default function TextEditOverlay({
         verticalAlign: s.verticalAlign || 'top',
         fontFamily: s.fontFamily || 'Arial',
         fontColor: s.fill,
+        // Callout text is always vertically centred (buildCalloutTextContentStyle),
+        // so the bar hides top / middle / bottom for it.
+        supportsVerticalAlign: !isCallout,
       },
     });
   }, [onRichTextEditorChange, onCalloutTextStyleChange, isCallout, reactCalloutId, broadcastLiveBounds]);

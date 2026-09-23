@@ -861,11 +861,57 @@ function MobileTextAlignmentGlyph({ axis, value }) {
   );
 }
 
+/* The Text card's "Text size" field. Review 2026-09-23: it used to save on
+   every keystroke, so typing 24 on a picked text box saved 2 and then 24 (two
+   undo steps, and collaborators saw 2pt text in between). It now keeps a draft
+   while typing (and may be cleared), and saves once on blur or Enter,
+   clamped to the live editor's 6-200 range; an empty or invalid draft puts
+   the current size back. */
+function MobileFontSizeField({ value, onCommit }) {
+  const [draft, setDraftState] = useState(null);
+  // The draft is read from a ref so Enter-then-blur (or Escape-then-blur)
+  // settles exactly once, whatever render the blur handler came from.
+  const draftRef = useRef(null);
+  const setDraft = (next) => {
+    draftRef.current = next;
+    setDraftState(next);
+  };
+  const shown = draft ?? String(value ?? 16);
+  const commit = () => {
+    const pending = draftRef.current;
+    if (pending === null) return;
+    const parsed = Number.parseInt(pending, 10);
+    setDraft(null);
+    if (!Number.isFinite(parsed)) return;
+    const fontSize = Math.max(6, Math.min(200, parsed));
+    if (fontSize !== Number(value)) onCommit?.(fontSize);
+  };
+  return (
+    <input
+      inputMode="numeric"
+      aria-label="Font size"
+      value={shown}
+      onChange={(event) => setDraft(event.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+          event.currentTarget.blur();
+        } else if (event.key === 'Escape') {
+          setDraft(null);
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 /* The Text card's alignment rows, shared by the settings panel (text defaults)
    and the live text-edit strip's alignment button (the editor's own state).
    `keepFocus` is the live editor's pointerdown guard; the defaults panel passes
    none. Labels are the panel's own ("Left horizontal alignment", US "Center"). */
-function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', onTextAlign, onVerticalAlign, keepFocus }) {
+function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', onTextAlign, onVerticalAlign, keepFocus, showVertical = true }) {
   return (
     <section className="mobile-pdf-text-card mobile-pdf-text-card--alignment">
       <strong>Text alignment</strong>
@@ -884,6 +930,9 @@ function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', on
           </button>
         ))}
       </div>
+      {/* Review 2026-09-23: callout text is always vertically centred, so
+          its card has no top / middle / bottom row (showVertical). */}
+      {showVertical && (
       <div className="mobile-pdf-text-defaults__alignments" role="toolbar" aria-label="Vertical text alignment">
         {['top', 'middle', 'bottom'].map((alignment) => (
           <button
@@ -899,6 +948,7 @@ function MobileTextAlignmentCard({ textAlign = 'left', verticalAlign = 'top', on
           </button>
         ))}
       </div>
+      )}
     </section>
   );
 }
@@ -1409,6 +1459,7 @@ export function MobileToolProperties({ api }) {
                 textAlign={textAlign}
                 verticalAlign={verticalAlign}
                 keepFocus={keepTextEditFocus}
+                showVertical={api.textVerticalAlignSupported !== false}
                 onTextAlign={(next) => editorApi.setTextAlign?.(next)}
                 onVerticalAlign={(next) => editorApi.setVerticalAlign?.(next)}
               />
@@ -2203,14 +2254,9 @@ export function MobileToolProperties({ api }) {
                   <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
                   <label className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
                     <strong>Text size</strong>
-                    <input
-                      inputMode="numeric"
-                      aria-label="Font size"
+                    <MobileFontSizeField
                       value={textDefaults.fontSize ?? 16}
-                      onChange={(event) => {
-                        const fontSize = Number.parseInt(event.target.value, 10);
-                        if (Number.isFinite(fontSize)) updateTextDefaults({ fontSize: Math.max(1, Math.min(200, fontSize)) });
-                      }}
+                      onCommit={(fontSize) => updateTextDefaults({ fontSize })}
                     />
                   </label>
                 </section>
@@ -2218,6 +2264,7 @@ export function MobileToolProperties({ api }) {
                 <MobileTextAlignmentCard
                   textAlign={textDefaults.textAlign || 'left'}
                   verticalAlign={textDefaults.verticalAlign || 'top'}
+                  showVertical={api.textVerticalAlignSupported !== false}
                   onTextAlign={(textAlign) => updateTextDefaults({ textAlign })}
                   onVerticalAlign={(verticalAlign) => updateTextDefaults({ verticalAlign })}
                 />

@@ -128,8 +128,12 @@ import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDr
 import {
   buildSelectedTextStylePatch,
   isFormattableTextObject,
+  measureTextLayoutHeight,
   readCalloutTextStyle,
   readTextboxTextStyle,
+  refitCalloutToText,
+  refitTextboxToText,
+  resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
@@ -3319,7 +3323,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
-  const handlePatchSelectedAnnotation = useCallback((patch) => {
+  // `refit` (optional): runs on the patched object before it is saved, in the
+  // same write - the text bar uses it to grow a text box to fit a bigger font
+  // (utils/selectedTextFormatting refitTextboxToText).
+  const handlePatchSelectedAnnotation = useCallback((patch, refit = null) => {
     const sel = selectedToolbarAnnotationRef.current;
     if (!sel || sel.annotationIndex == null) return;
     const pageJSON = annotationsByPageRef.current?.[sel.pageNumber];
@@ -3436,13 +3443,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
     }
-    const nextObj = {
+    const mergedObj = {
       ...current,
       ...patch,
       data: patch.data
         ? { ...(current.data || {}), ...patch.data }
         : current.data,
     };
+    const nextObj = typeof refit === 'function' ? (refit(mergedObj) || mergedObj) : mergedObj;
     const nextPage = {
       ...pageJSON,
       objects: pageJSON.objects.map((o, i) => (i === currentIndex ? nextObj : o)),
@@ -4294,7 +4302,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
   useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
 
-  const handlePatchSelectedCallout = useCallback((stylePatch) => {
+  // `refit` (optional): runs on the patched callout in the same write - the
+  // text bar uses it to grow the box to fit a bigger font (one undo step).
+  const handlePatchSelectedCallout = useCallback((stylePatch, refit = null) => {
     const sel = selectedToolbarCalloutRef.current;
     if (!sel || !sel.id) return;
     const pageNumber = Number.isFinite(Number(sel.pageNumber))
@@ -4309,7 +4319,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // shape for the bc28e2a0 text-style rendering contract).
     commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== sel.id) return c;
-      return { ...c, style: { ...(c.style || {}), ...stylePatch } };
+      const patched = { ...c, style: { ...(c.style || {}), ...stylePatch } };
+      return typeof refit === 'function' ? (refit(patched, pageNumber) || patched) : patched;
     }), { source: 'callout:style', action: 'callout-style-patch' });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
@@ -8311,22 +8322,46 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // undoes; a colour-slider drag previews per frame and records one undo step
   // on release (runWithPaintPhase). With the tool merely armed it is still the
   // tool's defaults for the next box. See utils/selectedTextFormatting.js.
+  //
+  // Review 2026-09-23: the WHOLE handler runs inside runWithPaintPhase, so a
+  // drag's page snapshot is always dropped on release, even when nothing is
+  // written. A drag frame or release that arrives after its picked mark went
+  // away (a collaborator deleted it, the selection changed) is IGNORED - it
+  // never lands on another mark or in the tool's defaults. A size / font /
+  // bold / italic change also grows the box to fit, in the same write.
   const selectedTextTargetRef = useRef(null);
+  const textStyleDragTargetKeyRef = useRef(null);
   const handleTextStyleSourceChange = useCallback((next, options) => {
-    const target = selectedTextTargetRef.current;
-    if (!target) {
-      setTextStyleDefaults(next);
-      return;
-    }
-    const patch = buildSelectedTextStylePatch(target.kind, target.style, next, {
-      forceColor: Boolean(options?.phase),
-    });
-    if (!patch) return;
     runWithPaintPhase(options, () => {
-      if (target.kind === 'callout') handlePatchSelectedCallout(patch);
-      else handlePatchSelectedAnnotation(patch);
+      const target = selectedTextTargetRef.current;
+      const write = resolveTextStyleWrite({
+        next,
+        phase: options?.phase,
+        target,
+        activeTool,
+        dragRecord: textStyleDragTargetKeyRef.current,
+      });
+      textStyleDragTargetKeyRef.current = write.dragRecord;
+      if (write.action === 'defaults') {
+        setTextStyleDefaults(write.defaults);
+        return;
+      }
+      if (write.action !== 'patch') return;
+      if (target.kind === 'callout') {
+        handlePatchSelectedCallout(write.patch, write.reflows
+          ? (callout, pageNumber) => refitCalloutToText(
+            callout,
+            pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
+            measureTextLayoutHeight,
+          )
+          : null);
+      } else {
+        handlePatchSelectedAnnotation(write.patch, write.reflows
+          ? (annotation) => refitTextboxToText(annotation, measureTextLayoutHeight)
+          : null);
+      }
     });
-  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [activeTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
@@ -24452,9 +24487,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // object's text style, not the tool's defaults (handleTextStyleSourceChange).
     const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
       ? (selectedToolbarCallout?.callout
-        ? { kind: 'callout', style: readCalloutTextStyle(selectedToolbarCallout.callout) }
+        ? {
+          kind: 'callout',
+          key: `callout:${selectedToolbarCallout.id}`,
+          style: readCalloutTextStyle(selectedToolbarCallout.callout),
+        }
         : (isFormattableTextObject(selectedAnnot)
-          ? { kind: 'textbox', style: readTextboxTextStyle(selectedAnnot) }
+          ? {
+            kind: 'textbox',
+            key: `textbox:${getAnnotationRenderIdentity(selectedAnnot).annotationId ?? selectedToolbarAnnotation?.annotationIndex}`,
+            style: readTextboxTextStyle(selectedAnnot),
+          }
           : null))
       : null;
     selectedTextTargetRef.current = selectedTextTarget;
@@ -24530,6 +24573,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // selected, else the tool's defaults (see selectedTextTarget above).
       textStyleDefaults: selectedTextTarget ? selectedTextTarget.style : textStyleDefaults,
       onTextStyleDefaultsChange: handleTextStyleSourceChange,
+      // Review 2026-09-23: callout text is always vertically centred (the
+      // renderer and the editor ignore verticalAlign), so the top / middle /
+      // bottom controls are hidden whenever a callout is what the bar edits -
+      // picked, being typed in, or the armed tool's defaults.
+      textVerticalAlignSupported: richTextEditor
+        ? richTextEditor.state?.supportsVerticalAlign !== false
+        : !(selectedTextTarget ? selectedTextTarget.kind === 'callout' : contextTool === 'callout'),
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
       // UX 2026-09-09: the Style picker offers "Cloud" (and, once picked, the

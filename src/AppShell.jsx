@@ -2296,8 +2296,11 @@ export default function App({ devPreviewReturnTab = null }) {
                         </button>
                       );
                     })}
-                    <div className="chrome-divider" />
-                    {[
+                    {/* Review 2026-09-23: hidden for callout text, which is
+                        always vertically centred (PDFViewer
+                        textVerticalAlignSupported). */}
+                    {bottomToolbarApi?.textVerticalAlignSupported !== false && <div className="chrome-divider" />}
+                    {bottomToolbarApi?.textVerticalAlignSupported !== false && [
                       ['alignTop', 'top', 'Align to the top'],
                       ['alignMiddle', 'middle', 'Align to the middle'],
                       ['alignBottom', 'bottom', 'Align to the bottom'],

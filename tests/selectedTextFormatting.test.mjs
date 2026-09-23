@@ -19,8 +19,12 @@ import { readFileSync } from 'node:fs';
 import {
   buildSelectedTextStylePatch,
   isFormattableTextObject,
+  patchCanReflowText,
   readCalloutTextStyle,
   readTextboxTextStyle,
+  refitCalloutToText,
+  refitTextboxToText,
+  resolveTextStyleWrite,
 } from '../src/utils/selectedTextFormatting.js';
 import { composeTextColor } from '../src/utils/textColorOpacity.js';
 
@@ -121,16 +125,174 @@ test('PDFViewer publishes the selection as the text bar source and writes back t
   // The selection wins only under Select with no live editor (whose own bridge wins).
   assert.match(viewer, /const selectedTextTarget = \(activeTool === 'select' && !richTextEditor\)/);
   assert.match(viewer, /selectedTextTargetRef\.current = selectedTextTarget;/);
-  // The write goes to the selected callout / text box through the phased save
-  // pipeline (one undo step per colour drag); armed, it is still the defaults.
+  // The WHOLE handler runs inside the drag phase (so a drag's page snapshot is
+  // always dropped), decides with resolveTextStyleWrite, and makes ONE write -
+  // the style and the refit together - per change.
   const handler = viewer.slice(
     viewer.indexOf('const handleTextStyleSourceChange = useCallback('),
-    viewer.indexOf('const handleTextStyleSourceChange = useCallback(') + 900,
+    viewer.indexOf('const handleTextStyleSourceChange = useCallback(') + 1400,
   );
-  assert.match(handler, /if \(!target\) \{\s*setTextStyleDefaults\(next\);/);
-  assert.match(handler, /runWithPaintPhase\(options, \(\) => \{/);
-  assert.match(handler, /handlePatchSelectedCallout\(patch\)/);
-  assert.match(handler, /handlePatchSelectedAnnotation\(patch\)/);
+  assert.match(handler, /^const handleTextStyleSourceChange = useCallback\(\(next, options\) => \{\s*runWithPaintPhase\(options, \(\) => \{/);
+  assert.match(handler, /resolveTextStyleWrite\(\{/);
+  assert.match(handler, /handlePatchSelectedCallout\(write\.patch, write\.reflows/);
+  assert.match(handler, /handlePatchSelectedAnnotation\(write\.patch, write\.reflows/);
+  assert.equal((handler.match(/handlePatchSelected(Callout|Annotation)\(/g) || []).length, 2);
+  // Both patch paths apply the refit to the object they save, in that save.
+  assert.match(viewer, /return typeof refit === 'function' \? \(refit\(patched, pageNumber\) \|\| patched\) : patched;/);
+  assert.match(viewer, /const nextObj = typeof refit === 'function' \? \(refit\(mergedObj\) \|\| mergedObj\) : mergedObj;/);
+});
+
+const calloutTarget = (style = {}) => ({
+  kind: 'callout', key: 'callout:c1', style: readCalloutTextStyle({ style }),
+});
+
+test('a change on a picked mark is a patch; armed, it is the defaults', () => {
+  const target = calloutTarget({ fontColor: '#1e293b' });
+  const write = resolveTextStyleWrite({
+    next: { ...target.style, fontColor: '#ff0000' }, target, activeTool: 'select', dragRecord: null,
+  });
+  assert.equal(write.action, 'patch');
+  assert.deepEqual(write.patch, { fontColor: '#ff0000' });
+  assert.equal(write.reflows, false);
+  const armed = resolveTextStyleWrite({
+    next: { ...readCalloutTextStyle({}), bold: true, supportsVerticalAlign: false },
+    target: null, activeTool: 'callout', dragRecord: null,
+  });
+  assert.equal(armed.action, 'defaults');
+  assert.equal(armed.defaults.bold, true);
+  assert.equal('supportsVerticalAlign' in armed.defaults, false);
+});
+
+test('no default write when the picked mark vanished (mid-drag or not)', () => {
+  const target = calloutTarget();
+  const now = 1_000_000;
+  const first = resolveTextStyleWrite({
+    next: { ...target.style, fontColor: 'rgba(255, 0, 0, 0.5)' },
+    phase: 'preview', target, activeTool: 'select', dragRecord: null, now,
+  });
+  assert.equal(first.action, 'patch');
+  assert.deepEqual(first.dragRecord, { key: 'callout:c1', at: now });
+  // A collaborator deletes the callout; the drag keeps going and is released.
+  const frame = resolveTextStyleWrite({
+    next: { ...target.style, fontColor: 'rgba(255, 0, 0, 0.4)' },
+    phase: 'preview', target: null, activeTool: 'select', dragRecord: first.dragRecord, now: now + 16,
+  });
+  assert.equal(frame.action, 'ignore');
+  const release = resolveTextStyleWrite({
+    next: { ...target.style, fontColor: 'rgba(255, 0, 0, 0.3)' },
+    phase: 'commit', target: null, activeTool: 'select', dragRecord: frame.dragRecord, now: now + 32,
+  });
+  assert.equal(release.action, 'ignore');
+  assert.equal(release.dragRecord, null);
+  // A plain click with nothing picked under Select writes nothing either.
+  assert.equal(resolveTextStyleWrite({
+    next: { ...target.style, bold: true }, target: null, activeTool: 'select', dragRecord: null,
+  }).action, 'ignore');
+});
+
+test('a drag never jumps to a different mark', () => {
+  const a = calloutTarget();
+  const b = { ...calloutTarget(), key: 'textbox:t9', kind: 'textbox', style: readTextboxTextStyle({ type: 'textbox' }) };
+  const now = 5_000;
+  const first = resolveTextStyleWrite({
+    next: { ...a.style, fontColor: '#ff0000' }, phase: 'preview', target: a, activeTool: 'select', dragRecord: null, now,
+  });
+  const other = resolveTextStyleWrite({
+    next: { ...b.style, fontColor: '#00ff00' }, phase: 'commit', target: b, activeTool: 'select', dragRecord: first.dragRecord, now: now + 20,
+  });
+  assert.equal(other.action, 'ignore');
+  // A record left by a drag whose release never came (older than 2s) is stale.
+  const later = resolveTextStyleWrite({
+    next: { ...b.style, fontColor: '#00ff00' }, phase: 'preview', target: b, activeTool: 'select', dragRecord: first.dragRecord, now: now + 5000,
+  });
+  assert.equal(later.action, 'patch');
+});
+
+test('an empty change writes nothing', () => {
+  const target = calloutTarget({ fontColor: '#ff0000' });
+  assert.equal(resolveTextStyleWrite({
+    next: { ...target.style }, target, activeTool: 'select', dragRecord: null,
+  }).action, 'ignore');
+});
+
+// A fake layout engine: `fontSize x lineStep` per wrapped line, where a line
+// holds floor(innerWidth / (0.6 x fontSize)) characters (bold is 10% wider).
+const fakeMeasure = ({ text, innerWidth, fontSize, fontWeight, lineHeight }) => {
+  const charWidth = 0.6 * fontSize * (String(fontWeight) === 'bold' ? 1.1 : 1);
+  const perLine = Math.max(1, Math.floor(innerWidth / charWidth));
+  const lines = String(text).split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / perLine)), 0);
+  return lines * fontSize * lineHeight;
+};
+
+test('a bigger size on a picked callout grows its box in the same write; the knee stays', () => {
+  const page = { width: 600, height: 800 };
+  const callout = {
+    id: 'c1', text: 'CALLOUT',
+    arrowTip: { x: 0.1, y: 0.1 }, knee: { x: 0.2, y: 0.2 },
+    textBoxPosition: { x: 0.3, y: 0.3 }, textBoxWidth: 120 / 600, textBoxHeight: 44 / 800,
+    style: { fontSize: 14 },
+  };
+  const target = { kind: 'callout', key: 'callout:c1', style: readCalloutTextStyle(callout) };
+  const write = resolveTextStyleWrite({ next: { ...target.style, fontSize: 36 }, target, activeTool: 'select', dragRecord: null });
+  assert.equal(write.reflows, true);
+  // The patch handler merges the style, then refits - one object, one save.
+  const patched = { ...callout, style: { ...callout.style, ...write.patch } };
+  const refit = refitCalloutToText(patched, page, fakeMeasure);
+  // 7 chars at 36px in 108px inner width: 5 per line -> 2 lines x 36 x 1.13.
+  const expectedHeight = 2 * 36 * 1.13;
+  assert.ok(Math.abs(refit.textBoxHeight * 800 - expectedHeight) < 1e-6, `height ${refit.textBoxHeight * 800}`);
+  assert.equal(refit.style.fontSize, 36);
+  assert.deepEqual(refit.knee, callout.knee);
+  assert.deepEqual(refit.arrowTip, callout.arrowTip);
+  assert.deepEqual(refit.textBoxPosition, callout.textBoxPosition);
+  assert.equal(refit.textBoxWidth, callout.textBoxWidth);
+  // Boxes never shrink: back to 14pt keeps the grown box.
+  const smaller = refitCalloutToText({ ...refit, style: { ...refit.style, fontSize: 14 } }, page, fakeMeasure);
+  assert.equal(smaller.textBoxHeight, refit.textBoxHeight);
+  // Colour alone never reflows.
+  assert.equal(patchCanReflowText('callout', { fontColor: '#ff0000' }), false);
+  assert.equal(patchCanReflowText('callout', { bold: true }), true);
+});
+
+test('a bigger size on a picked text box grows its height (width locked, tilt anchored)', () => {
+  const box = { type: 'textbox', text: 'HELLO', left: 50, top: 60, width: 100, height: 34, fontSize: 16 };
+  const refit = refitTextboxToText({ ...box, fontSize: 48 }, fakeMeasure);
+  // 5 chars at 48px in 88px inner width: 3 per line -> 2 lines x 48 x 1.16 x 1.13, + 2 x 6 padding.
+  const expected = 2 * 48 * 1.16 * 1.13 + 12;
+  assert.ok(Math.abs(refit.height - expected) < 1e-6, `height ${refit.height}`);
+  assert.equal(refit.width, 100);
+  assert.equal(refit.left, 50);
+  assert.equal(refit.top, 60);
+  const tilted = refitTextboxToText({ ...box, angle: 90, fontSize: 48 }, fakeMeasure);
+  const dh = expected - 34;
+  assert.ok(Math.abs(tilted.left - (50 - dh / 2)) < 1e-6);
+  assert.ok(Math.abs(tilted.top - (60 - dh / 2)) < 1e-6);
+  // Already fits: unchanged object.
+  assert.equal(refitTextboxToText(box, fakeMeasure), box);
+  // No browser measurer: never guesses.
+  assert.equal(refitTextboxToText({ ...box, fontSize: 48 }, () => null).height, 34);
+});
+
+test('text size is clamped to the editor range and the phone field saves once', () => {
+  const current = readCalloutTextStyle({});
+  assert.deepEqual(buildSelectedTextStylePatch('callout', current, { ...current, fontSize: 2 }), { fontSize: 6 });
+  const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
+  const field = mobile.slice(mobile.indexOf('function MobileFontSizeField('), mobile.indexOf('function MobileFontSizeField(') + 1600);
+  // Typing only edits a draft; blur / Enter commit once, clamped 6-200.
+  assert.match(field, /onChange=\{\(event\) => setDraft\(/);
+  assert.match(field, /onBlur=\{commit\}/);
+  assert.match(field, /Math\.max\(6, Math\.min\(200, parsed\)\)/);
+  assert.match(mobile, /<MobileFontSizeField\s+value=\{textDefaults\.fontSize \?\? 16\}\s+onCommit=/);
+});
+
+test('vertical alignment is hidden whenever callout text is what the bar edits', () => {
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /textVerticalAlignSupported: richTextEditor\s*\? richTextEditor\.state\?\.supportsVerticalAlign !== false\s*: !\(selectedTextTarget \? selectedTextTarget\.kind === 'callout' : contextTool === 'callout'\),/);
+  assert.match(read('src/components/TextEditOverlay.jsx'), /supportsVerticalAlign: !isCallout,/);
+  const shell = read('src/AppShell.jsx');
+  assert.match(shell, /bottomToolbarApi\?\.textVerticalAlignSupported !== false && \[\s*\['alignTop'/);
+  const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
+  assert.equal((mobile.match(/showVertical=\{api\.textVerticalAlignSupported !== false\}/g) || []).length, 2);
 });
 
 test('the drag phase reaches the save pipeline from every text colour picker', () => {
