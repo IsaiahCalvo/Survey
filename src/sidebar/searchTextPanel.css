@@ -1,0 +1,198 @@
+/* ==========================================================================
+   Search text panel — result list + status line (w12, owner 2026-09-23)
+
+   UX: "Polish this up." The results used to be bulky cards — a gold filled
+   index chip, a "Page 1" chip, a gold border on the active card and a long
+   run-on snippet. They are now a plain list:
+     - rows sit on the panel with a hairline between them, no card per row;
+     - a quiet "Page N ... count" header starts each page's rows, so no row
+       repeats its page number;
+     - each row is a short line of text with the match in the middle, set
+       apart by weight and the brightest text colour (gold stays a minimal
+       accent: no gold boxes, borders or filled chips);
+     - the row you are on uses the app's selected-row surface (--surface-3),
+       the same as Bookmarks;
+     - icon buttons (clear, previous, next) have invisible hit areas: no hover
+       or press plate, the glyph just brightens / shrinks a touch on press.
+   The status line is one fixed-height row, so counts changing while you type
+   never shove the list.
+   Phone sizing lives with the other phone sheet rules in
+   src/mobile/mobilePdfViewer.css (.mobile-search-panel*); the few phone
+   tweaks below are scoped to .mobile-search-panel and only touch the new
+   list/status classes.
+   ========================================================================== */
+
+.search-text-panel__input:focus {
+  /* Owner 2026-09-23: never a gold ring/outline on a field. */
+  border-color: var(--text-3) !important;
+}
+
+.search-text-panel__icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.12s ease, transform 0.08s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-text-panel__icon-button:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.search-text-panel__icon-button:active:not(:disabled) {
+  transform: scale(0.88);
+}
+
+.search-text-panel__icon-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.search-text-panel__clear {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  margin-top: -14px;
+}
+
+.search-text-panel__status {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-text-panel__status[hidden] {
+  display: none;
+}
+
+.search-text-panel__count {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.search-text-panel__pending {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.search-text-panel__steps {
+  margin-left: auto;
+  margin-right: -6px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.search-text-panel__empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.search-text-group__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 12px 4px;
+  background: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-text-panel__results {
+  background: var(--surface-1);
+}
+
+.search-text-group {
+  background: inherit;
+}
+
+.search-text-result {
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+  cursor: pointer;
+  /* Two lines at most; the snippet is already cut around the match. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  /* Off-screen rows skip layout/paint on big searches. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-text-group__header + .search-text-result {
+  border-top-color: transparent;
+}
+
+.search-text-result:hover {
+  color: var(--text-2);
+}
+
+.search-text-result.is-active {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.search-text-result__match {
+  background: none;
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+/* Phone sheet: bigger text and a 44px-tall row to tap. */
+.mobile-search-panel .search-text-panel__results {
+  background: var(--surface-2);
+}
+
+.mobile-search-panel .search-text-panel__status {
+  height: 34px;
+  font-size: 13px;
+}
+
+.mobile-search-panel .search-text-panel__icon-button {
+  width: 36px;
+  height: 36px;
+}
+
+.mobile-search-panel .search-text-panel__clear {
+  margin-top: -18px;
+}
+
+.mobile-search-panel .search-text-group__header {
+  padding: 12px 0 4px;
+  font-size: 12px;
+}
+
+.mobile-search-panel .search-text-result {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 12px 8px;
+  margin: 0 -8px;
+  font-size: 14px;
+  line-height: 20px;
+  contain-intrinsic-size: auto 44px;
+}

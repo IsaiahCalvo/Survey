@@ -72,6 +72,13 @@ import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
+import {
+  SEARCH_READABLE_TEXT_PX,
+  SEARCH_READABLE_TEXT_PX_PHONE,
+  measureCenterOffset,
+  resolveReadableSearchScale,
+  resolveViewerOcclusionInsets
+} from './utils/searchMatchNavigation';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
 import PdfjsRedactionMarkLayer from './components/PdfjsRedactionMarkLayer';
 import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
@@ -4703,6 +4710,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const currentMatchIndexRef = useRef(-1);
   const searchZoomLevelRef = useRef(null); // Store zoom level before search zoom
   const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
+  const textMatchNavTokenRef = useRef(0); // Newest text-search jump wins; older ones stop
   const activeTextSearchQueryRef = useRef('');
   const textSearchRefreshTimerRef = useRef(null);
   const previousSearchResultsCountRef = useRef(0);
@@ -23021,6 +23029,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       retryDelay = usePdfjsRenderer ? 80 : 40,
       rightInset = 0,
       leftInset = 0,
+      // Top/bottom cover (phone search sheet): centre in the strip left over.
+      topInset = 0,
+      bottomInset = 0,
       bypassActiveSpace = true,
       navigateFirst = true,
       settlePasses = 0,
@@ -23106,12 +23117,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const containerWidth = Number(container.clientWidth) || containerRect.width;
       const containerHeight = Number(container.clientHeight) || containerRect.height;
       const visibleWidth = Math.max(80, containerWidth - Math.max(0, leftInset) - Math.max(0, rightInset));
-      const visibleHeight = Math.max(80, containerHeight);
+      const visibleHeight = Math.max(80, containerHeight - Math.max(0, topInset) - Math.max(0, bottomInset));
 
       const pageOffsetX = pageRect.left - containerRect.left + container.scrollLeft;
       const pageOffsetY = pageRect.top - containerRect.top + container.scrollTop;
       const targetScrollLeft = pageOffsetX + targetBounds.centerX * pageScaleX - Math.max(0, leftInset) - visibleWidth / 2;
-      const targetScrollTop = pageOffsetY + targetBounds.centerY * pageScaleY - visibleHeight / 2;
+      const targetScrollTop = pageOffsetY + targetBounds.centerY * pageScaleY - Math.max(0, topInset) - visibleHeight / 2;
 
       const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
@@ -23231,8 +23242,205 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [usePdfjsRenderer]);
 
   // Navigate to a search match with zoom and centering
-  const navigateToMatch = useCallback((match, index) => {
+  const navigateToMatch = useCallback((match, index, navigationOptions = undefined) => {
     if (!match || !containerRef.current) return;
+
+    if (usePdfjsRenderer) {
+      // UX (owner 2026-09-23: "when I click, I should be directly brought to
+      // it, zoomed in and centered on whatever it is that it found"):
+      //   1. bring the match's page on screen;
+      //   2. zoom in (never out) to a comfortable reading size for that line of
+      //      text — through the normal viewer zoom (setScaleWithViewportPreservation
+      //      → magnificationModule.zoomTo), so the zoomGeneration signal and the
+      //      pdf.js commit lifecycle run exactly as for a toolbar zoom;
+      //   3. once the page has re-rendered at the new size, centre the match in
+      //      the part of the viewer you can see (beside the open side panel on
+      //      desktop; above the Search sheet on the phone while it stays open).
+      // Every jump takes a token, so clicking or stepping quickly never queues
+      // stale jumps — the newest one wins and older ones stop where they are.
+      const navToken = textMatchNavTokenRef.current + 1;
+      textMatchNavTokenRef.current = navToken;
+      const isCurrentJump = () => textMatchNavTokenRef.current === navToken;
+      const pageNumber = Number(match.pageNumber);
+      const bounds = match.bounds;
+      const dismissingSheet = Boolean(navigationOptions?.dismissingSheet);
+
+      currentMatchIndexRef.current = index;
+      setCurrentMatchIndex(index);
+      scheduleTextSearchHighlightRefresh('match-navigation', 80);
+
+      const resolveInsets = () => {
+        const container = containerRef.current;
+        if (!container || typeof document === 'undefined') {
+          return { left: 0, right: 0, top: 0, bottom: 0 };
+        }
+        const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder]'))
+          // A sheet that is closing because you picked a result no longer counts.
+          .filter((node) => !(dismissingSheet && node.getAttribute('data-viewer-occluder') === 'sheet'))
+          .map((node) => node.getBoundingClientRect());
+        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+      };
+      const readPageGeometry = () => {
+        const pageContainer =
+          pageContainersRef.current?.[pageNumber] ||
+          pdfjsPageContainersStateRef.current?.[pageNumber] ||
+          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
+          null;
+        if (!pageContainer || !pageContainer.isConnected) return null;
+        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
+        const pageRect = pageElement.getBoundingClientRect();
+        const pageSize = pageSizesRef.current?.[pageNumber] || {};
+        if (!(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
+        return { pageRect, renderedScale: pageRect.width / Number(pageSize.width) };
+      };
+      const centerNow = (behavior = 'auto', insets = resolveInsets()) => centerPageBoundsInViewer(pageNumber, bounds, {
+        behavior,
+        retryBehavior: 'auto',
+        maxRetries: 18,
+        retryDelay: 60,
+        navigateFirst: true,
+        leftInset: insets.left,
+        rightInset: insets.right,
+        topInset: insets.top,
+        bottomInset: insets.bottom
+      });
+      const waitFor = (predicate, onReady, { maxWaitMs = 1500 } = {}) => {
+        const startedAt = Date.now();
+        const tick = () => {
+          if (!isCurrentJump()) return;
+          const value = predicate();
+          if (value || Date.now() - startedAt >= maxWaitMs) {
+            onReady(value);
+            return;
+          }
+          // A frame, or 16ms when frames are throttled (unfocused window).
+          let stepped = false;
+          const step = () => {
+            if (stepped) return;
+            stepped = true;
+            tick();
+          };
+          window.requestAnimationFrame(step);
+          window.setTimeout(step, 16);
+        };
+        tick();
+      };
+      const reportLanding = (phase, extra = {}) => {
+        if (typeof document === 'undefined') return;
+        const container = containerRef.current;
+        const geometry = readPageGeometry();
+        const center = getBoundsCenter(bounds);
+        if (!container || !geometry || !center) return;
+        const insets = resolveInsets();
+        const matchRect = {
+          left: geometry.pageRect.left + center.centerX * geometry.renderedScale,
+          top: geometry.pageRect.top + center.centerY * geometry.renderedScale,
+          width: 0,
+          height: 0
+        };
+        emitTextSearchDiag('app_match_navigation_landed', {
+          phase,
+          index,
+          pageNumber,
+          renderedScale: Math.round(geometry.renderedScale * 1000) / 1000,
+          insets,
+          offset: measureCenterOffset(matchRect, container.getBoundingClientRect(), insets),
+          ...extra,
+          pdfDocumentKey: pdfSearchDocumentKey
+        });
+      };
+
+      if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
+      if (!bounds) {
+        goToPage(pageNumber, { bypassActiveSpace: true });
+        return;
+      }
+
+      emitTextSearchDiag('app_match_navigation_start', {
+        index,
+        pageNumber,
+        hasBounds: true,
+        currentScale: scaleRef.current,
+        dismissingSheet,
+        targetRenderer: 'pdfjs',
+        pdfDocumentKey: pdfSearchDocumentKey
+      });
+
+      // Step 1: get the page on screen (it may be virtualized away).
+      if (!readPageGeometry()) {
+        goToPage(pageNumber, { bypassActiveSpace: true });
+      }
+      waitFor(readPageGeometry, (geometry) => {
+        const currentScale = Math.max(0.01, geometry?.renderedScale || Number(scaleRef.current) || Number(scale) || 1);
+        const container = containerRef.current;
+        const insets = resolveInsets();
+        const visibleWidth = Math.max(80, (Number(container?.clientWidth) || 0) - insets.left - insets.right);
+        const lineHeight = Number(match.lineHeight) > 0
+          ? Number(match.lineHeight)
+          : Math.max(1, Number(bounds.height) || 0);
+        const targetScale = resolveReadableSearchScale({
+          currentScale,
+          lineHeight,
+          matchWidth: Number(bounds.width) || 0,
+          visibleWidth,
+          targetTextPx: mobileMode ? SEARCH_READABLE_TEXT_PX_PHONE : SEARCH_READABLE_TEXT_PX
+        });
+        const shouldZoom = targetScale > currentScale * 1.02;
+
+        if (!shouldZoom) {
+          // Same zoom: glide when the match is close by, jump when it is far.
+          const pageRect = geometry?.pageRect;
+          const containerRect = container?.getBoundingClientRect?.();
+          const nearby = pageRect && containerRect &&
+            pageRect.bottom > containerRect.top && pageRect.top < containerRect.bottom;
+          centerNow(nearby ? 'smooth' : 'auto', insets);
+          window.setTimeout(() => {
+            if (isCurrentJump()) reportLanding('center', { zoomed: false, fromScale: currentScale });
+          }, nearby ? 480 : 60);
+          return;
+        }
+
+        if (searchZoomLevelRef.current === null) {
+          searchZoomLevelRef.current = currentScale;
+        }
+        // Put the match in the middle of the scroller first, so the zoom —
+        // which holds the scroller's centre still — grows the page around it.
+        centerNow('auto', { left: 0, right: 0, top: 0, bottom: 0 });
+        // MANUAL, like pressing zoom-in: a still-armed fit-to-page must not
+        // snap the view back out a moment later (it did on the phone when the
+        // Search sheet closed).
+        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
+        // Step 3: wait for the committed zoom to reach the page, then centre
+        // in the visible area and check once more a frame later (the viewer
+        // re-anchors its scroll position in a layout pass after the commit).
+        waitFor(() => {
+          const next = readPageGeometry();
+          return next && Math.abs(next.renderedScale - targetScale) / targetScale < 0.015 ? next : null;
+        }, () => {
+          centerNow('auto');
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+            if (!isCurrentJump()) return;
+            centerPageBoundsInViewer(pageNumber, bounds, {
+              behavior: 'auto',
+              navigateFirst: false,
+              maxRetries: 4,
+              skipIfClosePx: 2,
+              ...(() => {
+                const finalInsets = resolveInsets();
+                return {
+                  leftInset: finalInsets.left,
+                  rightInset: finalInsets.right,
+                  topInset: finalInsets.top,
+                  bottomInset: finalInsets.bottom
+                };
+              })()
+            });
+            reportLanding('zoom-center', { zoomed: true, fromScale: currentScale, targetScale });
+          }));
+        });
+      });
+      return;
+    }
 
     // Prevent recursive navigation
     if (isNavigatingToMatchRef.current) {
@@ -23428,9 +23636,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [
     centerPageBoundsInViewer,
+    getBoundsCenter,
     goToPage,
+    mobileMode,
     pageSizes,
     pdfSearchDocumentKey,
+    resolvePageContentElement,
     scale,
     scheduleTextSearchHighlightRefresh,
     scrollMode,
@@ -23454,12 +23665,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     previousSearchResultsCountRef.current = safeResults.length;
     setSearchResults(safeResults);
-    // Reset zoom when search changes
-    if (searchZoomLevelRef.current !== null && safeResults.length === 0) {
-      setScaleWithViewportPreservation(searchZoomLevelRef.current);
-      searchZoomLevelRef.current = null;
-    }
-  }, [currentMatchIndex, pageNum, pdfSearchDocumentKey, setScaleWithViewportPreservation]);
+    // The zoom a search jump added is handed back only when the search is
+    // cleared (handleClearTextSearch) — not whenever a half-typed query has
+    // no matches yet, which zoomed the page out from under you mid-typing.
+  }, [currentMatchIndex, pageNum, pdfSearchDocumentKey]);
 
   // Handler for current match index change
   const handleCurrentMatchIndexChange = useCallback((index) => {
@@ -23487,12 +23696,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleClearTextSearch = useCallback(() => {
     activeTextSearchQueryRef.current = '';
+    // Stop any jump still in flight, then give back the zoom you had before
+    // the first search jump (UX: clearing a search returns your view's zoom).
+    textMatchNavTokenRef.current += 1;
+    if (searchZoomLevelRef.current !== null) {
+      setScaleWithViewportPreservation(searchZoomLevelRef.current, { mode: ZOOM_MODES.MANUAL });
+      searchZoomLevelRef.current = null;
+    }
     if (textSearchRefreshTimerRef.current) {
       clearTimeout(textSearchRefreshTimerRef.current);
       textSearchRefreshTimerRef.current = null;
     }
     pdfjsViewerRef.current?.cancelTextSearch?.();
-  }, []);
+  }, [setScaleWithViewportPreservation]);
 
   if (!zoomControllerRef.current) {
     zoomControllerRef.current = createZoomController({

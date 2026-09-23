@@ -329,7 +329,12 @@ const PDFSidebar = React.forwardRef(({
         onClick={requestSheetClose}
       />
     )}
-    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+    <div
+      // Text search centres a picked match in the part of the PDF you can see,
+      // so the open panel marks itself as covering the viewer: a side panel on
+      // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
+      data-viewer-occluder={isCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
+      className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       // The tall detent overrides the content-measured height. It has to be
       // written here, not from the stylesheet: this inline custom property
       // always wins over a rule, so a CSS-only override would be ignored.
@@ -614,6 +619,7 @@ const PDFSidebar = React.forwardRef(({
                 focusRequestToken={searchFocusRequestToken}
                 selectOnFocus={searchSelectOnFocus}
                 mobileMode={mobileMode}
+                onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
               />
               </Suspense>
             </div>
