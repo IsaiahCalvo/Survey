@@ -2391,6 +2391,166 @@
   .survey-hub .projects-mobile-file-copy > div { line-height: 18px; }
   .survey-hub .projects-mobile-file-copy > span { line-height: 14px; }
 
+  /* ==========================================================================
+     PROJECT VIEW — LAYOUT B, ONE CARD, DIVIDED (owner, 2026-09-23)
+     --------------------------------------------------------------------------
+     Opening a project on the phone used to show two boxes: a header card with
+     the name and two outlined buttons, and a separate file panel stretched to
+     the foot of the screen. The owner picked "layout B" from the Templates
+     mock: ONE panel — the same lighter blue-grey fill, edge and radius as the
+     other phone lists — holding the name block, an edge-to-edge hairline, a
+     "Files" heading with Add files / Team as quiet gold words, then the file
+     rows as lines inside the same panel. No card inside a card, and the panel
+     hugs its rows. Phone only: this block sits inside the 720px query and every
+     selector hangs off .projects-mobile-project-card, which only the phone
+     drill view renders. Selectors repeat the ONE PANEL PER LIST shapes further
+     down with the card class added, so they outrank those rules by
+     specificity, not by !important or file order.
+     ========================================================================== */
+  .survey-hub .projects-mobile-drill-view:has(> .projects-mobile-project-card) {
+    /* The grid's only row must not stretch the card down the screen. */
+    align-content: start;
+  }
+
+  .survey-hub .projects-mobile-project-card {
+    min-width: 0;
+    background: var(--ink-700);
+    border: 1px solid var(--ink-500);
+    border-radius: 10px;
+    /* Clips a selected or pressed row at the rounded corners. Row menus are
+       position: fixed, so nothing needs to escape. */
+    overflow: hidden;
+    margin-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The name block. Side inset 10px, the file rows' own inset. */
+  .survey-hub .projects-mobile-project-head {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+    padding: 11px 10px 12px;
+  }
+
+  .survey-hub .projects-mobile-project-card .projects-mobile-title-input {
+    font-size: 17px;
+    font-weight: 750;
+    line-height: 22px;
+    letter-spacing: -0.01em;
+    padding: 0;
+    border-bottom: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Owner ruling: a field shows focus by its caret only — no underline, no
+     ring, no gold. */
+  .survey-hub .projects-mobile-project-card .projects-mobile-title-input:focus {
+    border-bottom: 0;
+    outline: none;
+  }
+
+  .survey-hub .projects-mobile-project-head > span {
+    color: var(--ink-200);
+    font-size: 11.5px;
+    line-height: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* "Files" heading row. The hairline above it runs edge to edge because it is
+     this row's own top border and the row spans the card. */
+  .survey-hub .projects-mobile-project-files-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .survey-hub .projects-mobile-project-files-head > span:first-child {
+    color: var(--ink-200);
+    font-size: 10.5px;
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .survey-hub .projects-mobile-project-files-actions {
+    margin-left: auto;
+    /* The words' own 6px side pad steps past the card inset, so "Team" ends
+       on the same line as each row's "…". */
+    margin-right: -6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Gold words, no box (TERTIARY): the same kind as the page's Select. */
+  .survey-hub .projects-mobile-project-files-actions > .hub-btn {
+    position: relative;
+    padding: 0 6px;
+    border-color: transparent;
+  }
+
+  /* A 44px finger target without a taller row: the tap area grows by pad. */
+  .survey-hub .projects-mobile-project-files-actions > .hub-btn::after {
+    content: '';
+    position: absolute;
+    inset-block: -8px;
+    inset-inline: 0;
+    background: transparent;
+  }
+
+  /* The file list sits flush in the card: the panel look moves off it. */
+  .survey-hub .projects-mobile-project-card .projects-mobile-file-list {
+    display: block;
+  }
+
+  .survey-hub .projects-mobile-project-card .projects-mobile-file-list > [data-sortable-rearrange-list] {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  /* Every row takes a hairline ABOVE it — the first one parts the rows from
+     the Files heading, and the last row has its line like the rest. The card's
+     own bottom edge closes the list, so no line is ever doubled, even while a
+     drag reorders which row is last. */
+  .survey-hub .projects-mobile-project-card .projects-mobile-file-list > [data-sortable-rearrange-list] > [data-sortable-rearrange-item],
+  .survey-hub .projects-mobile-project-card .projects-mobile-file-list > [data-sortable-rearrange-list] > [data-sortable-rearrange-item]:last-child {
+    border-bottom: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: none;
+  }
+
+  /* No files yet: a quiet line of text inside the card, not a dashed card. */
+  .survey-hub .projects-mobile-project-card .projects-mobile-empty-card {
+    min-height: 96px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .survey-hub .projects-mobile-project-card .projects-mobile-empty-card button {
+    height: 28px;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    padding: 0 6px;
+    font-weight: 600;
+  }
+
+  .survey-hub .projects-mobile-project-card .projects-mobile-empty-card button:active {
+    color: var(--accent-press);
+  }
+  /* ===== end PROJECT VIEW — LAYOUT B ===== */
+
   .survey-hub .projects-mobile-check {
     width: 17px;
     height: 17px;

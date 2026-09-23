@@ -866,7 +866,9 @@ export default function ProjectsFolderTree({
       </span>
       <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
         <span className="projects-mobile-count">
-          <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject ? 'files' : 'projects'}
+          <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject
+            ? (mobileDrillFiles.length === 1 ? 'file' : 'files')
+            : (filtered.length === 1 ? 'project' : 'projects')}
         </span>
         {mobileHeaderSelectRow}
       </span>
@@ -1339,46 +1341,59 @@ export default function ProjectsFolderTree({
           <div className="projects-mobile-browser projects-mobile-drill-view">
             {mobileDrillProject ? (
               <>
-                <div className="projects-mobile-drill-header project-tools">
-                  <div>
+                {/* UX 2026-09-23 (owner: "layout B — one card, divided"): the
+                    drilled-in project is ONE panel, the same lighter blue-grey
+                    box as the other phone lists. The name block sits on top, a
+                    hairline runs edge to edge, then a "Files" heading carries
+                    Add files and Team as quiet gold words (not outlined boxes),
+                    and the file rows are lines in the same panel. The panel
+                    hugs its rows instead of stretching to the foot of the
+                    screen. Matches the Templates editor's layout B mock. */}
+                <div className="projects-mobile-project-card">
+                  <div className="projects-mobile-project-head">
                     <input
                       key={`mobile-project-name-${mobileDrillProject.id}`}
                       className="projects-mobile-title-input"
                       {...projectNameField(mobileDrillProject)}
                       title="Tap to rename"
                     />
-                    <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
+                    <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
-                  <button className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                  <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
-                </div>
-                <div className="projects-mobile-file-list">
-                  {mobileDrillFiles.length === 0 ? (
-                    <div className="projects-mobile-empty-card">
-                      <Icon name="doc" size={18} />
-                      <span>{mobileDrillAllFiles.length === 0 ? 'No files in this project yet.' : 'No files match your search.'}</span>
-                      {mobileDrillAllFiles.length === 0 ? (
-                        <button type="button" onClick={() => addFiles(mobileDrillProject)}>Add files</button>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <SortableRearrangeList ids={mobileDrillFiles.map((f) => f.id)} onReorder={reorderFiles}>
-                      {mobileDrillFiles.map((f) => (
-                        <SortableRearrangeRow key={`drill-file-${f.id}`} id={f.id}>
-                          {({ attributes, listeners, isDragging }) => renderMobileFileRow(
-                            f,
-                            'drill-file',
-                            <DragRearrangeHandle
-                              {...attributes}
-                              {...listeners}
-                              isDragging={isDragging}
-                              style={{ width: 24, height: 24 }}
-                            />,
-                          )}
-                        </SortableRearrangeRow>
-                      ))}
-                    </SortableRearrangeList>
-                  )}
+                  <div className="projects-mobile-project-files-head">
+                    <span>Files</span>
+                    <span className="projects-mobile-project-files-actions">
+                      <button type="button" className="hub-btn hub-btn--tertiary" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
+                      <button type="button" className="hub-btn hub-btn--tertiary" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                    </span>
+                  </div>
+                  <div className="projects-mobile-file-list">
+                    {mobileDrillFiles.length === 0 ? (
+                      <div className="projects-mobile-empty-card">
+                        <Icon name="doc" size={18} />
+                        <span>{mobileDrillAllFiles.length === 0 ? 'No files in this project yet.' : 'No files match your search.'}</span>
+                        {mobileDrillAllFiles.length === 0 ? (
+                          <button type="button" onClick={() => addFiles(mobileDrillProject)}>Add files</button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <SortableRearrangeList ids={mobileDrillFiles.map((f) => f.id)} onReorder={reorderFiles}>
+                        {mobileDrillFiles.map((f) => (
+                          <SortableRearrangeRow key={`drill-file-${f.id}`} id={f.id}>
+                            {({ attributes, listeners, isDragging }) => renderMobileFileRow(
+                              f,
+                              'drill-file',
+                              <DragRearrangeHandle
+                                {...attributes}
+                                {...listeners}
+                                isDragging={isDragging}
+                                style={{ width: 24, height: 24 }}
+                              />,
+                            )}
+                          </SortableRearrangeRow>
+                        ))}
+                      </SortableRearrangeList>
+                    )}
+                  </div>
                 </div>
               </>
             ) : (
