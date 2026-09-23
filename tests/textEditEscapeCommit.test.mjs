@@ -119,7 +119,8 @@ test('the open editor shows a tick that commits and a cross that discards', () =
 });
 
 test('the tick/cross pair is a finger-sized target at every zoom', () => {
-  assert.match(overlaySrc, /const ACTION_BUTTON_VISUAL = 24;/, 'Drawboard-sized visible disc');
+  // RULED 2026-09-23 (owner: "sized a little smaller"): 20px visible disc.
+  assert.match(overlaySrc, /const ACTION_BUTTON_VISUAL = 20;/, 'visible disc');
   assert.match(overlaySrc, /const ACTION_TOUCH_TARGET = 44;/, "Apple's minimum tap target");
   // Screen-constant, not page units: these are controls, like handles and the
   // marquee, so they must not grow and shrink with the document zoom.

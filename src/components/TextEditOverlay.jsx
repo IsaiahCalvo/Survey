@@ -62,7 +62,9 @@ const DEFAULT_FONT_FAMILY = 'Helvetica';
 // like selection handles and marquees, not annotation ink, so they stay the
 // same physical size at every zoom (CLAUDE.md — only annotation visuals scale
 // in page units).
-const ACTION_BUTTON_VISUAL = 24;
+// RULED 2026-09-23 (owner: "sized a little smaller ... not colliding with
+// the text box"): 20px discs with a 10px glyph, clear of the box frame.
+const ACTION_BUTTON_VISUAL = 20;
 const ACTION_TOUCH_TARGET = 44;
 const ACTION_PAIR_GAP = 8;
 const ACTION_PAIR_WIDTH = ACTION_TOUCH_TARGET * 2 + ACTION_PAIR_GAP;
@@ -73,11 +75,11 @@ const ACTION_PAIR_WIDTH = ACTION_TOUCH_TARGET * 2 + ACTION_PAIR_GAP;
 // even match itself. Drawing them through <Icon> puts them on the one grid and
 // the one weight every other glyph in the app uses, at ONE box size, so the pair
 // reads as part of the set. Never inline these two again.
-const ACTION_GLYPH_SIZE = 12;
+const ACTION_GLYPH_SIZE = 10;
 // Gap between the bottom of the text box and the top of the tap targets. The
 // visible circle is centred in its 44px pad, so the ink-to-ink gap reads as
 // ACTION_BOX_GAP + 10, close to Drawboard's ~18px.
-const ACTION_BOX_GAP = 8;
+const ACTION_BOX_GAP = 4;
 const ACTION_EDGE_MARGIN = 6;
 
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
@@ -647,6 +649,13 @@ export default function TextEditOverlay({
       frame = requestAnimationFrame(measure);
     };
     measure();
+    // The page can move under the box without any scroll/resize event (a zoom
+    // settle, a fit change, the viewer re-laying out), which left the pair
+    // parked ON the box (owner 2026-09-23). A light per-frame check keeps it
+    // under the box; measure() only sets state when the spot really changes.
+    let follow = 0;
+    const followLoop = () => { measure(); follow = requestAnimationFrame(followLoop); };
+    follow = requestAnimationFrame(followLoop);
     const box = boxRef.current;
     const ro = box ? new ResizeObserver(schedule) : null;
     if (ro && box) ro.observe(box);
@@ -657,6 +666,7 @@ export default function TextEditOverlay({
     window.visualViewport?.addEventListener?.('scroll', schedule);
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      cancelAnimationFrame(follow);
       ro?.disconnect();
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);

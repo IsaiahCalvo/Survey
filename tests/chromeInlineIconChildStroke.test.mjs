@@ -110,7 +110,8 @@ test('the text editor tick and cross are one shared glyph at one size', async ()
   );
   // One named constant, so the pair cannot drift apart by a stray edit to one of
   // the two call sites.
-  assert.match(source, /const ACTION_GLYPH_SIZE = 12;/);
+  // RULED 2026-09-23 (owner: smaller tick/cross, clear of the box): 10px glyph.
+  assert.match(source, /const ACTION_GLYPH_SIZE = 10;/);
   assert.equal(icons[0].size, 'ACTION_GLYPH_SIZE');
 });
 
