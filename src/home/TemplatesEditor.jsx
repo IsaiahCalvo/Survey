@@ -2585,7 +2585,7 @@ export default function TemplatesEditor({
                                   opacity={activeOp}
                                   onChange={applyColor}
                                   onClose={() => setOpenColor(null)}
-                                  dismissInsideSelector="[data-entity-color-panel]"
+                                  dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                   /* The entity panel is already the box (owner
                                      2026-09-23: "not a box within a box"). */
                                   chrome={false}
@@ -3051,7 +3051,7 @@ export default function TemplatesEditor({
                                       opacity={activeData.opacity}
                                       onChange={applyColor}
                                       onClose={() => setOpenColor(null)}
-                                      dismissInsideSelector="[data-entity-color-panel]"
+                                      dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                       platform="phone"
                                       chrome={false}
                                       tabs={{
