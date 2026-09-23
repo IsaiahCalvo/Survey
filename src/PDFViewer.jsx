@@ -109,7 +109,7 @@ import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool 
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
-import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, collectAnnotationFieldTouches, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
 import {
   buildAtomicTextMarkupPageMutation,
   buildRequestedRedactionSnapshot,
@@ -10819,6 +10819,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const lastCheckpointHashRef = useRef(null);
   const objectModifiedInteractionCheckpointRef = useRef(new Map());
   const previewBaselineByPageRef = useRef(new Map());
+  // Field-level undo (2026-09-23): pageKey -> Map<storageKey, Map<pathKey,
+  // path>> — the fields each save of the gesture in progress on that page
+  // itself changed. The release's single undo step is limited to these, so a
+  // collaborator's mid-gesture edit to another field of the same mark is not
+  // folded into it (see utils/annotationLocalHistory.js).
+  const gestureFieldTouchesByPageRef = useRef(new Map());
   // R2.2 Slice 3: calloutLiveHistoryBaselineRef (per-callout whole-document
   // drag baselines) was retired — callout drags now use the shared
   // previewBaselineByPageRef contract via checkpointPolicy 'skip'.
@@ -12432,7 +12438,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       return false;
     }
-    const nextAnnotationsByPage = applyAnnotationHistoryAction(annotationsByPageRef.current || {}, scopedAction);
+    // Undo/Redo writes only the fields the action changed onto each mark as it
+    // is now. When that leaves a callout in a state neither snapshot had (a
+    // collaborator changed another field meanwhile), rebuild its drawn parts
+    // from data.legacyCallout, the callout's source of truth, so the leader,
+    // box and text agree with the merged settings.
+    const nextAnnotationsByPage = applyAnnotationHistoryAction(annotationsByPageRef.current || {}, scopedAction, {
+      normalizeUpdatedObject: (object, { pageNumber: updatedPage }) => {
+        if (object?.data?.type !== 'callout' || !object?.data?.legacyCallout) return object;
+        try {
+          const page = Number(updatedPage);
+          const callout = deriveCalloutsFromByPage({ [page]: { objects: [object] } })[0];
+          const pageSize = pageSizesRef.current?.[page] || { width: 612, height: 792 };
+          return callout ? calloutToAnnotationObject(callout, pageSize) : object;
+        } catch (_err) {
+          return object;
+        }
+      },
+    });
     if (nextAnnotationsByPage === annotationsByPageRef.current) return false;
 
     const counterRenumberDecision = shouldRenumberCountersForSave({
@@ -25456,6 +25479,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         interactionPageKey,
         deepClone(normalizedCurrentAnnotations || { objects: [] })
       );
+      // A new gesture starts with no recorded field touches.
+      gestureFieldTouchesByPageRef.current.delete(interactionPageKey);
     }
     const previewBaseline = checkpointPolicy === 'skip'
       ? null
@@ -25660,11 +25685,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!shouldRenumberCounters) {
       logCounterRenumberSkip();
     }
+    // Field-level undo: every save inside a gesture (preview frames and the
+    // release) records which fields it changed, diffed against the page as it
+    // was just before this save — so a collaborator's edit that landed between
+    // frames is never counted as ours. The release's step keeps only those.
+    const gestureInProgress = checkpointPolicy === 'skip' || Boolean(previewBaseline);
+    if (gestureInProgress) {
+      const touches = gestureFieldTouchesByPageRef.current.get(interactionPageKey) || new Map();
+      collectAnnotationFieldTouches(normalizedCurrentAnnotations, finalIncomingAnnotations, touches);
+      gestureFieldTouchesByPageRef.current.set(interactionPageKey, touches);
+    }
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
-      pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
+      if (previewBaseline && !isEraserCommit) {
+        pushLocalAnnotationHistoryAction(restrictAnnotationHistoryActionFields(
+          finalLocalHistoryAction,
+          gestureFieldTouchesByPageRef.current.get(interactionPageKey),
+        ));
+      } else {
+        // No gesture baseline (the diff is exactly this save), or an eraser
+        // commit whose precise builder already names exactly what it changed.
+        pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
+      }
     }
     if (!shouldSkipCheckpointByPolicy) {
       previewBaselineByPageRef.current.delete(interactionPageKey);
+      gestureFieldTouchesByPageRef.current.delete(interactionPageKey);
     }
 
     pushHistoryDebugEvent('annotations_save_detected', {
