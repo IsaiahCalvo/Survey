@@ -1107,10 +1107,9 @@ const SpacesPanel = ({
       }}
     >
       {/* UX 2026-09-23 (owner): the Bookmarks header pattern — [+ Add] on the
-          far left, the title on the panel's true centre, [Export] on the far
+          far left, the status on the panel's true centre, [Export] on the far
           right. One slim row; both buttons are quiet words of equal weight (no
-          gold square, no outlined square) with the same edge gap. The status
-          line sits under the title. */}
+          gold square, no outlined square) with the same edge gap. */}
       <div className="spaces-panel__head">
         <button
           type="button"
@@ -1123,8 +1122,9 @@ const SpacesPanel = ({
           <span>Add</span>
         </button>
 
+        {/* Owner 2026-09-23: no "Spaces" title here - the tab above already
+            says it. Only the quiet status stays on the row's centre. */}
         <div className="spaces-panel__title">
-          <h3>Spaces</h3>
           <span>{spacesStatusText}</span>
         </div>
 
