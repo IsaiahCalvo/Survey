@@ -759,7 +759,7 @@ export default function TemplatesEditor({
     // and the hidden twin measures 0, which made the new panel drop to 0 and
     // then pop open at the end of the motion.
     document.querySelectorAll('[data-entity-color-panel]').forEach((el) => {
-      if (el.getBoundingClientRect().height <= 0) return;
+      if (el.getBoundingClientRect().height <= 0 || el.dataset.folding) return;
       el.style.setProperty('--panel-h', `${el.getBoundingClientRect().height}px`);
       // The next panel to open is the same picker, so it drops to this height:
       // fold and drop then trade pixels one for one.
@@ -2651,7 +2651,13 @@ export default function TemplatesEditor({
                                   color={activeColor}
                                   opacity={activeOp}
                                   onChange={applyColor}
-                                  onClose={() => foldColor(null)}
+                                  onClose={(event) => {
+                                    // A press on ANOTHER entity's colour dot is a switch, not a
+                                    // close: its click follows ~100ms later and runs the switch.
+                                    // Folding here first made the click restart the fold (a jump).
+                                    if (event?.target?.closest?.('button[title="Edit color"]')) return;
+                                    foldColor(null);
+                                  }}
                                   dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                   /* The entity panel is already the box (owner
                                      2026-09-23: "not a box within a box"). */
@@ -3128,7 +3134,13 @@ export default function TemplatesEditor({
                                       color={activeData.color}
                                       opacity={activeData.opacity}
                                       onChange={applyColor}
-                                      onClose={() => foldColor(null)}
+                                      onClose={(event) => {
+                                    // A press on ANOTHER entity's colour dot is a switch, not a
+                                    // close: its click follows ~100ms later and runs the switch.
+                                    // Folding here first made the click restart the fold (a jump).
+                                    if (event?.target?.closest?.('button[title="Edit color"]')) return;
+                                    foldColor(null);
+                                  }}
                                       dismissInsideSelector="[data-entity-color-panel], [data-sortable-rearrange-item]:has([data-entity-color-panel])"
                                       platform="phone"
                                       denseLayout

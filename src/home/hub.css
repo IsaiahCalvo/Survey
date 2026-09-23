@@ -298,7 +298,9 @@
    brightens its glyph on hover — otherwise the red × would turn grey under the
    pointer, and a hover rule that repaints a colour with itself is dead CSS. */
 .hub-icon-btn:not(.is-danger):not(:disabled):hover { color: var(--text-1); }
-.hub-icon-btn:not(:disabled):active { background: var(--pressed); }
+.hub-icon-btn:not(:disabled):active { background: transparent; }
+.hub-icon-btn:not(:disabled):active > svg { transform: scale(0.88); }
+.hub-icon-btn > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
 
 /* ONE disabled look for all four kinds, from tokens — no opacity, which dims
    a gold fill into a paler gold instead of switching it off. */
@@ -3996,9 +3998,11 @@
 
   /* PRESSED. The rows that already answered a finger keep their rule further up
      the file; these three never had one. */
-  .survey-hub .archive-mobile-card:active,
-  .survey-hub .templates-mobile-category-row:active,
-  .survey-hub .templates-mobile-entity-row:active {
+  /* A press on a control INSIDE the row (the colour dot, grip, More, the
+     name field) is that control's press, not the row's — no row fill. */
+  .survey-hub .archive-mobile-card:active:not(:has(button:active, input:active, [role='button']:active)),
+  .survey-hub .templates-mobile-category-row:active:not(:has(button:active, input:active, [role='button']:active)),
+  .survey-hub .templates-mobile-entity-row:active:not(:has(button:active, input:active, [role='button']:active)) {
     background: var(--pressed);
     transition: background 90ms ease-out;
   }
@@ -4321,3 +4325,27 @@ button[title="More"]:not(:disabled):active > svg { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
   .survey-hub [data-entity-color-panel][data-folding="switch"] { animation: none; }
 }
+
+/* NO PRESS SQUARES (owner 2026-09-23: "the click down indication is shit. I
+   hate the big square ... if that is happening anywhere else, remove it").
+   Glyph-only and swatch-only controls — colour dots, grips, More, the icon
+   buttons (X, share, delete) — never paint a grey box when pressed. Their
+   press is the glyph or dot tightening to 88%. */
+button[title="Edit color"], button[aria-label="Edit color"],
+.hub-btn.hub-btn--icon, .templates-mobile-more {
+  -webkit-tap-highlight-color: transparent;
+}
+button[title="Edit color"]:active, button[aria-label="Edit color"]:active,
+.hub-btn.hub-btn--icon:not(:disabled):active, .templates-mobile-more:active {
+  background-color: transparent !important;
+}
+button[title="Edit color"] > span, .hub-btn.hub-btn--icon > svg, .templates-mobile-more > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+button[title="Edit color"]:active { transform: scale(0.88); }
+button[title="Edit color"]:active:has(> span) { transform: none; }
+button[title="Edit color"]:active > span,
+.hub-btn.hub-btn--icon:not(:disabled):active > svg,
+.templates-mobile-more:active > svg { transform: scale(0.88); }
+[data-drag-rearrange-handle] { -webkit-tap-highlight-color: transparent; }
+[data-drag-rearrange-handle]:active > svg { transform: scale(0.88); }

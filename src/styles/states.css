@@ -60,7 +60,7 @@
    -------------------------------------------------------------------------- */
 /* :where() keeps the element list at zero specificity so the gold and
    destructive ladders below win on their class alone. */
-:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.survey-marker-category-create-button):not(.survey-marker-export-compact-button):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
+:where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([title='Edit color']):not([aria-label='Edit color']):not([title='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.mobile-rail-nav-trigger):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.survey-marker-category-create-button):not(.survey-marker-export-compact-button):not(.space-add-pages-icon-button):not(.mobile-pdf-properties__primary):not(.mobile-survey-notes-save) {
   background-color: var(--pressed) !important;
 }
 /* A GOLD-FILLED control is excluded above by class. Its press is the darker
@@ -213,4 +213,53 @@
   :where(button, [role='button'], [role='tab'], [role='option']) {
     transition: none !important;
   }
+}
+
+/* ICON-ONLY BUTTONS PRESS WITHOUT A SQUARE (owner 2026-09-23: "I hate the big
+   square ... if that is happening anywhere else, remove it"). A button whose
+   only child is its glyph gets no grey press plate from the rule above; its
+   press is the glyph tightening to 88%. Text buttons keep their press fill. */
+:where(button, [role='button']):has(> svg:only-child) { -webkit-tap-highlight-color: transparent; }
+:where(button, [role='button']):has(> svg:only-child) > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+:where(button, [role='button']):not(:disabled):has(> svg:only-child):active > svg {
+  transform: scale(0.88);
+}
+
+/* The glyph buttons of the phone and desktop tool chrome (rails, header, dock,
+   undo/redo) press the same way: no plate, the glyph tightens. */
+.mobile-pdf-header__icon:not(:disabled):active,
+.mobile-pdf-tools__button:not(:disabled):active,
+.mobile-pdf-tools__sync:not(:disabled):active,
+.mobile-rail-nav-trigger:not(:disabled):active,
+.mobile-pdf-dock__side:not(:disabled):active,
+.mobile-pdf-dock__center:not(:disabled):active,
+.mobile-pdf-header__page-chevron:not(:disabled):active,
+.chrome-history:not(:disabled):active,
+.chrome-control:not(:disabled):active {
+  background-color: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-pdf-header__icon > svg,
+.mobile-pdf-tools__button > svg,
+.mobile-pdf-tools__sync > svg,
+.mobile-rail-nav-trigger > svg,
+.mobile-pdf-dock__side > svg,
+.mobile-pdf-dock__center > svg,
+.mobile-pdf-header__page-chevron > svg,
+.chrome-history > svg,
+.chrome-control > svg {
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+.mobile-pdf-header__icon:not(:disabled):active > svg,
+.mobile-pdf-tools__button:not(:disabled):active > svg,
+.mobile-pdf-tools__sync:not(:disabled):active > svg,
+.mobile-rail-nav-trigger:not(:disabled):active > svg,
+.mobile-pdf-dock__side:not(:disabled):active > svg,
+.mobile-pdf-dock__center:not(:disabled):active > svg,
+.mobile-pdf-header__page-chevron:not(:disabled):active > svg,
+.chrome-history:not(:disabled):active > svg,
+.chrome-control:not(:disabled):active > svg {
+  transform: scale(0.88);
 }
