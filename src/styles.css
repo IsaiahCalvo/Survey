@@ -763,7 +763,7 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-badge-type: 10px;
   --sp-title-type: 13px;
   --sp-status-type: 10px;
-  --sp-head-type: 12px;
+  --sp-head-type: 13px;     /* matches the Bookmarks header words */
   --sp-name-type: 13px;
   --sp-label-type: 12px;
   --sp-small-type: 11px;
@@ -842,11 +842,19 @@ input[type="text"].survey-marker-name-inline:focus {
   transition: color 90ms ease-out;
 }
 
+/* Header glyphs are 14px on both platforms, the Bookmarks header's size. */
 .spaces-panel__head-btn svg {
-  width: var(--sp-glyph);
-  height: var(--sp-glyph);
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* The plus ink (round caps included) starts 2.5px inside its 14px box; pulling the button left by
+   that much puts the visible "+" exactly on the edge line (Bookmarks does the
+   same), where the grip dots below also start. */
+.spaces-panel__head-btn--add {
+  margin-left: -2.5px;
 }
 
 .spaces-panel__head-btn:not(:disabled):active {
@@ -917,6 +925,12 @@ input[type="text"].survey-marker-name-inline:focus {
   width: var(--sp-grip-w);
   align-self: stretch;
   height: auto !important;
+}
+
+/* The grip's dots start 3.75px inside its 12px glyph. Nudging the glyph left
+   by that much lands the dots on the edge line, under the header's "+". */
+.spaces-item__grip > svg {
+  margin-left: -7.5px;
 }
 
 /* The name sizes to its text (a hidden mirror in ::after), so the empty part
