@@ -3563,6 +3563,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pages-panel {
   background: var(--surface-2) !important;
 }
+/* The sheet paints its bottom safe-inset padding in its own --surface-1, so
+   under a --surface-2 panel that band read as a darker stripe along the bottom
+   (owner 2026-09-22: "make it the same color as the rest"). When one of those
+   panels is showing, the sheet takes the panel colour; the handle and tab row
+   above keep their own inline --surface-1. */
+.mobile-pdf-sheet:has(.mobile-pages-panel),
+.mobile-pdf-sheet:has(.mobile-search-panel) {
+  background: var(--surface-2) !important;
+}
 
 .mobile-search-panel {
   background: var(--surface-2) !important;
@@ -3623,8 +3632,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-counter {
-  height: 34px;
-  flex: 0 0 34px;
+  /* UX 2026-09-22 (owner: "this input field is too tall"): the page number
+     is a 20px pill at the chrome label size, like the header page pill, in a
+     28px row. Was a 30px/13px-800 pill in a 34px row. */
+  height: 28px;
+  flex: 0 0 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3632,25 +3644,25 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pages-counter > span {
-  min-width: 58px;
-  height: 30px;
-  padding: 0 16px;
+  min-width: 44px;
+  height: 20px;
+  padding: 0 10px;
   box-sizing: border-box;
   display: grid;
   place-items: center;
   color: var(--text-1);
   background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 15px;
-  font-size: 13px;
-  font-weight: 800;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .mobile-pages-counter > strong {
   color: var(--text-3);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3728,6 +3740,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      action pill drops from a 42px bar of 34px/13px-bold buttons to the phone
      chip scale — 32px pill, 28px chips, 11px/600 labels, 14px glyphs. */
   align-self: center;
+  /* Breathing room: it sat flush on the thumbnail grid above and the sheet's
+     bottom edge below ("colliding with the top and bottom borders"). */
+  margin: 8px auto 4px;
   height: 32px;
   flex: 0 0 32px;
   display: flex;
