@@ -4368,8 +4368,6 @@ button[title="Edit color"]:active > span,
     border-top: 0 !important; /* the header's own divider already sits above */
     border-bottom: 0 !important;
     border-radius: 0 !important;
-    /* Keeps the lighter blue-grey list fill (owner 2026-09-23: "I like the
-       lighter blue"); only the card edges and corners go. */
-    background: var(--ink-700) !important;
+    background: transparent !important;
   }
 }
