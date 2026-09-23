@@ -3,7 +3,8 @@
  * regions and per-page annotation visibility).
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
- * each card with expand, inline rename, toggle, page-range add (parsePageRangeInput),
+ * each space as one divided list row (2026-09-23: no cards, desktop and phone)
+ * with expand, inline rename, toggle, page-range add (parsePageRangeInput),
  * region rename/edit, and canvas/survey annotation-visibility
  * toggles (gated on the Pro `features` flags). Cards reorder via dnd-kit
  * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
@@ -60,11 +61,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
   selectedModuleId = null,
-  // UX 2026-07-12 — in the mobile Spaces sheet the space activate toggle grows to
-  // the demo's touch size (40x24 track, 18px knob; SpaceRow.tsx toggle / styles.ts
-  // 2104-2123). Desktop keeps the compact 28x16 toggle. Gold active track, never
-  // the demo's blue. Region mini-toggles stay 28x16 (already demo-correct).
-  mobileMode = false,
 }) {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -116,12 +112,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     setEditingRegionValue(currentLabel);
   }, []);
 
-  const isHighlighted = isSelected || isActive;
-  const headerBackground = isHighlighted ? 'var(--surface-3)' : 'transparent';
-  const headerHoverBackground = isHighlighted ? 'var(--surface-3)' : 'var(--surface-2)';
-  const regionCountText = String(regionCount);
-  const regionCountDigits = regionCountText.length;
-  const regionCountFontSize = regionCountDigits >= 4 ? '6px' : (regionCountDigits >= 3 ? '7.5px' : '10px');
   const commitSpaceName = useCallback((input) => {
     if (!input) return;
     const fallbackName = space.name?.trim() || 'Space';
@@ -135,108 +125,75 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     }
   }, [onRenameSpace, space.id, space.name]);
 
+
+  /*
+   * UX 2026-09-23 (owner: "everything is so bulky ... some shit that doesn't
+   * even align ... the hitbox should be invisible"; then "not individual cards;
+   * like documents, projects and templates; dividers but integrated within the
+   * panel", desktop AND phone). One design on both, sized per platform by the
+   * .spaces-list block in styles.css (desktop) and mobilePdfViewer.css (phone):
+   *   - a space is a ROW, parted from the next space by a hairline that reaches
+   *     both edges of the panel; no bordered card, no shadow, no card per region;
+   *   - its pages ("Region N") are indented LINES under it, like a to-do list
+   *     nested under its parent;
+   *   - every row shares the same right-hand columns, so the switches, the
+   *     trash cans, the lightbulbs and the region count each sit on one x;
+   *   - every control is a glyph or a word with an invisible tap pad (44px on
+   *     the phone). Nothing paints a plate on hover or press: glyphs tighten
+   *     (states.css data-glyph-only), words darken their ink.
+   * Reference: the phone home "layout B — one card, divided" (src/home/hub.css).
+   * The grip is the MorphGrip templates use (DragRearrangeHandle collapseOpen):
+   * an open space shows a down arrow where the grip was; tapping it folds the
+   * space, and tapping the grip of a folded space opens it.
+   */
+  const visibilityControlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
+  const isSurveyVisibilityContext =
+    activeSpaceId !== null && visibilityControlMode === PAGE_VISIBILITY_CONTROL_MODE.SURVEY;
+  const getVisibilityState = isSurveyVisibilityContext
+    ? getSurveyAnnotationVisibilityState
+    : getCanvasAnnotationVisibilityState;
+  const onToggleVisibility = isSurveyVisibilityContext
+    ? onToggleSurveyAnnotations
+    : onToggleCanvasAnnotations;
+  const regionCountLabel = `${regionCount} region${regionCount !== 1 ? 's' : ''}`;
+  const spaceSwitchLabel = isActive ? 'Turn off space' : 'Turn on space';
+  const toggleThisSpace = () => onToggleSpace?.(space.id, !isActive);
+  const switchKeyDown = (handler) => (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handler();
+    }
+  };
+
   return (
-    <div data-space-sortable-row-id={space.id}>
-      <div
-        data-drag-rearrange-row
-        style={{
-          background: 'var(--surface-2)',
-          border: isHighlighted ? '1px solid transparent' : '1px solid var(--border)',
-          borderRadius: '5px',
-          overflow: isExpanded ? 'visible' : 'hidden',
-          boxShadow: isHighlighted
-            ? '0 4px 16px rgba(0, 0, 0, 0.18)'
-            : '0 1px 2px rgba(0, 0, 0, 0.05)',
-        }}
-      >
+    <div
+      data-space-sortable-row-id={space.id}
+      className={`spaces-item${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}`}
+    >
+      <div data-drag-rearrange-row className="spaces-item__block">
         <div
+          className="spaces-item__row"
+          aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
-          style={{
-            padding: '2px 5px',
-            cursor: 'pointer',
-            background: headerBackground,
-            transition: isDragging || isRearranging ? 'none' : 'background 0.15s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-          onMouseEnter={(e) => {
-            if (isDragging || isRearranging) return;
-            if (!isSelected && !isActive) {
-              e.currentTarget.style.background = headerHoverBackground;
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (isDragging || isRearranging) return;
-            if (!isSelected && !isActive) {
-              e.currentTarget.style.background = 'transparent';
-            }
-          }}
         >
-          <div className="space-card-leading-controls">
-            <DragRearrangeHandle
-              {...dragHandleProps}
-              className="space-card-drag-handle"
-              data-space-drag-handle
-              isDragging={isDragging}
-              title="Drag to rearrange"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '24px',
-                height: '24px',
-                color: 'var(--text-disabled)',
-              }}
-            />
+          <DragRearrangeHandle
+            {...dragHandleProps}
+            className="spaces-item__grip"
+            data-space-drag-handle
+            isDragging={isDragging}
+            title="Drag to rearrange"
+            collapseOpen={isExpanded}
+            onCollapse={() => onToggleExpand(space.id)}
+            onClick={() => onToggleExpand(space.id)}
+            style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
+          />
 
-            <span
-              className="space-region-count"
-              {...tip(`${regionCount} region${regionCount !== 1 ? 's' : ''}`, 'below')}
-              aria-label={`${regionCount} region${regionCount !== 1 ? 's' : ''}`}
-              style={{ fontSize: regionCountFontSize }}
-            >
-              {regionCountText}
-            </span>
-
-            <button
-              className="space-card-expand-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleExpand(space.id);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-disabled)',
-                cursor: 'pointer',
-                padding: '2px 4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '4px'
-              }}
-              {...tip(isExpanded ? 'Collapse' : 'Expand', 'below')}
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              onMouseEnter={(e) => {
-                tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'var(--hover)';
-              }}
-              onMouseLeave={(e) => {
-                tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <Icon
-                name={isExpanded ? 'chevronDown' : 'chevronRight'}
-                size={12}
-              />
-            </button>
-          </div>
-
-          <span className="space-name-fit" data-value={space.name || ' '}>
+          <span className="spaces-item__name-fit" data-value={space.name || ' '}>
             <input
               type="text"
               size={1}
-              className="space-name-inline"
+              className="spaces-item__name"
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
               {...tip('Click to rename', 'below')}
@@ -269,484 +226,277 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               }}
             />
           </span>
-          <div className="space-card-header-controls">
-            {/* Toggle Switch - Always visible */}
-            <div
-              className="space-toggle-control"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSpace?.(space.id, !isActive);
-              }}
-              style={{
-                position: 'relative',
-                width: mobileMode ? '40px' : '28px',
-                height: mobileMode ? '24px' : '16px',
-                borderRadius: mobileMode ? '12px' : '8px',
-                background: isActive ? 'var(--accent)' : 'var(--surface-3)',
-                cursor: 'pointer',
-                transition: 'background 0.2s ease',
-                border: isActive ? '1px solid var(--accent-press)' : '1px solid var(--border-strong)',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '2px',
-                flexShrink: 0
-              }}
-              {...tip(isActive ? 'Turn off space' : 'Turn on space', 'below')}
-              aria-label={isActive ? 'Turn off space' : 'Turn on space'}
-              onMouseEnter={(e) => {
-                tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseEnter(e);
-                if (!isActive) {
-                  e.currentTarget.style.background = 'var(--hover)';
-                } else {
-                  // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
-                  e.currentTarget.style.background = 'var(--accent-light)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = isActive ? 'var(--accent)' : 'var(--surface-3)';
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  width: mobileMode ? '18px' : '12px',
-                  height: mobileMode ? '18px' : '12px',
-                  borderRadius: '50%',
-                  background: '#ffffff',
-                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-                  transition: 'transform 0.2s ease',
-                  transform: isActive
-                    ? (mobileMode ? 'translate(18px, -50%)' : 'translate(12px, -50%)')
-                    : 'translate(0px, -50%)',
-                  left: '2px',
-                  top: '50%'
-                }}
-              />
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(space.id);
-              }}
-              className="space-card-delete-button"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                padding: '4px',
-                cursor: 'pointer',
-                borderRadius: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              {...tip('Delete', 'below')}
-              aria-label="Delete"
-              onMouseEnter={(e) => {
-                tip('Delete', 'below').onMouseEnter(e);
-                e.currentTarget.style.background = 'var(--danger-soft)';
-              }}
-              onMouseLeave={(e) => {
-                tip('Delete', 'below').onMouseLeave(e);
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <Icon name="trash" size={12} color="var(--danger)" />
-            </button>
+
+          <span className="spaces-item__fill" aria-hidden="true" />
+
+          {/* Region count: quiet ink in the lightbulb column, no circle. */}
+          <span
+            className="spaces-item__count"
+            {...tip(regionCountLabel, 'below')}
+            aria-label={regionCountLabel}
+          >
+            {regionCount}
+          </span>
+
+          <div
+            role="switch"
+            tabIndex={0}
+            aria-checked={isActive}
+            aria-label={spaceSwitchLabel}
+            className="spaces-switch"
+            {...tip(spaceSwitchLabel, 'below')}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleThisSpace();
+            }}
+            onKeyDown={switchKeyDown(toggleThisSpace)}
+          >
+            <span className="spaces-switch__knob" />
           </div>
+
+          <button
+            type="button"
+            className="spaces-item__icon spaces-item__delete"
+            {...tip('Delete', 'below')}
+            aria-label="Delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(space.id);
+            }}
+          >
+            <Icon name="trash" size={14} color="currentColor" />
+          </button>
         </div>
 
         {isExpanded && (
-          <div
-            style={{
-            padding: '10px 12px 16px 12px',
-            background: 'var(--surface-2)',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            fontSize: '12px',
-            color: 'var(--text-3)',
-            position: 'relative'
-          }}>
-            <div className="space-add-pages-row" style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <input
-                  type="text"
-                  className="space-add-pages-input"
-                  value={pageInputValue}
-                  placeholder="Add pages (e.g. 3, 6-9, 12)"
-                  onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
-                  inputMode="numeric"
-                  pattern="[0-9,-]*"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      onAssignPages(space.id);
-                    }
-                  }}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    height: '24px',
-                    padding: '2px 8px',
-                    background: 'var(--surface-1)',
-                    color: 'var(--text-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontFamily: FONT_FAMILY,
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
+          <div className="spaces-item__body">
+            <div className="spaces-item__add">
+              <input
+                type="text"
+                className="spaces-item__add-input"
+                value={pageInputValue}
+                placeholder="Add pages, e.g. 3, 6-9"
+                aria-label="Add pages (e.g. 3, 6-9, 12)"
+                onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
+                inputMode="numeric"
+                pattern="[0-9,-]*"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
                     onAssignPages(space.id);
-                  }}
-                  className="space-add-pages-icon-button"
-                  {...tip('Add pages', 'below')}
-                  aria-label="Add pages"
-                >
-                  <Icon name="plus" size={13} />
-                </button>
-              </div>
-              {pageError && (
-                <div className="space-page-range-error" {...tip(pageError, 'below')}>
-                  {pageError}
-                </div>
-              )}
+                  }
+                }}
+              />
+              {/* A word, not a gold square. It turns gold only once there is
+                  something to add; empty, it rests in quiet ink. */}
+              <button
+                type="button"
+                className={`spaces-item__add-go tertiary${pageInputValue ? ' has-value' : ''}`}
+                aria-label="Add pages"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAssignPages(space.id);
+                }}
+              >
+                Add
+              </button>
             </div>
+            {pageError && (
+              <div className="spaces-item__error" role="alert">
+                {pageError}
+              </div>
+            )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {pageCount === 0 ? (
-                <div style={{ color: 'var(--text-3)', fontSize: '12px' }}>
-                  No pages added yet.
-                </div>
-              ) : (
-                <ul style={{
-                  listStyle: 'none',
-                  margin: 0,
-                  padding: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px'
-                }}>
-                  {space.assignedPages
-                    ?.slice()
-                    .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
-                    .map(page => {
-                      const regionLabel = typeof page.label === 'string' && page.label.trim().length > 0
-                        ? page.label.trim()
-                        : `Region ${page.pageId}`;
-                      const isEditingRegion = editingRegionId === page.pageId;
+            {pageCount === 0 ? (
+              <div className="spaces-item__empty">No pages added yet.</div>
+            ) : (
+              <ul className="spaces-item__regions">
+                {space.assignedPages
+                  ?.slice()
+                  .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
+                  .map((page) => {
+                    const regionLabel = typeof page.label === 'string' && page.label.trim().length > 0
+                      ? page.label.trim()
+                      : `Region ${page.pageId}`;
+                    const isEditingRegion = editingRegionId === page.pageId;
 
-                      return (
-                        <li
-                          key={page.pageId}
-                          className="space-region-row"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '4px 8px',
-                            minHeight: '34px',
-                            background: 'var(--surface-1)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '6px'
+                    // Region overlay switch — always shown, dimmed when it cannot act.
+                    const hasOverlayProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
+                    const isOverlayEnabled = hasOverlayProps ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
+                    const isOverlayToggleEnabled = hasOverlayProps ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
+                    const overlayLabel = !hasOverlayProps
+                      ? 'Overlay toggle'
+                      : !isActive
+                        ? 'Enable space to toggle overlay'
+                        : !isOverlayToggleEnabled
+                          ? 'Define regions first to enable overlay'
+                          : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region');
+                    const toggleOverlay = () => {
+                      if (!isOverlayToggleEnabled || !onToggleRegionOverlay) return;
+                      onToggleRegionOverlay(space.id, page.pageId);
+                    };
+
+                    // KAL-313 / history F1 (2026-06-11): the region-edit entry
+                    // point. Without it the Region Selection Tool — and the
+                    // commit-time region-delete journaling — is unreachable.
+                    const isActiveRegionEdit =
+                      isRegionSelectionActive &&
+                      regionSelectionPage === page.pageId &&
+                      activeSpaceId === space.id;
+                    const regionEditLabel = isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page';
+
+                    // One visible control on screen, but separate canvas/survey features in code.
+                    const hasVisibility = Boolean(getVisibilityState && onToggleVisibility);
+                    const visibilityState = hasVisibility ? getVisibilityState(space.id, page.pageId) : false;
+                    const isVisibilityDisabled = !isActive || activeSpaceId === null;
+                    const visibilityLabel = !isVisibilityDisabled
+                      ? (isSurveyVisibilityContext
+                        ? (visibilityState ? 'Hide survey annotations' : 'Show survey annotations')
+                        : (visibilityState ? 'Hide canvas annotations' : 'Show canvas annotations'))
+                      : 'Toggle is only available when a space is active';
+
+                    return (
+                      <li key={page.pageId} className="spaces-region">
+                        <button
+                          type="button"
+                          className="spaces-region__page tertiary"
+                          {...tip(`Go to page ${page.pageId}`, 'below')}
+                          aria-label={`Go to page ${page.pageId}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onNavigateToPage?.(page.pageId);
                           }}
                         >
-                          <div className="region-leading-controls">
+                          <span>{page.pageId}</span>
+                        </button>
+
+                        <div className="spaces-region__name">
+                          {isEditingRegion ? (
+                            <input
+                              ref={editingRegionInputRef}
+                              type="text"
+                              value={editingRegionValue}
+                              aria-label="Region name"
+                              onChange={(e) => setEditingRegionValue(e.target.value)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              onFocus={(e) => e.stopPropagation()}
+                              onBlur={() => {
+                                if (isRegionSelectionActive) return;
+                                commitRegionRename(page.pageId);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  commitRegionRename(page.pageId);
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  cancelRegionRename();
+                                }
+                              }}
+                              className="spaces-region__name-input"
+                            />
+                          ) : (
                             <button
                               type="button"
-                              className="region-page-pill region-page-pill-leading"
-                              {...tip(`Go to page ${page.pageId}`, 'below')}
-                              aria-label={`Go to page ${page.pageId}`}
+                              className="spaces-region__label tertiary"
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                onNavigateToPage?.(page.pageId);
+                                handleRegionEditClick(page.pageId, regionLabel);
                               }}
+                              {...tip('Click to rename', 'below')}
+                              aria-label="Click to rename"
                             >
-                              {page.pageId}
+                              {regionLabel}
                             </button>
+                          )}
+                        </div>
 
-                            {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
-                            {(() => {
-                              const hasProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
-                              const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
-                              const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
-                              const isSpaceActive = isActive;
-                              const overlayTooltipText = !hasProps
-                                ? 'Overlay toggle'
-                                : !isSpaceActive
-                                  ? 'Enable space to toggle overlay'
-                                  : !isToggleEnabled
-                                    ? 'Define regions first to enable overlay'
-                                    : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region');
+                        {/* UX 2026-09-17 (owner ruling): region-edit ON turns the
+                            pencil gold and leaves its chrome alone. */}
+                        <button
+                          type="button"
+                          className={`spaces-item__icon spaces-region__edit${isActiveRegionEdit ? ' is-editing' : ''}`}
+                          {...tip(regionEditLabel, 'below')}
+                          aria-label={regionEditLabel}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (isActiveRegionEdit) {
+                              onCancelRegionEdit?.(space.id, page.pageId);
+                            } else {
+                              onRequestRegionEdit?.(space.id, page.pageId);
+                            }
+                          }}
+                        >
+                          <Icon name="edit" size={14} color="currentColor" />
+                        </button>
 
-                              return (
-                                <div
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!isToggleEnabled || !onToggleRegionOverlay) {
-                                      return;
-                                    }
-                                    onToggleRegionOverlay(space.id, page.pageId);
-                                  }}
-                                  style={{
-                                    position: 'relative',
-                                    width: '28px',
-                                    height: '16px',
-                                    borderRadius: '8px',
-                                    background: isToggleEnabled && isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)',
-                                    cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
-                                    transition: 'background 0.2s ease',
-                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid var(--accent-press)' : '1px solid var(--border-strong)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    padding: '2px',
-                                    flexShrink: 0,
-                                    opacity: isToggleEnabled ? 1 : 0.5
-                                  }}
-                                  {...tip(overlayTooltipText, 'below')}
-                                  aria-label={overlayTooltipText}
-                                  onMouseEnter={(e) => {
-                                    tip(overlayTooltipText, 'below').onMouseEnter(e);
-                                    if (!isToggleEnabled) return;
-                                    if (!isOverlayEnabled) {
-                                      e.currentTarget.style.background = 'var(--hover)';
-                                    } else {
-                                      // UX: gold hovers UP to --accent-light; --accent-press is the pressed step.
-                  e.currentTarget.style.background = 'var(--accent-light)';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    tip(overlayTooltipText, 'below').onMouseLeave(e);
-                                    if (!isToggleEnabled) return;
-                                    e.currentTarget.style.background = isOverlayEnabled ? 'var(--accent)' : 'var(--surface-3)';
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      width: '12px',
-                                      height: '12px',
-                                      borderRadius: '50%',
-                                      background: '#ffffff',
-                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-                                      transition: 'transform 0.2s ease',
-                                      transform: isToggleEnabled && isOverlayEnabled ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
-                                      left: '2px',
-                                      top: '50%'
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div className="region-name-line">
-                              {isEditingRegion ? (
-                                <input
-                                  ref={editingRegionInputRef}
-                                  type="text"
-                                  value={editingRegionValue}
-                                  onChange={(e) => setEditingRegionValue(e.target.value)}
-                                  onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onFocus={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onBlur={() => {
-                                    if (isRegionSelectionActive) {
-                                      return;
-                                    }
-                                    commitRegionRename(page.pageId);
-                                  }}
-                                  onKeyDown={(e) => {
-
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      commitRegionRename(page.pageId);
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      cancelRegionRename();
-                                    }
-                                  }}
-                                  className="region-name-inline"
-                                  style={{
-                                    width: '100%',
-                                  }}
-                                />
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="region-name-display"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleRegionEditClick(page.pageId, regionLabel);
-                                  }}
-                                  {...tip('Click to rename', 'below')}
-                                  aria-label="Click to rename"
-                                >
-                                  {regionLabel}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <div className="region-action-controls">
-                            {/* KAL-313 / history F1 (2026-06-11): region-edit entry point.
-                                The 2026-06-11 panel rewrite ("Polish spaces sidebar controls")
-                                dropped the only call site of onRequestRegionEdit, making the
-                                Region Selection Tool unreachable from the UI — and with it the
-                                commit-time region-delete journaling. This button restores it. */}
-                            {(() => {
-                              const isActiveRegionEdit =
-                                isRegionSelectionActive &&
-                                regionSelectionPage === page.pageId &&
-                                activeSpaceId === space.id;
-                              return (
-                                <button
-                                  type="button"
-                                  className="region-edit-button"
-                                  {...tip(isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page', 'below')}
-                                  aria-label={isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page'}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (isActiveRegionEdit) {
-                                      onCancelRegionEdit?.(space.id, page.pageId);
-                                    } else {
-                                      onRequestRegionEdit?.(space.id, page.pageId);
-                                    }
-                                  }}
-                                  style={{
-                                    /* UX 2026-09-17 (owner ruling): region-edit ON turns the
-                                       pencil gold and leaves its chrome alone — no wash, no
-                                       gold outline. The 1px transparent border stays so the
-                                       button's box never changes size. */
-                                    background: 'transparent',
-                                    border: '1px solid transparent',
-                                    borderRadius: '4px',
-                                    padding: '2px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: isActiveRegionEdit ? 'var(--accent)' : 'var(--text-3)'
-                                  }}
-                                >
-                                  <Icon name="edit" size={12} color="currentColor" />
-                                </button>
-                              );
-                            })()}
-                            {/* One visible control on screen, but separate canvas/survey features in code. */}
-                            {isExpanded && (() => {
-                              const controlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
-                              const isSurveyContext =
-                                activeSpaceId !== null &&
-                                controlMode === PAGE_VISIBILITY_CONTROL_MODE.SURVEY;
-                              const getVisibilityState = isSurveyContext
-                                ? getSurveyAnnotationVisibilityState
-                                : getCanvasAnnotationVisibilityState;
-                              const onToggleVisibility = isSurveyContext
-                                ? onToggleSurveyAnnotations
-                                : onToggleCanvasAnnotations;
-
-                              if (!getVisibilityState || !onToggleVisibility) {
-                                return null;
+                        {hasVisibility ? (
+                          <button
+                            type="button"
+                            className={`spaces-item__icon spaces-region__visibility${visibilityState ? ' is-on' : ''}`}
+                            disabled={isVisibilityDisabled}
+                            {...tip(visibilityLabel, 'below')}
+                            aria-label={visibilityLabel}
+                            onClick={(e) => {
+                              const now = Date.now();
+                              const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
+                              if (now - lastClick < 300) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                return;
                               }
+                              e.currentTarget.dataset.lastClick = now.toString();
+                              if (isVisibilityDisabled) return;
+                              e.stopPropagation();
+                              onToggleVisibility(space.id, page.pageId, !visibilityState);
+                            }}
+                          >
+                            {isSurveyVisibilityContext ? (
+                              <Icon name="survey" size={14} />
+                            ) : (
+                              <Icon name={visibilityState ? 'lightbulbOn' : 'lightbulbOff'} size={14} color="currentColor" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="spaces-item__icon" aria-hidden="true" />
+                        )}
 
-                              const visibilityState = getVisibilityState(space.id, page.pageId);
-                              const isDisabled = !isActive || activeSpaceId === null;
-                              const title = !isDisabled
-                                ? (isSurveyContext
-                                  ? (visibilityState ? 'Hide survey annotations' : 'Show survey annotations')
-                                  : (visibilityState ? 'Hide canvas annotations' : 'Show canvas annotations'))
-                                : 'Toggle is only available when a space is active';
+                        <div
+                          role="switch"
+                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
+                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
+                          aria-disabled={!isOverlayToggleEnabled}
+                          aria-label={overlayLabel}
+                          className="spaces-switch"
+                          {...tip(overlayLabel, 'below')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleOverlay();
+                          }}
+                          onKeyDown={switchKeyDown(toggleOverlay)}
+                        >
+                          <span className="spaces-switch__knob" />
+                        </div>
 
-                              return (
-                                <button
-                                  onClick={(e) => {
-                                    const now = Date.now();
-                                    const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
-                                    if (now - lastClick < 300) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      return;
-                                    }
-                                    e.currentTarget.dataset.lastClick = now.toString();
-
-                                    if (isDisabled) {
-                                      return;
-                                    }
-
-                                    e.stopPropagation();
-                                    onToggleVisibility(space.id, page.pageId, !visibilityState);
-                                  }}
-                                  className="region-visibility-button"
-                                  style={{
-                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                    color: isDisabled ? 'var(--text-disabled)' : (visibilityState ? 'var(--accent)' : 'var(--text-3)'),
-                                    pointerEvents: isDisabled ? 'none' : 'auto'
-                                  }}
-                                  {...tip(title, 'below')}
-                                  aria-label={title}
-                                  onMouseEnter={(e) => {
-                                    tip(title, 'below').onMouseEnter(e);
-                                    if (!isDisabled) {
-                                      e.currentTarget.style.color = visibilityState ? '#5ba1f0' : 'var(--text-3)';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    tip(title, 'below').onMouseLeave(e);
-                                    e.currentTarget.style.color = visibilityState ? 'var(--accent)' : 'var(--text-3)';
-                                  }}
-                                >
-                                  {isSurveyContext ? (
-                                    <Icon
-                                      name="survey"
-                                      size={12}
-                                      style={{ width: '15px', height: '15px', flexShrink: 0 }}
-                                    />
-                                  ) : (
-                                    <Icon
-                                      name={visibilityState ? 'lightbulbOn' : 'lightbulbOff'}
-                                      size={14}
-                                      color="currentColor"
-                                      style={{ width: '14px', height: '14px', flexShrink: 0 }}
-                                    />
-                                  )}
-                                </button>
-                              );
-                            })()}
-                            <button
-                              {...tip('Delete', 'below')}
-                              aria-label="Delete"
-                              onClick={() => onRemovePage(space.id, page.pageId)}
-                              className="region-delete-button"
-                            >
-                              <Icon name="trash" size={12} color="var(--danger)" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-            </div>
+                        <button
+                          type="button"
+                          className="spaces-item__icon spaces-item__delete"
+                          {...tip('Delete', 'below')}
+                          aria-label="Delete"
+                          onClick={() => onRemovePage(space.id, page.pageId)}
+                        >
+                          <Icon name="trash" size={14} color="currentColor" />
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
           </div>
         )}
       </div>
@@ -789,6 +539,8 @@ const SpacesPanel = ({
   mobileMode = false,
   mobilePanelVisible = false,
   onMobilePanelMetricsChange = null,
+  // Phone only: exits space mode and closes the sheet (PDFSidebar owns both).
+  onExitSpacesAction = null,
 }) => {
   const tip = useTooltip();
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
@@ -796,7 +548,6 @@ const SpacesPanel = ({
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
   const [isSpacesExportMenuOpen, setIsSpacesExportMenuOpen] = useState(false);
-  const [isSpacesExportHovered, setIsSpacesExportHovered] = useState(false);
 
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
@@ -922,15 +673,13 @@ const SpacesPanel = ({
       const wrapper = node.closest('[data-sortable-rearrange-item]');
       const card = node.querySelector('[data-drag-rearrange-row]');
       const header = card?.firstElementChild || null;
-      // KAL-65: the expand/collapse button no longer carries a native title=
-      // (see the shared tip() binder above), so this debug-capture selector
-      // now keys off aria-label, which still carries 'Expand'/'Collapse'.
-      const expandButton = node.querySelector('button[aria-label="Expand"], button[aria-label="Collapse"]');
+      // 2026-09-23: the row itself carries aria-expanded (no separate expand button).
+      const expandButton = node.querySelector('.spaces-item__row[aria-expanded]');
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
         text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120),
-        expanded: expandButton?.getAttribute('aria-label') === 'Collapse',
+        expanded: expandButton?.getAttribute('aria-expanded') === 'true',
         wrapper: sampleStyle(wrapper),
         rowRoot: sampleStyle(node),
         card: sampleStyle(card),
@@ -1054,14 +803,14 @@ const SpacesPanel = ({
       const item = node.querySelector('[data-sortable-rearrange-item]') || node;
       const rect = item.getBoundingClientRect();
       const outerRect = node.getBoundingClientRect();
-      // KAL-65: aria-label, not title=, now carries 'Expand'/'Collapse'.
-      const expandButton = node.querySelector('button[aria-label="Expand"], button[aria-label="Collapse"]');
+      // 2026-09-23: the row itself carries aria-expanded.
+      const expandButton = node.querySelector('.spaces-item__row[aria-expanded]');
       const style = window.getComputedStyle(node);
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
         text: (item.innerText || node.innerText || '').replace(/\s+/g, ' ').trim(),
-        expanded: expandButton?.getAttribute('aria-label') === 'Collapse',
+        expanded: expandButton?.getAttribute('aria-expanded') === 'true',
         y: Number(rect.y.toFixed(1)),
         height: Number(rect.height.toFixed(1)),
         outerY: Number(outerRect.y.toFixed(1)),
@@ -1337,129 +1086,105 @@ const SpacesPanel = ({
   const expandedSpaceId = Array.from(expandedSpaces)[0] || null;
   const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || orderedSpaces[0]?.id || null;
   const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
-  const isSpacesExportActive = isSpacesExportHovered || isSpacesExportMenuOpen;
+  const spacesStatusText = isRegionSelectionActive
+    ? 'Region active'
+    : (activeSpaceId || selectedSpaceId) ? 'Space active' : 'No space active';
+  const createSpaceLabel = canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces';
+  const exportSpaceLabel = spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export';
 
   return (
-    <div ref={mobilePanelRootRef} className={mobileMode ? 'mobile-spaces-panel' : undefined} style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: mobileMode ? 'auto' : '100%',
-      flex: mobileMode ? 1 : undefined,
-      minHeight: 0,
-      fontFamily: FONT_FAMILY,
-      background: mobileMode ? 'var(--surface-2)' : 'var(--surface-1)'
-    }}>
-      {/* Header */}
-      <div className={mobileMode ? 'mobile-spaces-header' : undefined} style={{
-        padding: '12px',
-        height: '50px',
-        boxSizing: 'border-box',
-        background: 'var(--surface-1)',
-        borderBottom: '1px solid var(--border)',
+    <div
+      ref={mobilePanelRootRef}
+      className={`spaces-panel${mobileMode ? ' mobile-spaces-panel' : ''}`}
+      style={{
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0
-      }}>
-        <div className={mobileMode ? 'mobile-spaces-title' : undefined}>
-          <h3 style={{
-            margin: 0,
-            fontSize: '13px',
-            fontWeight: '600',
-            color: 'var(--text-2)',
-            lineHeight: 1
-          }}>
-            Spaces
-          </h3>
-          {mobileMode ? (
-            <span>{isRegionSelectionActive ? 'Region active' : (activeSpaceId || selectedSpaceId) ? 'Space active' : 'No space active'}</span>
-          ) : null}
+        flexDirection: 'column',
+        height: mobileMode ? 'auto' : '100%',
+        flex: mobileMode ? 1 : undefined,
+        minHeight: 0,
+        fontFamily: FONT_FAMILY,
+        background: mobileMode ? 'var(--surface-2)' : 'var(--surface-1)'
+      }}
+    >
+      {/* UX 2026-09-23 (owner): the Bookmarks header pattern — [+ Add] on the
+          far left, the title on the panel's true centre, [Export] on the far
+          right. One slim row; both buttons are quiet words of equal weight (no
+          gold square, no outlined square) with the same edge gap. The status
+          line sits under the title. */}
+      <div className="spaces-panel__head">
+        <button
+          type="button"
+          className="spaces-panel__head-btn spaces-panel__head-btn--add tertiary"
+          onClick={handleCreateSpace}
+          {...tip(createSpaceLabel, 'below')}
+          aria-label={createSpaceLabel}
+        >
+          <Icon name="plus" size={14} color="currentColor" />
+          <span>Add</span>
+        </button>
+
+        <div className="spaces-panel__title">
+          <h3>Spaces</h3>
+          <span>{spacesStatusText}</span>
         </div>
 
-        <div className="spaces-header-actions">
+        <div
+          ref={spacesExportAnchorRef}
+          className="spaces-panel__export-anchor"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Future: replace this compact menu with a custom Spaces export panel that lets users choose which space to export. */}
           <button
             type="button"
-            onClick={handleCreateSpace}
-            className="survey-marker-category-create-button"
-            {...tip(canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces', 'below')}
-            aria-label={canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces'}
+            className="spaces-panel__head-btn spaces-panel__head-btn--export tertiary"
+            {...tip(exportSpaceLabel, 'below')}
+            aria-label={exportSpaceLabel}
+            aria-expanded={isSpacesExportMenuOpen}
+            disabled={!spacesExportTarget}
+            onClick={() => {
+              if (!spacesExportTarget) return;
+              if (!features?.excelExport) {
+                showToast('Exporting spaces is a Pro feature.', 'error');
+                return;
+              }
+              setIsSpacesExportMenuOpen((open) => !open);
+            }}
           >
-            <Icon name="plus" size={14} />
+            <Icon name="upload" size={14} color="currentColor" />
+            <span>Export</span>
           </button>
-          <div
-            ref={spacesExportAnchorRef}
-            style={{ position: 'relative', display: 'inline-flex' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Future: replace this compact menu with a custom Spaces export panel that lets users choose which space to export. */}
-            <button
-              type="button"
-              className={`spaces-header-export-button${isSpacesExportActive ? ' is-active' : ''}`}
-              {...tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below')}
-              aria-label={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
-              aria-expanded={isSpacesExportMenuOpen}
-              disabled={!spacesExportTarget}
-              onClick={() => {
-                if (!spacesExportTarget) return;
-                if (!features?.excelExport) {
-                  showToast('Exporting spaces is a Pro feature.', 'error');
-                  return;
-                }
-                setIsSpacesExportMenuOpen((open) => !open);
-              }}
-              onMouseEnter={(e) => {
-                tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below').onMouseEnter(e);
-                setIsSpacesExportHovered(true);
-              }}
-              onMouseLeave={(e) => {
-                tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below').onMouseLeave(e);
-                setIsSpacesExportHovered(false);
-              }}
-            >
-              <Icon name="upload" size={14} />
-            </button>
-            {isSpacesExportMenuOpen && spacesExportTarget && (
-              <div className="spaces-header-export-menu" role="menu">
-                <button
-                  type="button"
-                  className="spaces-header-export-menu-button"
-                  onClick={() => {
-                    setIsSpacesExportMenuOpen(false);
-                    onExportSpaceCSV?.(spacesExportTarget.id);
-                  }}
-                >
-                  CSV
-                </button>
-                <button
-                  type="button"
-                  className="spaces-header-export-menu-button"
-                  {...tip('Exports base PDF pages only; app annotations are not embedded.', 'below')}
-                  onClick={() => {
-                    setIsSpacesExportMenuOpen(false);
-                    onExportSpacePDF?.(spacesExportTarget.id);
-                  }}
-                >
-                  PDF Pages
-                </button>
-              </div>
-            )}
-          </div>
+          {isSpacesExportMenuOpen && spacesExportTarget && (
+            <div className="spaces-header-export-menu" role="menu">
+              <button
+                type="button"
+                className="spaces-header-export-menu-button"
+                onClick={() => {
+                  setIsSpacesExportMenuOpen(false);
+                  onExportSpaceCSV?.(spacesExportTarget.id);
+                }}
+              >
+                CSV
+              </button>
+              <button
+                type="button"
+                className="spaces-header-export-menu-button"
+                {...tip('Exports base PDF pages only; app annotations are not embedded.', 'below')}
+                onClick={() => {
+                  setIsSpacesExportMenuOpen(false);
+                  onExportSpacePDF?.(spacesExportTarget.id);
+                }}
+              >
+                PDF Pages
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Spaces List */}
-      <div ref={mobileSpacesListRef} style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '8px'
-      }}>
+      {/* Spaces List — one divided list, no cards. */}
+      <div ref={mobileSpacesListRef} className="spaces-list">
         {spaces.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px 20px',
-            color: 'var(--text-3)',
-            fontSize: '13px'
-          }}>
+          <div className="spaces-list__empty">
             No spaces yet. Create a space to filter pages by visibility.
           </div>
         ) : (
@@ -1472,7 +1197,7 @@ const SpacesPanel = ({
             onDragEnd={restoreCollapsedSpaceAfterDrag}
             onDragCancel={restoreCollapsedSpaceAfterDrag}
             variableHeight
-            gap={8}
+            gap={0}
           >
             {orderedSpaces.map((space) => {
               const isActive = activeSpaceId === space.id;
@@ -1526,13 +1251,23 @@ const SpacesPanel = ({
                       isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
                       showSurveyPanel={showSurveyPanel}
                       selectedModuleId={selectedModuleId}
-                      mobileMode={mobileMode}
                     />
                   )}
                 </SortableRearrangeRow>
               );
             })}
           </SortableRearrangeList>
+        )}
+        {/* Phone: "Exit Spaces / Regions" is a quiet red word at the end of
+            the list, not a bordered button in its own footer band. */}
+        {typeof onExitSpacesAction === 'function' && (
+          <button
+            type="button"
+            className="spaces-list__exit tertiary"
+            onClick={onExitSpacesAction}
+          >
+            Exit Spaces / Regions
+          </button>
         )}
       </div>
     </div>

@@ -712,292 +712,654 @@ input[type="text"].survey-marker-name-inline:focus {
   box-shadow: none;
 }
 
-.space-name-fit {
+/* ==========================================================================
+   SPACES PANEL — ONE LIST, DIVIDED (owner 2026-09-23, desktop + phone)
+   --------------------------------------------------------------------------
+   Owner: "everything is so bulky ... some shit that doesn't even align ...
+   the hitbox should be invisible", then "not individual cards; like
+   documents, projects and templates; dividers but integrated within the
+   panel" — on desktop AND phone, the same design sized for each.
+
+   Structure (src/sidebar/SpacesPanel.jsx):
+     .spaces-panel__head  [+ Add]      Spaces / status      [Export]
+     .spaces-item         grip  Space name ........ count  (switch)  trash
+       .spaces-item__add          [ Add pages, e.g. 3, 6-9 ]         Add
+       .spaces-region             (1) Region 1  edit  bulb (switch)  trash
+   A space is a row parted from the next by a hairline that reaches both
+   edges; its pages are indented lines under it (a to-do list nested under
+   its parent) — no card per space, none per region. Every line shares the
+   same right-hand COLUMNS, so switches, trash cans, bulbs/count and the
+   "Add" word each sit on one x, and the name, the add field and the page
+   badges all start on the same indent.
+
+   Hit areas: every glyph owns a whole column and the row's full height —
+   an invisible pad, never a plate. Glyph buttons press by tightening the
+   glyph (states.css data-glyph-only); word buttons carry .tertiary (which
+   states.css exempts from the grey press plate) and press by darkening their
+   ink. Hover (desktop pointer only) brightens ink, never paints a box.
+
+   Sizes live in the custom properties below; the phone overrides them in
+   src/mobile/mobilePdfViewer.css (.mobile-spaces-panel), nothing else.
+   ========================================================================== */
+.spaces-panel {
+  --sp-bg: var(--surface-1);
+  --sp-edge: 12px;          /* header + text inset from the panel edge */
+  --sp-head-h: 40px;
+  --sp-head-btn-pad: 6px;   /* a word button's own side pad (part of its hit area) */
+  --sp-pad-r: 3px;          /* right inset of every line's last column */
+  --sp-grip-w: 36px;        /* grip column; its glyph lands on --sp-edge */
+  --sp-indent: 40px;        /* where the name, add field and page badges start */
+  --sp-col-w: 24px;         /* edit / bulb / count columns */
+  --sp-switch-w: 36px;
+  --sp-end-w: 32px;         /* trash / "Add" column: 3 + (32-14)/2 = the 12px edge */
+  --sp-row-h: 32px;         /* a space row, the add row */
+  --sp-line-h: 28px;        /* a page line */
+  --sp-field-h: 24px;
+  --sp-glyph: 14px;
+  --sp-track-w: 28px;
+  --sp-track-h: 16px;
+  --sp-knob: 12px;
+  --sp-badge: 16px;
+  --sp-badge-type: 10px;
+  --sp-title-type: 13px;
+  --sp-status-type: 10px;
+  --sp-head-type: 12px;
+  --sp-name-type: 13px;
+  --sp-label-type: 12px;
+  --sp-small-type: 11px;
+}
+
+/* ---- header: [+ Add]  title on the true centre  [Export] ---------------- */
+.spaces-panel__head {
+  position: relative;
+  flex: 0 0 var(--sp-head-h);
+  height: var(--sp-head-h);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  /* The visible glyph/word lands exactly --sp-edge from each edge: the
+     button's own side pad is part of that gap, not added to it. */
+  padding: 0 calc(var(--sp-edge) - var(--sp-head-btn-pad));
+  box-sizing: border-box;
+  background: var(--sp-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.spaces-panel__title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  max-width: 46%;
+  pointer-events: none;
+  text-align: center;
+}
+
+.spaces-panel__title h3 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--sp-title-type);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.spaces-panel__title span {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--sp-status-type);
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spaces-panel__export-anchor {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.spaces-panel__head-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--sp-head-btn-pad);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--sp-head-type);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 90ms ease-out;
+}
+
+.spaces-panel__head-btn svg {
+  width: var(--sp-glyph);
+  height: var(--sp-glyph);
+  flex: 0 0 auto;
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.spaces-panel__head-btn:not(:disabled):active {
+  color: var(--text-1);
+}
+
+.spaces-panel__head-btn:not(:disabled):active svg {
+  transform: scale(0.88);
+}
+
+.spaces-panel__head-btn[aria-expanded='true'] {
+  color: var(--text-1);
+}
+
+.spaces-panel__head-btn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.spaces-panel .spaces-header-export-menu {
+  top: calc(100% + 2px);
+}
+
+/* ---- the list ----------------------------------------------------------- */
+.spaces-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+  background: var(--sp-bg);
+}
+
+.spaces-list__empty {
+  padding: 32px var(--sp-edge);
+  color: var(--text-3);
+  font-size: var(--sp-label-type);
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Each space ends in a hairline that spans the panel edge to edge. */
+.spaces-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.spaces-item__block {
+  background: var(--sp-bg);
+}
+
+/* The one space a pointer is carrying lifts off the list. */
+.spaces-item.is-dragging .spaces-item__block {
+  background: var(--surface-3);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
+}
+
+.spaces-item__row {
+  display: flex;
+  align-items: center;
+  min-height: var(--sp-row-h);
+  padding-right: var(--sp-pad-r);
+  box-sizing: border-box;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-item__grip {
+  flex: 0 0 var(--sp-grip-w);
+  width: var(--sp-grip-w);
+  align-self: stretch;
+  height: auto !important;
+}
+
+/* The name sizes to its text (a hidden mirror in ::after), so the empty part
+   of the row stays a tap-to-open target instead of a rename field. */
+.spaces-item__name-fit {
   display: inline-grid;
   align-items: center;
   flex: 0 1 auto;
   min-width: 1ch;
   max-width: 100%;
-  line-height: 1.2;
+  margin-left: calc(var(--sp-indent) - var(--sp-grip-w));
+  overflow: hidden;
 }
 
-.space-name-fit::after {
-  content: attr(data-value);
+.spaces-item__name-fit::after,
+.spaces-item__name {
   grid-area: 1 / 1;
+  min-width: 1ch;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--sp-name-type);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.spaces-item__name-fit::after {
+  content: attr(data-value);
   visibility: hidden;
   white-space: pre;
-  min-width: 1ch;
-  padding: 3px 0 2px;
-  border-bottom: 1px dashed transparent;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
 }
 
-.space-name-inline {
-  grid-area: 1 / 1;
+.spaces-item__name {
   width: 100%;
-  min-width: 1ch;
   max-width: 100%;
-  height: 24px;
-  padding: 3px 0 2px;
+  height: calc(var(--sp-row-h) - 4px);
   background: transparent;
   border: 0;
-  border-bottom: 1px dashed transparent;
   border-radius: 0;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0;
-  outline: none;
   box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  line-height: 1.2;
   cursor: text;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.space-name-inline:hover,
-.space-name-fit:hover .space-name-inline {
-  border-bottom-color: var(--border-strong);
-  color: var(--text-1);
-}
-
-.space-name-inline:focus,
-.space-name-fit:focus-within .space-name-inline,
-input[type="text"].space-name-inline:focus {
-  border-bottom-color: var(--text-3); /* owner 2026-09-23: no gold on a text field */
-  color: var(--text-1);
+/* Owner ruling: a field shows focus by its caret only — no underline, no
+   ring, no gold. */
+input[type="text"].spaces-item__name:focus,
+input[type="text"].spaces-item__name:focus-visible {
+  outline: none;
+  border: 0;
   box-shadow: none;
 }
 
-.space-region-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  box-sizing: border-box;
+.spaces-item__fill {
+  flex: 1 1 0;
+  min-width: 8px;
+  align-self: stretch;
 }
 
-.space-card-leading-controls {
+.spaces-item__count {
+  flex: 0 0 var(--sp-col-w);
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--sp-small-type);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* ---- switch: the column is the hit area, the track is drawn inside ------ */
+.spaces-switch {
   position: relative;
-  width: 58px;
-  height: 24px;
-  flex: 0 0 58px;
+  flex: 0 0 var(--sp-switch-w);
+  width: var(--sp-switch-w);
+  align-self: stretch;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.space-card-leading-controls .space-card-drag-handle {
+.spaces-switch::before {
+  content: '';
   position: absolute;
-  left: -6px;
-  top: 0;
-}
-
-.space-card-leading-controls .space-region-count {
-  position: absolute;
-  left: 19px;
-  top: 3px;
-  width: 18px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 1px;
-  line-height: 1;
-  overflow: hidden;
-  text-overflow: clip;
-  white-space: nowrap;
-}
-
-.space-card-leading-controls .space-card-expand-button {
-  position: absolute;
-  left: 38px;
-  top: 4px;
-}
-
-.space-card-header-controls {
-  display: inline-grid;
-  grid-template-columns: 36px 24px;
-  align-items: center;
-  justify-items: center;
-  column-gap: 8px;
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.space-toggle-control,
-.space-card-delete-button {
+  left: 50%;
+  top: 50%;
+  width: var(--sp-track-w);
+  height: var(--sp-track-h);
   box-sizing: border-box;
-  flex: 0 0 auto;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.space-toggle-control {
-  justify-self: end;
-}
-
-.space-card-delete-button {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
-}
-
-.region-name-display {
-  max-width: 100%;
-  padding: 0 0 1px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px dashed transparent;
-  color: var(--text-2);
-  cursor: text;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.2;
-  overflow: hidden;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.region-name-display:hover,
-.region-name-display:focus-visible {
-  border-bottom-color: var(--border-strong);
-  color: var(--text-1);
-  outline: none;
-}
-
-.region-name-inline {
-  padding: 0 0 1px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px dashed var(--accent);
-  border-radius: 0;
-  color: var(--text-1);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.2;
-  outline: none;
+.spaces-switch[aria-checked='true']::before {
+  background: var(--accent);
   box-shadow: none;
 }
 
-.region-name-line {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  min-width: 0;
+.spaces-switch:focus-visible::before {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-.region-leading-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  min-width: 52px;
+.spaces-switch__knob {
+  position: absolute;
+  top: 50%;
+  left: calc(50% - (var(--sp-track-w) / 2) + 2px);
+  width: var(--sp-knob);
+  height: var(--sp-knob);
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transform: translate(0, -50%);
+  transition: transform 0.2s ease;
+  pointer-events: none;
 }
 
-.region-page-pill {
+.spaces-switch[aria-checked='true'] .spaces-switch__knob {
+  transform: translate(calc(var(--sp-track-w) - var(--sp-knob) - 4px), -50%);
+}
+
+.spaces-switch[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ---- glyph buttons: the whole column is the pad, only the glyph shows --- */
+.spaces-item__icon {
   appearance: none;
+  flex: 0 0 var(--sp-col-w);
+  width: var(--sp-col-w);
+  align-self: stretch;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   color: var(--text-2);
   cursor: pointer;
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease;
 }
 
-.region-page-pill:hover,
-.region-page-pill:focus-visible {
-  background: var(--accent-soft-strong);
-  border-color: var(--accent);
-  color: var(--text-1);
-  outline: none;
+.spaces-item__icon svg {
+  width: var(--sp-glyph);
+  height: var(--sp-glyph);
 }
 
-.region-page-pill-leading {
-  width: auto;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  font-size: 9.5px;
-  transform: none;
+.spaces-item__delete {
+  flex-basis: var(--sp-end-w);
+  width: var(--sp-end-w);
+  color: var(--danger);
 }
 
-.region-action-controls {
-  display: inline-grid;
-  grid-template-columns: repeat(3, 20px);
+/* UX 2026-09-17 (owner ruling): region-edit ON turns the pencil gold and
+   leaves its chrome alone — ink only. */
+.spaces-region__edit.is-editing,
+.spaces-region__visibility.is-on {
+  color: var(--accent);
+}
+
+.spaces-region__visibility:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* ---- expanded space: add field, then the page lines -------------------- */
+.spaces-item__body {
+  padding: 0 var(--sp-pad-r) 4px var(--sp-indent);
+}
+
+.spaces-item__add {
+  display: flex;
   align-items: center;
-  justify-items: center;
-  column-gap: 4px;
-  flex: 0 0 auto;
+  min-height: var(--sp-row-h);
 }
 
-.region-edit-button,
-.region-visibility-button,
-.region-delete-button {
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  min-height: 20px;
-  padding: 0;
+.spaces-item__add-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--sp-field-h);
+  /* The field ends where the switch TRACK ends, so its edge lines up with
+     the switches in every row above and below. */
+  margin: 0 calc((var(--sp-switch-w) - var(--sp-track-w)) / 2) 0 0;
+  padding: 0 8px;
   box-sizing: border-box;
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: var(--sp-label-type);
+}
+
+.spaces-item__add-input::placeholder {
+  color: var(--text-3);
+}
+
+input[type="text"].spaces-item__add-input:focus,
+input[type="text"].spaces-item__add-input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.spaces-item__add-go {
+  appearance: none;
+  /* Same width as the trash column, so the field's end stays on the switch
+     track's edge. The word is right-aligned by flex, so if it is ever wider
+     than its box it spills left into the gap, never past the gutter. */
+  flex: 0 0 var(--sp-end-w);
+  width: var(--sp-end-w);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: stretch;
+  /* The word's right edge lands where the trash glyphs end, so it lines up
+     with the column under it and with "Export" in the header. */
+  padding: 0 calc((var(--sp-end-w) - var(--sp-glyph)) / 2) 0 0;
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: var(--sp-label-type);
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 90ms ease-out;
+}
+
+/* Gold only once there is something to add — the panel's one gold word. */
+.spaces-item__add-go.has-value {
+  color: var(--accent);
+}
+
+.spaces-item__add-go:active {
+  color: var(--text-2);
+}
+
+.spaces-item__add-go.has-value:active {
+  color: var(--accent-press);
+}
+
+.spaces-item__error {
+  padding: 0 0 4px;
+  color: var(--danger-text);
+  font-size: var(--sp-small-type);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.spaces-item__empty {
+  display: flex;
+  align-items: center;
+  min-height: var(--sp-line-h);
+  color: var(--text-3);
+  font-size: var(--sp-label-type);
+}
+
+.spaces-item__regions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spaces-region {
+  display: flex;
+  align-items: center;
+  min-height: var(--sp-line-h);
+}
+
+/* The page badge: a small quiet disc. Its tap pad is the line's full height. */
+.spaces-region__page {
+  position: relative;
+  appearance: none;
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px 0 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The disc is small, so its invisible pad reaches back into the empty grip
+   column beside it: a full --sp-col-w wide target without moving the label. */
+.spaces-region__page::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: max(100%, var(--sp-col-w));
+}
+
+.spaces-region__page > span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: var(--sp-badge);
+  height: var(--sp-badge);
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: var(--sp-badge-type);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1), color 90ms ease-out;
+}
+
+.spaces-region__page:active > span {
+  transform: scale(0.88);
+  color: var(--text-1);
+}
+
+.spaces-region__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.spaces-region__label {
+  appearance: none;
+  max-width: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
   font-family: inherit;
-  transition: color 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  font-size: var(--sp-label-type);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+  -webkit-tap-highlight-color: transparent;
 }
 
-@media (max-width: 720px) {
-  .region-action-controls {
-    grid-template-columns: repeat(3, 44px);
-    column-gap: 0;
-  }
-
-  .region-edit-button,
-  .region-visibility-button,
-  .region-delete-button {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-  }
+.spaces-region__label:active {
+  color: var(--text-1);
 }
 
-.region-delete-button {
+.spaces-region__name-input {
+  width: 100%;
+  min-width: 0;
+  height: var(--sp-field-h);
+  margin-right: 6px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: var(--sp-label-type);
+}
+
+.spaces-region__name-input:focus,
+.spaces-region__name-input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+/* ---- phone: "Exit Spaces / Regions" as a red word, not a band ---------- */
+.spaces-list__exit {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--sp-row-h);
+  padding: 0 var(--sp-edge);
+  background: transparent;
+  border: 0;
   color: var(--danger-text);
+  font-family: inherit;
+  font-size: var(--sp-label-type);
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 90ms ease-out;
 }
 
-.region-delete-button:hover {
-  background: var(--danger-soft);
+.spaces-list__exit:active {
+  color: var(--danger);
 }
+
+/* ---- hover: desktop pointer only, ink brightens, never a box ----------- */
+@media (hover: hover) and (pointer: fine) {
+  .spaces-item__row:hover {
+    background: var(--hover);
+  }
+  .spaces-item.is-dragging .spaces-item__row:hover {
+    background: transparent;
+  }
+  .spaces-panel__head-btn:not(:disabled):hover,
+  .spaces-item__icon:not(:disabled):not(.spaces-item__delete):not(.is-editing):not(.is-on):hover,
+  .spaces-region__label:hover,
+  .spaces-item__add-go:not(.has-value):hover {
+    color: var(--text-1);
+  }
+  .spaces-item__add-go.has-value:hover {
+    color: var(--accent-light);
+  }
+  .spaces-item__icon:not(:disabled):hover > svg,
+  .spaces-panel__head-btn:not(:disabled):hover svg {
+    transform: scale(1.1);
+  }
+  .spaces-item__icon > svg {
+    transition: transform 120ms ease-out;
+  }
+  .spaces-list__exit:hover {
+    color: var(--danger);
+  }
+}
+/* ===== end SPACES PANEL — ONE LIST, DIVIDED ===== */
 
 .survey-marker-expand-spacer {
   flex: 1 1 auto;
@@ -1617,61 +1979,6 @@ input[type="text"].space-name-inline:focus {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.spaces-header-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.spaces-header-actions .survey-marker-category-create-button {
-  width: 24px;
-  height: 24px;
-  flex-basis: 24px;
-}
-
-.spaces-header-export-button {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  padding: 0;
-  background: var(--surface-3);
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  color: var(--accent);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-/* UX 2026-09-22: hover and "open" shared one declaration, so hovering an idle
-   Export button made it look already open. A gold control hovers UP to
-   --accent-light and presses DOWN to --accent-press; the OPEN state keeps the
-   base gold. */
-.spaces-header-export-button:hover:not(.is-active) {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-  color: var(--accent-text);
-}
-
-.spaces-header-export-button:active {
-  background: var(--accent-press);
-  border-color: var(--accent-press);
-  color: var(--accent-text);
-}
-
-.spaces-header-export-button.is-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-}
-
-.spaces-header-export-button:disabled {
-  cursor: not-allowed;
-  color: var(--text-disabled);
-}
-
 .spaces-header-export-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -1700,67 +2007,6 @@ input[type="text"].space-name-inline:focus {
 
 .spaces-header-export-menu-button:hover {
   background: var(--hover);
-}
-
-.space-add-pages-input,
-.space-add-pages-icon-button {
-  height: 24px;
-  min-height: 24px;
-  max-height: 24px;
-  box-sizing: border-box;
-  align-self: center;
-}
-
-/* UX 2026-09-22: this field's resting border is --border too, so focusing it
-   changed nothing at all — with `outline: none` here, keyboard focus on the
-   "Add pages" box was invisible. A focus indicator comes from --focus, the one
-   token tokens.css defines for the job, never from a border grey. */
-input[type="text"].space-add-pages-input:focus,
-input[type="text"].space-add-pages-input:focus-visible {
-  outline: none;
-  box-shadow: none;
-  border-color: var(--text-3);
-}
-
-.space-add-pages-icon-button {
-  appearance: none;
-  width: 24px;
-  min-width: 24px;
-  max-width: 24px;
-  flex: 0 0 24px;
-  padding: 0;
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  color: var(--accent-text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-  outline-offset: -2px;
-}
-
-/* UX: a gold control hovers UP to --accent-light and presses DOWN to
-   --accent-press (tokens.css "HOW STATES ARE BUILT"). These used to darken on
-   hover, which reads as already-pressed; .auth-submit-btn had it right. */
-.space-add-pages-icon-button:hover {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-}
-
-.space-page-range-error {
-  position: absolute;
-  top: 25px;
-  left: 0;
-  right: 0;
-  color: var(--danger-text);
-  font-size: 9px;
-  line-height: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
 }
 
 .survey-marker-category-action-strip .survey-marker-select-toolbar {

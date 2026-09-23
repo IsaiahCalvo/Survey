@@ -3937,49 +3937,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--accent-text);
 }
 
-.mobile-spaces-header {
-  height: 58px !important;
-  padding: 8px 16px !important;
-  background: var(--surface-2) !important;
-  border-color: var(--border) !important;
-}
-
-.mobile-spaces-title {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.mobile-spaces-title h3 {
-  color: var(--text-1) !important;
-  font-size: 15px !important;
-  font-weight: 900 !important;
-}
-
-.mobile-spaces-title span {
-  color: var(--text-3);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.mobile-spaces-exit-footer {
-  height: 44px;
-  padding: 6px 16px;
-  box-sizing: border-box;
-  flex: 0 0 44px;
-  background: var(--surface-2);
-}
-
-.mobile-spaces-exit-footer button {
-  width: 100%;
-  height: 32px;
-  color: var(--danger-text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 900;
-}
 
 .mobile-pdf-hub-tabs {
   min-height: 40px;
@@ -4655,66 +4612,53 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 900 !important;
 }
 
-/* --- Spaces: touch metrics (demo SpaceRow.tsx / SpacePageRegionRow.tsx /
-   styles.ts:2063-2513). Sizing only; gold actives are already applied inline. --- */
-
-/* Page-assign input to a 44px touch target (was 28px, below minimum). The
-   wrapper is a fixed 24px-tall box on desktop — let it grow on mobile. */
-.mobile-spaces-panel .space-add-pages-row {
-  height: auto !important;
-  flex: 0 0 auto !important;
+/* ==========================================================================
+   SPACES PANEL — PHONE SIZES (owner 2026-09-23: "phone Spaces panel polished")
+   --------------------------------------------------------------------------
+   The design itself — one divided list, indented page lines, shared columns,
+   invisible hit pads — lives in styles.css ("SPACES PANEL — ONE LIST,
+   DIVIDED"), shared with desktop. The phone only resizes it: 44px rows,
+   44px page lines and a 44x44 tap pad on every control, a 36x22 switch, 16px
+   glyphs, and a 16px edge so the grip, the title row and the trash cans sit
+   on the sheet's gutter. Nothing here paints a fill or a border.
+   ========================================================================== */
+/* Two classes so these win over styles.css whatever the load order. */
+.spaces-panel.mobile-spaces-panel {
+  --sp-bg: var(--surface-2);
+  --sp-edge: 16px;
+  --sp-head-h: 44px;
+  --sp-head-btn-pad: 8px;
+  --sp-pad-r: 2px;
+  --sp-grip-w: 44px;       /* 12px glyph centred at 22 -> starts at the 16px edge */
+  --sp-indent: 48px;
+  --sp-col-w: 44px;
+  --sp-switch-w: 44px;
+  --sp-end-w: 44px;
+  --sp-row-h: 44px;
+  --sp-line-h: 44px;
+  --sp-field-h: 32px;
+  --sp-glyph: 16px;
+  --sp-track-w: 36px;
+  --sp-track-h: 22px;
+  --sp-knob: 18px;
+  --sp-badge: 20px;
+  --sp-badge-type: 11px;
+  --sp-title-type: 15px;
+  --sp-status-type: 10.5px;
+  --sp-head-type: 13px;
+  /* The phone forces every input to 16px so iOS never zooms on focus
+     (index.html), so the space name — an input — is 16 here, and the
+     mirror that sizes it uses the same number. */
+  --sp-name-type: 16px;
+  --sp-label-type: 14px;
+  --sp-small-type: 12px;
 }
 
-.mobile-spaces-panel .space-add-pages-input {
-  min-height: 44px !important;
-  height: 44px !important;
-  padding: 0 12px !important;
-  font-size: 14px !important;
-}
-
-.mobile-spaces-panel .space-add-pages-icon-button {
-  width: 44px !important;
-  height: 44px !important;
-  flex: 0 0 44px !important;
-}
-
-/* Red range-parse error, shown in-flow beneath the input on mobile. */
-.mobile-spaces-panel .space-page-range-error {
-  position: static !important;
-  margin-top: 4px;
-  color: var(--danger-text) !important;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-/* Space card header controls to touch height (~space row 54px). */
-.mobile-spaces-panel .space-card-leading-controls,
-.mobile-spaces-panel .space-card-header-controls {
-  min-height: 44px;
-}
-
-.mobile-spaces-panel .space-card-expand-button,
-.mobile-spaces-panel .space-card-delete-button {
-  min-width: 32px;
-  min-height: 32px;
-}
-
-/* Region-assign row to demo touch height (was 34px). */
-.mobile-spaces-panel .space-region-row {
-  min-height: 50px !important;
-}
-
-.mobile-spaces-panel .region-page-pill {
-  min-width: 32px;
-  min-height: 30px;
-}
-
-/* Header create-space + export controls to 32px touch targets; export menu
-   to the demo's 116w rows h30 (SpacesDrawer.tsx / styles.ts:2187-2230). */
-.mobile-spaces-panel .survey-marker-category-create-button,
-.mobile-spaces-panel .spaces-header-export-button {
-  width: 32px !important;
-  height: 32px !important;
+.mobile-spaces-panel .spaces-item__add-input,
+.mobile-spaces-panel .spaces-region__name-input {
+  font-size: 16px;
+  border-radius: 8px;
+  padding: 0 10px;
 }
 
 .mobile-spaces-panel .spaces-header-export-menu {
@@ -4722,8 +4666,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-spaces-panel .spaces-header-export-menu-button {
-  min-height: 30px;
+  min-height: 36px;
 }
+/* ===== end SPACES PANEL — PHONE SIZES ===== */
 
 /* "..." sheet action row (Resize and rotate): the same 20px pill face as the
    sheet's dropdown fields, at the sheet field width, text centred. */
