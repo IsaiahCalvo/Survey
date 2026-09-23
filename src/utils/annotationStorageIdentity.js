@@ -76,6 +76,47 @@ export function getAnnotationRenderIdentity(annotation) {
   };
 }
 
+/**
+ * Where the SELECTED annotation sits in its page's objects now, or -1.
+ *
+ * Hardening 2026-09-23 (second review): a selection is `{ annotationIndex,
+ * annotation }` captured when it was picked (and refreshed after each of our
+ * own edits). With an id it is found BY ID only - a stored index goes stale
+ * as soon as a collaborator deletes an earlier object, and styling whatever
+ * now sits there would edit the wrong mark. An object picked before it had an
+ * id (legacy / not yet synced) has only its index, so the object there is
+ * accepted only if it is the same object: the very reference, or the same
+ * type, text, position, width and tilt (it may meanwhile have gained an id
+ * from its first save - that is still the same object).
+ */
+export function findSelectedAnnotationIndex(objects, selection) {
+  if (!Array.isArray(objects) || !selection) return -1;
+  const snapshot = selection.annotation;
+  const selectedId = getAnnotationRenderIdentity(snapshot).annotationId;
+  if (selectedId !== '' && selectedId != null) {
+    return objects.findIndex((candidate) => (
+      getAnnotationRenderIdentity(candidate).annotationId === selectedId
+    ));
+  }
+  const index = Number(selection.annotationIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= objects.length) return -1;
+  const candidate = objects[index];
+  if (!candidate || !snapshot) return -1;
+  if (candidate === snapshot) return index;
+  const near = (a, b) => {
+    const x = Number(a) || 0;
+    const y = Number(b) || 0;
+    return Math.abs(x - y) <= 0.5;
+  };
+  const same = String(candidate.type || '').toLowerCase() === String(snapshot.type || '').toLowerCase()
+    && String(candidate.text ?? '') === String(snapshot.text ?? '')
+    && near(candidate.left, snapshot.left)
+    && near(candidate.top, snapshot.top)
+    && near(candidate.width, snapshot.width)
+    && near(candidate.angle, snapshot.angle);
+  return same ? index : -1;
+}
+
 export function normalizeAnnotationIdentity(
   object,
   {

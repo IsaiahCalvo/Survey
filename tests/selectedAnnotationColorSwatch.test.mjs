@@ -16,7 +16,12 @@ test('selected annotation swatch colors come from the current saved annotation',
     viewerSource,
     /getAnnotationRenderIdentity\(\s*selectedToolbarAnnotation\?\.annotation,?\s*\)\.annotationId/,
   );
-  assert.match(viewerSource, /pageObjects\.find\(\(annotation\) =>/);
+  // RULED 2026-09-23 (w15 hardening): was /pageObjects\.find\(\(annotation\) =>/.
+  // The live object is now looked up through findSelectedAnnotationIndex,
+  // which still finds it BY ID (and re-verifies an id-less pick at its index
+  // instead of trusting it). What is guarded - the swatch reads the current
+  // saved object, not the stale click-time payload - is unchanged.
+  assert.match(viewerSource, /findSelectedAnnotationIndex\(pageObjects, selectedToolbarAnnotation\)/);
   assert.match(viewerSource, /selectedFillColor: selectedPreviewColors\.fill,/);
   assert.match(viewerSource, /selectedStrokeColor: selectedPreviewColors\.stroke,/);
   assert.match(viewerSource, /annotationsByPage,/);

@@ -124,7 +124,7 @@ import {
   preserveTextMarkupRangeResizeSiblings,
   resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
-import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { findSelectedAnnotationIndex, getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDragHistory.js';
 import {
   buildSelectedTextStylePatch,
@@ -3333,12 +3333,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const pageJSON = annotationsByPageRef.current?.[sel.pageNumber];
     if (!pageJSON || !Array.isArray(pageJSON.objects)) return;
     const selectedId = getAnnotationRenderIdentity(sel.annotation).annotationId;
-    const currentIndex = selectedId
-      ? pageJSON.objects.findIndex((annotation) => (
-          getAnnotationRenderIdentity(annotation).annotationId === selectedId
-        ))
-      : sel.annotationIndex;
-    const current = pageJSON.objects[currentIndex];
+    // By id only; an id-less pick is re-verified at its index, never trusted
+    // blindly - after a remote delete another mark may sit there now.
+    const currentIndex = findSelectedAnnotationIndex(pageJSON.objects, sel);
+    const current = currentIndex >= 0 ? pageJSON.objects[currentIndex] : null;
     if (!current) return;
     if (current.data?.type === 'text-markup'
       && patch.fill != null
@@ -8332,11 +8330,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // bold / italic change also grows the box to fit, in the same write.
   const selectedTextTargetRef = useRef(null);
   const textStyleDragTargetKeyRef = useRef(null);
-  const handleTextStyleSourceChange = useCallback((next, options) => {
+  // `changed` is only the field(s) the user touched (the bar's own `fields`):
+  // a picked mark is patched with those alone, never the bar's whole state,
+  // so a frame that beats the bar's re-render cannot write back a size / bold
+  // / font a collaborator just changed (hardening 2026-09-23).
+  const handleTextStyleSourceChange = useCallback((next, options, changed) => {
     runWithPaintPhase(options, () => {
       const target = selectedTextTargetRef.current;
       const write = resolveTextStyleWrite({
         next,
+        changed,
         phase: options?.phase,
         target,
         activeTool,
@@ -24325,12 +24328,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selectedAnnotationId = getAnnotationRenderIdentity(
       selectedToolbarAnnotation?.annotation,
     ).annotationId;
+    const selectedAnnotIndex = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
     const currentSelectedAnnot = (
-      selectedAnnotationId
-        ? pageObjects.find((annotation) => (
-            getAnnotationRenderIdentity(annotation).annotationId === selectedAnnotationId
-          ))
-        : pageObjects[selectedToolbarAnnotation?.annotationIndex]
+      selectedAnnotIndex >= 0 ? pageObjects[selectedAnnotIndex] : null
     ) || selectedToolbarAnnotation?.annotation;
     const selectedAnnot = currentSelectedAnnot;
     const selectedType = String(selectedAnnot?.type || '').toLowerCase();
@@ -24486,6 +24486,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX 2026-09-23: with one callout or text box selected (and no live
     // editor, whose own bridge wins), the text bar reads and writes THAT
     // object's text style, not the tool's defaults (handleTextStyleSourceChange).
+    const selectedTextboxPlaceKey = `textbox:@${selectedToolbarAnnotation?.pageNumber}:${selectedToolbarAnnotation?.annotationIndex}`;
     const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
       ? (selectedToolbarCallout?.callout
         ? {
@@ -24496,7 +24497,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : (isFormattableTextObject(selectedAnnot)
           ? {
             kind: 'textbox',
-            key: `textbox:${getAnnotationRenderIdentity(selectedAnnot).annotationId ?? selectedToolbarAnnotation?.annotationIndex}`,
+            // Hardening 2026-09-23: the id is '' (never null) when absent, so
+            // an id-less box is keyed by its place; that place key rides along
+            // as aliasKey while the PICK has no id, so the first save giving it
+            // an id mid-drag does not orphan the rest of the drag.
+            key: getAnnotationRenderIdentity(selectedAnnot).annotationId
+              ? `textbox:${getAnnotationRenderIdentity(selectedAnnot).annotationId}`
+              : selectedTextboxPlaceKey,
+            aliasKey: selectedAnnotationId ? null : selectedTextboxPlaceKey,
             style: readTextboxTextStyle(selectedAnnot),
           }
           : null))

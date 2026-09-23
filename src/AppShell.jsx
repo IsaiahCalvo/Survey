@@ -219,8 +219,11 @@ const resolveTextFormatting = (api) => {
   const defaults = api.textStyleDefaults;
   if (!defaults) return null;
   // `meta` is the colour picker's drag phase; PDFViewer uses it when the
-  // source is a SELECTED text box or callout (one undo step per drag).
-  const patch = (fields, meta) => api.onTextStyleDefaultsChange({ ...defaults, ...fields }, meta);
+  // source is a SELECTED text box or callout (one undo step per drag). The
+  // third argument is ONLY what this control changed: a picked mark is
+  // patched with that alone, so this render's (possibly stale) other fields
+  // never overwrite a collaborator's newer size / bold / font.
+  const patch = (fields, meta) => api.onTextStyleDefaultsChange({ ...defaults, ...fields }, meta, fields);
   const toggle = (key) => () => patch({ [key]: !defaults[key] });
   return {
     state: defaults,

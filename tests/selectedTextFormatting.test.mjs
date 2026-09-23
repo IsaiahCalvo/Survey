@@ -24,8 +24,10 @@ import {
   readTextboxTextStyle,
   refitCalloutToText,
   refitTextboxToText,
+  resolveFontSizeDraft,
   resolveTextStyleWrite,
 } from '../src/utils/selectedTextFormatting.js';
+import { findSelectedAnnotationIndex } from '../src/utils/annotationStorageIdentity.js';
 import { composeTextColor } from '../src/utils/textColorOpacity.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -132,7 +134,11 @@ test('PDFViewer publishes the selection as the text bar source and writes back t
     viewer.indexOf('const handleTextStyleSourceChange = useCallback('),
     viewer.indexOf('const handleTextStyleSourceChange = useCallback(') + 1400,
   );
-  assert.match(handler, /^const handleTextStyleSourceChange = useCallback\(\(next, options\) => \{\s*runWithPaintPhase\(options, \(\) => \{/);
+  // RULED 2026-09-23 (w15 hardening): the handler takes a third argument,
+  // `changed` (only the fields the user touched); what is guarded - the whole
+  // handler runs inside runWithPaintPhase - is unchanged.
+  assert.match(handler, /^const handleTextStyleSourceChange = useCallback\(\(next, options, changed\) => \{\s*runWithPaintPhase\(options, \(\) => \{/);
+  assert.match(handler, /resolveTextStyleWrite\(\{\s*next,\s*changed,/);
   assert.match(handler, /resolveTextStyleWrite\(\{/);
   assert.match(handler, /handlePatchSelectedCallout\(write\.patch, write\.reflows/);
   assert.match(handler, /handlePatchSelectedAnnotation\(write\.patch, write\.reflows/);
@@ -277,11 +283,16 @@ test('text size is clamped to the editor range and the phone field saves once', 
   const current = readCalloutTextStyle({});
   assert.deepEqual(buildSelectedTextStylePatch('callout', current, { ...current, fontSize: 2 }), { fontSize: 6 });
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
-  const field = mobile.slice(mobile.indexOf('function MobileFontSizeField('), mobile.indexOf('function MobileFontSizeField(') + 1600);
+  // RULED 2026-09-23 (w15 hardening): the field's body grew (an unmount save)
+  // and its parse + clamp moved into resolveFontSizeDraft, shared by blur /
+  // Enter and the unmount save, so the slice runs to the next function and the
+  // 6-200 clamp is checked on that helper (behaviourally, in the test below).
+  const fieldStart = mobile.indexOf('function MobileFontSizeField(');
+  const field = mobile.slice(fieldStart, mobile.indexOf('\nfunction ', fieldStart + 1));
   // Typing only edits a draft; blur / Enter commit once, clamped 6-200.
   assert.match(field, /onChange=\{\(event\) => setDraft\(/);
   assert.match(field, /onBlur=\{commit\}/);
-  assert.match(field, /Math\.max\(6, Math\.min\(200, parsed\)\)/);
+  assert.match(field, /const fontSize = resolveFontSizeDraft\(pending, value\);/);
   assert.match(mobile, /<MobileFontSizeField\s+value=\{textDefaults\.fontSize \?\? 16\}\s+onCommit=/);
 });
 
@@ -297,10 +308,13 @@ test('vertical alignment is hidden whenever callout text is what the bar edits',
 
 test('the drag phase reaches the save pipeline from every text colour picker', () => {
   const shell = read('src/AppShell.jsx');
-  assert.match(shell, /const patch = \(fields, meta\) => api\.onTextStyleDefaultsChange\(\{ \.\.\.defaults, \.\.\.fields \}, meta\);/);
+  // RULED 2026-09-23 (w15 hardening): both bars also pass what the control
+  // changed as a third argument; the drag phase (`meta`) still rides through
+  // unchanged, which is what these two lines guard.
+  assert.match(shell, /const patch = \(fields, meta\) => api\.onTextStyleDefaultsChange\(\{ \.\.\.defaults, \.\.\.fields \}, meta, fields\);/);
   assert.match(shell, /setFontColor: \(hex, meta\) => patch\(\{ fontColor: hex \}, meta\)/);
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
-  assert.match(mobile, /const updateTextDefaults = \(patch, meta\) => api\.onTextStyleDefaultsChange\?\.\(\{ \.\.\.textDefaults, \.\.\.patch \}, meta\);/);
+  assert.match(mobile, /const updateTextDefaults = \(patch, meta\) => api\.onTextStyleDefaultsChange\?\.\(\{ \.\.\.textDefaults, \.\.\.patch \}, meta, patch\);/);
   assert.match(mobile, /onChange: \(hex, alpha, meta\) => updateTextDefaults\(\{/);
   assert.match(mobile, /onChange=\{\(hex, alpha, meta\) => editorApi\.setFontColor\?\.\(/);
   const overlay = read('src/components/TextEditOverlay.jsx');
@@ -316,4 +330,144 @@ test('leaving the callout editor keeps the text style changed during the edit', 
     viewer,
     /c\.id === editingAnnotation\.reactCalloutId\s*\?\s*\{ \.\.\.updatedReactCallout, style: c\.style \|\| updatedReactCallout\.style \}\s*:\s*c/,
   );
+});
+
+/*
+ * Hardening 2026-09-23 (second adversarial review of 484c02040 + 5b273a769).
+ */
+
+test('a colour drag on a picked mark never writes back a size a collaborator just changed', () => {
+  // The bar last rendered the callout at 14pt, not bold, Arial.
+  const barState = readCalloutTextStyle({ style: { fontSize: 14, fontColor: '#1e293b' } });
+  // A collaborator makes it 20pt, bold, Georgia; PDFViewer's target has the new
+  // style, but the drag's next frame arrives before the bar re-renders.
+  const target = calloutTarget({ fontSize: 20, bold: true, fontFamily: 'Georgia', fontColor: '#1e293b' });
+  let record = null;
+  const now = 50_000;
+  ['preview', 'preview', 'commit'].forEach((phase, i) => {
+    const fields = { fontColor: composeTextColor('#ff0000', 0.5 + i * 0.1) };
+    const write = resolveTextStyleWrite({
+      next: { ...barState, ...fields }, changed: fields,
+      phase, target, activeTool: 'select', dragRecord: record, now: now + i * 16,
+    });
+    record = write.dragRecord;
+    assert.equal(write.action, 'patch');
+    assert.deepEqual(Object.keys(write.patch), ['fontColor'], `frame ${i}: ${JSON.stringify(write.patch)}`);
+    assert.equal(write.reflows, false);
+  });
+  // The release is always written, even onto the colour the last frame showed.
+  const release = resolveTextStyleWrite({
+    next: { ...barState, fontColor: target.style.fontColor }, changed: { fontColor: target.style.fontColor },
+    phase: 'commit', target, activeTool: 'select', dragRecord: null,
+  });
+  assert.deepEqual(release.patch, { fontColor: '#1e293b' });
+  // Text boxes use their own field name, and still only that one.
+  const box = { kind: 'textbox', key: 'textbox:t1', style: readTextboxTextStyle({ type: 'textbox', fontSize: 30, fontWeight: 'bold' }) };
+  const stale = readTextboxTextStyle({ type: 'textbox', fontSize: 16 });
+  assert.deepEqual(resolveTextStyleWrite({
+    next: { ...stale, fontColor: '#00ff00' }, changed: { fontColor: '#00ff00' },
+    phase: 'preview', target: box, activeTool: 'select', dragRecord: null,
+  }).patch, { fill: '#00ff00' });
+});
+
+test('a size change writes only the size (the refit adds only the height)', () => {
+  const barState = readCalloutTextStyle({ style: { fontSize: 14 } });
+  const target = calloutTarget({ fontSize: 14, bold: true, fontColor: '#ff0000' });
+  const write = resolveTextStyleWrite({
+    next: { ...barState, fontSize: 30 }, changed: { fontSize: 30 }, target, activeTool: 'select', dragRecord: null,
+  });
+  assert.deepEqual(write.patch, { fontSize: 30 });
+  assert.equal(write.reflows, true);
+  // Toggling bold writes bold alone; a change the mark already has writes nothing.
+  assert.deepEqual(resolveTextStyleWrite({
+    next: { ...barState, italic: true }, changed: { italic: true }, target, activeTool: 'select', dragRecord: null,
+  }).patch, { italic: true });
+  assert.equal(resolveTextStyleWrite({
+    next: { ...barState, bold: true }, changed: { bold: true }, target, activeTool: 'select', dragRecord: null,
+  }).action, 'ignore');
+  // The tool's defaults (nothing picked) still take the whole state.
+  const armed = resolveTextStyleWrite({
+    next: { ...barState, fontSize: 30 }, changed: { fontSize: 30 }, target: null, activeTool: 'callout', dragRecord: null,
+  });
+  assert.equal(armed.action, 'defaults');
+  assert.equal(armed.defaults.fontColor, barState.fontColor);
+  assert.equal(armed.defaults.fontSize, 30);
+});
+
+test('a drag on a text box with no id carries on after its first save gives it one', () => {
+  const style = readTextboxTextStyle({ type: 'textbox' });
+  const place = 'textbox:@2:4';
+  const idless = { kind: 'textbox', key: place, aliasKey: place, style };
+  const now = 70_000;
+  const first = resolveTextStyleWrite({
+    next: { ...style, fontColor: '#ff0000' }, changed: { fontColor: '#ff0000' },
+    phase: 'preview', target: idless, activeTool: 'select', dragRecord: null, now,
+  });
+  assert.equal(first.action, 'patch');
+  assert.equal(first.dragRecord.key, place);
+  // The save gave it an id; the pick itself has none yet, so its place rides along.
+  const withId = { kind: 'textbox', key: 'textbox:textbox-abc', aliasKey: place, style };
+  const second = resolveTextStyleWrite({
+    next: { ...style, fontColor: '#ee0000' }, changed: { fontColor: '#ee0000' },
+    phase: 'preview', target: withId, activeTool: 'select', dragRecord: first.dragRecord, now: now + 16,
+  });
+  assert.equal(second.action, 'patch');
+  // ...and the drag adopts the id, so it still matches once the pick has it too.
+  assert.equal(second.dragRecord.key, 'textbox:textbox-abc');
+  const settled = { kind: 'textbox', key: 'textbox:textbox-abc', aliasKey: null, style };
+  const release = resolveTextStyleWrite({
+    next: { ...style, fontColor: '#dd0000' }, changed: { fontColor: '#dd0000' },
+    phase: 'commit', target: settled, activeTool: 'select', dragRecord: second.dragRecord, now: now + 32,
+  });
+  assert.equal(release.action, 'patch');
+  // A different box (no alias for this drag's place) is still refused.
+  const other = { kind: 'textbox', key: 'textbox:textbox-zzz', aliasKey: 'textbox:@2:5', style };
+  assert.equal(resolveTextStyleWrite({
+    next: { ...style, fontColor: '#00ff00' }, changed: { fontColor: '#00ff00' },
+    phase: 'preview', target: other, activeTool: 'select', dragRecord: first.dragRecord, now: now + 16,
+  }).action, 'ignore');
+});
+
+test('the picked mark is found by id, never by a stale index', () => {
+  const a = { type: 'rect', data: { id: 'a' }, left: 0, top: 0, width: 10 };
+  const b = { type: 'textbox', data: { id: 'b' }, text: 'B', left: 5, top: 5, width: 40 };
+  const c = { type: 'textbox', data: { id: 'c' }, text: 'C', left: 9, top: 9, width: 40 };
+  // Picked b at index 1; a collaborator deletes a, so c now sits at index 1.
+  assert.equal(findSelectedAnnotationIndex([b, c], { annotationIndex: 1, annotation: b }), 0);
+  // b itself deleted: nothing, never c.
+  assert.equal(findSelectedAnnotationIndex([a, c], { annotationIndex: 1, annotation: b }), -1);
+});
+
+test('a mark picked with no id is re-verified at its index', () => {
+  const box = { type: 'textbox', text: 'HELLO', left: 50, top: 60, width: 100, angle: 0 };
+  const other = { type: 'textbox', data: { id: 'x' }, text: 'OTHER', left: 200, top: 60, width: 100 };
+  const sel = { annotationIndex: 1, annotation: box };
+  assert.equal(findSelectedAnnotationIndex([other, box], sel), 1);
+  // Its first save gave it an id (and a new size): still the same box.
+  const saved = { ...box, fontSize: 30, height: 80, data: { id: 'textbox-new' } };
+  assert.equal(findSelectedAnnotationIndex([other, saved], sel), 1);
+  // A remote delete moved another mark into its place: refused.
+  assert.equal(findSelectedAnnotationIndex([box, other], sel), -1);
+  assert.equal(findSelectedAnnotationIndex([other], sel), -1);
+  // PDFViewer resolves the selection through this one rule, no index fallback.
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /const currentIndex = findSelectedAnnotationIndex\(pageJSON\.objects, sel\);/);
+  assert.match(viewer, /const selectedAnnotIndex = findSelectedAnnotationIndex\(pageObjects, selectedToolbarAnnotation\);/);
+  assert.doesNotMatch(viewer, /annotationId \?\? selectedToolbarAnnotation\?\.annotationIndex/);
+  assert.doesNotMatch(viewer, /: sel\.annotationIndex;\n\s*const current = pageJSON\.objects\[currentIndex\];/);
+});
+
+test('the phone size draft saves once, clamped, and not when unchanged', () => {
+  assert.equal(resolveFontSizeDraft(null, 16), null);
+  assert.equal(resolveFontSizeDraft('', 16), null);
+  assert.equal(resolveFontSizeDraft('24', 16), 24);
+  assert.equal(resolveFontSizeDraft('999', 16), 200);
+  assert.equal(resolveFontSizeDraft('2', 16), 6);
+  assert.equal(resolveFontSizeDraft('16', 16), null);
+  // The unmount save: once (the draft is cleared first), from the latest props.
+  const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
+  const fieldStart = mobile.indexOf('function MobileFontSizeField(');
+  const field = mobile.slice(fieldStart, mobile.indexOf('\nfunction ', fieldStart + 1));
+  assert.match(field, /latestRef\.current = \{ value, onCommit \};/);
+  assert.match(field, /useEffect\(\(\) => \(\) => \{\s*const pending = draftRef\.current;\s*draftRef\.current = null;\s*const fontSize = resolveFontSizeDraft\(pending, latestRef\.current\.value\);\s*if \(fontSize !== null\) latestRef\.current\.onCommit\?\.\(fontSize\);\s*\}, \[\]\);/);
 });

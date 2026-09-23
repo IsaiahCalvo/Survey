@@ -324,26 +324,45 @@ export function measureTextLayoutHeight({
  *  - with a picked mark, it is that mark's patch (null patch = ignore), plus
  *    whether the box must be re-measured.
  *
+ * Hardening 2026-09-23 (second review):
+ *  - `changed` is ONLY the field(s) the user touched (the consumer's own
+ *    `fields`). The patch is built from those alone, so a colour / opacity drag
+ *    writes only the colour and a size change only the size (+ the refit
+ *    height). Diffing the bar's WHOLE merged state against the mark's latest
+ *    style used to write back a stale size / bold / font a collaborator had
+ *    just changed, whenever a frame arrived before the bar re-rendered.
+ *    Without `changed` (no caller left does this) the old whole-state diff runs.
+ *  - A text box that had no id when picked is keyed by its place
+ *    (`textbox:@page:index`) and carries that as `target.aliasKey`; the first
+ *    save gives it an id mid-drag, so a drag begun on the alias carries on onto
+ *    the id key (and adopts it) instead of dropping the rest of the drag.
+ *
  * @returns {{ action: 'ignore'|'defaults'|'patch', defaults?: object,
  *   patch?: object, reflows?: boolean, dragRecord: object|null }}
  */
-export function resolveTextStyleWrite({ next, phase, target, activeTool, dragRecord, now = Date.now() }) {
+export function resolveTextStyleWrite({
+  next, changed = null, phase, target, activeTool, dragRecord, now = Date.now(),
+}) {
   const inDrag = phase === 'preview' || phase === 'settle' || phase === 'commit';
   const targetKey = target?.key ?? '';
   // A held thumb re-sends every 0.5s, so a record older than 2s belongs to a
   // drag whose release never arrived, not this one.
   const liveRecord = dragRecord && now - dragRecord.at < 2000 ? dragRecord : null;
+  const sameMark = !liveRecord
+    || liveRecord.key === targetKey
+    || (!!target?.aliasKey && liveRecord.key === target.aliasKey);
   const nextRecord = (phase === 'preview' || phase === 'settle')
-    ? { key: liveRecord ? liveRecord.key : targetKey, at: now }
+    ? { key: sameMark ? targetKey : liveRecord.key, at: now }
     : null;
   const ignore = { action: 'ignore', dragRecord: nextRecord };
-  if (inDrag && liveRecord && liveRecord.key !== targetKey) return ignore;
+  if (inDrag && !sameMark) return ignore;
   if (!target) {
     if (activeTool === 'select') return ignore;
     const { supportsVerticalAlign: _ignored, ...defaults } = next || {};
     return { action: 'defaults', defaults, dragRecord: nextRecord };
   }
-  const patch = buildSelectedTextStylePatch(target.kind, target.style, next, { forceColor: inDrag });
+  const fields = changed && typeof changed === 'object' ? changed : next;
+  const patch = buildSelectedTextStylePatch(target.kind, target.style, fields, { forceColor: inDrag });
   if (!patch) return ignore;
   return {
     action: 'patch',
@@ -351,4 +370,17 @@ export function resolveTextStyleWrite({ next, phase, target, activeTool, dragRec
     reflows: patchCanReflowText(target.kind, patch),
     dragRecord: nextRecord,
   };
+}
+
+/**
+ * The phone "Text size" field's pending draft as the size to save, or null
+ * when there is nothing to save (no draft, not a number, or the size it
+ * already has). Clamped to the live editor's 6-200 range.
+ */
+export function resolveFontSizeDraft(pending, value) {
+  if (pending === null || pending === undefined) return null;
+  const parsed = Number.parseInt(pending, 10);
+  if (!Number.isFinite(parsed)) return null;
+  const fontSize = Math.max(6, Math.min(200, parsed));
+  return fontSize !== Number(value) ? fontSize : null;
 }

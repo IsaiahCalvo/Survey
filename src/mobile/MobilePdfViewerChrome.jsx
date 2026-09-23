@@ -6,6 +6,7 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '.
 import { needsSwatchHairline, normaliseQuickColour, swatchCheckInk, swatchRingColour, withQuickColoursFirst } from '../utils/quickStylePresets';
 import CompactColorPicker from '../components/CompactColorPicker';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
+import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { ChosenCheck, QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
@@ -866,7 +867,12 @@ function MobileTextAlignmentGlyph({ axis, value }) {
    undo steps, and collaborators saw 2pt text in between). It now keeps a draft
    while typing (and may be cleared), and saves once on blur or Enter,
    clamped to the live editor's 6-200 range; an empty or invalid draft puts
-   the current size back. */
+   the current size back.
+   Hardening 2026-09-23: the iOS number keypad has no Enter and closing the
+   sheet can unmount the field without a blur, which lost the typed size. A
+   pending valid draft is now also saved when the field unmounts - once (the
+   draft is cleared by whichever save runs first), clamped, and not at all
+   when it equals the current size (resolveFontSizeDraft). */
 function MobileFontSizeField({ value, onCommit }) {
   const [draft, setDraftState] = useState(null);
   // The draft is read from a ref so Enter-then-blur (or Escape-then-blur)
@@ -876,16 +882,23 @@ function MobileFontSizeField({ value, onCommit }) {
     draftRef.current = next;
     setDraftState(next);
   };
+  // The latest size and save callback, for the unmount save below.
+  const latestRef = useRef({ value, onCommit });
+  latestRef.current = { value, onCommit };
   const shown = draft ?? String(value ?? 16);
   const commit = () => {
     const pending = draftRef.current;
     if (pending === null) return;
-    const parsed = Number.parseInt(pending, 10);
     setDraft(null);
-    if (!Number.isFinite(parsed)) return;
-    const fontSize = Math.max(6, Math.min(200, parsed));
-    if (fontSize !== Number(value)) onCommit?.(fontSize);
+    const fontSize = resolveFontSizeDraft(pending, value);
+    if (fontSize !== null) onCommit?.(fontSize);
   };
+  useEffect(() => () => {
+    const pending = draftRef.current;
+    draftRef.current = null;
+    const fontSize = resolveFontSizeDraft(pending, latestRef.current.value);
+    if (fontSize !== null) latestRef.current.onCommit?.(fontSize);
+  }, []);
   return (
     <input
       inputMode="numeric"
@@ -1642,8 +1655,10 @@ export function MobileToolProperties({ api }) {
   };
   // UX 2026-09-23: with a text box or callout selected, PDFViewer publishes
   // ITS text style here and writes changes to it (utils/selectedTextFormatting);
-  // `meta` is the colour picker's drag phase, so a drag is one undo step.
-  const updateTextDefaults = (patch, meta) => api.onTextStyleDefaultsChange?.({ ...textDefaults, ...patch }, meta);
+  // `meta` is the colour picker's drag phase, so a drag is one undo step. The
+  // third argument is ONLY what this control changed, so a picked mark is
+  // patched with that alone (never this render's possibly stale other fields).
+  const updateTextDefaults = (patch, meta) => api.onTextStyleDefaultsChange?.({ ...textDefaults, ...patch }, meta, patch);
   // 2026-07-12 (Phase E, demo parity — matrix §6): the full edit panel opens
   // for EVERY annotation tool (demo AnnotationEditPanel), not just text/callout.
   // Non-text tools show only the shape-side cards; the eraser shows its own card.
