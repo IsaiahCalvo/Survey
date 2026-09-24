@@ -921,16 +921,48 @@ input[type="text"].survey-marker-name-inline:focus {
 }
 
 .spaces-item__grip {
-  flex: 0 0 var(--sp-grip-w);
-  width: var(--sp-grip-w);
+  flex: 0 0 calc(var(--sp-grip-w) - var(--sp-chev-w, 16px));
+  width: calc(var(--sp-grip-w) - var(--sp-chev-w, 16px));
   align-self: stretch;
   height: auto !important;
 }
 
 /* The grip's dots start 3.75px inside its 12px glyph. Nudging the glyph left
-   by that much lands the dots on the edge line, under the header's "+". */
+   by that much lands the dots on the edge line, under the header's "+" (the
+   box is narrower by the fold arrow's width now, so half of that is added
+   back to keep the dots on the same line). */
 .spaces-item__grip > svg {
-  margin-left: -7.5px;
+  /* The glyph is centred, so a margin moves it by half: +the arrow's full
+     width puts it back where it was before the box narrowed. */
+  margin-left: calc(-7.5px + var(--sp-chev-w, 16px));
+}
+
+/* Fold arrow (owner 2026-09-23): lives in the gap between grip and name. A
+   glyph, not a box: no plate on hover or press; it turns down when open. */
+.spaces-item__chevron {
+  flex: 0 0 var(--sp-chev-w, 16px);
+  width: var(--sp-chev-w, 16px);
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+  color: var(--text-3);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.spaces-item__chevron > svg {
+  transition: transform 180ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+.spaces-item.is-expanded .spaces-item__chevron > svg {
+  transform: rotate(90deg);
+}
+@media (hover: hover) {
+  .spaces-item__chevron:hover { color: var(--text-1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spaces-item__chevron > svg { transition: none; }
 }
 
 /* The name sizes to its text (a hidden mirror in ::after), so the empty part

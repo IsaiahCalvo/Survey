@@ -142,9 +142,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
    *     the phone). Nothing paints a plate on hover or press: glyphs tighten
    *     (states.css data-glyph-only), words darken their ink.
    * Reference: the phone home "layout B — one card, divided" (src/home/hub.css).
-   * The grip is the MorphGrip templates use (DragRearrangeHandle collapseOpen):
-   * an open space shows a down arrow where the grip was; tapping it folds the
-   * space, and tapping the grip of a folded space opens it.
+   * The grip is a plain grip; the fold arrow sits beside it (owner
+   * 2026-09-23), turning from right to down as the space opens.
    */
   const visibilityControlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
   const isSurveyVisibilityContext =
@@ -183,11 +182,25 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             data-space-drag-handle
             isDragging={isDragging}
             title="Drag to rearrange"
-            collapseOpen={isExpanded}
-            onCollapse={() => onToggleExpand(space.id)}
             onClick={() => onToggleExpand(space.id)}
             style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
           />
+
+          {/* Owner 2026-09-23: the fold arrow is back, between the grip and
+              the name, in the gap that was already there (nothing moves).
+              Right when folded, down when open. */}
+          <button
+            type="button"
+            className="spaces-item__chevron"
+            aria-label={isExpanded ? `Fold ${space.name || 'space'}` : `Open ${space.name || 'space'}`}
+            aria-expanded={isExpanded}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(space.id);
+            }}
+          >
+            <Icon name="chevronRight" size={12} color="currentColor" />
+          </button>
 
           <span className="spaces-item__name-fit" data-value={space.name || ' '}>
             <input
@@ -1086,9 +1099,6 @@ const SpacesPanel = ({
   const expandedSpaceId = Array.from(expandedSpaces)[0] || null;
   const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || orderedSpaces[0]?.id || null;
   const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
-  const spacesStatusText = isRegionSelectionActive
-    ? 'Region active'
-    : (activeSpaceId || selectedSpaceId) ? 'Space active' : 'No space active';
   const createSpaceLabel = canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces';
   const exportSpaceLabel = spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export';
 
@@ -1107,7 +1117,7 @@ const SpacesPanel = ({
       }}
     >
       {/* UX 2026-09-23 (owner): the Bookmarks header pattern — [+ Add] on the
-          far left, the status on the panel's true centre, [Export] on the far
+          far left and [Export] on the far
           right. One slim row; both buttons are quiet words of equal weight (no
           gold square, no outlined square) with the same edge gap. */}
       <div className="spaces-panel__head">
@@ -1122,11 +1132,8 @@ const SpacesPanel = ({
           <span>Add</span>
         </button>
 
-        {/* Owner 2026-09-23: no "Spaces" title here - the tab above already
-            says it. Only the quiet status stays on the row's centre. */}
-        <div className="spaces-panel__title">
-          <span>{spacesStatusText}</span>
-        </div>
+        {/* Owner 2026-09-23: nothing in the middle - the tab above names the
+            panel and the list below says when there are no spaces. */}
 
         <div
           ref={spacesExportAnchorRef}
