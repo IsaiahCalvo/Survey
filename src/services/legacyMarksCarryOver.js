@@ -173,16 +173,16 @@ export function legacyCarryOverWaitsForEmbeddedImport(doc) {
 }
 
 /**
- * True when this document has an old mark still to handle now: no marker,
- * and a user-drawn key neither in `marks` nor recorded, or (once the embedded
- * import has run) an edited PDF mark not recorded. Cheap: one pass over the
- * old map reading a few flags per entry.
+ * True when this document has an old mark still to handle: no marker, and a
+ * user-drawn key neither in `marks` nor recorded, or an edited PDF mark not
+ * recorded (even while the embedded import has not run: the caller then
+ * waits for it, so the first session already shows the old edit). Cheap:
+ * one pass over the old map reading a few flags per entry.
  */
 export function legacyMarksCarryOverPending(doc) {
   if (legacyMarksCarriedMarker(doc)) return false;
   if (!doc.share.has(LEGACY_ANNOTATIONS_MAP)) return false;
   const marks = doc.getMap(MARKS_MAP);
-  const importDone = embeddedImportDone(doc);
   let carried = null;
   let found = false;
   doc.getMap(LEGACY_ANNOTATIONS_MAP).forEach((entry, rawKey) => {
@@ -191,7 +191,7 @@ export function legacyMarksCarryOverPending(doc) {
     if (!decoded) return;
     const key = String(rawKey);
     if (isLegacyPdfImportedMark(decoded.o)) {
-      if (!importDone || !isEditedPdfMark(decoded.o) || !pdfAnnotationIdOf(decoded.o)) return;
+      if (!isEditedPdfMark(decoded.o) || !pdfAnnotationIdOf(decoded.o)) return;
     } else if (marks.has(key)) {
       return;
     }
@@ -237,6 +237,12 @@ function resolveEditedPdfMark(doc, item, copiesIndex) {
       .has(deletedPdfAnnotationStorageKey(item.p, item.pdfAnnotationId));
     if (tombstone) return { action: 'skip', reason: 'deleted' };
     if (doc.getMap(MARKS_MAP).has(item.key)) return { action: 'skip', reason: 'present' };
+    // A page the importer could not read: its markup is the importer's call
+    // (w27); a second copy could draw on top of the PDF's own.
+    const unread = doc.getMap(META_MAP).get(EMBEDDED_IMPORT_MARKER_KEY)?.incompletePages;
+    if (Array.isArray(unread) && unread.map(Number).includes(Number(item.p))) {
+      return { action: 'skip', reason: 'page-unread' };
+    }
     return { action: 'create', targetKey: item.key, next: deepClone(item.o) };
   }
   if (copies.length > 1) return { action: 'skip', reason: 'ambiguous' };

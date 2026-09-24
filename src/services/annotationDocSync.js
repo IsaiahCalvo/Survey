@@ -104,6 +104,7 @@ const DURABLE_MAP_NAMES = [
   SURVEY_MARKERS_MAP,
   ERASE_OUTBOX_MAP,
 ];
+const REBASE_MAP_ORDER = [META_MAP, ...DURABLE_MAP_NAMES.filter((mapName) => mapName !== META_MAP)];
 const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map());
 
 function historyQuarantineDedupeKey(state, evidenceKeys = []) {
@@ -2155,7 +2156,10 @@ function stageRebasedLocalMutation(state, transaction) {
   const liveRoots = DURABLE_MAP_NAMES.map((mapName) => state.doc.getMap(mapName));
   const changedByRoot = rootKeysChangedByTransaction(transaction, liveRoots);
   state.stagedDoc.transact(() => {
-    for (const mapName of DURABLE_MAP_NAMES) {
+    // Meta first (w28 re-review): a carry-over batch writes its record of
+    // carried keys before the marks, and that record must keep the lower
+    // clocks here too, or a split part could hold marks without it.
+    for (const mapName of REBASE_MAP_ORDER) {
       const live = state.doc.getMap(mapName);
       const staged = state.stagedDoc.getMap(mapName);
       const changedKeys = changedByRoot.get(live);

@@ -728,16 +728,20 @@ export function useAnnotationDoc({
       runLegacyMarksCarryOver(h, documentId, { notify: true, reason });
     };
     // Observers run inside Yjs's transaction cleanup: write from a fresh task.
+    let importPassSeen = false;
     function onMeta(event) {
-      if (finished || !event.transaction.local) return;
+      if (finished || importPassSeen || !event.transaction.local) return;
       if (
         !event.keysChanged.has(EMBEDDED_IMPORT_MARKER_KEY)
         && !event.keysChanged.has(EMBEDDED_IMPORT_INCOMPLETE_KEY)
       ) return;
-      later(() => run('after-embedded-import'), 0);
+      importPassSeen = true;
+      later(() => run('after-embedded-import'), Math.floor(Math.random() * LEGACY_CARRY_JITTER_MS));
     }
+    let begun = false;
     const begin = () => {
-      if (finished) return;
+      if (finished || begun) return;
+      begun = true;
       unsubscribeStatus?.();
       unsubscribeStatus = null;
       if (!legacyCarryOverWaitsForEmbeddedImport(h.doc)) {

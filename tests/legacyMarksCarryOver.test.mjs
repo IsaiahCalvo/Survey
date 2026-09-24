@@ -757,7 +757,17 @@ test('review B: edited PDF marks wait for the embedded import; the marker is hel
   assert.equal(first.carried, OLD_MARKS.length, 'user-drawn marks do not wait');
   assert.equal(first.editedPdfDeferred, 4);
   assert.equal(first.markerWritten, false);
-  assert.equal(legacyMarksCarryOverPending(doc), false, 'nothing to do until the import has run');
+  // Still pending (re-review): the screen keeps waiting for its import pass
+  // so the old edits show in this session, but running again before the
+  // import writes nothing.
+  assert.equal(legacyMarksCarryOverPending(doc), true);
+  const updates = [];
+  const listener = (update) => updates.push(update);
+  doc.on('update', listener);
+  const early = carryOverLegacyMarks(doc);
+  doc.off('update', listener);
+  assert.equal(early.editedPdfDeferred, 4);
+  assert.equal(updates.length, 0, 'no writes before the import');
   doc.getMap('annoMeta').set(EMBEDDED_IMPORT_MARKER_KEY, { at: 'now', count: 2 });
   assert.equal(legacyMarksCarryOverPending(doc), true);
   const second = carryOverLegacyMarks(doc);
@@ -765,4 +775,22 @@ test('review B: edited PDF marks wait for the embedded import; the marker is hel
   assert.equal(second.alreadyPresent, OLD_MARKS.length);
   assert.equal(second.editedPdfReplaced, 2);
   assert.equal(second.markerWritten, true);
+});
+
+test('re-review: an edited PDF mark on a page the importer could not read is not drawn a second time', () => {
+  const doc = editedPdfDoc({ importDone: false });
+  doc.getMap('annoMeta').set(EMBEDDED_IMPORT_MARKER_KEY, { at: 'now', count: 2, incompletePages: [6] });
+  const result = carryOverLegacyMarks(doc);
+  assert.equal(doc.getMap(MARKS_MAP).has('9999R'), false, 'page 6 was not read by the importer');
+  assert.equal(result.editedPdfCreated, 0);
+  assert.equal(result.editedPdfReplaced, 2);
+});
+
+test('re-review: after a permission rollback the rebased copy still puts the carry record before the marks', async () => {
+  // The rebased staging path copies meta before marks, so a split part can
+  // never hold a carried mark without its record.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/services/annotationDocSync.js', import.meta.url), 'utf8');
+  assert.match(source, /const REBASE_MAP_ORDER = \[META_MAP, \.\.\.DURABLE_MAP_NAMES\.filter/);
+  assert.match(source, /for \(const mapName of REBASE_MAP_ORDER\)/);
 });

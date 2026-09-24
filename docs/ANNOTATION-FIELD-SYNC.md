@@ -233,7 +233,7 @@ per document; `useAnnotationDoc` runs it on a writable open.
   embedded import. A document with no old user-drawn or edited PDF marks
   gets no writes and no marker.
 * When: after realtime has caught up following the subscribe, plus a random
-  0-1.5 s, then re-checked (another screen's carry-over that already landed
+  0-1.5 s (also after the import pass), then re-checked (another screen's carry-over that already landed
   is seen first). If the embedded import has not run yet, it waits for THIS
   screen's import pass (its marker or "incomplete" record, written locally):
   the import saves whole pages built from what the screen held a moment
@@ -254,7 +254,14 @@ create the mark's map; Yjs keeps one, so an edit or delete made on the other
 screen's copy in the short window before the two see each other is lost (a
 deleted mark comes back once). The timing rules above make this need two
 opens within about a second. Same class as two editors running the embedded
-import at once. A true single writer would need a server-side claim. Marks
+import at once. A true single writer would need a server-side claim. An
+edited PDF mark's replace writes every field; if another screen moves that
+re-imported copy in the same short window, the two merge key by key and the
+mark can land in the wrong place until someone moves it again. A PDF mark the
+new importer split into several layers is not replaced (ambiguous); its old
+edit is dropped (Package 2 has none). With a permission rollback in play the
+sync layer re-encodes changes; it copies meta first so the carry record
+still comes before the marks. Marks
 an older build writes after the carry-over are not carried (older builds are
 unsupported).
 
