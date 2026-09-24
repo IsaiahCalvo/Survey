@@ -62,6 +62,23 @@ import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH
 const HISTORY_GLYPH = 14;
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
+import DismissBarrier from './components/DismissBarrier.jsx';
+import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
+
+// The dot between the current page and the page total in the right-rail
+// footer: a drawn 2px circle in the total's grey (see the rail audit note at
+// its use — a font glyph's metrics put it off-centre). The half-pixel drop
+// matches the digits' ink, which the browser snaps ~0.5-1px below their box
+// centre: measured at 2x, the ink gap is 9.5px above the dot and 10px below.
+const RAIL_PAGE_DOT_STYLE = Object.freeze({
+  display: 'block',
+  width: '2px',
+  height: '2px',
+  borderRadius: '50%',
+  background: 'var(--text-3)',
+  flexShrink: 0,
+  transform: 'translateY(0.5px)',
+});
 
 function RailLiveZoomText({ fallback, viewerId }) {
   const [livePercentage, setLivePercentage] = useState(null);
@@ -727,6 +744,30 @@ export default function App({ devPreviewReturnTab = null }) {
   // PDFViewer will publish the live toolbar API into this object in the next
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
+  // UX 2026-09-23 (owner: right rail audit): a click OUTSIDE the rail's page
+  // or zoom field (e.g. on the PDF) leaves the field and commits what you
+  // typed — the house "first click out of a field only dismisses the field"
+  // rule (DismissBarrier). The PDF canvas swallows mousedown focus changes,
+  // so the field used to stay open, still holding your typed page, until you
+  // clicked some other chrome. Escape is left to the field itself (cancel).
+  const railFieldRefs = useMemo(
+    () => [bottomToolbarApi?.pageInputRef, bottomToolbarApi?.zoomInputRef].filter(Boolean),
+    [bottomToolbarApi?.pageInputRef, bottomToolbarApi?.zoomInputRef]
+  );
+  const dismissRailFields = useCallback(() => {
+    setIsEditingRailPage(false);
+    setIsEditingRailZoom(false);
+  }, []);
+  // Same rule for the Fit menu: PDFViewer closes it on a document mousedown,
+  // which never fires over the PDF (the canvas cancels pointerdown, and with
+  // it the mousedown), so a click on the page left the menu open.
+  const railFitMenuRefs = useMemo(
+    () => [bottomToolbarApi?.zoomMenuRef].filter(Boolean),
+    [bottomToolbarApi?.zoomMenuRef]
+  );
+  const dismissRailFitMenu = useCallback(() => {
+    if (bottomToolbarApi?.isZoomMenuOpen) bottomToolbarApi.toggleZoomMenu?.();
+  }, [bottomToolbarApi]);
 
   // PASS 7 (board 14, owner ruling 2026-09-22): the Select tool has NO caret and
   // NO selection-mode pop-up on either platform. Clicking Select arms the family
@@ -3471,12 +3512,28 @@ export default function App({ devPreviewReturnTab = null }) {
               // resting layout stays a single centered value). The handlers
               // clamp to 1-4000, the PDF engine's actual zoom range.
               const zoomValue = isEditingRailZoom ? (
+                <>
                 <input
                   ref={api.zoomInputRef}
                   type="text"
                   autoFocus
-                  value={api.zoomInputValue}
-                  onChange={api.handleZoomInputChange}
+                  /* UX 2026-09-23 (owner: right rail audit): the value you
+                     clicked is selected, so typing REPLACES it (the phone page
+                     field already did this). With the caret parked at the end,
+                     clicking "101%" and typing 150 gave 101150 -> 4000%, and
+                     clicking page "1" and typing 17 gave 117 -> nothing. */
+                  onFocus={(e) => e.target.select()}
+                  /* Uncontrolled while it is open (it mounts fresh per edit):
+                     its value comes back from PDFViewer a render late, and a
+                     controlled field snapped back to that stale value between
+                     fast keystrokes and dropped digits. The DOM value is
+                     filtered here and is what Enter / blur commit. */
+                  defaultValue={api.zoomInputValue}
+                  onChange={(e) => {
+                    const clean = sanitizeZoomInput(e.target.value);
+                    if (clean !== e.target.value) e.target.value = clean;
+                    api.handleZoomInputChange(e);
+                  }}
                   onKeyDown={(e) => {
                     api.handleZoomInputKeyDown(e);
                     if (e.key === 'Enter' || e.key === 'Escape') setIsEditingRailZoom(false);
@@ -3493,6 +3550,8 @@ export default function App({ devPreviewReturnTab = null }) {
                      not twitch when it swaps in. */
                   style={{ width: '36px', background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
+                <DismissBarrier active insideRefs={railFieldRefs} onDismiss={dismissRailFields} dismissOnEscape={false} />
+                </>
               ) : (
                 <button
                   type="button"
@@ -3516,13 +3575,20 @@ export default function App({ devPreviewReturnTab = null }) {
               // Editable current page — plain accent-colored number by
               // default (Walkthru style), click or double-click to jump.
               const pageValue = isEditingRailPage ? (
+                <>
                 <input
                   ref={api.pageInputRef}
                   type="text"
                   data-page-number-input
                   autoFocus
-                  value={api.pageInputValue}
-                  onChange={api.handlePageInputChange}
+                  onFocus={(e) => e.target.select()}
+                  /* Uncontrolled while open — same reason as the zoom field. */
+                  defaultValue={api.pageInputValue}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/\D/g, '');
+                    if (clean !== e.target.value) e.target.value = clean;
+                    api.handlePageInputChange(e);
+                  }}
                   onKeyDown={(e) => {
                     api.handlePageInputKeyDown(e);
                     if (e.key === 'Enter' || e.key === 'Escape') setIsEditingRailPage(false);
@@ -3536,6 +3602,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-label="Current page"
                   style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
+                <DismissBarrier active insideRefs={railFieldRefs} onDismiss={dismissRailFields} dismissOnEscape={false} />
+                </>
               ) : (
                 <button
                   type="button"
@@ -3562,6 +3630,7 @@ export default function App({ devPreviewReturnTab = null }) {
               // --chrome-radius 6 — it met neither token.
               const fitMenu = (anchorStyle) => (
                 <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--chrome-radius)', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;
@@ -3621,9 +3690,19 @@ export default function App({ devPreviewReturnTab = null }) {
                     </span>
                     {pageValue}
                     {/* Middle dot between current page above and total below
-                        — the Walkthru slim-rail convention. */}
-                    <span aria-hidden="true" style={{ color: 'var(--text-3)', fontSize: '14px', lineHeight: 0.5, fontFamily: FONT_FAMILY }}>·</span>
-                    <span style={{ color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                        — the Walkthru slim-rail convention.
+                        UX 2026-09-23 (owner: right rail audit, "the dot seems
+                        lower, in favour of the last page"): measured, it was —
+                        11.5px of space above it against 8px below, because the
+                        page number is a 20px field and the total was a bare
+                        10px line, and the dot was a font glyph squeezed to a
+                        0.5 line height. Now the dot is a drawn 2px circle (no
+                        font metrics to drift) and the total sits in the same
+                        20px box as the page number, so the stack is
+                        field / gap / dot / gap / field and the dot lands on the
+                        midpoint of the two numbers by construction. */}
+                    <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'var(--chrome-field-h)', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                       {api.numPages}
                     </span>
                     <span {...chromeTip('Next page', 'left')} style={{ display: 'inline-flex' }}>
@@ -3672,9 +3751,14 @@ export default function App({ devPreviewReturnTab = null }) {
                           name="chevronLeft"
                           size={RAIL_CARET}
                           color="currentColor"
-                          style={{ position: 'absolute', left: '2px', top: '50%', transform: 'translateY(-50%)' }}
+                          /* UX 2026-09-23 (rail audit): centred with
+                             top/bottom/margin, not a translate, so the
+                             rail's glyph hover-grow / press-tighten transform
+                             (states.css) can reach both marks — an inline
+                             transform here silently cancelled it. */
+                          style={{ position: 'absolute', left: '2px', top: 0, bottom: 0, margin: 'auto 0' }}
                         />
-                        <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                         </span>
                       </button>
@@ -3721,10 +3805,14 @@ export default function App({ devPreviewReturnTab = null }) {
                       <Icon name="chevronLeft" size={RAIL_CONTROL_GLYPH} />
                     </button>
                   </span>
+                  {/* UX 2026-09-23 (rail audit): the same drawn dot as the
+                      vertical stack, and the total takes the page field's 4px
+                      side padding, so the dot sits the same distance from both
+                      numbers (it was 7px from the page, 3px from the total). */}
                   <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
                     {pageValue}
-                    <span aria-hidden="true" style={{ color: 'var(--text-3)' }}>·</span>
-                    <span style={{ color: 'var(--text-3)' }}>{api.numPages}</span>
+                    <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
+                    <span style={{ color: 'var(--text-3)', padding: '0 4px' }}>{api.numPages}</span>
                   </span>
                   <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
                     <button

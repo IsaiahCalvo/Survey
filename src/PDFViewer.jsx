@@ -97,6 +97,7 @@ import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, resolve
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
+import { parseZoomPercentInput, resolvePageInput, sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
 // PERF (KAL-384): pdf-lib is the PDF *export/write* library, not the renderer.
 // It is only needed when the user exports an annotated PDF, exports a space to
@@ -8762,6 +8763,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               calibrateElectronFactor(postScale);
             }
           });
+        } else if (mode === ZOOM_MODES.FIT_HEIGHT && typeof magnification.fitToHeight === 'function') {
+          // UX 2026-09-23 (owner: right rail audit): Fit height is measured by
+          // the viewer from the CURRENT page, with the same page gaps Fit page
+          // uses, and lands that page. The fallback below divided the wrapper
+          // by a calibrated factor taken from the first mounted page — on a
+          // mixed portrait/landscape set that factor was off 2x (211% instead
+          // of 105%), and it ignored the page gaps (page overran by 0.6px).
+          magnification.fitToHeight();
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const postZoom = (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null);
+            if (typeof postZoom === 'number' && postZoom > 0) setScale(postZoom / 100);
+          }));
         } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
           if (wrapperH > 0 && pdfPageSize?.height > 0) {
             const realPageH = pdfPageSize.height * electronFactor;
@@ -24146,9 +24159,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsPageInputDirty(true);
   }, []);
 
-  const commitPageInput = useCallback(() => {
-    const value = parseInt(pageInputValue);
-    if (!isNaN(value) && value >= 1 && value <= numPages) {
+  // UX 2026-09-23 (owner: right rail audit): Escape in the page / zoom field
+  // CANCELS. Both handlers blur the field after Escape, and the blur handler
+  // commits — reading the typed value from a closure the reset had not yet
+  // reached, so Escape used to apply the value you were abandoning (typed 250,
+  // Escape -> zoom went to 250%). These flags make that one blur a no-op.
+  const skipPageInputCommitRef = useRef(false);
+  const skipZoomInputCommitRef = useRef(false);
+
+  // `typed` is the field's own DOM value when the caller has it. The state
+  // copy reaches AppShell's rail field a render late (PDFViewer publishes
+  // the toolbar API through an effect), so a fast "17" + Enter could commit
+  // the stale "1" — measured: 2 of 4 fast-typed jumps went to the wrong page.
+  const commitPageInput = useCallback((typed) => {
+    // Out-of-range numbers clamp to the first / last page (99 -> 36, 0 -> 1);
+    // they used to be dropped silently. Non-numbers cancel.
+    const value = resolvePageInput(typeof typed === 'string' ? typed : pageInputValue, numPages);
+    if (value !== null) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
       goToPage(value);
       // Also set it immediately for visual feedback, but useEffect will ensure it's correct
@@ -24164,13 +24191,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitPageInput();
+      commitPageInput(e.target.value);
+      skipPageInputCommitRef.current = true;
       e.target.blur();
+      skipPageInputCommitRef.current = false;
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setPageInputValue(String(pageNum));
+      setIsPageInputDirty(false);
+      skipPageInputCommitRef.current = true;
+      e.target.blur();
+      skipPageInputCommitRef.current = false;
     }
-  }, [commitPageInput]);
+  }, [commitPageInput, pageNum]);
 
-  const handlePageInputBlur = useCallback(() => {
-    commitPageInput();
+  const handlePageInputBlur = useCallback((e) => {
+    if (skipPageInputCommitRef.current) return;
+    commitPageInput(e?.target?.value);
   }, [commitPageInput]);
 
   useEffect(() => {
@@ -24225,36 +24262,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [scale]);
 
   const handleZoomInputChange = useCallback((e) => {
-    const digitsOnly = e.target.value.replace(/\D/g, '');
     // Keep typed zoom inside the same 1%-4000% contract as the PDF engine.
     // Min is not clamped here;
     // typing "5" should not jump to "10" mid-keystroke. Final min clamp
-    // happens on commit in commitZoomInput.
-    if (digitsOnly === '') {
-      setZoomInputValue('');
-      return;
-    }
-    const numeric = parseInt(digitsOnly, 10);
-    if (Number.isFinite(numeric) && numeric > 4000) {
-      setZoomInputValue('4000');
-    } else {
-      setZoomInputValue(digitsOnly);
-    }
+    // happens on commit in commitZoomInput. One decimal point is kept
+    // (2026-09-23 rail audit): "12.5" used to become "125", a 10x zoom.
+    setZoomInputValue(sanitizeZoomInput(e.target.value));
   }, []);
 
-  const commitZoomInput = useCallback(() => {
-    if (!zoomInputValue) {
+  const commitZoomInput = useCallback((typed) => {
+    // `typed` = the field's DOM value (see commitPageInput for why).
+    const source = typeof typed === 'string' ? typed : zoomInputValue;
+    if (!source) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;
     }
 
-    const parsed = parseInt(zoomInputValue, 10);
-    if (isNaN(parsed)) {
+    const clamped = parseZoomPercentInput(source);
+    if (clamped === null) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;
     }
 
-    const clamped = Math.min(Math.max(parsed, 1), 4000);
     const controller = zoomControllerRef.current;
     if (controller) {
       const normalized = clampScale(clamped / 100);
@@ -24269,16 +24298,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleZoomInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitZoomInput();
+      commitZoomInput(e.currentTarget.value);
+      skipZoomInputCommitRef.current = true;
       e.currentTarget.blur();
+      skipZoomInputCommitRef.current = false;
     } else if (e.key === 'Escape') {
       setZoomInputValue(String(Math.round(scale * 100)));
+      skipZoomInputCommitRef.current = true;
       e.currentTarget.blur();
+      skipZoomInputCommitRef.current = false;
     }
   }, [commitZoomInput, scale]);
 
-  const handleZoomInputBlur = useCallback(() => {
-    commitZoomInput();
+  const handleZoomInputBlur = useCallback((e) => {
+    if (skipZoomInputCommitRef.current) return;
+    commitZoomInput(e?.target?.value);
   }, [commitZoomInput]);
 
   const mobileSurveyModules = useMemo(

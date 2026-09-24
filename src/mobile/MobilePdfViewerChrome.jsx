@@ -1075,9 +1075,17 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                 inputMode="numeric"
                 maxLength={3}
                 autoFocus
-                value={bottomToolbarApi?.pageInputValue ?? ''}
+                /* Uncontrolled while open (2026-09-23 rail audit): the value
+                   returns from PDFViewer a render late, so a controlled field
+                   snapped back between fast keystrokes and dropped digits.
+                   Enter / blur commit this DOM value. */
+                defaultValue={bottomToolbarApi?.pageInputValue ?? ''}
                 onFocus={(event) => event.target.select()}
-                onChange={bottomToolbarApi?.handlePageInputChange}
+                onChange={(event) => {
+                  const clean = event.target.value.replace(/\D/g, '');
+                  if (clean !== event.target.value) event.target.value = clean;
+                  bottomToolbarApi?.handlePageInputChange?.(event);
+                }}
                 onKeyDown={(event) => {
                   bottomToolbarApi?.handlePageInputKeyDown?.(event);
                   if (event.key === 'Enter') setPageEditing(false);

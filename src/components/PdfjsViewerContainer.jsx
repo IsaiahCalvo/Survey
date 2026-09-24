@@ -59,6 +59,7 @@ import {
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
+import { computeFitScale, pickCurrentPage } from '../utils/pageNavigationMath.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1342,17 +1343,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // tops are in raw content space; padTop (the centering margin) shifts the
     // painted pages down by that much relative to the scroll origin.
     const padTop = padTopRef.current;
-    // Middle of the part you can SEE: below any tool strips over the top.
+    // UX 2026-09-23 (owner: right rail audit): the current page is the one
+    // with the largest visible share of itself, and a page that stays fully
+    // visible stays current (pickCurrentPage has the full rule + why). The old
+    // viewport-midpoint rule named page N+1 right after a jump to a short page N.
+    // Merge 2026-09-23: "visible" starts BELOW any tool strips over the top
+    // (topInsetRef, owner: scroll the page out from under toolbars).
     const inset = Math.min(topInsetRef.current, el.clientHeight);
-    const mid = el.scrollTop + inset + (el.clientHeight - inset) / 2 - padTop;
-    let page = 1;
-    const metrics = layoutMetricsRef.current;
-    // Gap is zoom-proportional (see layout memo), so page-band detection uses the
-    // scaled gap too — keeps the current-page boundary aligned with the real layout.
-    for (let i = 0; i < tops.length; i += 1) {
-      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + metrics.gap * scaleRef.current) { page = i + 1; break; }
-      if (mid >= tops[i]) page = i + 1;
-    }
+    const viewTop = el.scrollTop - padTop;
+    const page = pickCurrentPage({
+      pageTops: tops,
+      pageHeights: dims.map((d) => d.h * scaleRef.current),
+      viewTop: viewTop + inset,
+      viewBottom: viewTop + el.clientHeight,
+      currentPage: currentPageRef.current,
+    });
     clampHorizontalScrollForPage(page - 1);
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
@@ -2588,40 +2593,49 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el) return;
     let newScale = target;
-    if (target === 'fit' || target === 'fitw') {
+    const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
+    // UX 2026-09-23 (owner: right rail audit): a fit is measured against the
+    // page you are LOOKING AT. It used pageSizes[range[0]] — the first MOUNTED
+    // page, an overscan page above the view — so on a mixed-size set (portrait
+    // cover, landscape sheets) Fit width on sheet 3 sized to the portrait cover
+    // and the sheet ran 632px off each side. dims are already rotation-applied.
+    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, (currentPageRef.current || 1) - 1));
+    if (isFit) {
       const metrics = layoutMetricsRef.current;
-      const s0 = pageSizes[Math.max(0, range[0])] || pageSizes[0] || { w: 612, h: 792 };
-      const rot90 = rotation === 90 || rotation === 270;
-      const pw = rot90 ? s0.h : s0.w;
-      const ph = rot90 ? s0.w : s0.h;
-      const fw = getFitWidthForContainer(el.clientWidth, metrics) / pw;
-      // Fit into the part you can see, below any tool strips over the top.
-      const fh = Math.max(1, el.clientHeight - topInsetRef.current - metrics.padTop - metrics.padBottom)
-        / (ph + (2 * metrics.gap));
-      newScale = target === 'fitw' ? fw : Math.min(fw, fh);
+      const d = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
+      newScale = computeFitScale({
+        mode: target === 'fitw' ? 'fitWidth' : target === 'fith' ? 'fitHeight' : 'fitPage',
+        pageW: d.w,
+        pageH: d.h,
+        viewportW: el.clientWidth,
+        // Merge 2026-09-23: fit into the part you can SEE, below any tool
+        // strips over the top of the viewer.
+        viewportH: Math.max(1, el.clientHeight - topInsetRef.current),
+        padX: metrics.padX,
+        gap: metrics.gap,
+        padTop: metrics.padTop,
+        padBottom: metrics.padBottom,
+        maxPageWidth: metrics.maxPageWidth,
+      });
     }
+    const before = scaleRef.current;
     // Zoom buttons and fits hold the middle of the VISIBLE area still.
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     applyAnchoredScale(newScale, el.clientWidth / 2, inset + (el.clientHeight - inset) / 2);
-    // Fit page with tool strips over the top: show the current page whole in
-    // the band below them (centred; top edge just below the strips if it is
-    // taller than the band). With no strips this is untouched.
-    if (target === 'fit' && inset > 0) {
-      const dims = dimsPtRef.current;
-      const i = Math.max(0, Math.min(dims.length - 1, currentPageRef.current - 1));
-      const committedScale = scaleRef.current;
-      if (dims[i]) {
-        const band = el.clientHeight - inset;
-        const pageH = dims[i].h * committedScale;
-        const top = Math.max(0, topAt(i, committedScale) - inset - Math.max(0, (band - pageH) / 2));
-        if (pendingAnchorRef.current) {
-          pendingAnchorRef.current = { ...pendingAnchorRef.current, top, pageIndex: i };
-        } else {
-          el.scrollTop = top;
-        }
+    // Fit page / Fit height promise the whole page height on screen, so they
+    // also land the page: its own top gap just below any tool strips, which
+    // with the fitted scale leaves the matching gap at the bottom. Anchoring on
+    // the view centre alone left half of the next page showing after a fit.
+    if (isFit && target !== 'fitw' && dimsPtRef.current.length) {
+      const s = scaleRef.current;
+      const landTop = topAt(pageIndex, s) - layoutMetricsRef.current.gap * s - inset;
+      if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
+        pendingAnchorRef.current = { ...pendingAnchorRef.current, top: landTop, pageIndex };
+      } else {
+        el.scrollTop = Math.max(0, landTop);
       }
     }
-  }, [pageSizes, range, applyAnchoredScale]);
+  }, [applyAnchoredScale]);
 
   const goToPage = useCallback((n) => {
     const el = scrollerRef.current;
@@ -2636,15 +2650,30 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
     // tops are raw-content-space; padTop shifts the painted page down by that much.
     // (When padTop > 0 the whole doc fits and maxTop clamps this to 0 anyway.)
-    // The page lands with its top just BELOW any tool strips over the viewer
-    // (owner 2026-09-23), not hidden under them.
+    // UX 2026-09-23: the page lands with its own (zoom-proportional) top gap
+    // showing (owner: right rail audit), just BELOW any tool strips over the
+    // viewer (owner: scroll the page out from under toolbars).
     el.scrollTop = resolvePageLandingScrollTop({
       padTop: padTopRef.current,
-      pageTop: tops[i],
+      pageTop: (tops[i] - layoutMetricsRef.current.gap * scaleRef.current),
       fixedTopInset: layoutMetricsRef.current.padTop,
       overlayInset: topInsetRef.current,
     });
     el.scrollLeft = Math.min(el.scrollLeft, getPageHorizontalScrollMax(i, scaleRef.current));
+    // The page you asked for IS the current page (the scroll event that
+    // follows keeps it while it stays fully visible), so the rail never shows
+    // a neighbour after a jump — including at the end of the document, where
+    // the last pages cannot scroll to the top of the view.
+    if (currentPageRef.current !== i + 1) {
+      const prev = currentPageRef.current;
+      currentPageRef.current = i + 1;
+      cb.current.onPageChanged?.({
+        currentPageNumber: i + 1,
+        previousPageNumber: prev ?? null,
+        pageCount: numPagesRef.current,
+        raw: { scrollTop: el.scrollTop },
+      });
+    }
     return true;
   }, [cancelPanInertia, getPageHorizontalScrollMax]);
 
@@ -2772,6 +2801,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         zoomTo: (pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) zoomToScale(s); },
         fitToPage: () => zoomToScale('fit'),
         fitToWidth: () => zoomToScale('fitw'),
+        fitToHeight: () => zoomToScale('fith'),
         initiateMouseZoom: (x, y, pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) applyAnchoredScale(s, Number(x) || 0, Number(y) || 0); },
       },
       // document / thumbnails / bookmarks
