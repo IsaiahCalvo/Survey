@@ -45,7 +45,8 @@ import {
 // Store version 3 (2026-09-24): marks live in their own root map; the map's
 // NAME is the version (nothing else is stamped, so no extra write). The v1
 // whole-object `annotations` map is left untouched for the reference build
-// and never read or written (owner ruling: old data may be lost).
+// and never written; its user-drawn marks are carried into `marks` once per
+// document (w28, legacyMarksCarryOver.js).
 export const MARKS_MAP = 'marks';
 export const LEGACY_ANNOTATIONS_MAP = 'annotations';
 export const ANNOTATION_STORE_VERSION = 3;

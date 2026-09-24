@@ -57,8 +57,8 @@ export {
 } from './annotationMarkStore.js';
 
 // Store version 3 (2026-09-24): per-field marks live in the `marks` root map.
-// The v1 whole-object `annotations` map is never read or written by this build
-// (owner ruling: no older builds, old data may be lost).
+// The v1 whole-object `annotations` map is never written by this build; its
+// user-drawn marks are carried into `marks` once (w28, legacyMarksCarryOver.js).
 export const ANNOTATIONS_MAP = MARKS_MAP;
 export const ERASER_OPS_MAP = 'annotationEraserOps';
 export const META_MAP = 'annoMeta';

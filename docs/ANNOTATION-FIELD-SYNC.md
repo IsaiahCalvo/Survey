@@ -30,8 +30,9 @@ marks[storageKey] = Y.Map {
 Marks live in a NEW root map, `marks`. The map's name is the store version
 (v3); nothing else is stamped. The old whole-object `annotations` map is left
 untouched in every document for the reference build, and this build never
-reads or writes it: marks made by older builds simply do not show (owner
-ruling: old data may be lost). There is no conversion. Everything else in the
+writes it. It reads it once per document: marks drawn on older builds are
+carried into `marks` by a one-time carry-over (w28, see "Marks drawn on older
+builds" below). Everything else in the
 document is unchanged and shared: eraser lanes, deletion tombstones, survey
 markers, meta (spaces, callout list), the erase outbox.
 
@@ -177,14 +178,60 @@ version (`src/utils/embeddedImportGate.js`, the import effect in
   changes in order, so a peer holds the marker back until those marks have
   arrived (see the split-row section below).
 
-What an open of a document edited by older builds shows: only the PDF's own
-markup (re-imported) plus marks made on this build. Marks drawn with an older
-build stay in the old `annotations` map and do not show (owner ruling). The
+What an open of a document edited by older builds shows: the PDF's own
+markup (re-imported) plus marks made on this build, plus (w28) the marks
+drawn with an older build, carried over once (next section). The
 home list thumbnail is a per-browser cache; one captured by an older build
 still shows those old marks until the document is opened on this build
 (it is refreshed ~2.5 s after the open). Seen on "Package 2 - Rev 4 -- IC.pdf"
 (w27): its page-1 red marks (a rectangle, pen strokes, counters, text) were
 drawn with an older build; the PDF file itself has markup only on pages 6-11.
+
+## Marks drawn on older builds (w28, 2026-09-24)
+
+The owner saw the cost of dropping them ("Package 2 - Rev 4 -- IC.pdf": 12
+marks on page 1, 3 pen strokes on page 11 no longer showed) and wants them
+back. `src/services/legacyMarksCarryOver.js` copies them into `marks` once
+per document; `useAnnotationDoc` runs it on a writable open.
+
+* Only marks the user drew. An entry imported from the PDF file itself
+  (`isPdfImported` or `pdfAnnotationId`; paste clones drop both) is left to
+  the embedded import above, which re-imports the file's markup and honours
+  tombstones. Older builds keyed some of those differently (Package 2: 886 of
+  3,056 under the bare PDF id, the new import uses
+  `pdf-appearance:<id>:layer:0`), so carrying them would draw them twice.
+  An edit an older build made to one of the PDF's own marks is therefore not
+  carried: the file's original shows.
+* Same key as before, so the mark keeps its id, its eraser lanes (shared by
+  every build, keyed by storage key) and its counter numbering. Written
+  through `writeAnnotationMark`, the same writer as any new mark; the read
+  side normalizes identity exactly as the old read did, so every type reads
+  back with the same fields (tests/legacyMarksCarryOver.test.mjs).
+* A key already in `marks` is never written (a newer edit or another screen's
+  carry-over wins). Nothing is deleted from either map; the old map is only
+  read.
+* Batches of ~192 KB of mark JSON per transaction; the WAL split cuts any
+  update over 256 KB into chained parts as for any edit.
+* The marker `legacyMarksCarriedIntoMarks` (annoMeta) is written in its own
+  transaction after every carried mark, so no peer sees it without them.
+  With the marker present the carry-over never runs again: a carried mark
+  deleted later stays deleted. A document with no old user-drawn marks gets
+  no writes and no marker.
+* Paint order. Older builds imported the PDF's markup at the first open, so
+  the user's marks painted on top of it. Pages paint in store order and the
+  embedded import appends, so on a document whose embedded import has not
+  run on this build yet, the hook waits for that pass (its marker, or its
+  "incomplete, retry" record) before carrying. If no pass finishes within
+  60 s (import failed, PDF never loaded) it carries anyway.
+* Viewers and an unresolved role never write; the next writable open (or the
+  role resolving to writable) does it.
+
+Limits: two screens carrying the same document at the same moment each
+create the mark's map; Yjs keeps one, so an edit or delete made on the other
+screen's copy in the short window before the two see each other is lost (the
+delete: the mark comes back once). Same class as two editors running the
+embedded import at once. Marks an older build writes after the carry-over
+are not carried (older builds are unsupported).
 
 ## Older builds
 
@@ -314,4 +361,5 @@ Rebased staging collects changed ROOT keys with
 * The live re-send queue is in memory and bounded (see above): if the tab
   closes before the re-send lands, or the update is too large or keeps
   failing, open peers get the edit when they reopen.
-* Marks made by older builds (the `annotations` map) are not shown.
+* Marks drawn on older builds are carried over once (w28, above); edits an
+  older build makes after that are not.

@@ -74,6 +74,7 @@ import {
   rootKeysChangedByTransaction,
 } from './annotationMarkStore.js';
 import { WAL_UPDATE_MAX_BYTES, splitYjsUpdate } from './annotationUpdateSplit.js';
+import { carryOverLegacyMarks } from './legacyMarksCarryOver.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -4045,6 +4046,22 @@ function makeHandle(state) {
       assertHandleWritable(state);
       const result = repairStackedInkDuplicates(state.doc, opts);
       if (result.removed > 0) {
+        state.lastByPage = null;
+        if (notify) notifyChange(state);
+      }
+      return result;
+    },
+
+    /**
+     * w28: copy marks drawn on older builds (the old `annotations` map) into
+     * `marks` once (legacyMarksCarryOver.js). Writes are 'local', so they go
+     * through the WAL append path like any edit (split under 256 KB). Local
+     * writes do not echo to React, so publish when anything was carried.
+     */
+    carryOverLegacyMarks({ notify = true } = {}) {
+      assertHandleWritable(state);
+      const result = carryOverLegacyMarks(state.doc, { origin: 'local' });
+      if (result.carried > 0) {
         state.lastByPage = null;
         if (notify) notifyChange(state);
       }

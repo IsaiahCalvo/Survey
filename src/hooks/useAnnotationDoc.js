@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import {
+  META_MAP,
   getAnnotationsMap,
   preserveTransientPagePresentationState,
   setMetaValue as setMetaValueOnDoc,
@@ -33,8 +34,19 @@ import {
   projectCalloutsIntoByPage as projectCalloutsIntoByPageShared,
   deriveCalloutsFromByPage,
 } from '../utils/calloutAnnotationBridge.js';
+import {
+  legacyCarryOverWaitsForEmbeddedImport,
+  legacyMarksCarryOverPending,
+} from '../services/legacyMarksCarryOver.js';
+import {
+  EMBEDDED_IMPORT_INCOMPLETE_KEY,
+  EMBEDDED_IMPORT_MARKER_KEY,
+} from '../utils/embeddedImportGate.js';
 
 const SPACES_KEY = 'spaces';
+// w28: how long a writable open waits for the PDF's own embedded import
+// before carrying old marks anyway (see the carry-over effect below).
+const LEGACY_CARRY_WAIT_MS = 60_000;
 // Failed-open retry (w26): 2 s, 4 s, 8 s ... capped at 60 s, 8 tries per document.
 const OPEN_RETRY_BASE_DELAY_MS = 2_000;
 const OPEN_RETRY_MAX_DELAY_MS = 60_000;
@@ -177,6 +189,35 @@ function runDurableStackedInkRepair(handle, documentId, opts = {}) {
     // Never block hydration. An exact repair can safely retry on the next
     // confirmed-writable open if local storage or persistence is unavailable.
     console.error('[useAnnotationDoc] stacked ink repair failed', err?.message);
+    return null;
+  }
+}
+
+// w28 (2026-09-24): marks drawn on older builds live in the old `annotations`
+// map, which the per-field store does not read. The owner wants them shown,
+// so the first writable open of each document copies them into `marks` once
+// (legacyMarksCarryOver.js: old ids, never overwrites, marker last). Viewers
+// and an unresolved role never write. Returns the result, or null on error
+// (never blocks hydration; the next writable open retries).
+function runLegacyMarksCarryOver(handle, documentId, { notify, reason }) {
+  if (typeof handle?.carryOverLegacyMarks !== 'function') return null;
+  try {
+    const result = handle.carryOverLegacyMarks({ notify });
+    if (result?.status === 'done') {
+      console.log('[useAnnotationDoc] carried marks from older builds', {
+        documentId,
+        reason,
+        carried: result.carried,
+        alreadyPresent: result.alreadyPresent,
+        eligible: result.eligible,
+        skippedPdfImported: result.skippedPdf,
+        skippedUnreadable: result.skippedInvalid,
+        batches: result.batches,
+      });
+    }
+    return result;
+  } catch (err) {
+    console.error('[useAnnotationDoc] carrying marks from older builds failed', err?.message);
     return null;
   }
 }
@@ -434,6 +475,15 @@ export function useAnnotationDoc({
         if (runDurableCalloutMigration(handle, pageSizesRef?.current, documentId)) {
           migrationDoneRef.current = documentId;
         }
+        // w28: marks drawn on older builds show with the first paint when the
+        // PDF's own import already ran (otherwise the effect below waits for
+        // it, so they stay on top of the PDF's markup as before).
+        if (
+          legacyMarksCarryOverPending(handle.doc)
+          && !legacyCarryOverWaitsForEmbeddedImport(handle.doc)
+        ) {
+          runLegacyMarksCarryOver(handle, documentId, { notify: false, reason: 'open' });
+        }
       }
 
       const storeByPage = handle.getByPage();
@@ -626,6 +676,59 @@ export function useAnnotationDoc({
     // pageSizesRef is a ref (stable identity) — intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docRole, initialHydration, documentId]);
+
+  // w28: carry marks drawn on older builds into the per-field store, once per
+  // document (legacyMarksCarryOver.js), on a writable open that is ready.
+  // UX: they must look exactly as they did, including sitting ON TOP of the
+  // PDF's own markup (older builds imported that at the first open, before
+  // anything was drawn). The page paints in store order and the embedded
+  // import appends, so when that import has not run on this build yet, wait
+  // for its pass to finish (its marker, or its "incomplete, retry" record,
+  // local or from another screen), then carry. If no pass finishes within
+  // LEGACY_CARRY_WAIT_MS (the import failed, or the PDF never loaded), carry
+  // anyway: showing the marks beats the paint order. The carried marks are
+  // published to the screen through the normal change path.
+  useEffect(() => {
+    if (!isWritableDocRole(docRole)) return undefined;
+    if (!initialHydration.ready || initialHydration.documentId !== documentId) return undefined;
+    const h = handleRef.current;
+    if (!h || !readyRef.current || typeof h.carryOverLegacyMarks !== 'function') return undefined;
+    if (!legacyMarksCarryOverPending(h.doc)) return undefined;
+    let finished = false;
+    let deferTimer = null;
+    let waitTimer = null;
+    const meta = h.doc.getMap(META_MAP);
+    const stop = () => {
+      finished = true;
+      meta.unobserve(onMeta);
+      if (deferTimer) clearTimeout(deferTimer);
+      if (waitTimer) clearTimeout(waitTimer);
+    };
+    const run = (reason) => {
+      if (finished) return;
+      stop();
+      if (handleRef.current !== h || !readyRef.current) return;
+      if (!legacyMarksCarryOverPending(h.doc)) return;
+      runLegacyMarksCarryOver(h, documentId, { notify: true, reason });
+    };
+    // Observers run inside Yjs's transaction cleanup: write from a fresh task.
+    function onMeta(event) {
+      if (finished) return;
+      if (
+        !event.keysChanged.has(EMBEDDED_IMPORT_MARKER_KEY)
+        && !event.keysChanged.has(EMBEDDED_IMPORT_INCOMPLETE_KEY)
+      ) return;
+      if (deferTimer) return;
+      deferTimer = setTimeout(() => { deferTimer = null; run('after-embedded-import'); }, 0);
+    }
+    if (!legacyCarryOverWaitsForEmbeddedImport(h.doc)) {
+      run('open');
+      return stop;
+    }
+    meta.observe(onMeta);
+    waitTimer = setTimeout(() => { waitTimer = null; run('wait-timeout'); }, LEGACY_CARRY_WAIT_MS);
+    return stop;
+  }, [docRole, initialHydration.ready, initialHydration.documentId, documentId]);
 
   // Capture space changes (document-level; coarse whole-array, no-op when
   // unchanged). Spaces + their region polygons now live durably in the Y.Doc
