@@ -50,6 +50,15 @@ import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
+import {
+  compensateScrollTopForRoom,
+  computeTopOverlayInset,
+  getViewerTopOverlays,
+  resolvePageLandingScrollTop,
+  resolveTopRoom,
+  resolveVerticalPlacement,
+  subscribeViewerTopOverlays,
+} from '../utils/viewerTopOverlay.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1090,6 +1099,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const containerHRef = useRef(600);
   const topsRef = useRef([]);
   const padTopRef = useRef(0);
+  // UX (owner 2026-09-23: scroll the page out from under the toolbars). The tool
+  // strips lie OVER the top of this scroller (Drawboard-style: they never push
+  // the page down). topInsetRef is their live measured height; topRoom is the
+  // extra scroll room kept above page 1 so the page top can be scrolled clear of
+  // them. See src/utils/viewerTopOverlay.js for the no-jump rules.
+  const [topRoom, setTopRoom] = useState(0);
+  const topRoomRef = useRef(0);
+  topRoomRef.current = topRoom;
+  const appliedTopRoomRef = useRef(0);
+  const topInsetRef = useRef(0);
   const interactionModeRef = useRef(interactionMode);
   interactionModeRef.current = interactionMode;
   const spacePanRef = useRef(false);
@@ -1298,9 +1317,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // and never goes negative. Content taller than the viewport (overflow case)
     // yields padTop=0 and the layout is unchanged.
     const rawTotalH = y + metrics.padBottom;
-    const padTop = Math.max(0, (containerH - rawTotalH) / 2);
-    return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentW };
-  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics]);
+    // padTop = centring margin + the scroll room above page 1 kept for the tool
+    // strips overlaying the top of the viewer (topRoom, 0 when none).
+    const { padTop, contentHeight } = resolveVerticalPlacement({
+      containerHeight: containerH,
+      rawTotalHeight: rawTotalH,
+      topRoom,
+    });
+    return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
+  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics, topRoom]);
 
   dimsPtRef.current = layout.dims;
   containerWRef.current = containerW;
@@ -1317,7 +1342,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // tops are in raw content space; padTop (the centering margin) shifts the
     // painted pages down by that much relative to the scroll origin.
     const padTop = padTopRef.current;
-    const mid = el.scrollTop + el.clientHeight / 2 - padTop;
+    // Middle of the part you can SEE: below any tool strips over the top.
+    const inset = Math.min(topInsetRef.current, el.clientHeight);
+    const mid = el.scrollTop + inset + (el.clientHeight - inset) / 2 - padTop;
     let page = 1;
     const metrics = layoutMetricsRef.current;
     // Gap is zoom-proportional (see layout memo), so page-band detection uses the
@@ -1401,6 +1428,81 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return () => ro.disconnect();
   }, []);
 
+  // ---- scroll room for the tool strips over the top of the viewer ----------
+  // Re-resolve the room from the measured strip height. Growing takes effect at
+  // once; shrinking only gives back room already scrolled off screen, so the
+  // page never moves (resolveTopRoom). Skipped mid pinch/wheel zoom, whose
+  // preview holds absolute scroll coordinates; the next scroll picks it up.
+  const syncTopRoom = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el || gestureRef.current) return;
+    const next = resolveTopRoom({
+      room: topRoomRef.current,
+      inset: topInsetRef.current,
+      scrollTop: el.scrollTop,
+    });
+    if (next !== topRoomRef.current) {
+      topRoomRef.current = next;
+      setTopRoom(next);
+    }
+  }, []);
+
+  // Measure the strips live: a ResizeObserver on each registered strip (a strip
+  // hidden with display:none resizes to 0) and on the scroller itself.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    let raf = 0;
+    const observed = new Set();
+    const measure = () => {
+      raf = 0;
+      const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
+      const inset = computeTopOverlayInset(
+        el.getBoundingClientRect(),
+        strips.map((node) => node.getBoundingClientRect()),
+      );
+      if (inset !== topInsetRef.current) {
+        topInsetRef.current = inset;
+        syncTopRoom();
+      }
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(measure);
+    };
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    const syncObserved = () => {
+      const current = new Set(getViewerTopOverlays());
+      observed.forEach((node) => {
+        if (!current.has(node)) { ro.unobserve(node); observed.delete(node); }
+      });
+      current.forEach((node) => {
+        if (!observed.has(node)) { ro.observe(node); observed.add(node); }
+      });
+      schedule();
+    };
+    syncObserved();
+    const unsubscribe = subscribeViewerTopOverlays(syncObserved);
+    window.addEventListener('resize', schedule);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('resize', schedule);
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [syncTopRoom]);
+
+  // Hold the page still when the room changes: move the scroll offset by the
+  // same amount, in the same frame the content's top margin changes.
+  useLayoutEffect(() => {
+    const previous = appliedTopRoomRef.current;
+    appliedTopRoomRef.current = topRoom;
+    if (previous === topRoom) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = compensateScrollTopForRoom(el.scrollTop, previous, topRoom);
+  }, [topRoom]);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
@@ -1415,12 +1517,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             `PDF scroll position ${Math.round(el.scrollLeft)} ${Math.round(el.scrollTop)}`,
           );
         }
+        // Strips closed while you were scrolled up into their room: give the
+        // room back as it scrolls off screen.
+        if (topRoomRef.current > topInsetRef.current) syncTopRoom();
         recomputeWindow();
       });
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { el.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
-  }, [recomputeWindow]);
+  }, [recomputeWindow, syncTopRoom]);
 
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
 
@@ -1452,7 +1557,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // padTopFor recomputes the centering margin at an ARBITRARY scale (so the anchor
   // math at the new scale uses the new padTop, matching the layout it will commit
   // to). Mirrors the layout memo: max(0,(containerH - rawTotalH)/2) on RAW total.
-  const padTopFor = (sc) => {
+  const centerPadFor = (sc) => {
     const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
     // Mirror the layout memo: gap is zoom-proportional, so anchor math at an
@@ -1463,6 +1568,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const rawTotalH = y + metrics.padBottom;
     return Math.max(0, (containerHRef.current - rawTotalH) / 2);
   };
+  // Scroll offset of the document at scale sc: centring margin + the strip room
+  // (the room does not depend on zoom, so anchoring is unaffected by it).
+  const padTopFor = (sc) => centerPadFor(sc) + topRoomRef.current;
   // topAt returns the page's top in SCROLL space (padTop-inclusive) so cursor
   // content-Y (el.scrollTop + cursorY) and the committed anchor are consistent.
   const topAt = (i, sc) => {
@@ -1519,7 +1627,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         height += dim.h * targetScale;
         if (index < dims.length - 1) height += metrics.gap * targetScale;
       });
-      return height + padTopFor(targetScale);
+      // With strip room the bottom centring pad is part of the content too
+      // (resolveVerticalPlacement), so the predicted scroll range matches.
+      return height + padTopFor(targetScale)
+        + (topRoomRef.current > 0 ? centerPadFor(targetScale) : 0);
     })();
     const maxTop = Math.max(0, predictedHeight - containerHRef.current);
     const left = Math.min(Math.max(0, newX - requestedCursor.x), maxLeft);
@@ -2484,11 +2595,32 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const pw = rot90 ? s0.h : s0.w;
       const ph = rot90 ? s0.w : s0.h;
       const fw = getFitWidthForContainer(el.clientWidth, metrics) / pw;
-      const fh = Math.max(1, el.clientHeight - metrics.padTop - metrics.padBottom)
+      // Fit into the part you can see, below any tool strips over the top.
+      const fh = Math.max(1, el.clientHeight - topInsetRef.current - metrics.padTop - metrics.padBottom)
         / (ph + (2 * metrics.gap));
       newScale = target === 'fitw' ? fw : Math.min(fw, fh);
     }
-    applyAnchoredScale(newScale, el.clientWidth / 2, el.clientHeight / 2);
+    // Zoom buttons and fits hold the middle of the VISIBLE area still.
+    const inset = Math.min(topInsetRef.current, el.clientHeight);
+    applyAnchoredScale(newScale, el.clientWidth / 2, inset + (el.clientHeight - inset) / 2);
+    // Fit page with tool strips over the top: show the current page whole in
+    // the band below them (centred; top edge just below the strips if it is
+    // taller than the band). With no strips this is untouched.
+    if (target === 'fit' && inset > 0) {
+      const dims = dimsPtRef.current;
+      const i = Math.max(0, Math.min(dims.length - 1, currentPageRef.current - 1));
+      const committedScale = scaleRef.current;
+      if (dims[i]) {
+        const band = el.clientHeight - inset;
+        const pageH = dims[i].h * committedScale;
+        const top = Math.max(0, topAt(i, committedScale) - inset - Math.max(0, (band - pageH) / 2));
+        if (pendingAnchorRef.current) {
+          pendingAnchorRef.current = { ...pendingAnchorRef.current, top, pageIndex: i };
+        } else {
+          el.scrollTop = top;
+        }
+      }
+    }
   }, [pageSizes, range, applyAnchoredScale]);
 
   const goToPage = useCallback((n) => {
@@ -2504,7 +2636,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
     // tops are raw-content-space; padTop shifts the painted page down by that much.
     // (When padTop > 0 the whole doc fits and maxTop clamps this to 0 anyway.)
-    el.scrollTop = Math.max(0, padTopRef.current + tops[i] - layoutMetricsRef.current.padTop);
+    // The page lands with its top just BELOW any tool strips over the viewer
+    // (owner 2026-09-23), not hidden under them.
+    el.scrollTop = resolvePageLandingScrollTop({
+      padTop: padTopRef.current,
+      pageTop: tops[i],
+      fixedTopInset: layoutMetricsRef.current.padTop,
+      overlayInset: topInsetRef.current,
+    });
     el.scrollLeft = Math.min(el.scrollLeft, getPageHorizontalScrollMax(i, scaleRef.current));
     return true;
   }, [cancelPanInertia, getPageHorizontalScrollMax]);
@@ -2707,7 +2846,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const contentWidth = maximumPageWidth <= containerW
       ? containerW
       : maximumPageWidth + (2 * metrics.padX);
-    const contentHeight = rawHeight + Math.max(0, (containerH - rawHeight) / 2);
+    const previewPlacement = resolveVerticalPlacement({
+      containerHeight: containerH,
+      rawTotalHeight: rawHeight,
+      topRoom,
+    });
+    const contentHeight = previewPlacement.padTop + previewPlacement.contentHeight;
     return {
       viewportWidth: containerW,
       viewportHeight: containerH,
@@ -2831,7 +2975,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           data-pdfjs-content="true"
           data-pdfjs-live-zoom={renderedLiveZoom !== 1 ? 'true' : 'false'}
           style={{
-            position: 'relative', width: layout.contentW, height: layout.totalH,
+            position: 'relative', width: layout.contentW, height: layout.contentHeight,
             // padTop vertically centers a document shorter than the viewport via
             // margin (not scroll → scrollTop stays >= 0). Overflow docs get padTop=0.
             marginTop: layout.padTop,
