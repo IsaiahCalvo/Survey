@@ -16,6 +16,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
+import { EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -20012,6 +20013,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
+    hasStoredMarks: annotationDocHasStoredMarks,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -26503,17 +26505,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return spaceContextRestored;
   }, [activeSpaceId, handleSetActiveSpace, handleExitSpaceMode, handleSelectSurveyTemplate, handleCloseSurveyMode, selectedTemplate, templates, showSurveyPanel]);
 
-  // Embedded import — exactly once per document, durably.
+  // Read through a ref: the tombstone list is a new array after every capture,
+  // and the import effect must not be cancelled mid-import by that churn.
+  const durableDeletedPdfAnnotationsRef = useRef(durableDeletedPdfAnnotations);
+  durableDeletedPdfAnnotationsRef.current = durableDeletedPdfAnnotations;
+
+  // Embedded import — exactly once per document AND store version, durably.
   //
   // A PDF can carry its own embedded annotations (e.g. markups on pages 6-11).
-  // Those must be imported into the annotation store the FIRST time this document
-  // is opened, and then never re-imported. The trigger is a durable per-document
-  // marker (documents.embedded_import_completed_at), NOT the live mark count: a
-  // user could draw one stroke before the import runs, and gating on count===0
-  // (the old behavior) let a single stroke silently suppress the import forever.
-  // Imported objects are merged ALONGSIDE any existing marks (stable ids keep a
-  // re-run idempotent), and the marker is stamped once the import lands so reopen
-  // skips it. Runs at most once per mount via embeddedImportFallbackDoneRef.
+  // Those are imported into the annotation store the first time an EDITOR
+  // opens the document on this build, and then never again. The gate is a
+  // marker inside the document's own Y.Doc meta (EMBEDDED_IMPORT_MARKER_KEY,
+  // embeddedImportGate.js) written by store v3 only: documents imported by an
+  // older build put those marks in the old `annotations` map this build no
+  // longer reads, so the old server-side column (embedded_import_completed_at)
+  // cannot gate it — the PDF's built-in markup must come back once.
+  //   * Viewers and a not-yet-resolved role never write (the effect re-runs
+  //     when the role resolves).
+  //   * Deterministic ids: two editors importing at once write the same keys.
+  //   * Deletion tombstones are honoured: an embedded annotation someone
+  //     deleted is never brought back.
+  //   * The marker is written only once every imported mark is stored, so a
+  //     tab closed mid-import retries next open.
+  // Imported objects are merged ALONGSIDE existing marks. Runs at most once
+  // per mount via embeddedImportFallbackDoneRef.
   useEffect(() => {
     const hydration = normalAnnotationHydration;
     const documentId = pdfFile?.id || null;
@@ -26521,37 +26536,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!hydration || hydration.ready !== true) return undefined;
     if (hydration.documentId && hydration.documentId !== documentId) return undefined;
     if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
+    const decision = embeddedImportDecision({
+      // The document's owner may import even before the role RPC resolves.
+      role: yjsDocRole ?? (documentOwnerId && user?.id && documentOwnerId === user.id ? 'owner' : null),
+      marker: excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY),
+    });
+    if (decision === 'wait') return undefined;
     embeddedImportFallbackDoneRef.current = documentId;
+    if (decision === 'skip') return undefined;
 
     let cancelled = false;
     (async () => {
       try {
-        // Durable once-only gate: if this document already imported its embedded
-        // marks in any prior session, never import again.
-        let alreadyImported = false;
-        try {
-          const { data: metaRow } = await supabase
-            .from('documents')
-            .select('embedded_import_completed_at')
-            .eq('id', documentId)
-            .maybeSingle();
-          alreadyImported = !!metaRow?.embedded_import_completed_at;
-        } catch (metaErr) {
-          // If we can't read the marker, fall through to importing — stable ids
-          // make a redundant import a no-op, and the merge never clobbers.
-          console.warn('[PDFImport] could not read embedded-import marker:', metaErr?.message || metaErr);
-        }
-        if (cancelled || alreadyImported) return;
-
         const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
           ? await pdfFile.arrayBuffer()
           : null;
         const { annotationsByPage: importedAnnotations, nativeLayerPolicyByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
+        // Another screen may have finished the import while this one parsed.
+        if (excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY)) return;
 
         const totalImported = Object.values(importedAnnotations || {})
           .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
+        const importedIds = [];
 
         if (totalImported > 0) {
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
@@ -26563,15 +26571,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               || annotationsByPageRef.current?.[pageNumber]
               || { objects: [] };
             const currentObjects = Array.isArray(current.objects) ? current.objects : [];
-            // Stable ids make this merge idempotent: an imported mark keyed by the
-            // same id overwrites rather than duplicates, and existing user marks
-            // (different ids) are preserved.
             const existingIds = new Set(currentObjects.map((o) => o?.id || o?.data?.id).filter(Boolean));
-            const stamped = objects.map((obj) => {
-              const stableId = obj.id || obj.data?.id || obj.pdfAnnotationId;
-              return { ...obj, id: stableId, data: { ...(obj.data || {}), id: stableId } };
-            }).filter((o) => !existingIds.has(o.id));
+            const stamped = selectEmbeddedImportObjects(objects, pageNumber, {
+              existingIds,
+              deletedPdfAnnotations: durableDeletedPdfAnnotationsRef.current,
+            });
             if (stamped.length === 0) return;
+            stamped.forEach((object) => importedIds.push(object.id));
             handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
               source: 'embedded-import-once',
               action: 'import-pdf-annotations',
@@ -26586,24 +26592,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             documentId,
             pages: Object.keys(importedAnnotations || {}).length,
             totalImported,
+            added: importedIds.length,
           }));
         }
 
-        // Stamp the durable marker so this document never re-parses for embedded
-        // marks again — whether it had marks or was genuinely empty. Only after a
-        // successful parse (a thrown parse leaves the marker null so we retry).
-        if (!cancelled) {
-          try {
-            await supabase
-              .from('documents')
-              .update({ embedded_import_completed_at: new Date().toISOString() })
-              .eq('id', documentId);
-          } catch (markErr) {
-            console.warn('[PDFImport] could not stamp embedded-import marker:', markErr?.message || markErr);
-          }
+        // Write the once-only marker after the imported marks reached the
+        // store (the capture runs after React commits the saves above).
+        for (let attempt = 0; attempt < 40 && !cancelled; attempt += 1) {
+          if (importedIds.length === 0 || annotationDocHasStoredMarks(importedIds)) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (cancelled) return;
+        if (importedIds.length > 0 && !annotationDocHasStoredMarks(importedIds)) {
+          throw new Error('embedded import did not reach the store yet');
+        }
+        excelSyncMetaSet(EMBEDDED_IMPORT_MARKER_KEY, {
+          at: new Date().toISOString(),
+          count: importedIds.length,
+        }, 'local');
+        // The reference build's server-side marker, kept for it.
+        try {
+          await supabase
+            .from('documents')
+            .update({ embedded_import_completed_at: new Date().toISOString() })
+            .eq('id', documentId);
+        } catch (markErr) {
+          console.warn('[PDFImport] could not stamp embedded-import marker:', markErr?.message || markErr);
         }
       } catch (importError) {
-        // Leave the marker unset so a transient parse failure retries next open;
+        // Leave the marker unset so a transient failure retries next open;
         // clear the per-mount guard so a remount can re-attempt.
         if (embeddedImportFallbackDoneRef.current === documentId) {
           embeddedImportFallbackDoneRef.current = null;
@@ -26613,7 +26630,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     })();
 
     return () => { cancelled = true; };
-  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations]);
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks]);
 
   // Keep this document's list thumbnail current (page 1 with its markup),
   // debounced after edits settle and never while drawing — see the hook.

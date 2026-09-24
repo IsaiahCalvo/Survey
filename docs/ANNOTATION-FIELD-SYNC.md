@@ -137,6 +137,31 @@ object equals what it just wrote, the cache adopts it (no re-render, no
 key-order churn). `readRawAnnotationEntry` (uncached, not normalized) is for
 compare-and-swap checks (the erase commit).
 
+## The PDF's own embedded annotations
+
+The owner accepted losing their own old markup, not the markup that ships
+inside the PDF file. Older builds imported a PDF's embedded annotations into
+the old `annotations` map and stamped `documents.embedded_import_completed_at`,
+so that column can no longer gate the import. The gate is now a marker in the
+document's Y.Doc meta, `embeddedImportedIntoMarks`, written only by this store
+version (`src/utils/embeddedImportGate.js`, the import effect in
+`PDFViewer.jsx`):
+
+* The first EDITOR open of a document on this build imports the PDF's
+  embedded annotations into `marks` once; viewers (and a role not resolved
+  yet, unless the user owns the document) never write — the PDF's own layer
+  still shows for them.
+* Ids are the PDF annotation's own id (else page + position in the file), so
+  two editors opening at the same moment both import the same keys with the
+  same content and Yjs keeps one of each (verified live: two identical
+  imports, 9 marks, no duplicates).
+* Deletion tombstones (shared by every build) are honoured: an embedded
+  annotation deleted in any build is not brought back.
+* The marker is written only after every imported mark is in the store (a tab
+  closed mid-import retries next open), and once written, deleting an
+  imported mark is final.
+* The server column is still stamped for the reference build.
+
 ## Older builds
 
 Unsupported. They read and write only the old `annotations` map, so they

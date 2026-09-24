@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import {
+  getAnnotationsMap,
   preserveTransientPagePresentationState,
   setMetaValue as setMetaValueOnDoc,
 } from '../services/annotationDocStore.js';
@@ -628,6 +629,15 @@ export function useAnnotationDoc({
     return setMetaValueOnDoc(h.doc, key, value, origin);
   }, []);
 
+  // True when every key is stored in the durable mark map (the embedded
+  // import writes its once-only marker only after its marks landed).
+  const hasStoredMarks = useCallback((keys) => {
+    const h = handleRef.current;
+    if (!h || !h.doc) return false;
+    const map = getAnnotationsMap(h.doc);
+    return (keys || []).every((key) => map.has(String(key)));
+  }, []);
+
   const commitEraseIntent = useCallback(async (intent, options = {}) => {
     const cloudHandle = handleRef.current;
     if (!cloudHandle || !readyRef.current) {
@@ -754,6 +764,7 @@ export function useAnnotationDoc({
     commitEraserMutation,
     metaGet,
     metaSet,
+    hasStoredMarks,
     status: syncStatus,
     queueSize: syncQueueSize,
   };
