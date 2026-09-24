@@ -14,7 +14,7 @@
 // edits do NOT echo back from the store (the sync layer only notifies on REMOTE
 // ops), so the viewer's per-page render metadata is never clobbered.
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import {
@@ -26,6 +26,7 @@ import {
 import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
 import { ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE } from '../utils/annotationHydrationGate.js';
 import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
+import { syncTrace, syncTraceEnabled } from '../services/syncTrace.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -344,6 +345,12 @@ export function useAnnotationDoc({
           supabase,
           clientId: getClientId(),
           actorUserId: userId,
+          // UX (w30, 2026-09-24): a mark drawn on one screen shows on every
+          // other screen with the document open in a few hundred ms, the way
+          // Figma and Drawboard feel, instead of after its database round
+          // trip (~1 s, several seconds on a big document). Each small edit
+          // is also broadcast; the log still decides what is saved.
+          livePreview: true,
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
             ? eraseEffectConsumerProxyRef.current
             : null,
@@ -408,6 +415,7 @@ export function useAnnotationDoc({
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
         if (cancelled) return;
+        syncTrace('onchange');
         // Slice 6: callout groups ride INSIDE `byPage` (they live in the same
         // `annotations` Y.Map as every other object), carrying their verbatim
         // data.legacyCallout payloads. PDFViewer derives callouts[] from
@@ -436,8 +444,10 @@ export function useAnnotationDoc({
           // this update, not when the notification fired. A local edit
           // captured in between is then part of what the screen shows instead
           // of being painted over by an older copy.
+          syncTrace('react-update-start');
           let nextByPage = byPage;
           try { nextByPage = handle.getByPage(); } catch { /* closed handle: keep the notified copy */ }
+          syncTrace('react-update-read');
           if (fallback && fallback.callouts.length > 0) {
             nextByPage = projectCalloutsIntoByPage(
               nextByPage,
@@ -616,6 +626,16 @@ export function useAnnotationDoc({
   // legacy callouts are STRIPPED first: there is no role gate in this capture
   // path (server RLS is the only write enforcement), so the local projection
   // must never become the first diff a viewer-tier client pushes.
+  // w30 latency trace (opt-in, see syncTrace.js): when React put a new page
+  // list in the DOM, and the start of the frame that paints it.
+  useLayoutEffect(() => {
+    if (!syncTraceEnabled()) return;
+    syncTrace('react-commit');
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => syncTrace('paint-frame'));
+    }
+  }, [annotationsByPage]);
+
   useEffect(() => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;

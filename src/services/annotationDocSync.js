@@ -75,6 +75,12 @@ import {
 } from './annotationMarkStore.js';
 import { WAL_UPDATE_MAX_BYTES, splitYjsUpdate } from './annotationUpdateSplit.js';
 import { carryOverLegacyMarks, legacyCarryOverChangedCount } from './legacyMarksCarryOver.js';
+import { syncTrace } from './syncTrace.js';
+import {
+  acquireLiveBus,
+  base64ToBytes,
+  bytesToBase64,
+} from './annotationLiveBus.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -83,6 +89,14 @@ const REGISTRY_PREFIX = 'annoflat:';
 
 const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
 const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state checkpoint
+// w30: a big document's checkpoint is megabytes (Package 2: ~4.5 MB gzipped).
+// Uploading it 1.2 s after every stroke loaded the database and, while its
+// write held the document lock, stalled the next stroke's WAL row by seconds.
+// The WAL row is what makes an edit durable and live; the checkpoint only
+// shortens reopen and repairs gaps, so a big one waits for a longer pause
+// (~4 s per MB, capped). A small document keeps the 1.2 s debounce.
+const SNAPSHOT_DEBOUNCE_MS_PER_MB = 4_000;
+const SNAPSHOT_DEBOUNCE_MAX_MS = 30_000;
 const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
 const SNAPSHOT_ENC_GZIP = 2;        // encoding_version 2 = gzipped Y.encodeStateAsUpdate
 const CLOUD_REQUEST_TIMEOUT_MS = 15_000;
@@ -96,6 +110,25 @@ const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
 const PERMISSION_ROLLBACK_ORIGIN = 'permission-rollback';
+// w30 live previews (annotationLiveBus.js): another screen's edit, broadcast
+// the moment it was made, applied to the LIVE doc only. It is never written to
+// the WAL, the accepted/staged shadows or IndexedDB; its WAL row, when it
+// arrives, is what accepts it (applyAuthoritativeCloudRow).
+const LIVE_PREVIEW_ORIGIN = 'live-preview';
+const LIVE_PREVIEW_MAX_BYTES = 48 * 1024;   // pen strokes are ~5 KB; bigger edits ride the WAL only
+const LIVE_PREVIEW_RATE_PER_SEC = 20;       // a drag writes a row per frame; cap the extra messages
+const LIVE_PREVIEW_BURST = 40;
+const LIVE_PREVIEW_CONFIRM_MS = 10_000;     // an older preview is checked against the accepted state
+const LIVE_PREVIEW_EXPIRE_MS = 30_000;      // then one catch-up read; still absent = never accepted
+const LIVE_PREVIEW_SWEEP_MS = 5_000;
+const LIVE_PREVIEW_KEYS_MAX = 2_000;
+// A local edit made on top of a preview (e.g. moving a stroke that has not
+// reached the log yet) waits for that preview's row before its own row is
+// written; see waitForRemoteReferences.
+const REMOTE_REF_WAIT_MS = 45_000;
+// A live doc that still held unconfirmed previews when its handle closed: the
+// next handle on it starts in rebase mode (see openAnnotationDoc).
+const LIVE_PREVIEW_TAINTED_DOCS = (globalThis.__annotationLivePreviewTaintedDocs__ ??= new WeakMap());
 const DURABLE_MAP_NAMES = [
   ANNOTATIONS_MAP,
   DELETED_PDF_ANNOTATIONS_MAP,
@@ -298,6 +331,12 @@ export async function openAnnotationDoc({
   walUpdateMaxBytes = WAL_UPDATE_MAX_BYTES,
   // Rows per tail/catch-up read page (halved on a timeout, see readWalRowsAfter).
   walReadPageRows = WAL_READ_PAGE_ROWS,
+  // w30: broadcast each small local edit and apply other screens' broadcasts
+  // as previews (annotationLiveBus.js). The app turns it on; off by default so
+  // a handle without it behaves exactly as before.
+  livePreview = false,
+  // Tests shorten these: { confirmMs, expireMs, sweepMs, remoteRefWaitMs }.
+  livePreviewTimings = null,
   snapshotRetryDelayMs = 400,
   repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
   outboxStore = null,
@@ -356,6 +395,19 @@ export async function openAnnotationDoc({
     outboxReplayTimer: null,
     outboxReplayRetryAttempt: 0,
     realtimeRowRecoveryTimer: null, // w26: re-read a row Realtime could not carry
+    livePreview: Boolean(livePreview && useRealtime),
+    livePreviewConfirmMs: Number(livePreviewTimings?.confirmMs) || LIVE_PREVIEW_CONFIRM_MS,
+    livePreviewExpireMs: Number(livePreviewTimings?.expireMs) || LIVE_PREVIEW_EXPIRE_MS,
+    livePreviewSweepMs: Number(livePreviewTimings?.sweepMs) || LIVE_PREVIEW_SWEEP_MS,
+    remoteRefWaitMs: Number(livePreviewTimings?.remoteRefWaitMs) || REMOTE_REF_WAIT_MS,
+    liveBus: null,
+    livePreviews: new Map(),        // writer + clientSeq -> { update, receivedAt } not yet accepted
+    confirmedPreviewKeys: new Set(), // rows already accepted (a late broadcast is ignored)
+    expiredPreviewKeys: new Set(),   // previews dropped as never accepted
+    livePreviewSweepTimer: null,
+    livePreviewTokens: LIVE_PREVIEW_BURST,
+    livePreviewTokensAt: 0,
+    remoteRefWaiters: new Set(),
     realtimeRowRecoveryAttempt: 0,
     realtimeRowRecoveryFromSeq: null,
     catchupPending: 0,     // catch-ups running or queued (row recovery defers to them)
@@ -373,6 +425,7 @@ export async function openAnnotationDoc({
     liveResendAttempt: 0,
     liveResendChain: Promise.resolve(),
     snapshotTimer: null,   // debounced full-state checkpoint
+    lastSnapshotBytes: 0,  // gzipped size of the last checkpoint read or written (w30)
     repairTimer: null,
     repairRetryAttempt: 0,
     snapshotChain: Promise.resolve(false), // serializes ALL snapshot writes so two
@@ -601,6 +654,18 @@ export async function openAnnotationDoc({
     // live updates into that detached actor-scoped persistence document.
     attachLocalPersistenceMirror(state);
 
+    // w30: the previous handle on this registry doc closed while another
+    // screen's broadcast edit was still unconfirmed. Those structs live only
+    // in this doc; exact updates could chain onto them and never integrate
+    // anywhere else. Rebase every edit onto the accepted state instead (the
+    // mode a permission rollback uses), on a fresh Yjs client clock.
+    const taintedPreviewKeys = LIVE_PREVIEW_TAINTED_DOCS.get(activeDoc);
+    if (taintedPreviewKeys) {
+      LIVE_PREVIEW_TAINTED_DOCS.delete(activeDoc);
+      for (const key of taintedPreviewKeys) state.expiredPreviewKeys.add(key);
+      enterRebaseMode(state);
+    }
+
     // --- observe local mutations → append to the durable log ---
     state.onDocUpdate = (update, origin, _doc, transaction) => {
       if (state.destroyed || state.deleted) return;
@@ -610,7 +675,7 @@ export async function openAnnotationDoc({
       if (origin?.source === 'erase-outbox' && origin !== state.eraseOutboxOrigin) return;
       // Ignore writes we didn't originate as user edits: remote ops, the initial
       // hydrate, and the local IndexedDB replay (re-appending those would loop).
-      if (origin === REMOTE_ORIGIN) {
+      if (origin === REMOTE_ORIGIN || origin === LIVE_PREVIEW_ORIGIN) {
         // Never mirror the live doc's derived conflict-resolution update into
         // clean shadows. It can contain a tombstone for the authoritative row
         // when an optimistic same-key item wins by client-id ordering. Only
@@ -625,6 +690,7 @@ export async function openAnnotationDoc({
       }
       if (origin === PERMISSION_ROLLBACK_ORIGIN || origin === state.idbProvider) return;
       if (supabase) {
+        syncTrace('local-update', { bytes: update.length });
         state.editEpoch += 1;
         const staged = state.rebaseLocalMutations
           ? stageRebasedLocalMutation(state, transaction)
@@ -636,11 +702,16 @@ export async function openAnnotationDoc({
           // used to hide unrelated, valid pending WAL records until reopen.
           return;
         }
+        syncTrace('staged', { bytes: staged.update.length, snapshotBytes: staged.snapshot?.length });
+        const enqueuedRecords = [];
         enqueueAppend(state, staged.update, staged.snapshot, state.editEpoch, {
           historyTag: origin?.historyTag?.mutationId
             ? { ...origin.historyTag }
             : null,
+          collectRecords: enqueuedRecords,
         });
+        // w30: other screens see it now, not after the WAL round trip.
+        if (enqueuedRecords.length === 1) sendLivePreview(state, enqueuedRecords[0]);
         // The full-state checkpoint is the durability GUARANTEE: even if an
         // individual op insert fails (network), the next checkpoint re-captures
         // the whole doc from memory. Schedule it on every local edit.
@@ -701,6 +772,7 @@ export async function openAnnotationDoc({
   } catch (err) {
     clearEraseOutboxRetry(state);
     state.destroyed = true;
+    closeLivePreviews(state);
     clearGapRepairTimer(state);
     if (state.onDocUpdate) { try { activeDoc.off('update', state.onDocUpdate); } catch { /* */ } }
     if (state.realtimeChannel) { try { state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
@@ -713,6 +785,7 @@ export async function openAnnotationDoc({
     try { state.stagedDoc.destroy(); } catch { /* */ }
     try { state.persistedDoc?.destroy(); } catch { /* */ }
     try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
+    taintLiveDocIfUnconfirmed(state);
     if (ownsRegistryDoc) releaseYDoc(registryKey);
     throw err;
   }
@@ -753,6 +826,8 @@ function attachLocalPersistenceMirror(state) {
       // the original server bytes applied explicitly by
       // applyAuthoritativeCloudUpdate, never that derived live update.
       || origin === REMOTE_ORIGIN
+      // A preview is not accepted; only its WAL row may reach IndexedDB (w30).
+      || origin === LIVE_PREVIEW_ORIGIN
     ) return;
     // This is one-way only: the provider observes `target`; no listener ever
     // applies target updates back to the live doc, so there is no update loop.
@@ -1161,12 +1236,28 @@ function applyAuthoritativeCloudUpdate(state, update) {
   // A committed row can be an idempotent self-echo in the optimistic live doc,
   // so its live update event may not fire. Cloud acceptance must still advance
   // every clean shadow explicitly.
-  Y.applyUpdate(state.doc, update, REMOTE_ORIGIN);
+  const liveChanged = applyToLiveDoc(state, update, REMOTE_ORIGIN);
   Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
   if (state.localPersistenceDoc) {
     Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
   }
   Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  wakeRemoteReferenceWaiters(state);
+  return liveChanged;
+}
+
+// Apply to the live doc and report whether anything visible changed (an
+// already-previewed row, or an own echo, changes nothing: w30).
+function applyToLiveDoc(state, update, origin) {
+  let changed = false;
+  const onUpdate = () => { changed = true; };
+  state.doc.on('update', onUpdate);
+  try {
+    Y.applyUpdate(state.doc, update, origin);
+  } finally {
+    state.doc.off('update', onUpdate);
+  }
+  return changed;
 }
 
 function bytesEqual(left, right) {
@@ -1326,7 +1417,7 @@ async function quarantineRejectedRecords(
   state,
   rejectedKeys,
   error,
-  { terminalStatus = 'rejected' } = {},
+  { terminalStatus = 'rejected', reason = null } = {},
 ) {
   // This can run during replay, after the open-time quarantine sample. Flip the
   // live state immediately so actorless legacy storage cannot be re-enqueued
@@ -1369,9 +1460,9 @@ async function quarantineRejectedRecords(
   );
   // Visible rollback must not depend on IndexedDB cleanup succeeding.
   restoreAcceptedState(state, {
-    reason: terminalStatus === 'integrity-error'
+    reason: reason || (terminalStatus === 'integrity-error'
       ? 'wal-integrity-collision'
-      : 'permission-denied',
+      : 'permission-denied'),
     code: error?.code || (terminalStatus === 'integrity-error' ? '23505' : '42501'),
     mutationIds,
     requiresFullHistoryReset,
@@ -1643,7 +1734,8 @@ async function flushLiveResend(state) {
 
 async function applyAuthoritativeCloudRow(state, row) {
   const update = pgHexToBytes(row.data);
-  applyAuthoritativeCloudUpdate(state, update);
+  const liveChanged = applyAuthoritativeCloudUpdate(state, update);
+  confirmLivePreview(state, row?.client_id, row?.client_seq);
   const { record, collision } = appendRecordForCloudRow(state, row, update);
   if (collision && record) {
     state.permissionRejectedCutoff = state.localMutationOrdinal;
@@ -1653,12 +1745,12 @@ async function applyAuthoritativeCloudRow(state, row) {
       collision,
       { terminalStatus: 'integrity-error' },
     );
-    return update;
+    return true;
   }
   if (record) {
     await settleAcceptedRecord(state, record, update, { alreadyApplied: true });
   }
-  return update;
+  return liveChanged;
 }
 
 async function hydrateCleanAcceptedState(state) {
@@ -1746,6 +1838,7 @@ async function loadFromBackend(state) {
   if (snapshotError) throw toSyncError(snapshotError, 'snapshot read failed');
   if (snapRow && snapRow.snapshot) {
     let bytes = pgHexToBytes(snapRow.snapshot);
+    state.lastSnapshotBytes = bytes.length; // sizes the checkpoint debounce (w30)
     if (snapRow.encoding_version === SNAPSHOT_ENC_GZIP) {
       try {
         bytes = await gunzip(bytes);
@@ -1997,6 +2090,40 @@ function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
   state.repairCheckpointGeneration = state.durabilityGapGeneration;
 }
 
+const TERMINAL_RECORD_STATUSES = new Set(['rejected', 'integrity-error', 'dependency-error']);
+
+// w30: the local part of the staged state as of `record` — every pending,
+// not-quarantined local update up to and including it (and the rest of its
+// split transaction, which the old shared per-edit checkpoint covered too).
+// encodeRepairCheckpoint merges it with the accepted state, which only grows,
+// so accepted ⊕ this equals the per-edit staged checkpoint it replaces
+// (plus any cloud rows accepted since, which a checkpoint may always hold).
+// Records rejected since are left out, as a reset staged doc left them out.
+function localPrefixThrough(state, record) {
+  const ordinal = Number(record?.ordinal) || 0;
+  const updates = [...state.appendRecords.values()]
+    .filter((candidate) => (
+      !TERMINAL_RECORD_STATUSES.has(candidate.status)
+      && candidate.status !== 'accepted'
+      && (
+        (Number(candidate.ordinal) || 0) <= ordinal
+        || (record?.splitGroupId && candidate.splitGroupId === record.splitGroupId)
+      )
+    ))
+    .sort((left, right) => (Number(left.ordinal) || 0) - (Number(right.ordinal) || 0))
+    .map((candidate) => candidate.update);
+  // An empty update (no structs, no deletions) when nothing local is pending.
+  return updates.length > 0 ? Y.mergeUpdates(updates) : new Uint8Array([0, 0]);
+}
+
+function setRecordRepairCheckpoint(state, record, editEpoch) {
+  setRepairCheckpoint(
+    state,
+    record.checkpointUpdate || localPrefixThrough(state, record),
+    editEpoch,
+  );
+}
+
 function clearRepairCheckpoint(state) {
   state.repairCheckpointUpdate = null;
   state.repairCheckpointEpoch = 0;
@@ -2136,10 +2263,11 @@ function stageExactLocalUpdate(state, update) {
   const stagedUpdate = new Uint8Array(update);
   const decoded = Y.decodeUpdate(stagedUpdate);
   if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return null;
-  return {
-    update: stagedUpdate,
-    snapshot: encodeSnapshot(state.stagedDoc),
-  };
+  // w30: no full-state checkpoint per edit. Encoding the whole staged
+  // document on every stroke cost ~165 ms on a 3,000-mark document before the
+  // stroke could even be queued. The repair checkpoint a failed append needs
+  // is rebuilt only then (localPrefixThrough).
+  return { update: stagedUpdate, snapshot: null };
 }
 
 // A 42501 leaves rejected structs in the live Y.Doc history even after their
@@ -2179,7 +2307,7 @@ function stageRebasedLocalMutation(state, transaction) {
   const update = Y.encodeStateAsUpdate(state.stagedDoc, before);
   const decoded = Y.decodeUpdate(update);
   if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return null;
-  return { update, snapshot: encodeSnapshot(state.stagedDoc) };
+  return { update, snapshot: null }; // checkpoint rebuilt only when needed (w30)
 }
 
 function reconcilePersistedLocalState(state) {
@@ -2364,7 +2492,29 @@ function publishProjectedState(state, projectedDoc) {
 // disappear immediately and prevents the registry-backed Y.Doc from reviving it
 // on reopen.
 function publishAcceptedState(state) {
-  publishProjectedState(state, state.acceptedDoc);
+  if (state.livePreviews.size === 0) {
+    publishProjectedState(state, state.acceptedDoc);
+    return;
+  }
+  // Keep other screens' in-flight previews on screen (w30): their rows will
+  // be no-ops on this live doc, so a projection that dropped them would hide
+  // them until reopen.
+  const projection = createDetachedYDoc(
+    `accepted-projection:${state.documentId}:${state.writerId}:${randomClientId()}`,
+  );
+  try {
+    Y.applyUpdate(projection, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    applyLivePreviewsTo(projection, state);
+    publishProjectedState(state, projection);
+  } finally {
+    try { projection.destroy(); } catch { /* */ }
+  }
+}
+
+function applyLivePreviewsTo(doc, state) {
+  for (const preview of state.livePreviews.values()) {
+    try { Y.applyUpdate(doc, preview.update, HYDRATE_ORIGIN); } catch { /* validated on receipt */ }
+  }
 }
 
 function publishAcceptedAndVisiblePendingState(state) {
@@ -2386,6 +2536,7 @@ function publishAcceptedAndVisiblePendingState(state) {
       ) continue;
       Y.applyUpdate(projection, record.update, HYDRATE_ORIGIN);
     }
+    applyLivePreviewsTo(projection, state);
     publishProjectedState(state, projection);
   } finally {
     try { projection.destroy(); } catch { /* */ }
@@ -2402,13 +2553,17 @@ function restoreAcceptedState(state, quarantineDetails = {}) {
   // Rejected and compensating structs remain in this live Y.Doc's history.
   // Start later authorized edits on a fresh Yjs client clock so their exact
   // updates never depend on the quarantined clock range.
+  enterRebaseMode(state);
+  emitHistoryQuarantine(state, quarantineDetails);
+}
+
+function enterRebaseMode(state) {
   const freshClock = createDetachedYDoc(
     `post-denial-clock:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
   state.doc.clientID = freshClock.clientID;
   try { freshClock.destroy(); } catch { /* */ }
   state.rebaseLocalMutations = true;
-  emitHistoryQuarantine(state, quarantineDetails);
 }
 
 async function resolveAmbiguousAppends(state) {
@@ -2552,7 +2707,9 @@ function enqueueAppend(
   options = {},
 ) {
   const parts = splitYjsUpdate(update, state.walUpdateMaxBytes);
-  const sharedCheckpoint = new Uint8Array(checkpointUpdate);
+  // null = rebuilt on demand from the accepted state and the pending records
+  // (w30, see localPrefixThrough).
+  const sharedCheckpoint = checkpointUpdate ? new Uint8Array(checkpointUpdate) : null;
   let queued = state.flushQueue;
   let previousKey = null;
   const splitGroupId = parts.length > 1 ? `${state.writerId}:${randomClientId()}` : null;
@@ -2561,8 +2718,9 @@ function enqueueAppend(
     // Each part depends on the part before it, explicitly: the WAL must hold
     // them in order even when one part fails and a later one (e.g. a
     // delete-set-only tail) has no struct reference into it.
+    const { collectRecords, ...recordOptions } = options;
     const record = enqueueAppendRecord(state, part, sharedCheckpoint, editEpoch, {
-      ...options,
+      ...recordOptions,
       previousPartKey: previousKey,
       splitGroupId,
       splitPartIndex: partIndex,
@@ -2571,6 +2729,7 @@ function enqueueAppend(
     partIndex += 1;
     previousKey = record.key;
     queued = record.queued;
+    if (Array.isArray(collectRecords)) collectRecords.push(record.record);
   }
   return queued;
 }
@@ -2606,7 +2765,8 @@ function enqueueAppendRecord(
     clientSeq,
     update: new Uint8Array(update),
     // Already a private copy (enqueueAppend), shared by every part of one
-    // transaction; never mutated.
+    // transaction; never mutated. null for a live edit (w30): rebuilt only
+    // when a repair needs it (localPrefixThrough).
     checkpointUpdate,
     editEpoch,
     publishAfterAcceptance,
@@ -2630,13 +2790,22 @@ function enqueueAppendRecord(
     record.splitPartIndex = splitPartIndex;
     record.splitPartCount = splitPartCount;
   }
+  // w30: an edit made on top of another screen's unconfirmed preview must not
+  // reach the log before that preview's own row (see waitForRemoteReferences).
+  if (state.livePreviews.size > 0) {
+    const remoteRefs = unconfirmedRemoteReferences(state, record.update, record.key);
+    if (remoteRefs.length > 0) record.remoteRefs = remoteRefs;
+  }
   state.appendRecords.set(record.key, record);
+  syncTrace('enqueued', { writer: state.writerId, clientSeq, deps: record.dependsOn.length, pending: state.appendRecords.size });
   const persisted = persistOutboxRecord(state, record);
   state.pendingAppends += 1;
   notifySyncStatus(state);
   state.flushQueue = state.flushQueue.then(async () => {
     try {
+      syncTrace('queue-start', { writer: state.writerId, clientSeq });
       await persisted;
+      syncTrace('outbox-persisted', { writer: state.writerId, clientSeq });
       if (ordinal <= state.permissionRejectedCutoff) {
         if (
           record.status === 'integrity-error'
@@ -2663,6 +2832,18 @@ function enqueueAppendRecord(
           false,
           new Error(`annotation update waits for unresolved record ${dependency.key}`),
         );
+        return;
+      }
+      if (record.remoteRefs?.length && !(await waitForRemoteReferences(state, record))) {
+        // The preview it was built on never reached the log: roll this edit
+        // (and the local edits after it, which chain onto it) back, like a
+        // refused one, and rebase from here on.
+        const error = new Error('an edit was made on another screen\'s change that was never saved');
+        error.code = 'REMOTE_DEPENDENCY_MISSING';
+        await quarantineRejectedRecords(state, [record.key], error, {
+          terminalStatus: 'dependency-error',
+          reason: 'unconfirmed-remote-edit',
+        });
         return;
       }
       await appendOp(state, record);
@@ -2708,7 +2889,7 @@ function enqueueAppendRecord(
       }
       state.durabilityGap = true;
       state.durabilityGapGeneration += 1;
-      setRepairCheckpoint(state, checkpointUpdate, editEpoch);
+      setRecordRepairCheckpoint(state, record, editEpoch);
       markSyncHealth(state, false, err);
       if (record.status === 'ambiguous') {
         await persistOutboxRecord(state, record).catch((persistError) => {
@@ -2717,7 +2898,9 @@ function enqueueAppendRecord(
       }
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
       const snapshotResult = await writeSnapshot(state, {
-        snapshotUpdate: checkpointUpdate,
+        // The accepted state plus this record's local prefix: the same
+        // bytes the per-edit checkpoint used to carry (w30).
+        snapshotUpdate: encodeRepairCheckpoint(state),
         epoch: editEpoch,
         repairsGap: true,
         gapGeneration: state.repairCheckpointGeneration,
@@ -2739,7 +2922,7 @@ function enqueueAppendRecord(
       notifySyncStatus(state);
     }
   });
-  return { key: record.key, queued: state.flushQueue };
+  return { key: record.key, queued: state.flushQueue, record };
 }
 
 function persistOutboxRecord(state, record) {
@@ -2804,12 +2987,14 @@ async function appendOp(state, record) {
   if (state.destroyed || state.deleted) throw deletedDocumentError(state.documentId);
   const {
     update,
-    checkpointUpdate,
     editEpoch,
   } = record;
+  syncTrace('wal-start', { writer: record.writerId, clientSeq: record.clientSeq, bytes: update.length });
   const data = await requestWalAppend(state, record);
+  syncTrace('wal-end', { writer: record.writerId, clientSeq: record.clientSeq });
   assertStateWritable(state);
   await settleAcceptedRecord(state, record, update);
+  syncTrace('settled', { writer: record.writerId, clientSeq: record.clientSeq });
   // Irreversible History/trash/Excel effects may run only after this exact
   // core mutation has entered acceptedDoc.
   void queueEraseOutboxDrain(state);
@@ -2817,7 +3002,7 @@ async function appendOp(state, record) {
     // This immutable transaction-time checkpoint ends at this exact successful
     // append. Later queued edits have already entered stagedDoc, so stagedDoc is
     // never a safe repair source here.
-    setRepairCheckpoint(state, checkpointUpdate, editEpoch);
+    setRecordRepairCheckpoint(state, record, editEpoch);
   }
   // A later append cannot repair an earlier missing Yjs predecessor. Health
   // stays red until a full accepted snapshot proves the complete in-memory
@@ -2843,6 +3028,17 @@ async function appendOp(state, record) {
     && (Number(record.splitPartIndex) || 0) < (Number(record.splitPartCount) || 1) - 1;
   if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && midSplit) {
     scheduleSnapshot(state);
+  } else if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && !state.durabilityGap) {
+    // w30: the compaction checkpoint no longer holds the append queue. It
+    // encodes only the accepted state (never an unaccepted byte), when the
+    // snapshot chain reaches it, so strokes drawn while a multi-MB upload
+    // runs are written and delivered at once instead of after it.
+    state.opsSinceSnapshot = 0;
+    void writeSnapshot(state, { repairsGap: false })
+      .then((result) => finalizeSnapshotResult(state, result))
+      .catch((error) => {
+        console.warn('[annotationDocSync] compaction checkpoint failed', error?.message);
+      });
   } else if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
     state.opsSinceSnapshot = 0;
     const repairsGap = state.durabilityGap;
@@ -2883,7 +3079,15 @@ function scheduleSnapshot(state) {
     }
     writeSnapshot(state, captureSnapshotOptions(state))
       .then((result) => finalizeSnapshotResult(state, result));
-  }, SNAPSHOT_DEBOUNCE_MS);
+  }, snapshotDebounceMs(state));
+}
+
+function snapshotDebounceMs(state) {
+  const megabytes = (Number(state.lastSnapshotBytes) || 0) / (1024 * 1024);
+  return Math.round(Math.min(
+    SNAPSHOT_DEBOUNCE_MAX_MS,
+    Math.max(SNAPSHOT_DEBOUNCE_MS, megabytes * SNAPSHOT_DEBOUNCE_MS_PER_MB),
+  ));
 }
 
 // Serialize ALL snapshot writes through one chain so two can never run at once.
@@ -3030,6 +3234,7 @@ async function writeSnapshotNow(state, {
   // actually folded into this doc. Claiming lastSeq here could make a snapshot
   // skip an unseen delete forever on reopen.
   const atSeq = state.coveredSeq;
+  syncTrace('snapshot-encode-start');
   const epochAtStart = epoch ?? (
     repairsGapAtStart ? state.repairCheckpointEpoch : state.acceptedEditEpoch
   );
@@ -3055,7 +3260,9 @@ async function writeSnapshotNow(state, {
   }
   let hex;
   try {
-    hex = bytesToPgHex(await gzip(updateAtStart));
+    const gzipped = await gzip(updateAtStart);
+    state.lastSnapshotBytes = gzipped.length;
+    hex = bytesToPgHex(gzipped);
   } catch (err) {
     console.warn('[annotationDocSync] snapshot gzip failed, storing raw', err?.message);
     return {
@@ -3071,6 +3278,7 @@ async function writeSnapshotNow(state, {
       let accepted = true;
       if (typeof state.supabase.rpc === 'function') {
         let data;
+        syncTrace('snapshot-rpc-start', { hexChars: hex.length });
         ({ data, error } = await withCloudRequest(
           state,
           state.supabase.rpc('store_annotation_snapshot', {
@@ -3087,6 +3295,7 @@ async function writeSnapshotNow(state, {
           'annotation snapshot write',
           snapshotWriteTimeoutMs(state, hex.length),
         ));
+        syncTrace('snapshot-rpc-end', { error: error?.message || null });
         const rpcResult = Array.isArray(data) ? data[0] : data;
         accepted = rpcResult?.accepted ?? rpcResult ?? false;
       } else {
@@ -3300,6 +3509,17 @@ function subscribeRealtime(state) {
   // channel the (non-replayed) supabase client still caches. postgres_changes
   // delivery is filter-driven, not topic-driven, so the suffix is transparent
   // server-side.
+  if (state.livePreview && !state.liveBus) {
+    acquireLiveBus(state.supabase, state.documentId, (payload) => onLivePreviewMessage(state, payload))
+      .then((bus) => {
+        if (!bus) return;
+        if (state.destroyed || state.closePromise || state.liveBus) bus.release();
+        else state.liveBus = bus;
+      })
+      .catch((error) => {
+        console.warn('[annotationDocSync] live channel unavailable; edits arrive through the log only', error?.message);
+      });
+  }
   const ch = state.supabase.channel(`anno-${state.documentId}-${randomClientId()}`);
   // Assign before wiring callbacks so a synchronous throw from .on()/.subscribe()
   // during a failed open is still cleanable by the teardown catch (removeChannel).
@@ -3313,6 +3533,14 @@ function subscribeRealtime(state) {
     }, (payload) => {
       const row = payload.new;
       if (!row) return;
+      syncTrace('rt-recv', {
+        seq: Number(row.seq),
+        writer: row.client_id,
+        clientSeq: Number(row.client_seq),
+        own: row.client_id === state.writerId,
+        bytes: typeof row.data === 'string' ? row.data.length : 0,
+        commitTs: payload.commit_timestamp || null,
+      });
       // A row Realtime could not carry whole (over its message limit it sends
       // the record with an error and without / cut-off data): read it from the
       // table instead of applying a truncated update (w26).
@@ -3326,12 +3554,17 @@ function subscribeRealtime(state) {
       }
       state.authoritativeChain = state.authoritativeChain.then(async () => {
         if (state.destroyed) return;
+        syncTrace('apply-start', { seq: Number(row.seq) });
         // Same-install handles share clientId. Apply matching rows too so one
         // handle cannot miss another handle's delete and later checkpoint stale
         // geometry at that delete's seq. True self-echoes are Yjs no-ops.
-        await applyAuthoritativeCloudRow(state, row);
+        const liveChanged = await applyAuthoritativeCloudRow(state, row);
+        syncTrace('applied', { seq: Number(row.seq), liveChanged });
         if (Number(row.seq) > state.lastSeq) state.lastSeq = Number(row.seq);
-        notifyChange(state);
+        // w30: an own echo or an already-previewed row changes nothing on
+        // screen; re-rendering a 3,000-mark page for it cost ~150 ms.
+        if (liveChanged) notifyChange(state);
+        syncTrace('notified', { seq: Number(row.seq) });
         void queueEraseOutboxDrain(state);
       }).catch((err) => {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
@@ -3461,6 +3694,258 @@ async function runRealtimeRowRecovery(state) {
     return;
   }
   scheduleRealtimeRowRecovery(state, fromSeq);
+}
+
+// ---------------------------------------------------------------------------
+// w30 live previews
+// ---------------------------------------------------------------------------
+
+function livePreviewKey(writerId, clientSeq) {
+  return `${writerId}\u0000${clientSeq}`;
+}
+
+function rememberBounded(set, key) {
+  set.delete(key);
+  set.add(key);
+  if (set.size > LIVE_PREVIEW_KEYS_MAX) set.delete(set.values().next().value);
+}
+
+// Sender: one message per small local edit, the exact bytes its WAL row will
+// carry, keyed by the row's idempotency key (writer, client_seq).
+function sendLivePreview(state, record) {
+  const bus = state.liveBus;
+  if (!bus || !record?.update || state.closePromise || state.destroyed) return;
+  // After a refusal this screen's edits are likely refused again: never show
+  // other screens something the log will not take.
+  if (state.permissionRejectedCutoff > 0) return;
+  if (record.update.length > LIVE_PREVIEW_MAX_BYTES) return;
+  const now = Date.now();
+  state.livePreviewTokens = Math.min(
+    LIVE_PREVIEW_BURST,
+    state.livePreviewTokens
+      + ((now - (state.livePreviewTokensAt || now)) * LIVE_PREVIEW_RATE_PER_SEC) / 1000,
+  );
+  state.livePreviewTokensAt = now;
+  if (state.livePreviewTokens < 1) return;
+  state.livePreviewTokens -= 1;
+  const sent = bus.send({
+    v: 1,
+    w: state.writerId,
+    s: record.clientSeq,
+    u: bytesToBase64(record.update),
+  });
+  if (sent) {
+    syncTrace('preview-sent', {
+      writer: state.writerId,
+      clientSeq: record.clientSeq,
+      bytes: record.update.length,
+    });
+  }
+}
+
+// Receiver: show it now, in the live doc only. Its WAL row (or a checkpoint
+// that holds it) accepts it later; until then it is never persisted, never in
+// a checkpoint, and an own edit built on it waits for that row.
+function onLivePreviewMessage(state, payload) {
+  if (state.destroyed || state.closePromise || state.deleted) return;
+  if (!payload || payload.v !== 1) return;
+  const writerId = typeof payload.w === 'string' ? payload.w : '';
+  const clientSeq = Number(payload.s);
+  if (!writerId || writerId.length > 256 || writerId === state.writerId) return;
+  if (!Number.isSafeInteger(clientSeq) || clientSeq <= 0) return;
+  if (typeof payload.u !== 'string' || payload.u.length > LIVE_PREVIEW_MAX_BYTES * 2) return;
+  const key = livePreviewKey(writerId, clientSeq);
+  if (state.confirmedPreviewKeys.has(key) || state.livePreviews.has(key)) return;
+  let update;
+  try {
+    update = base64ToBytes(payload.u);
+    Y.decodeUpdate(update); // malformed bytes never reach the doc
+  } catch {
+    return;
+  }
+  syncTrace('preview-recv', { writer: writerId, clientSeq, bytes: update.length });
+  let changed = false;
+  try {
+    changed = applyToLiveDoc(state, update, LIVE_PREVIEW_ORIGIN);
+  } catch (error) {
+    console.warn('[annotationDocSync] live preview could not be applied', error?.message);
+    return;
+  }
+  state.livePreviews.set(key, { update, receivedAt: Date.now(), writerId, clientSeq });
+  scheduleLivePreviewSweep(state);
+  if (changed) notifyChange(state);
+  syncTrace('preview-applied', { writer: writerId, clientSeq, changed });
+}
+
+function confirmLivePreview(state, writerId, clientSeq) {
+  if (writerId == null || clientSeq == null) return;
+  const key = livePreviewKey(String(writerId), Number(clientSeq));
+  rememberBounded(state.confirmedPreviewKeys, key);
+  state.livePreviews.delete(key);
+  if (state.expiredPreviewKeys.delete(key)) {
+    // A preview dropped as never accepted did arrive after all. Its row was a
+    // no-op on the live doc (the drop removed it there), so show the
+    // accepted state again. Rebase mode is already on (expireLivePreviews).
+    publishAcceptedAndVisiblePendingState(state);
+  }
+}
+
+function scheduleLivePreviewSweep(state) {
+  if (state.livePreviewSweepTimer || state.destroyed || state.closePromise) return;
+  if (state.livePreviews.size === 0) return;
+  state.livePreviewSweepTimer = setTimeout(() => {
+    state.livePreviewSweepTimer = null;
+    void sweepLivePreviews(state).catch((error) => {
+      console.warn('[annotationDocSync] live preview sweep failed', error?.message);
+    }).finally(() => scheduleLivePreviewSweep(state));
+  }, state.livePreviewSweepMs);
+}
+
+async function sweepLivePreviews(state) {
+  if (state.destroyed || state.closePromise || state.livePreviews.size === 0) return;
+  const now = Date.now();
+  const old = [...state.livePreviews.entries()]
+    .filter(([, preview]) => now - preview.receivedAt >= state.livePreviewConfirmMs);
+  if (old.length === 0) return;
+  // A row can reach this screen inside a checkpoint instead of as a row: then
+  // its content is in the accepted state even though its key never came.
+  const accepted = Y.snapshot(state.acceptedDoc);
+  for (const [key, preview] of old) {
+    if (Y.snapshotContainsUpdate(accepted, preview.update)) {
+      rememberBounded(state.confirmedPreviewKeys, key);
+      state.livePreviews.delete(key);
+    }
+  }
+  const stale = [...state.livePreviews.entries()]
+    .filter(([, preview]) => now - preview.receivedAt >= state.livePreviewExpireMs);
+  if (stale.length === 0) return;
+  // Only judge while this screen is actually receiving the log.
+  if (state.realtimePhase !== 'ready' || (Number(state.catchupPending) || 0) > 0) return;
+  if (stale.some(([, preview]) => !preview.caughtUp)) {
+    const caughtUp = await catchUpTail(state);
+    if (caughtUp) {
+      for (const [, preview] of stale) preview.caughtUp = true;
+    }
+    return;
+  }
+  expireLivePreviews(state, stale.map(([key]) => key));
+}
+
+// A preview whose row never came: take it off the screen. Its structs stay in
+// the live doc (Yjs cannot remove them), so from here on every local edit is
+// rebased onto the accepted state (as after a refusal), never chained onto
+// them.
+function expireLivePreviews(state, keys) {
+  if (keys.length === 0) return;
+  for (const key of keys) {
+    state.livePreviews.delete(key);
+    rememberBounded(state.expiredPreviewKeys, key);
+  }
+  console.warn('[annotationDocSync] another screen\'s change never reached the log; removed from view', keys.length);
+  publishAcceptedAndVisiblePendingState(state);
+  enterRebaseMode(state);
+}
+
+// The (client, clock) pairs this local update builds on that are neither
+// accepted, nor its own, nor in a pending local record: another screen's
+// unconfirmed preview. One entry per client, its highest needed clock.
+function unconfirmedRemoteReferences(state, update, excludeKey) {
+  const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  const records = [...state.appendRecords.values()];
+  const decoded = Y.decodeUpdate(update);
+  const ownRanges = updateClockRanges(update);
+  const needed = new Map();
+  const need = (client, clock) => {
+    if (!Number.isFinite(client) || !Number.isFinite(clock)) return;
+    if (clock < (Number(acceptedVector.get(client)) || 0)) return;
+    const own = ownRanges.get(client);
+    if (own && own.start <= clock && clock < own.end) return;
+    if (recordCoveringClock(records, client, clock, excludeKey)) return;
+    needed.set(client, Math.max(needed.get(client) ?? -1, clock));
+  };
+  for (const struct of decoded.structs) {
+    for (const reference of [struct.origin, struct.rightOrigin, struct.parent]) {
+      need(Number(reference?.client), Number(reference?.clock));
+    }
+  }
+  for (const [client, deleteRanges] of decoded.ds.clients) {
+    for (const deleteRange of deleteRanges) {
+      const end = Number(deleteRange.clock) + Number(deleteRange.len || 0);
+      if (end > 0) need(Number(client), end - 1);
+    }
+  }
+  return [...needed.entries()];
+}
+
+function remoteReferencesAccepted(state, refs) {
+  const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  return refs.every(([client, clock]) => (Number(acceptedVector.get(client)) || 0) > clock);
+}
+
+function wakeRemoteReferenceWaiters(state) {
+  if (!state.remoteRefWaiters || state.remoteRefWaiters.size === 0) return;
+  for (const wake of [...state.remoteRefWaiters]) wake();
+}
+
+// Resolves true once every struct the record builds on is accepted (normally
+// within a second: the preview's row), or when the handle is closing (the
+// record is then written as it is, best effort). False only when, after
+// REMOTE_REF_WAIT_MS and one catch-up read with realtime live, they are still
+// missing: the preview it built on was never accepted.
+async function waitForRemoteReferences(state, record) {
+  const deadline = Date.now() + state.remoteRefWaitMs;
+  let caughtUp = false;
+  syncTrace('remote-ref-wait', { clientSeq: record.clientSeq, refs: record.remoteRefs.length });
+  for (;;) {
+    if (remoteReferencesAccepted(state, record.remoteRefs)) {
+      syncTrace('remote-ref-ready', { clientSeq: record.clientSeq });
+      return true;
+    }
+    if (state.destroyed || state.deleted || state.closePromise) return true;
+    if (
+      Date.now() >= deadline
+      && state.realtimePhase === 'ready'
+      && !((Number(state.catchupPending) || 0) > 0)
+    ) {
+      if (caughtUp) return false;
+      caughtUp = true;
+      await catchUpTail(state);
+      continue;
+    }
+    await new Promise((resolve) => {
+      let timer = null;
+      const wake = () => {
+        clearTimeout(timer);
+        state.remoteRefWaiters.delete(wake);
+        resolve();
+      };
+      timer = setTimeout(wake, 1_000);
+      state.remoteRefWaiters.add(wake);
+    });
+  }
+}
+
+function closeLivePreviews(state) {
+  if (state.livePreviewSweepTimer) {
+    clearTimeout(state.livePreviewSweepTimer);
+    state.livePreviewSweepTimer = null;
+  }
+  try { state.liveBus?.release(); } catch { /* */ }
+  state.liveBus = null;
+  wakeRemoteReferenceWaiters(state);
+}
+
+// Structs of previews that never got their row stay in the registry doc,
+// which the next open of this document reuses: that handle must not chain
+// exact edits onto them (see the taint check in openAnnotationDoc). Run as the
+// handle lets go of the doc, after its last rows were applied.
+function taintLiveDocIfUnconfirmed(state) {
+  const unconfirmed = [...state.livePreviews.keys(), ...state.expiredPreviewKeys];
+  if (unconfirmed.length > 0 && state.ownsRegistryDoc) {
+    const tainted = LIVE_PREVIEW_TAINTED_DOCS.get(state.doc) || new Set();
+    for (const key of unconfirmed) tainted.add(key);
+    LIVE_PREVIEW_TAINTED_DOCS.set(state.doc, tainted);
+  }
 }
 
 function notifyChange(state) {
@@ -3758,6 +4243,7 @@ function makeHandle(state) {
      */
     applyByPage(byPage, opts = {}) {
       assertHandleWritable(state);
+      syncTrace('capture-start');
       const viewer = state.viewer;
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
@@ -3859,6 +4345,7 @@ function makeHandle(state) {
         ...opts,
       });
       state.lastByPage = byPage;
+      syncTrace('capture-end', { added: res.added, updated: res.updated, removed: res.removed });
       for (const swap of res.reconcile || []) {
         if (swap.to) recordViewerObject(viewer, swap.key, swap.toPage ?? swap.pageKey, swap.to);
       }
@@ -4135,6 +4622,7 @@ function makeHandle(state) {
       unregisterActiveState(state);
       state.eraseOutboxClosing = true;
       clearEraseOutboxRetry(state);
+      closeLivePreviews(state);
       if (state.deleted) {
         state.destroyed = true;
       }
@@ -4192,6 +4680,7 @@ function makeHandle(state) {
       try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
       // Release the registry doc (the registry never destroys — keeps undo/state
       // across reopen). Only destroy a doc we were explicitly handed (tests).
+      taintLiveDocIfUnconfirmed(state);
       if (state.ownsRegistryDoc) releaseYDoc(state.registryKey);
       else { try { state.doc.destroy(); } catch { /* */ } }
       })();
