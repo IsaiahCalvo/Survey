@@ -1053,7 +1053,22 @@ function bytesEqual(left, right) {
   return true;
 }
 
+// Per-field sync (2026-09-24) made every mark a nested Y.Map, so one import
+// or bulk capture is thousands of structs, each pointing at its own mark's map
+// (a reference into the SAME update). The dependency scan used to decode every
+// pending record's whole update once per reference — structs x records full
+// decodes, which froze a 36-page document with hundreds of marks for minutes
+// on open (w25). Record ranges are now decoded once per update (updates are
+// never mutated once enqueued), references to the update's own structs are
+// skipped (a clock belongs to exactly one update), and each distinct
+// (client, clock) is looked up once per scan. Same answers, linear work.
+const clockRangesByUpdate = new WeakMap();
+let clockRangeDecodes = 0;
+
 function updateClockRanges(update) {
+  const cached = update instanceof Uint8Array ? clockRangesByUpdate.get(update) : null;
+  if (cached) return cached;
+  clockRangeDecodes += 1;
   const ranges = new Map();
   for (const struct of Y.decodeUpdate(update).structs) {
     const client = Number(struct.id?.client);
@@ -1065,6 +1080,7 @@ function updateClockRanges(update) {
       ? { start: Math.min(existing.start, start), end: Math.max(existing.end, end) }
       : { start, end });
   }
+  if (update instanceof Uint8Array) clockRangesByUpdate.set(update, ranges);
   return ranges;
 }
 
@@ -1082,6 +1098,31 @@ function causalDependenciesForUpdate(state, update, excludeKey = null) {
   const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
   const records = [...state.appendRecords.values()];
   const decoded = Y.decodeUpdate(update);
+  // Exact clock spans of this update's own structs, per client.
+  const ownSpans = new Map();
+  for (const struct of decoded.structs) {
+    const client = Number(struct.id?.client);
+    const start = Number(struct.id?.clock);
+    const length = Number(struct.length || 0);
+    if (!Number.isFinite(client) || !Number.isFinite(start) || !(length > 0)) continue;
+    if (!ownSpans.has(client)) ownSpans.set(client, []);
+    ownSpans.get(client).push([start, start + length]);
+  }
+  for (const spans of ownSpans.values()) spans.sort((a, b) => a[0] - b[0]);
+  const isOwnClock = (client, clock) => {
+    const spans = ownSpans.get(client);
+    if (!spans) return false;
+    let low = 0;
+    let high = spans.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (clock < spans[mid][0]) high = mid - 1;
+      else if (clock >= spans[mid][1]) low = mid + 1;
+      else return true;
+    }
+    return false;
+  };
+  const looked = new Set();
   for (const [client, range] of updateClockRanges(update)) {
     const acceptedClock = Number(acceptedVector.get(client)) || 0;
     if (range.start > acceptedClock) {
@@ -1101,6 +1142,10 @@ function causalDependenciesForUpdate(state, update, excludeKey = null) {
       if (!Number.isFinite(client) || !Number.isFinite(clock)) continue;
       const acceptedClock = Number(acceptedVector.get(client)) || 0;
       if (clock < acceptedClock) continue;
+      if (isOwnClock(client, clock)) continue;
+      const lookupKey = `${client}:${clock}`;
+      if (looked.has(lookupKey)) continue;
+      looked.add(lookupKey);
       const dependency = recordCoveringClock(records, client, clock, excludeKey);
       if (dependency) dependencies.add(dependency);
     }
@@ -3964,6 +4009,8 @@ export async function purgeAnnotationDoc(documentId) {
 }
 
 export const __test = {
+  causalDependenciesForUpdate,
+  clockRangeDecodeCount: () => clockRangeDecodes,
   bytesToPgHex,
   pgHexToBytes,
   emitHistoryQuarantine,
