@@ -14,7 +14,16 @@ import {
   setMetaValue,
   syncByPageToDoc,
   readAnnotationObject,
+  writeAnnotationMark,
 } from '../src/services/annotationDocStore.js';
+
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — marks are nested per-field maps in the `marks` map (store v3); tests seed
+// them through the store instead of setting a whole { p, o } value.
+function seedMark(doc, key, entry) {
+  writeAnnotationMark(doc, key, entry.p, entry.o);
+}
+
 import {
   openAnnotationDoc,
   purgeAnnotationDoc,
@@ -1117,11 +1126,11 @@ test('id-less erase identity survives JSON clone and z-order reversal', () => {
 test('legacy duplicate identity survives the real JSON clone and reverse boundary', () => {
   const doc = new Y.Doc();
   const legacyKey = '\u0000duplicate:dup:1:1';
-  getAnnotationsMap(doc).set('dup', {
+  seedMark(doc, 'dup', {
     p: 1,
     o: shortInk('dup', 0, 20),
   });
-  getAnnotationsMap(doc).set(legacyKey, {
+  seedMark(doc, legacyKey, {
     p: 1,
     o: shortInk('dup', 30, 50),
   });
@@ -1742,7 +1751,7 @@ test('cold reopen terminal outbox records quarantine persisted and legacy local 
       const persisted = new Y.Doc();
       setMetaValue(persisted, 'persisted-only', status, 'indexeddb-preload');
       const legacy = new Y.Doc();
-      getAnnotationsMap(legacy).set(`legacy-${status}`, {
+      seedMark(legacy, `legacy-${status}`, {
         p: 1,
         o: {
           type: 'rect',
@@ -1970,7 +1979,7 @@ test('actor-scoped persisted offline deletion reaches authorized WAL and cold re
   const documentId = 'doc-persisted-offline-delete';
   const actorUserId = 'actor-a';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('offline-delete', {
+  seedMark(cloud, 'offline-delete', {
     p: 1,
     o: {
       type: 'rect',
@@ -2036,7 +2045,7 @@ test('actor-scoped persisted offline update reaches authorized WAL and cold repl
   const documentId = 'doc-persisted-offline-update';
   const actorUserId = 'actor-a';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('offline-update', {
+  seedMark(cloud, 'offline-update', {
     p: 1,
     o: {
       type: 'rect',
@@ -2053,7 +2062,7 @@ test('actor-scoped persisted offline update reaches authorized WAL and cold repl
     data: bytesToPgHex(Y.encodeStateAsUpdate(cloud)),
   }];
   const persisted = cloneDoc(cloud);
-  getAnnotationsMap(persisted).set('offline-update', {
+  seedMark(persisted, 'offline-update', {
     p: 1,
     o: {
       type: 'rect',
@@ -2331,7 +2340,7 @@ test('actorless legacy recovery cannot override an ordinary pending same-key val
   const actorUserId = 'actor-a';
   const outbox = createMemoryAnnotationOutbox();
   const pendingDoc = new Y.Doc();
-  getAnnotationsMap(pendingDoc).set('same-key', {
+  seedMark(pendingDoc, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2352,7 +2361,7 @@ test('actorless legacy recovery cannot override an ordinary pending same-key val
     update: Y.encodeStateAsUpdate(pendingDoc),
   });
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('same-key', {
+  seedMark(legacy, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2402,7 +2411,7 @@ test('actorless legacy recovery defers behind a pending net-zero tombstone', asy
   const actorUserId = 'actor-a';
   const outbox = createMemoryAnnotationOutbox();
   const pendingDoc = new Y.Doc();
-  getAnnotationsMap(pendingDoc).set('same-key', {
+  seedMark(pendingDoc, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2428,7 +2437,7 @@ test('actorless legacy recovery defers behind a pending net-zero tombstone', asy
     update: pendingUpdate,
   });
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('same-key', {
+  seedMark(legacy, 'same-key', {
     p: 1,
     o: {
       type: 'rect',
@@ -2716,7 +2725,7 @@ test('account switch cannot expose or delete another actor outbox', async () => 
 
 test('two clients deterministically converge when promoting one legacy sentinel identity', () => {
   const seed = new Y.Doc();
-  getAnnotationsMap(seed).set('\u0000idless:1:0', {
+  seedMark(seed, '\u0000idless:1:0', {
     p: 1,
     o: shortInk('legacy', 0, 30, { idless: true }),
   });
@@ -3844,8 +3853,8 @@ test('catch-up replays a late lower sequence after legal database commit inversi
     if (!earlyHigher) earlyHigher = bytesToPgHex(update);
     else lateLower = bytesToPgHex(update);
   });
-  remote.getMap('annotations').set('seq-2', { p: 1, o: nativeInk('seq-2') });
-  remote.getMap('annotations').set('seq-1', { p: 1, o: nativeInk('seq-1') });
+  seedMark(remote, 'seq-2', { p: 1, o: nativeInk('seq-2') });
+  seedMark(remote, 'seq-1', { p: 1, o: nativeInk('seq-1') });
 
   const doc = new Y.Doc();
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
@@ -3864,8 +3873,8 @@ test('catch-up replays a late lower sequence after legal database commit inversi
   subscribed?.('SUBSCRIBED');
   await new Promise((resolve) => setTimeout(resolve, 5));
 
-  assert.equal(doc.getMap('annotations').has('seq-1'), true, 'late lower sequence is not skipped');
-  assert.equal(doc.getMap('annotations').has('seq-2'), true);
+  assert.equal(getAnnotationsMap(doc).has('seq-1'), true, 'late lower sequence is not skipped');
+  assert.equal(getAnnotationsMap(doc).has('seq-2'), true);
   await handle.destroy();
 });
 
@@ -5077,7 +5086,7 @@ test('shipped actorless IndexedDB recovers only matching-author entries and neve
   const rows = [];
   let legacyCleared = false;
   const legacySeed = new Y.Doc();
-  getAnnotationsMap(legacySeed).set('legacy-a', {
+  seedMark(legacySeed, 'legacy-a', {
     p: 1,
     o: {
       type: 'rect',
@@ -5176,7 +5185,7 @@ test('shipped actorless IndexedDB recovers only matching-author entries and neve
 test('actorless legacy deletion stays quarantined because the deleting account is unknowable', async () => {
   const documentId = 'doc-legacy-owned-delete';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('owned', {
+  seedMark(cloud, 'owned', {
     p: 1,
     o: {
       type: 'rect',
@@ -5241,7 +5250,7 @@ test('a permission-rejected legacy recovery never auto-resubmits on a later open
   let denyWrites = true;
   let cleared = false;
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('rejected-owned', {
+  seedMark(legacy, 'rejected-owned', {
     p: 1,
     o: {
       type: 'rect',
@@ -5329,7 +5338,7 @@ test('offline legacy recovery transitioning to 42501 quarantines only one semant
   let mode = 'offline';
   let appendAttempts = 0;
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('offline-then-denied', {
+  seedMark(legacy, 'offline-then-denied', {
     p: 1,
     o: {
       type: 'rect',
@@ -5426,7 +5435,7 @@ test('repeated offline legacy opens keep one bounded pending recovery', async ()
   const documentId = 'doc-legacy-offline-dedupe';
   const rows = [];
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('offline-owned', {
+  seedMark(legacy, 'offline-owned', {
     p: 1,
     o: {
       type: 'rect',
@@ -5479,7 +5488,7 @@ test('repeated offline legacy opens keep one bounded pending recovery', async ()
 test('cloud-identical collaborator annotations and metadata retire without reauthoring', async () => {
   const documentId = 'doc-legacy-identical-retirement';
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('collaborator', {
+  seedMark(cloud, 'collaborator', {
     p: 1,
     o: {
       type: 'circle',
@@ -5536,7 +5545,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
   const documentId = 'doc-legacy-quarantine';
   const rows = [];
   const cloud = new Y.Doc();
-  getAnnotationsMap(cloud).set('conflict', {
+  seedMark(cloud, 'conflict', {
     p: 1,
     o: {
       type: 'rect',
@@ -5553,7 +5562,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
     data: bytesToPgHex(Y.encodeStateAsUpdate(cloud)),
   });
   const legacy = new Y.Doc();
-  getAnnotationsMap(legacy).set('conflict', {
+  seedMark(legacy, 'conflict', {
     p: 1,
     o: {
       type: 'rect',
@@ -5561,7 +5570,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
       data: { id: 'conflict', authorId: 'actor-a' },
     },
   });
-  getAnnotationsMap(legacy).set('missing-author', {
+  seedMark(legacy, 'missing-author', {
     p: 1,
     o: { type: 'circle', left: 9, data: { id: 'missing-author' } },
   });
@@ -5618,7 +5627,7 @@ test('missing-author and same-key legacy conflicts remain detached and quarantin
 test('failed or timed-out legacy recovery stays hidden and leaves shipped storage untouched', async () => {
   const makeLegacySeed = () => {
     const legacy = new Y.Doc();
-    getAnnotationsMap(legacy).set('offline-a', {
+    seedMark(legacy, 'offline-a', {
       p: 1,
       o: {
         type: 'rect',

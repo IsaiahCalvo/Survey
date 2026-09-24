@@ -3,7 +3,21 @@ import assert from 'node:assert/strict';
 import * as Y from 'yjs';
 
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
-import { getAnnotationsMap } from '../src/services/annotationDocStore.js';
+import { getAnnotationsMap, writeAnnotationMark } from '../src/services/annotationDocStore.js';
+
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — marks are nested per-field maps in the `marks` map (store v3). Tests that
+// seeded a whole { p, o } value write it through the store instead; reads and
+// deletes still go to the real map.
+function markWriter(doc) {
+  const map = getAnnotationsMap(doc);
+  return {
+    set(key, entry) { writeAnnotationMark(doc, key, entry.p, entry.o); },
+    has: (key) => map.has(key),
+    delete: (key) => map.delete(key),
+    get size() { return map.size; },
+  };
+}
 
 function ink(id) {
   return {
@@ -25,7 +39,7 @@ function ink(id) {
 
 test('handle repair publishes one clean React materialization from one local transaction', async () => {
   const doc = new Y.Doc();
-  const map = getAnnotationsMap(doc);
+  const map = markWriter(doc); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
   map.set('copy-a', { p: 1, o: ink('copy-a') });
   map.set('copy-b', { p: 1, o: ink('copy-b') });
 

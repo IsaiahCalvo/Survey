@@ -15,6 +15,7 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -34471,11 +34472,19 @@ ${pageBlocks}
                                       // handleCalloutTextStyleChange; updatedReactCallout spreads
                                       // the edit-START snapshot, so keep the live style or the
                                       // pick is silently reverted on commit.
-                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) =>
-                                        c.id === editingAnnotation.reactCalloutId
-                                          ? { ...updatedReactCallout, style: c.style || updatedReactCallout.style }
-                                          : c
-                                      ), {
+                                      // Per-field sync (2026-09-24): updatedReactCallout is built
+                                      // from the edit-START callout, so only what this text edit
+                                      // changed (text, grown box) is written onto the callout as
+                                      // it is NOW — a collaborator's move or restyle made while
+                                      // typing survives (mergeEditOntoCurrent).
+                                      const calloutEditStart = editingAnnotation.originalReactCallout;
+                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
+                                        if (c.id !== editingAnnotation.reactCalloutId) return c;
+                                        if (!calloutEditStart) {
+                                          return { ...updatedReactCallout, style: c.style || updatedReactCallout.style };
+                                        }
+                                        return mergeEditOntoCurrent(c, calloutEditStart, updatedReactCallout) || c;
+                                      }), {
                                         source: 'callout:edit-commit',
                                         action: 'callout-edit-commit',
                                         checkpointPolicy: 'normal',

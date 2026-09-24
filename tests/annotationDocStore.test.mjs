@@ -15,7 +15,22 @@ import {
   syncSurveyMarkersToDoc,
   repairStackedInkDuplicates,
   readAnnotationObject,
+  writeAnnotationMark,
 } from '../src/services/annotationDocStore.js';
+
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — marks are nested per-field maps in the `marks` map (store v3). Tests that
+// seeded a whole { p, o } value write it through the store instead; reads and
+// deletes still go to the real map.
+function markWriter(doc) {
+  const map = getAnnotationsMap(doc);
+  return {
+    set(key, entry) { writeAnnotationMark(doc, key, entry.p, entry.o); },
+    has: (key) => map.has(key),
+    delete: (key) => map.delete(key),
+    get size() { return map.size; },
+  };
+}
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -84,7 +99,7 @@ test('extractAnnotationId reads data.id, then id, then annotationId', () => {
 
 test('repairStackedInkDuplicates collapses eight regenerated-looking copies to one durable record', () => {
   const doc = new Y.Doc();
-  const map = getAnnotationsMap(doc);
+  const map = markWriter(doc); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
   for (let index = 0; index < 8; index += 1) {
     const id = `streak-${index}`;
     const { page, object } = filledInk(id);
@@ -118,7 +133,7 @@ test('repairStackedInkDuplicates collapses eight regenerated-looking copies to o
 
 test('repairStackedInkDuplicates keeps a canonically keyed copy', () => {
   const doc = new Y.Doc();
-  const map = getAnnotationsMap(doc);
+  const map = markWriter(doc); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
   const mismatched = filledInk('canonical-id');
   const canonical = filledInk('canonical-id');
   map.set('wrong-map-key', { p: mismatched.page, o: mismatched.object });
@@ -133,7 +148,7 @@ test('repairStackedInkDuplicates keeps a canonically keyed copy', () => {
 
 test('repairStackedInkDuplicates is exact and ink-only', () => {
   const doc = new Y.Doc();
-  const map = getAnnotationsMap(doc);
+  const map = markWriter(doc); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
   const base = filledInk('base');
   map.set('base', { p: base.page, o: base.object });
 

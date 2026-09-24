@@ -1,3 +1,6 @@
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — the flat store's durable mark map is `marks` (store v3); these tests use it
+// as a generic durable map.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
@@ -13,7 +16,7 @@ function makeRemoteOpHex(annotationId) {
   const remote = new Y.Doc();
   let captured;
   remote.on('update', (u) => { captured = u; });
-  remote.getMap('annotations').set(annotationId, { id: annotationId, pageNumber: 2, type: 'path' });
+  remote.getMap('marks').set(annotationId, { id: annotationId, pageNumber: 2, type: 'path' });
   return bytesToPgHex(captured);
 }
 
@@ -29,13 +32,13 @@ function makeSeedAndDelete(annotationId) {
   const source = new Y.Doc();
   let captured = null;
   source.on('update', (update) => { captured = update; });
-  source.getMap('annotations').set(annotationId, {
+  source.getMap('marks').set(annotationId, {
     id: annotationId,
     pageNumber: 2,
     type: 'path',
   });
   const seed = captured;
-  source.getMap('annotations').delete(annotationId);
+  source.getMap('marks').delete(annotationId);
   return {
     seed,
     deleteHex: bytesToPgHex(captured),
@@ -202,7 +205,7 @@ test('open-time race: an op committed between hydrate and SUBSCRIBED is applied 
   supabase.fireSubscribed();
   await new Promise((r) => setTimeout(r, 10));
 
-  assert.ok(doc.getMap('annotations').has('missed-mark'), 'the missed op is applied');
+  assert.ok(doc.getMap('marks').has('missed-mark'), 'the missed op is applied');
   assert.ok(changes.length >= 1, 'listeners are notified so the viewer re-renders');
   await handle.destroy();
 });
@@ -375,8 +378,8 @@ test('reconnect: a re-fired SUBSCRIBED sweeps ops missed while the channel was d
   supabase.fireSubscribed();
   await new Promise((r) => setTimeout(r, 10));
 
-  assert.ok(doc.getMap('annotations').has('offline-1'), 'first missed op applied');
-  assert.ok(doc.getMap('annotations').has('offline-2'), 'second missed op applied');
+  assert.ok(doc.getMap('marks').has('offline-1'), 'first missed op applied');
+  assert.ok(doc.getMap('marks').has('offline-2'), 'second missed op applied');
   await handle.destroy();
 });
 
@@ -394,16 +397,16 @@ test('a row whose bytes fail to apply is retried on the next sweep — never per
 
   supabase.fireSubscribed();
   await new Promise((r) => setTimeout(r, 10));
-  assert.ok(doc.getMap('annotations').has('good-1'), 'rows before the bad one are applied');
-  assert.ok(!doc.getMap('annotations').has('good-3'), 'sweep stops AT the bad row instead of advancing past it');
+  assert.ok(doc.getMap('marks').has('good-1'), 'rows before the bad one are applied');
+  assert.ok(!doc.getMap('marks').has('good-3'), 'sweep stops AT the bad row instead of advancing past it');
 
   // The row is fixed server-side (e.g. it was a transient decode issue) — the
   // next SUBSCRIBED must resume from seq 1, not from past the bad row.
   supabase.log[1] = { seq: 2, data: makeRemoteOpHex('good-2'), client_id: 'other' };
   supabase.fireSubscribed();
   await new Promise((r) => setTimeout(r, 10));
-  assert.ok(doc.getMap('annotations').has('good-2'), 'the previously-failing seq is retried');
-  assert.ok(doc.getMap('annotations').has('good-3'), 'rows after it are then applied too');
+  assert.ok(doc.getMap('marks').has('good-2'), 'the previously-failing seq is retried');
+  assert.ok(doc.getMap('marks').has('good-3'), 'rows after it are then applied too');
 
   await handle.destroy();
 });
@@ -426,7 +429,7 @@ test('same-install catch-up applies a stale handle delete and cannot snapshot th
   supabase.fireSubscribed();
   await new Promise((r) => setTimeout(r, 10));
 
-  assert.equal(doc.getMap('annotations').has('stale-mark'), false, 'same-install delete is applied');
+  assert.equal(doc.getMap('marks').has('stale-mark'), false, 'same-install delete is applied');
   assert.ok(changes.length >= 1, 'listeners receive the deletion');
   await handle.destroy();
 
@@ -438,7 +441,7 @@ test('same-install catch-up applies a stale handle delete and cannot snapshot th
   const checkpoint = new Y.Doc();
   Y.applyUpdate(checkpoint, gunzipSync(pgHexToBytes(supabase.lastSnapshot.snapshot)));
   assert.equal(
-    checkpoint.getMap('annotations').has('stale-mark'),
+    checkpoint.getMap('marks').has('stale-mark'),
     false,
     'destroy cannot overwrite the backend with a stale mark at the delete seq',
   );
@@ -458,7 +461,7 @@ test('same-install realtime applies another live handle delete', async () => {
   await handle.drain();
 
   assert.equal(
-    doc.getMap('annotations').has('realtime-stale-mark'),
+    doc.getMap('marks').has('realtime-stale-mark'),
     false,
     'same-install realtime delete is applied instead of mistaken for a self-echo',
   );
@@ -647,7 +650,7 @@ test('an exact persisted delta cannot resurrect a backend delete committed at re
   await new Promise((resolve) => setTimeout(resolve, 10));
   await handle.drain();
   assert.equal(
-    doc.getMap('annotations').has('deleted-at-barrier'),
+    doc.getMap('marks').has('deleted-at-barrier'),
     false,
     'the remote delete covers the original persisted struct',
   );
@@ -659,7 +662,7 @@ test('an exact persisted delta cannot resurrect a backend delete committed at re
     enableLocal: false, enableRealtime: false, doc: coldDoc,
   });
   assert.equal(
-    coldDoc.getMap('annotations').has('deleted-at-barrier'),
+    coldDoc.getMap('marks').has('deleted-at-barrier'),
     false,
     'delete followed by the original causal delta stays deleted on cold replay',
   );

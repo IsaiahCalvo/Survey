@@ -11,9 +11,8 @@ import { PDFDocument, PDFName } from 'pdf-lib';
 
 import {
   ANNOTATION_STORE_VERSION,
-  ANNOTATION_STORE_VERSION_META_KEY,
-  convertLegacyAnnotationEntries,
-  countLegacyAnnotationEntries,
+  LEGACY_ANNOTATIONS_MAP,
+  MARKS_MAP,
   createViewerCaptureState,
   docToByPage,
   encodeSnapshot,
@@ -33,7 +32,7 @@ import {
   invertAnnotationHistoryAction,
 } from '../src/utils/annotationLocalHistory.js';
 import { applyReconcileSwaps } from '../src/utils/annotationReconcile.js';
-import { mergeDraggedMarksOntoPage } from '../src/utils/dragCommitMerge.js';
+import { mergeDraggedMarksOntoPage, mergeEditOntoCurrent } from '../src/utils/dragCommitMerge.js';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 
 const { bytesToPgHex, pgHexToBytes } = __test;
@@ -635,49 +634,92 @@ test('reload: snapshot + tail round trip reproduces the merged document', () => 
   assert.equal(readAnnotationObject(reopened, 'c1').data.legacyCallout.text, 'changed');
 });
 
-test('one-time conversion: a store-v1 document (whole objects) becomes per-field maps, same content', () => {
-  const doc = new Y.Doc();
-  const map = getAnnotationsMap(doc);
-  map.set('r1', { p: 1, o: rect('r1') });
-  map.set('p1', { p: 2, o: polyline('p1') });
-  map.set('broken', { nope: true });
-  const before = JSON.parse(JSON.stringify(docToByPage(doc)));
-  assert.equal(countLegacyAnnotationEntries(doc), 3);
-  const result = convertLegacyAnnotationEntries(doc);
-  assert.deepEqual(result, { converted: 2, dropped: 1 });
-  assert.equal(countLegacyAnnotationEntries(doc), 0);
-  assert.ok(isYMap(map.get('r1')));
-  assert.equal(getMetaValue(doc, ANNOTATION_STORE_VERSION_META_KEY), ANNOTATION_STORE_VERSION);
-  assert.deepEqual(JSON.parse(JSON.stringify(docToByPage(doc))), before);
-  let updates = 0;
-  doc.on('update', () => { updates += 1; });
-  assert.deepEqual(convertLegacyAnnotationEntries(doc), { converted: 0, dropped: 0 });
-  assert.equal(updates, 0, 'a converted document is never rewritten');
-});
-
-test('a screen on a not-yet-converted document that re-projects identical marks writes nothing', () => {
-  // A viewer (no conversion rights) opens a store-v1 document; the hydrate
-  // re-projects callouts as fresh, identical objects. No write may happen:
-  // the server would reject a viewer's write and roll the screen back.
+test('the old whole-object annotations map is ignored: never read, never written', () => {
   const seed = new Y.Doc();
-  getAnnotationsMap(seed).set('c1', { p: 1, o: callout('c1') });
-  getAnnotationsMap(seed).set('r1', { p: 1, o: rect('r1') });
+  seed.getMap(LEGACY_ANNOTATIONS_MAP).set('old1', { p: 1, o: rect('old1') });
   const peer = makePeer('V', Y.encodeStateAsUpdate(seed));
   let writes = 0;
   peer.doc.on('update', (_update, origin) => { if (origin !== 'seed') writes += 1; });
   peer.repaint();
-  peer.screen = {
-    ...peer.screen,
-    1: { ...peer.screen[1], objects: peer.screen[1].objects.map((o) => structuredClone(o)) },
-  };
+  assert.equal(peer.find('old1'), null, 'old-format marks do not show in this build');
+  assert.equal(writes, 0, 'opening writes nothing');
+  peer.screen = { 1: { objects: [rect('n1')] } };
   peer.capture();
-  assert.equal(writes, 0);
-  assert.equal(countLegacyAnnotationEntries(peer.doc), 2, 'still unconverted');
-  // A real edit converts just that mark.
-  peer.edit('r1', (o) => ({ ...o, stroke: '#00ff00' }));
-  assert.ok(isYMap(getAnnotationsMap(peer.doc).get('r1')));
-  assert.equal(peer.stored('r1').stroke, '#00ff00');
-  assert.equal(countLegacyAnnotationEntries(peer.doc), 1);
+  assert.equal(peer.doc.getMap(LEGACY_ANNOTATIONS_MAP).size, 1, 'old map untouched');
+  assert.deepEqual(peer.doc.getMap(LEGACY_ANNOTATIONS_MAP).get('old1'), { p: 1, o: rect('old1') });
+  assert.ok(isYMap(peer.doc.getMap(MARKS_MAP).get('n1')), 'new marks go to the marks map');
+  assert.equal(getAnnotationsMap(peer.doc), peer.doc.getMap(MARKS_MAP));
+  assert.equal(ANNOTATION_STORE_VERSION, 3);
+});
+
+test('a field whose own name starts with "#" round-trips and never collides with a linked group', () => {
+  const doc = new Y.Doc();
+  const odd = { ...polyline('p1'), '#pointGeometry': 'user value', '\\x': 1, data: { id: 'p1', '#tag': 'a' } };
+  syncByPageToDoc(doc, { 1: { objects: [odd] } });
+  const back = docToByPage(doc)[1].objects[0];
+  assert.equal(back['#pointGeometry'], 'user value');
+  assert.equal(back['\\x'], 1);
+  assert.equal(back.data['#tag'], 'a');
+  assert.deepEqual(JSON.parse(JSON.stringify(back.points)), polyline('p1').points);
+  // A field edit to the '#'-named key writes just that key.
+  const viewer = createViewerCaptureState();
+  recordViewerDelivery(viewer, docToByPage(doc));
+  syncByPageToDoc(doc, docToByPage(doc), { viewer });
+  syncByPageToDoc(doc, { 1: { objects: [{ ...back, '#pointGeometry': 'changed', data: { ...back.data, '#tag': 'b' } }] } }, { viewer });
+  const again = docToByPage(doc)[1].objects[0];
+  assert.equal(again['#pointGeometry'], 'changed');
+  assert.equal(again.data['#tag'], 'b');
+  assert.deepEqual(JSON.parse(JSON.stringify(again.points)), polyline('p1').points);
+});
+
+// ---------------------------------------------------------------------------
+// Text editors commit onto the mark as it is now
+// ---------------------------------------------------------------------------
+
+test('A types in a text box while B moves and restyles it: both survive', () => {
+  const [A, B] = setup([textBox('t1')]);
+  const editStart = structuredClone(A.find('t1'));        // editor opens
+  B.edit('t1', (o) => ({ ...o, left: 300, top: 250, fill: '#00aa00' }));
+  flush([A, B]);                                          // A's page updates under the editor
+  // The editor builds its result from the edit-start object (text + grown height).
+  const edited = { ...editStart, text: 'hello there, world', height: 58 };
+  A.edit('t1', (current) => mergeEditOntoCurrent(current, editStart, edited));
+  flush([A, B]);
+  const merged = assertConverged([A, B], 't1');
+  assert.equal(merged.text, 'hello there, world');
+  assert.equal(merged.height, 58);
+  assert.equal(merged.left, 300, 'B\'s move survives the commit');
+  assert.equal(merged.top, 250);
+  assert.equal(merged.fill, '#00aa00', 'B\'s colour survives the commit');
+});
+
+test('A types in a callout while B moves it: the text lands, the move survives, float tails are not changes', () => {
+  const start = {
+    id: 'c1', pageNumber: 1, text: 'note',
+    arrowTip: { x: 0.1, y: 0.1 }, knee: { x: 0.2, y: 0.2 },
+    textBoxPosition: { x: 0.3, y: 0.3 }, textBoxWidth: 0.2, textBoxHeight: 0.1,
+    style: { fontColor: '#111111', fontSize: 12 },
+  };
+  // What the callout text editor produces: every geometry field re-derived
+  // from page pixels (a float tail away), new text, a grown box.
+  const edited = {
+    ...start,
+    arrowTip: { x: 0.1 + 1e-12, y: 0.1 },
+    knee: { x: 0.2, y: 0.2 - 1e-12 },
+    textBoxPosition: { x: 0.30000000000000004, y: 0.3 },
+    textBoxWidth: 0.2,
+    textBoxHeight: 0.14,
+    text: 'note, longer',
+  };
+  // B moved the callout's box meanwhile.
+  const current = { ...start, textBoxPosition: { x: 0.55, y: 0.6 }, style: { ...start.style, fontSize: 18 } };
+  const merged = mergeEditOntoCurrent(current, start, edited);
+  assert.equal(merged.text, 'note, longer');
+  assert.equal(merged.textBoxHeight, 0.14);
+  assert.deepEqual(merged.textBoxPosition, { x: 0.55, y: 0.6 }, 'B\'s move survives');
+  assert.equal(merged.style.fontSize, 18, 'B\'s restyle survives');
+  assert.deepEqual(merged.arrowTip, start.arrowTip);
+  assert.equal(mergeEditOntoCurrent(null, start, edited), null, 'a mark deleted while being edited stays deleted');
 });
 
 test('export reflects the merged state (colour from one person, size from the other)', async () => {
@@ -868,6 +910,53 @@ test('offline edit, then reconnect: peers that already have the document open re
   await c.destroy();
   assert.ok(cloud.rows.length >= 3);
   void bytesToPgHex; void pgHexToBytes;
+});
+
+test('the live re-send is bounded: given up on payload-too-large, and after a fixed number of failed tries', async () => {
+  for (const mode of ['too-large', 'always-failing']) {
+    let appends = 0;
+    let resendAttempts = 0;
+    const supabase = {
+      async rpc(name) {
+        if (name === 'append_annotation_update') {
+          appends += 1;
+          if (appends === 1) return { data: null, error: { code: 'XX000', message: 'offline' } };
+          resendAttempts += 1;
+          return mode === 'too-large'
+            ? { data: null, error: { code: '413', message: 'Payload too large' } }
+            : { data: null, error: { code: 'XX000', message: 'still failing' } };
+        }
+        if (name === 'store_annotation_snapshot') return { data: true, error: null };
+        throw new Error(`unexpected rpc ${name}`);
+      },
+      from(table) {
+        const empty = { data: [], error: null };
+        const builder = { select: () => builder, eq: () => builder, gt: () => builder, order: () => builder, limit: () => builder, maybeSingle: async () => ({ data: null, error: null }), then: (resolve) => resolve(empty) };
+        if (table === 'annotation_updates' || table === 'annotation_snapshots') return builder;
+        throw new Error(`unexpected table ${table}`);
+      },
+    };
+    const handle = await openAnnotationDoc({
+      documentId: `resend-bound-${mode}`,
+      supabase,
+      clientId: 'writer',
+      actorUserId: 'user-a',
+      enableLocal: false,
+      enableRealtime: false,
+      doc: new Y.Doc(),
+      repairRetryDelayMs: 1,
+      snapshotRetryDelayMs: 0,
+    });
+    handle.applyByPage({ 1: { objects: [rect('r1')] } });
+    await handle.drain();
+    for (let i = 0; i < 60 && resendAttempts < (mode === 'too-large' ? 1 : 6); i += 1) await settle(20);
+    await settle(200);
+    await handle.drain();
+    const expected = mode === 'too-large' ? 1 : 6;
+    assert.equal(resendAttempts, expected, `${mode}: ${resendAttempts} re-send attempts`);
+    await handle.destroy();
+    assert.equal(resendAttempts, expected, `${mode}: nothing more on close`);
+  }
 });
 
 // ---------------------------------------------------------------------------

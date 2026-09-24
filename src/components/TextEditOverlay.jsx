@@ -47,6 +47,7 @@ import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js
 import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
 import Icon from '../Icons';
 import { registerLightPopover } from './dismissRules.js';
+import { mergeEditOntoCurrent } from '../utils/dragCommitMerge.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -585,8 +586,30 @@ export default function TextEditOverlay({
 
     const updated = deepClone(annotations || { objects: [] });
     if (!Array.isArray(updated.objects)) updated.objects = [];
-    if (isNewText) updated.objects.push(json);
-    else updated.objects[annotationIndex] = json;
+    if (isNewText) {
+      updated.objects.push(json);
+    } else if (isCallout) {
+      // Callout commits are re-synthesized by the viewer from this textbox
+      // (and merged onto the live callout there).
+      updated.objects[annotationIndex] = json;
+    } else {
+      // Per-field sync (2026-09-24): `json` was built from the object as it
+      // was when editing started. Write only what this edit changed onto the
+      // mark as it is NOW, so a collaborator's move / restyle made while the
+      // user typed survives. Found by id: the index can shift meanwhile.
+      const original = originalRef.current;
+      const originalId = original?.data?.id ?? original?.id ?? null;
+      const index = originalId != null
+        ? updated.objects.findIndex((object) => (object?.data?.id ?? object?.id) === originalId)
+        : annotationIndex;
+      const merged = mergeEditOntoCurrent(index >= 0 ? updated.objects[index] : null, original, json);
+      if (!merged) {
+        // Someone else deleted it while it was being edited: nothing to save.
+        if (typeof onEditCancel === 'function') onEditCancel();
+        return;
+      }
+      updated.objects[index] = merged;
+    }
 
     if (opts.flush) {
       flushSync(() => onEditCommit(updated));

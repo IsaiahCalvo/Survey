@@ -1,6 +1,6 @@
-Written: 2026-09-24 10:15
+Written: 2026-09-24 10:15 (revised 2026-09-24 11:30 after reviews A and B)
 
-# Per-field sync for annotation marks (store version 2)
+# Per-field sync for annotation marks (store version 3)
 
 Replaces the 2026-09-23 dual-format design (base object + field registers +
 repair passes; kept for reference at git tag
@@ -21,17 +21,27 @@ collaborator's concurrent change.
 ## Layout
 
 ```
-annotations[storageKey] = Y.Map {
+marks[storageKey] = Y.Map {
   p: <page number>,
   o: Y.Map { ...the mark's fields... }
 }
 ```
+
+Marks live in a NEW root map, `marks`. The map's name is the store version
+(v3); nothing else is stamped. The old whole-object `annotations` map is left
+untouched in every document for the reference build, and this build never
+reads or writes it: marks made by older builds simply do not show (owner
+ruling: old data may be lost). There is no conversion. Everything else in the
+document is unchanged and shared: eraser lanes, deletion tombstones, survey
+markers, meta (spaces, callout list), the erase outbox.
 
 Inside `o` (`src/services/annotationMarkStore.js`):
 
 * every plain-object value is a nested Y.Map, all the way down (`data`,
   `meta`, a callout's `data.legacyCallout` and its `style`, ...). Yjs resolves
   each key on its own, so two people changing different keys both keep them;
+* a field whose own name starts with `#` or `\` is stored with a `\` in
+  front, so it can never be mistaken for a linked-group key;
 * these stay ONE stored value, exactly as field-level Undo treats them
   (`annotationLocalHistory.js`):
   * arrays (`points`, `path`, `quads`, a callout's drawn `objects`);
@@ -43,22 +53,21 @@ Inside `o` (`src/services/annotationMarkStore.js`):
     so two concurrent corner drags can never leave one person's points with
     the other's box.
 
-`annoMeta.annotationStoreVersion = 2` marks a converted document.
-
 ## Writes
 
 `writeAnnotationMark(doc, key, page, next, { base, echoVersions })` writes
 only the keys that differ between `base` and `next` (the Undo diff:
 `diffAnnotationFields`), and only when the stored value differs, inside the
-caller's transaction. No base = make the stored mark equal `next`. Creating a
+caller's transaction (a standalone call is its own single transaction). No
+base = make the stored mark equal `next`. Creating a
 mark sets the whole nested map. Deleting deletes the whole entry, so a delete
 wins over a concurrent field edit (and a field edit never brings a deleted
 mark back).
 
 Every writer goes through it: the viewer capture (`syncByPageToDoc`), the
 eraser-lane stable-base edit (`applyByPage`), the erase commit and counter
-renumber Undo (`annotationEraseTransaction.js`), the callout meta migration,
-and the conversion.
+renumber Undo (`annotationEraseTransaction.js`), and the callout meta
+migration.
 
 ## Which fields the viewer changed (capture)
 
@@ -107,6 +116,14 @@ dragged mark's own change (drag start → last frame) onto the page as it is at
 release. It is used by polygon/polyline corner drags, counter Shift-orbit, and
 group rotate/resize (`useSVGInteraction.js`).
 
+Editors work the same way. The text box and callout text editors build their
+result from the object captured when editing STARTED; `mergeEditOntoCurrent`
+writes only what the edit changed (edit start → result, ignoring float tails
+from geometry the callout editor re-derives from page pixels) onto the mark as
+it is at commit. A move or restyle a collaborator made while the user typed
+survives; a mark deleted meanwhile is not brought back
+(`TextEditOverlay.jsx`, the callout commit in `PDFViewer.jsx`).
+
 ## Reads
 
 `readAnnotationEntry(doc, key)` returns a plain `{ p, o }` with identity
@@ -120,19 +137,11 @@ object equals what it just wrote, the cache adopts it (no re-render, no
 key-order churn). `readRawAnnotationEntry` (uncached, not normalized) is for
 compare-and-swap checks (the erase commit).
 
-## Conversion (one time)
+## Older builds
 
-`convertLegacyAnnotationEntries` rewrites every v1 `{ p, o }` entry as a nested
-map and stamps the version. Entries without a usable page/object are dropped
-(owner accepted losing unreadable old data). `useAnnotationDoc` runs it on
-open (and on late role resolution), writable roles only, like the other
-durable repairs. Until then the store still reads v1 entries, and a v1 entry
-is rewritten only for a real change: a viewer re-projecting identical marks
-never writes. Two screens converting the same document at the same moment
-each write the same content, so whichever map Yjs keeps is identical.
-
-Older builds are unsupported. They cannot read nested marks, and an old
-build's capture deletes marks it cannot read. Every device must update.
+Unsupported. They read and write only the old `annotations` map, so they
+neither see nor touch new marks, and this build neither sees nor touches
+theirs. Every device must update.
 
 ## Offline edits reach peers that are already open
 
@@ -144,8 +153,15 @@ each such update for a live re-send (`queueLiveResend`): the exact bytes under
 the same writer id and sequence (the append RPC returns the existing row for
 an exact replay, so this is idempotent). The re-send runs right away, again
 when realtime re-subscribes after a reconnect, with backoff on failure, and
-once more on close. A permission denial or sequence collision drops it (the
-snapshot still carries the edit for every later open).
+once more on close. It is bounded: an update over ~900 KB (Realtime's
+Postgres-changes payload limit is ~1 MB) is never re-sent, and one that fails
+is given up after 6 tries, or at once on a payload-too-large, permission or
+sequence-collision answer. The snapshot still carries it for every later open.
+
+What this does NOT cover: an edit made offline in a tab that is closed right
+after reconnecting, before any checkpoint (or re-send) lands, reaches others
+only when that device opens the document again (its local copy is replayed
+then); already-open peers see it at that point, not before.
 
 ## Cross-doc copies in the sync layer
 
@@ -154,7 +170,7 @@ staging, and legacy IndexedDB recovery copy values with
 `copyDurableMapValue` (syncs nested maps key by key, rebuilds missing ones).
 Rebased staging collects changed ROOT keys with
 `rootKeysChangedByTransaction`, because a field edit changes
-`annotations[key].o`, not the root map.
+`marks[key].o`, not the root map.
 
 ## Measured (Node, this machine)
 
@@ -167,12 +183,23 @@ Rebased staging collects changed ROOT keys with
 * Snapshot size costs more: 5,000 rects are 1.0 MB → 1.9 MB raw (38 KB →
   267 KB gzipped); 5,000 200-point pen strokes are 11.7 → 12.4 MB raw (175 →
   383 KB gzipped). Applying a 5,000-rect snapshot takes 88 ms (was 25 ms).
+  A document edited by older builds also still carries its old
+  `annotations` map, untouched.
 
 ## Limits
 
 * Same field, concurrent: last writer wins (per key). The rare case of three
   or more concurrent writers on a nested bag (e.g. `knee.x`/`knee.y`) can mix
   keys from two writers; linked groups never mix.
+* A nested bag that did NOT exist when the mark was created and is then added
+  by two people at the same moment (each creating it) keeps only one person's
+  bag: Yjs cannot merge two new maps under one key. Bags present at creation
+  (`data`, `meta`, a callout's `legacyCallout` and `style`, ...) are created
+  with the mark and never re-created, so this only affects bags a feature adds
+  later (e.g. a line's `data.midpoint`, where one whole value is the right
+  result anyway).
+* Survey Markers are unchanged: each marker is still one whole record in its
+  own map (last writer wins per marker).
 * A callout's drawn `objects` array is one value derived from
   `data.legacyCallout`. After two people change different callout fields the
   merged `legacyCallout` is right (the screen, export and print draw from
@@ -186,5 +213,7 @@ Rebased staging collects changed ROOT keys with
   source (see above).
 * Deleting a mark discards a collaborator's concurrent edits to it (delete
   wins). Undo of the delete restores the deleter's copy.
-* The live re-send queue is in memory: if the tab closes before the re-send
-  lands, open peers get the edit when they reopen (from the snapshot).
+* The live re-send queue is in memory and bounded (see above): if the tab
+  closes before the re-send lands, or the update is too large or keeps
+  failing, open peers get the edit when they reopen.
+* Marks made by older builds (the `annotations` map) are not shown.

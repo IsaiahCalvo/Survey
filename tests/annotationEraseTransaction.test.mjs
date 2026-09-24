@@ -31,6 +31,7 @@ import {
   docToDeletedPdfAnnotations,
   docToByPage,
   getEraserOpsMap,
+  getAnnotationsMap,
   readRawAnnotationEntry,
   syncByPageToDoc,
   writeAnnotationMark,
@@ -40,7 +41,7 @@ import {
 // — marks are nested per-field maps; tests read and write them through the
 // store instead of the old whole { p, o } value.
 function storedValues(doc) {
-  return [...doc.getMap('annotations').keys()]
+  return [...getAnnotationsMap(doc).keys()]
     .map((key) => [key, readRawAnnotationEntry(doc, key)]);
 }
 function replaceStored(doc, key, update) {
@@ -809,7 +810,7 @@ test('counter erase atomically renumbers 1/2/3 and Undo/Redo stay exact in both 
       const doc = new Y.Doc();
       syncByPageToDoc(doc, byPage);
       const undoManager = new Y.UndoManager([
-        doc.getMap('annotations'),
+        getAnnotationsMap(doc),
         doc.getMap('annotationEraserOps'),
         doc.getMap(ERASE_OUTBOX_MAP),
       ], {
@@ -1066,7 +1067,7 @@ test('full erase tombstones imported shape and text markup atomically across Und
   const doc = new Y.Doc();
   syncByPageToDoc(doc, byPage);
   const undoManager = new Y.UndoManager([
-    doc.getMap('annotations'),
+    getAnnotationsMap(doc),
     doc.getMap('annotationEraserOps'),
     doc.getMap(DELETED_PDF_ANNOTATIONS_MAP),
     doc.getMap(ERASE_OUTBOX_MAP),
@@ -1464,7 +1465,7 @@ test('Revisions delete-lane restore fails closed for newer same-writer state and
   );
   assert.deepEqual(docToByPage(doc)[1].objects, []);
 
-  doc.getMap('annotations').delete('stale-history-shape');
+  getAnnotationsMap(doc).delete('stale-history-shape');
   assert.deepEqual(
     restoreEraseDeletionOnDoc({
       doc,
@@ -1472,7 +1473,7 @@ test('Revisions delete-lane restore fails closed for newer same-writer state and
     }),
     { status: 'conflict', reason: 'stable-base-missing' },
   );
-  assert.equal(doc.getMap('annotations').has('stale-history-shape'), false);
+  assert.equal(getAnnotationsMap(doc).has('stale-history-shape'), false);
 });
 
 test('Revisions restore preserves other writers, current ownership, and unrelated tombstones', async () => {
@@ -1736,7 +1737,7 @@ test('mixed erase keeps full local Undo but Revisions restores deletions only', 
   const doc = new Y.Doc();
   syncByPageToDoc(doc, { 1: { objects: [first, second, beforeInk] } });
   const undoManager = new Y.UndoManager([
-    doc.getMap('annotations'),
+    getAnnotationsMap(doc),
     doc.getMap('annotationEraserOps'),
     doc.getMap(ERASE_OUTBOX_MAP),
   ], {

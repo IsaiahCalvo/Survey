@@ -29,6 +29,7 @@ import {
 } from '../src/utils/selectedTextFormatting.js';
 import { findSelectedAnnotationIndex } from '../src/utils/annotationStorageIdentity.js';
 import { composeTextColor } from '../src/utils/textColorOpacity.js';
+import { mergeEditOntoCurrent } from '../src/utils/dragCommitMerge.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -325,11 +326,22 @@ test('the drag phase reaches the save pipeline from every text colour picker', (
 });
 
 test('leaving the callout editor keeps the text style changed during the edit', () => {
+  // RULED 2026-09-24 (per-field sync, reviews A-C3/B-1): the commit now merges
+  // only what the text edit changed onto the LIVE callout
+  // (mergeEditOntoCurrent), which keeps the live style — and a collaborator's
+  // move — instead of spreading the edit-start copy. The pin follows the new
+  // code; the behaviour (style picked mid-edit survives) is exercised below.
   const viewer = read('src/PDFViewer.jsx');
   assert.match(
     viewer,
-    /c\.id === editingAnnotation\.reactCalloutId\s*\?\s*\{ \.\.\.updatedReactCallout, style: c\.style \|\| updatedReactCallout\.style \}\s*:\s*c/,
+    /if \(c\.id !== editingAnnotation\.reactCalloutId\) return c;[\s\S]{0,400}return mergeEditOntoCurrent\(c, calloutEditStart, updatedReactCallout\) \|\| c;/,
   );
+  const start = { id: 'c1', text: 'a', style: { fontSize: 12, bold: false } };
+  const edited = { ...start, text: 'ab' }; // the editor spreads the edit-start style
+  const live = { ...start, style: { fontSize: 20, bold: true } }; // picked mid-edit
+  const merged = mergeEditOntoCurrent(live, start, edited);
+  assert.equal(merged.text, 'ab');
+  assert.deepEqual(merged.style, { fontSize: 20, bold: true });
 });
 
 /*

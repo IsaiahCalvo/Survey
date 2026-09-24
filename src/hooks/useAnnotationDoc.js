@@ -154,27 +154,6 @@ function runDurableCalloutMigration(handle, pageSizes, documentId) {
   }
 }
 
-// One-time store-v1 → v2 conversion (owner ruling 2026-09-24: marks move to
-// per-field storage; older builds are not supported). A durable write, so
-// only a confirmed-writable role runs it; until then the store still reads
-// the old layout.
-function runDurableStoreConversion(handle, documentId) {
-  try {
-    const result = handle.convertLegacyAnnotations?.();
-    if (result?.converted > 0 || result?.dropped > 0) {
-      console.log('[useAnnotationDoc] converted marks to per-field storage', {
-        documentId,
-        converted: result.converted,
-        dropped: result.dropped,
-      });
-    }
-    return true;
-  } catch (err) {
-    console.error('[useAnnotationDoc] per-field storage conversion failed', err?.message);
-    return false;
-  }
-}
-
 function runDurableStackedInkRepair(handle, documentId, opts = {}) {
   try {
     const result = handle.repairStackedInkDuplicates?.(opts);
@@ -380,7 +359,6 @@ export function useAnnotationDoc({
       // the first read/paint. It is a durable write, so viewers and unresolved
       // roles must stay read-only.
       if (isWritableDocRole(docRoleRef.current)) {
-        runDurableStoreConversion(handle, documentId);
         if (runDurableStackedInkRepair(handle, documentId)) {
           inkRepairDoneRef.current = documentId;
         }
@@ -569,7 +547,6 @@ export function useAnnotationDoc({
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
     if (inkRepairDoneRef.current !== documentId) {
-      runDurableStoreConversion(h, documentId);
       if (runDurableStackedInkRepair(h, documentId)) {
         inkRepairDoneRef.current = documentId;
       }

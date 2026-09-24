@@ -16,6 +16,7 @@ import {
 import { prepareEraseIntentForCommit } from '../utils/annotationEraseCommitPlan.js';
 import {
   docToByPage,
+  getAnnotationsMap,
   readAnnotationEntry,
   syncByPageToDoc,
   writeAnnotationMark,
@@ -403,7 +404,7 @@ export default function AtomicEraseHarness() {
         redo: runtimeRef.current.redoTransitions.length,
       }),
       applyRemoteBaseEdit: (id, patch = {}) => {
-        const annotations = runtimeRef.current.doc.getMap('annotations');
+        const annotations = getAnnotationsMap(runtimeRef.current.doc);
         let storageKey = null;
         let stored = null;
         annotations.forEach((_entry, key) => {

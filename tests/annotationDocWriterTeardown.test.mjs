@@ -1,3 +1,6 @@
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — the flat store's durable mark map is `marks` (store v3); these tests use it
+// as a generic durable map.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
@@ -109,7 +112,7 @@ test('close drains edits queued before teardown and captures them in its final s
   const cold = new Y.Doc();
   try {
     Y.applyUpdate(cold, decoded);
-    assert.ok(cold.getMap('annotations').size > 0, 'final snapshot retains queued edit');
+    assert.ok(cold.getMap('marks').size > 0, 'final snapshot retains queued edit');
   } finally { cold.destroy(); }
 });
 

@@ -59,3 +59,54 @@ export function mergeDraggedMarksOntoPage(currentPage, draggedPage, startObjects
   if (!nextObjects) return null;
   return { annotations: { ...(currentPage || {}), objects: nextObjects }, indexes };
 }
+
+// Numbers an editor re-derives (page px ↔ page fractions) come back a float
+// tail away from where they started. A value within this tolerance of the
+// edit-start value is the SAME value, not a change the editor made.
+const SAME_NUMBER_EPSILON = 1e-7;
+
+function isPlainRecord(value) {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function snapUnchangedNumbers(original, edited) {
+  if (typeof original === 'number' && typeof edited === 'number') {
+    const scale = Math.max(1, Math.abs(original));
+    return Math.abs(original - edited) <= SAME_NUMBER_EPSILON * scale ? original : edited;
+  }
+  if (isPlainRecord(original) && isPlainRecord(edited)) {
+    let changed = false;
+    const out = {};
+    for (const key of Object.keys(edited)) {
+      const next = Object.prototype.hasOwnProperty.call(original, key)
+        ? snapUnchangedNumbers(original[key], edited[key])
+        : edited[key];
+      if (next !== edited[key]) changed = true;
+      out[key] = next;
+    }
+    return changed ? out : edited;
+  }
+  return edited;
+}
+
+/**
+ * What an editor that was opened on an earlier copy of a mark saves when it
+ * closes (per-field sync, 2026-09-24). A text box or callout text editor
+ * builds its result from the object it captured when editing STARTED; saving
+ * that whole object would put back whatever a collaborator changed while the
+ * user was typing (the box moved, restyled, resized). Instead only what the
+ * editor itself changed (edit-start → edited, ignoring float tails from
+ * re-derived geometry) is written onto the mark as it is NOW — the same rule
+ * Undo and drag releases follow.
+ *
+ * @returns the merged object, or null when the mark no longer exists (someone
+ *   deleted it while it was being edited — their delete wins).
+ */
+export function mergeEditOntoCurrent(current, original, edited) {
+  if (!current) return null;
+  if (!original) return edited;
+  const snapped = snapUnchangedNumbers(original, edited);
+  return mergeAnnotationUpdateOntoCurrent(current, original, snapped);
+}

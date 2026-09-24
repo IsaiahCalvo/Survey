@@ -9,9 +9,9 @@
 // annotation_updates WAL, Realtime) lives in annotationDocSync.js on top of this.
 //
 // Model — exactly the Google-Docs/Figma shape:
-//   * One Y.Doc per document. Annotations live in a single Y.Map keyed by a
-//     STABLE annotation id; each value is a nested Y.Map { p: <page>, o: Y.Map
-//     of the mark's fields } (store version 2, 2026-09-24 — per-field sync, see
+//   * One Y.Doc per document. Annotations live in a single Y.Map (`marks`)
+//     keyed by a STABLE annotation id; each value is a nested Y.Map { p: <page>,
+//     o: Y.Map of the mark's fields } (store version 3, 2026-09-24 — per-field sync, see
 //     annotationMarkStore.js and docs/ANNOTATION-FIELD-SYNC.md). Readers never
 //     touch that layout directly: docToByPage / readAnnotationEntry build plain
 //     objects, writes go through writeAnnotationMark.
@@ -38,6 +38,7 @@ import {
   setAnnotationStorageKey,
 } from '../utils/annotationStorageIdentity.js';
 import {
+  MARKS_MAP,
   adoptCachedAnnotationObject,
   decodeAnnotationEntry,
   readAnnotationEntry,
@@ -46,9 +47,8 @@ import {
 
 export {
   ANNOTATION_STORE_VERSION,
-  ANNOTATION_STORE_VERSION_META_KEY,
-  convertLegacyAnnotationEntries,
-  countLegacyAnnotationEntries,
+  LEGACY_ANNOTATIONS_MAP,
+  MARKS_MAP,
   patchAnnotationMark,
   readAnnotationEntry,
   readAnnotationObject,
@@ -56,7 +56,10 @@ export {
   writeAnnotationMark,
 } from './annotationMarkStore.js';
 
-export const ANNOTATIONS_MAP = 'annotations';
+// Store version 3 (2026-09-24): per-field marks live in the `marks` root map.
+// The v1 whole-object `annotations` map is never read or written by this build
+// (owner ruling: no older builds, old data may be lost).
+export const ANNOTATIONS_MAP = MARKS_MAP;
 export const ERASER_OPS_MAP = 'annotationEraserOps';
 export const META_MAP = 'annoMeta';
 export const DELETED_PDF_ANNOTATIONS_MAP = 'deletedPdfAnnotations';
@@ -1101,11 +1104,20 @@ function recordDeliveredObject(viewer, key, pageNumber, object) {
 /** Record every object the store hands to the viewer (reads, remote changes). */
 export function recordViewerDelivery(viewer, byPage) {
   if (!viewer) return;
+  const seen = new Set();
   for (const [pageKey, page] of Object.entries(byPage || {})) {
     for (const object of page?.objects || []) {
       const key = objectStorageKey(object);
       if (key == null) continue;
+      seen.add(key);
       recordDeliveredObject(viewer, key, pageKey, object);
+    }
+  }
+  // Every delivery is the whole document: a mark missing from it is gone.
+  for (const key of [...viewer.lastDelivered.keys()]) {
+    if (!seen.has(key)) {
+      viewer.lastDelivered.delete(key);
+      viewer.deliveries.delete(key);
     }
   }
 }
@@ -1441,6 +1453,10 @@ function commitViewerCapture(viewer, {
       viewer.had.delete(key);
       viewer.base.delete(key);
     }
+  }
+  for (const key of deleted) {
+    viewer.lastDelivered.delete(key);
+    viewer.deliveries.delete(key);
   }
   // Everything handed out so far has now been painted or superseded.
   viewer.deliveries.clear();

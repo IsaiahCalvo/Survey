@@ -46,7 +46,7 @@ function pgHexToBytes(value) {
   return Uint8Array.from(Buffer.from(hex, 'hex'));
 }
 
-// Store v2 (2026-09-24): a mark is a nested Y.Map { p, o: Y.Map }.
+// Store v3 (2026-09-24): marks live in the `marks` map as nested Y.Maps { p, o: Y.Map }.
 const durableObject = (value) => {
   if (value && typeof value.toJSON === 'function' && typeof value.get === 'function') {
     return value.toJSON()?.o || null;
@@ -98,7 +98,7 @@ async function loadDurableAnnotationState(supabase, documentId) {
     Y.applyUpdate(doc, pgHexToBytes(row.data));
   }
 
-  const entries = [...doc.getMap('annotations').entries()].map(([key, value]) => ({
+  const entries = [...doc.getMap('marks').entries()] // store v3 (2026-09-24).map(([key, value]) => ({
     key: String(key),
     annotationId: durableAnnotationId(key, value),
     authorId: durableAnnotationAuthorId(value),

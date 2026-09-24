@@ -6,6 +6,7 @@ import {
   deletedPdfAnnotationStorageKey,
   deriveWriterEraserLane,
   docToByPage,
+  getAnnotationsMap,
   getDeletedPdfAnnotationsMap,
   getEraserOpsMap,
   readRawAnnotationEntry,
@@ -458,7 +459,7 @@ export async function commitEraseIntent({
     throw new TypeError('intent must be built by buildEraseIntent');
   }
 
-  const annotations = doc.getMap('annotations');
+  const annotations = getAnnotationsMap(doc);
   const outbox = doc.getMap(ERASE_OUTBOX_MAP);
   const eraserOps = getEraserOpsMap(doc);
   const deletedPdfAnnotations = getDeletedPdfAnnotationsMap(doc);

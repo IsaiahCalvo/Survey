@@ -67,8 +67,6 @@ import {
   getViewerEchoVersions,
   readAnnotationEntry,
   writeAnnotationMark,
-  convertLegacyAnnotationEntries,
-  countLegacyAnnotationEntries,
 } from './annotationDocStore.js';
 import {
   copyDurableMapValue,
@@ -1360,12 +1358,31 @@ async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart)
   }
 }
 
+// The live re-send is best effort and bounded: the snapshot already makes the
+// update durable for every later open. An update bigger than Realtime can
+// carry (Postgres Changes ~1 MB) is never re-sent, and one that keeps failing
+// is given up after LIVE_RESEND_MAX_ATTEMPTS tries or on a payload-too-large
+// answer — never re-uploaded forever.
+const LIVE_RESEND_MAX_BYTES = 900 * 1024;
+const LIVE_RESEND_MAX_ATTEMPTS = 6;
+
+function isPayloadTooLarge(error) {
+  const code = String(error?.code || error?.status || '');
+  return code === '413' || code === '54000'
+    || /payload too large|request entity too large|too large|exceeds.*(size|limit)/i.test(String(error?.message || ''));
+}
+
 function queueLiveResend(state, record) {
   if (!state.supabase || !record?.update || record.writerId == null) return;
+  if (record.update.length > LIVE_RESEND_MAX_BYTES) {
+    console.warn('[annotationDocSync] snapshot-only update too large to re-send live', record.update.length);
+    return;
+  }
   state.liveResendQueue.push({
     writerId: String(record.writerId),
     clientSeq: Number(record.clientSeq),
     update: new Uint8Array(record.update),
+    attempts: 0,
   });
   scheduleLiveResend(state);
 }
@@ -1396,12 +1413,18 @@ function scheduleLiveResend(state, { delayed = false } = {}) {
 async function flushLiveResend(state) {
   while (state.liveResendQueue.length > 0 && !state.destroyed && !state.deleted) {
     const item = state.liveResendQueue[0];
+    item.attempts = (item.attempts || 0) + 1;
     try {
       await requestWalAppend(state, item);
       state.liveResendQueue.shift();
       state.liveResendAttempt = 0;
     } catch (error) {
-      if (String(error?.code || '') === '23505' || isPermissionDenied(error)) {
+      if (
+        String(error?.code || '') === '23505'
+        || isPermissionDenied(error)
+        || isPayloadTooLarge(error)
+        || item.attempts >= LIVE_RESEND_MAX_ATTEMPTS
+      ) {
         // Already there under different bytes (never expected: one writer
         // never reuses a seq), or no longer permitted: the snapshot still
         // carries the edit for every later open. Nothing more to do live.
@@ -3518,21 +3541,6 @@ function makeHandle(state) {
       state.lastByPage = materialized;
       recordViewerDelivery(state.viewer, materialized);
       return materialized[pageNumber] || { objects: [] };
-    },
-
-    /**
-     * One-time store-v1 → v2 conversion (whole objects → per-field maps).
-     * Writable roles only (the caller gates it); returns { converted, dropped }.
-     */
-    convertLegacyAnnotations() {
-      assertHandleWritable(state);
-      if (countLegacyAnnotationEntries(state.doc) === 0
-        && getMetaValue(state.doc, 'annotationStoreVersion') === 2) {
-        return { converted: 0, dropped: 0 };
-      }
-      const result = convertLegacyAnnotationEntries(state.doc, 'local');
-      if (result.converted > 0 || result.dropped > 0) state.lastByPage = null;
-      return result;
     },
 
     /** Read a document-level meta value (e.g. the callouts list). */

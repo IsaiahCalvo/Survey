@@ -3,9 +3,9 @@
 // Per-field storage for annotation marks in the durable Y.Doc (2026-09-24).
 // Design note: docs/ANNOTATION-FIELD-SYNC.md.
 //
-// Layout of the `annotations` root map (store version 2):
+// Layout of the `marks` root map (store version 3):
 //
-//   annotations[storageKey] = Y.Map {
+//   marks[storageKey] = Y.Map {
 //     p: <page number>,
 //     o: Y.Map { ...the mark's fields... },
 //   }
@@ -42,8 +42,14 @@ import {
   setAnnotationStorageKey,
 } from '../utils/annotationStorageIdentity.js';
 
-export const ANNOTATION_STORE_VERSION = 2;
-export const ANNOTATION_STORE_VERSION_META_KEY = 'annotationStoreVersion';
+// Store version 3 (2026-09-24): marks live in their own root map; the map's
+// NAME is the version (nothing else is stamped, so no extra write). The v1
+// whole-object `annotations` map is left untouched for the reference build
+// and never read or written (owner ruling: old data may be lost).
+export const MARKS_MAP = 'marks';
+export const LEGACY_ANNOTATIONS_MAP = 'annotations';
+export const ANNOTATION_STORE_VERSION = 3;
+
 export const MARK_PAGE_KEY = 'p';
 export const MARK_OBJECT_KEY = 'o';
 const GROUP_KEY_PREFIX = '#';
@@ -135,6 +141,17 @@ function readGroupValue(object, group) {
   return out;
 }
 
+// A field whose own name starts with '#' (or '\\') is stored with a '\\'
+// in front, so it can never be taken for a linked-group key.
+function storeKey(key) {
+  const text = String(key);
+  return text.startsWith(GROUP_KEY_PREFIX) || text.startsWith('\\') ? `\\${text}` : text;
+}
+
+function fieldKey(stored) {
+  return typeof stored === 'string' && stored.startsWith('\\') ? stored.slice(1) : stored;
+}
+
 function storedGroupKey(objectMap) {
   let found = null;
   objectMap.forEach((_value, key) => {
@@ -172,7 +189,7 @@ function fillRecordMap(ymap, record, prefix, group) {
       continue;
     }
     if (group && group.isMember(path)) continue;
-    ymap.set(key, encodeValue(value, path, group));
+    ymap.set(storeKey(key), encodeValue(value, path, group));
   }
   if (group && prefix.length === 0 && !groupPlaced) {
     ymap.set(group.key, readGroupValue(record, group));
@@ -199,7 +216,7 @@ function buildMarkMap(page, object) {
 function decodeRecordMap(ymap) {
   const out = {};
   ymap.forEach((value, key) => {
-    out[key] = isYMap(value) ? decodeRecordMap(value) : value;
+    out[fieldKey(key)] = isYMap(value) ? decodeRecordMap(value) : value;
   });
   return out;
 }
@@ -228,27 +245,22 @@ export function decodeObjectMap(objectMap) {
       }
       return;
     }
-    out[key] = isYMap(value) ? decodeRecordMap(value) : value;
+    out[fieldKey(key)] = isYMap(value) ? decodeRecordMap(value) : value;
   });
   for (const [path, value] of nested) setNested(out, path, value);
   return out;
 }
 
 /**
- * The { p, o } view of one stored entry (a store-v2 mark map, or a not yet
- * converted v1 plain entry). Not cached — use readAnnotationEntry for reads.
+ * The { p, o } view of one stored mark map, or null for anything else.
+ * Not cached — use readAnnotationEntry for reads.
  */
 export function decodeAnnotationEntry(entry) {
-  if (isYMap(entry)) {
-    const page = entry.get(MARK_PAGE_KEY);
-    const objectMap = entry.get(MARK_OBJECT_KEY);
-    if (page == null || !isYMap(objectMap)) return null;
-    return { p: page, o: decodeObjectMap(objectMap) };
-  }
-  if (entry && typeof entry === 'object' && entry.p != null && entry.o && typeof entry.o === 'object') {
-    return { p: entry.p, o: entry.o };
-  }
-  return null;
+  if (!isYMap(entry)) return null;
+  const page = entry.get(MARK_PAGE_KEY);
+  const objectMap = entry.get(MARK_OBJECT_KEY);
+  if (page == null || !isYMap(objectMap)) return null;
+  return { p: page, o: decodeObjectMap(objectMap) };
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +282,7 @@ function rootKeyOf(type, root) {
 function cacheFor(doc) {
   let cache = readCaches.get(doc);
   if (cache) return cache;
-  const root = doc.getMap('annotations');
+  const root = doc.getMap(MARKS_MAP);
   cache = { root, entries: new Map() };
   // 'beforeObserverCalls' fires once per transaction, after its writes and
   // before ANY observer, so no observer or update listener can ever read a
@@ -308,7 +320,7 @@ function materializeEntry(stored, key) {
  * Callers must treat the returned object as immutable.
  */
 export function readAnnotationEntry(doc, key) {
-  const root = doc.getMap('annotations');
+  const root = doc.getMap(MARKS_MAP);
   const stored = root.get(key);
   if (stored === undefined) return undefined;
   // Inside an open transaction the cache cannot know what changed yet.
@@ -326,7 +338,7 @@ export function readAnnotationEntry(doc, key) {
  * cached). For compare-and-swap checks against objects the caller captured.
  */
 export function readRawAnnotationEntry(doc, key) {
-  const stored = doc.getMap('annotations').get(key);
+  const stored = doc.getMap(MARKS_MAP).get(key);
   return stored === undefined ? undefined : (decodeAnnotationEntry(stored) || undefined);
 }
 
@@ -341,7 +353,7 @@ export function readAnnotationObject(doc, key) {
  */
 export function adoptCachedAnnotationObject(doc, key, object) {
   if (doc._transaction || !object || typeof object !== 'object') return false;
-  const stored = doc.getMap('annotations').get(key);
+  const stored = doc.getMap(MARKS_MAP).get(key);
   if (stored === undefined) return false;
   const current = readAnnotationEntry(doc, key);
   if (!current) return false;
@@ -356,15 +368,6 @@ export function adoptCachedAnnotationObject(doc, key, object) {
 // Writes
 // ---------------------------------------------------------------------------
 
-function readStoredLeaf(objectMap, path) {
-  let cursor = objectMap;
-  for (let index = 0; index < path.length; index += 1) {
-    if (!isYMap(cursor) || !cursor.has(path[index])) return { present: false, value: undefined };
-    cursor = cursor.get(path[index]);
-  }
-  return { present: true, value: cursor };
-}
-
 /**
  * Make `ymap` hold exactly `record` (a plain object at `prefix`), touching
  * only keys whose value differs. Returns the number of keys written.
@@ -377,19 +380,20 @@ function syncRecordIntoYMap(ymap, record, prefix, group) {
     if (value === undefined) continue;
     const path = [...prefix, key];
     if (group && group.isMember(path)) continue;
-    wanted.add(key);
-    const current = ymap.get(key);
+    const yKey = storeKey(key);
+    wanted.add(yKey);
+    const current = ymap.get(yKey);
     if (isPlainRecord(value) && !isAtomicPath(path)) {
       if (isYMap(current)) {
         writes += syncRecordIntoYMap(current, value, path, group);
       } else {
-        ymap.set(key, encodeValue(value, path, group));
+        ymap.set(yKey, encodeValue(value, path, group));
         writes += 1;
       }
       continue;
     }
-    if (ymap.has(key) && !isYMap(current) && valuesEqual(current, value)) continue;
-    ymap.set(key, deepClone(value));
+    if (ymap.has(yKey) && !isYMap(current) && valuesEqual(current, value)) continue;
+    ymap.set(yKey, deepClone(value));
     writes += 1;
   }
   for (const key of [...ymap.keys()]) {
@@ -430,7 +434,7 @@ function isGroupEcho(echoVersions, group, groupValue) {
 function writeLeaf(objectMap, path, next, group) {
   let cursor = objectMap;
   for (let index = 0; index < path.length - 1; index += 1) {
-    const segment = path[index];
+    const segment = storeKey(path[index]);
     const child = cursor.get(segment);
     if (isYMap(child)) {
       cursor = child;
@@ -444,7 +448,7 @@ function writeLeaf(objectMap, path, next, group) {
     cursor.set(segment, encodeValue(sub.value, subPath, group));
     return 1;
   }
-  const last = path[path.length - 1];
+  const last = storeKey(path[path.length - 1]);
   const read = readAtPath(next, path);
   if (!read.present) {
     if (!cursor.has(last)) return 0;
@@ -466,8 +470,7 @@ function writeLeaf(objectMap, path, next, group) {
 /**
  * Write `next` (a plain mark object) to storage key `key` on `page`.
  *
- * - No stored entry (or an unconverted v1 plain entry): the whole mark is
- *   created.
+ * - No stored entry: the whole mark is created.
  * - Otherwise only the fields that differ between `base` and `next` are
  *   written (the Undo diff: nested-aware, arrays/atomic/linked groups whole).
  *   `base` = the object this change was made against; omit it to make the
@@ -480,28 +483,24 @@ function writeLeaf(objectMap, path, next, group) {
  * Must run inside a transaction when several marks are written together.
  * Returns { created, writes } (writes = Yjs keys set/deleted).
  */
-export function writeAnnotationMark(doc, key, page, next, {
+export function writeAnnotationMark(doc, key, page, next, options = {}) {
+  // One transaction, so a standalone call is one update (nested calls join
+  // the caller's transaction).
+  let result;
+  doc.transact(() => { result = writeAnnotationMarkInTransaction(doc, key, page, next, options); });
+  return result;
+}
+
+function writeAnnotationMarkInTransaction(doc, key, page, next, {
   base = undefined,
   basePage = undefined,
   echoVersions = null,
 } = {}) {
-  const root = doc.getMap('annotations');
+  const root = doc.getMap(MARKS_MAP);
   const stored = root.get(key);
   const pageNumber = Number(page);
   const hasBaseObject = base !== undefined && base !== null;
   if (!isYMap(stored) || !isYMap(stored.get(MARK_OBJECT_KEY))) {
-    if (stored !== undefined) {
-      // A not-yet-converted (store v1) entry is rewritten only for a real
-      // change: a screen that merely re-projected an identical copy (a viewer
-      // on an unconverted document) must never write.
-      const legacy = decodeAnnotationEntry(stored);
-      const unchanged = legacy
-        && Number(legacy.p) === pageNumber
-        && (hasBaseObject
-          ? diffAnnotationFields(base, next).length === 0 || valuesEqual(legacy.o, next)
-          : valuesEqual(legacy.o, next));
-      if (unchanged) return { created: false, writes: 0 };
-    }
     root.set(key, buildMarkMap(pageNumber, next));
     return { created: stored === undefined, writes: 1 };
   }
@@ -585,48 +584,6 @@ function mergePatch(target, patchObject) {
       : value;
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// One-time conversion of a store-v1 document (whole objects) — owner ruling
-// 2026-09-24: no older builds are supported, so this runs once per document
-// and there is no dual format.
-// ---------------------------------------------------------------------------
-
-export function countLegacyAnnotationEntries(doc) {
-  let count = 0;
-  doc.getMap('annotations').forEach((entry) => { if (!isYMap(entry)) count += 1; });
-  return count;
-}
-
-/**
- * Rewrite every v1 `{ p, o }` entry as a v2 mark map and stamp the store
- * version. Entries without a usable page/object are dropped (the owner
- * accepted losing unreadable old data). Returns { converted, dropped }.
- */
-export function convertLegacyAnnotationEntries(doc, origin = 'local') {
-  const root = doc.getMap('annotations');
-  const meta = doc.getMap('annoMeta');
-  const plan = [];
-  root.forEach((entry, key) => { if (!isYMap(entry)) plan.push([key, entry]); });
-  const needsStamp = meta.get(ANNOTATION_STORE_VERSION_META_KEY) !== ANNOTATION_STORE_VERSION;
-  if (plan.length === 0 && !needsStamp) return { converted: 0, dropped: 0 };
-  let converted = 0;
-  let dropped = 0;
-  doc.transact(() => {
-    for (const [key, entry] of plan) {
-      const decoded = decodeAnnotationEntry(entry);
-      if (!decoded) {
-        root.delete(key);
-        dropped += 1;
-        continue;
-      }
-      root.set(key, buildMarkMap(decoded.p, deepClone(decoded.o)));
-      converted += 1;
-    }
-    if (needsStamp) meta.set(ANNOTATION_STORE_VERSION_META_KEY, ANNOTATION_STORE_VERSION);
-  }, origin);
-  return { converted, dropped };
 }
 
 // ---------------------------------------------------------------------------
