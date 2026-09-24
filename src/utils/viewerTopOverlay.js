@@ -114,6 +114,26 @@ export function compensateScrollTopForRoom(scrollTop, previousRoom, nextRoom) {
 }
 
 /**
+ * The scroll offset to compensate from, read right after the room changed.
+ *
+ * Giving room back makes the content shorter. Scrolled to the very end of the
+ * document, the browser then clamps scrollTop to the new maximum on its own,
+ * BEFORE the viewer moves it by the same amount — so compensating the live
+ * (already clamped) value moved the page twice. Found 2026-09-23 (w22 verify):
+ * closing the Text tool's two strips on the last page moved the page 72px.
+ * When the live value sits on the new maximum and the offset taken just
+ * before the change is larger, the browser clamped it: use that one. Anywhere
+ * else the live value wins, so scrolling in between is never undone.
+ */
+export function resolveRoomCompensationBase({ liveScrollTop = 0, maxScrollTop = 0, snapshotScrollTop = null } = {}) {
+  const live = finite(liveScrollTop);
+  if (snapshotScrollTop === null || snapshotScrollTop === undefined) return live;
+  const snapshot = finite(snapshotScrollTop);
+  const clamped = live >= finite(maxScrollTop) - 1 && snapshot > live;
+  return clamped ? snapshot : live;
+}
+
+/**
  * Vertical placement of the document inside the scroll content.
  *   centerPad — centres a document shorter than the viewer (unchanged rule:
  *               centred in the FULL viewer height, so strips never move it);

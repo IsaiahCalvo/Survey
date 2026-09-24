@@ -55,6 +55,7 @@ import {
   computeTopOverlayInset,
   getViewerTopOverlays,
   resolvePageLandingScrollTop,
+  resolveRoomCompensationBase,
   resolveTopRoom,
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
@@ -1109,6 +1110,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const topRoomRef = useRef(0);
   topRoomRef.current = topRoom;
   const appliedTopRoomRef = useRef(0);
+  // scrollTop taken just before a room change (resolveRoomCompensationBase).
+  const roomScrollSnapshotRef = useRef(null);
   const topInsetRef = useRef(0);
   const interactionModeRef = useRef(interactionMode);
   interactionModeRef.current = interactionMode;
@@ -1448,6 +1451,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
     if (next !== topRoomRef.current) {
       topRoomRef.current = next;
+      roomScrollSnapshotRef.current = el.scrollTop;
       setTopRoom(next);
     }
   }, []);
@@ -1507,10 +1511,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useLayoutEffect(() => {
     const previous = appliedTopRoomRef.current;
     appliedTopRoomRef.current = topRoom;
+    const snapshot = roomScrollSnapshotRef.current;
+    roomScrollSnapshotRef.current = null;
     if (previous === topRoom) return;
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTop = compensateScrollTopForRoom(el.scrollTop, previous, topRoom);
+    // At the end of the document the browser has already clamped scrollTop
+    // for the shorter content; compensate from the offset before the change.
+    const base = resolveRoomCompensationBase({
+      liveScrollTop: el.scrollTop,
+      maxScrollTop: el.scrollHeight - el.clientHeight,
+      snapshotScrollTop: snapshot,
+    });
+    el.scrollTop = compensateScrollTopForRoom(base, previous, topRoom);
   }, [topRoom]);
 
   useEffect(() => {

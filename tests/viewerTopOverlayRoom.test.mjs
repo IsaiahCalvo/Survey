@@ -7,6 +7,7 @@ import {
   getViewerTopOverlays,
   registerViewerTopOverlay,
   resolvePageLandingScrollTop,
+  resolveRoomCompensationBase,
   resolveTopRoom,
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
@@ -116,6 +117,45 @@ test('strips going away never move the page: on-screen room waits until it scrol
   assert.equal(resolveTopRoom({ room: 72, inset: 36, scrollTop: 10 }), 62);
 });
 
+test('strips closing at the very end of the document do not move the page', () => {
+  // Measured live 2026-09-23 (w22 verify, Benjamin Franklin Elementary, 4
+  // pages, 1280x800): Text tool open (72px of strips), scrolled to the end
+  // (scrollTop 2222 = max), then the strips closed: the page jumped 72px down.
+  // Giving the room back shortens the content, the browser clamps scrollTop to
+  // the new maximum (2150) by itself, and the viewer then subtracted the room
+  // again (2078).
+  const clientHeight = 731;
+  const raw = 2881;
+  const pageTop = 2150 + 14.6; // last page, just below the strips before
+  const before = { room: 72, scrollTop: 72 + raw - clientHeight };
+  const room = resolveTopRoom({ room: before.room, inset: 0, scrollTop: before.scrollTop });
+  assert.equal(room, 0, 'all the room is above the screen, so it is given back');
+  const newMax = room + raw - clientHeight;
+  const clampedByBrowser = Math.min(before.scrollTop, newMax);
+  assert.equal(clampedByBrowser, 2150);
+
+  const base = resolveRoomCompensationBase({
+    liveScrollTop: clampedByBrowser,
+    maxScrollTop: newMax,
+    snapshotScrollTop: before.scrollTop,
+  });
+  const after = compensateScrollTopForRoom(base, before.room, room);
+  assert.equal(after, 2150);
+  assert.equal(
+    pageTopOnScreen({ padTop: room, pageTop, scrollTop: after }),
+    pageTopOnScreen({ padTop: before.room, pageTop, scrollTop: before.scrollTop }),
+    'the page stays where it was',
+  );
+  assert.equal(compensateScrollTopForRoom(clampedByBrowser, before.room, room), 2078, 'the old path moved it 72px');
+
+  // Anywhere the browser did not clamp, the live offset wins (a scroll in
+  // between is never undone), and with no snapshot nothing changes.
+  assert.equal(resolveRoomCompensationBase({ liveScrollTop: 1236, maxScrollTop: 2150, snapshotScrollTop: 1300 }), 1236);
+  assert.equal(resolveRoomCompensationBase({ liveScrollTop: 500, maxScrollTop: 2150, snapshotScrollTop: null }), 500);
+  // Growing room never clamps: the live offset is used.
+  assert.equal(resolveRoomCompensationBase({ liveScrollTop: 2150, maxScrollTop: 2222, snapshotScrollTop: 2150 }), 2150);
+});
+
 test('go to page lands the page top just below the strips', () => {
   const placement = resolveVerticalPlacement({ containerHeight: 731, rawTotalHeight: 25000, topRoom: 72 });
   const pageTop = 14 + 716.8 * 2; // page 3
@@ -153,9 +193,10 @@ test('the viewer, the desktop host and the phone strips are wired to the room', 
   assert.match(viewer, /height: layout\.contentHeight/);
   assert.match(
     viewer,
-    /useLayoutEffect\(\(\) => \{\s*const previous = appliedTopRoomRef\.current;[\s\S]*?compensateScrollTopForRoom\(el\.scrollTop, previous, topRoom\)/,
+    /useLayoutEffect\(\(\) => \{\s*const previous = appliedTopRoomRef\.current;[\s\S]*?resolveRoomCompensationBase\(\{\s*liveScrollTop: el\.scrollTop,[\s\S]*?compensateScrollTopForRoom\(base, previous, topRoom\)/,
     'the scroll offset is compensated in the same layout pass as the room change',
   );
+  assert.match(viewer, /roomScrollSnapshotRef\.current = el\.scrollTop;\s*setTopRoom\(next\);/, 'the offset is taken just before the room changes');
   assert.match(viewer, /const padTopFor = \(sc\) => centerPadFor\(sc\) \+ topRoomRef\.current;/, 'zoom anchoring includes the room');
   assert.match(viewer, /overlayInset: topInsetRef\.current/, 'go to page lands below the strips');
   assert.match(viewer, /subscribeViewerTopOverlays\(syncObserved\)/);
