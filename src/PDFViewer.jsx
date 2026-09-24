@@ -58,6 +58,7 @@ import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import TextEditOverlay from './components/TextEditOverlay';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
+import AnnotationDropdown from './components/AnnotationDropdown';
 import Icon from './Icons';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
@@ -7851,6 +7852,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
+  // Desktop survey sub-row: whether the Survey module menu is open.
+  const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
@@ -35384,121 +35387,102 @@ ${pageBlocks}
               const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
               const categories = selectedModule?.categories || [];
 
-	              return (
-	                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '34px' }}>
-	                  <div style={{ position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingRight: '12px', whiteSpace: 'nowrap' }}>
-	                    <select
-	                      value={selectedModule?.id || ''}
-	                      onChange={(e) => {
-	                        setSelectedModuleId(e.target.value || null);
-	                        setSelectedCategoryId(null);
-	                        setActiveTool('survey-marker');
-	                      }}
-	                      disabled={modules.length === 0}
-	                      {...chromeTip('Survey module', 'below')}
-	                      aria-label="Survey module"
-	                      style={{
-	                        height: '26px',
-	                        width: '160px',
-	                        maxWidth: '220px',
-	                        padding: '2px 28px 2px 10px',
-	                        background: 'var(--surface-3)',
-	                        color: 'var(--text-2)',
-	                        border: '1px solid var(--border-strong)',
-	                        borderRadius: '6px',
-	                        fontSize: '12px',
-	                        fontFamily: FONT_FAMILY,
-	                        outline: 'none',
-	                        cursor: modules.length > 0 ? 'pointer' : 'not-allowed'
-	                      }}
-	                    >
-	                      {modules.length === 0 ? (
-	                        <option value="">No modules</option>
-	                      ) : modules.map((module) => (
-	                        <option key={module.id} value={module.id}>
-	                          {module.name || 'Untitled module'}
-	                        </option>
-	                      ))}
-	                    </select>
-	                  </div>
+              /* UX 2026-09-23 (owner: desktop survey polish - "this dropdown
+                 doesn't look like the rest of the dropdowns within the app ... make
+                 it look more aesthetic and intentional"). The survey sub-row, what
+                 each control does:
+                 - MODULE: which module of the chosen template you are surveying
+                   (e.g. Existing / New). Switching it swaps the categories beside
+                   it and the list in the Survey panel, and arms Survey Marker
+                   placement. Now the app's standard setting pill + menu (the shared
+                   AnnotationDropdown, like Width / Line style / Font) - it was a
+                   native <select> with its own box and a gold focus ring.
+                 - CATEGORIES: one chip per category of that module, showing the
+                   category's initials. Pick one, then drag on the page to place a
+                   Survey Marker of that category. The tooltip names the category.
+                   Now the sub-row's own tool chip (28px, no fill; chosen = gold
+                   glyph only, like every other tool) - they were 30px grey discs
+                   that turned solid gold.
+                 - KEEP ACTIVE: after a Survey Marker is placed, keep the same
+                   category armed so the next drag places another one; off, the
+                   category is cleared after each placement. Now the app's switch
+                   (the Spaces one, drawn to the 20px pill height) with its word -
+                   it was a native checkbox.
+                 The category chips stay on the bar's centre and the two side groups
+                 hang off them, as before, so the chips never move when the module
+                 name changes. Rules are the shared .chrome-divider. */
+              return (
+                <div className="survey-subrow">
+                  <div className="survey-subrow__side survey-subrow__side--start">
+                    <AnnotationDropdown
+                      open={surveyModuleMenuOpen}
+                      onOpenChange={setSurveyModuleMenuOpen}
+                      label="Survey module"
+                      value={selectedModule?.id || ''}
+                      triggerContent={modules.length === 0 ? 'No modules' : undefined}
+                      options={modules.map((module) => ({
+                        value: module.id,
+                        label: module.name || 'Untitled module'
+                      }))}
+                      onSelect={(moduleId) => {
+                        setSelectedModuleId(moduleId || null);
+                        setSelectedCategoryId(null);
+                        setActiveTool('survey-marker');
+                      }}
+                      disabled={modules.length === 0}
+                      width="var(--chrome-field-w-module)"
+                      contentWidth="var(--chrome-field-w-module)"
+                      dataMarker="data-survey-module-menu"
+                    />
+                    <div className="chrome-divider" aria-hidden="true" />
+                  </div>
 
-	                  <div style={{ position: 'relative', minWidth: '154px', minHeight: '30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', boxSizing: 'border-box' }}>
-	                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: 'var(--border-strong)' }} />
-	                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-	                      {categories.length > 0 ? categories.map((category) => {
-	                        const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
-	                        const glyph = getCategoryGlyphLabel(category.name);
+                  <div className="survey-subrow__cats">
+                    {categories.length > 0 ? categories.map((category) => {
+                      const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
+                      const glyph = getCategoryGlyphLabel(category.name);
 
-	                        return (
-	                          <button
-	                            key={category.id}
-	                            onClick={() => {
-	                              setSelectedCategoryId(category.id);
-	                              setActiveTool('survey-marker');
-	                            }}
-	                            {...chromeTip(category.name || 'Untitled category', 'below')}
-	                            className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-	                            // KAL-65: instant chip above is the tooltip; a native
-	                            // title= would stack the OS tooltip on top of it.
-	                            aria-label={category.name || 'Untitled category'}
-	                            style={{
-	                              width: '30px',
-	                              height: '30px',
-	                              minWidth: '30px',
-	                              borderRadius: '50%',
-	                              padding: 0,
-	                              display: 'flex',
-	                              alignItems: 'center',
-	                              justifyContent: 'center',
-	                              fontSize: glyph.length > 2 ? '9px' : '11px',
-	                              fontWeight: 700,
-	                              letterSpacing: 0,
-	                              lineHeight: 1,
-	                              fontFamily: FONT_FAMILY,
-	                              border: isActive ? '1px solid var(--accent)' : '1px solid var(--border-strong)',
-	                              background: isActive ? 'var(--accent)' : 'var(--surface-3)',
-	                              color: isActive ? 'var(--accent-text)' : 'var(--text-2)',
-	                              cursor: 'pointer'
-	                            }}
-	                          >
-	                            {glyph}
-	                          </button>
-	                        );
-	                      }) : (
-	                        <span style={{ color: 'var(--text-3)', fontSize: '12px', padding: '0 6px' }}>
-	                          No categories
-	                        </span>
-	                      )}
-	                    </div>
-	                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: 'var(--border-strong)' }} />
-	                  </div>
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategoryId(category.id);
+                            setActiveTool('survey-marker');
+                          }}
+                          {...chromeTip(category.name || 'Untitled category', 'below')}
+                          className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                          // KAL-65: instant chip above is the tooltip; a native
+                          // title= would stack the OS tooltip on top of it.
+                          aria-label={category.name || 'Untitled category'}
+                          aria-pressed={isActive}
+                        >
+                          <span className={`survey-subrow__glyph${glyph.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
+                            {glyph}
+                          </span>
+                        </button>
+                      );
+                    }) : (
+                      <span className="survey-subrow__empty">No categories</span>
+                    )}
+                  </div>
 
-	                  <div style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingLeft: '12px', whiteSpace: 'nowrap' }}>
-	                    <label
-	                      {...chromeTip('Keep selected category active after placing a region', 'below')}
-	                      style={{
-	                        display: 'flex',
-	                        alignItems: 'center',
-	                        gap: '6px',
-	                        color: 'var(--text-2)',
-	                        fontSize: '12px',
-	                        fontFamily: FONT_FAMILY,
-	                        cursor: 'pointer',
-	                        userSelect: 'none',
-	                        whiteSpace: 'nowrap'
-	                      }}
-	                    >
-	                      <input
-	                        type="checkbox"
-	                        checked={surveyKeepCategoryActive}
-	                        onChange={(e) => setSurveyKeepCategoryActive(e.target.checked)}
-	                        style={{ margin: 0, accentColor: 'var(--accent)', cursor: 'pointer' }}
-	                      />
-	                      Keep active
-	                    </label>
-	                  </div>
-	                </div>
-	              );
+                  <div className="survey-subrow__side survey-subrow__side--end">
+                    <div className="chrome-divider" aria-hidden="true" />
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={surveyKeepCategoryActive}
+                      className="survey-subrow__keep tertiary"
+                      onClick={() => setSurveyKeepCategoryActive((on) => !on)}
+                      {...chromeTip('Keep the category armed after placing a Survey Marker', 'below')}
+                    >
+                      <span className="survey-subrow__track" aria-hidden="true" />
+                      <span>Keep active</span>
+                    </button>
+                  </div>
+                </div>
+              );
             })()}
 
             {/* KAL-47: Forms subtoolbar. Each button selects a form-field tool
