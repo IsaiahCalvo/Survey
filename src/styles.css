@@ -86,6 +86,7 @@
   --chrome-field-w-blend: 118px;   /* text-mark blend pill ("See-through") */
   --chrome-field-w-font: 104px;    /* font-name pill (board 12) */
   --chrome-field-w-fontsize: 62px; /* font-size pill (board 12) */
+  --chrome-field-w-module: 112px;  /* survey sub-row's module pill ("Instillation" + chevron) */
   --chrome-text-toggle-w: 22px;    /* B / I / U / S and an alignment button */
   --chrome-segment-pad-x: 3px;     /* inset inside one segment of a segmented toggle */
   --chrome-field-pad-x: 6px;       /* pill inset on the chevron side */
@@ -649,6 +650,137 @@
   color: var(--accent);
   background: transparent;
 }
+
+/* ==========================================================================
+   SURVEY SUB-ROW (desktop, owner 2026-09-23: "doesn't look like the rest of
+   the dropdowns ... make it look more aesthetic and intentional")
+   [ Module pill ▾ ] | (C) (D) ... | [switch] Keep active
+   The category chips sit on the bar's centre; the two side groups hang off
+   them (absolute), so a longer or shorter module name never moves the chips.
+   Every size is a chrome token: the pill is .chrome-pill (AnnotationDropdown),
+   the chips are .chrome-subcontrol, the rules are .chrome-divider.
+   ========================================================================== */
+.survey-subrow {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.survey-subrow__side {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  /* The side groups are not gap rows, so each rule keeps its full 8px inset. */
+  --chrome-row-gap: 0px;
+}
+
+.survey-subrow__side--start { right: 100%; }
+.survey-subrow__side--end { left: 100%; }
+
+.survey-subrow__cats {
+  display: flex;
+  align-items: center;
+  gap: var(--chrome-tool-gap);
+}
+
+/* A category's glyph: its initials in a 16px ring drawn in the chip's own ink
+   (so chosen = gold ring + gold letters, nothing filled). Two or three
+   initials stretch the ring into a capsule instead of shrinking the type. */
+.survey-subrow__glyph {
+  min-width: var(--chrome-glyph);
+  height: var(--chrome-glyph);
+  padding: 0 3px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font: 700 9px/1 Helvetica, Arial, sans-serif;
+  letter-spacing: 0;
+}
+
+.survey-subrow__glyph.is-wide {
+  font-size: 8px;
+}
+
+.survey-subrow__empty {
+  padding: 0 6px;
+  color: var(--text-3);
+  font: 600 11px/1 Helvetica, Arial, sans-serif;
+}
+
+/* "Keep active": the app's switch (the Spaces one) at the chrome's 20px pill
+   height, then its word. The whole control is one button with an invisible
+   pad; hover brightens the word, never a plate. On = gold track. */
+.survey-subrow__keep {
+  height: var(--chrome-field-h);
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--chrome-radius);
+  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.survey-subrow__keep:hover {
+  color: var(--text-1);
+}
+
+.survey-subrow__keep:active {
+  background: transparent;
+}
+
+.survey-subrow__keep:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.survey-subrow__track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.survey-subrow__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.survey-subrow__keep[aria-checked='true'] .survey-subrow__track {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.survey-subrow__keep[aria-checked='true'] .survey-subrow__track::after {
+  transform: translateX(10px);
+}
+/* ===== end SURVEY SUB-ROW ===== */
 
 .survey-marker-name-fit {
   display: inline-grid;
