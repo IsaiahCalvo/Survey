@@ -8,45 +8,66 @@
 // marks drawn before the rebuild stopped showing. The owner wants them back:
 // each document copies them into `marks` once.
 //
-// Rules (race-safe by construction, no deletes anywhere):
-//   * Only marks the user drew are carried. A mark imported from the PDF file
-//     itself (`isPdfImported` / `pdfAnnotationId`; paste clones drop both, see
-//     pasteCloneIdentity.js) is owned by the embedded import
-//     (embeddedImportGate.js), which re-imports the file's markup once and
-//     honours deletion tombstones. Carrying those too would draw them twice
-//     (older builds keyed some of them differently).
-//   * The key is the old key, so a mark keeps its id, its eraser lanes (shared
-//     by every build, keyed by that id) and its counter numbering.
-//   * A key already in `marks` is never written: whatever is there (a newer
-//     edit, or another screen's carry-over) wins.
-//   * The `annotations` map is only read, never changed.
-//   * The fields go through the store's own writer (writeAnnotationMark ->
-//     the same nested-map layout as any new mark), so a carried mark reads
-//     back exactly as the old build read it (identity normalization, eraser
-//     lanes and counter numbering run on top in docToByPage, as before).
-//   * Writes are batched (~BATCH_BYTES of mark JSON per transaction), so no
-//     one update is huge; the sync layer cuts any update over 256 KB into
-//     chained parts anyway (annotationUpdateSplit.js).
+// What is carried:
+//   * Marks the user drew: written under their OLD key, so a mark keeps its
+//     id, its eraser lanes (shared by every build, keyed by that id) and its
+//     counter numbering. A key already in `marks` is never written.
+//   * The PDF file's own markup (`isPdfImported`, `pdfAnnotationId`, ...;
+//     paste clones drop all of these, see pasteCloneIdentity.js) is owned by
+//     the embedded import (embeddedImportGate.js), which re-imports the
+//     file's markup once and honours deletion tombstones. Such an entry is
+//     NOT carried (older builds keyed some differently, so it would draw
+//     twice) - unless the user EDITED it on the old build
+//     (`pdfImportedEditState: 'edited'`: moved, resized, partly erased).
+//     Then, once the embedded import has run, the old edited copy replaces
+//     the re-imported copy's fields (same key as the re-imported copy), but
+//     only while that copy is untouched since the import (not stamped
+//     edited, no eraser lane, exactly one copy). A copy the user deleted
+//     (tombstone) stays deleted; with no copy and no tombstone the old
+//     edited mark is carried under its old key.
+//
+// Race rules (no deletes anywhere; the old map is only read):
+//   * Each batch first writes a record of the old keys it handled
+//     (LEGACY_MARKS_CARRIED_BATCH_PREFIX in annoMeta), then the marks, in ONE
+//     transaction. The record gets the lower Yjs clocks, and Yjs applies one
+//     writer's structs in clock order, so any screen that holds a carried
+//     mark (and so can see it deleted) also holds its record. A recorded key
+//     is never handled again: a carried mark deleted later stays deleted even
+//     before the doc-level marker arrives (review A, w28).
 //   * The marker (LEGACY_MARKS_CARRIED_MARKER_KEY in annoMeta) is written in
-//     its own transaction AFTER every carried mark is in `marks`. Yjs applies
-//     one writer's changes in clock order, so no peer ever sees the marker
-//     without the marks before it. Once the marker exists, the carry-over
-//     never runs again, so a carried mark that is later deleted stays deleted.
+//     its own transaction AFTER everything is handled; it is a fast path
+//     (no scan). It is held back while edited PDF marks wait for the
+//     embedded import.
+//   * Batches of ~BATCH_BYTES of mark JSON per transaction; the sync layer
+//     cuts any update over 256 KB into chained parts (annotationUpdateSplit).
+//   * Fields go through the store's own writer (writeAnnotationMark), so a
+//     carried mark reads back exactly as the old build read it (identity
+//     normalization, eraser lanes and counter numbering run on top in
+//     docToByPage, as before).
 //
 // Pure module: imports only 'yjs'-backed store helpers; runs in Node tests.
 
+import * as Y from 'yjs';
 import {
   LEGACY_ANNOTATIONS_MAP,
   MARKS_MAP,
   decodeAnnotationEntry,
   isYMap,
+  readAnnotationEntry,
   writeAnnotationMark,
 } from './annotationMarkStore.js';
-import { META_MAP } from './annotationDocStore.js';
+import {
+  DELETED_PDF_ANNOTATIONS_MAP,
+  ERASER_OPS_MAP,
+  META_MAP,
+  deletedPdfAnnotationStorageKey,
+} from './annotationDocStore.js';
 import { deepClone } from '../utils/deepClone.js';
 import { EMBEDDED_IMPORT_MARKER_KEY } from '../utils/embeddedImportGate.js';
 
 export const LEGACY_MARKS_CARRIED_MARKER_KEY = 'legacyMarksCarriedIntoMarks';
+// annoMeta[`${prefix}${clientID}:${clock}`] = { keys: [...] }, one per batch.
+export const LEGACY_MARKS_CARRIED_BATCH_PREFIX = 'legacyMarksCarriedBatch:';
 
 const BATCH_BYTES = 192 * 1024;
 
@@ -56,12 +77,31 @@ function isPlainRecord(value) {
   return proto === Object.prototype || proto === null;
 }
 
-/** A mark the PDF file itself carried (imported by an older build). */
+function present(value) {
+  return value != null && String(value) !== '';
+}
+
+/**
+ * A mark the PDF file itself carried (imported by an older build). The same
+ * signs the app itself uses for imported markup.
+ */
 export function isLegacyPdfImportedMark(object) {
   if (!isPlainRecord(object)) return false;
-  if (object.isPdfImported === true) return true;
-  const pdfId = object.pdfAnnotationId ?? object.data?.pdfAnnotationId;
-  return pdfId != null && String(pdfId) !== '';
+  if (object.isPdfImported === true || object.data?.isPdfImported === true) return true;
+  return present(object.pdfAnnotationId)
+    || present(object.data?.pdfAnnotationId)
+    || present(object.pdfAnnotationType)
+    || present(object.data?.pdfAnnotationType);
+}
+
+function pdfAnnotationIdOf(object) {
+  const id = object?.pdfAnnotationId ?? object?.data?.pdfAnnotationId;
+  return present(id) ? String(id) : null;
+}
+
+function isEditedPdfMark(object) {
+  return object?.pdfImportedEditState === 'edited'
+    || object?.data?.pdfImportedEditState === 'edited';
 }
 
 /**
@@ -78,74 +118,163 @@ export function decodeLegacyEntry(entry) {
 }
 
 /**
- * Old entries this document would carry: [{ key, p, o }] in the old map's
- * order (which is the order the old build painted them in), plus counts of
- * what is left out.
+ * Old entries in the old map's order: { user: [{ key, p, o }], editedPdf:
+ * [{ key, p, o, pdfAnnotationId }] } plus counts of what is left out.
  */
 export function planLegacyMarksCarryOver(doc) {
-  const legacy = doc.share.has(LEGACY_ANNOTATIONS_MAP)
-    ? doc.getMap(LEGACY_ANNOTATIONS_MAP)
-    : null;
-  const eligible = [];
+  const user = [];
+  const editedPdf = [];
   let skippedPdf = 0;
   let skippedInvalid = 0;
-  if (!legacy) return { eligible, skippedPdf, skippedInvalid };
-  legacy.forEach((entry, key) => {
+  if (!doc.share.has(LEGACY_ANNOTATIONS_MAP)) return { user, editedPdf, skippedPdf, skippedInvalid };
+  doc.getMap(LEGACY_ANNOTATIONS_MAP).forEach((entry, key) => {
     const decoded = decodeLegacyEntry(entry);
     if (!decoded) { skippedInvalid += 1; return; }
-    if (isLegacyPdfImportedMark(decoded.o)) { skippedPdf += 1; return; }
-    eligible.push({ key: String(key), p: decoded.p, o: decoded.o });
+    const item = { key: String(key), p: decoded.p, o: decoded.o };
+    if (!isLegacyPdfImportedMark(decoded.o)) { user.push(item); return; }
+    const pdfAnnotationId = pdfAnnotationIdOf(decoded.o);
+    if (isEditedPdfMark(decoded.o) && pdfAnnotationId) {
+      editedPdf.push({ ...item, pdfAnnotationId });
+      return;
+    }
+    skippedPdf += 1;
   });
-  return { eligible, skippedPdf, skippedInvalid };
+  return { user, editedPdf, skippedPdf, skippedInvalid };
 }
 
 export function legacyMarksCarriedMarker(doc) {
   return doc.getMap(META_MAP).get(LEGACY_MARKS_CARRIED_MARKER_KEY) || null;
 }
 
+/** Every old key some screen's carry-over batch has recorded as handled. */
+export function legacyCarriedKeys(doc) {
+  const keys = new Set();
+  doc.getMap(META_MAP).forEach((value, metaKey) => {
+    if (typeof metaKey !== 'string' || !metaKey.startsWith(LEGACY_MARKS_CARRIED_BATCH_PREFIX)) return;
+    for (const key of Array.isArray(value?.keys) ? value.keys : []) keys.add(String(key));
+  });
+  return keys;
+}
+
+function embeddedImportDone(doc) {
+  return Boolean(doc.getMap(META_MAP).get(EMBEDDED_IMPORT_MARKER_KEY));
+}
+
 /**
- * True when this document still has old user-drawn marks to carry (no
- * marker yet). Cheap: one pass over the old map, reading two flags per entry.
+ * Whether the carry-over should wait for the PDF's own embedded import (its
+ * marker is not there yet). The import saves whole pages built from what the
+ * screen held a moment earlier, so a carry-over published while it runs can
+ * be painted over on screen (the store keeps the marks; they would show only
+ * after the next change or open), and edited PDF marks need the re-imported
+ * copies. The caller waits for this screen's import pass, or a timeout.
+ */
+export function legacyCarryOverWaitsForEmbeddedImport(doc) {
+  return !embeddedImportDone(doc);
+}
+
+/**
+ * True when this document has an old mark still to handle now: no marker,
+ * and a user-drawn key neither in `marks` nor recorded, or (once the embedded
+ * import has run) an edited PDF mark not recorded. Cheap: one pass over the
+ * old map reading a few flags per entry.
  */
 export function legacyMarksCarryOverPending(doc) {
   if (legacyMarksCarriedMarker(doc)) return false;
   if (!doc.share.has(LEGACY_ANNOTATIONS_MAP)) return false;
+  const marks = doc.getMap(MARKS_MAP);
+  const importDone = embeddedImportDone(doc);
+  let carried = null;
   let found = false;
-  doc.getMap(LEGACY_ANNOTATIONS_MAP).forEach((entry) => {
+  doc.getMap(LEGACY_ANNOTATIONS_MAP).forEach((entry, rawKey) => {
     if (found) return;
     const decoded = decodeLegacyEntry(entry);
-    if (decoded && !isLegacyPdfImportedMark(decoded.o)) found = true;
+    if (!decoded) return;
+    const key = String(rawKey);
+    if (isLegacyPdfImportedMark(decoded.o)) {
+      if (!importDone || !isEditedPdfMark(decoded.o) || !pdfAnnotationIdOf(decoded.o)) return;
+    } else if (marks.has(key)) {
+      return;
+    }
+    carried ??= legacyCarriedKeys(doc);
+    if (!carried.has(key)) found = true;
+  });
+  return found;
+}
+
+// page|pdfAnnotationId -> [keys in `marks`] (built only when needed).
+function indexPdfCopies(doc) {
+  const index = new Map();
+  doc.getMap(MARKS_MAP).forEach((_stored, key) => {
+    const entry = readAnnotationEntry(doc, key);
+    const id = pdfAnnotationIdOf(entry?.o);
+    if (!id) return;
+    const slot = `${Number(entry.p)}|${id}`;
+    if (!index.has(slot)) index.set(slot, []);
+    index.get(slot).push(String(key));
+  });
+  return index;
+}
+
+function hasEraserLane(doc, storageKey) {
+  let found = false;
+  doc.getMap(ERASER_OPS_MAP).forEach((lane) => {
+    if (!found && lane && String(lane.storageKey) === String(storageKey)) found = true;
   });
   return found;
 }
 
 /**
- * Whether the carry-over should run now or wait for the PDF's own embedded
- * import. Old builds imported the PDF's markup at the first open, so the
- * user's marks sat ON TOP of it. The embedded import appends its marks to
- * `marks`, and the page paints in map order, so carrying first would put the
- * user's marks underneath. The caller waits for the import's marker (or a
- * timeout) before carrying.
+ * Decide what one edited PDF mark becomes (import done):
+ *   { action: 'replace', targetKey, next } the untouched re-imported copy
+ *                                          takes the old edited fields;
+ *   { action: 'create', targetKey, next }  no copy and no tombstone;
+ *   { action: 'skip', reason }             deleted, edited again, ambiguous.
  */
-export function legacyCarryOverWaitsForEmbeddedImport(doc) {
-  return !doc.getMap(META_MAP).get(EMBEDDED_IMPORT_MARKER_KEY);
+function resolveEditedPdfMark(doc, item, copiesIndex) {
+  const copies = copiesIndex.get(`${item.p}|${item.pdfAnnotationId}`) || [];
+  if (copies.length === 0) {
+    const tombstone = doc.getMap(DELETED_PDF_ANNOTATIONS_MAP)
+      .has(deletedPdfAnnotationStorageKey(item.p, item.pdfAnnotationId));
+    if (tombstone) return { action: 'skip', reason: 'deleted' };
+    if (doc.getMap(MARKS_MAP).has(item.key)) return { action: 'skip', reason: 'present' };
+    return { action: 'create', targetKey: item.key, next: deepClone(item.o) };
+  }
+  if (copies.length > 1) return { action: 'skip', reason: 'ambiguous' };
+  const targetKey = copies[0];
+  const copy = readAnnotationEntry(doc, targetKey);
+  if (!copy || Number(copy.p) !== Number(item.p)) return { action: 'skip', reason: 'ambiguous' };
+  if (isEditedPdfMark(copy.o)) return { action: 'skip', reason: 'edited-again' };
+  if (hasEraserLane(doc, targetKey)) return { action: 'skip', reason: 'edited-again' };
+  // The old edited fields, under the re-imported copy's identity (the screen
+  // and history know the mark by that key).
+  const next = deepClone(item.o);
+  if (copy.o.id !== undefined) next.id = copy.o.id; else delete next.id;
+  const copyDataId = copy.o.data?.id;
+  if (copyDataId !== undefined) next.data = { ...(isPlainRecord(next.data) ? next.data : {}), id: copyDataId };
+  return { action: 'replace', targetKey, next, before: copy.o };
 }
 
 /**
- * Carry every old user-drawn mark that `marks` does not hold into `marks`,
- * then write the marker. Idempotent: with the marker present it does nothing.
+ * Handle every old mark still to handle (see the module comment), then write
+ * the marker. Idempotent: with the marker present it does nothing.
  *
- * Returns { status, eligible, carried, alreadyPresent, skippedPdf,
- * skippedInvalid, markerWritten, batches }:
+ * Returns { status, eligible, carried, alreadyPresent, alreadyCarried,
+ * editedPdfReplaced, editedPdfCreated, editedPdfSkipped, editedPdfDeferred,
+ * skippedPdf, skippedInvalid, markerWritten, batches }:
  *   status 'already'  the marker was there (nothing written);
- *          'nothing'  no old user-drawn marks (nothing written, no marker);
- *          'done'     carried (possibly 0 if all were present) + marker.
+ *          'nothing'  no old user-drawn or edited PDF marks (no writes);
+ *          'done'     handled what it could (+ marker unless deferred).
  */
 export function carryOverLegacyMarks(doc, { origin = 'local', batchBytes = BATCH_BYTES, now = () => new Date().toISOString() } = {}) {
   const base = {
     eligible: 0,
     carried: 0,
     alreadyPresent: 0,
+    alreadyCarried: 0,
+    editedPdfReplaced: 0,
+    editedPdfCreated: 0,
+    editedPdfSkipped: 0,
+    editedPdfDeferred: 0,
     skippedPdf: 0,
     skippedInvalid: 0,
     markerWritten: false,
@@ -155,51 +284,100 @@ export function carryOverLegacyMarks(doc, { origin = 'local', batchBytes = BATCH
   const plan = planLegacyMarksCarryOver(doc);
   const result = {
     ...base,
-    eligible: plan.eligible.length,
+    eligible: plan.user.length + plan.editedPdf.length,
     skippedPdf: plan.skippedPdf,
     skippedInvalid: plan.skippedInvalid,
   };
-  if (plan.eligible.length === 0) return { status: 'nothing', ...result };
+  if (result.eligible === 0) return { status: 'nothing', ...result };
 
   const marks = doc.getMap(MARKS_MAP);
+  const meta = doc.getMap(META_MAP);
+  const carriedBefore = legacyCarriedKeys(doc);
+  const importDone = embeddedImportDone(doc);
+
+  // Work items: { key, size, write(): void } in the old map's order.
+  const work = [];
+  for (const item of plan.user) {
+    if (marks.has(item.key)) { result.alreadyPresent += 1; continue; }
+    // Handled before (possibly deleted since): never again.
+    if (carriedBefore.has(item.key)) { result.alreadyCarried += 1; continue; }
+    work.push({
+      key: item.key,
+      object: item.o,
+      write: () => {
+        // Re-checked inside the transaction: never overwrite what is there.
+        if (marks.has(item.key)) { result.alreadyPresent += 1; return; }
+        writeAnnotationMark(doc, item.key, item.p, deepClone(item.o));
+        result.carried += 1;
+      },
+    });
+  }
+  let copiesIndex = null;
+  for (const item of plan.editedPdf) {
+    if (carriedBefore.has(item.key)) { result.alreadyCarried += 1; continue; }
+    if (!importDone) { result.editedPdfDeferred += 1; continue; }
+    copiesIndex ??= indexPdfCopies(doc);
+    work.push({
+      key: item.key,
+      object: item.o,
+      write: () => {
+        const decision = resolveEditedPdfMark(doc, item, copiesIndex);
+        if (decision.action === 'skip') { result.editedPdfSkipped += 1; return; }
+        if (decision.action === 'create') {
+          writeAnnotationMark(doc, decision.targetKey, item.p, decision.next);
+          result.editedPdfCreated += 1;
+          return;
+        }
+        writeAnnotationMark(doc, decision.targetKey, item.p, decision.next);
+        result.editedPdfReplaced += 1;
+      },
+    });
+  }
+
   let batch = [];
   let batchSize = 0;
   const flush = () => {
     if (batch.length === 0) return;
-    const entries = batch;
+    const items = batch;
     batch = [];
     batchSize = 0;
     result.batches += 1;
+    // A unique record key per batch: this writer's next clock.
+    const recordKey = `${LEGACY_MARKS_CARRIED_BATCH_PREFIX}${doc.clientID}:${Y.getState(doc.store, doc.clientID)}`;
     doc.transact(() => {
-      for (const { key, p, o } of entries) {
-        // Re-checked inside the transaction: never overwrite what is there.
-        if (marks.has(key)) { result.alreadyPresent += 1; continue; }
-        writeAnnotationMark(doc, key, p, deepClone(o));
-        result.carried += 1;
-      }
+      // The record first (lower clocks than the marks it names).
+      meta.set(recordKey, { keys: items.map(({ key }) => key) });
+      for (const item of items) item.write();
     }, origin);
   };
-  for (const entry of plan.eligible) {
-    if (marks.has(entry.key)) { result.alreadyPresent += 1; continue; }
+  for (const item of work) {
     let size = 0;
-    try { size = JSON.stringify(entry.o).length; } catch { size = batchBytes; }
+    try { size = JSON.stringify(item.object).length; } catch { size = batchBytes; }
     if (batch.length > 0 && batchSize + size > batchBytes) flush();
-    batch.push(entry);
+    batch.push(item);
     batchSize += size;
   }
   flush();
 
-  // Every eligible mark is in `marks` now (carried here or already there).
-  // The marker goes in its own, later transaction.
-  if (!legacyMarksCarriedMarker(doc)) {
+  // Everything is handled now (or was before), except edited PDF marks that
+  // wait for the embedded import. The marker goes in its own transaction.
+  if (result.editedPdfDeferred === 0 && !legacyMarksCarriedMarker(doc)) {
     doc.transact(() => {
-      doc.getMap(META_MAP).set(LEGACY_MARKS_CARRIED_MARKER_KEY, {
+      meta.set(LEGACY_MARKS_CARRIED_MARKER_KEY, {
         at: now(),
         carried: result.carried,
+        editedPdfReplaced: result.editedPdfReplaced,
         eligible: result.eligible,
       });
     }, origin);
     result.markerWritten = true;
   }
   return { status: 'done', ...result };
+}
+
+/** Total marks this result changed on screen (for publishing). */
+export function legacyCarryOverChangedCount(result) {
+  return (Number(result?.carried) || 0)
+    + (Number(result?.editedPdfReplaced) || 0)
+    + (Number(result?.editedPdfCreated) || 0);
 }

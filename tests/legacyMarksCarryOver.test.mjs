@@ -630,3 +630,139 @@ test('carried keys are exactly the old user-drawn keys', () => {
   carryOverLegacyMarks(doc);
   assert.deepEqual([...doc.getMap(MARKS_MAP).keys()].sort(), carriedKeys().sort());
 });
+
+// ---------------------------------------------------------------------------
+// Review fixes (w28 reviews A and B)
+// ---------------------------------------------------------------------------
+
+test('review A: a carried mark deleted before the marker row lands never comes back on a third screen', () => {
+  const base = buildOldFormatDoc();
+  const baseBytes = Y.encodeStateAsUpdate(base);
+  const a = new Y.Doc();
+  Y.applyUpdate(a, baseBytes);
+  const updates = [];
+  a.on('update', (update) => updates.push(update));
+  carryOverLegacyMarks(a);
+  assert.ok(updates.length >= 2, 'batch row(s) then the marker row');
+  const batchRows = updates.slice(0, -1);
+
+  // B receives only the batch rows (the marker row has not landed) and
+  // deletes a carried mark.
+  const b = new Y.Doc();
+  Y.applyUpdate(b, baseBytes);
+  batchRows.forEach((row) => Y.applyUpdate(b, row));
+  const bUpdates = [];
+  b.on('update', (update) => bUpdates.push(update));
+  b.getMap(MARKS_MAP).delete('rect-1');
+
+  // C hydrates from the log as it stands: base, A's batch, B's delete.
+  const c = new Y.Doc();
+  Y.applyUpdate(c, baseBytes);
+  batchRows.forEach((row) => Y.applyUpdate(c, row));
+  bUpdates.forEach((row) => Y.applyUpdate(c, row));
+  assert.equal(getMetaValue(c, LEGACY_MARKS_CARRIED_MARKER_KEY), undefined, 'no marker yet on C');
+  assert.equal(legacyMarksCarryOverPending(c), false, 'the batch record says rect-1 was carried');
+  const result = carryOverLegacyMarks(c);
+  assert.equal(result.carried, 0);
+  assert.equal(readAnnotationEntry(c, 'rect-1'), undefined, 'still deleted on C');
+
+  // Everyone converges with rect-1 gone.
+  for (const [left, right] of [[a, b], [b, c], [a, c]]) exchange(left, right);
+  for (const doc of [a, b, c]) assert.equal(readAnnotationEntry(doc, 'rect-1'), undefined);
+});
+
+test('review B: the wider "from the PDF" signs are honoured (never carried twice)', () => {
+  const doc = new Y.Doc();
+  doc.getMap(LEGACY_ANNOTATIONS_MAP).set('flag-only', {
+    p: 2, o: { type: 'rect', left: 1, top: 1, width: 2, height: 2, data: { id: 'flag-only', isPdfImported: true } },
+  });
+  doc.getMap(LEGACY_ANNOTATIONS_MAP).set('type-only', {
+    p: 2, o: { type: 'rect', left: 1, top: 1, width: 2, height: 2, pdfAnnotationType: 'Square', data: { id: 'type-only' } },
+  });
+  assert.equal(carryOverLegacyMarks(doc).status, 'nothing');
+  assert.equal(doc.getMap(MARKS_MAP).size, 0);
+});
+
+// A PDF ink mark the user edited on the old build (resized / partly erased),
+// and the untouched copy the embedded import re-created on this build.
+const editedOldPdfMark = (id, extra = {}) => ({
+  type: 'path', path: [['M', 0, 0], ['L', 8, 8]], left: 0, top: 0, width: 8, height: 8, scaleX: 0.96, scaleY: 1,
+  fill: 'rgba(255, 0, 0, 1)', stroke: null, strokeWidth: 0.9, isPdfImported: true, pdfAnnotationId: id,
+  pdfAnnotationType: 'Ink', layer: 'pdf-annotations', id,
+  paperEraserGeometry: { version: 1, survivors: 2 },
+  pdfImportedEditState: 'edited', pdfImportedEditedAt: '2026-07-26T19:12:40.965Z', pdfImportedEditSource: 'eraser:commit',
+  data: { id, pdfInkRenderMode: 'filled-outline', pdfImportedEditState: 'edited' },
+  ...extra,
+});
+const reimportedCopy = (key, id) => ({
+  type: 'path', path: [['M', 719, 92], ['L', 739, 114]], left: 719, top: 92, width: 20, height: 22,
+  fill: 'rgba(255, 0, 0, 1)', stroke: 'transparent', strokeWidth: 0, isPdfImported: true, pdfAnnotationId: id,
+  pdfAnnotationType: 'Ink', layer: 'pdf-annotations', id: key, data: { id: key, pdfInkRenderMode: 'filled-outline' },
+});
+
+function editedPdfDoc({ importDone = true } = {}) {
+  const doc = buildOldFormatDoc({
+    extra: [
+      ['4164R', 8, editedOldPdfMark('4164R')],
+      ['4175R', 8, editedOldPdfMark('4175R')],
+      ['3684R', 6, editedOldPdfMark('3684R')],
+      ['9999R', 6, editedOldPdfMark('9999R')],
+    ],
+  });
+  // The embedded import on this build: 4164R under a new key, 4175R under
+  // the same key, 3684R deleted by the user (tombstone), 9999R not imported.
+  writeAnnotationMark(doc, 'pdf-appearance:4164R:layer:0', 8, reimportedCopy('pdf-appearance:4164R:layer:0', '4164R'));
+  writeAnnotationMark(doc, '4175R', 8, reimportedCopy('4175R', '4175R'));
+  doc.getMap('deletedPdfAnnotations').set('6\u00003684R', { pageNumber: 6, pdfAnnotationId: '3684R' });
+  if (importDone) doc.getMap('annoMeta').set(EMBEDDED_IMPORT_MARKER_KEY, { at: 'now', count: 2 });
+  return doc;
+}
+
+test('review B: a PDF mark the user edited on the old build keeps that edit (the untouched re-import takes it)', () => {
+  const doc = editedPdfDoc();
+  const result = carryOverLegacyMarks(doc);
+  assert.equal(result.editedPdfReplaced, 2);
+  assert.equal(result.editedPdfSkipped, 1, 'the deleted one stays deleted');
+  assert.equal(result.editedPdfCreated, 1, 'one with no re-imported copy and no tombstone');
+  assert.equal(result.markerWritten, true);
+
+  // Same key as the re-import: the old edited fields, the copy's identity.
+  const replaced = readAnnotationEntry(doc, 'pdf-appearance:4164R:layer:0');
+  const expected = { ...editedOldPdfMark('4164R'), id: 'pdf-appearance:4164R:layer:0' };
+  expected.data = { ...expected.data, id: 'pdf-appearance:4164R:layer:0' };
+  assert.deepEqual(plain(replaced.o), oldBuildRead('pdf-appearance:4164R:layer:0', expected));
+  assert.equal(doc.getMap(MARKS_MAP).has('4164R'), false, 'no second copy under the old key');
+  assert.deepEqual(plain(readAnnotationEntry(doc, '4175R').o), oldBuildRead('4175R', editedOldPdfMark('4175R')));
+  assert.equal(doc.getMap(MARKS_MAP).has('3684R'), false);
+  assert.deepEqual(plain(readAnnotationEntry(doc, '9999R').o), oldBuildRead('9999R', editedOldPdfMark('9999R')));
+  const page8 = docToByPage(doc)[8].objects.filter((object) => object.pdfAnnotationId === '4164R');
+  assert.equal(page8.length, 1, 'drawn once');
+  assert.equal(carryOverLegacyMarks(doc).status, 'already');
+});
+
+test('review B: a re-imported copy the user already edited on this build is not overwritten', () => {
+  const doc = editedPdfDoc();
+  const copy = readAnnotationEntry(doc, '4175R').o;
+  writeAnnotationMark(doc, '4175R', 8, {
+    ...copy, left: 500, pdfImportedEditState: 'edited', data: { ...copy.data, pdfImportedEditState: 'edited' },
+  });
+  const result = carryOverLegacyMarks(doc);
+  assert.equal(result.editedPdfReplaced, 1);
+  assert.equal(readAnnotationEntry(doc, '4175R').o.left, 500, 'the newer edit wins');
+});
+
+test('review B: edited PDF marks wait for the embedded import; the marker is held back until then', () => {
+  const doc = editedPdfDoc({ importDone: false });
+  const first = carryOverLegacyMarks(doc);
+  assert.equal(first.carried, OLD_MARKS.length, 'user-drawn marks do not wait');
+  assert.equal(first.editedPdfDeferred, 4);
+  assert.equal(first.markerWritten, false);
+  assert.equal(legacyMarksCarryOverPending(doc), false, 'nothing to do until the import has run');
+  doc.getMap('annoMeta').set(EMBEDDED_IMPORT_MARKER_KEY, { at: 'now', count: 2 });
+  assert.equal(legacyMarksCarryOverPending(doc), true);
+  const second = carryOverLegacyMarks(doc);
+  assert.equal(second.carried, 0);
+  assert.equal(second.alreadyPresent, OLD_MARKS.length);
+  assert.equal(second.editedPdfReplaced, 2);
+  assert.equal(second.markerWritten, true);
+});

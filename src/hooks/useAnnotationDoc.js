@@ -47,6 +47,9 @@ const SPACES_KEY = 'spaces';
 // w28: how long a writable open waits for the PDF's own embedded import
 // before carrying old marks anyway (see the carry-over effect below).
 const LEGACY_CARRY_WAIT_MS = 60_000;
+// ...and the random spread before carrying, so two screens that open at once
+// rarely carry at once.
+const LEGACY_CARRY_JITTER_MS = 1_500;
 // Failed-open retry (w26): 2 s, 4 s, 8 s ... capped at 60 s, 8 tries per document.
 const OPEN_RETRY_BASE_DELAY_MS = 2_000;
 const OPEN_RETRY_MAX_DELAY_MS = 60_000;
@@ -209,6 +212,12 @@ function runLegacyMarksCarryOver(handle, documentId, { notify, reason }) {
         reason,
         carried: result.carried,
         alreadyPresent: result.alreadyPresent,
+        alreadyCarried: result.alreadyCarried,
+        editedPdfReplaced: result.editedPdfReplaced,
+        editedPdfCreated: result.editedPdfCreated,
+        editedPdfSkipped: result.editedPdfSkipped,
+        editedPdfDeferred: result.editedPdfDeferred,
+        markerWritten: result.markerWritten,
         eligible: result.eligible,
         skippedPdfImported: result.skippedPdf,
         skippedUnreadable: result.skippedInvalid,
@@ -475,15 +484,6 @@ export function useAnnotationDoc({
         if (runDurableCalloutMigration(handle, pageSizesRef?.current, documentId)) {
           migrationDoneRef.current = documentId;
         }
-        // w28: marks drawn on older builds show with the first paint when the
-        // PDF's own import already ran (otherwise the effect below waits for
-        // it, so they stay on top of the PDF's markup as before).
-        if (
-          legacyMarksCarryOverPending(handle.doc)
-          && !legacyCarryOverWaitsForEmbeddedImport(handle.doc)
-        ) {
-          runLegacyMarksCarryOver(handle, documentId, { notify: false, reason: 'open' });
-        }
       }
 
       const storeByPage = handle.getByPage();
@@ -679,15 +679,23 @@ export function useAnnotationDoc({
 
   // w28: carry marks drawn on older builds into the per-field store, once per
   // document (legacyMarksCarryOver.js), on a writable open that is ready.
-  // UX: they must look exactly as they did, including sitting ON TOP of the
-  // PDF's own markup (older builds imported that at the first open, before
-  // anything was drawn). The page paints in store order and the embedded
-  // import appends, so when that import has not run on this build yet, wait
-  // for its pass to finish (its marker, or its "incomplete, retry" record,
-  // local or from another screen), then carry. If no pass finishes within
-  // LEGACY_CARRY_WAIT_MS (the import failed, or the PDF never loaded), carry
-  // anyway: showing the marks beats the paint order. The carried marks are
-  // published to the screen through the normal change path.
+  // UX: the old marks appear a moment after the document opens, looking
+  // exactly as they did.
+  // When (review A, w28): two screens that carry the same document at the
+  // same moment each create the marks; Yjs keeps one copy, so an edit made on
+  // the other copy in that short window is lost. To keep that window small:
+  //   * wait until realtime has caught up after subscribing (so another
+  //     screen's carry-over that already landed is seen first), plus a random
+  //     0-1.5 s, then re-check;
+  //   * if the PDF's own embedded import has not run yet, wait for THIS
+  //     screen's import pass (its local marker or "incomplete" record): the
+  //     import saves whole pages built from what the screen held a moment
+  //     earlier and would paint over a carry-over published meanwhile. A
+  //     marker written by another screen is not a trigger (that screen
+  //     carries right after its own import; triggering here too would make
+  //     every open screen carry at once). After LEGACY_CARRY_WAIT_MS without
+  //     a local pass, carry if still needed.
+  // The carried marks reach the screen through the normal change path.
   useEffect(() => {
     if (!isWritableDocRole(docRole)) return undefined;
     if (!initialHydration.ready || initialHydration.documentId !== documentId) return undefined;
@@ -695,14 +703,22 @@ export function useAnnotationDoc({
     if (!h || !readyRef.current || typeof h.carryOverLegacyMarks !== 'function') return undefined;
     if (!legacyMarksCarryOverPending(h.doc)) return undefined;
     let finished = false;
-    let deferTimer = null;
-    let waitTimer = null;
+    let observing = false;
+    let unsubscribeStatus = null;
+    const timers = new Set();
+    const later = (fn, ms) => {
+      const timer = setTimeout(() => { timers.delete(timer); fn(); }, ms);
+      timers.add(timer);
+    };
     const meta = h.doc.getMap(META_MAP);
     const stop = () => {
       finished = true;
-      meta.unobserve(onMeta);
-      if (deferTimer) clearTimeout(deferTimer);
-      if (waitTimer) clearTimeout(waitTimer);
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
     const run = (reason) => {
       if (finished) return;
@@ -713,20 +729,32 @@ export function useAnnotationDoc({
     };
     // Observers run inside Yjs's transaction cleanup: write from a fresh task.
     function onMeta(event) {
-      if (finished) return;
+      if (finished || !event.transaction.local) return;
       if (
         !event.keysChanged.has(EMBEDDED_IMPORT_MARKER_KEY)
         && !event.keysChanged.has(EMBEDDED_IMPORT_INCOMPLETE_KEY)
       ) return;
-      if (deferTimer) return;
-      deferTimer = setTimeout(() => { deferTimer = null; run('after-embedded-import'); }, 0);
+      later(() => run('after-embedded-import'), 0);
     }
-    if (!legacyCarryOverWaitsForEmbeddedImport(h.doc)) {
-      run('open');
-      return stop;
+    const begin = () => {
+      if (finished) return;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      if (!legacyCarryOverWaitsForEmbeddedImport(h.doc)) {
+        later(() => run('open'), Math.floor(Math.random() * LEGACY_CARRY_JITTER_MS));
+        return;
+      }
+      meta.observe(onMeta);
+      observing = true;
+      later(() => run('wait-timeout'), LEGACY_CARRY_WAIT_MS);
+    };
+    if (typeof h.isRealtimeReady !== 'function' || h.isRealtimeReady()) {
+      begin();
+    } else {
+      unsubscribeStatus = h.onSyncStatus?.(() => {
+        if (h.isRealtimeReady()) later(begin, 0);
+      }) || null;
     }
-    meta.observe(onMeta);
-    waitTimer = setTimeout(() => { waitTimer = null; run('wait-timeout'); }, LEGACY_CARRY_WAIT_MS);
     return stop;
   }, [docRole, initialHydration.ready, initialHydration.documentId, documentId]);
 

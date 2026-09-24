@@ -74,7 +74,7 @@ import {
   rootKeysChangedByTransaction,
 } from './annotationMarkStore.js';
 import { WAL_UPDATE_MAX_BYTES, splitYjsUpdate } from './annotationUpdateSplit.js';
-import { carryOverLegacyMarks } from './legacyMarksCarryOver.js';
+import { carryOverLegacyMarks, legacyCarryOverChangedCount } from './legacyMarksCarryOver.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -4061,12 +4061,16 @@ function makeHandle(state) {
     carryOverLegacyMarks({ notify = true } = {}) {
       assertHandleWritable(state);
       const result = carryOverLegacyMarks(state.doc, { origin: 'local' });
-      if (result.carried > 0) {
+      if (legacyCarryOverChangedCount(result) > 0) {
         state.lastByPage = null;
         if (notify) notifyChange(state);
       }
       return result;
     },
+
+    /** True once realtime is live and has caught up with rows written
+     *  while it was connecting (always true without realtime). */
+    isRealtimeReady() { return state.realtimePhase === 'ready'; },
 
     /** Subscribe to changes (local or remote). Returns an unsubscribe fn. */
     onChange(cb) { state.changeListeners.add(cb); return () => state.changeListeners.delete(cb); },

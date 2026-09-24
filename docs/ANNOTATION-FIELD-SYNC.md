@@ -194,44 +194,69 @@ marks on page 1, 3 pen strokes on page 11 no longer showed) and wants them
 back. `src/services/legacyMarksCarryOver.js` copies them into `marks` once
 per document; `useAnnotationDoc` runs it on a writable open.
 
-* Only marks the user drew. An entry imported from the PDF file itself
-  (`isPdfImported` or `pdfAnnotationId`; paste clones drop both) is left to
-  the embedded import above, which re-imports the file's markup and honours
-  tombstones. Older builds keyed some of those differently (Package 2: 886 of
-  3,056 under the bare PDF id, the new import uses
-  `pdf-appearance:<id>:layer:0`), so carrying them would draw them twice.
-  An edit an older build made to one of the PDF's own marks is therefore not
-  carried: the file's original shows.
-* Same key as before, so the mark keeps its id, its eraser lanes (shared by
-  every build, keyed by storage key) and its counter numbering. Written
-  through `writeAnnotationMark`, the same writer as any new mark; the read
-  side normalizes identity exactly as the old read did, so every type reads
-  back with the same fields (tests/legacyMarksCarryOver.test.mjs).
-* A key already in `marks` is never written (a newer edit or another screen's
-  carry-over wins). Nothing is deleted from either map; the old map is only
-  read.
-* Batches of ~192 KB of mark JSON per transaction; the WAL split cuts any
+* Marks the user drew: carried under their OLD key, so a mark keeps its id,
+  its eraser lanes (shared by every build, keyed by storage key) and its
+  counter numbering. Written through `writeAnnotationMark`, the same writer
+  as any new mark; the read side normalizes identity exactly as the old read
+  did, so every type reads back with the same fields
+  (tests/legacyMarksCarryOver.test.mjs; Package 2's 15 and all 3,071 old
+  entries round-trip equal). A key already in `marks` is never written.
+* The PDF file's own markup (`isPdfImported`, `pdfAnnotationId`,
+  `pdfAnnotationType`, or the same under `data`; paste clones drop all of
+  them) is left to the embedded import above, which re-imports the file's
+  markup and honours tombstones. Older builds keyed some of those
+  differently (Package 2: 886 of 3,056 under the bare PDF id, the new import
+  uses `pdf-appearance:<id>:layer:0`), so carrying them would draw them twice.
+* Except a PDF mark the user EDITED on the old build
+  (`pdfImportedEditState: 'edited'`; Package 2 has 3: one resized, two partly
+  erased). Once the embedded import has run, the old edited fields replace
+  the re-imported copy's fields under the copy's key and identity, but only
+  while that copy is untouched since the import (exactly one copy, not
+  stamped edited, no eraser lane). A copy the user deleted (tombstone) stays
+  deleted; with no copy and no tombstone the old edited mark is carried
+  under its old key. Unedited PDF marks the new importer did not recreate
+  (a page it could not read, `incompletePages`, or one annotation its
+  converter dropped) are NOT carried: which layer shows such a page's
+  markup is the importer's call (w27), and carrying could draw it twice.
+  Package 2 has none.
+* Nothing is deleted from either map; the old map is only read.
+* Each batch (~192 KB of mark JSON, one transaction) first writes a record of
+  the old keys it handles (`legacyMarksCarriedBatch:<client>:<clock>` in
+  annoMeta), then the marks. The record has the lower clocks, so any screen
+  that holds a carried mark also holds its record, and a recorded key is
+  never handled again: a carried mark deleted later stays deleted even if
+  the marker row has not landed yet (review A). The WAL split cuts any
   update over 256 KB into chained parts as for any edit.
 * The marker `legacyMarksCarriedIntoMarks` (annoMeta) is written in its own
-  transaction after every carried mark, so no peer sees it without them.
-  With the marker present the carry-over never runs again: a carried mark
-  deleted later stays deleted. A document with no old user-drawn marks gets
-  no writes and no marker.
-* Paint order. Older builds imported the PDF's markup at the first open, so
-  the user's marks painted on top of it. Pages paint in store order and the
-  embedded import appends, so on a document whose embedded import has not
-  run on this build yet, the hook waits for that pass (its marker, or its
-  "incomplete, retry" record) before carrying. If no pass finishes within
-  60 s (import failed, PDF never loaded) it carries anyway.
-* Viewers and an unresolved role never write; the next writable open (or the
-  role resolving to writable) does it.
+  transaction after everything is handled; with it present nothing is
+  scanned again. It is held back while edited PDF marks wait for the
+  embedded import. A document with no old user-drawn or edited PDF marks
+  gets no writes and no marker.
+* When: after realtime has caught up following the subscribe, plus a random
+  0-1.5 s, then re-checked (another screen's carry-over that already landed
+  is seen first). If the embedded import has not run yet, it waits for THIS
+  screen's import pass (its marker or "incomplete" record, written locally):
+  the import saves whole pages built from what the screen held a moment
+  earlier and would paint over a carry-over published meanwhile. A marker
+  from another screen is not a trigger (that screen carries after its own
+  import). After 60 s without a local pass it carries anyway. The marks
+  appear a moment after the document opens.
+* Viewers and an unresolved role never write; the next writable open (or
+  the role resolving to writable) does it. Until then a viewer does not see
+  the old marks.
+* Paint order: a page paints in store order, which after a reload follows
+  the writer, not the time (Yjs rebuilds a map writer by writer). The
+  reference build behaved the same way: loading Package 2 it painted the
+  page-11 strokes underneath the PDF's markup (positions 0-2 of 260).
 
 Limits: two screens carrying the same document at the same moment each
 create the mark's map; Yjs keeps one, so an edit or delete made on the other
-screen's copy in the short window before the two see each other is lost (the
-delete: the mark comes back once). Same class as two editors running the
-embedded import at once. Marks an older build writes after the carry-over
-are not carried (older builds are unsupported).
+screen's copy in the short window before the two see each other is lost (a
+deleted mark comes back once). The timing rules above make this need two
+opens within about a second. Same class as two editors running the embedded
+import at once. A true single writer would need a server-side claim. Marks
+an older build writes after the carry-over are not carried (older builds are
+unsupported).
 
 ## Older builds
 
