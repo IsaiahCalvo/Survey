@@ -16,7 +16,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
-import { EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
+import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -26606,9 +26606,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (importedIds.length > 0 && !annotationDocHasStoredMarks(importedIds)) {
           throw new Error('embedded import did not reach the store yet');
         }
+        // w27: a page with markup that pdf.js could not read was skipped; no
+        // marker yet (it would hide that page's markup for good). Record the
+        // attempt and retry on the next open — the per-mount guard stays set,
+        // so not on every render. Bounded: see embeddedImportGate.js.
+        const markerDecision = embeddedImportMarkerDecision({
+          failedPages: embeddedImportFailedPages(nativeLayerPolicyByPage),
+          previous: excelSyncMetaGet(EMBEDDED_IMPORT_INCOMPLETE_KEY),
+        });
+        if (!markerDecision.write) {
+          excelSyncMetaSet(EMBEDDED_IMPORT_INCOMPLETE_KEY, {
+            at: new Date().toISOString(),
+            attempts: markerDecision.attempts,
+            pages: markerDecision.pages,
+          }, 'local');
+          console.warn('[PDFImport] embedded import incomplete; will retry on the next open', {
+            documentId,
+            pages: markerDecision.pages,
+            attempts: markerDecision.attempts,
+            added: importedIds.length,
+          });
+          return;
+        }
         excelSyncMetaSet(EMBEDDED_IMPORT_MARKER_KEY, {
           at: new Date().toISOString(),
           count: importedIds.length,
+          ...(markerDecision.incompletePages ? { incompletePages: markerDecision.incompletePages } : {}),
         }, 'local');
         // The reference build's server-side marker, kept for it.
         try {

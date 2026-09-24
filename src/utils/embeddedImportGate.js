@@ -24,6 +24,20 @@
  *     every build) is never brought back.
  *   * The marker is written only after every imported mark is in the store,
  *     so a tab closed mid-import retries on the next open.
+ *   * w27: a page pdf.js could not read at all is skipped by the importer
+ *     (the rest imports). A marker written then would leave that page's
+ *     markup out for good, so while such a page carries markup (or the file's
+ *     raw index could not tell) the marker waits and the next open tries
+ *     again (marks already present are skipped by id; deleted ones are
+ *     tombstoned). The retry is bounded: after EMBEDDED_IMPORT_MAX_ATTEMPTS
+ *     attempts (one per time a screen opens the document) that still cannot
+ *     read it, the marker is written with `incompletePages` and that page's
+ *     markup is not imported (it is recorded there and logged, not shown to
+ *     the user), so a page that always fails costs a full re-parse at most
+ *     that many times. Without the raw bytes every unreadable page counts as
+ *     carrying markup. A single annotation the converter cannot read is NOT
+ *     retried (the converter would fail the same way again); it is only
+ *     logged.
  *
  * Pure JS — the Node test runner imports this directly.
  */
@@ -43,6 +57,41 @@ export function embeddedImportDecision({ role, marker }) {
   if (role == null) return 'wait';
   if (!isWritableDocumentRole(role)) return 'skip';
   return 'import';
+}
+
+// Meta key holding { attempts, pages, at } while an import is incomplete.
+export const EMBEDDED_IMPORT_INCOMPLETE_KEY = 'embeddedImportIncomplete';
+export const EMBEDDED_IMPORT_MAX_ATTEMPTS = 3;
+
+/**
+ * Pages the importer could not read at all (its per-page native-layer policy
+ * says 'page-import-failed') that carry markup: the raw index lists visible
+ * annotations there, or the raw index was not available to say.
+ */
+export function embeddedImportFailedPages(nativeLayerPolicyByPage) {
+  return Object.entries(nativeLayerPolicyByPage || {})
+    .filter(([, policy]) => (
+      policy?.reason === 'page-import-failed'
+      && (policy.rawAnnotationCount == null || Number(policy.rawAnnotationCount) > 0)
+    ))
+    .map(([pageKey, policy]) => Number(policy?.pageNumber ?? pageKey))
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Whether the once-only marker may be written after an import pass.
+ *   failedPages  embeddedImportFailedPages(...)
+ *   previous     the EMBEDDED_IMPORT_INCOMPLETE_KEY meta value, if any
+ * Returns { write: true } | { write: true, incompletePages, attempts }
+ *       | { write: false, pages, attempts } (record attempts, retry next open).
+ */
+export function embeddedImportMarkerDecision({ failedPages = [], previous = null } = {}) {
+  if (!failedPages.length) return { write: true };
+  const attempts = Math.max(0, Number(previous?.attempts) || 0) + 1;
+  if (attempts >= EMBEDDED_IMPORT_MAX_ATTEMPTS) {
+    return { write: true, incompletePages: failedPages, attempts };
+  }
+  return { write: false, pages: failedPages, attempts };
 }
 
 function tombstoneKey(pageNumber, pdfAnnotationId) {

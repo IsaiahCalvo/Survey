@@ -6248,6 +6248,14 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           pageNumber: pageNum,
           hideNativeLayer: false,
           reason: 'page-import-failed',
+          // How many visible annotations of a kind the app imports the
+          // file's raw index lists on this page (null when the raw index
+          // could not be built). The viewer's
+          // once-only import marker waits for a retry only when this page
+          // really carries markup (embeddedImportGate.js, w27).
+          rawAnnotationCount: rawAnnotationIndex
+            ? readableRaw.filter((raw) => SUPPORTED_SUBTYPES.includes(raw.subtype)).length
+            : null,
           importedIds: [],
           nativeRenderableAnnotationIds: [],
           nativeOnlyAnnotationIds: [],

@@ -161,6 +161,30 @@ version (`src/utils/embeddedImportGate.js`, the import effect in
   closed mid-import retries next open), and once written, deleting an
   imported mark is final.
 * The server column is still stamped for the reference build.
+* w27 (2026-09-24): a page pdf.js cannot read at all is skipped by the
+  importer while the rest imports. If the file lists markup the app imports
+  on that page (or its raw index could not be built, e.g. no raw bytes), the
+  marker is held back and the attempt recorded in meta
+  `embeddedImportIncomplete` `{ attempts, pages }`; the next open retries
+  (present marks are skipped by id, deleted ones are tombstoned). After 3
+  attempts (one per time a screen opens the document) the marker is written
+  with `incompletePages`: that page's markup is then not imported (recorded
+  and logged only, the user is not told), so a page that always fails cannot
+  make every open re-parse the file. A single annotation the converter
+  cannot read is not retried; it is only logged.
+* "In the store" means this screen's document. The marker is a later write
+  by the same screen as the marks it imported, and Yjs applies one writer's
+  changes in order, so a peer holds the marker back until those marks have
+  arrived (see the split-row section below).
+
+What an open of a document edited by older builds shows: only the PDF's own
+markup (re-imported) plus marks made on this build. Marks drawn with an older
+build stay in the old `annotations` map and do not show (owner ruling). The
+home list thumbnail is a per-browser cache; one captured by an older build
+still shows those old marks until the document is opened on this build
+(it is refreshed ~2.5 s after the open). Seen on "Package 2 - Rev 4 -- IC.pdf"
+(w27): its page-1 red marks (a rectangle, pen strokes, counters, text) were
+drawn with an older build; the PDF file itself has markup only on pages 6-11.
 
 ## Older builds
 
