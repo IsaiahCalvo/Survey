@@ -61,6 +61,7 @@ import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 
 function RailLiveZoomText({ fallback, viewerId }) {
   const [livePercentage, setLivePercentage] = useState(null);
@@ -1542,6 +1543,11 @@ export default function App({ devPreviewReturnTab = null }) {
     const controller = createKeyboardViewportController();
     return () => controller.dispose();
   }, [isMobileViewer]);
+
+  // The sub-toolbar host lies over the top of the PDF scroll area; registering it
+  // lets the viewer add scroll room so the page can be scrolled out from under
+  // every strip in it (owner 2026-09-23, src/utils/viewerTopOverlay.js).
+  const subToolbarHostRef = useViewerTopOverlayRef();
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -3251,9 +3257,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 naturally because it is NOT inside the pdf-container
                 subtree. Positioned absolute at top:0 so the sub-row
                 overlays the canvas without pushing it down — the viewer
-                underneath keeps its full height. */}
+                underneath keeps its full height.
+                2026-09-23 (owner): it still never pushes the page down, but the
+                viewer gives the page matching scroll room above page 1, so you
+                can scroll the top of the page out from underneath the strips. */}
             <div
               id="chrome-sub-toolbar-host"
+              ref={subToolbarHostRef}
               data-chrome-strip="true"
               style={{
                 display: isViewerVisible && (

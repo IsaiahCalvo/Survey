@@ -15,6 +15,7 @@ import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMo
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName } from '../utils/selectModes.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import { useViewerTopOverlayRef } from '../utils/viewerTopOverlay.js';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -1239,6 +1240,10 @@ export function MobileToolProperties({ api }) {
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
   const tool = api?.contextTool || api?.activeTool;
+  // Every strip below lies over the top of the PDF scroll area; registering it
+  // gives the viewer scroll room to move the page out from under it (owner
+  // 2026-09-23, src/utils/viewerTopOverlay.js).
+  const topOverlayRef = useViewerTopOverlayRef();
   const textMarkup = getMobileTextMarkupPresentation(api);
   const liveTextEditing = Boolean(api?.richTextEditor);
 
@@ -1262,7 +1267,7 @@ export function MobileToolProperties({ api }) {
     // dialog — matches demo App.tsx:1644-1658 / AnnotationFormattingBar.tsx:195-207.
     if (region.fullPageConfirmPending) {
       return (
-        <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Confirm full page region">
+        <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Confirm full page region" ref={topOverlayRef}>
           <span className="mobile-pdf-properties__confirm-label">Make region full page?</span>
           <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirmFullPage}>Confirm</button>
           <button type="button" onClick={region.cancelFullPage}>Cancel</button>
@@ -1270,7 +1275,7 @@ export function MobileToolProperties({ api }) {
       );
     }
     return (
-      <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing">
+      <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing" ref={topOverlayRef}>
         <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Confirm</button>
         <button type="button" disabled={!region.canDelete} onClick={region.deleteSelected}>Delete</button>
         <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full page</button>
@@ -1287,7 +1292,7 @@ export function MobileToolProperties({ api }) {
   ) {
     const survey = api.surveyToolbar;
     return (
-      <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement">
+      <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
         <MobileStyledSelect
           ariaLabel="Survey module"
@@ -1327,7 +1332,7 @@ export function MobileToolProperties({ api }) {
           The desktop sub-row has always carried it; the phone bar did not, so a
           tap on Bold committed the text and then styled an editor that was
           already unmounting. */}
-      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" data-rich-text-toolbar role="toolbar" aria-label="Text formatting">
+      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" data-rich-text-toolbar role="toolbar" aria-label="Text formatting" ref={topOverlayRef}>
         {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
             app's shared CompactColorPicker takeover, not an OS colour input.
             PASS 7: it stays ONE swatch rather than gaining the quick-colour
@@ -1504,7 +1509,7 @@ export function MobileToolProperties({ api }) {
   ) {
     const selectMode = api.activeTool === 'text-select' ? 'text' : (api.selectionMode || 'rectangle');
     return (
-      <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings">
+      <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label="Select settings" ref={topOverlayRef}>
         <MobileStripSegmented
           ariaLabel="Selection mode"
           width={150}
@@ -1558,6 +1563,7 @@ export function MobileToolProperties({ api }) {
           data-mobile-text-markup-controls={textMarkup.editingSelection ? 'edit' : 'create'}
           role="toolbar"
           aria-label={textMarkup.editingSelection ? 'Edit text markup' : 'Text markup defaults'}
+          ref={topOverlayRef}
         >
           {/* UX 2026-09-17 (owner): the same four quick colours the desktop
               text-markup row leads with. The phone strip had the colour
@@ -1934,7 +1940,7 @@ export function MobileToolProperties({ api }) {
         board 5 text box           combined swatch | width | line style | Aa
         board 6 eraser             Partial/Whole | size
         board 7 select             Box/Lasso/Text            */}
-    <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} settings`}>
+    <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} settings`} ref={topOverlayRef}>
       {/* BOARD 6 — the eraser leads with its Partial/Whole toggle. It was a
           104px "Partial Erase / Full Stroke" dropdown, which is two taps and a
           menu to flip a two-state switch. */}
