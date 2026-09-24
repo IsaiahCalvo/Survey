@@ -24,6 +24,7 @@ import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
+import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
@@ -599,28 +600,20 @@ const SurveySpacesRail = ({
 
   useEffect(() => {
     if (!isTemplateSelectorOpen) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (!templateSelectorRef.current?.contains(event.target)) {
-        setIsTemplateSelectorOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    return watchLightPopover({
+      contains: (target) => !templateSelectorRef.current || templateSelectorRef.current.contains(target),
+      close: () => setIsTemplateSelectorOpen(false),
+    });
   }, [isTemplateSelectorOpen]);
 
   useEffect(() => {
     if (!isMobileExportMenuOpen) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (!mobileExportMenuRef.current?.contains(event.target)) {
-        setIsMobileExportMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    return watchLightPopover({
+      contains: (target) => !mobileExportMenuRef.current || mobileExportMenuRef.current.contains(target),
+      close: () => setIsMobileExportMenuOpen(false),
+    });
   }, [isMobileExportMenuOpen]);
 
   useEffect(() => {
@@ -649,13 +642,11 @@ const SurveySpacesRail = ({
   // Outside-tap closes the detail view's entity / sibling-marker dropdowns.
   useEffect(() => {
     if (!mobileDetailDropdown) return undefined;
-    const handlePointerDown = (event) => {
-      if (!event.target?.closest?.('.mobile-survey-detail-dropdown-wrap')) {
-        setMobileDetailDropdown(null);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    return watchLightPopover({
+      contains: (target) => Boolean(target.closest('.mobile-survey-detail-dropdown-wrap')),
+      close: () => setMobileDetailDropdown(null),
+    });
   }, [mobileDetailDropdown]);
 
   useEffect(() => {
@@ -666,19 +657,11 @@ const SurveySpacesRail = ({
 
   useEffect(() => {
     if (!openEntityDropdownId) return undefined;
-    const closeEntityDropdown = (event) => {
-      if (event.target?.closest?.('.survey-marker-entity-select-wrap')) return;
-      setOpenEntityDropdownId(null);
-    };
-    const closeEntityDropdownOnEscape = (event) => {
-      if (event.key === 'Escape') setOpenEntityDropdownId(null);
-    };
-    document.addEventListener('mousedown', closeEntityDropdown, true);
-    document.addEventListener('keydown', closeEntityDropdownOnEscape, true);
-    return () => {
-      document.removeEventListener('mousedown', closeEntityDropdown, true);
-      document.removeEventListener('keydown', closeEntityDropdownOnEscape, true);
-    };
+    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    return watchLightPopover({
+      contains: (target) => Boolean(target.closest('.survey-marker-entity-select-wrap')),
+      close: () => setOpenEntityDropdownId(null),
+    });
   }, [openEntityDropdownId]);
 
   // O(1) entity-by-id lookup for the per-marker render loop below (entity ids are

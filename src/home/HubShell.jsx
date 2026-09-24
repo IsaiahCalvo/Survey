@@ -91,8 +91,13 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
 
   return (
     <>
+      {/* R3 (dismiss rules, owner 2026-09-23): while you type here, the first
+          press elsewhere only ends the typing — except other text fields,
+          popover openers and the caller's own dismiss actions, which work at
+          once. */}
       <DismissBarrier
         active={focused}
+        mode="typing"
         insideRefs={[rootRef]}
         passthroughSelector={dismissActionSelector}
         onDismiss={() => {

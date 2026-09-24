@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
+import { watchLightPopover } from '../components/dismissRules.js';
 import {
   clampFloatingMenuPosition,
   DESKTOP_RIGHT_RAIL_WIDTH,
@@ -103,23 +104,26 @@ export function useAnnotationContextMenu() {
   // bubble-phase listener silently dropped clicks on Pdfjs surfaces.
   // Marker check replaces the menu-div's own onMouseDown stopPropagation
   // so the logic lives in one place: "is the click target inside the menu?"
+  //
+  // 2026-09-23: now one of the shared dismiss rules' light popovers
+  // (src/components/dismissRules.js): an outside press still closes it and
+  // still does its job (R1 — select the mark pressed, press the button); a
+  // press on the bare page only closes it (R2); Escape closes it and nothing
+  // under it (R5). Still capture phase, so descendants cannot stop it.
   useEffect(() => {
     if (!annotationContextMenu) return undefined;
-    const close = (e) => {
-      if (e?.target?.closest && e.target.closest('[data-annotation-context-menu]')) return;
-      setAnnotationContextMenu(null);
-    };
-    const onKey = (e) => { if (e.key === 'Escape') setAnnotationContextMenu(null); };
-    // Delay attaching so the opening right-click's own mousedown doesn't
+    let stop = null;
+    // Delay attaching so the opening right-click's own press doesn't
     // instantly re-close the menu.
     const t = window.setTimeout(() => {
-      window.addEventListener('mousedown', close, true);
-      window.addEventListener('keydown', onKey);
+      stop = watchLightPopover({
+        contains: (target) => Boolean(target.closest('[data-annotation-context-menu]')),
+        close: () => setAnnotationContextMenu(null),
+      });
     }, 0);
     return () => {
       window.clearTimeout(t);
-      window.removeEventListener('mousedown', close, true);
-      window.removeEventListener('keydown', onKey);
+      stop?.();
     };
   }, [annotationContextMenu]);
 

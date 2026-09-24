@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
+import { focusMovedElsewhere } from './AnnotationDropdown';
 import {
   getAnnotationSizePreviewThickness,
   normalizeAnnotationSize,
@@ -195,6 +196,11 @@ export default function AnnotationSizeControl({
         <Popover.Content
           className="annotation-size-control__popover"
           data-annotation-size-popover="true"
+          // Dismiss rules R1/R6: see AnnotationDropdown — never pull focus back
+          // to this pill once the press that closed it focused another control.
+          onCloseAutoFocus={(event) => {
+            if (focusMovedElsewhere(event)) event.preventDefault();
+          }}
           align={isPill ? 'start' : 'center'}
           sideOffset={6}
           collisionPadding={8}

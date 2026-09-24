@@ -21,6 +21,7 @@ import {
 } from '../utils/annotationVisibilityRules';
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
+import { watchLightPopover } from '../components/dismissRules.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
@@ -640,22 +641,12 @@ const SpacesPanel = ({
   const spacesExportAnchorRef = useRef(null);
 
   React.useEffect(() => {
-    if (!isSpacesExportMenuOpen) return;
-
-    const handleOutsideClick = (event) => {
-      if (!spacesExportAnchorRef.current) return;
-      if (!spacesExportAnchorRef.current.contains(event.target)) {
-        setIsSpacesExportMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
-    };
+    if (!isSpacesExportMenuOpen) return undefined;
+    // Light popover — shared dismiss rules R1/R2/R5 (src/components/dismissRules.js).
+    return watchLightPopover({
+      contains: (target) => !spacesExportAnchorRef.current || spacesExportAnchorRef.current.contains(target),
+      close: () => setIsSpacesExportMenuOpen(false),
+    });
   }, [isSpacesExportMenuOpen]);
 
   const captureSpacesDropFrame = useCallback((label, details = {}) => {

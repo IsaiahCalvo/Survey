@@ -248,6 +248,7 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
 import { createMultiTouchTapGate } from './utils/multiTouchTapGate';
@@ -5504,22 +5505,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => clearTimeout(timer);
   }, [activeTool]);
 
-  // Close menus when clicking outside
+  // Survey export menu: a light popover under the shared dismiss rules
+  // (src/components/dismissRules.js, owner 2026-09-23) — an outside press closes
+  // it and still does its job (R1), a press on the bare page only closes it
+  // (R2), Escape closes it (R5).
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      // Close export menu
-      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
-        setShowExportMenu(false);
-      }
-    };
-
-    if (showExportMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    if (!showExportMenu) return undefined;
+    return watchLightPopover({
+      contains: (target) => !exportMenuRef.current || exportMenuRef.current.contains(target),
+      close: () => setShowExportMenu(false),
+    });
   }, [showExportMenu]);
 
   // Persist eraser mode
@@ -8875,25 +8870,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!isZoomMenuOpen) return;
 
-    const handleClickOutside = (event) => {
-      if (!zoomMenuRef.current) return;
-      if (!zoomMenuRef.current.contains(event.target)) {
-        setIsZoomMenuOpen(false);
-      }
-    };
-
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        setIsZoomMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
+    // Zoom/fit menu: a light popover under the shared dismiss rules
+    // (src/components/dismissRules.js, owner 2026-09-23): an outside press
+    // closes it and still does its job (R1); a press on the bare page only
+    // closes it (R2); Escape closes it and nothing under it (R5).
+    return watchLightPopover({
+      contains: (target) => !zoomMenuRef.current || zoomMenuRef.current.contains(target),
+      close: () => setIsZoomMenuOpen(false),
+    });
   }, [isZoomMenuOpen]);
 
   useEffect(() => {

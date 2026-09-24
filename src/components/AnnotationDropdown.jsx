@@ -4,6 +4,20 @@ import Icon from '../Icons';
 import './AnnotationDropdown.css';
 
 /**
+ * True when focus already sits on a real control outside the closing popover:
+ * the press that closed it landed on (and focused) something else. Shared with
+ * AnnotationSizeControl.
+ */
+export function focusMovedElsewhere(event) {
+  if (typeof document === 'undefined') return false;
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return false;
+  const content = event?.currentTarget;
+  if (content && typeof content.contains === 'function' && content.contains(active)) return false;
+  return true;
+}
+
+/**
  * Shared annotation-toolbar dropdown. Simple menus pass options/onSelect;
  * richer menus (counter series, alignment) can pass children while retaining
  * the same Radix positioning, surface, heading, and dismissal behavior.
@@ -128,6 +142,18 @@ export default function AnnotationDropdown({
             if (keepEditorFocus) event.preventDefault();
           }}
           onCloseAutoFocus={(event) => {
+            // Dismiss rules R1/R6 (owner 2026-09-23, src/components/dismissRules.js):
+            // when this menu closed because the press went to another control
+            // (another dropdown, the width pill), focus is already there. Handing
+            // it back to this trigger would count as "focus outside" for the menu
+            // that press just opened and close it again, so the second dropdown
+            // never stayed open. Leave focus where the user put it.
+            // (The text-editor focus cycle below keeps its own handling.)
+            if (!keepEditorFocusForCycleRef.current && focusMovedElsewhere(event)) {
+              editorFocusElementRef.current = null;
+              event.preventDefault();
+              return;
+            }
             if (keepEditorFocusForCycleRef.current) {
               event.preventDefault();
               const editorElement = editorFocusElementRef.current;

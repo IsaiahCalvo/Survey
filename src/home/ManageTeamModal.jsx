@@ -578,8 +578,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   return (
     <>
+      {/* R3 (dismiss rules, owner 2026-09-23): typing in the search box — the
+          first press elsewhere only ends the typing. */}
       <DismissBarrier
         active={searchFocused}
+        mode="typing"
         insideRefs={[searchRootRef]}
         onDismiss={() => {
           searchInputRef.current?.blur();

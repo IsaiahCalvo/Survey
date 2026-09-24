@@ -2905,6 +2905,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
       data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
       data-text-selection={interactionMode === 'TextSelection' ? 'true' : 'false'}
+      // Read by the shared dismiss rules (src/components/dismissRules.js, R2):
+      // with a popover open, a press on the bare page only closes it — except
+      // under Pan, whose press never marks and must keep panning.
+      data-interaction-mode={interactionMode}
       style={{
         position: 'absolute',
         inset: 0,

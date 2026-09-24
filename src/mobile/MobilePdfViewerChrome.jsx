@@ -261,6 +261,10 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
                to 0.9s - so the first tap on the settings panel or the strip
                right after Done did nothing. */
             dismissInsideSelector=".mobile-pdf-colorpicker-surface"
+            /* R4 (owner 2026-09-23 dismiss rules): the sheet sits over a
+               full-screen backdrop, so a tap outside it only closes the sheet
+               and never reaches the strip or the page behind. */
+            dismissMode="blocking"
             onChange={onChange}
             onClose={onClose}
           />

@@ -10,6 +10,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
+import { watchLightPopover } from '../components/dismissRules.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -567,18 +568,16 @@ const PagesPanel = ({
     });
   }, [allowedPages, generateThumbnail, pageNum]);
 
-  // Close context menu when clicking outside
+  // Page right-click menu: a light popover under the shared dismiss rules
+  // (src/components/dismissRules.js, owner 2026-09-23) — an outside press
+  // closes it and still does its job (R1), a press on the bare page only
+  // closes it (R2), Escape closes it (R5).
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
-        setContextMenu(null);
-      }
-    };
-
-    if (contextMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    if (!contextMenu) return undefined;
+    return watchLightPopover({
+      contains: (target) => !contextMenuRef.current || contextMenuRef.current.contains(target),
+      close: () => setContextMenu(null),
+    });
   }, [contextMenu]);
 
   // Scroll to selected page

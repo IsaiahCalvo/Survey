@@ -25,6 +25,7 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/Ann
 import AnnotationDropdown from './components/AnnotationDropdown';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
 import BodyPortal from './components/BodyPortal.js';
+import { registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
@@ -750,6 +751,9 @@ export default function App({ devPreviewReturnTab = null }) {
   // rule (DismissBarrier). The PDF canvas swallows mousedown focus changes,
   // so the field used to stay open, still holding your typed page, until you
   // clicked some other chrome. Escape is left to the field itself (cancel).
+  // Dismiss rules (2026-09-23, src/components/dismissRules.js): this is R3 —
+  // a TYPING barrier, so it ends the typing on the first outside press and is
+  // never mistaken for an open popover by the bare-page guard (R2).
   const railFieldRefs = useMemo(
     () => [bottomToolbarApi?.pageInputRef, bottomToolbarApi?.zoomInputRef].filter(Boolean),
     [bottomToolbarApi?.pageInputRef, bottomToolbarApi?.zoomInputRef]
@@ -1042,6 +1046,35 @@ export default function App({ devPreviewReturnTab = null }) {
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
   }, [bottomToolbarApi?.setShowAnnotationColorPicker]);
+
+  // Dismiss rules R1–R6 (owner 2026-09-23; src/components/dismissRules.js,
+  // docs/DISMISS-RULES.md). The handler above is R1 already: it closes the
+  // formatting popovers and never consumes, so the same press opens the other
+  // dropdown, switches tool or selects the annotation. Registering the open
+  // layer adds R2 (a press on the bare page only closes it — no stray stroke)
+  // and R5 (Escape closes the topmost popover only: the series context menu
+  // before its series menu).
+  const formattingPopoverOpen = !!openAnnotationDropdown
+    || showFontColorPicker
+    || !!counterSeriesContextMenu
+    || !!bottomToolbarApi?.showAnnotationColorPicker;
+  useEffect(() => {
+    if (!formattingPopoverOpen) return undefined;
+    return registerLightPopover({
+      contains: (target) => Boolean(target?.closest?.('[data-annotation-size-control], [data-annotation-size-popover], .annotation-dropdown, [data-annotation-dropdown-popover], [data-counter-series-menu], [data-counter-series-context-menu], [data-annotation-color-trigger], [data-annotation-color-picker], [data-font-color-picker], [data-style-menu], [data-arrowhead-menu], [data-arrow-ends-menu], [data-font-family-menu], [data-font-size-menu]')),
+      close: (_event, reason) => {
+        if (reason === 'escape' && counterSeriesContextMenu) {
+          setCounterSeriesContextMenu(null);
+          counterSeriesContextTriggerRef.current?.focus?.();
+          return;
+        }
+        setOpenAnnotationDropdown(null);
+        setShowFontColorPicker(false);
+        setCounterSeriesContextMenu(null);
+        bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
+      },
+    });
+  }, [bottomToolbarApi?.setShowAnnotationColorPicker, counterSeriesContextMenu, formattingPopoverOpen]);
 
   // Keyboard/tool-driven selection changes do not necessarily produce a page
   // click. Treat any context change as leaving the previous popover layer.
@@ -3550,7 +3583,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      not twitch when it swaps in. */
                   style={{ width: '36px', background: 'transparent', color: 'var(--text-2)', border: 'none', padding: 0, margin: 0, fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
-                <DismissBarrier active insideRefs={railFieldRefs} onDismiss={dismissRailFields} dismissOnEscape={false} />
+                <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
               ) : (
                 <button
@@ -3602,7 +3635,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-label="Current page"
                   style={{ width: '28px', padding: 0, background: 'transparent', color: 'var(--accent)', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', height: 'var(--chrome-field-h)', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                 />
-                <DismissBarrier active insideRefs={railFieldRefs} onDismiss={dismissRailFields} dismissOnEscape={false} />
+                <DismissBarrier active insideRefs={railFieldRefs} mode="typing" onDismiss={dismissRailFields} dismissOnEscape={false} />
                 </>
               ) : (
                 <button

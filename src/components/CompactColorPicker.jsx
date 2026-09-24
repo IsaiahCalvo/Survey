@@ -274,6 +274,12 @@ const CompactColorPicker = ({
     // cell, which is how the user turns the link back off. The grid is shown
     // while locked so that cell is always on screen.
     locked = false,
+    // Dismiss rules (owner 2026-09-23, src/components/dismissRules.js): a picker
+    // is a LIGHT popover (R1 — the press outside closes it and still does its
+    // job). The phone picker SHEET passes 'blocking' (R4): it sits over an
+    // invisible full-screen backdrop, and a tap there must only close the sheet
+    // — never fall through to the page or the strip behind it.
+    dismissMode = 'light',
 }) => {
     const isPhone = platform === 'phone';
     /*
@@ -1277,6 +1283,7 @@ const CompactColorPicker = ({
                swatch opens that one at once — the tap closes this picker and
                still reaches the other swatch, no second tap needed. */
             passthroughSelector={COLOUR_TRIGGER_SELECTOR}
+            mode={dismissMode}
             onDismiss={onClose}
         />
         <div

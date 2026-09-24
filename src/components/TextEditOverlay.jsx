@@ -46,6 +46,7 @@ import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdent
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
 import Icon from '../Icons';
+import { registerLightPopover } from './dismissRules.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -861,6 +862,26 @@ export default function TextEditOverlay({
       document.removeEventListener('mousedown', onDocPointerDown, true);
     };
   }, []);
+
+  // Dismiss rule R3 (owner 2026-09-23; src/components/dismissRules.js,
+  // docs/DISMISS-RULES.md): while you are typing here, the first press outside
+  // the editor ENDS the typing (commits, as the listener above always did) and
+  // does nothing else — it does not select the annotation under it, switch the
+  // tool, press the toolbar button or start a new mark. Controls that act on
+  // the text (the formatting bar, the mini toolbar, the font colour picker —
+  // the same opt-outs as above), other popover openers and other text fields
+  // keep working at once. Registered with the shared guard because that runs
+  // on window/capture, before every canvas listener that would otherwise act
+  // on the same press. Escape stays with the listener above (it commits).
+  useEffect(() => registerLightPopover({
+    kind: 'typing',
+    close: () => commitRef.current(),
+    contains: (target) => Boolean(target?.closest?.('[data-text-edit-overlay]')),
+    typingField: () => (committedRef.current ? null : editableRef.current),
+    endTyping: () => commitRef.current(),
+    passes: (target) => Boolean(target?.closest?.('[data-rich-text-toolbar], [data-mini-toolbar], [data-font-color-picker]')),
+    escape: false,
+  }), []);
 
   // ---------------------------------------------------------------------
   // Render
