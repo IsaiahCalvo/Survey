@@ -8,6 +8,8 @@ import {
   docToByPage,
   getDeletedPdfAnnotationsMap,
   getEraserOpsMap,
+  readRawAnnotationEntry,
+  writeAnnotationMark,
 } from '../services/annotationDocStore.js';
 import { counterSeriesMembershipSnapshot } from './counterSeriesMembership.js';
 import {
@@ -412,8 +414,9 @@ export function buildEraseHistoryBeforeSnapshot(snapshot, intent) {
   return next;
 }
 
-function getStoredTarget(annotations, target, materializePageTarget) {
-  const stored = annotations.get(target.storageKey);
+// `stored` is the plain { p, o } view of the per-field mark (store v2).
+function getStoredTarget(doc, annotations, target, materializePageTarget) {
+  const stored = readRawAnnotationEntry(doc, target.storageKey);
   return {
     map: annotations,
     stored,
@@ -524,7 +527,7 @@ export async function commitEraseIntent({
       finishDomainPlan();
       activeDomain = target.domain;
     }
-    const snapshot = getStoredTarget(annotations, target, materializePageTarget);
+    const snapshot = getStoredTarget(doc, annotations, target, materializePageTarget);
     if (snapshot.current === undefined) {
       return cancelled(intent, 'conflict');
     }
@@ -764,11 +767,15 @@ export async function commitEraseIntent({
       } else if (target.operation === 'delete') {
         map.delete(target.storageKey);
       } else {
-        map.set(target.storageKey, {
-          ...(stored && typeof stored === 'object' ? stored : {}),
-          p: stored?.p ?? target.pageNumber ?? intent.pageNumber,
-          o: clone(target.after),
-        });
+        // Only the fields the erase changed are written (per-field store), so
+        // a collaborator's concurrent edit to another field survives.
+        writeAnnotationMark(
+          doc,
+          target.storageKey,
+          stored?.p ?? target.pageNumber ?? intent.pageNumber,
+          clone(target.after),
+          stored?.o ? { base: stored.o, basePage: stored.p } : {},
+        );
       }
     }
     outbox.set(intent.mutationId, outboxEntry);
@@ -821,7 +828,6 @@ export function applyEraseHistoryTransitionOnDoc({
     throw new TypeError('direction must be undo or redo');
   }
   const eraserOps = getEraserOpsMap(doc);
-  const annotations = doc.getMap('annotations');
   const lanePlans = (transition.lanes || []).map((entry) => {
     const current = eraserOps.get(entry.laneKey) ?? null;
     const expected = direction === 'undo'
@@ -833,8 +839,8 @@ export function applyEraseHistoryTransitionOnDoc({
     return { ...entry, current, expected, desired };
   });
   const counterPlans = (transition.counterRenumbers || []).map((entry) => {
-    const stored = annotations.get(entry.storageKey);
-    const current = stored?.o ?? stored;
+    const stored = readRawAnnotationEntry(doc, entry.storageKey);
+    const current = stored?.o;
     const expected = direction === 'undo' ? entry.next : entry.previous;
     const desired = direction === 'undo' ? entry.previous : entry.next;
     return { ...entry, stored, current, expected, desired };
@@ -866,9 +872,11 @@ export function applyEraseHistoryTransitionOnDoc({
           seriesStart: entry.desired.seriesStart,
         },
       };
-      annotations.set(entry.storageKey, entry.stored?.o
-        ? { ...entry.stored, o: nextObject }
-        : nextObject);
+      // Only the counter's numbering fields are written.
+      writeAnnotationMark(doc, entry.storageKey, entry.stored.p, nextObject, {
+        base: entry.current,
+        basePage: entry.stored.p,
+      });
     }
   }, origin);
   return {
@@ -898,7 +906,6 @@ export function restoreEraseDeletionOnDoc({
   }
 
   const eraserOps = getEraserOpsMap(doc);
-  const annotations = doc.getMap('annotations');
   const plans = [];
   const seenLaneKeys = new Set();
 
@@ -915,8 +922,8 @@ export function restoreEraseDeletionOnDoc({
     seenLaneKeys.add(laneKey);
 
     const lane = eraserOps.get(laneKey);
-    const stored = annotations.get(storageKey);
-    const annotation = clone(stored?.o ?? stored);
+    const stored = readRawAnnotationEntry(doc, storageKey);
+    const annotation = clone(stored?.o);
     if (!annotation) {
       return { status: 'conflict', reason: 'stable-base-missing' };
     }

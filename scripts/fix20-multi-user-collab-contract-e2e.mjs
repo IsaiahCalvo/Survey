@@ -46,14 +46,22 @@ function pgHexToBytes(value) {
   return Uint8Array.from(Buffer.from(hex, 'hex'));
 }
 
+// Store v2 (2026-09-24): a mark is a nested Y.Map { p, o: Y.Map }.
+const durableObject = (value) => {
+  if (value && typeof value.toJSON === 'function' && typeof value.get === 'function') {
+    return value.toJSON()?.o || null;
+  }
+  return value?.o || value;
+};
+
 function durableAnnotationId(key, value) {
-  const object = value?.o || value;
+  const object = durableObject(value);
   const id = object?.data?.id ?? object?.id ?? object?.annotationId ?? object?.pdfAnnotationId;
   return id == null ? String(key) : String(id);
 }
 
 function durableAnnotationAuthorId(value) {
-  const object = value?.o || value;
+  const object = durableObject(value);
   return object?.meta?.authorId
     ?? object?.data?.authorId
     ?? object?.data?.userId

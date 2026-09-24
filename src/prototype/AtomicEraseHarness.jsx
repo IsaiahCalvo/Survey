@@ -16,7 +16,9 @@ import {
 import { prepareEraseIntentForCommit } from '../utils/annotationEraseCommitPlan.js';
 import {
   docToByPage,
+  readAnnotationEntry,
   syncByPageToDoc,
+  writeAnnotationMark,
 } from '../services/annotationDocStore.js';
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { createAnnotationStorageKeyResolver } from '../utils/annotationStorageIdentity.js';
@@ -404,24 +406,23 @@ export default function AtomicEraseHarness() {
         const annotations = runtimeRef.current.doc.getMap('annotations');
         let storageKey = null;
         let stored = null;
-        annotations.forEach((entry, key) => {
-          if (storageKey || objectId(entry?.o ?? entry) !== id) return;
+        annotations.forEach((_entry, key) => {
+          const entry = readAnnotationEntry(runtimeRef.current.doc, key);
+          if (storageKey || objectId(entry?.o) !== id) return;
           storageKey = key;
           stored = entry;
         });
         if (!storageKey || !stored) return null;
         runtimeRef.current.doc.transact(() => {
-          annotations.set(storageKey, {
-            ...stored,
-            o: {
-              ...stored.o,
-              ...structuredClone(patch),
-              data: {
-                ...(stored.o?.data || {}),
-                ...(patch?.data || {}),
-              },
+          // Per-field store: write only the patched fields.
+          writeAnnotationMark(runtimeRef.current.doc, storageKey, stored.p, {
+            ...stored.o,
+            ...structuredClone(patch),
+            data: {
+              ...(stored.o?.data || {}),
+              ...(patch?.data || {}),
             },
-          });
+          }, { base: stored.o, basePage: stored.p });
         }, `${ORIGIN}:remote-edit`);
         materialize(`remote-${Date.now()}`);
         return structuredClone(

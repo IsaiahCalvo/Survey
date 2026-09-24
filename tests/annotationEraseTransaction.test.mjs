@@ -31,8 +31,23 @@ import {
   docToDeletedPdfAnnotations,
   docToByPage,
   getEraserOpsMap,
+  readRawAnnotationEntry,
   syncByPageToDoc,
+  writeAnnotationMark,
 } from '../src/services/annotationDocStore.js';
+
+// RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
+// — marks are nested per-field maps; tests read and write them through the
+// store instead of the old whole { p, o } value.
+function storedValues(doc) {
+  return [...doc.getMap('annotations').keys()]
+    .map((key) => [key, readRawAnnotationEntry(doc, key)]);
+}
+function replaceStored(doc, key, update) {
+  const current = readRawAnnotationEntry(doc, key);
+  const next = update(current);
+  writeAnnotationMark(doc, key, next.p, next.o);
+}
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import {
   buildPdfExportAnnotationPlan,
@@ -286,10 +301,7 @@ function seedDoc(targets = mixedTargets()) {
   const doc = new Y.Doc();
   doc.transact(() => {
     for (const target of targets) {
-      doc.getMap('annotations').set(target.storageKey, {
-        p: target.pageNumber ?? 1,
-        o: clone(target.before),
-      });
+      writeAnnotationMark(doc, target.storageKey, target.pageNumber ?? 1, clone(target.before)); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     }
   }, 'seed');
   return doc;
@@ -440,7 +452,7 @@ test('duplicate and id-less delete+carve pairs with the exact indexed survivor',
   const result = await localCommit(doc, buildIntent({ targets }));
   assert.equal(result.status, 'committed');
   assert.deepEqual(
-    [...doc.getMap('annotations').values()]
+    storedValues(doc).map(([, value]) => value) // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       .map((value) => [value.o.left, value.o.carvedOccurrence])
       .sort((left, right) => left[0] - right[0]),
     [
@@ -465,7 +477,7 @@ test('SVG and legacy renderer gestures commit every page annotation domain atomi
       assert.equal(result.status, 'committed');
       assert.equal(updates, 1, 'core mutation and outbox share one Y transaction');
       assert.deepEqual(
-        [...doc.getMap('annotations').entries()]
+        storedValues(doc) // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
           .map(([key, value]) => [key, value.o.carved])
           .sort(),
         [
@@ -498,11 +510,10 @@ test('held gesture cancels when its exact target changed or permission context i
     const targets = mixedTargets();
     const doc = seedDoc(targets);
     const intent = buildIntent({ targets });
-    const current = doc.getMap('annotations').get('pen-a');
-    doc.getMap('annotations').set('pen-a', {
+    replaceStored(doc, 'pen-a', (current) => ({ // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       ...current,
       o: { ...current.o, collaboratorEdit: true },
-    });
+    }));
     const before = Y.encodeStateAsUpdate(doc);
 
     const result = await localCommit(doc, intent);
@@ -590,7 +601,7 @@ test('held erase commits target keys only and preserves a concurrently edited ne
     fill: '#2563eb',
     collaboratorRevision: 'remote-during-drag',
   };
-  doc.getMap('annotations').set('held-neighbor', { p: 1, o: remoteNeighbor });
+  writeAnnotationMark(doc, 'held-neighbor', 1, remoteNeighbor); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
 
   assert.equal((await localCommit(doc, intent, {
     eraserWriterId: 'writer-a',
@@ -647,14 +658,14 @@ test('lane-only Undo and Redo preserve a collaborator restyle of the same erased
   assert.equal(result.status, 'committed');
   assert.equal(result.historyTransition.lanes.length, 1);
 
-  const stored = doc.getMap('annotations').get('restyled-ink');
+  const stored = readRawAnnotationEntry(doc, 'restyled-ink'); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
   const remoteBase = {
     ...stored.o,
     stroke: '#2563eb',
     opacity: 0.35,
     collaboratorRevision: 'remote-restyle',
   };
-  doc.getMap('annotations').set('restyled-ink', { ...stored, o: remoteBase });
+  writeAnnotationMark(doc, 'restyled-ink', stored.p, remoteBase);
   let visible = docToByPage(doc)[1].objects[0];
   assert.equal(visible.fill, '#2563eb');
   assert.equal(visible.opacity, 0.35);
@@ -1408,7 +1419,7 @@ test('Revisions restores only its exact native delete lane and is idempotent', a
   );
   assert.deepEqual(docToDeletedPdfAnnotations(doc), []);
   assert.deepEqual(
-    doc.getMap('annotations').get('history-native').o.data.pdfNativeAnnotationIdentity,
+    readRawAnnotationEntry(doc, 'history-native').o.data.pdfNativeAnnotationIdentity, // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     pdfNativeAnnotationIdentity,
   );
 
@@ -1496,8 +1507,7 @@ test('Revisions restore preserves other writers, current ownership, and unrelate
   const merged = new Y.Doc();
   Y.applyUpdate(merged, Y.encodeStateAsUpdate(writerA));
   Y.applyUpdate(merged, Y.encodeStateAsUpdate(writerB));
-  const baseRecord = merged.getMap('annotations').get('shared-history-shape');
-  merged.getMap('annotations').set('shared-history-shape', {
+  replaceStored(merged, 'shared-history-shape', (baseRecord) => ({ // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     ...baseRecord,
     o: {
       ...baseRecord.o,
@@ -1506,7 +1516,7 @@ test('Revisions restore preserves other writers, current ownership, and unrelate
         authorId: 'new-owner',
       },
     },
-  });
+  }));
   let permissionSawCurrentOwner = false;
   assert.deepEqual(
     restoreEraseDeletionOnDoc({

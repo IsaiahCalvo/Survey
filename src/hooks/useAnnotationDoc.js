@@ -21,6 +21,7 @@ import {
   preserveTransientPagePresentationState,
   setMetaValue as setMetaValueOnDoc,
 } from '../services/annotationDocStore.js';
+import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -149,6 +150,27 @@ function runDurableCalloutMigration(handle, pageSizes, documentId) {
     // simply stay in the meta (and render via the fallback) until a later
     // writable open retries.
     console.error('[useAnnotationDoc] calloutsList meta migration failed', err?.message);
+    return false;
+  }
+}
+
+// One-time store-v1 → v2 conversion (owner ruling 2026-09-24: marks move to
+// per-field storage; older builds are not supported). A durable write, so
+// only a confirmed-writable role runs it; until then the store still reads
+// the old layout.
+function runDurableStoreConversion(handle, documentId) {
+  try {
+    const result = handle.convertLegacyAnnotations?.();
+    if (result?.converted > 0 || result?.dropped > 0) {
+      console.log('[useAnnotationDoc] converted marks to per-field storage', {
+        documentId,
+        converted: result.converted,
+        dropped: result.dropped,
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error('[useAnnotationDoc] per-field storage conversion failed', err?.message);
     return false;
   }
 }
@@ -310,28 +332,31 @@ export function useAnnotationDoc({
         // annotationsByPage (R2.2 flip), so this single set delivers them —
         // no meta-list projection, no dual write.
         //
-        // Read-only fallback upkeep: while unmigrated legacy meta callouts are
-        // being rendered from a LOCAL projection, re-merge them here so a
-        // remote op doesn't wipe them from view. When a remote editor's
-        // migration lands (map entries + tombstone arrive as remote ops), the
-        // recompute empties naturally and the fallback ends.
-        let nextByPage = byPage;
         // A duplicate can land in the hydrate→realtime subscribe gap, after
         // the one-time first-paint repair. Re-run the exact-only repair on
         // every remote materialization while writable. Suppress its nested
-        // notification and publish the cleaned materialization in this pass.
+        // notification; the read below picks up the cleaned state.
         if (isWritableDocRole(docRoleRef.current)) {
-          const repair = runDurableStackedInkRepair(
-            handle,
-            documentId,
-            { notify: false },
-          );
-          if (repair?.removed > 0) nextByPage = handle.getByPage();
+          runDurableStackedInkRepair(handle, documentId, { notify: false });
         }
-        if (metaFallbackIdsRef.current.size > 0) {
-          const fallback = getUnmigratedMetaCallouts(handle.doc);
-          metaFallbackIdsRef.current = new Set(fallback.ids);
-          if (fallback.callouts.length > 0) {
+        // Read-only fallback upkeep: while unmigrated legacy meta callouts are
+        // being rendered from a LOCAL projection, re-merge them so a remote op
+        // doesn't wipe them from view. When a remote editor's migration lands
+        // (map entries + tombstone arrive as remote ops), the recompute
+        // empties naturally and the fallback ends.
+        const fallback = metaFallbackIdsRef.current.size > 0
+          ? getUnmigratedMetaCallouts(handle.doc)
+          : null;
+        if (fallback) metaFallbackIdsRef.current = new Set(fallback.ids);
+        setAnnotationsByPage((previousByPage) => {
+          if (cancelled) return previousByPage;
+          // Per-field sync (2026-09-24): read the document when React applies
+          // this update, not when the notification fired. A local edit
+          // captured in between is then part of what the screen shows instead
+          // of being painted over by an older copy.
+          let nextByPage = byPage;
+          try { nextByPage = handle.getByPage(); } catch { /* closed handle: keep the notified copy */ }
+          if (fallback && fallback.callouts.length > 0) {
             nextByPage = projectCalloutsIntoByPage(
               nextByPage,
               [...deriveCalloutsFromByPage(nextByPage), ...fallback.callouts],
@@ -339,10 +364,8 @@ export function useAnnotationDoc({
               { preserveUnmeasured: true },
             );
           }
-        }
-        setAnnotationsByPage((previousByPage) => (
-          preserveTransientPagePresentationState(previousByPage, nextByPage)
-        ));
+          return preserveTransientPagePresentationState(previousByPage, nextByPage);
+        });
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
@@ -357,6 +380,7 @@ export function useAnnotationDoc({
       // the first read/paint. It is a durable write, so viewers and unresolved
       // roles must stay read-only.
       if (isWritableDocRole(docRoleRef.current)) {
+        runDurableStoreConversion(handle, documentId);
         if (runDurableStackedInkRepair(handle, documentId)) {
           inkRepairDoneRef.current = documentId;
         }
@@ -518,10 +542,16 @@ export function useAnnotationDoc({
       setAnnotationsByPage((previousByPage) => (
         preserveTransientPagePresentationState(previousByPage, materialized)
       ));
-    } else if (result?.identityChanged && result.normalizedByPage) {
-      setAnnotationsByPage((previousByPage) => (
-        preserveTransientPagePresentationState(previousByPage, result.normalizedByPage)
-      ));
+    } else if ((result?.identityChanged && result.normalizedByPage) || result?.reconcile) {
+      setAnnotationsByPage((previousByPage) => {
+        let nextByPage = previousByPage;
+        if (result.identityChanged && result.normalizedByPage) {
+          nextByPage = preserveTransientPagePresentationState(previousByPage, result.normalizedByPage);
+        }
+        // The screen was behind the document for some marks (see
+        // applyReconcileSwaps): show the document's copy.
+        return applyReconcileSwaps(nextByPage, result.reconcile);
+      });
     }
   }, [annotationsByPage]);
 
@@ -539,6 +569,7 @@ export function useAnnotationDoc({
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
     if (inkRepairDoneRef.current !== documentId) {
+      runDurableStoreConversion(h, documentId);
       if (runDurableStackedInkRepair(h, documentId)) {
         inkRepairDoneRef.current = documentId;
       }

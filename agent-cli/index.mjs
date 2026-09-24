@@ -335,7 +335,7 @@ async function cmdOpenFast(documentId, flags) {
     Y.applyUpdate(doc, gunzipSync(pgHexToBytes(data.state)));
     const map = doc.getMap('annotations');
     count = map.size;
-    map.forEach((v) => pages.add(v?.p));
+    map.forEach((v) => pages.add(typeof v?.get === 'function' ? v.get('p') : v?.p));
   }
   const materializeMs = Math.round(performance.now() - m0);
   const totalMs = Math.round(performance.now() - t0);

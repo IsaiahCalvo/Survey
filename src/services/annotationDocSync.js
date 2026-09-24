@@ -61,7 +61,20 @@ import {
   docToSurveyMarkers,
   syncSurveyMarkersToDoc,
   repairStackedInkDuplicates,
+  createViewerCaptureState,
+  recordViewerDelivery,
+  recordViewerObject,
+  getViewerEchoVersions,
+  readAnnotationEntry,
+  writeAnnotationMark,
+  convertLegacyAnnotationEntries,
+  countLegacyAnnotationEntries,
 } from './annotationDocStore.js';
+import {
+  copyDurableMapValue,
+  decodeAnnotationEntry,
+  rootKeysChangedByTransaction,
+} from './annotationMarkStore.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -333,7 +346,17 @@ export async function openAnnotationDoc({
     outboxReplayRetryAttempt: 0,
     clientSeq: 0,          // monotonic per-(doc,writer-open) op counter
     opsSinceSnapshot: 0,
-    lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
+    lastByPage: null,      // last byPage applied or materialized (eraser page commits)
+    // What the viewer holds, so a capture writes only the viewer's own edits
+    // (per-field sync, 2026-09-24 — see createViewerCaptureState).
+    viewer: createViewerCaptureState(),
+    // Local updates made durable only by a snapshot (their WAL append failed,
+    // then a gap-repair checkpoint covered them). Open peers only read the
+    // WAL, so these are re-sent through it (exact bytes, same writer/seq).
+    liveResendQueue: [],
+    liveResendTimer: null,
+    liveResendAttempt: 0,
+    liveResendChain: Promise.resolve(),
     snapshotTimer: null,   // debounced full-state checkpoint
     repairTimer: null,
     repairRetryAttempt: 0,
@@ -775,7 +798,7 @@ function whenSynced(provider, timeoutMs = 3000) {
 }
 
 function legacyEntryAuthorId(mapName, value) {
-  if (mapName === ANNOTATIONS_MAP) return getAnnotationAuthorId(value?.o);
+  if (mapName === ANNOTATIONS_MAP) return getAnnotationAuthorId(decodeAnnotationEntry(value)?.o);
   if (mapName === SURVEY_MARKERS_MAP) return getAnnotationAuthorId(value);
   return null;
 }
@@ -943,7 +966,7 @@ async function reconcileLegacyLocalState(state) {
         for (const entry of recoverable) {
           const map = state.stagedDoc.getMap(entry.mapName);
           if (entry.deleted) map.delete(entry.key);
-          else map.set(entry.key, entry.value);
+          else copyDurableMapValue(map, entry.key, entry.value);
         }
       }, HYDRATE_ORIGIN);
       const update = Y.encodeStateAsUpdate(state.stagedDoc, before);
@@ -1328,7 +1351,68 @@ async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart)
     const missing = Y.diffUpdate(record.update, snapshotVector);
     if (Y.decodeUpdate(missing).structs.length > 0) continue;
     if (!snapshotSemanticallyCoversUpdate(snapshotUpdate, record.update)) continue;
+    // Durable now, but only in the snapshot: peers that already have the
+    // document open read the WAL, never the snapshot. Re-send the exact bytes
+    // under the same writer/seq (an exact replay is idempotent server-side)
+    // so an offline edit reaches them once this screen is back online.
+    queueLiveResend(state, record);
     await settleAcceptedRecord(state, record, record.update, { alreadyApplied: true });
+  }
+}
+
+function queueLiveResend(state, record) {
+  if (!state.supabase || !record?.update || record.writerId == null) return;
+  state.liveResendQueue.push({
+    writerId: String(record.writerId),
+    clientSeq: Number(record.clientSeq),
+    update: new Uint8Array(record.update),
+  });
+  scheduleLiveResend(state);
+}
+
+function scheduleLiveResend(state, { delayed = false } = {}) {
+  if (state.destroyed || state.deleted || state.liveResendQueue.length === 0) return;
+  if (delayed) {
+    if (state.liveResendTimer) return;
+    const baseDelay = Math.max(1, Number(state.repairRetryDelayMs) || GAP_REPAIR_RETRY_MS);
+    const delayMs = Math.min(
+      GAP_REPAIR_RETRY_MAX_MS,
+      baseDelay * (2 ** Math.min(state.liveResendAttempt, 5)),
+    );
+    state.liveResendTimer = setTimeout(() => {
+      state.liveResendTimer = null;
+      scheduleLiveResend(state);
+    }, delayMs);
+    state.liveResendTimer.unref?.();
+    return;
+  }
+  state.liveResendChain = state.liveResendChain
+    .then(() => flushLiveResend(state))
+    .catch((error) => {
+      console.warn('[annotationDocSync] live re-send failed', error?.message);
+    });
+}
+
+async function flushLiveResend(state) {
+  while (state.liveResendQueue.length > 0 && !state.destroyed && !state.deleted) {
+    const item = state.liveResendQueue[0];
+    try {
+      await requestWalAppend(state, item);
+      state.liveResendQueue.shift();
+      state.liveResendAttempt = 0;
+    } catch (error) {
+      if (String(error?.code || '') === '23505' || isPermissionDenied(error)) {
+        // Already there under different bytes (never expected: one writer
+        // never reuses a seq), or no longer permitted: the snapshot still
+        // carries the edit for every later open. Nothing more to do live.
+        console.warn('[annotationDocSync] live re-send dropped', error?.message);
+        state.liveResendQueue.shift();
+        continue;
+      }
+      state.liveResendAttempt += 1;
+      scheduleLiveResend(state, { delayed: true });
+      return;
+    }
   }
 }
 
@@ -1855,11 +1939,15 @@ function stageExactLocalUpdate(state, update) {
 function stageRebasedLocalMutation(state, transaction) {
   if (!transaction?.changed) return null;
   const before = Y.encodeStateVector(state.stagedDoc);
+  // Marks are nested maps: a field edit changes annotations[key].o, not the
+  // root map, so collect the ROOT keys each changed type lives under.
+  const liveRoots = DURABLE_MAP_NAMES.map((mapName) => state.doc.getMap(mapName));
+  const changedByRoot = rootKeysChangedByTransaction(transaction, liveRoots);
   state.stagedDoc.transact(() => {
     for (const mapName of DURABLE_MAP_NAMES) {
       const live = state.doc.getMap(mapName);
       const staged = state.stagedDoc.getMap(mapName);
-      const changedKeys = transaction.changed.get(live);
+      const changedKeys = changedByRoot.get(live);
       if (!changedKeys) continue;
       const keys = changedKeys.has(null)
         ? new Set([...live.keys(), ...staged.keys()])
@@ -1868,7 +1956,7 @@ function stageRebasedLocalMutation(state, transaction) {
         if (!live.has(key)) {
           if (staged.has(key)) staged.delete(key);
         } else if (!mapValueEqual(staged.get(key), live.get(key))) {
-          staged.set(key, live.get(key));
+          copyDurableMapValue(staged, key, live.get(key));
         }
       }
     }
@@ -2048,7 +2136,7 @@ function publishProjectedState(state, projectedDoc) {
       });
       for (const key of toDelete) live.delete(key);
       projected.forEach((value, key) => {
-        if (!mapValueEqual(live.get(key), value)) live.set(key, value);
+        if (!mapValueEqual(live.get(key), value)) copyDurableMapValue(live, key, value);
       });
     }
   }, PERMISSION_ROLLBACK_ORIGIN);
@@ -2387,17 +2475,12 @@ function persistOutboxRecord(state, record) {
   return state.outbox.put(durableRecord);
 }
 
-async function appendOp(state, record) {
-  if (state.destroyed || state.deleted) throw deletedDocumentError(state.documentId);
-  const {
-    update,
-    checkpointUpdate,
-    editEpoch,
-  } = record;
+// One WAL row (exact bytes, writer/seq idempotency key). Throws on error.
+async function requestWalAppend(state, { writerId, clientSeq, update }) {
   const row = {
     document_id: state.documentId,
-    client_id: record.writerId,
-    client_seq: record.clientSeq,
+    client_id: writerId,
+    client_seq: clientSeq,
     data: bytesToPgHex(update),
   };
   let data;
@@ -2437,6 +2520,17 @@ async function appendOp(state, record) {
     writeError.code = error.code;
     throw writeError;
   }
+  return data;
+}
+
+async function appendOp(state, record) {
+  if (state.destroyed || state.deleted) throw deletedDocumentError(state.documentId);
+  const {
+    update,
+    checkpointUpdate,
+    editEpoch,
+  } = record;
+  const data = await requestWalAppend(state, record);
   assertStateWritable(state);
   await settleAcceptedRecord(state, record, update);
   // Irreversible History/trash/Excel effects may run only after this exact
@@ -2975,6 +3069,8 @@ function subscribeRealtime(state) {
           // must stay red. A plain catch-up can safely recover transport health.
           if (!hadDurabilityGap) markSyncHealth(state, true);
           notifySyncStatus(state);
+          // Back online: anything only a snapshot carried goes out live now.
+          scheduleLiveResend(state);
         });
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         // Invalidate any catch-up that started under the channel we just lost.
@@ -2990,6 +3086,7 @@ function subscribeRealtime(state) {
 function notifyChange(state) {
   const byPage = docToByPage(state.doc);
   state.lastByPage = byPage;
+  recordViewerDelivery(state.viewer, byPage);
   for (const cb of state.changeListeners) {
     try { cb(byPage); } catch (err) { console.warn('[annotationDocSync] listener threw', err?.message); }
   }
@@ -3093,20 +3190,26 @@ function annotationsByStorageKey(byPage) {
         values.set(String(storageKey), {
           pageNumber: Number(pageKey),
           object,
-          serialized: JSON.stringify(object),
         });
     }
   }
   return values;
 }
 
-function changedAnnotationIds(previousByPage, nextByPage) {
-  const previous = annotationsByStorageKey(previousByPage);
-  const next = annotationsByStorageKey(nextByPage);
-  const ids = new Set([...previous.keys(), ...next.keys()]);
-  return [...ids].filter(
-    (id) => previous.get(id)?.serialized !== next.get(id)?.serialized,
-  );
+// The viewer's object for each eraser-lane-owned mark (one pass, no
+// serialization — this runs on every capture of a document with lanes).
+function laneOwnedViewerObjects(byPage, lanesByStorageKey) {
+  const out = new Map();
+  const resolveStorageKey = createAnnotationStorageKeyResolver();
+  for (const [pageKey, page] of Object.entries(byPage || {})) {
+    for (const object of page?.objects || []) {
+      if (!object || typeof object !== 'object') continue;
+      const storageKey = String(resolveStorageKey(object, Number(pageKey), extractAnnotationId(object)));
+      if (!lanesByStorageKey.has(storageKey)) continue;
+      out.set(storageKey, { pageNumber: Number(pageKey), object });
+    }
+  }
+  return out;
 }
 
 const LANE_BASE_GEOMETRY_KEYS = new Set([
@@ -3229,16 +3332,19 @@ async function drainStateQueues(state) {
     const flushQueue = state.flushQueue;
     const replayQueue = state.outboxReplayChain;
     const authoritativeQueue = state.authoritativeChain;
+    const resendQueue = state.liveResendChain;
     await Promise.all([
       flushQueue.catch(() => {}),
       replayQueue.catch(() => {}),
       authoritativeQueue.catch(() => {}),
+      resendQueue.catch(() => {}),
     ]);
     await Promise.resolve();
     if (
       flushQueue === state.flushQueue
       && replayQueue === state.outboxReplayChain
       && authoritativeQueue === state.authoritativeChain
+      && resendQueue === state.liveResendChain
       && !state.outboxReplayScheduled
     ) return;
   }
@@ -3251,10 +3357,11 @@ function makeHandle(state) {
     writerId: state.writerId,
     doc: state.doc,
 
-    /** Current annotations in render shape. */
+    /** Current annotations in render shape (handed to the viewer). */
     getByPage() {
       const byPage = docToByPage(state.doc);
       state.lastByPage = byPage;
+      recordViewerDelivery(state.viewer, byPage);
       return byPage;
     },
 
@@ -3263,17 +3370,20 @@ function makeHandle(state) {
       return docToDeletedPdfAnnotations(state.doc);
     },
 
-    /** Push the viewer's render-shape state into the doc (minimal diff → ops). */
+    /**
+     * Push the viewer's render-shape state into the doc. Only the viewer's
+     * own edits are written, field by field (state.viewer tracks what the
+     * viewer held; see createViewerCaptureState). Returns `reconcile` swaps
+     * when the viewer's copy of a mark is behind the document.
+     */
     applyByPage(byPage, opts = {}) {
       assertHandleWritable(state);
-      const currentMaterialized = docToByPage(state.doc);
+      const viewer = state.viewer;
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
       const hasEraserMutation = Object.values(byPage || {}).some((page) => page?.eraserMutation?.id);
-      const preparedByPage = byPage;
-      let laneBaseChanges = { added: 0, updated: 0, removed: 0 };
-      if (!hasEraserMutation && state.lastByPage) {
-        const changedIds = changedAnnotationIds(currentMaterialized, byPage);
+      const laneBaseChanges = { added: 0, updated: 0, removed: 0 };
+      if (!hasEraserMutation) {
         const lanesByStorageKey = new Map();
         getEraserOpsMap(state.doc).forEach((lane) => {
           if (lane?.storageKey == null) return;
@@ -3281,24 +3391,20 @@ function makeHandle(state) {
           if (!lanesByStorageKey.has(key)) lanesByStorageKey.set(key, []);
           lanesByStorageKey.get(key).push(lane);
         });
-        const laneOwnedIds = changedIds.filter((id) => lanesByStorageKey.has(String(id)));
-        if (laneOwnedIds.length > 0) {
-          const previous = annotationsByStorageKey(currentMaterialized);
-          const desired = annotationsByStorageKey(byPage);
+        if (lanesByStorageKey.size > 0) {
+          const desired = laneOwnedViewerObjects(byPage, lanesByStorageKey);
           const annotations = getAnnotationsMap(state.doc);
           const deletedPdfAnnotations = getDeletedPdfAnnotationsMap(state.doc);
           state.doc.transact(() => {
-            for (const storageKey of laneOwnedIds) {
-              const previousRecord = previous.get(storageKey);
+            for (const [storageKey, lanes] of lanesByStorageKey) {
               const desiredRecord = desired.get(storageKey);
-              const stored = annotations.get(storageKey);
-              const lanes = lanesByStorageKey.get(storageKey) || [];
-
+              const previousVisible = viewer.base.get(storageKey)?.object || null;
               // Selection delete removes only the stable base. Lanes remain so
               // restoring that base naturally reveals the prior erased state.
               if (!desiredRecord) {
-                if (!stored) continue;
-                const nativeId = stored.o?.pdfAnnotationId;
+                if (!viewer.had.has(storageKey) || !annotations.has(storageKey)) continue;
+                const stored = readAnnotationEntry(state.doc, storageKey);
+                const nativeId = stored?.o?.pdfAnnotationId;
                 if (nativeId) {
                   const pdfNativeAnnotationIdentity = stored.o?.data?.pdfNativeAnnotationIdentity;
                   deletedPdfAnnotations.set(
@@ -3321,26 +3427,44 @@ function makeHandle(state) {
                 laneBaseChanges.removed += 1;
                 continue;
               }
-
+              // The viewer's own previous copy, or the materialized survivor
+              // it was just handed, is not an edit.
+              if (
+                previousVisible === desiredRecord.object
+                || viewer.lastDelivered.get(storageKey) === desiredRecord.object
+              ) continue;
+              const stored = readAnnotationEntry(state.doc, storageKey);
+              if (!stored && previousVisible) continue; // deleted by someone else
               const fallbackBase = lanes.find((lane) => lane?.base)?.base || null;
               const stableBase = stored?.o || fallbackBase || desiredRecord.object;
-              const nextBase = previousRecord
+              // The copy this edit was made from: the viewer's previous copy,
+              // or a survivor it was handed since, whichever has the same
+              // visible geometry (a restyle must never bake erase geometry
+              // into the stable base).
+              const echoVersions = getViewerEchoVersions(viewer, storageKey);
+              const candidates = [
+                previousVisible,
+                ...[...(echoVersions || [])].reverse(),
+              ].filter(Boolean);
+              const madeFrom = candidates.find((candidate) => (
+                laneVisibleGeometryMatches(candidate, desiredRecord.object, stableBase)
+              )) || previousVisible;
+              const nextBase = madeFrom
                 ? mergeLaneOwnedNormalEdit(
                   stableBase,
-                  previousRecord.object,
+                  madeFrom,
                   desiredRecord.object,
                 )
                 : structuredClone(stableBase);
-              annotations.set(storageKey, {
-                ...(stored && typeof stored === 'object' ? stored : {}),
-                p: desiredRecord.pageNumber,
-                o: nextBase,
+              writeAnnotationMark(state.doc, storageKey, desiredRecord.pageNumber, nextBase, {
+                base: stored ? stored.o : undefined,
+                basePage: stored?.p,
+                echoVersions,
               });
               const nativeId = nextBase?.pdfAnnotationId;
               if (nativeId) {
-                deletedPdfAnnotations.delete(
-                  deletedPdfAnnotationStorageKey(desiredRecord.pageNumber, nativeId),
-                );
+                const tombstoneKey = deletedPdfAnnotationStorageKey(desiredRecord.pageNumber, nativeId);
+                if (deletedPdfAnnotations.has(tombstoneKey)) deletedPdfAnnotations.delete(tombstoneKey);
               }
               if (stored) laneBaseChanges.updated += 1;
               else laneBaseChanges.added += 1;
@@ -3348,13 +3472,16 @@ function makeHandle(state) {
           }, opts.origin || 'local');
         }
       }
-      const res = syncByPageToDoc(state.doc, preparedByPage, {
+      const res = syncByPageToDoc(state.doc, byPage, {
         origin: 'local',
-        prevByPage: state.lastByPage,
         eraserWriterId: state.writerId,
+        viewer,
         ...opts,
       });
       state.lastByPage = byPage;
+      for (const swap of res.reconcile || []) {
+        if (swap.to) recordViewerObject(viewer, swap.key, swap.toPage ?? swap.pageKey, swap.to);
+      }
       return {
         ...res,
         added: (Number(res.added) || 0) + laneBaseChanges.added,
@@ -3383,12 +3510,29 @@ function makeHandle(state) {
       };
       syncByPageToDoc(state.doc, prepared, {
         origin: 'local',
-        prevByPage: current,
         eraserWriterId: state.writerId,
+        viewer: state.viewer,
+        onlyPages: [String(pageNumber)],
       });
       const materialized = docToByPage(state.doc);
       state.lastByPage = materialized;
+      recordViewerDelivery(state.viewer, materialized);
       return materialized[pageNumber] || { objects: [] };
+    },
+
+    /**
+     * One-time store-v1 → v2 conversion (whole objects → per-field maps).
+     * Writable roles only (the caller gates it); returns { converted, dropped }.
+     */
+    convertLegacyAnnotations() {
+      assertHandleWritable(state);
+      if (countLegacyAnnotationEntries(state.doc) === 0
+        && getMetaValue(state.doc, 'annotationStoreVersion') === 2) {
+        return { converted: 0, dropped: 0 };
+      }
+      const result = convertLegacyAnnotationEntries(state.doc, 'local');
+      if (result.converted > 0 || result.dropped > 0) state.lastByPage = null;
+      return result;
     },
 
     /** Read a document-level meta value (e.g. the callouts list). */
@@ -3448,6 +3592,7 @@ function makeHandle(state) {
       void queueEraseOutboxDrain(state);
       const byPage = docToByPage(state.doc);
       state.lastByPage = byPage;
+      recordViewerDelivery(state.viewer, byPage);
       return {
         ...result,
         outbox: {
@@ -3485,6 +3630,7 @@ function makeHandle(state) {
       if (result.status !== 'applied' && result.status !== 'noop') return result;
       const byPage = docToByPage(state.doc);
       state.lastByPage = byPage;
+      recordViewerDelivery(state.viewer, byPage);
       return {
         ...result,
         historyQuarantineGeneration: quarantineGeneration,
@@ -3505,6 +3651,7 @@ function makeHandle(state) {
       if (result.status !== 'applied' && result.status !== 'noop') return result;
       const byPage = docToByPage(state.doc);
       state.lastByPage = byPage;
+      recordViewerDelivery(state.viewer, byPage);
       return {
         ...result,
         byPage,
@@ -3631,6 +3778,12 @@ function makeHandle(state) {
           await finalizeSnapshotResult(state, result);
         } catch { /* */ }
       }
+      // A final checkpoint can settle snapshot-only edits; give their live
+      // re-send one attempt before the handle goes away.
+      if (state.liveResendTimer) { clearTimeout(state.liveResendTimer); state.liveResendTimer = null; }
+      scheduleLiveResend(state);
+      await state.liveResendChain.catch(() => {});
+      if (state.liveResendTimer) { clearTimeout(state.liveResendTimer); state.liveResendTimer = null; }
       state.destroyed = true;
       // Detach the local-mutation observer: registry docs survive destroy by
       // design (undo/state across reopen), so leaving the listener attached

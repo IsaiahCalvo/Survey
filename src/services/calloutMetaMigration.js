@@ -66,7 +66,9 @@ import {
   getAnnotationsMap,
   getMetaValue,
   setMetaValue,
+  writeAnnotationMark,
 } from './annotationDocStore.js';
+import { decodeAnnotationEntry } from './annotationMarkStore.js';
 import { calloutToAnnotationObject } from '../utils/calloutAnnotationBridge.js';
 
 export const CALLOUTS_META_KEY = 'calloutsList';
@@ -84,8 +86,10 @@ function metaEntryId(entry) {
   return (typeof id === 'string' && id) || (typeof id === 'number' ? String(id) : null);
 }
 
+// Store v2 marks are nested maps; decodeAnnotationEntry reads either layout.
 function isCalloutMapEntry(entry) {
-  return !!(entry && typeof entry === 'object' && entry.o && entry.o.data && entry.o.data.type === 'callout');
+  const decoded = decodeAnnotationEntry(entry);
+  return !!(decoded?.o?.data && decoded.o.data.type === 'callout');
 }
 
 function countCalloutMapEntries(map) {
@@ -223,7 +227,7 @@ export function migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes = {}, origi
   let matched = 0;
   let tombstoned = false;
   const applyAndVerify = () => {
-    for (const [id, entry] of plan) map.set(id, entry);
+    for (const [id, entry] of plan) writeAnnotationMark(doc, id, entry.p, entry.o);
     // Verify from the map itself: every meta entry must now be represented by a
     // callout entry under its normalized id. (In-transaction reads see the
     // writes above.) migratedCount reflects what actually LANDED, not the plan.

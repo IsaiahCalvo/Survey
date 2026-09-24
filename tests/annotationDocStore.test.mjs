@@ -14,6 +14,7 @@ import {
   docToSurveyMarkers,
   syncSurveyMarkersToDoc,
   repairStackedInkDuplicates,
+  readAnnotationObject,
 } from '../src/services/annotationDocStore.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
@@ -757,7 +758,9 @@ test('migration: crash-prefix partial map — absent meta entries migrate, prese
   const map = getAnnotationsMap(doc);
   assert.equal(map.has('co-2'), true, 'the crash-lost entry landed');
   assert.equal(
-    map.get('co-1').o.data.legacyCallout.text,
+    // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field
+    // storage): marks are nested maps now, read through readAnnotationObject.
+    readAnnotationObject(doc, 'co-1').data.legacyCallout.text,
     'newer than the blob',
     'the map copy of co-1 is authoritative — never overwritten by the stale blob',
   );

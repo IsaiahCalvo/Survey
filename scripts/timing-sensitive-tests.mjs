@@ -29,6 +29,7 @@
 export const TIMING_SENSITIVE_TEST_FILES = [
   'src/lib/collab/__tests__/crdtBackfillLoserLatency.test.mjs',
   'tests/annotationDocConcurrency.test.mjs',
+  'tests/annotationFieldSyncPerf.test.mjs',
   'tests/cloudStrokeBandPathologicalBudget.test.mjs',
   'tests/partialEraseCurveLocality.test.mjs',
   'tests/partialEraserComplexity.test.mjs',

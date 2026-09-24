@@ -57,6 +57,9 @@
  * would cost more correctness coverage than the flake risk is worth.
  */
 export const CI_PERF_TEST_FILES = Object.freeze([
+  // 2026-09-24 — per-field sync store: drag frame, 5,000-mark recolour and
+  // list rebuild timings (correctness is in annotationFieldSync.test.mjs).
+  'tests/annotationFieldSyncPerf.test.mjs',
   // p95/max commit work + CPU budgets, measured in a spawned child.
   'tests/partialEraserComplexity.test.mjs',
   // Wall-clock budgets on round-stroke outline generation and partial erase.

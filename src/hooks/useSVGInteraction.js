@@ -24,6 +24,7 @@ import { buildCaretAnchor } from '../utils/doubleTapEditEntry.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
+import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -677,6 +678,7 @@ export function useSVGInteraction({
         groupOriginals: null,
         counterRadius: radius,
         counterTipDistance: tipDistance,
+        startObjects: { [index]: deepClone(_obj_precheck) },
       };
       e.preventDefault();
       return;
@@ -1498,6 +1500,7 @@ export function useSVGInteraction({
           });
         }
         ds.mode = 'counter-orbit';
+        ds.startObjects = { [ds.annotationIndex]: deepClone(mvObj) };
         ds.anchorX = tipX;
         ds.anchorY = tipY;
         ds.counterRadius = radius;
@@ -3340,9 +3343,14 @@ export function useSVGInteraction({
       const moveDy = endPoint.y - ds.startSVGPoint.y;
       const movedFar = (moveDx * moveDx + moveDy * moveDy) > 9; // ~3px threshold
       if (movedFar) {
-        const finalAnnotations = ds.currentAnnotations || annotations;
-        if (finalAnnotations?.objects?.[ds.annotationIndex]) {
-          onSaveAnnotations(finalAnnotations, {
+        // Per-field sync (2026-09-24): the orbit's page copy was taken when it
+        // started; save the page as it is NOW with only this counter's own
+        // change, so a collaborator's edit made meanwhile is not put back.
+        const merged = ds.currentAnnotations
+          ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+          : null;
+        if (merged) {
+          onSaveAnnotations(merged.annotations, {
             source: 'counter:orbit-commit',
             action: 'counter-rotate',
             checkpointPolicy: 'normal',
@@ -3370,10 +3378,17 @@ export function useSVGInteraction({
         });
       }
     } else if (ds.mode === 'vertex') {
-      const finalAnnotations = ds.currentAnnotations || deepClone(annotations);
-      if (finalAnnotations?.objects?.[ds.annotationIndex]) {
-        roundCommittedAnnotationsGeometry(finalAnnotations, [ds.annotationIndex]);
-        onSaveAnnotations(finalAnnotations, {
+      // Per-field sync (2026-09-24): ds.currentAnnotations is a copy of the
+      // whole page taken at the last move frame. Saving it would put back
+      // anything a collaborator changed since (another mark, this mark's
+      // colour, a mark they added or deleted). Save the page as it is NOW
+      // with only the dragged corner's geometry written onto this mark.
+      const merged = ds.currentAnnotations
+        ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+        : null;
+      if (merged) {
+        roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+        onSaveAnnotations(merged.annotations, {
           source: 'object:modified',
           action: 'vertex-move',
           checkpointPolicy: 'normal',
@@ -3425,16 +3440,19 @@ export function useSVGInteraction({
       });
     } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
                && ds.groupMemberOriginals) {
-      const finalAnnotations = ds.currentAnnotations || deepClone(annotations);
-      roundCommittedAnnotationsGeometry(
-        finalAnnotations,
-        Object.keys(ds.groupMemberOriginals).map(Number),
-      );
-      onSaveAnnotations(finalAnnotations, {
-        source: 'object:modified',
-        action: ds.mode,
-        checkpointPolicy: 'normal',
-      });
+      // Per-field sync (2026-09-24): only the members' own changes, written
+      // onto the page as it is now (see the vertex branch above).
+      const merged = ds.currentAnnotations
+        ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+        : null;
+      if (merged) {
+        roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+        onSaveAnnotations(merged.annotations, {
+          source: 'object:modified',
+          action: ds.mode,
+          checkpointPolicy: 'normal',
+        });
+      }
       // UX: 2026-04-21 v11 — PowerPoint approach for rotate too: the
       // tilted frame is a live-preview during the drag, but on pointerup
       // the outer dashed box snaps back to axis-aligned around the (now
@@ -4407,6 +4425,9 @@ export function useSVGInteraction({
         // frame across N rotations; resize uses the actual current union
         // AABB since it reshapes the frame anyway.
         groupMemberOriginals: memberOriginals,
+        startObjects: Object.fromEntries(Object.keys(memberOriginals).map((idx) => (
+          [idx, deepClone(annotations?.objects?.[Number(idx)])]
+        ))),
         groupUnionOriginal: isRotate
           ? {
               left: pivotCx - lockedFrameW / 2,
@@ -4580,6 +4601,9 @@ export function useSVGInteraction({
           ctmInverse,
           vertexIndex,
           cloudVertexEdit,
+          // Per-field sync (2026-09-24): the release writes only this mark's
+          // own change (drag start → last frame) onto the page as it is then.
+          startObjects: { [selectedIndex]: deepClone(obj) },
           // Snapshot the full transform chain so the move handler can invert
           // it on each tick. We copy obj.points so we don't mutate the real
           // annotation until pointerup.

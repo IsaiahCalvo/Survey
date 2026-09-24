@@ -251,9 +251,13 @@ test('useAnnotationDoc: a failed open sets an error status and applies NOTHING t
 });
 
 test('useAnnotationDoc: onChange lands remote state while preserving a local eraser presentation epoch', () => {
+  // RULED 2026-09-24 (per-field sync): the updater now reads the document when
+  // React applies it (a block body, not an expression body), so the pin allows
+  // `=> {`; the guarded behaviour — remote state lands through
+  // preserveTransientPagePresentationState — is unchanged.
   assert.match(
     HOOK_SOURCE,
-    /handle\.onChange\(\(byPage\) => \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => \([\s\S]*?preserveTransientPagePresentationState\(previousByPage, nextByPage\)/,
+    /handle\.onChange\(\(byPage\) => \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => [\s\S]*?preserveTransientPagePresentationState\(previousByPage, nextByPage\)/,
   );
 });
 

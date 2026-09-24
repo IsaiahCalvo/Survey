@@ -13,6 +13,7 @@ import {
   getSurveyMarkersMap,
   setMetaValue,
   syncByPageToDoc,
+  readAnnotationObject,
 } from '../src/services/annotationDocStore.js';
 import {
   openAnnotationDoc,
@@ -420,7 +421,7 @@ test('two production handles preserve an eraser lane while collaborator move/res
       [...getEraserOpsMap(docB).keys()].some((key) => key.startsWith('writer-b\u0000')),
       false,
     );
-    const stableBase = getAnnotationsMap(docB).get('collab-base-edit').o;
+    const stableBase = readAnnotationObject(docB, 'collab-base-edit'); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     assert.equal(stableBase.left, 200);
     assert.equal(stableBase.top, 100);
     assert.equal(stableBase.angle, 30);
@@ -441,7 +442,7 @@ test('two production handles preserve an eraser lane while collaborator move/res
     handleB.applyByPage(beforeBEdit);
     assert.equal(getEraserOpsMap(docB).size, 1);
     assert.equal(
-      getAnnotationsMap(docB).get('collab-base-edit').o.paperEraserGeometry,
+      readAnnotationObject(docB, 'collab-base-edit').paperEraserGeometry, // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       undefined,
       'collaborator edit Undo must not bake the erased survivor into the stable base',
     );
@@ -516,7 +517,7 @@ test('same-writer erase then edit Undo leaves the older erase Undo/Redo exact', 
     handle.applyByPage(erased);
     assert.equal(getEraserOpsMap(doc).size, 1, 'edit Undo preserves older erase lane');
     assert.equal(
-      getAnnotationsMap(doc).get('same-writer-edit').o.paperEraserGeometry,
+      readAnnotationObject(doc, 'same-writer-edit').paperEraserGeometry, // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
       undefined,
       'edit Undo must keep the original stable centerline base',
     );
@@ -2743,7 +2744,7 @@ test('lane-owned stable base survives clone/reorder and lane clear restores it',
   syncByPageToDoc(doc, {
     1: { objects: [shortInk('a', 0, 30), shortInk('b', 50, 80)] },
   });
-  const originalBase = structuredClone(getAnnotationsMap(doc).get('a').o);
+  const originalBase = structuredClone(readAnnotationObject(doc, 'a')); // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
 
   commitErase(doc, {
     id: 'stable-clone-reorder',
@@ -2761,7 +2762,7 @@ test('lane-owned stable base survives clone/reorder and lane clear restores it',
   clonedReordered[1].objects.reverse();
   syncByPageToDoc(doc, clonedReordered);
   assert.deepEqual(
-    getAnnotationsMap(doc).get('a').o,
+    readAnnotationObject(doc, 'a'), // RULED 2026-09-24 (owner: no users, no old-build compatibility; per-field storage)
     originalBase,
     'materialized survivor never replaces the stable base',
   );
@@ -4802,6 +4803,8 @@ test('reconnect gap repair excludes a pending mutation that is later denied', as
   const rows = [];
   const snapshots = [];
   let appendAttempt = 0;
+  const liveResends = [];
+  let firstAppendArgs = null;
   let allowSnapshots = false;
   let subscribeCallback = null;
   let resolveDeniedAppend;
@@ -4815,11 +4818,18 @@ test('reconnect gap repair excludes a pending mutation that is later denied', as
       if (name === 'append_annotation_update') {
         appendAttempt += 1;
         if (appendAttempt === 1) {
+          firstAppendArgs = args;
           return { data: null, error: { code: 'XX000', message: 'first WAL miss' } };
         }
         if (appendAttempt === 2) {
           markDeniedAppendEntered();
           return pendingDeniedAppend;
+        }
+        // RULED 2026-09-24 (per-field sync task: an update only a snapshot
+        // carried is re-sent through the WAL so already-open peers get it).
+        if (args.p_client_seq === firstAppendArgs?.p_client_seq) {
+          liveResends.push(args);
+          return { data: [{ seq: 1 }], error: null };
         }
         throw new Error(`unexpected append attempt ${appendAttempt}`);
       }
@@ -4880,7 +4890,13 @@ test('reconnect gap repair excludes a pending mutation that is later denied', as
     undefined,
     'reconnect repair excludes the still-pending authorization result',
   );
-  assert.equal(appendAttempt, 2);
+  // RULED 2026-09-24 (per-field sync task): the third submission is the live
+  // re-send of the snapshot-covered 'gap' update — exact bytes, same writer
+  // and sequence — never the denied one.
+  assert.equal(appendAttempt, 3);
+  assert.equal(liveResends.length, 1);
+  assert.equal(liveResends[0].p_client_id, firstAppendArgs.p_client_id);
+  assert.equal(liveResends[0].p_data, firstAppendArgs.p_data);
   assert.equal(getMetaValue(doc, 'gap'), 'missed-predecessor');
   assert.equal(getMetaValue(doc, 'denied'), undefined);
   assert.equal(handle.isSyncHealthy(), false);
@@ -6520,12 +6536,23 @@ test('a CAS gap repair cannot let a later dependent overtake its predecessor', a
     handle.setMeta('C', 'later-success');
     await handle.drain();
 
+    // RULED 2026-09-24 (per-field sync task: an update only a snapshot
+    // carried is re-sent through the WAL so already-open peers receive it).
+    // A's live re-send is the one extra submission; B still lands before C.
     assert.equal(
       appendAttempt,
-      4,
-      'A repair, exact B retry, then C are the only serialized submissions',
+      5,
+      'A repair, A live re-send, exact B retry, then C are the only submissions',
     );
-    assert.equal(rows.length, 2, 'B is positively accepted before C');
+    assert.equal(rows.length, 3, 'A (re-sent live), B and C reach the WAL');
+    const rowMeta = rows.map((row) => (
+      Y.decodeUpdate(pgHexToBytes(row.data)).structs
+        .map((struct) => struct.parentSub)
+        .filter(Boolean)
+        .join(',')
+    ));
+    assert.ok(rowMeta.includes('A'), `A's exact bytes were re-sent live (${rowMeta})`);
+    assert.ok(rowMeta.indexOf('B') < rowMeta.indexOf('C'), 'B is positively accepted before C');
     assert.equal(acceptedSnapshots.length, 1);
     assert.equal(handle.isSyncHealthy(), true);
     const cold = await snapshotHexToDoc(acceptedSnapshots[0]);

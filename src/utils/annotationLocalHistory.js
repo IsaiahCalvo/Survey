@@ -26,10 +26,10 @@
  *     wrote are dropped, and only creates/deletes its own saves made are kept
  *     — a drag's pre-drag baseline vs its release also contains whatever a
  *     collaborator changed mid-drag, on this mark or any other.
- *   - The protection covers collaborator edits already RECEIVED when you press
- *     Undo. The shared store still writes whole marks (annotationDocStore
- *     syncByPageToDoc), so an edit to another field of the same mark that is
- *     still in flight at that instant can be overwritten (pre-existing).
+ *   - The shared store (annotationMarkStore.js, 2026-09-24) keeps every mark
+ *     field by field and writes only the fields this diff reports, so a
+ *     collaborator's edit to another field that is still in flight when you
+ *     press Undo survives too.
  *   - Concurrency choice: if a collaborator changed the SAME field after your
  *     action, your Undo still puts that field back to your "before" value
  *     (plain last-writer-wins on that one field — the same rule Figma and
@@ -231,16 +231,31 @@ const POINT_GEOMETRY_LINKED_FIELDS = [
 ].map((key) => [key]);
 const POINT_GEOMETRY_TYPES = new Set(['polygon', 'polyline', 'path', 'line']);
 
+/**
+ * The linked field group an annotation's fields belong to, or null. The shared
+ * store (annotationMarkStore.js) keeps each group as ONE stored value so two
+ * people's concurrent edits can never leave half of one group and half of
+ * another; Undo/Redo writes the same group whole. One definition for both.
+ * Returns { name, paths } with name 'textMarkup' | 'pointGeometry'.
+ */
+export function getAnnotationLinkedFieldGroup(object) {
+  if (!isPlainRecord(object)) return null;
+  if (object.data?.type === 'text-markup' || Array.isArray(object.data?.quads)) {
+    return { name: 'textMarkup', paths: TEXT_MARKUP_LINKED_FIELDS };
+  }
+  if (POINT_GEOMETRY_TYPES.has(String(object.type || '').toLowerCase())) {
+    return { name: 'pointGeometry', paths: POINT_GEOMETRY_LINKED_FIELDS };
+  }
+  return null;
+}
+
+/** Paths whose plain-object value is one field (never merged key by key). */
+export const ANNOTATION_ATOMIC_FIELD_PATHS = ATOMIC_FIELD_PATHS;
+
 function linkedFieldGroupsFor(before, after) {
   const probe = isPlainRecord(after) ? after : before;
-  if (!isPlainRecord(probe)) return [];
-  if (probe.data?.type === 'text-markup' || Array.isArray(probe.data?.quads)) {
-    return [TEXT_MARKUP_LINKED_FIELDS];
-  }
-  if (POINT_GEOMETRY_TYPES.has(String(probe.type || '').toLowerCase())) {
-    return [POINT_GEOMETRY_LINKED_FIELDS];
-  }
-  return [];
+  const group = getAnnotationLinkedFieldGroup(probe);
+  return group ? [group.paths] : [];
 }
 
 function readAtPath(record, path) {
