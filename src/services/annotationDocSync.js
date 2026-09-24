@@ -73,6 +73,7 @@ import {
   decodeAnnotationEntry,
   rootKeysChangedByTransaction,
 } from './annotationMarkStore.js';
+import { WAL_UPDATE_MAX_BYTES, splitYjsUpdate } from './annotationUpdateSplit.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -84,6 +85,11 @@ const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state ch
 const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
 const SNAPSHOT_ENC_GZIP = 2;        // encoding_version 2 = gzipped Y.encodeStateAsUpdate
 const CLOUD_REQUEST_TIMEOUT_MS = 15_000;
+// Tail / catch-up reads fetch at most this many WAL rows per request. A page
+// that fails (a statement timeout from rows that are too big to return
+// together — e.g. the multi-MB import rows written before w26) is retried
+// with a quarter of the rows, down to one row at a time.
+const WAL_READ_PAGE_ROWS = 100;
 const GAP_REPAIR_RETRY_MS = 1_000;
 const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
@@ -165,6 +171,7 @@ function invalidateDeletedState(state, error = deletedDocumentError(state.docume
   state.eraseOutboxClosing = true;
   clearEraseOutboxRetry(state);
   clearGapRepairTimer(state);
+  clearRealtimeRowRecovery(state);
   if (state.onDocUpdate) {
     try { state.doc.off('update', state.onDocUpdate); } catch { /* already detached */ }
     state.onDocUpdate = null;
@@ -285,6 +292,10 @@ export async function openAnnotationDoc({
   legacyPersistenceFactory = null,
   localSyncTimeoutMs = 3000,
   requestTimeoutMs = CLOUD_REQUEST_TIMEOUT_MS,
+  // Largest WAL row / Realtime message this handle sends (bytes; tests shrink it).
+  walUpdateMaxBytes = WAL_UPDATE_MAX_BYTES,
+  // Rows per tail/catch-up read page (halved on a timeout, see readWalRowsAfter).
+  walReadPageRows = WAL_READ_PAGE_ROWS,
   snapshotRetryDelayMs = 400,
   repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
   outboxStore = null,
@@ -342,6 +353,8 @@ export async function openAnnotationDoc({
     outboxReplayScheduled: false,
     outboxReplayTimer: null,
     outboxReplayRetryAttempt: 0,
+    realtimeRowRecoveryTimer: null, // w26: re-read a row Realtime could not carry
+    realtimeRowRecoveryAttempt: 0,
     clientSeq: 0,          // monotonic per-(doc,writer-open) op counter
     opsSinceSnapshot: 0,
     lastByPage: null,      // last byPage applied or materialized (eraser page commits)
@@ -400,6 +413,8 @@ export async function openAnnotationDoc({
     onDocUpdate: null,     // the local-mutation observer, kept so teardown can detach it
     flushQueue: Promise.resolve(),
     requestTimeoutMs,
+    walUpdateMaxBytes: Math.max(1024, Number(walUpdateMaxBytes) || WAL_UPDATE_MAX_BYTES),
+    walReadPageRows: Math.max(1, Math.floor(Number(walReadPageRows) || WAL_READ_PAGE_ROWS)),
     snapshotRetryDelayMs,
     repairRetryDelayMs,
     localPersistenceFactory,
@@ -1015,8 +1030,11 @@ async function reconcileLegacyLocalState(state) {
   }
 }
 
-function withCloudRequest(state, request, label) {
-  const timeoutMs = Math.max(1, Number(state.requestTimeoutMs) || CLOUD_REQUEST_TIMEOUT_MS);
+function withCloudRequest(state, request, label, timeoutOverrideMs = null) {
+  const timeoutMs = Math.max(
+    1,
+    Number(timeoutOverrideMs) || Number(state.requestTimeoutMs) || CLOUD_REQUEST_TIMEOUT_MS,
+  );
   let timer = null;
   return Promise.race([
     Promise.resolve(request),
@@ -1030,6 +1048,61 @@ function withCloudRequest(state, request, label) {
   ]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+// Ordered WAL read from `fromSeq` (exclusive), page by page, calling
+// `onRow(row)` for each row in seq order. Pages shrink on failure so one huge
+// row can never make the whole tail unreadable (w26): a page that errors or
+// times out is re-read with a quarter of the rows, down to a single row; only
+// a single-row failure (or a permission denial) is thrown. After a page
+// succeeds, the page size grows back toward the configured size.
+// Returns the seq of the last row handed to onRow (fromSeq when none).
+// Gentle on a struggling database: a failed page waits before the smaller
+// retry, and once a size has failed the page never grows back to it in this
+// read (so a run of big rows costs one failed query, not one per row).
+const WAL_READ_RETRY_DELAY_MS = 500;
+async function readWalRowsAfter(state, fromSeq, label, onRow) {
+  let cursor = fromSeq;
+  const maxRows = Math.max(1, Number(state.walReadPageRows) || WAL_READ_PAGE_ROWS);
+  let pageRows = maxRows;
+  let ceiling = maxRows;
+  for (;;) {
+    let rows = null;
+    let failure = null;
+    try {
+      const { data, error } = await withCloudRequest(
+        state,
+        state.supabase
+          .from('annotation_updates')
+          .select('seq, data, client_id, client_seq, actor_user_id')
+          .eq('document_id', state.documentId)
+          .gt('seq', cursor)
+          .order('seq', { ascending: true })
+          .limit(pageRows),
+        label,
+      );
+      if (error) failure = error;
+      else rows = data || [];
+    } catch (error) {
+      failure = error;
+    }
+    if (failure) {
+      if (pageRows > 1 && !isPermissionDenied(failure) && !state.destroyed) {
+        console.warn(`[annotationDocSync] ${label} failed for ${pageRows} rows; retrying smaller`, failure?.message);
+        ceiling = Math.max(1, pageRows - 1);
+        pageRows = Math.max(1, Math.floor(pageRows / 4));
+        await new Promise((resolve) => setTimeout(resolve, WAL_READ_RETRY_DELAY_MS));
+        continue;
+      }
+      throw failure;
+    }
+    for (const row of rows) {
+      await onRow(row);
+      cursor = Number(row.seq);
+    }
+    if (rows.length < pageRows) return cursor;
+    pageRows = Math.min(ceiling, pageRows * 2);
+  }
 }
 
 function applyAuthoritativeCloudUpdate(state, update) {
@@ -1335,7 +1408,8 @@ async function settleAcceptedRecord(
     await state.outbox?.compactAccepted(
       state.documentId,
       state.actorUserId,
-      encodeSnapshot(state.acceptedDoc),
+      // Lazy: encoded only when the outbox actually compacts (w26).
+      () => encodeSnapshot(state.acceptedDoc),
       false,
       state.documentIncarnation,
     );
@@ -1617,29 +1691,20 @@ async function loadFromBackend(state) {
       );
     }
   }
-  // 2. tail ops after the snapshot, in order
+  // 2. tail ops after the snapshot, in order (byte-safe pages, w26)
   let cursor = state.lastSeq;
-  for (;;) {
-    const { data: rows, error } = await withCloudRequest(
-      state,
-      supabase
-        .from('annotation_updates')
-        .select('seq, data, client_id, client_seq, actor_user_id')
-        .eq('document_id', documentId)
-        .gt('seq', cursor)
-        .order('seq', { ascending: true })
-        .limit(1000),
-      'annotation tail read',
-    );
-    if (error) throw new Error(`tail read: ${error.message}`);
-    const batch = rows || [];
-    for (const row of batch) {
+  let error = null;
+  try {
+    cursor = await readWalRowsAfter(state, cursor, 'annotation tail read', async (row) => {
       await applyAuthoritativeCloudRow(state, row);
-      cursor = Number(row.seq);
-    }
-    state.lastSeq = cursor;
-    if (batch.length < 1000) break;
+      state.lastSeq = Math.max(state.lastSeq, Number(row.seq));
+    });
+  } catch (readError) {
+    error = readError || new Error('unknown');
   }
+  // A failed tail read aborts the open (never hydrate a partial tail).
+  if (error) throw new Error(`tail read: ${error.message}`);
+  state.lastSeq = Math.max(state.lastSeq, cursor);
   state.coveredSeq = cursor;
   // One acknowledged custom IndexedDB transaction is the clean-cache receipt.
   // y-indexeddb's update observer is fire-and-forget and cannot authorize
@@ -1669,32 +1734,12 @@ function catchUpTail(state) {
     // lower late commit visible on the next sweep; Yjs makes overlap free.
     let cursor = state.replayFromSeq;
     let applied = 0;
-    for (;;) {
-      let response;
-      try {
-        response = await withCloudRequest(
-          state,
-          state.supabase
-            .from('annotation_updates')
-            .select('seq, data, client_id, client_seq, actor_user_id')
-            .eq('document_id', state.documentId)
-            .gt('seq', cursor)
-            .order('seq', { ascending: true })
-            .limit(1000),
-          'realtime catch-up read',
-        );
-      } catch (error) {
-        console.warn('[annotationDocSync] post-subscribe catch-up read failed', error.message);
-        return false;
-      }
-      const { data: rows, error } = response;
-      if (error) {
-        console.warn('[annotationDocSync] post-subscribe catch-up read failed', error.message);
-        return false; // coveredSeq untouched — the next SUBSCRIBED retries from here
-      }
-      const batch = rows || [];
-      for (const row of batch) {
-        if (state.destroyed) return false; // handle torn down mid-sweep — stop touching the doc
+    const stopped = { stop: true };
+    try {
+      // Byte-safe pages (w26): an oversized row shrinks the page instead of
+      // failing the whole catch-up.
+      await readWalRowsAfter(state, cursor, 'realtime catch-up read', async (row) => {
+        if (state.destroyed) throw stopped; // handle torn down mid-sweep — stop touching the doc
         try {
           // clientId is stable per install, not per open handle. Another tab or
           // a handle still tearing down can therefore author a row with OUR
@@ -1711,13 +1756,19 @@ function catchUpTail(state) {
           if (cursor > state.lastSeq) state.lastSeq = cursor;
           state.coveredSeq = cursor;
           if (applied > 0) notifyChange(state);
-          return false;
+          throw stopped;
         }
         cursor = Number(row.seq);
+        if (cursor > state.lastSeq) state.lastSeq = cursor;
+        state.coveredSeq = cursor;
+      });
+    } catch (error) {
+      if (error !== stopped) {
+        // coveredSeq stays on the last applied row — the next SUBSCRIBED retries from here
+        console.warn('[annotationDocSync] post-subscribe catch-up read failed', error?.message);
+        if (applied > 0 && !state.destroyed) notifyChange(state);
       }
-      if (cursor > state.lastSeq) state.lastSeq = cursor;
-      state.coveredSeq = cursor;
-      if (batch.length < 1000) break;
+      return false;
     }
     if (applied > 0 && !state.destroyed) notifyChange(state);
     if (applied > 0 && !state.destroyed) void queueEraseOutboxDrain(state);
@@ -1868,6 +1919,11 @@ function clearGapRepairTimer(state) {
   if (state.repairTimer) clearTimeout(state.repairTimer);
   state.repairTimer = null;
   state.repairRetryAttempt = 0;
+}
+
+function clearRealtimeRowRecovery(state) {
+  if (state.realtimeRowRecoveryTimer) clearTimeout(state.realtimeRowRecoveryTimer);
+  state.realtimeRowRecoveryTimer = null;
 }
 
 function scheduleGapRepair(state) {
@@ -2386,7 +2442,33 @@ function handleSnapshotResult(state, result) {
 }
 
 // Serialize appends so client_seq increments cleanly and ordering is stable.
+//
+// No WAL row may be huge (w26, 2026-09-24): an update over
+// WAL_UPDATE_MAX_BYTES is cut into parts (annotationUpdateSplit.js), each its
+// own row with its own client_seq, queued back to back. Every writer goes
+// through here, so a PDF import, an IndexedDB replay or a recovery can no
+// longer produce an 8 MB row that Realtime cannot carry and a tail read cannot
+// return. The parts share ONE copy of the transaction-time checkpoint (all
+// parts are the same local transaction, so they share its authorization); a
+// history tag rides on every part so a rollback of any part is attributed to
+// the same mutation. Returns the queue promise that settles after the last part.
 function enqueueAppend(
+  state,
+  update,
+  checkpointUpdate,
+  editEpoch,
+  options = {},
+) {
+  const parts = splitYjsUpdate(update, state.walUpdateMaxBytes);
+  const sharedCheckpoint = new Uint8Array(checkpointUpdate);
+  let queued = state.flushQueue;
+  for (const part of parts) {
+    queued = enqueueAppendRecord(state, part, sharedCheckpoint, editEpoch, options);
+  }
+  return queued;
+}
+
+function enqueueAppendRecord(
   state,
   update,
   checkpointUpdate,
@@ -2409,7 +2491,9 @@ function enqueueAppend(
     writerId: state.writerId,
     clientSeq,
     update: new Uint8Array(update),
-    checkpointUpdate: new Uint8Array(checkpointUpdate),
+    // Already a private copy (enqueueAppend), shared by every part of one
+    // transaction; never mutated.
+    checkpointUpdate,
     editEpoch,
     publishAfterAcceptance,
     historyTag: historyTag?.mutationId
@@ -2625,7 +2709,13 @@ async function appendOp(state, record) {
     if (assignedSeq === state.coveredSeq + 1) state.coveredSeq = assignedSeq;
   }
   state.opsSinceSnapshot += 1;
-  if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
+  // More rows queued right behind this one (a split bulk write, e.g. a PDF
+  // import cut into dozens of rows): do not stop the queue to upload a
+  // multi-MB checkpoint in the middle of it. The debounced checkpoint runs
+  // once the queue is empty (scheduleSnapshot waits for pendingAppends 0).
+  if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && state.pendingAppends > 1) {
+    scheduleSnapshot(state);
+  } else if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
     state.opsSinceSnapshot = 0;
     const repairsGap = state.durabilityGap;
     const result = await writeSnapshot(state, {
@@ -2716,27 +2806,14 @@ async function loadLatestCloudCheckpoint(state) {
       baseWriterEpoch = Number(snapRow.writer_epoch) || 0;
     }
 
-    for (;;) {
-      const { data: rows, error } = await withCloudRequest(
-        state,
-        state.supabase
-          .from('annotation_updates')
-          .select('seq, data, client_id, client_seq, actor_user_id')
-          .eq('document_id', state.documentId)
-          .gt('seq', cursor)
-          .order('seq', { ascending: true })
-          .limit(1000),
-        'snapshot refresh tail read',
-      );
-      if (error) throw toSyncError(error, 'snapshot refresh tail read failed');
-      const batch = rows || [];
-      for (const row of batch) {
+    try {
+      cursor = await readWalRowsAfter(state, cursor, 'snapshot refresh tail read', async (row) => {
         const update = pgHexToBytes(row.data);
         Y.applyUpdate(cloudDoc, update, HYDRATE_ORIGIN);
         await applyAuthoritativeCloudRow(state, row);
-        cursor = Number(row.seq);
-      }
-      if (batch.length < 1000) break;
+      });
+    } catch (error) {
+      throw toSyncError(error, 'snapshot refresh tail read failed');
     }
 
     return {
@@ -2781,6 +2858,18 @@ async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
   } finally {
     try { candidate.destroy(); } catch { /* */ }
   }
+}
+
+// A document with thousands of imported ink marks has a multi-MB checkpoint
+// (Package 2: ~4.3 MB gzipped, ~8.7 MB as hex). The flat 15 s request timeout
+// gave up on it while the upload was still running, four times in a row, and
+// each retry re-sent it (w26). Allow ~3 s more per MB on the wire, capped.
+const SNAPSHOT_TIMEOUT_PER_MB_MS = 3_000;
+const SNAPSHOT_TIMEOUT_MAX_MS = 60_000;
+function snapshotWriteTimeoutMs(state, payloadChars) {
+  const base = Math.max(1, Number(state.requestTimeoutMs) || CLOUD_REQUEST_TIMEOUT_MS);
+  const extra = Math.floor((Number(payloadChars) || 0) / (1024 * 1024)) * SNAPSHOT_TIMEOUT_PER_MB_MS;
+  return Math.max(base, Math.min(SNAPSHOT_TIMEOUT_MAX_MS, base + extra));
 }
 
 // Write the full Y.Doc as one idempotent checkpoint. Retries hard — this is the
@@ -2868,6 +2957,7 @@ async function writeSnapshotNow(state, {
             p_expected_writer_epoch: state.snapshotBaseWriterEpoch,
           }),
           'annotation snapshot write',
+          snapshotWriteTimeoutMs(state, hex.length),
         ));
         const rpcResult = Array.isArray(data) ? data[0] : data;
         accepted = rpcResult?.accepted ?? rpcResult ?? false;
@@ -3095,6 +3185,14 @@ function subscribeRealtime(state) {
     }, (payload) => {
       const row = payload.new;
       if (!row) return;
+      // A row Realtime could not carry whole (over its message limit it sends
+      // the record with an error and without / cut-off data): read it from the
+      // table instead of applying a truncated update (w26).
+      if ((Array.isArray(payload.errors) && payload.errors.length > 0) || !row.data) {
+        console.warn('[annotationDocSync] realtime row arrived without its data; reading it from the log', row.seq, payload.errors);
+        scheduleRealtimeRowRecovery(state);
+        return;
+      }
       state.authoritativeChain = state.authoritativeChain.then(async () => {
         if (state.destroyed) return;
         // Same-install handles share clientId. Apply matching rows too so one
@@ -3107,6 +3205,9 @@ function subscribeRealtime(state) {
       }).catch((err) => {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
         markSyncHealth(state, false, err);
+        // The row is committed; fetch it (and anything after it) by an
+        // ordered read rather than waiting for the next reconnect (w26).
+        scheduleRealtimeRowRecovery(state);
       });
     })
     .subscribe((status) => {
@@ -3149,6 +3250,46 @@ function subscribeRealtime(state) {
         markSyncHealth(state, false, new Error(`realtime ${String(status).toLowerCase()}`));
       }
     });
+}
+
+// One ordered catch-up read shortly after a Realtime row could not be applied
+// (w26). Coalesced: several bad rows in a burst cause one read. Health turns
+// green again only through the catch-up's own success path.
+const REALTIME_ROW_RECOVERY_DELAY_MS = 250;
+function scheduleRealtimeRowRecovery(state) {
+  if (state.destroyed || state.realtimeRowRecoveryTimer) return;
+  state.realtimeRowRecoveryTimer = setTimeout(() => {
+    state.realtimeRowRecoveryTimer = null;
+    if (state.destroyed) return;
+    catchUpTail(state).then((caughtUp) => {
+      if (state.destroyed) return;
+      if (caughtUp && !state.durabilityGap) markSyncHealth(state, true);
+      else if (!caughtUp) scheduleRealtimeRowRecoveryRetry(state);
+    });
+  }, REALTIME_ROW_RECOVERY_DELAY_MS);
+}
+
+function scheduleRealtimeRowRecoveryRetry(state) {
+  if (state.destroyed || state.realtimeRowRecoveryTimer) return;
+  state.realtimeRowRecoveryAttempt = (state.realtimeRowRecoveryAttempt || 0) + 1;
+  if (state.realtimeRowRecoveryAttempt > 6) return; // the next reconnect retries
+  const delayMs = Math.min(
+    GAP_REPAIR_RETRY_MAX_MS,
+    REALTIME_ROW_RECOVERY_DELAY_MS * (2 ** state.realtimeRowRecoveryAttempt),
+  );
+  state.realtimeRowRecoveryTimer = setTimeout(() => {
+    state.realtimeRowRecoveryTimer = null;
+    if (state.destroyed) return;
+    catchUpTail(state).then((caughtUp) => {
+      if (state.destroyed) return;
+      if (caughtUp) {
+        state.realtimeRowRecoveryAttempt = 0;
+        if (!state.durabilityGap) markSyncHealth(state, true);
+      } else {
+        scheduleRealtimeRowRecoveryRetry(state);
+      }
+    });
+  }, delayMs);
 }
 
 function notifyChange(state) {
@@ -3812,6 +3953,7 @@ function makeHandle(state) {
         state.outboxReplayTimer = null;
       }
       clearGapRepairTimer(state);
+      clearRealtimeRowRecovery(state);
       if (state.onPageHide && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('pagehide', state.onPageHide);
         state.onPageHide = null;
@@ -3891,6 +4033,7 @@ export async function purgeAnnotationDoc(documentId) {
       state.outboxReplayTimer = null;
     }
     clearGapRepairTimer(state);
+    clearRealtimeRowRecovery(state);
     if (state.onDocUpdate) {
       try { state.doc.off('update', state.onDocUpdate); } catch { /* already detached */ }
       state.onDocUpdate = null;

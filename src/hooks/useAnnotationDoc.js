@@ -23,6 +23,7 @@ import {
   setMetaValue as setMetaValueOnDoc,
 } from '../services/annotationDocStore.js';
 import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
+import { ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE } from '../utils/annotationHydrationGate.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -33,6 +34,10 @@ import {
 } from '../utils/calloutAnnotationBridge.js';
 
 const SPACES_KEY = 'spaces';
+// Failed-open retry (w26): 2 s, 4 s, 8 s ... capped at 60 s, 8 tries per document.
+const OPEN_RETRY_BASE_DELAY_MS = 2_000;
+const OPEN_RETRY_MAX_DELAY_MS = 60_000;
+const OPEN_RETRY_MAX_ATTEMPTS = 8;
 
 function pageCount(byPage) {
   let n = 0;
@@ -234,6 +239,11 @@ export function useAnnotationDoc({
   const migrationDoneRef = useRef(null);
   const inkRepairDoneRef = useRef(null);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
+  // A failed open (e.g. the WAL tail read timing out) is retried with backoff
+  // instead of leaving the page covered forever (w26). Bumping the tick re-runs
+  // the open effect; the failure count is per document.
+  const [openRetryTick, setOpenRetryTick] = useState(0);
+  const openFailuresRef = useRef({ documentId: null, count: 0 });
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
   const [syncQueueSize, setSyncQueueSize] = useState(0);
@@ -256,11 +266,21 @@ export function useAnnotationDoc({
     let cancelled = false;
     let unsubscribeSync = null;
     let unsubscribeHistoryQuarantine = null;
+    let retryTimer = null;
     readyRef.current = false;
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
-    setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
+    if (openFailuresRef.current.documentId !== documentId) {
+      openFailuresRef.current = { documentId, count: 0 };
+    }
+    // A retry keeps the 'unavailable' state: the PDF stays visible while the
+    // marks are fetched again (see annotationHydrationGate.js).
+    setInitialHydration((previous) => (
+      previous?.source === ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE && previous.documentId === documentId
+        ? previous
+        : { ready: false, source: 'pending', count: 0, documentId }
+    ));
     setDeletedPdfAnnotations([]);
     setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
     setSyncQueueSize(0);
@@ -282,9 +302,40 @@ export function useAnnotationDoc({
         if (!cancelled) {
           setSyncStatus({ stage: 'error', healthy: false, error: err?.message || 'sync failed' });
           setSyncQueueSize(0);
+          // UX (w26, 2026-09-24): a document whose marks cannot be read right
+          // now (a database timeout, the network) still shows its PDF: the
+          // hydration becomes 'unavailable' (not ready — nothing imports into
+          // or writes to the store, the sync status shows the error) and the
+          // first-page cover lifts. The open is retried with backoff and the
+          // marks appear when it succeeds. Before, the page sat on loading
+          // dots forever. A deleted document or a permission denial is final.
+          const failures = openFailuresRef.current;
+          failures.count += 1;
+          setInitialHydration({
+            ready: false,
+            source: ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE,
+            count: 0,
+            documentId,
+            error: err?.message || 'annotation store unavailable',
+          });
+          const code = String(err?.code || '');
+          const permanent = code === 'ANNOTATION_DOCUMENT_DELETED'
+            || code === '42501'
+            || /permission denied|row.level security/i.test(err?.message || '');
+          if (!permanent && failures.count <= OPEN_RETRY_MAX_ATTEMPTS) {
+            const delayMs = Math.min(
+              OPEN_RETRY_MAX_DELAY_MS,
+              OPEN_RETRY_BASE_DELAY_MS * (2 ** (failures.count - 1)),
+            );
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
+              if (!cancelled) setOpenRetryTick((tick) => tick + 1);
+            }, delayMs);
+          }
         }
         return;
       }
+      openFailuresRef.current = { documentId, count: 0 };
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
       const updateSyncStatus = (next) => {
@@ -470,6 +521,7 @@ export function useAnnotationDoc({
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       const h = handleRef.current;
       handleRef.current = null;
       readyRef.current = false;
@@ -477,7 +529,7 @@ export function useAnnotationDoc({
       unsubscribeHistoryQuarantine?.();
       if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
+  }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers, openRetryTick]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an

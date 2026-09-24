@@ -168,6 +168,45 @@ Unsupported. They read and write only the old `annotations` map, so they
 neither see nor touch new marks, and this build neither sees nor touches
 theirs. Every device must update.
 
+## No save is huge (w26, 2026-09-24)
+
+Opening "Package 2 - Rev 4 -- IC.pdf" (3,055 embedded ink marks) ran the
+embedded import as one transaction per page, so one WAL row per page: 0.8 to
+8.8 MB (17.9 MB in all). The old whole-object store made the same rows at
+0.8 to 7.9 MB (16.3 MB): the per-field layout adds ~10%, the bulk is the
+imported ink itself (source appearance geometry, path, outline polygons).
+Realtime could not carry those rows, a 1,000-row tail read that included
+them hit the statement timeout (the document could not open), and the
+database went unhealthy.
+
+* `enqueueAppend` cuts any update over 256 KB (`WAL_UPDATE_MAX_BYTES`) into
+  parts (`src/services/annotationUpdateSplit.js`), each its own row and
+  client_seq, queued back to back. Parts are runs of whole structs, cut at
+  the start of a new root entry where possible (a peer applying them one by
+  one sees whole marks), with the delete set on the last part. Applying the
+  parts in order gives exactly the whole update's state; Yjs holds a part
+  back until the earlier parts of the same client arrived, so a later row
+  (the embedded-import marker) is never visible without every part before
+  it. The Package 2 import is now 74 rows, the largest 256 KB.
+* Tail, catch-up and snapshot-refresh reads page 100 rows and, when a page
+  fails (statement timeout), retry with a quarter of the rows down to one
+  (`readWalRowsAfter`), so rows already written too big still load.
+* A Realtime row that arrives without its data (over the message limit) or
+  fails to apply triggers an ordered catch-up read instead of being lost
+  until the next reconnect.
+* The 40-row checkpoint does not stop the append queue while more rows are
+  queued behind it; the debounced checkpoint runs once the queue is empty.
+  Checkpoint uploads get ~3 s more per MB (capped at 60 s). The outbox
+  encodes its accepted-state checkpoint only when it actually compacts.
+* A failed open no longer leaves the page covered: hydration becomes
+  `unavailable` (nothing imports or writes), the PDF shows, and the open is
+  retried with backoff (`useAnnotationDoc`).
+
+Still large: the checkpoint of such a document is one row (~4.3 MB gzipped
+for Package 2; the old format was ~3.75 MB). Splitting checkpoints needs a
+schema change. Recovery for a document that already has oversized rows:
+`scripts/w26-reset-document-annotation-store.mjs` (dry run by default).
+
 ## Offline edits reach peers that are already open
 
 Open peers only receive WAL rows (realtime inserts + catch-up), never

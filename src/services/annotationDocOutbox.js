@@ -10,6 +10,15 @@ const INCARNATION_STORE = 'documentIncarnations';
 const REQUEST_TIMEOUT_MS = 10_000;
 const COMPACT_AFTER_DELTAS = 40;
 
+// compactAccepted's snapshot may be a function: the caller's full-document
+// encode then runs only when a compaction actually happens (every
+// COMPACT_AFTER_DELTAS accepted rows), not after every accepted row. A big
+// import is dozens of rows (w26, 2026-09-24); encoding a 17 MB document after
+// each one was seconds of wasted work.
+function resolveAcceptedSnapshot(acceptedSnapshot) {
+  return typeof acceptedSnapshot === 'function' ? acceptedSnapshot() : acceptedSnapshot;
+}
+
 function actorScopeKey(documentId, actorUserId) {
   return `${documentId}\u0000${actorUserId}`;
 }
@@ -264,7 +273,7 @@ export function createMemoryAnnotationOutbox() {
       if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
       const updates = [
         checkpoints.get(scopeKey)?.update,
-        acceptedSnapshot,
+        resolveAcceptedSnapshot(acceptedSnapshot),
         ...records.map((record) => record.update),
       ].filter(Boolean).map(cloneBytes);
       checkpoints.set(scopeKey, {
@@ -574,7 +583,7 @@ export async function createAnnotationOutbox({
           if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
           const updates = [
             checkpoint?.update,
-            acceptedSnapshot,
+            resolveAcceptedSnapshot(acceptedSnapshot),
             ...records.map((record) => record.update),
           ].filter(Boolean).map(cloneBytes);
           if (updates.length) {
