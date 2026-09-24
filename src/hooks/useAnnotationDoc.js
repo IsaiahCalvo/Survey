@@ -24,6 +24,7 @@ import {
 } from '../services/annotationDocStore.js';
 import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
 import { ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE } from '../utils/annotationHydrationGate.js';
+import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -530,6 +531,19 @@ export function useAnnotationDoc({
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers, openRetryTick]);
+
+  // UX (w26 review, 2026-09-24): while the store is 'unavailable' the PDF
+  // shows but nothing can be saved, and a later successful open would paint
+  // the stored marks over anything drawn meanwhile. So the document is
+  // read-only until the open succeeds — the same body[data-readonly] layer a
+  // viewer or a locked document gets (toolbar dimmed, drawing keys and page
+  // hit targets off). The sync status shows why.
+  const storeUnavailable = initialHydration?.source === ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE
+    && initialHydration?.documentId === documentId;
+  useEffect(() => {
+    if (!storeUnavailable) return undefined;
+    return claimBodyReadOnly(`annotation-store-unavailable:${documentId}`);
+  }, [storeUnavailable, documentId]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an

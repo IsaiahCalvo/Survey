@@ -101,6 +101,8 @@ function makeSupabase({ maxReadBytes = Infinity } = {}) {
           insert: (row) => ({
             select: () => ({
               single: async () => {
+                const injected = supabase.failInsert?.(row);
+                if (injected) return { data: null, error: injected };
                 const committed = { ...row, seq: log.length + 1 };
                 log.push(committed);
                 return { data: { seq: committed.seq }, error: null };
@@ -110,9 +112,15 @@ function makeSupabase({ maxReadBytes = Infinity } = {}) {
           maybeSingle: async () => ({ data: null }),
           then: (resolve) => {
             if (filters.gtSeq === null) { resolve({ data: [], error: null }); return; }
+            const injectedRead = supabase.failRead?.(filters);
+            if (injectedRead) {
+              supabase.reads.push({ gt: filters.gtSeq, limit: filters.limit, rows: 0, bytes: 0, failed: true });
+              resolve({ data: null, error: injectedRead });
+              return;
+            }
             const rows = log.filter((row) => row.seq > filters.gtSeq).slice(0, filters.limit);
             const bytes = rows.reduce((sum, row) => sum + row.data.length / 2, 0);
-            supabase.reads.push({ limit: filters.limit, rows: rows.length, bytes });
+            supabase.reads.push({ gt: filters.gtSeq, limit: filters.limit, rows: rows.length, bytes });
             if (rows.length > 1 && bytes > maxReadBytes) {
               resolve({ data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } });
               return;
@@ -125,7 +133,11 @@ function makeSupabase({ maxReadBytes = Infinity } = {}) {
       if (table === 'annotation_snapshots') {
         return {
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: supabase.snapshot }) }) }),
-          upsert: async (row) => { supabase.snapshot = row; return { error: null }; },
+          upsert: async (row) => {
+            if (supabase.failSnapshots) return { error: { code: '08006', message: 'snapshot store down' } };
+            supabase.snapshot = row;
+            return { error: null };
+          },
         };
       }
       throw new Error(`unexpected table ${table}`);
@@ -379,4 +391,196 @@ test('a snapshot write that times out but still lands never makes a reopen show 
   assert.equal(byPage[11]?.objects?.length, 120);
   assert.equal(byPage[12]?.objects?.length, 1);
   await reader.destroy();
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes (two adversarial passes, 2026-09-24)
+// ---------------------------------------------------------------------------
+
+async function waitFor(check, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  return check();
+}
+
+function smallRect(id, extra = {}) {
+  return { id, type: 'rect', left: 1, top: 2, width: 5, height: 5, data: { id }, ...extra };
+}
+
+test('a later part (even a delete-set-only tail) never reaches the log ahead of a part that failed', async () => {
+  const BUDGET = 1024;
+  const supabase = makeSupabase();
+  supabase.failSnapshots = true; // no checkpoint can paper over the gap
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner', documentId: 'doc-w26-chain', supabase, clientId: 'clientF',
+    enableLocal: false, enableRealtime: false, doc, walUpdateMaxBytes: BUDGET,
+    snapshotRetryDelayMs: 1, repairRetryDelayMs: 60_000,
+  });
+  doc.transact(() => {
+    for (let index = 0; index < 300; index += 1) writeAnnotationMark(doc, `m${index}`, 1, smallRect(`m${index}`, { left: index }));
+  }, 'local');
+  await handle.drain();
+  const accepted = supabase.log.length;
+  const lastSeq = Math.max(...supabase.log.map((row) => row.client_seq));
+
+  let update = null;
+  const probe = (next, origin) => { if (origin === 'local' && !update) update = next; };
+  doc.on('update', probe);
+  doc.transact(() => {
+    const marks = doc.getMap(MARKS_MAP);
+    for (let index = 0; index < 300; index += 2) marks.delete(`m${index}`);
+    for (let index = 0; index < 6; index += 1) writeAnnotationMark(doc, `n${index}`, 1, smallRect(`n${index}`, { note: 'x'.repeat(120) }));
+  }, 'local');
+  doc.off('update', probe);
+  const parts = splitYjsUpdate(update, BUDGET);
+  const tail = Y.decodeUpdate(parts.at(-1));
+  assert.ok(parts.length >= 3);
+  assert.equal(tail.structs.length, 0, 'the fixture ends with a delete-set-only part');
+  const failing = lastSeq + parts.length - 1; // the part right before the tail
+  supabase.failInsert = (row) => (row.client_seq === failing ? { code: '08006', message: 'network down' } : null);
+  await handle.drain().catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const newSeqs = supabase.log.slice(accepted).map((row) => row.client_seq);
+  assert.ok(newSeqs.every((seq) => seq < failing), `nothing after the failed part was stored (stored ${newSeqs})`);
+  await handle.destroy().catch(() => {});
+});
+
+test('the viewer is read-only while the store is unavailable (nothing drawn then can be lost)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const hook = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
+  assert.match(hook, /import \{ claimBodyReadOnly \} from '\.\.\/utils\/readOnlyBodyReasons\.js';/);
+  assert.match(
+    hook,
+    /const storeUnavailable = initialHydration\?\.source === ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE[\s\S]*?return claimBodyReadOnly\(/,
+  );
+});
+
+test('a Realtime row without data is read from that row on (not the whole tail), and health is red until it is in', async () => {
+  const supabase = makeSupabase();
+  const doc = new Y.Doc();
+  for (let index = 0; index < 20; index += 1) {
+    const other = new Y.Doc();
+    let update = null;
+    other.on('update', (next) => { update = next; });
+    writeAnnotationMark(other, `early-${index}`, 1, smallRect(`early-${index}`));
+    supabase.log.push({ seq: supabase.log.length + 1, data: bytesToPgHex(update), client_id: `o${index}`, client_seq: 1 });
+  }
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner', documentId: 'doc-w26-recover-from', supabase, clientId: 'clientG',
+    enableLocal: false, enableRealtime: true, doc,
+  });
+  await supabase.fireSubscribed();
+  const other = new Y.Doc();
+  let update = null;
+  other.on('update', (next) => { update = next; });
+  writeAnnotationMark(other, 'late', 3, smallRect('late'));
+  const row = { seq: supabase.log.length + 1, data: bytesToPgHex(update), client_id: 'late', client_seq: 1 };
+  supabase.log.push(row);
+  // The row can not be read at first (a statement timeout, even alone).
+  supabase.failRead = (filters) => (filters.gtSeq === row.seq - 1
+    ? { code: '57014', message: 'canceling statement due to statement timeout' }
+    : null);
+  const readsBefore = supabase.reads.length;
+  supabase.fireRealtime({ new: { ...row, data: null }, errors: ['Error 413: Payload Too Large'] });
+  assert.equal(handle.getSyncStatus().healthy, false, 'red at once');
+  assert.ok(await waitFor(() => supabase.reads.length > readsBefore + 2, 5000), 'recovery tried');
+  assert.equal(handle.getSyncStatus().healthy, false, 'still red while the row cannot be read');
+  assert.equal(handle.getByPage()[3], undefined);
+  supabase.failRead = null;
+  assert.ok(await waitFor(() => handle.getByPage()[3]?.objects?.length === 1, 8000), 'the row arrived');
+  assert.ok(await waitFor(() => handle.getSyncStatus().healthy === true, 2000), 'green again');
+  const recoveryReads = supabase.reads.slice(readsBefore);
+  // From the missing row on (then onward page by page) — never the whole tail again.
+  assert.ok(recoveryReads.length > 0 && recoveryReads[0].gt === row.seq - 1);
+  assert.ok(recoveryReads.every((read) => read.gt >= row.seq - 1), `no recovery read goes back before the missing row (${recoveryReads.map((read) => read.gt)})`);
+  await handle.destroy();
+});
+
+test('tail reads start small, and a document whose rows timed out is read in small pages from then on', async () => {
+  const fresh = makeSupabase();
+  const first = await openAnnotationDoc({
+    actorUserId: 'owner', documentId: 'doc-w26-page-default', supabase: fresh, clientId: 'clientH',
+    enableLocal: false, enableRealtime: false, doc: new Y.Doc(),
+  });
+  assert.equal(fresh.reads[0].limit, 16, 'a page is 16 rows (~4 MB at most for new rows)');
+  await first.destroy();
+
+  const supabase = makeSupabase({ maxReadBytes: 1.5 * 1024 * 1024 });
+  const writer = new Y.Doc();
+  for (let page = 1; page <= 3; page += 1) {
+    let update = null;
+    const listener = (next) => { update = next; };
+    writer.on('update', listener);
+    writer.transact(() => {
+      for (let index = 0; index < 180; index += 1) {
+        const mark = importedInk(page, index);
+        writeAnnotationMark(writer, mark.id, page, mark);
+      }
+    });
+    writer.off('update', listener);
+    supabase.log.push({ seq: supabase.log.length + 1, data: bytesToPgHex(update), client_id: 'legacy', client_seq: page });
+  }
+  const open1 = await openAnnotationDoc({
+    actorUserId: 'owner', documentId: 'doc-w26-page-learn', supabase, clientId: 'clientI',
+    enableLocal: false, enableRealtime: false, doc: new Y.Doc(),
+  });
+  const failedFirstOpen = supabase.reads.filter((read) => read.rows > 1 && read.bytes > 1.5 * 1024 * 1024).length;
+  assert.ok(failedFirstOpen >= 1);
+  await open1.destroy();
+  const readsBefore = supabase.reads.length;
+  const open2 = await openAnnotationDoc({
+    actorUserId: 'owner', documentId: 'doc-w26-page-learn', supabase, clientId: 'clientJ',
+    enableLocal: false, enableRealtime: false, doc: new Y.Doc(),
+  });
+  const second = supabase.reads.slice(readsBefore);
+  assert.ok(second[0].limit <= 4, `reopen starts with the learned small page (${second[0].limit})`);
+  assert.equal(second.filter((read) => read.rows > 1 && read.bytes > 1.5 * 1024 * 1024).length, 0, 'no repeat of the failing big read');
+  assert.equal(Object.values(open2.getByPage()).reduce((sum, bucket) => sum + bucket.objects.length, 0), 540);
+  await open2.destroy();
+});
+
+test('a part never goes over the budget after an unfinished mark is carried into it', () => {
+  const doc = new Y.Doc();
+  let update = null;
+  doc.on('update', (next) => { update = next; });
+  doc.transact(() => {
+    for (let index = 0; index < 40; index += 1) writeAnnotationMark(doc, `s${index}`, 1, importedInk(1, index));
+    writeAnnotationMark(doc, 'big', 1, {
+      ...smallRect('big'), a: 'a'.repeat(137 * 1024), b: 'b'.repeat(137 * 1024),
+    });
+    for (let index = 40; index < 60; index += 1) writeAnnotationMark(doc, `s${index}`, 1, importedInk(1, index));
+  });
+  const parts = splitYjsUpdate(update);
+  for (const part of parts) {
+    const structs = Y.decodeUpdate(part).structs.length;
+    assert.ok(part.length <= WAL_UPDATE_MAX_BYTES || structs === 1, `part ${part.length} bytes with ${structs} structs`);
+  }
+  const rebuilt = new Y.Doc();
+  for (const part of parts) Y.applyUpdate(rebuilt, part);
+  assert.deepEqual(rebuilt.getMap(MARKS_MAP).toJSON(), doc.getMap(MARKS_MAP).toJSON());
+});
+
+test('a permission denial on one part of a split edit, after earlier parts were accepted, asks for a full history reset', async () => {
+  const BUDGET = 1024;
+  const supabase = makeSupabase();
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner', documentId: 'doc-w26-partial-deny', supabase, clientId: 'clientK',
+    enableLocal: false, enableRealtime: false, doc, walUpdateMaxBytes: BUDGET,
+  });
+  const events = [];
+  handle.onHistoryQuarantine((event) => events.push(event));
+  supabase.failInsert = (row) => (row.client_seq === 3 ? { code: '42501', message: 'permission denied' } : null);
+  doc.transact(() => {
+    for (let index = 0; index < 80; index += 1) writeAnnotationMark(doc, `q${index}`, 1, smallRect(`q${index}`, { left: index }));
+  }, { historyTag: { mutationId: 'erase-1', historyKind: 'erase' } });
+  await handle.drain().catch(() => {});
+  await waitFor(() => events.length > 0, 2000);
+  assert.ok(supabase.log.length >= 2, 'the parts before the denied one were accepted');
+  const event = events.at(-1);
+  assert.equal(event.requiresFullHistoryReset, true);
+  assert.deepEqual([...event.mutationIds], ['erase-1'], 'the mutation is named once');
+  await handle.destroy().catch(() => {});
 });

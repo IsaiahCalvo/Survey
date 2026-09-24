@@ -187,20 +187,30 @@ database went unhealthy.
   parts in order gives exactly the whole update's state; Yjs holds a part
   back until the earlier parts of the same client arrived, so a later row
   (the embedded-import marker) is never visible without every part before
-  it. The Package 2 import is now 74 rows, the largest 256 KB.
-* Tail, catch-up and snapshot-refresh reads page 100 rows and, when a page
-  fails (statement timeout), retry with a quarter of the rows down to one
-  (`readWalRowsAfter`), so rows already written too big still load.
+  it. The Package 2 import is now 74 rows, the largest 256 KB. A part is
+  re-checked after an unfinished mark is carried into it; only a single
+  value bigger than the budget can make a part larger (one value cannot be
+  cut). Each part depends on the part before it (and a deletion on the
+  record holding what it deletes), so no part reaches the log ahead of an
+  earlier part that failed. A denial on some parts after earlier parts were
+  accepted asks for a full history reset.
+* Tail, catch-up and snapshot-refresh reads page 16 rows and, when a page
+  times out, retry after a short wait with a quarter of the rows down to one
+  (`readWalRowsAfter`), aborting the abandoned request. The smallest working
+  size is remembered per document (and in localStorage), so a reopen does
+  not repeat the failing big read. Other failures are not retried smaller.
 * A Realtime row that arrives without its data (over the message limit) or
-  fails to apply triggers an ordered catch-up read instead of being lost
-  until the next reconnect.
+  fails to apply turns sync red and is read back from THAT row on, with
+  backoff, unless a reconnect catch-up is already doing it; sync turns green
+  only once it is in.
 * The 40-row checkpoint does not stop the append queue while more rows are
   queued behind it; the debounced checkpoint runs once the queue is empty.
   Checkpoint uploads get ~3 s more per MB (capped at 60 s). The outbox
   encodes its accepted-state checkpoint only when it actually compacts.
 * A failed open no longer leaves the page covered: hydration becomes
-  `unavailable` (nothing imports or writes), the PDF shows, and the open is
-  retried with backoff (`useAnnotationDoc`).
+  `unavailable` (nothing imports or writes), the PDF shows read-only (the
+  same layer a viewer gets, so nothing drawn can be lost), and the open is
+  retried with backoff: 2 s doubling to 60 s, 8 tries (`useAnnotationDoc`).
 
 Still large: the checkpoint of such a document is one row (~4.3 MB gzipped
 for Package 2; the old format was ~3.75 MB). Splitting checkpoints needs a

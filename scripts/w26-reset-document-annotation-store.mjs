@@ -26,11 +26,15 @@
 // ruling 2026-09-24: no users, data disposable). The PDF file, the document
 // row and its project placement stay.
 //
-// Other devices: a browser that has this document cached locally re-sends
-// its cached marks on the next open (split into small rows). That brings the
-// same imported marks back without a re-import; clearing the site data on
-// that device instead gives a fresh import. Close the document everywhere
-// before --apply.
+// Also lost: the record of which embedded annotations were deleted, so the
+// re-import brings back every annotation that is in the PDF file.
+//
+// Other devices (review B, w26): a browser that still has this document in
+// its local cache shows its old copy (with the old import marker) and, after
+// its next edit or close, writes that whole copy back as one checkpoint —
+// undoing the reset. So before --apply: close the document everywhere, and
+// on every device that opened it, clear the site data before opening it
+// again.
 //
 // Alternative with no script: delete the document in the app and upload the
 // PDF again (the delete cascades its WAL rows and checkpoint).

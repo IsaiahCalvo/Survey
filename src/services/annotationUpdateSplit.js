@@ -126,8 +126,8 @@ function encodePart(entries, deleteSet) {
 /**
  * Cut `update` (Yjs V1) into parts of at most `maxBytes` each, in apply
  * order. Returns [update] unchanged when it already fits or cannot be cut.
- * A single struct larger than the budget becomes its own (oversized) part —
- * one value cannot be split; callers keep bulky values small.
+ * A single struct larger than the budget becomes a part on its own
+ * (oversized) — one value cannot be split; callers keep bulky values small.
  */
 export function splitYjsUpdate(update, maxBytes = WAL_UPDATE_MAX_BYTES) {
   const bytes = update instanceof Uint8Array ? update : new Uint8Array(update);
@@ -144,10 +144,10 @@ export function splitYjsUpdate(update, maxBytes = WAL_UPDATE_MAX_BYTES) {
     // cut, so a peer never sees half of a mark.
     rootEntry: struct instanceof Y.Item && typeof struct.parent === 'string',
   }));
-  const deleteSet = encodeDeleteSet(
-    [...decoded.ds.clients.entries()].filter(([, ranges]) => ranges.length > 0),
-  );
-  if (entries.length <= 1) return [bytes];
+  const deleteClients = [...decoded.ds.clients.entries()].filter(([, ranges]) => ranges.length > 0);
+  const deleteSet = encodeDeleteSet(deleteClients);
+  // Nothing to cut: one struct and a small delete set.
+  if (entries.length <= 1 && deleteSet.length + (entries[0]?.bytes.length || 0) < budget) return [bytes];
 
   const room = budget - PART_HEADER_RESERVE;
   const ranges = [];
@@ -166,22 +166,84 @@ export function splitYjsUpdate(update, maxBytes = WAL_UPDATE_MAX_BYTES) {
         size += entries[carried].bytes.length;
         if (carried > start && entries[carried].rootEntry) lastRootEntry = carried;
       }
+      // What was carried over (the start of an unfinished mark) plus this
+      // entry can still be too big: then close the part before this entry
+      // (w26 review). An entry bigger than the budget ends up alone.
+      if (index > start && size + entry.bytes.length > room) {
+        ranges.push([start, index]);
+        start = index;
+        size = 0;
+        lastRootEntry = -1;
+      }
     }
     if (index > start && entry.rootEntry) lastRootEntry = index;
     size += entry.bytes.length;
   }
-  ranges.push([start, entries.length]);
+  if (entries.length > 0) ranges.push([start, entries.length]);
 
-  const parts = ranges.map(([from, to], index) => encodePart(
-    entries.slice(from, to),
-    index === ranges.length - 1 ? deleteSet : EMPTY_DELETE_SET,
-  ));
-  // A large delete set that pushes the last part over the budget goes alone.
-  const last = parts.length - 1;
-  if (parts[last].length > budget && deleteSet.length > EMPTY_DELETE_SET.length) {
-    const [from, to] = ranges[last];
-    parts[last] = encodePart(entries.slice(from, to), EMPTY_DELETE_SET);
-    parts.push(encodePart([], deleteSet));
+  // Encode, then enforce the budget on the real bytes (block headers of a
+  // multi-client update are not in the estimate above): a part still over it
+  // is halved until it fits or is a single struct.
+  const parts = [];
+  const encodeRange = (from, to) => {
+    const part = encodePart(entries.slice(from, to), EMPTY_DELETE_SET);
+    if (part.length <= budget || to - from <= 1) {
+      parts.push(part);
+      return;
+    }
+    const middle = from + Math.floor((to - from) / 2);
+    encodeRange(from, middle);
+    encodeRange(middle, to);
+  };
+  for (const [from, to] of ranges) encodeRange(from, to);
+
+  // The delete set rides with the last part when it fits there; otherwise it
+  // goes after it, cut by client/range into delete-set-only parts that each
+  // fit (every deletion still comes after every struct of the transaction).
+  if (deleteSet.length > EMPTY_DELETE_SET.length) {
+    const lastIndex = parts.length - 1;
+    const [from, to] = ranges[ranges.length - 1] || [0, 0];
+    // Only when the last range was encoded as one part (not halved).
+    const withDeletes = ranges.length > 0 && parts.length === ranges.length
+      ? encodePart(entries.slice(from, to), deleteSet)
+      : null;
+    if (withDeletes && withDeletes.length <= budget) {
+      parts[lastIndex] = withDeletes;
+    } else {
+      for (const deletePart of splitDeleteSet(deleteClients, budget)) parts.push(deletePart);
+    }
   }
   return parts;
+}
+
+// Delete-set-only parts, each at most `budget` bytes (a single range cannot
+// be cut and is always tiny).
+function splitDeleteSet(clientsEntries, budget) {
+  const out = [];
+  let current = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    out.push(encodePart([], encodeDeleteSet(current)));
+    current = [];
+  };
+  const sizeOf = (entriesList) => encodePart([], encodeDeleteSet(entriesList)).length;
+  for (const [client, ranges] of clientsEntries) {
+    let chunk = [];
+    for (const range of ranges) {
+      chunk.push(range);
+      const candidate = [...current, [client, chunk]];
+      if (chunk.length > 1 && sizeOf(candidate) > budget) {
+        chunk.pop();
+        current.push([client, chunk]);
+        flush();
+        chunk = [range];
+      }
+    }
+    if (chunk.length > 0) {
+      if (current.length > 0 && sizeOf([...current, [client, chunk]]) > budget) flush();
+      current.push([client, chunk]);
+    }
+  }
+  flush();
+  return out;
 }

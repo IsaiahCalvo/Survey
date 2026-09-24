@@ -85,11 +85,11 @@ const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state ch
 const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
 const SNAPSHOT_ENC_GZIP = 2;        // encoding_version 2 = gzipped Y.encodeStateAsUpdate
 const CLOUD_REQUEST_TIMEOUT_MS = 15_000;
-// Tail / catch-up reads fetch at most this many WAL rows per request. A page
-// that fails (a statement timeout from rows that are too big to return
-// together — e.g. the multi-MB import rows written before w26) is retried
-// with a quarter of the rows, down to one row at a time.
-const WAL_READ_PAGE_ROWS = 100;
+// Tail / catch-up reads fetch at most this many WAL rows per request. Rows
+// written by this build are at most 256 KB, so a page is at most ~4 MB
+// (~8 MB as hex). A page that times out (rows written before w26 can be
+// several MB each) is retried with a quarter of the rows, down to one.
+const WAL_READ_PAGE_ROWS = 16;
 const GAP_REPAIR_RETRY_MS = 1_000;
 const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
@@ -355,6 +355,8 @@ export async function openAnnotationDoc({
     outboxReplayRetryAttempt: 0,
     realtimeRowRecoveryTimer: null, // w26: re-read a row Realtime could not carry
     realtimeRowRecoveryAttempt: 0,
+    realtimeRowRecoveryFromSeq: null,
+    catchupPending: 0,     // catch-ups running or queued (row recovery defers to them)
     clientSeq: 0,          // monotonic per-(doc,writer-open) op counter
     opsSinceSnapshot: 0,
     lastByPage: null,      // last byPage applied or materialized (eraser page commits)
@@ -1051,56 +1053,104 @@ function withCloudRequest(state, request, label, timeoutOverrideMs = null) {
 }
 
 // Ordered WAL read from `fromSeq` (exclusive), page by page, calling
-// `onRow(row)` for each row in seq order. Pages shrink on failure so one huge
-// row can never make the whole tail unreadable (w26): a page that errors or
-// times out is re-read with a quarter of the rows, down to a single row; only
-// a single-row failure (or a permission denial) is thrown. After a page
-// succeeds, the page size grows back toward the configured size.
+// `onRow(row)` for each row in seq order. Pages shrink on a TIMEOUT so one
+// huge row can never make the whole tail unreadable (w26): the page is
+// re-read with a quarter of the rows, down to a single row, after a short
+// wait. Other failures (offline, permission) are thrown at once — smaller
+// pages would not help and would only add load. A single-row timeout is
+// thrown too.
+//
+// Gentle on the database (w26 review): the timed-out request is aborted
+// where the client supports it; the smallest page that worked is remembered
+// per document (this tab and, best effort, localStorage), so the next read or
+// reopen does not repeat the failing large query; a page grows back by
+// doubling, never to a size that failed in the same read, and the remembered
+// size grows back once full pages come back small (under ~1 MB).
 // Returns the seq of the last row handed to onRow (fromSeq when none).
-// Gentle on a struggling database: a failed page waits before the smaller
-// retry, and once a size has failed the page never grows back to it in this
-// read (so a run of big rows costs one failed query, not one per row).
 const WAL_READ_RETRY_DELAY_MS = 500;
+const WAL_READ_GROW_BELOW_BYTES = 1024 * 1024;
+const WAL_READ_CEILING_STORAGE_PREFIX = 'survey:walReadCeiling:';
+const walReadCeilings = new Map(); // documentId -> learned max rows per read
+
+function learnedWalReadCeiling(documentId) {
+  if (walReadCeilings.has(documentId)) return walReadCeilings.get(documentId);
+  try {
+    const stored = Number(globalThis.localStorage?.getItem(`${WAL_READ_CEILING_STORAGE_PREFIX}${documentId}`));
+    if (Number.isFinite(stored) && stored >= 1) {
+      walReadCeilings.set(documentId, stored);
+      return stored;
+    }
+  } catch { /* storage unavailable */ }
+  return null;
+}
+
+function rememberWalReadCeiling(documentId, rows) {
+  walReadCeilings.set(documentId, rows);
+  try {
+    globalThis.localStorage?.setItem(`${WAL_READ_CEILING_STORAGE_PREFIX}${documentId}`, String(rows));
+  } catch { /* storage unavailable */ }
+}
+
+function isShrinkableReadFailure(error) {
+  const code = String(error?.code || '');
+  if (code === '57014' || code === 'ETIMEDOUT') return true;
+  const status = Number(error?.status);
+  if (Number.isFinite(status) && status >= 500) return true;
+  return /statement timeout|timed out|timeout|payload too large|too large|response.*size/i.test(error?.message || '');
+}
+
 async function readWalRowsAfter(state, fromSeq, label, onRow) {
   let cursor = fromSeq;
   const maxRows = Math.max(1, Number(state.walReadPageRows) || WAL_READ_PAGE_ROWS);
-  let pageRows = maxRows;
-  let ceiling = maxRows;
+  const learned = learnedWalReadCeiling(state.documentId);
+  let ceiling = learned ? Math.min(maxRows, learned) : maxRows;
+  let failedCeiling = maxRows; // largest size allowed after a failure in this read
+  let pageRows = ceiling;
   for (;;) {
     let rows = null;
     let failure = null;
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
     try {
-      const { data, error } = await withCloudRequest(
-        state,
-        state.supabase
-          .from('annotation_updates')
-          .select('seq, data, client_id, client_seq, actor_user_id')
-          .eq('document_id', state.documentId)
-          .gt('seq', cursor)
-          .order('seq', { ascending: true })
-          .limit(pageRows),
-        label,
-      );
+      let query = state.supabase
+        .from('annotation_updates')
+        .select('seq, data, client_id, client_seq, actor_user_id')
+        .eq('document_id', state.documentId)
+        .gt('seq', cursor)
+        .order('seq', { ascending: true })
+        .limit(pageRows);
+      if (controller && typeof query.abortSignal === 'function') query = query.abortSignal(controller.signal);
+      const { data, error } = await withCloudRequest(state, query, label);
       if (error) failure = error;
       else rows = data || [];
     } catch (error) {
       failure = error;
     }
     if (failure) {
-      if (pageRows > 1 && !isPermissionDenied(failure) && !state.destroyed) {
+      // Stop the abandoned request (the fetch, at least) instead of letting
+      // it run on in the background.
+      try { controller?.abort(); } catch { /* */ }
+      if (pageRows > 1 && isShrinkableReadFailure(failure) && !state.destroyed) {
         console.warn(`[annotationDocSync] ${label} failed for ${pageRows} rows; retrying smaller`, failure?.message);
-        ceiling = Math.max(1, pageRows - 1);
+        failedCeiling = Math.max(1, pageRows - 1);
         pageRows = Math.max(1, Math.floor(pageRows / 4));
+        ceiling = pageRows;
+        rememberWalReadCeiling(state.documentId, pageRows);
         await new Promise((resolve) => setTimeout(resolve, WAL_READ_RETRY_DELAY_MS));
         continue;
       }
       throw failure;
     }
+    let pageBytes = 0;
     for (const row of rows) {
+      pageBytes += typeof row?.data === 'string' ? row.data.length / 2 : 0;
       await onRow(row);
       cursor = Number(row.seq);
     }
     if (rows.length < pageRows) return cursor;
+    if (pageRows >= ceiling && ceiling < failedCeiling && pageBytes < WAL_READ_GROW_BELOW_BYTES) {
+      ceiling = Math.min(maxRows, failedCeiling, ceiling * 2);
+      if (learned || ceiling < maxRows) rememberWalReadCeiling(state.documentId, ceiling);
+    }
     pageRows = Math.min(ceiling, pageRows * 2);
   }
 }
@@ -1208,6 +1258,23 @@ function causalDependenciesForUpdate(state, update, excludeKey = null) {
       if (dependency) dependencies.add(dependency);
     }
   }
+  // Deletions name the structs they remove. A pending record that holds any
+  // of them must commit first, or a replay could apply the delete to nothing
+  // and a peer would keep the item (w26 review: a split transaction's
+  // delete-set-only last part had no dependency at all).
+  for (const [client, deleteRanges] of decoded.ds.clients) {
+    const acceptedClock = Number(acceptedVector.get(client)) || 0;
+    for (const deleteRange of deleteRanges) {
+      const start = Number(deleteRange.clock);
+      const end = start + Number(deleteRange.len || 0);
+      if (!(end > acceptedClock)) continue;
+      for (const candidate of records) {
+        if (candidate.key === excludeKey) continue;
+        const range = updateClockRanges(candidate.update).get(client);
+        if (range && range.start < end && start < range.end) dependencies.add(candidate.key);
+      }
+    }
+  }
   for (const struct of decoded.structs) {
     for (const reference of [struct.origin, struct.rightOrigin, struct.parent]) {
       const client = Number(reference?.client);
@@ -1279,10 +1346,24 @@ async function quarantineRejectedRecords(
   const historyTags = records
     .map((record) => record.historyTag)
     .filter((tag) => tag?.mutationId);
-  const mutationIds = historyTags.map((tag) => tag.mutationId);
+  // Parts of one split transaction carry the same tag: report it once.
+  const mutationIds = [...new Set(historyTags.map((tag) => tag.mutationId))];
+  // A split transaction rolled back only in part (some of its parts were
+  // accepted before the denial) leaves the document holding half of that
+  // edit: Undo cannot be trusted per mutation any more (w26 review).
+  const splitPartsRolledBack = new Map();
+  for (const record of records) {
+    if (!record.splitGroupId) continue;
+    splitPartsRolledBack.set(record.splitGroupId, (splitPartsRolledBack.get(record.splitGroupId) || 0) + 1);
+  }
+  const partialSplitRollback = records.some((record) => (
+    record.splitGroupId
+    && splitPartsRolledBack.get(record.splitGroupId) < (Number(record.splitPartCount) || 1)
+  ));
   const requiresFullHistoryReset = (
     records.length !== keys.length
     || records.some((record) => !record.historyTag?.mutationId)
+    || partialSplitRollback
   );
   // Visible rollback must not depend on IndexedDB cleanup succeeding.
   restoreAcceptedState(state, {
@@ -1726,6 +1807,7 @@ async function loadFromBackend(state) {
 // idempotent, so the intentional overlap with prior catch-up/realtime delivery
 // is harmless and a late lower sequence remains discoverable.
 function catchUpTail(state) {
+  state.catchupPending = (Number(state.catchupPending) || 0) + 1;
   state.catchupChain = state.catchupChain.then(async () => {
     if (state.destroyed || !state.supabase) return false;
     // PostgreSQL identity values are allocated before commit. A transaction
@@ -1760,7 +1842,9 @@ function catchUpTail(state) {
         }
         cursor = Number(row.seq);
         if (cursor > state.lastSeq) state.lastSeq = cursor;
-        state.coveredSeq = cursor;
+        // Only rises here: an ordered sweep from the snapshot baseline
+        // re-reads rows below the frontier already proven (w26 review).
+        if (cursor > state.coveredSeq) state.coveredSeq = cursor;
       });
     } catch (error) {
       if (error !== stopped) {
@@ -1776,6 +1860,8 @@ function catchUpTail(state) {
   }).catch((err) => {
     console.warn('[annotationDocSync] catch-up failed', err?.message);
     return false;
+  }).finally(() => {
+    state.catchupPending = Math.max(0, (Number(state.catchupPending) || 0) - 1);
   });
   return state.catchupChain;
 }
@@ -2448,10 +2534,11 @@ function handleSnapshotResult(state, result) {
 // own row with its own client_seq, queued back to back. Every writer goes
 // through here, so a PDF import, an IndexedDB replay or a recovery can no
 // longer produce an 8 MB row that Realtime cannot carry and a tail read cannot
-// return. The parts share ONE copy of the transaction-time checkpoint (all
-// parts are the same local transaction, so they share its authorization); a
-// history tag rides on every part so a rollback of any part is attributed to
-// the same mutation. Returns the queue promise that settles after the last part.
+// return. The parts share ONE copy of the checkpoint: the staged state after
+// the WHOLE transaction, so a gap repair after any failed part re-captures
+// every part at once. A history tag rides on every part (a rollback of any
+// part names the same mutation) and each part depends on the part before it.
+// Returns the queue promise that settles after the last part.
 function enqueueAppend(
   state,
   update,
@@ -2462,8 +2549,23 @@ function enqueueAppend(
   const parts = splitYjsUpdate(update, state.walUpdateMaxBytes);
   const sharedCheckpoint = new Uint8Array(checkpointUpdate);
   let queued = state.flushQueue;
+  let previousKey = null;
+  const splitGroupId = parts.length > 1 ? `${state.writerId}:${randomClientId()}` : null;
+  let partIndex = 0;
   for (const part of parts) {
-    queued = enqueueAppendRecord(state, part, sharedCheckpoint, editEpoch, options);
+    // Each part depends on the part before it, explicitly: the WAL must hold
+    // them in order even when one part fails and a later one (e.g. a
+    // delete-set-only tail) has no struct reference into it.
+    const record = enqueueAppendRecord(state, part, sharedCheckpoint, editEpoch, {
+      ...options,
+      previousPartKey: previousKey,
+      splitGroupId,
+      splitPartIndex: partIndex,
+      splitPartCount: parts.length,
+    });
+    partIndex += 1;
+    previousKey = record.key;
+    queued = record.queued;
   }
   return queued;
 }
@@ -2473,7 +2575,14 @@ function enqueueAppendRecord(
   update,
   checkpointUpdate,
   editEpoch,
-  { publishAfterAcceptance = false, historyTag = null } = {},
+  {
+    publishAfterAcceptance = false,
+    historyTag = null,
+    previousPartKey = null,
+    splitGroupId = null,
+    splitPartIndex = 0,
+    splitPartCount = 1,
+  } = {},
 ) {
   const ordinal = ++state.localMutationOrdinal;
   const clientSeq = ++state.clientSeq;
@@ -2505,6 +2614,17 @@ function enqueueAppendRecord(
     status: 'pending',
   };
   record.dependsOn = causalDependenciesForUpdate(state, record.update, record.key);
+  if (previousPartKey && !record.dependsOn.includes(previousPartKey)) {
+    record.dependsOn = [...record.dependsOn, previousPartKey].sort();
+  }
+  // Parts of one split transaction share a group id (persisted with the
+  // record). Rolling back some parts after a sibling was accepted cannot be
+  // undone per mutation (w26 review): see quarantineRejectedRecords.
+  if (splitGroupId) {
+    record.splitGroupId = splitGroupId;
+    record.splitPartIndex = splitPartIndex;
+    record.splitPartCount = splitPartCount;
+  }
   state.appendRecords.set(record.key, record);
   const persisted = persistOutboxRecord(state, record);
   state.pendingAppends += 1;
@@ -2614,7 +2734,7 @@ function enqueueAppendRecord(
       notifySyncStatus(state);
     }
   });
-  return state.flushQueue;
+  return { key: record.key, queued: state.flushQueue };
 }
 
 function persistOutboxRecord(state, record) {
@@ -2709,11 +2829,14 @@ async function appendOp(state, record) {
     if (assignedSeq === state.coveredSeq + 1) state.coveredSeq = assignedSeq;
   }
   state.opsSinceSnapshot += 1;
-  // More rows queued right behind this one (a split bulk write, e.g. a PDF
-  // import cut into dozens of rows): do not stop the queue to upload a
-  // multi-MB checkpoint in the middle of it. The debounced checkpoint runs
-  // once the queue is empty (scheduleSnapshot waits for pendingAppends 0).
-  if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && state.pendingAppends > 1) {
+  // A split bulk write (e.g. a PDF import cut into dozens of rows) still has
+  // parts after this one: do not stop the queue to upload a multi-MB
+  // checkpoint in the middle of it. The checkpoint runs after its last part
+  // (the counter keeps counting), or from the debounce once the queue is
+  // empty. Unrelated queued edits keep the usual every-40-rows checkpoint.
+  const midSplit = record.splitGroupId
+    && (Number(record.splitPartIndex) || 0) < (Number(record.splitPartCount) || 1) - 1;
+  if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && midSplit) {
     scheduleSnapshot(state);
   } else if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
     state.opsSinceSnapshot = 0;
@@ -3190,7 +3313,10 @@ function subscribeRealtime(state) {
       // table instead of applying a truncated update (w26).
       if ((Array.isArray(payload.errors) && payload.errors.length > 0) || !row.data) {
         console.warn('[annotationDocSync] realtime row arrived without its data; reading it from the log', row.seq, payload.errors);
-        scheduleRealtimeRowRecovery(state);
+        // Red until the row is actually in the document (w26 review): later
+        // rows from the same writer are held back by Yjs behind this one.
+        markSyncHealth(state, false, new Error(`realtime row ${row.seq} arrived without data`));
+        scheduleRealtimeRowRecovery(state, row.seq);
         return;
       }
       state.authoritativeChain = state.authoritativeChain.then(async () => {
@@ -3207,7 +3333,7 @@ function subscribeRealtime(state) {
         markSyncHealth(state, false, err);
         // The row is committed; fetch it (and anything after it) by an
         // ordered read rather than waiting for the next reconnect (w26).
-        scheduleRealtimeRowRecovery(state);
+        scheduleRealtimeRowRecovery(state, row.seq);
       });
     })
     .subscribe((status) => {
@@ -3252,44 +3378,84 @@ function subscribeRealtime(state) {
     });
 }
 
-// One ordered catch-up read shortly after a Realtime row could not be applied
-// (w26). Coalesced: several bad rows in a burst cause one read. Health turns
-// green again only through the catch-up's own success path.
+// A Realtime row that could not be applied (no data, or the apply failed) is
+// read back from the log, from THAT row on — not the whole tail from the
+// snapshot baseline (w26 review). Coalesced: a burst of bad rows is one read
+// from the lowest missing seq. Skipped while a reconnect catch-up is running
+// or queued (it reads those rows anyway). coveredSeq is not touched: this read
+// does not prove the rows below it. Health stays red until it succeeds; after
+// REALTIME_ROW_RECOVERY_MAX_ATTEMPTS failures it stays red and the next
+// reconnect catch-up retries.
 const REALTIME_ROW_RECOVERY_DELAY_MS = 250;
-function scheduleRealtimeRowRecovery(state) {
-  if (state.destroyed || state.realtimeRowRecoveryTimer) return;
-  state.realtimeRowRecoveryTimer = setTimeout(() => {
-    state.realtimeRowRecoveryTimer = null;
-    if (state.destroyed) return;
-    catchUpTail(state).then((caughtUp) => {
-      if (state.destroyed) return;
-      if (caughtUp && !state.durabilityGap) markSyncHealth(state, true);
-      else if (!caughtUp) scheduleRealtimeRowRecoveryRetry(state);
-    });
-  }, REALTIME_ROW_RECOVERY_DELAY_MS);
-}
-
-function scheduleRealtimeRowRecoveryRetry(state) {
-  if (state.destroyed || state.realtimeRowRecoveryTimer) return;
-  state.realtimeRowRecoveryAttempt = (state.realtimeRowRecoveryAttempt || 0) + 1;
-  if (state.realtimeRowRecoveryAttempt > 6) return; // the next reconnect retries
+const REALTIME_ROW_RECOVERY_MAX_ATTEMPTS = 6;
+function scheduleRealtimeRowRecovery(state, seq = null) {
+  if (state.destroyed) return;
+  const missing = Number(seq);
+  if (Number.isFinite(missing)) {
+    state.realtimeRowRecoveryFromSeq = state.realtimeRowRecoveryFromSeq == null
+      ? missing
+      : Math.min(state.realtimeRowRecoveryFromSeq, missing);
+  } else if (state.realtimeRowRecoveryFromSeq == null) {
+    state.realtimeRowRecoveryFromSeq = state.coveredSeq + 1;
+  }
+  if (state.realtimeRowRecoveryTimer) return;
+  const attempt = Number(state.realtimeRowRecoveryAttempt) || 0;
   const delayMs = Math.min(
     GAP_REPAIR_RETRY_MAX_MS,
-    REALTIME_ROW_RECOVERY_DELAY_MS * (2 ** state.realtimeRowRecoveryAttempt),
+    REALTIME_ROW_RECOVERY_DELAY_MS * (2 ** attempt),
   );
   state.realtimeRowRecoveryTimer = setTimeout(() => {
     state.realtimeRowRecoveryTimer = null;
-    if (state.destroyed) return;
-    catchUpTail(state).then((caughtUp) => {
-      if (state.destroyed) return;
-      if (caughtUp) {
-        state.realtimeRowRecoveryAttempt = 0;
-        if (!state.durabilityGap) markSyncHealth(state, true);
-      } else {
-        scheduleRealtimeRowRecoveryRetry(state);
-      }
-    });
+    void runRealtimeRowRecovery(state);
   }, delayMs);
+}
+
+async function runRealtimeRowRecovery(state) {
+  if (state.destroyed || state.realtimeRowRecoveryFromSeq == null) return;
+  if ((Number(state.catchupPending) || 0) > 0) {
+    // The reconnect catch-up covers these rows; it owns health from here.
+    state.realtimeRowRecoveryFromSeq = null;
+    state.realtimeRowRecoveryAttempt = 0;
+    return;
+  }
+  const fromSeq = state.realtimeRowRecoveryFromSeq;
+  state.realtimeRowRecoveryFromSeq = null;
+  let applied = 0;
+  let ok = true;
+  const recovery = state.authoritativeChain.then(async () => {
+    if (state.destroyed) return;
+    await readWalRowsAfter(state, fromSeq - 1, 'realtime row recovery read', async (row) => {
+      if (state.destroyed) return;
+      await applyAuthoritativeCloudRow(state, row);
+      applied += 1;
+      if (Number(row.seq) > state.lastSeq) state.lastSeq = Number(row.seq);
+    });
+  }).catch((error) => {
+    ok = false;
+    console.warn('[annotationDocSync] realtime row recovery failed', error?.message);
+  });
+  state.authoritativeChain = recovery;
+  await recovery;
+  if (state.destroyed) return;
+  if (applied > 0) {
+    notifyChange(state);
+    void queueEraseOutboxDrain(state);
+  }
+  if (ok) {
+    state.realtimeRowRecoveryAttempt = 0;
+    if (!state.durabilityGap && state.realtimeRowRecoveryFromSeq == null) {
+      markSyncHealth(state, true);
+    }
+    return;
+  }
+  state.realtimeRowRecoveryAttempt = (Number(state.realtimeRowRecoveryAttempt) || 0) + 1;
+  markSyncHealth(state, false, new Error('a realtime row could not be read from the log'));
+  if (state.realtimeRowRecoveryAttempt >= REALTIME_ROW_RECOVERY_MAX_ATTEMPTS) {
+    // Give up for now (stay red); the next SUBSCRIBED catch-up retries.
+    state.realtimeRowRecoveryAttempt = 0;
+    return;
+  }
+  scheduleRealtimeRowRecovery(state, fromSeq);
 }
 
 function notifyChange(state) {
