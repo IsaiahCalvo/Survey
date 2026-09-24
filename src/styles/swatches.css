@@ -17,7 +17,10 @@
 .hero-swatch {
   position: relative;
   box-sizing: border-box;
-  border: 2px solid transparent !important;
+  /* Ring width follows the swatch size (HeroUI: ~7% of the swatch). The
+     20px desktop picker cells set --hero-swatch-bw to 1.5px; bigger swatches
+     keep 2px. */
+  border: var(--hero-swatch-bw, 2px) solid transparent !important;
   background: transparent !important;
   padding: 0 !important;
   display: grid;

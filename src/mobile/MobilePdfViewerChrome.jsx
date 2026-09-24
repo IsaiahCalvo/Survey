@@ -1689,7 +1689,9 @@ export function MobileToolProperties({ api }) {
   // picker's tab uses for it.
   const shapeSectionLabel = (section) => {
     if (section === 'fill') return 'Fill';
-    return tool === 'counter' ? 'Number' : 'Stroke';
+    // Owner 2026-09-23: one word app-wide - the colour picker's tabs say
+    // "Border", so this panel does too (it said "Stroke").
+    return tool === 'counter' ? 'Number' : 'Border';
   };
   // Open the panel. "..." opens the Shape side on the channel the strip's swatch
   // shows (the border for a shape, the pin for a counter); "Aa" opens the Text
@@ -1866,9 +1868,10 @@ export function MobileToolProperties({ api }) {
      picker sheet. */
   const isCounterTool = tool === 'counter';
   const paintTabs = isMultiColour ? {
+    // Owner 2026-09-23: Fill first, then Border, app-wide (the Templates order).
     items: [
-      { id: 'stroke', label: isCounterTool ? 'Number' : 'Border' },
       { id: 'fill', label: 'Fill' },
+      { id: 'stroke', label: isCounterTool ? 'Number' : 'Border' },
     ],
     active: colorPicker,
     onSelect: (id) => setColorPicker(id),

@@ -203,6 +203,14 @@ const CHECKER_FILL = {
 };
 
 /** Match fill as a LINK (Templates entities): two chain links, stroked. */
+/* Match fill: three short lines in a thin ring (owner 2026-09-23). */
+const MatchFillGlyph = ({ size = 13 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 9H16M8 12H16M8 15H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+);
+
 const LinkGlyph = ({ size = 14 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
         <path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l2.8-2.8a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -955,6 +963,10 @@ const CompactColorPicker = ({
                             borderRadius: '50%',
                             flex: '0 0 auto',
                             '--hero-swatch-ring': swatchRingColour(preset),
+                            // Owner 2026-09-23: keep the HeroUI proportions at
+                            // the small desktop size - ring ~7% of the swatch
+                            // (2px on a 28px swatch = 1.5px on 20px).
+                            ...(isDesktop ? { '--hero-swatch-bw': '1.5px' } : null),
                         }}
                     >
                         <span
@@ -1024,6 +1036,7 @@ const CompactColorPicker = ({
                                the one control that unlinks the border. */
                             ...(isMatchSlot && matchIsToggle ? null : lockedStyle),
                             '--hero-swatch-ring': swatchRingColour(isTransparent ? '#ffffff' : swatch),
+                            ...(isDesktop ? { '--hero-swatch-bw': '1.5px' } : null),
                         }}
                     >
                         <span className="hero-swatch__fill" style={isFirstCell && lastMatchRef.current.toggle ? CHECKER_FILL : background}>
@@ -1036,15 +1049,14 @@ const CompactColorPicker = ({
                             </span>
                         )}
                         {isMatchSlot && !matchIsToggle && (
-                            <span style={{
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                lineHeight: 1,
-                                color: 'rgba(0,0,0,0.75)',
-                                textShadow: '0 0 2px rgba(255,255,255,0.85), 0 0 1px rgba(255,255,255,0.85)',
-                                letterSpacing: '-0.5px',
-                                pointerEvents: 'none',
-                            }}>≡</span>
+                            /* Owner 2026-09-23: the Match fill mark is three
+                               plain lines inside a thin ring, drawn in the ink
+                               that reads on the fill colour (dark on light,
+                               white on dark) - no white glow around black
+                               lines, which read as a sticker. */
+                            <span style={{ display: 'grid', placeItems: 'center', color: swatchCheckInk(swatch), pointerEvents: 'none' }}>
+                                <MatchFillGlyph size={isDesktop ? 13 : (dense ? 15 : 16)} />
+                            </span>
                         )}
                         {isSelected && !isMatchSlot && !isTransparent && (
                             <span className="hero-swatch__check" style={{ color: swatchCheckInk(swatch) }}>

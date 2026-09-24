@@ -228,7 +228,7 @@ async function editShape(page, toolId) {
 
   const swatchName = ['rectangle', 'ellipse', 'counter'].includes(toolId)
     ? (toolId === 'counter' ? 'Counter colors' : 'Fill and border colors')
-    : 'Stroke color';
+    : 'Border color';
   const swatch = page.getByRole('button', { name: swatchName, exact: true });
   if (await swatch.count()) {
     await swatch.click();
@@ -242,19 +242,19 @@ async function editShape(page, toolId) {
       assert.equal(await fillOpacity.count(), 1, `${toolId} fill opacity control must be available`);
       await fillOpacity.fill('45');
       await closeColorPicker(page, 'Fill color');
-      const strokeTab = page.getByRole('tab', { name: 'Stroke color', exact: true });
+      const strokeTab = page.getByRole('tab', { name: 'Border color', exact: true });
       if (await strokeTab.count()) await strokeTab.click();
     }
-    const color = page.getByRole('button', { name: 'Set Stroke color #4A90E2', exact: true });
+    const color = page.getByRole('button', { name: 'Set Border color #4A90E2', exact: true });
     assert.equal(await color.count(), 1, `${toolId} persisted stroke color preset must be available`);
     await color.click();
     if (toolId === 'highlighter') {
       await page.getByRole('button', { name: 'Open stroke color picker', exact: true }).click();
-      const picker = page.getByRole('dialog', { name: 'Stroke color picker', exact: true });
+      const picker = page.getByRole('dialog', { name: 'Border color picker', exact: true });
       const opacity = picker.locator('input[type="number"]');
       assert.equal(await opacity.count(), 1, 'Highlighter opacity control must be available');
       await opacity.fill('55');
-      await closeColorPicker(page, 'Stroke color');
+      await closeColorPicker(page, 'Border color');
     }
     await page.getByRole('button', { name: 'Close annotation settings', exact: true }).click();
   }

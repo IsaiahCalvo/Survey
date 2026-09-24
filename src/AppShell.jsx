@@ -2751,15 +2751,15 @@ export default function App({ devPreviewReturnTab = null }) {
                           color={currentColor}
                           opacity={currentOpacity}
                           outsideBoundaryRef={annotationColorPickerRef}
-                          /* Board 19: Border first, then Fill — the order the
-                             board reads, and the order the swatch shows (ring
-                             then centre). A counter's two channels are its pin
+                          /* Owner 2026-09-23: Fill first, then Border, the
+                             order the Templates entity picker uses, everywhere
+                             in the app. A counter's two channels are its pin
                              and the number printed on it, so the second word is
                              "Number" there. */
                           tabs={isShape ? {
                             items: [
-                              { id: 'border', label: secondTabLabel },
                               { id: 'fill', label: 'Fill' },
+                              { id: 'border', label: secondTabLabel },
                             ],
                             active: colorPickerTab,
                             onSelect: (id) => setColorPickerTab(id),
