@@ -202,19 +202,14 @@ const CHECKER_FILL = {
     backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
 };
 
-/** Match fill as a LINK (Templates entities): two chain links, stroked. */
-/* Match fill: three short lines in a thin ring (owner 2026-09-23). */
+/* Match fill, everywhere (owner 2026-09-23, picked from the Match Fill Marks
+   page): three plain lines - the "identical to" sign - in the ink that reads
+   on the fill colour. No ring and no glow around it; whether it is ON is shown
+   the same way as every other swatch, by the selected ring around the cell.
+   One mark for the canvas one-shot cell and the Templates / phone link cell. */
 const MatchFillGlyph = ({ size = 13 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M8 9H16M8 12H16M8 15H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-);
-
-const LinkGlyph = ({ size = 14 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-        <path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l2.8-2.8a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-2.8 2.8a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 8H18M6 12H18M6 16H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
 );
 
@@ -1045,17 +1040,15 @@ const CompactColorPicker = ({
                                 className={`hero-swatch__morph${morphOn && isMatchSlot ? ' is-on' : ''}`}
                                 style={{ background: lastMatchRef.current.color, color: swatchCheckInk(lastMatchRef.current.color) }}
                             >
-                                <LinkGlyph size={isDesktop ? 13 : (dense ? 16 : 17)} />
+                                <MatchFillGlyph size={isDesktop ? 13 : (dense ? 16 : 17)} />
                             </span>
                         )}
                         {isMatchSlot && !matchIsToggle && (
-                            /* Owner 2026-09-23: the Match fill mark is three
-                               plain lines inside a thin ring, drawn in the ink
-                               that reads on the fill colour (dark on light,
-                               white on dark) - no white glow around black
-                               lines, which read as a sticker. */
+                            /* Owner 2026-09-23: the Match fill mark (see
+                               MatchFillGlyph) in the ink that reads on the
+                               fill colour; no white glow around it. */
                             <span style={{ display: 'grid', placeItems: 'center', color: swatchCheckInk(swatch), pointerEvents: 'none' }}>
-                                <MatchFillGlyph size={isDesktop ? 13 : (dense ? 15 : 16)} />
+                                <MatchFillGlyph size={isDesktop ? 13 : (dense ? 16 : 17)} />
                             </span>
                         )}
                         {isSelected && !isMatchSlot && !isTransparent && (
