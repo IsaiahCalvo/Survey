@@ -3966,6 +3966,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // closure when that second click lands. The latch is dropped by onDown
       // above on the first press after the editor closes — never on a timer.
       if (panQuickClickSuppressedRef.current) return;
+      // UX 2026-09-23 (coordinator, w23): only a press ON the PDF surface can
+      // pick an annotation. The hit test below works by position, so a tap on
+      // chrome floating over the page — the phone's zoom and fit menu (Fit
+      // width sits right over page 1), a desktop menu — selected whatever
+      // annotation lay underneath, switched to Select and opened that tool's
+      // settings strip. Reference: Drawboard PDF — a menu tap only does what
+      // the menu item says.
+      if (!e.target?.closest?.('[data-mobile-pdf-surface]')) return;
       if (e.target?.closest?.('[data-text-markup-link]')) return;
       // UX 2026-09-15 — a click on a live form field fills the field and does
       // NOTHING else: no annotation selection, no switch to Select. Without
@@ -8669,7 +8677,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsZoomMenuOpen((prev) => !prev);
   }, []);
 
-  const handleZoomModeSelect = useCallback((mode) => {
+  const handleZoomModeSelect = useCallback((mode, options) => {
     if (usePdfjsRenderer) {
       setIsZoomMenuOpen(false);
       const viewer = pdfjsViewerRef.current;
@@ -8707,6 +8715,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         zoomModeRef.current = mode;
         pdfjsZoomSourceRef.current = mode;
         setZoomMode(mode);
+
+        // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use
+        // the band between panels). A re-fit the app runs by itself after a
+        // layout change (applyLayoutDrivenZoom: panel open/close, window
+        // resize, tab switch) must not land the page the way a fit you pick
+        // does: the viewer keeps the visible middle still, and does nothing at
+        // all when only a floating panel opened or closed.
+        if (options?.auto === true && typeof magnification.refitAfterLayoutChange === 'function') {
+          magnification.refitAfterLayoutChange(
+            mode === ZOOM_MODES.FIT_WIDTH ? 'fitw' : mode === ZOOM_MODES.FIT_HEIGHT ? 'fith' : 'fit',
+          );
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const postZoom = (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null);
+            if (typeof postZoom === 'number' && postZoom > 0) setScale(postZoom / 100);
+          }));
+          return;
+        }
 
         // Bug #2.6: derive real page dimensions from pdf.js pageSize (scale-invariant,
         // in PDF points) × calibrated Electron zoom factor. Never divide live pageDiv by
@@ -8811,7 +8836,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // the window regains focus or layout changes. The generic zoom controller
       // can still hold an old fit-page mode, which caused the surprise zoom-out.
       if (!currentMode || currentMode === ZOOM_MODES.MANUAL) return;
-      handleZoomModeSelectRef.current?.(currentMode);
+      // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
+      // band between panels): marked automatic, so it never lands the page.
+      handleZoomModeSelectRef.current?.(currentMode, { auto: true });
       return;
     }
     zoomControllerRef.current?.applyZoom({ persist: false, force: true });

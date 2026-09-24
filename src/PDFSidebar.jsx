@@ -21,6 +21,7 @@ import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { SHEET_EXPANDED_HEIGHT, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
+import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -185,6 +186,10 @@ const PDFSidebar = React.forwardRef(({
   }, [isCollapsed, mobileMode]);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
   const tip = useTooltip();
+  // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
+  // band between panels): the open desktop panel covers the left ~224px of the
+  // PDF; fits size and centre the page beside it (utils/viewerSideOverlay.js).
+  const sideOccluderRef = useViewerSideOccluderRef();
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
   const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
@@ -334,6 +339,7 @@ const PDFSidebar = React.forwardRef(({
       // so the open panel marks itself as covering the viewer: a side panel on
       // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
       data-viewer-occluder={isCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
+      ref={mobileMode ? undefined : sideOccluderRef}
       className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${mobileMode && sheetExpanded ? 'is-expanded ' : ''}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       // The tall detent overrides the content-measured height. It has to be
       // written here, not from the stylesheet: this inline custom property

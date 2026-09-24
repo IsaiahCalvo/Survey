@@ -61,6 +61,16 @@ import {
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
 import { computeFitScale, pickCurrentPage } from '../utils/pageNavigationMath.js';
+import {
+  NO_SIDE_INSETS,
+  compensateScrollLeftForSideRoom,
+  computeSideOverlayInsets,
+  getViewerSideOccluders,
+  resolveBandCentreScrollLeft,
+  resolveSideRoom,
+  shouldAutoRefit,
+  subscribeViewerSideOccluders,
+} from '../utils/viewerSideOverlay.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1113,6 +1123,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // scrollTop taken just before a room change (resolveRoomCompensationBase).
   const roomScrollSnapshotRef = useRef(null);
   const topInsetRef = useRef(0);
+  // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the band
+  // between panels). Side panels (desktop Pages, Survey) float over the left /
+  // right of this scroller. sideInsetRef is their live measured width; sideRoom
+  // is the horizontal scroll room kept beside the pages so a page can be moved
+  // out from under them, with the same no-jump rules as topRoom
+  // (src/utils/viewerSideOverlay.js).
+  const [sideRoom, setSideRoom] = useState(NO_SIDE_INSETS);
+  const sideRoomRef = useRef(NO_SIDE_INSETS);
+  sideRoomRef.current = sideRoom;
+  const appliedSideRoomRef = useRef(NO_SIDE_INSETS);
+  const sideScrollSnapshotRef = useRef(null);
+  const sideInsetRef = useRef(NO_SIDE_INSETS);
+  // The last fit: { mode, viewW, viewH, pageW, pageH, pageIndex } (see
+  // shouldAutoRefit). Cleared when a new document loads.
+  const lastFitRef = useRef(null);
   const interactionModeRef = useRef(interactionMode);
   interactionModeRef.current = interactionMode;
   const spacePanRef = useRef(false);
@@ -1140,9 +1165,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const metrics = layoutMetricsRef.current;
     const viewportWidth = containerWRef.current;
     const pageWidth = dim.w * nextScale;
-    return pageWidth <= viewportWidth
+    // The left side-panel room sits in front of every page.
+    return sideRoomRef.current.left + (pageWidth <= viewportWidth
       ? (viewportWidth - pageWidth) / 2
-      : metrics.padX;
+      : metrics.padX);
   }, []);
 
   const getPageHorizontalScrollMax = useCallback((pageIndex, nextScale) => {
@@ -1150,9 +1176,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!dim) return 0;
     const metrics = layoutMetricsRef.current;
     const pageWidth = dim.w * nextScale;
-    return pageWidth <= containerWRef.current
+    // Plus the side-panel room on both sides, so a page can be scrolled out
+    // from under either panel.
+    return sideRoomRef.current.left + sideRoomRef.current.right + (pageWidth <= containerWRef.current
       ? 0
-      : pageWidth + metrics.padX * 2 - containerWRef.current;
+      : pageWidth + metrics.padX * 2 - containerWRef.current);
   }, []);
 
   const clampHorizontalScrollForPage = useCallback((pageIndex = currentPageRef.current - 1) => {
@@ -1225,8 +1253,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         setScale(fit); scaleRef.current = fit; prevScaleRef.current = fit;
         setLiveZoom(1); liveZoomRef.current = 1;
         currentPageRef.current = 1;
+        lastFitRef.current = null;
         if (el) {
-          el.scrollLeft = 0;
+          // Past any left side-panel room: the page starts centred in the viewer.
+          el.scrollLeft = sideRoomRef.current.left;
           el.scrollTop = 0;
         }
 
@@ -1311,9 +1341,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       y += dims[i].h * scale + gapPx;
       maxW = Math.max(maxW, dims[i].w * scale);
     }
-    const contentW = maxW <= containerW
+    const contentW = (maxW <= containerW
       ? containerW
-      : maxW + 2 * metrics.padX;
+      : maxW + 2 * metrics.padX) + sideRoom.left + sideRoom.right;
     // rawTotalH is the un-offset content height; the FIT predicate must use this,
     // never the padTop-inclusive height. padTop vertically centers any document
     // shorter than the viewport (single page / fitting page) via marginTop on the
@@ -1329,7 +1359,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       topRoom,
     });
     return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
-  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics, topRoom]);
+  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom]);
 
   dimsPtRef.current = layout.dims;
   containerWRef.current = containerW;
@@ -1526,6 +1556,113 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     el.scrollTop = compensateScrollTopForRoom(base, previous, topRoom);
   }, [topRoom]);
 
+  // ---- scroll room for the side panels over the left / right of the viewer --
+  // Same rules as the strip room above, sideways (src/utils/viewerSideOverlay.js):
+  // growing takes effect at once, shrinking only gives back room already
+  // scrolled off screen, and a change of the LEFT room moves scrollLeft by the
+  // same amount in the same frame, so opening or closing a panel never moves
+  // the page. Skipped mid pinch/wheel zoom like the strip room.
+  const syncSideRoom = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el || gestureRef.current) return;
+    const room = sideRoomRef.current;
+    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, (currentPageRef.current || 1) - 1));
+    const next = resolveSideRoom({
+      room,
+      inset: sideInsetRef.current,
+      scrollLeft: el.scrollLeft,
+      pageScrollMax: Math.max(0, getPageHorizontalScrollMax(pageIndex, scaleRef.current) - room.right),
+    });
+    if (next.left !== room.left || next.right !== room.right) {
+      sideRoomRef.current = next;
+      sideScrollSnapshotRef.current = el.scrollLeft;
+      setSideRoom(next);
+    }
+  }, [getPageHorizontalScrollMax]);
+
+  // Measure the side panels live: a ResizeObserver on each registered panel and
+  // the scroller, plus the panel's own collapse attribute and its slide-in
+  // animation / width transition ending (a transform is invisible to a
+  // ResizeObserver, and the first measurement lands mid-slide).
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    let raf = 0;
+    const observed = new Set();
+    const measure = () => {
+      raf = 0;
+      const panels = getViewerSideOccluders()
+        .filter((node) => node?.isConnected && node.getAttribute?.('data-viewer-occluder') === 'side');
+      const next = computeSideOverlayInsets(
+        el.getBoundingClientRect(),
+        panels.map((node) => node.getBoundingClientRect()),
+      );
+      const prev = sideInsetRef.current;
+      if (next.left !== prev.left || next.right !== prev.right) {
+        sideInsetRef.current = next;
+        syncSideRoom();
+      }
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(measure);
+    };
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(schedule) : null;
+    const forget = (node) => {
+      ro.unobserve(node);
+      node.removeEventListener('transitionend', schedule);
+      node.removeEventListener('animationend', schedule);
+      observed.delete(node);
+    };
+    const syncObserved = () => {
+      const current = new Set(getViewerSideOccluders());
+      observed.forEach((node) => { if (!current.has(node)) forget(node); });
+      mo?.disconnect();
+      current.forEach((node) => {
+        if (!observed.has(node)) {
+          ro.observe(node);
+          node.addEventListener('transitionend', schedule);
+          node.addEventListener('animationend', schedule);
+          observed.add(node);
+        }
+        mo?.observe(node, { attributes: true, attributeFilter: ['data-viewer-occluder', 'class'] });
+      });
+      schedule();
+    };
+    syncObserved();
+    const unsubscribe = subscribeViewerSideOccluders(syncObserved);
+    window.addEventListener('resize', schedule);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('resize', schedule);
+      Array.from(observed).forEach(forget);
+      mo?.disconnect();
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // pageCount: the scroller only mounts once the document has pages (see the
+    // strip measurer above).
+  }, [syncSideRoom, pageSizes?.length || 0]);
+
+  // Hold the page still when the LEFT room changes (right room is added after
+  // the content and moves nothing).
+  useLayoutEffect(() => {
+    const previous = appliedSideRoomRef.current;
+    appliedSideRoomRef.current = sideRoom;
+    const snapshot = sideScrollSnapshotRef.current;
+    sideScrollSnapshotRef.current = null;
+    if (previous.left === sideRoom.left) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    const base = resolveRoomCompensationBase({
+      liveScrollTop: el.scrollLeft,
+      maxScrollTop: el.scrollWidth - el.clientWidth,
+      snapshotScrollTop: snapshot,
+    });
+    el.scrollLeft = compensateScrollLeftForSideRoom(base, previous.left, sideRoom.left);
+  }, [sideRoom]);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
@@ -1543,12 +1680,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // Strips closed while you were scrolled up into their room: give the
         // room back as it scrolls off screen.
         if (topRoomRef.current > topInsetRef.current) syncTopRoom();
+        // Same for a side panel closed while its room is on screen.
+        if (sideRoomRef.current.left > sideInsetRef.current.left
+          || sideRoomRef.current.right > sideInsetRef.current.right) syncSideRoom();
         recomputeWindow();
       });
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { el.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
-  }, [recomputeWindow, syncTopRoom]);
+  }, [recomputeWindow, syncTopRoom, syncSideRoom]);
 
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
 
@@ -2607,25 +2747,53 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [isMobileSurface, mobileLongPressContextMenu]);
 
   // ---- imperative zoom / nav -----------------------------------------------
-  const zoomToScale = useCallback((target) => {
+  const zoomToScale = useCallback((target, options = {}) => {
     const el = scrollerRef.current;
     if (!el) return;
     let newScale = target;
     const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
+    // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
+    // band between panels). `auto` = a re-fit the app runs by itself after a
+    // layout change (panel open/close, window resize, tab switch, template
+    // open) — see refitAfterLayoutChange below. Only a fit YOU pick (menu,
+    // button, space jump, first open) lands the current page.
+    const auto = isFit && options?.auto === true;
+    // Fits and the zoom buttons work in the part of the viewer you can SEE:
+    // below any tool strips and between any open side panels.
+    const side = sideInsetRef.current;
+    const bandW = Math.max(1, el.clientWidth - side.left - side.right);
     // UX 2026-09-23 (owner: right rail audit): a fit is measured against the
     // page you are LOOKING AT. It used pageSizes[range[0]] — the first MOUNTED
     // page, an overscan page above the view — so on a mixed-size set (portrait
     // cover, landscape sheets) Fit width on sheet 3 sized to the portrait cover
     // and the sheet ran 632px off each side. dims are already rotation-applied.
-    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, (currentPageRef.current || 1) - 1));
+    // An automatic re-fit keeps measuring the page the last fit was taken on,
+    // so scrolling from a portrait cover to a landscape sheet and then opening
+    // a panel does not halve the zoom.
+    const lastFit = lastFitRef.current;
+    const fitPageNumber = auto && lastFit ? lastFit.pageIndex + 1 : (currentPageRef.current || 1);
+    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, fitPageNumber - 1));
     if (isFit) {
       const metrics = layoutMetricsRef.current;
       const d = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
+      const fitRecord = {
+        mode: target,
+        viewW: el.clientWidth,
+        viewH: el.clientHeight,
+        pageW: d.w,
+        pageH: d.h,
+        pageIndex,
+      };
+      // Opening or closing a panel does not change the viewer's own size
+      // (panels float over it), so an automatic re-fit then has nothing to do
+      // and the page stays exactly where it is.
+      if (auto && !shouldAutoRefit(lastFit, fitRecord)) return;
+      lastFitRef.current = fitRecord;
       newScale = computeFitScale({
         mode: target === 'fitw' ? 'fitWidth' : target === 'fith' ? 'fitHeight' : 'fitPage',
         pageW: d.w,
         pageH: d.h,
-        viewportW: el.clientWidth,
+        viewportW: bandW,
         // Merge 2026-09-23: fit into the part you can SEE, below any tool
         // strips over the top of the viewer.
         viewportH: Math.max(1, el.clientHeight - topInsetRef.current),
@@ -2639,21 +2807,38 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const before = scaleRef.current;
     // Zoom buttons and fits hold the middle of the VISIBLE area still.
     const inset = Math.min(topInsetRef.current, el.clientHeight);
-    applyAnchoredScale(newScale, el.clientWidth / 2, inset + (el.clientHeight - inset) / 2);
-    // Fit page / Fit height promise the whole page height on screen, so they
-    // also land the page: its own top gap just below any tool strips, which
+    applyAnchoredScale(newScale, side.left + bandW / 2, inset + (el.clientHeight - inset) / 2);
+    // An automatic re-fit stops here: the visible middle stays put.
+    if (!isFit || auto || !dimsPtRef.current.length) return;
+    // A fit you pick lands the page. Fit page / Fit height promise the whole
+    // page height on screen: its own top gap just below any tool strips, which
     // with the fitted scale leaves the matching gap at the bottom. Anchoring on
     // the view centre alone left half of the next page showing after a fit.
-    if (isFit && target !== 'fitw' && dimsPtRef.current.length) {
-      const s = scaleRef.current;
-      const landTop = topAt(pageIndex, s) - layoutMetricsRef.current.gap * s - inset;
-      if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
-        pendingAnchorRef.current = { ...pendingAnchorRef.current, top: landTop, pageIndex };
-      } else {
-        el.scrollTop = Math.max(0, landTop);
-      }
+    // Every fit also centres the page in the band between the side panels.
+    const s = scaleRef.current;
+    const landTop = target !== 'fitw'
+      ? topAt(pageIndex, s) - layoutMetricsRef.current.gap * s - inset
+      : null;
+    const d = dimsPtRef.current[pageIndex];
+    const landLeft = resolveBandCentreScrollLeft({
+      pageLeft: getPageLeftAtScale(pageIndex, s),
+      pageWidth: d.w * s,
+      viewportWidth: el.clientWidth,
+      insets: side,
+      maxScrollLeft: getPageHorizontalScrollMax(pageIndex, s),
+    });
+    if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
+      pendingAnchorRef.current = {
+        ...pendingAnchorRef.current,
+        ...(landTop != null ? { top: landTop } : null),
+        left: landLeft,
+        pageIndex,
+      };
+    } else {
+      if (landTop != null) el.scrollTop = Math.max(0, landTop);
+      el.scrollLeft = landLeft;
     }
-  }, [applyAnchoredScale]);
+  }, [applyAnchoredScale, getPageLeftAtScale, getPageHorizontalScrollMax]);
 
   const goToPage = useCallback((n) => {
     const el = scrollerRef.current;
@@ -2820,6 +3005,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         fitToPage: () => zoomToScale('fit'),
         fitToWidth: () => zoomToScale('fitw'),
         fitToHeight: () => zoomToScale('fith'),
+        // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use
+        // the band between panels): the layout-driven re-fit (PDFViewer's
+        // applyLayoutDrivenZoom). It never lands the page, and does nothing at
+        // all unless the viewer's own size or the fitted page's size changed.
+        refitAfterLayoutChange: (target) => {
+          if (target === 'fit' || target === 'fitw' || target === 'fith') zoomToScale(target, { auto: true });
+        },
         initiateMouseZoom: (x, y, pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) applyAnchoredScale(s, Number(x) || 0, Number(y) || 0); },
       },
       // document / thumbnails / bookmarks
@@ -2891,9 +3083,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       maximumPageWidth = Math.max(maximumPageWidth, dim.w * targetScale);
     });
     rawHeight += metrics.padBottom;
-    const contentWidth = maximumPageWidth <= containerW
+    const contentWidth = (maximumPageWidth <= containerW
       ? containerW
-      : maximumPageWidth + (2 * metrics.padX);
+      : maximumPageWidth + (2 * metrics.padX)) + sideRoom.left + sideRoom.right;
     const previewPlacement = resolveVerticalPlacement({
       containerHeight: containerH,
       rawTotalHeight: rawHeight,

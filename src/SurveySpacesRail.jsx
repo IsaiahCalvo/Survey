@@ -34,6 +34,7 @@ import './mobile/mobileSurveyPanel.css';
 // .survey-rail, which only the desktop rail carries.
 import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
+import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -438,6 +439,12 @@ const SurveySpacesRail = ({
   // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
+  // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
+  // band between panels): the open desktop panel covers the right ~272px of the
+  // PDF, so it registers as a side panel. Fits then size and centre the page in
+  // the part you can still see, search centres its match there, and the viewer
+  // keeps scroll room so a page can be moved out from under it.
+  const sideOccluderRef = useViewerSideOccluderRef();
   // KAL-57: themed replacement for the native confirm() that gated the three
   // bulk-delete actions in this rail (categories, copied items, category
   // items). Promise-based so each handler keeps its original
@@ -1176,6 +1183,8 @@ const SurveySpacesRail = ({
                 instead of pushing or sitting below it, mirroring the left rail's
                 top collapse row. */}
             <div
+              ref={mobileMode ? undefined : sideOccluderRef}
+              data-viewer-occluder={!mobileMode && !isSurveyPanelCollapsed ? 'side' : undefined}
               className={`${mobileMode ? 'mobile-pdf-sheet mobile-survey-sheet ' : 'survey-rail '}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
                 // PASS 7 (DESIGN-SYSTEM.md, owner): every phone panel opens at
