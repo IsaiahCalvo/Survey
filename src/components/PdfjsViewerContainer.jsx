@@ -50,6 +50,7 @@ import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
+import { computeFitScale, pickCurrentPage } from '../utils/pageNavigationMath.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -1317,15 +1318,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // tops are in raw content space; padTop (the centering margin) shifts the
     // painted pages down by that much relative to the scroll origin.
     const padTop = padTopRef.current;
-    const mid = el.scrollTop + el.clientHeight / 2 - padTop;
-    let page = 1;
-    const metrics = layoutMetricsRef.current;
-    // Gap is zoom-proportional (see layout memo), so page-band detection uses the
-    // scaled gap too — keeps the current-page boundary aligned with the real layout.
-    for (let i = 0; i < tops.length; i += 1) {
-      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + metrics.gap * scaleRef.current) { page = i + 1; break; }
-      if (mid >= tops[i]) page = i + 1;
-    }
+    // UX 2026-09-23 (owner: right rail audit): the current page is the one
+    // with the largest visible share of itself, and a page that stays fully
+    // visible stays current (pickCurrentPage has the full rule + why). The old
+    // viewport-midpoint rule named page N+1 right after a jump to a short page N.
+    const viewTop = el.scrollTop - padTop;
+    const page = pickCurrentPage({
+      pageTops: tops,
+      pageHeights: dims.map((d) => d.h * scaleRef.current),
+      viewTop,
+      viewBottom: viewTop + el.clientHeight,
+      currentPage: currentPageRef.current,
+    });
     clampHorizontalScrollForPage(page - 1);
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
@@ -2477,19 +2481,45 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el) return;
     let newScale = target;
-    if (target === 'fit' || target === 'fitw') {
+    const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
+    // UX 2026-09-23 (owner: right rail audit): a fit is measured against the
+    // page you are LOOKING AT. It used pageSizes[range[0]] — the first MOUNTED
+    // page, an overscan page above the view — so on a mixed-size set (portrait
+    // cover, landscape sheets) Fit width on sheet 3 sized to the portrait cover
+    // and the sheet ran 632px off each side. dims are already rotation-applied.
+    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, (currentPageRef.current || 1) - 1));
+    if (isFit) {
       const metrics = layoutMetricsRef.current;
-      const s0 = pageSizes[Math.max(0, range[0])] || pageSizes[0] || { w: 612, h: 792 };
-      const rot90 = rotation === 90 || rotation === 270;
-      const pw = rot90 ? s0.h : s0.w;
-      const ph = rot90 ? s0.w : s0.h;
-      const fw = getFitWidthForContainer(el.clientWidth, metrics) / pw;
-      const fh = Math.max(1, el.clientHeight - metrics.padTop - metrics.padBottom)
-        / (ph + (2 * metrics.gap));
-      newScale = target === 'fitw' ? fw : Math.min(fw, fh);
+      const d = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
+      newScale = computeFitScale({
+        mode: target === 'fitw' ? 'fitWidth' : target === 'fith' ? 'fitHeight' : 'fitPage',
+        pageW: d.w,
+        pageH: d.h,
+        viewportW: el.clientWidth,
+        viewportH: el.clientHeight,
+        padX: metrics.padX,
+        gap: metrics.gap,
+        padTop: metrics.padTop,
+        padBottom: metrics.padBottom,
+        maxPageWidth: metrics.maxPageWidth,
+      });
     }
+    const before = scaleRef.current;
     applyAnchoredScale(newScale, el.clientWidth / 2, el.clientHeight / 2);
-  }, [pageSizes, range, applyAnchoredScale]);
+    // Fit page / Fit height promise the whole page height on screen, so they
+    // also land the page: its own top gap at the top of the view, which with
+    // the fitted scale leaves the matching gap at the bottom. Anchoring on the
+    // view centre alone left half of the next page showing after a fit.
+    if (isFit && target !== 'fitw' && dimsPtRef.current.length) {
+      const s = scaleRef.current;
+      const landTop = topAt(pageIndex, s) - layoutMetricsRef.current.gap * s;
+      if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
+        pendingAnchorRef.current = { ...pendingAnchorRef.current, top: landTop, pageIndex };
+      } else {
+        el.scrollTop = Math.max(0, landTop);
+      }
+    }
+  }, [applyAnchoredScale]);
 
   const goToPage = useCallback((n) => {
     const el = scrollerRef.current;
@@ -2504,8 +2534,27 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
     // tops are raw-content-space; padTop shifts the painted page down by that much.
     // (When padTop > 0 the whole doc fits and maxTop clamps this to 0 anyway.)
-    el.scrollTop = Math.max(0, padTopRef.current + tops[i] - layoutMetricsRef.current.padTop);
+    // UX 2026-09-23 (owner: right rail audit): the page lands with its own
+    // (zoom-proportional) top gap showing — the same margin page 1 has at the
+    // top of the document — not with its edge flush against the viewer top.
+    // At Fit page that shows exactly one whole page, gap above and below.
+    el.scrollTop = Math.max(0, padTopRef.current + tops[i] - layoutMetricsRef.current.padTop
+      - layoutMetricsRef.current.gap * scaleRef.current);
     el.scrollLeft = Math.min(el.scrollLeft, getPageHorizontalScrollMax(i, scaleRef.current));
+    // The page you asked for IS the current page (the scroll event that
+    // follows keeps it while it stays fully visible), so the rail never shows
+    // a neighbour after a jump — including at the end of the document, where
+    // the last pages cannot scroll to the top of the view.
+    if (currentPageRef.current !== i + 1) {
+      const prev = currentPageRef.current;
+      currentPageRef.current = i + 1;
+      cb.current.onPageChanged?.({
+        currentPageNumber: i + 1,
+        previousPageNumber: prev ?? null,
+        pageCount: numPagesRef.current,
+        raw: { scrollTop: el.scrollTop },
+      });
+    }
     return true;
   }, [cancelPanInertia, getPageHorizontalScrollMax]);
 
@@ -2633,6 +2682,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         zoomTo: (pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) zoomToScale(s); },
         fitToPage: () => zoomToScale('fit'),
         fitToWidth: () => zoomToScale('fitw'),
+        fitToHeight: () => zoomToScale('fith'),
         initiateMouseZoom: (x, y, pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) applyAnchoredScale(s, Number(x) || 0, Number(y) || 0); },
       },
       // document / thumbnails / bookmarks

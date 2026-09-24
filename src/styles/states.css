@@ -180,8 +180,23 @@
    all while their press already worked, which is the reverse of the usual bug.
    -------------------------------------------------------------------------- */
 @media (hover: hover) and (pointer: fine) {
-  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):hover:not(:active) {
+  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):not([data-glyph-only]):hover:not(:active) {
     background-color: var(--hover) !important;
+  }
+  /* UX 2026-09-23 (owner: right rail audit; house rule "no box behind a
+     glyph"): the rail's GLYPH buttons — Zoom in/out, page up/down, Fit —
+     paint no hover plate. The glyph brightens and grows a touch instead, the
+     same hover as the phone chrome's lone icons and the hub's grips. The two
+     number fields keep their plate: they are fields, like the phone's page
+     fraction. An engaged (gold) Fit keeps its gold. */
+  #chrome-right-host button[data-glyph-only]:not(:disabled):not([aria-disabled='true']):hover:not(:active) {
+    background-color: transparent !important;
+  }
+  #chrome-right-host button[data-glyph-only]:not(:disabled):not([aria-disabled='true']):not([data-active='true']):hover:not(:active) {
+    color: var(--text-1) !important;
+  }
+  #chrome-right-host button[data-glyph-only]:not(:disabled):not([aria-disabled='true']):hover:not(:active) > * {
+    transform: scale(1.12);
   }
   /* "Export annotated PDF" is a .chrome-control that sets
      `background: 'transparent'` inline, so the class's own hover never showed.
