@@ -1495,7 +1495,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [syncTopRoom]);
+    // pageCount: the scroller only mounts once the document has pages, so an
+    // effect keyed on syncTopRoom alone ran once with no scroller and never
+    // attached (found live 2026-09-23: the strips' room stayed 0). The COUNT,
+    // not the pageSizes array, which is a new array on many renders and would
+    // tear the observer down before its first measurement ran.
+  }, [syncTopRoom, pageSizes?.length || 0]);
 
   // Hold the page still when the room changes: move the scroll offset by the
   // same amount, in the same frame the content's top margin changes.
