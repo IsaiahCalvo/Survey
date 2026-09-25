@@ -2456,12 +2456,25 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
     // lower late commit visible on the next sweep; Yjs makes overlap free.
     let cursor = state.replayFromSeq;
     let applied = 0;
+    let seen = 0;
     const stopped = { stop: true };
+    const pruned = { pruned: true };
     try {
       // Byte-safe pages (w26): an oversized row shrinks the page instead of
       // failing the whole catch-up.
       await readWalRowsAfter(state, cursor, 'realtime catch-up read', async (row) => {
         if (state.destroyed) throw stopped; // handle torn down mid-sweep — stop touching the doc
+        // w36: the server prunes WAL rows a newer stored checkpoint covers
+        // once they are old (supabase/proposed/..._w36_prune_annotation_wal).
+        // Seqs are gapless per document (allocated under the document lock),
+        // so a first row past cursor + 1 means rows this screen still needed
+        // are gone (it slept or stayed offline for days): applying the rest
+        // would silently miss those edits. Take the stored checkpoint in
+        // instead (recoverFromPrunedTail). Rows written before the July
+        // 2026 WAL migration can carry identity gaps; for those this costs
+        // one unneeded checkpoint download, never a wrong result.
+        if (seen === 0 && Number(row.seq) > Number(cursor) + 1) throw pruned;
+        seen += 1;
         try {
           // clientId is stable per install, not per open handle. Another tab or
           // a handle still tearing down can therefore author a row with OUR
@@ -2487,6 +2500,9 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
         if (cursor > state.coveredSeq) state.coveredSeq = cursor;
       });
     } catch (error) {
+      if (error === pruned) {
+        return recoverFromPrunedTail(state, cursor);
+      }
       if (error !== stopped) {
         // coveredSeq stays on the last applied row — the next SUBSCRIBED retries from here
         console.warn('[annotationDocSync] post-subscribe catch-up read failed', error?.message);
@@ -2504,6 +2520,41 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
     if (counted) state.catchupPending = Math.max(0, (Number(state.catchupPending) || 0) - 1);
   });
   return state.catchupChain;
+}
+
+// w36: catch-up found the rows after its baseline pruned (see catchUpTail).
+// Take in the stored checkpoint and the rows after it, exactly as a cloud row
+// is taken in (live, accepted, local copy, staged), then move the baselines up
+// to it so the next catch-up starts where rows still exist. The snapshot base
+// identity (what this screen's next checkpoint compares against) is left
+// alone: a checkpoint queued meanwhile still takes the normal refused-and-
+// rebase path instead of racing this. One checkpoint download, only for a
+// screen that missed more than the server's retention window.
+async function recoverFromPrunedTail(state, fromSeq) {
+  if (state.destroyed || !state.supabase) return false;
+  console.warn('[annotationDocSync] catch-up rows after seq', fromSeq, 'were pruned; taking the stored checkpoint in');
+  let latest;
+  try {
+    latest = await loadLatestCloudCheckpoint(state);
+  } catch (error) {
+    console.warn('[annotationDocSync] pruned-tail recovery failed; retrying on the next catch-up', error?.message);
+    return false;
+  }
+  if (state.destroyed) return false;
+  try {
+    applyAuthoritativeCloudUpdate(state, latest.update);
+  } catch (error) {
+    console.warn('[annotationDocSync] pruned-tail recovery apply failed', error?.message);
+    return false;
+  }
+  const covered = Number(latest.coveredSeq) || 0;
+  if (covered > state.lastSeq) state.lastSeq = covered;
+  if (covered > state.coveredSeq) state.coveredSeq = covered;
+  const base = Number(latest.baseAtSeq) || 0;
+  if (base > state.replayFromSeq) state.replayFromSeq = base;
+  notifyChange(state);
+  void queueEraseOutboxDrain(state);
+  return true;
 }
 
 function currentSyncStatus(state) {

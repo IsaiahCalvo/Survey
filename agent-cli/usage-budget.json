@@ -1,19 +1,21 @@
 {
-  "_comment": "w34 (2026-09-25): per-user, per-phase ceilings for agent-cli/usage-budget-probe.mjs with its default script (idle 5 min, then 20 strokes, 10 erases, 5 moves each) on debug/fixtures/clickable-link-test.pdf. Picked by --users (byUsers['1'] / byUsers['3']). Raise any number only on purpose, with the reason, in the same commit. w35 (2026-09-25, combined w32+w33+w34 main plus the w35 fixes, dev server, prod database, persistent profiles, other stored files blocked): re-measured and tightened to measured + a small margin. Checkpoints: w33's cadence (one screen per 40-row boundary it owns, receivers never) measured 0 per phase with 1 user (39 rows, no boundary) and 0-1 per user per phase with 3 users (was 4-14); rows: an erase is now 1 row + 1 follow-up ack on the erasing screen only (other screens wrote a row each, and a same-user screen a second ack). RAISED on purpose: broadcastsSent in draw (22 -> 75) and 3-user draw billableRealtimeMessages (140 -> 285) because w32 (owner request, merged after w34 measured) streams live ink while a stroke is drawn (at most 8 messages/s per drawing screen) on top of the one new-mark preview; measured 60-65 sent and 248 billable per user for 20 probe strokes.",
+  "_comment": "w34 (2026-09-25): per-user, per-phase ceilings for agent-cli/usage-budget-probe.mjs with its default script (idle 5 min, then 20 strokes, 10 erases, 5 moves each) on debug/fixtures/clickable-link-test.pdf. Picked by --users (byUsers['1'] / byUsers['3']). Raise any number only on purpose, with the reason, in the same commit. w35 (2026-09-25, combined w32+w33+w34 main plus the w35 fixes, dev server, prod database, persistent profiles, other stored files blocked): re-measured and tightened to measured + a small margin. Checkpoints: w33's cadence (one screen per 40-row boundary it owns, receivers never) measured 0 per phase with 1 user (39 rows, no boundary) and 0-1 per user per phase with 3 users (was 4-14); rows: an erase is now 1 row + 1 follow-up ack on the erasing screen only (other screens wrote a row each, and a same-user screen a second ack). RAISED on purpose: broadcastsSent in draw (22 -> 75) and 3-user draw billableRealtimeMessages (140 -> 285) because w32 (owner request, merged after w34 measured) streams live ink while a stroke is drawn (at most 8 messages/s per drawing screen) on top of the one new-mark preview; measured 60-65 sent and 248 billable per user for 20 probe strokes. w36 (2026-09-25, stay inside Supabase Free): new phase reopen1 (each user reloads the app and opens the document again; probe --reopens, default 1). The device PDF cache (src/services/pdfByteCache.js) serves an unchanged PDF after one Storage metadata check: measured 0 PDF downloads and 0 PDF bytes, 1 check of ~1 KB, per reopen; before, every reopen downloaded the whole file again (23.9 KB for this fixture, 1-25 MB for real drawings). storageDownloads no longer counts those metadata checks; storageInfoChecks does.",
   "byUsers": {
     "1": {
       "idle": { "storageDownloads": 0, "httpRequests": 25, "walAppends": 0, "snapshotWrites": 0, "historyEvents": 0, "channelJoins": 0, "billableRealtimeMessages": 0 },
       "draw": { "walAppends": 22, "snapshotWrites": 1, "httpRequests": 50, "broadcastsSent": 75, "historyEvents": 22, "channelJoins": 0, "storageDownloads": 0 },
       "erase": { "walAppends": 14, "snapshotWrites": 1, "httpRequests": 18, "historyEvents": 12, "channelJoins": 0, "storageDownloads": 0 },
       "move": { "walAppends": 7, "snapshotWrites": 1, "httpRequests": 14, "historyEvents": 6, "channelJoins": 0, "storageDownloads": 0 },
-      "settle": { "walAppends": 0, "snapshotWrites": 0, "httpRequests": 6, "storageDownloads": 0 }
+      "settle": { "walAppends": 0, "snapshotWrites": 0, "httpRequests": 6, "storageDownloads": 0 },
+      "reopen1": { "storageDownloads": 0, "storageDownloadBytes": 0, "storageInfoChecks": 1 }
     },
     "3": {
       "idle": { "storageDownloads": 0, "httpRequests": 25, "walAppends": 0, "snapshotWrites": 0, "historyEvents": 0, "channelJoins": 0, "billableRealtimeMessages": 0 },
       "draw": { "walAppends": 22, "snapshotWrites": 2, "httpRequests": 55, "broadcastsSent": 75, "historyEvents": 22, "channelJoins": 0, "storageDownloads": 0, "billableRealtimeMessages": 285 },
       "erase": { "walAppends": 14, "snapshotWrites": 2, "httpRequests": 24, "historyEvents": 12, "channelJoins": 0, "storageDownloads": 0 },
       "move": { "walAppends": 9, "snapshotWrites": 2, "httpRequests": 18, "historyEvents": 8, "channelJoins": 0, "storageDownloads": 0 },
-      "settle": { "walAppends": 0, "snapshotWrites": 1, "httpRequests": 6, "storageDownloads": 0 }
+      "settle": { "walAppends": 0, "snapshotWrites": 1, "httpRequests": 6, "storageDownloads": 0 },
+      "reopen1": { "storageDownloads": 0, "storageDownloadBytes": 0, "storageInfoChecks": 1 }
     }
   }
 }
