@@ -486,7 +486,14 @@ const getPlainPathPagePolygons = (pathObj, interactionRadius = 0) => {
   }
   let localPolygons;
   if (fillPolygons.length && strokePolygons.length) {
-    localPolygons = normalizeMultiPolygon(union(fillPolygons, strokePolygons));
+    try {
+      localPolygons = normalizeMultiPolygon(union(fillPolygons, strokePolygons));
+    } catch {
+      // The vendored polygon engine stops a non-converging boolean with an
+      // error instead of freezing (w39). Empty polygons send both callers
+      // to their analytic path hit test.
+      localPolygons = [];
+    }
   } else {
     localPolygons = fillPolygons.length ? fillPolygons : strokePolygons;
   }

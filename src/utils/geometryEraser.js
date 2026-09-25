@@ -454,7 +454,7 @@ const strokeToPolygon = (polyline, width) => {
  * Boolean subtraction of eraser from path.
  * Converts stroke to outline if necessary.
  */
-export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
+const booleanErasePathUnguarded = (pathObj, eraserPath, eraserRadius) => {
     if (!pathObj || !eraserPath || !eraserPath.points.length) return null;
 
     const strokeWidth = pathObj.strokeWidth || 0;
@@ -567,4 +567,16 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
         pathData: newPathCommands,
         isConvertedToOutline: strokeWidth > 0 // Only flag conversion if this was originally a stroked path
     };
+};
+
+// The vendored polygon engine stops a non-converging boolean with an error
+// instead of freezing the page (w39, 2026-09-25). A failed erase leaves the
+// path unchanged (null = no change) rather than breaking the eraser gesture.
+export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
+    try {
+        return booleanErasePathUnguarded(pathObj, eraserPath, eraserRadius);
+    } catch (error) {
+        console.warn('[EraserSkippedMark] legacy boolean erase failed; path left unchanged:', error?.name || error);
+        return null;
+    }
 };

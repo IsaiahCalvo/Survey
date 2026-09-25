@@ -27,7 +27,8 @@
  *   1. isBelow() uses the exact orient2d predicate (the root fix): the event
  *      order is now antisymmetric wherever specialCases() relies on it.
  *   2. Hard, deterministic bounds on every unbounded loop (orderEvents'
- *      bubble sort, the subdivide sweep, the contour walk). Past a bound the
+ *      bubble sort; the subdivide sweep, chiefly through a cap on how often
+ *      one input segment may be divided; the contour walk). Past a bound the
  *      operation throws MartinezNonConvergenceError instead of spinning;
  *      callers already treat a thrown boolean as "leave this mark as it was".
  *      Iteration counts, never wall-clock time, so every screen replaying the
@@ -1248,9 +1249,25 @@ const martinezExports = {};
    * @param  {Queue} queue
    * @return {Queue}
    */
+  // Survey: how many times one ORIGINAL input segment may be divided. Two
+  // straight segments cross at most once (an overlap splits each at most
+  // twice), so a valid sweep divides a segment at most about twice per other
+  // segment. A near-coincident pair that keeps re-dividing its own pieces
+  // (4 GB in 20 s upstream) passes this quickly. Set per sweep in subdivide().
+  var divisionCap = Infinity;
+
   function divideSegment(se, p, queue)  {
     var r = new SweepEvent(p, false, se,            se.isSubject);
     var l = new SweepEvent(p, true,  se.otherEvent, se.isSubject);
+
+    var tally = se.divisionTally;
+    if (tally) {
+      tally.count++;
+      if (tally.count > divisionCap) {
+        throw new MartinezNonConvergenceError('subdivide', tally.count + ' divisions of one segment');
+      }
+      r.divisionTally = l.divisionTally = tally;
+    }
 
     /* eslint-disable no-console */
     if (equals(se.point, se.otherEvent.point)) {
@@ -1582,12 +1599,14 @@ const martinezExports = {};
 
     var prev, next, begin;
 
-    // Survey: each intersection adds at most four events. Over 613,000 real
-    // sweeps (w39 stroke outlines, erases, dense and jittery benchmarks) the
-    // most any took was 2.9x its starting events. A near-coincident edge pair
-    // that re-divides forever (4 GB after 20 s upstream) trips this bound in
-    // well under a second instead.
-    var iterationBudget = 16 * eventQueue.length + 20000;
+    // Survey: the per-segment division cap (see divideSegment) is the real
+    // bound: a valid sweep divides one segment at most ~2x per other segment
+    // (eventQueue holds two events per segment). The total below is only a
+    // last net; it grows with the square of the input because crossing
+    // counts do (two 45-tooth combs, a 50-tooth zigzag lasso merge, cross-
+    // hatching). A linear budget wrongly stopped those (w39 review).
+    divisionCap = eventQueue.length + 64;
+    var iterationBudget = eventQueue.length * (2 * eventQueue.length + 64) + 20000;
     var iterations = 0;
 
     while (eventQueue.length !== 0) {
@@ -1973,6 +1992,8 @@ const martinezExports = {};
       }
 
       e1.contourId = e2.contourId = depth;
+      // Survey: shared by every piece this segment is later divided into.
+      e1.divisionTally = e2.divisionTally = { count: 0 };
       if (!isExteriorRing) {
         e1.isExteriorRing = false;
         e2.isExteriorRing = false;

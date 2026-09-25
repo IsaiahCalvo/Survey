@@ -359,4 +359,35 @@ test('an outline that cannot be verified is refused, and the eraser leaves that 
     annotationId: 'refused', failedStages: { outline: 1 }, recovered: false, skipped: true,
   }]);
   assert.ok(warnings.some((text) => text.startsWith('[EraserSkippedMark]')), 'a diagnostic is logged');
+
+  // Whole-mark erase needs no outline: the same mark is still removable.
+  console.warn = () => {};
+  let full;
+  try {
+    full = erasePageAnnotations({
+      pageAnnotations: { objects: [object] },
+      eraserPoints: [{ x: -16.3, y: -27.1 }],
+      eraserRadius: 2,
+      mode: 'entire',
+    });
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(full.didChange, true);
+  assert.deepEqual(full.deletedIds, ['refused']);
+  assert.deepEqual(full.pageAnnotations.objects, []);
+  // ...and a miss still removes nothing.
+  console.warn = () => {};
+  let miss;
+  try {
+    miss = erasePageAnnotations({
+      pageAnnotations: { objects: [object] },
+      eraserPoints: [{ x: 60, y: 60 }],
+      eraserRadius: 2,
+      mode: 'entire',
+    });
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(miss.didChange, false);
 });

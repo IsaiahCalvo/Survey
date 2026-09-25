@@ -133,6 +133,55 @@ test('a runaway subdivision stops at the hard bound with a typed error instead o
   );
 });
 
+test('the bounds never stop a valid boolean with many crossings (combs, zigzag lasso merge)', async () => {
+  // w39 review: a first, linear sweep budget wrongly stopped these; crossing
+  // counts grow with the square of the input. Upstream finishes each.
+  const { diff, intersection, union } = await import('../src/vendor/martinezPolygonClipping.js');
+  const { mergeRegions } = await import('../src/utils/regionMath.js');
+  const comb = (teeth, extraPerEnd, vertical) => {
+    const ring = [];
+    const length = teeth * 3 + 5;
+    for (let t = 0; t < teeth; t += 1) {
+      const x0 = t * 3;
+      ring.push([x0, 0], [x0, length]);
+      for (let j = 1; j <= extraPerEnd; j += 1) {
+        const a = Math.PI - (Math.PI * j) / (extraPerEnd + 1);
+        ring.push([x0 + 0.5 + Math.cos(a) * 0.5, length + Math.sin(a) * 0.5]);
+      }
+      ring.push([x0 + 1, length], [x0 + 1, 0]);
+    }
+    ring.push([teeth * 3, 0], [teeth * 3, -1], [0, -1], [0, 0]);
+    const oriented = vertical ? ring : ring.map(([x, y]) => [y, x]);
+    return [oriented.map(([x, y]) => (vertical ? [x, y] : [x + 0.37, y + 0.53]))];
+  };
+  for (const [teeth, extra] of [[45, 0], [80, 8]]) {
+    const a = comb(teeth, extra, true);
+    const b = comb(teeth, extra, false);
+    for (const operation of [diff, union, intersection]) {
+      assert.doesNotThrow(() => operation(a, b), `${teeth}-tooth combs, ${operation.name}`);
+    }
+  }
+  const zigzagLasso = (count, vertical) => {
+    const coordinates = [];
+    for (let t = 0; t < count; t += 1) {
+      const x0 = t * 8;
+      coordinates.push([x0, 0], [x0 + 2, count * 8], [x0 + 4, 0]);
+    }
+    coordinates.push([count * 8, -5], [0, -5]);
+    const points = vertical ? coordinates : coordinates.map(([x, y]) => [y, x]);
+    return { operation: 'add', coordinates: points.flat() };
+  };
+  const error = console.error;
+  console.error = () => {};
+  let merged;
+  try {
+    merged = mergeRegions(zigzagLasso(50, true), zigzagLasso(50, false));
+  } finally {
+    console.error = error;
+  }
+  assert.ok(merged, 'two 50-tooth zigzag lassos merge');
+});
+
 test('regression: erasing where the cut mask runs away still applies the bite, promptly', () => {
   const child = runChild(`
     import { erasePageAnnotations } from './src/utils/pageSpaceEraser.js';

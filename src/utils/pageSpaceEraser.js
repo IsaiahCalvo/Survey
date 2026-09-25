@@ -1186,7 +1186,29 @@ export function erasePageAnnotations({
         eraserRadius: radius,
       });
     } catch (error) {
-      failedStages.push(skipMarkForFailedGeometry(object, index, 'outline', error));
+      const failure = skipMarkForFailedGeometry(object, index, 'outline', error);
+      failedStages.push(failure);
+      // Whole-mark erase needs only "did the eraser touch it", not an exact
+      // outline, so a mark whose outline cannot be built is still erasable.
+      // Partial erase leaves the mark exactly as it was.
+      if (operation === 'full') {
+        let touched = false;
+        try {
+          touched = eraserStrokeTouchesObject({ eraserPoints: points, eraserRadius: radius, object });
+        } catch {
+          touched = false;
+        }
+        if (touched) {
+          const objectId = getEraserCandidateId(object, index);
+          touchedIds.push(objectId);
+          deletedIds.push(objectId);
+          deletedIndexes.add(index);
+          const compositeId = getPdfAppearanceCompositeId(object);
+          if (compositeId) fullyDeletedAppearanceGroups.add(compositeId);
+          failure.recovered = true;
+          failure.skipped = false;
+        }
+      }
       return;
     }
     if (!annotation) return;
