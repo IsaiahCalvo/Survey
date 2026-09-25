@@ -341,3 +341,84 @@ test('a big import checkpoints once, after its last split part', async () => {
   assert.equal(cloud.snapshot.at_seq, cloud.rows.length, 'after its last part');
   await handle.destroy();
 });
+
+// Review B (w33): an idle capture queued behind a slow checkpoint upload,
+// with an own stroke landing in between, must not claim that stroke's row
+// without holding it (at_seq over-claim = the stroke lost on reopen).
+test('a checkpoint queued behind a slow one never claims a row its bytes lack', async () => {
+  const documentId = 'checkpoint-queued-behind';
+  let release = null;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let calls = 0;
+  const cloud = createCloud(documentId, {
+    async beforeSnapshot() {
+      calls += 1;
+      if (calls === 1) await gate; // the first upload is slow
+    },
+  });
+  const handle = await open(cloud, 'user-a', 'a', documentId, {
+    checkpointPolicy: { everyRows: 4, idleMs: 60, minTailRows: 1 },
+  });
+  const mine = [];
+  for (let index = 0; index < 4; index += 1) { strokeOn(handle, mine, `s${index}`); await handle.drain(); }
+  await wait(60);
+  assert.equal(calls, 1, 'the row-4 checkpoint is uploading');
+  strokeOn(handle, mine, 's4');
+  await wait(110); // the idle checkpoint queues behind it
+  strokeOn(handle, mine, 's5');
+  await wait(20);
+  release();
+  await wait(250);
+  await handle.destroy();
+  const reopened = await open(cloud, 'user-b', 'b', documentId, { enableRealtime: false });
+  assert.deepEqual(markIds(reopened.getByPage()), ['s0', 's1', 's2', 's3', 's4', 's5']);
+  await reopened.destroy();
+});
+
+// Review B (w33): the next boundary owned by a screen that did not write the
+// stored checkpoint must not download it; a failed boundary checkpoint is
+// still owed and written once the network is back.
+test('three screens, 125 strokes: at most one stored-checkpoint download, tail under 80 rows, a failed one is retried', async () => {
+  const documentId = 'checkpoint-ninety';
+  let failing = false;
+  const cloud = createCloud(documentId, {
+    async beforeSnapshot() { if (failing) throw new Error('network down'); },
+  });
+  const handles = [
+    await open(cloud, 'user-a', 'a', documentId),
+    await open(cloud, 'user-b', 'b', documentId),
+    await open(cloud, 'user-c', 'c', documentId),
+  ];
+  await settle(...handles);
+  const bodyReads = cloud.stats.snapshotBodyReads;
+  const mine = handles.map(() => []);
+  const draw = async (from, to) => {
+    for (let index = from; index < to; index += 1) {
+      const who = index % 3;
+      const others = handles[who].getByPage()?.[1]?.objects || [];
+      mine[who].push(rect(`n${index}`));
+      handles[who].applyByPage({ 1: { objects: [...others.filter((object) => !mine[who].some((m) => m.data.id === object?.data?.id)), ...mine[who]] } });
+      await wait(5);
+    }
+    await settle(...handles);
+    await wait(80);
+  };
+  await draw(0, 45);
+  await draw(45, 90);
+  // A screen that did not write the stored checkpoint skips its boundary
+  // while that one is recent (under 2 x 40 rows behind), and takes it in
+  // (one download) only past that, so the reopen tail stays under 80 rows.
+  assert.ok(cloud.stats.snapshotBodyReads - bodyReads <= 1, `${cloud.stats.snapshotBodyReads - bodyReads} stored-checkpoint downloads`);
+  assert.ok(cloud.stats.snapshotCalls.length <= 3, `${cloud.stats.snapshotCalls.length} uploads for 90 strokes`);
+  assert.ok(cloud.rows.length - cloud.snapshot.at_seq < 80, `stored at ${cloud.snapshot.at_seq} of ${cloud.rows.length}`);
+
+  failing = true;
+  await draw(90, 125); // row 120 is due; its upload fails
+  const storedBefore = cloud.snapshot.at_seq;
+  failing = false;
+  for (const handle of handles) await handle.destroy();
+  assert.ok(cloud.snapshot.at_seq > storedBefore, `the owed checkpoint was written on close (${storedBefore} -> ${cloud.snapshot.at_seq})`);
+  const reopened = await open(cloud, 'user-d', 'd', documentId, { enableRealtime: false });
+  assert.equal(markIds(reopened.getByPage()).length, 125);
+  await reopened.destroy();
+});

@@ -32,6 +32,7 @@ import {
   writeAnnotationMark,
 } from '../src/services/annotationMarkStore.js';
 import {
+  DERIVED_POLYGONS_MARKER,
   DERIVED_POLYGONS_PREFIX,
   derivePolygonsFromPath,
   fromStoredMarkObject,
@@ -178,7 +179,7 @@ test('polygons are stored as their derivation only when it gives back exactly th
   const path = [['M', 0, 0], ['L', 10, 0], ['L', 10, 10], ['L', 0, 10], ['Z']];
   const exact = derivePolygonsFromPath(path, 'nonzero');
   const ink = { type: 'path', path, polygons: exact, fillRule: 'nonzero', data: { id: 'a' } };
-  assert.equal(toStoredMarkObject(ink).polygons, `${DERIVED_POLYGONS_PREFIX}nonzero`);
+  assert.equal(toStoredMarkObject(ink).polygons, DERIVED_POLYGONS_MARKER);
   assert.deepEqual(fromStoredMarkObject(toStoredMarkObject(ink)), ink);
 
   const nudged = structuredClone(exact);
@@ -190,7 +191,7 @@ test('polygons are stored as their derivation only when it gives back exactly th
   assert.equal(toStoredMarkObject(noPath), noPath);
 
   // A marker this build does not know reads as "no polygons", never a string.
-  const unknown = fromStoredMarkObject({ ...ink, polygons: `${DERIVED_POLYGONS_PREFIX}winding-9` });
+  const unknown = fromStoredMarkObject({ ...ink, polygons: `${DERIVED_POLYGONS_PREFIX}v9` });
   assert.equal('polygons' in unknown, false);
   assert.equal(unknown.path, path);
 });
@@ -205,7 +206,7 @@ test('a write compares compact forms: re-saving a read mark writes nothing, a pa
   const doc = new Y.Doc();
   writeAnnotationMark(doc, 'a', 1, ink);
   const stored = doc.getMap(MARKS_MAP).get('a').get('o');
-  assert.equal(stored.get('polygons'), `${DERIVED_POLYGONS_PREFIX}nonzero`);
+  assert.equal(stored.get('polygons'), DERIVED_POLYGONS_MARKER);
   assert.equal(stored.get('data').has('pdfInkSourceGeometry'), false);
 
   const readBack = readAnnotationEntry(doc, 'a').o;
@@ -219,7 +220,7 @@ test('a write compares compact forms: re-saving a read mark writes nothing, a pa
   const edited = { ...readBack, path: bigger, width: 20, height: 20, polygons: derivePolygonsFromPath(bigger, 'nonzero') };
   writeAnnotationMark(doc, 'a', 1, edited, { base: readBack, basePage: 1 });
   assert.deepEqual(readAnnotationEntry(doc, 'a').o.polygons, derivePolygonsFromPath(bigger, 'nonzero'));
-  assert.equal(stored.get('polygons'), `${DERIVED_POLYGONS_PREFIX}nonzero`, 'marker unchanged, no write needed');
+  assert.equal(stored.get('polygons'), DERIVED_POLYGONS_MARKER, 'marker unchanged, no write needed');
 
   const clipped = [[[[0, 0], [5, 0], [5, 5], [0, 0]]]];
   writeAnnotationMark(doc, 'a', 1, { ...edited, polygons: clipped }, { base: edited, basePage: 1 });
@@ -311,4 +312,54 @@ test('two screens compacting at once converge; a concurrent edit of another fiel
   assert.ok(exactlyEqualNumbers(merged.polygons, base.polygons));
   assert.equal(merged.data.pdfInkSourceGeometry, undefined);
   assert.equal(a.getMap(LEGACY_ANNOTATIONS_MAP).size, 0);
+});
+
+// Review A (w33): a mark stored before w33 still holds an explicit polygons
+// array its path reproduces. An edit of its path must write the new polygons,
+// even though both the old and new copies compact to the same marker.
+test('a path edit of a not-yet-compacted mark writes the new polygons', () => {
+  const square = (size) => [['M', 0, 0], ['L', size, 0], ['L', size, size], ['L', 0, size], ['Z']];
+  const doc = new Y.Doc();
+  const old = {
+    type: 'path', path: square(10), left: 5, top: 5, width: 10, height: 10,
+    polygons: derivePolygonsFromPath(square(10), 'nonzero'), fillRule: 'nonzero', data: { id: 'old' },
+  };
+  writeLegacyLayoutMark(doc, 'old', 1, old); // the pre-w33 layout: explicit array
+  assert.ok(Array.isArray(doc.getMap(MARKS_MAP).get('old').get('o').get('polygons')));
+  const base = readAnnotationEntry(doc, 'old').o;
+  const moved = { ...base, path: square(20), width: 20, height: 20, polygons: derivePolygonsFromPath(square(20), 'nonzero') };
+  writeAnnotationMark(doc, 'old', 1, moved, { base, basePage: 1, echoVersions: [base] });
+  assert.deepEqual(readAnnotationEntry(doc, 'old').o.polygons, derivePolygonsFromPath(square(20), 'nonzero'));
+});
+
+// Review A (w33): the marker rebuilds with the mark's own fill rule, so a
+// compaction racing an erase that switched the mark to evenodd with a hole
+// keeps the hole (the marker names no rule of its own).
+test('a compaction racing an erase that made a hole keeps the hole', () => {
+  const outer = [['M', 0, 0], ['L', 30, 0], ['L', 30, 30], ['L', 0, 30], ['Z']];
+  const withHole = [...outer, ['M', 10, 10], ['L', 20, 10], ['L', 20, 20], ['L', 10, 20], ['Z']];
+  const start = new Y.Doc();
+  writeLegacyLayoutMark(start, 'm', 1, {
+    type: 'path', path: outer, left: 0, top: 0, width: 30, height: 30, isPdfImported: true,
+    polygons: derivePolygonsFromPath(outer, 'nonzero'), fillRule: 'nonzero',
+    data: { id: 'm', pdfInkSourceGeometry: { inkLists: [] } },
+  });
+  start.getMap(META_MAP).set(EMBEDDED_IMPORT_MARKER_KEY, { at: 'x' });
+  const a = new Y.Doc();
+  const b = new Y.Doc();
+  Y.applyUpdate(a, Y.encodeStateAsUpdate(start));
+  Y.applyUpdate(b, Y.encodeStateAsUpdate(start));
+  compactAnnotationStore(b);
+  const base = readAnnotationEntry(a, 'm').o;
+  const holePolygons = derivePolygonsFromPath(withHole, 'evenodd');
+  assert.equal(holePolygons[0].length, 2, 'evenodd leaves a hole');
+  writeAnnotationMark(a, 'm', 1, { ...base, path: withHole, fillRule: 'evenodd', polygons: holePolygons }, { base, basePage: 1 });
+  for (const order of [[a, b], [b, a]]) {
+    const merged = new Y.Doc();
+    for (const d of order) Y.applyUpdate(merged, Y.encodeStateAsUpdate(d));
+    const read = readAnnotationEntry(merged, 'm').o;
+    assert.deepEqual(read.path, withHole);
+    assert.equal(read.fillRule, 'evenodd');
+    assert.deepEqual(read.polygons, holePolygons, 'the hole survives whichever polygons write wins');
+  }
 });

@@ -4555,7 +4555,9 @@ test('the 40-op accepted-prefix snapshot excludes a concurrently queued denied o
     enableLocal: false,
     enableRealtime: false,
     doc,
-    // w33: the row-40 checkpoint waits for a quiet moment; none here.
+    // w33: the row-40 checkpoint waits for a quiet moment (none here) and
+    // for no pending append, so the denied op is always settled before it
+    // encodes; this still pins that the checkpoint holds Y and not Z.
     checkpointPolicy: { dueQuietMs: 0 },
   });
   for (let index = 0; index < 39; index += 1) handle.setMeta(`pre-${index}`, index);

@@ -31,7 +31,8 @@
 // the pass at once converge). A concurrent edit of another field of a mark is
 // untouched. A concurrent edit that sets `polygons` competes with the marker
 // by Yjs's usual last-writer-wins per key, exactly as two polygon writes did
-// before; the marker then reads as the polygons of whichever path won.
+// before; the marker then reads as the polygons of whichever path and fill
+// rule won (it names no rule of its own).
 //
 // Pure module: runs in Node tests.
 

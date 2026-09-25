@@ -481,15 +481,27 @@ appearance path, and each paint operation with its path again).
     the marks (`withoutUnstoredFieldsByPage`), so the screen's copy equals
     what the store reads back (an erase compares the two).
   * `polygons` that `filledOutlineCommandsToPolygonSet(path, rule)` gives back
-    EXACTLY (checked number for number with Object.is when written) are stored
-    as the marker `~polygons-from-path:v1:<rule>` and rebuilt on read; anything
-    else (an erased outline, a user pen stroke, float differences) stays an
-    explicit array. Package 2: 2,559 of 2,922 polygon sets derive exactly;
-    rebuilding all of them takes ~90 ms (Node). A marker a build does not know
-    reads as "no polygons" (the renderer draws from `path`). If that function
-    ever changes its output, bump the marker version.
+    EXACTLY, with the mark's own `fillRule` ('evenodd', else 'nonzero'), are
+    stored as the marker `~polygons-from-path:v1` (checked number for number
+    with Object.is when written) and rebuilt on read; anything else (a user
+    pen stroke, float differences, polygons made with the other rule) stays an
+    explicit array. Erased outlines usually do derive exactly (evenodd), so
+    they get the marker too. Package 2: 2,559 of 2,922 polygon sets derive
+    exactly; rebuilding all of them takes ~90 ms (Node). A marker a build does
+    not know reads as "no polygons" (the renderer draws from `path`). If that
+    function ever changes its output, bump the marker version.
+  * The marker names no rule: `path` (in `#pointGeometry`), `fillRule` and
+    `polygons` are separate keys, so after concurrent edits it always rebuilds
+    from the path and rule that won (review A: a compaction racing an erase
+    that made a hole keeps the hole).
   * Writes compare compact forms, so an untouched mark writes nothing and a
-    field the store does not keep never reads as a change.
+    field the store does not keep never reads as a change. A base or echo copy
+    takes the marker only while the store already holds one; a mark still
+    stored with an explicit array (not compacted yet) gets its new polygons
+    written when its path changes (review A).
+  * Hardening: the erase compare-and-swap and the "imported mark edited"
+    check ignore the dropped field, so a screen copy that still carries it is
+    the same mark.
 * One-time compaction of stores written before this
   (`src/services/annotationStoreCompaction.js`, `useAnnotationDoc`): on a
   writable, unlocked open, ~6-9 s after realtime is ready, once the embedded
@@ -508,7 +520,11 @@ appearance path, and each paint operation with its path again).
   converge; a concurrent edit of any other field survives; a concurrent write
   of `polygons` competes with the marker last-writer-wins, as two polygon
   writes always did (the marker then reads as the polygons of whichever path
-  won).
+  and fill rule won).
+* After a permission refusal (rebase mode) the old-map deletes stay local
+  (only the durable maps are re-staged): no loss, just no shrink until a later
+  open. Old-map entries an out-of-date build writes after the carry-over are
+  deleted too (older builds are unsupported).
 
 Package 2 (the owner's store, Node, same bytes): snapshot 21.6 MB -> 6.3 MB
 raw, 5.50 -> 2.17 MB gzipped (11.0 -> 4.3 MB of hex on the wire); an imported
@@ -550,18 +566,39 @@ an edit durable and live), so now (`annotationDocSync.js`,
 * Unchanged: the repair checkpoint after a failed append / a gap found on
   reconnect, the explicit save (Cmd+S), and the one after the store
   compaction.
+* Before a routine upload, one small identity read (review B): if another
+  screen checkpointed since the row this screen built on and fewer than
+  2 x 40 rows followed it, this screen skips (that checkpoint covers it);
+  past that it takes the stored checkpoint in (one download, it may hold
+  repaired edits the WAL lacks) and writes on top of it. Rows this screen saw
+  by Realtime but has not read in order are read first, so at_seq is the WAL
+  head (otherwise the upload is refused).
 * A refused upload whose stored checkpoint is still the one this screen built
   on (only the WAL head moved) reads the new rows and retries; it no longer
-  downloads the whole stored checkpoint. The retry merges the accepted state
-  in the same tick as it takes at_seq, so at_seq never claims a row the bytes
-  lack (the full-refresh retry does the same now). A changed stored checkpoint
-  still takes the full refresh (it may hold repaired edits the WAL lacks).
+  downloads the whole stored checkpoint. A routine upload refused because
+  another screen just checkpointed gives up. A changed stored checkpoint still
+  takes the full refresh on the repair and save paths.
+* at_seq never claims a row the bytes lack: bytes encoded before the snapshot
+  chain reached them (the chain serializes uploads) are merged with the
+  accepted state in the same tick as at_seq whenever rows were covered in
+  between (review B found an idle checkpoint queued behind a slow upload
+  losing a stroke on reopen); retries do the same.
+* A failed routine upload stays owed (next own append, idle or close writes
+  it). A live re-send row that owns a boundary counts too.
 
 Pinned by `tests/annotationCheckpointPolicy.test.mjs` against a stand-in with
 the real RPC rules: 5 paced strokes -> 0 checkpoints (8 -> exactly one idle
 one); a receiver -> 0, close included; 3 screens x 45 strokes -> 1-3
-checkpoints, only the writer of row 40, no re-download; an import page by page
--> 1.
+checkpoints, only the writer of row 40, no re-download; 3 screens x 125
+strokes -> at most one download, tail under 80 rows, a failed one retried on
+close; an import page by page -> 1; a checkpoint queued behind a slow one
+keeps every stroke. In the real app (dev server, tiny throwaway PDF): 5 paced
+strokes -> 5 WAL rows, 0 checkpoints on the drawing and the watching tab,
+closing both -> still 0.
+
+Limits: with several editors, the tail a reopen reads can reach ~80 rows
+(before, a checkpoint followed nearly every edit). A tab killed before its
+owed checkpoint leaves it to the next boundary.
 
 ## Offline edits reach peers that are already open
 

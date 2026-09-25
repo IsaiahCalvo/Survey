@@ -507,12 +507,26 @@ function writeAnnotationMarkInTransaction(doc, key, page, plainNext, {
   // w33: everything below compares and writes the compact stored form
   // (annotationMarkCodec.js), so a field the store does not keep never reads
   // as a change and derived polygons are written as their marker.
-  const next = toStoredMarkObject(plainNext);
-  const base = plainBase === undefined || plainBase === null ? plainBase : toStoredMarkObject(plainBase);
-  const echoVersions = Array.isArray(plainEchoVersions)
-    ? plainEchoVersions.map((version) => toStoredMarkObject(version))
-    : plainEchoVersions;
   const root = doc.getMap(MARKS_MAP);
+  // The polygons marker stands for "whatever the STORED path derives to", so
+  // a base or echo copy may take the marker only while the store holds one.
+  // While the store still holds an explicit array (a mark written before w33
+  // and not compacted yet), they keep their explicit arrays: a path edit then
+  // reads as a polygons change and the new polygons are written (review A).
+  const storedObjectMap = isYMap(root.get(key)) ? root.get(key).get(MARK_OBJECT_KEY) : null;
+  const storedPolygonsIsMarker = isYMap(storedObjectMap)
+    && isDerivedPolygonsMarker(storedObjectMap.get(storeKey('polygons')));
+  const toStoredCopy = (object) => {
+    if (object === undefined || object === null) return object;
+    const compact = toStoredMarkObject(object);
+    if (storedPolygonsIsMarker || compact === object || !isDerivedPolygonsMarker(compact.polygons)) return compact;
+    return { ...compact, polygons: object.polygons };
+  };
+  const next = toStoredMarkObject(plainNext);
+  const base = toStoredCopy(plainBase);
+  const echoVersions = Array.isArray(plainEchoVersions)
+    ? plainEchoVersions.map((version) => toStoredCopy(version))
+    : plainEchoVersions;
   const stored = root.get(key);
   const pageNumber = Number(page);
   const hasBaseObject = base !== undefined && base !== null;

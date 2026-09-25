@@ -22839,7 +22839,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } else {
         try {
           const {
-            annotationsByPage: importedAnnotationsWithSource,
+            annotationsByPage: importedAnnotations,
             calloutsByPage: importedAppCalloutsByPage,
             appLayerState,
             unsupportedCounts,
@@ -22848,9 +22848,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             rawPdfBytes: arrayBuffer
           });
           if (isCancelled) return;
-          // w33: the store keeps one geometry per imported mark (not the PDF's
-          // source geometry); the screen gets the same copy the store reads back.
-          const importedAnnotations = withoutUnstoredFieldsByPage(importedAnnotationsWithSource);
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
           appDebug('[PDFImport] native layer policy ' + JSON.stringify({
             documentId: pdfFile?.id || null,
@@ -26575,9 +26572,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
           ? await pdfFile.arrayBuffer()
           : null;
-        const { annotationsByPage: importedAnnotations, nativeLayerPolicyByPage } =
+        const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
+        // w33: the store keeps one geometry per imported mark, not the PDF's
+        // source geometry; the screen gets the same copy the store reads back
+        // (an erase compares the two).
+        const importedAnnotations = withoutUnstoredFieldsByPage(importedWithSource);
         // Another screen may have finished the import while this one parsed.
         if (excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY)) return;
 

@@ -40,11 +40,15 @@ function nativeAnnotationIdentity(object) {
   return clone(object?.data?.pdfNativeAnnotationIdentity || null);
 }
 
+// w33: provenance the store does not keep (annotationMarkCodec.js
+// UNSTORED_DATA_FIELDS): a screen copy that still carries it is the same mark.
+const UNSTORED_KEYS = new Set(['pdfInkSourceGeometry']);
+
 function stableSerialize(value) {
   if (value === undefined) return 'undefined';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
-  const keys = Object.keys(value).sort();
+  const keys = Object.keys(value).filter((key) => !UNSTORED_KEYS.has(key)).sort();
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`;
 }
 

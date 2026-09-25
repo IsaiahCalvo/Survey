@@ -15,11 +15,15 @@
 //     mark), and the PDF file itself still carries it. Owner ruling
 //     2026-09-24: no users, data disposable, no old-build compatibility.
 //   * `polygons` that are EXACTLY what `filledOutlineCommandsToPolygonSet`
-//     makes from the mark's own `path` are stored as a short marker string
-//     naming the fill rule used, and rebuilt on read. "Exactly" is checked
-//     at write time, number for number (Object.is), so a read gives back the
-//     very same numbers; anything else (erased marks, user pen strokes,
-//     floating-point differences) keeps its explicit array.
+//     makes from the mark's own `path` with the mark's own `fillRule`
+//     ('evenodd', else 'nonzero') are stored as a short marker string and
+//     rebuilt on read. "Exactly" is checked at write time, number for number
+//     (Object.is), so a read gives back the very same numbers; anything else
+//     (user pen strokes, floating-point differences, a derivation made with
+//     another rule) keeps its explicit array. The marker names no rule on
+//     purpose: `path`, `fillRule` and `polygons` are separate stored keys, so
+//     after concurrent edits the marker always rebuilds from the path AND
+//     rule that won (review A, w33).
 //
 // Every write goes through toStoredMarkObject and every read through
 // fromStoredMarkObject (annotationMarkStore.js), so the rest of the app only
@@ -29,12 +33,16 @@
 
 import { filledOutlineCommandsToPolygonSet } from '../utils/paperAnnotationGeometry.js';
 
-// The marker names the derivation, so a stored value can never be read with a
-// different rule than the one checked when it was written. v1 = the default
-// curve tolerance of filledOutlineCommandsToPolygonSet (0.05). If that
-// function's output ever changes, bump the version (tests pin it).
-export const DERIVED_POLYGONS_PREFIX = '~polygons-from-path:v1:';
-const DERIVED_RULES = ['nonzero', 'evenodd'];
+// v1 = filledOutlineCommandsToPolygonSet with its default curve tolerance
+// (0.05) and the mark's own fill rule. If that function's output ever
+// changes, bump the version (tests pin it); a marker a build does not know
+// reads as no polygons.
+export const DERIVED_POLYGONS_PREFIX = '~polygons-from-path:';
+export const DERIVED_POLYGONS_MARKER = `${DERIVED_POLYGONS_PREFIX}v1`;
+
+export function polygonFillRuleOf(object) {
+  return object?.fillRule === 'evenodd' ? 'evenodd' : 'nonzero';
+}
 
 export const UNSTORED_DATA_FIELDS = Object.freeze(['pdfInkSourceGeometry']);
 
@@ -62,18 +70,13 @@ export function derivePolygonsFromPath(path, fillRule) {
   }
 }
 
-/** The fill rule whose derivation reproduces `polygons` exactly, or null. */
-function derivableRule(object) {
+/** Whether the mark's own path and fill rule reproduce `polygons` exactly. */
+function polygonsDerivable(object) {
   const { polygons, path } = object;
-  if (!Array.isArray(polygons) || polygons.length === 0) return null;
-  if (!Array.isArray(path) || path.length === 0) return null;
-  const preferred = object.fillRule === 'evenodd' ? 'evenodd' : 'nonzero';
-  const rules = [preferred, ...DERIVED_RULES.filter((rule) => rule !== preferred)];
-  for (const rule of rules) {
-    const derived = derivePolygonsFromPath(path, rule);
-    if (derived && exactlyEqual(derived, polygons)) return rule;
-  }
-  return null;
+  if (!Array.isArray(polygons) || polygons.length === 0) return false;
+  if (!Array.isArray(path) || path.length === 0) return false;
+  const derived = derivePolygonsFromPath(path, polygonFillRuleOf(object));
+  return Boolean(derived) && exactlyEqual(derived, polygons);
 }
 
 export function isDerivedPolygonsMarker(value) {
@@ -92,8 +95,7 @@ export function toStoredMarkObject(object) {
     for (const key of UNSTORED_DATA_FIELDS) delete data[key];
     out = { ...out, data };
   }
-  const rule = derivableRule(object);
-  if (rule) out = { ...out, polygons: `${DERIVED_POLYGONS_PREFIX}${rule}` };
+  if (polygonsDerivable(object)) out = { ...out, polygons: DERIVED_POLYGONS_MARKER };
   return out;
 }
 
@@ -103,8 +105,9 @@ export function toStoredMarkObject(object) {
  */
 export function fromStoredMarkObject(object) {
   if (!isPlainRecord(object) || !isDerivedPolygonsMarker(object.polygons)) return object;
-  const rule = object.polygons.slice(DERIVED_POLYGONS_PREFIX.length);
-  const derived = DERIVED_RULES.includes(rule) ? derivePolygonsFromPath(object.path, rule) : null;
+  const derived = object.polygons === DERIVED_POLYGONS_MARKER
+    ? derivePolygonsFromPath(object.path, polygonFillRuleOf(object))
+    : null;
   const out = { ...object };
   // An unknown marker (a newer build's) or a path the derivation cannot
   // read: no polygons rather than a string where an array belongs. The
