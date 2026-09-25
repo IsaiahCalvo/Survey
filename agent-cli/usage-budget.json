@@ -1,0 +1,44 @@
+{
+  "_comment": "w34 (2026-09-25) per-user, per-phase ceilings for agent-cli/usage-budget-probe.mjs with its default script (idle 5 min, 20 strokes, 10 erases, 5 moves) on a small throwaway PDF. Measured on main after the w34 fixes: see the w34 report. Raise a number only on purpose, with the reason, in the same commit.",
+  "perUserPhase": {
+    "idle": {
+      "storageDownloads": 0,
+      "httpRequests": 30,
+      "walAppends": 0,
+      "snapshotWrites": 0,
+      "channelJoins": 0,
+      "billableRealtimeMessages": 0,
+      "historyEvents": 0
+    },
+    "draw": {
+      "walAppends": 22,
+      "snapshotWrites": 3,
+      "httpRequests": 60,
+      "broadcastsSent": 22,
+      "channelJoins": 0,
+      "storageDownloads": 0,
+      "historyEvents": 22
+    },
+    "erase": {
+      "walAppends": 30,
+      "snapshotWrites": 3,
+      "httpRequests": 50,
+      "channelJoins": 0,
+      "storageDownloads": 0,
+      "historyEvents": 12
+    },
+    "move": {
+      "walAppends": 8,
+      "snapshotWrites": 3,
+      "httpRequests": 30,
+      "channelJoins": 0,
+      "storageDownloads": 0,
+      "historyEvents": 6
+    },
+    "settle": {
+      "walAppends": 0,
+      "httpRequests": 6,
+      "storageDownloads": 0
+    }
+  }
+}
