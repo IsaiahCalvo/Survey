@@ -18,7 +18,7 @@
 //   node agent-cli/usage-budget-probe.mjs <pdf> [--port 5347] [--users 1]
 //        [--idle 300000] [--strokes 20] [--erases 10] [--moves 5]
 //        [--settle 20000] [--budget agent-cli/usage-budget.json] [--json out.json]
-//        [--profile-dir dir] [--dev-auto-login] [--keep] [--headed]
+//        [--profile-dir dir] [--fresh-profiles] [--dev-auto-login] [--keep] [--headed]
 //
 // --budget  fail (exit 1) when any per-user phase count is above the limits in
 //           the budget file (see agent-cli/usage-budget.json).
@@ -192,16 +192,40 @@ function instrument(page, user) {
 // One browser profile per "user". The leased account is installed before the
 // page can navigate anywhere.
 let browser = null;
+// w35 (2026-09-25, prod is on the Free plan and already over its storage
+// egress): every user is a PERSISTENT profile, shared with
+// agent-cli/sync-latency-probe.mjs (same root, user 0 = A, 1 = B, 2 = C...),
+// so the one-time per-device library fill is not re-paid by every run, and
+// every Supabase Storage object request is refused except user 0's upload of
+// the throwaway copy, reads of that same file and its removal at cleanup.
+// --fresh-profiles: throwaway in-memory profiles instead (storage still blocked).
+const PROFILE_ROOT = opt('profile-dir', path.join(os.homedir(), '.cache', 'survey-sync-probe-profiles'));
+let throwawayObjectPath = null;
+const storageBlocked = { count: 0 };
+async function blockOtherStoredFiles(ctx, user) {
+  await ctx.route('**/storage/v1/object/**', (route) => {
+    const request = route.request();
+    const url = decodeURIComponent(request.url());
+    const isSign = /\/object\/sign\//.test(url);
+    if (user === 0 && !throwawayObjectPath && request.method() === 'POST' && !isSign && /\/object\/documents\//.test(url)) {
+      throwawayObjectPath = url.split('/object/documents/')[1]?.split('?')[0] || null;
+      return route.continue();
+    }
+    if (throwawayObjectPath && url.includes(throwawayObjectPath)) return route.continue();
+    if (throwawayObjectPath && request.method() === 'DELETE' && (request.postData() || '').includes(throwawayObjectPath)) {
+      return route.continue();
+    }
+    storageBlocked.count += 1;
+    return route.abort('blockedbyclient');
+  });
+}
 async function newUserContext(user) {
-  // --profile-dir: keep each user's browser profile between runs so the
-  // one-time per-device thumbnail fill (whole library) is not re-paid by
-  // every measurement run.
-  const profileRoot = opt('profile-dir', null);
-  const ctx = profileRoot
-    ? await chromium.launchPersistentContext(path.join(profileRoot, `user-${user}`), {
+  const ctx = flag('fresh-profiles')
+    ? await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    : await chromium.launchPersistentContext(path.join(PROFILE_ROOT, String.fromCharCode(65 + user)), {
       headless: !flag('headed'), viewport: { width: 1440, height: 900 },
-    })
-    : await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    });
+  await blockOtherStoredFiles(ctx, user);
   if (LEASED) await installLeasedBrowserAccount(ctx);
   // Probe sessions are not usage: keep them out of the owner's analytics (and
   // off the collector's rate limit / its database slot RPC).
@@ -485,7 +509,7 @@ function checkBudget(summary, budget) {
 }
 
 // ------------------------------------------------------------------- run ---
-browser = await chromium.launch({ headless: !flag('headed') });
+browser = flag('fresh-profiles') ? await chromium.launch({ headless: !flag('headed') }) : null;
 const contexts = [];
 const pages = [];
 let exitCode = 0;
@@ -590,7 +614,8 @@ try {
     log('kept throwaway document', documentId, docName);
   }
   for (const ctx of contexts) await ctx.close().catch(() => {});
-  await browser.close();
+  await browser?.close();
+  log(`storage requests blocked: ${storageBlocked.count}`);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 process.exit(exitCode);

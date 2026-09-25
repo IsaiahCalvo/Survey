@@ -10,7 +10,7 @@
 // strokes, erase 10, move 5, then let checkpoints settle. The budget pins:
 //   * idle costs nothing: no request, no read, no broadcast in 5 minutes;
 //   * one WAL row per edit at most (no per-frame or duplicate writes);
-//   * checkpoints are debounced (a handful per session, not one per edit);
+//   * checkpoints follow 40-row boundaries (at most 2 per screen here, not one per edit);
 //   * a screen joins two channels per open document (log + live) and no more;
 //   * previews go out only for new marks and each is small;
 //   * a screen receiving the others' edits does not re-read the log for them;
@@ -27,7 +27,10 @@ const BUDGET = {
   idle: { requests: 0, reads: 0, broadcasts: 0 },
   perScreen: {
     walAppendsPerEdit: 1,
-    snapshotWrites: 4,         // measured 1 (debounced); slack for timing
+    // w35 (2026-09-25, combined main): measured 0-1 per screen. w33's cadence
+    // checkpoints only at the 40-row boundaries a screen's own row lands on;
+    // 3 x 35 edits = 105 rows -> seqs 40 and 80 -> at most 2 for one screen.
+    snapshotWrites: 2,
     channelsPerOpen: 2,
     // w32 (2026-09-25, owner request: erases, moves and deletes show on
     // other screens in ~100 ms, not with their row): one live message per
@@ -430,10 +433,96 @@ test('usage budget (hard ceiling today): paced strokes cost at most one checkpoi
   if (process.env.USAGE_BUDGET_REPORT) console.log(JSON.stringify({ writer, watchers }, null, 2));
 });
 
-test('usage budget (target, w33): watchers never checkpoint and the writer checkpoints by size, not per stroke', {
-  todo: 'w33 (claude/w33-open-size) is changing the checkpoint cadence: one elected writer, by rows/bytes since the last checkpoint, receivers never. Drop this todo when that lands.',
-}, async () => {
+// w33 landed (2026-09-25, merged with w32/w34 on main): one screen
+// checkpoints per 40-row boundary it owns (or 512 KB of its own rows), idle
+// only for the newest row's author with a tail of 8+, receivers never.
+// Measured on the combined main (w35): writer 0, watchers 0 for 5 paced strokes.
+test('usage budget (w33): watchers never checkpoint and the writer checkpoints by size, not per stroke', async () => {
   const { writer, watchers } = await paced();
   for (const used of watchers) assert.equal(used.snapshotWrites, 0, `a watcher uploaded ${used.snapshotWrites} checkpoints`);
   assert.ok(writer.snapshotWrites <= 2, `the writer uploaded ${writer.snapshotWrites} checkpoints for ${PACED_STROKES} paced strokes`);
+});
+
+// w35 (2026-09-25, combined w32/w33/w34 main, measured live): a whole-stroke
+// erase on one screen made every other open screen of the SAME user (another
+// tab or device) run the erase's follow-up work too — a second History POST
+// and its own ack WAL row, per erase. The follow-up belongs to the screen
+// that erased; another screen takes it over only if that screen leaves it
+// pending (closed or offline) for the takeover period.
+const sameUserScreens = async (documentId, { takeoverMs = 60_000, failFirst = false } = {}) => {
+  const cloud = createCountingCloud(documentId);
+  const clients = [cloud.makeClient('same-user'), cloud.makeClient('same-user')];
+  const effects = [[], []];
+  const handles = [];
+  for (const [index, client] of clients.entries()) {
+    handles.push(await openAnnotationDoc({
+      documentId,
+      supabase: client.supabase,
+      clientId: `same-user-device-${index}`,
+      actorUserId: 'same-user',
+      enableLocal: false,
+      enableRealtime: true,
+      doc: new Y.Doc(),
+      livePreview: true,
+      snapshotRetryDelayMs: 0,
+      requestTimeoutMs: 2_000,
+      eraseOutboxRetryBaseMs: 20,
+      eraseOutboxRetryMaxMs: 50,
+      eraseOutboxTakeoverMs: takeoverMs,
+      eraseEffectConsumer: async (effect) => {
+        if (failFirst && index === 0) throw new Error('offline sink');
+        effects[index].push(effect.idempotencyKey);
+      },
+    }));
+  }
+  assert.ok(await until(() => handles.every((h) => h.isRealtimeReady())));
+  handles[0].applyByPage({ 1: { objects: [stroke('erase-me', 0)] } });
+  await handles[0].drain();
+  assert.ok(await until(() => (handles[1].getByPage()?.[1]?.objects || []).length === 1));
+  // The viewer hook captures the page list after every change it shows
+  // (useAnnotationDoc: applyByPage on each annotationsByPage render).
+  const captureShown = (handle) => handle.applyByPage(handle.getByPage());
+  captureShown(handles[1]);
+  await settle(100);
+  const before = clients.map((c) => snapshotOf(c.count));
+  const target = handles[0].getByPage()[1].objects[0];
+  const { buildEraseIntent } = await import('../src/utils/annotationEraseTransaction.js');
+  const intent = buildEraseIntent({
+    mutationId: `erase:${documentId}`,
+    pageNumber: 1,
+    renderer: 'svg',
+    gesture: { mode: 'object', radius: 10, points: [{ x: 30, y: 30 }] },
+    targets: [{ domain: 'page-object', storageKey: 'erase-me', kind: 'pen', operation: 'delete', before: target }],
+    sideEffects: [{ type: 'destination', targetKey: 'erase-me' }],
+  });
+  const committed = await handles[0].commitEraseIntent(intent, {
+    permissionContext: { mode: 'registered', viewerId: 'same-user', documentOwnerId: 'same-user' },
+  });
+  assert.equal(committed.status, 'committed');
+  await handles[0].drain();
+  assert.ok(await until(() => (handles[1].getByPage()?.[1]?.objects || []).length === 0), 'the erase reached the other screen');
+  captureShown(handles[1]);
+  captureShown(handles[0]);
+  await handles[1].drain();
+  return { cloud, clients, handles, effects, before };
+};
+
+test('usage budget (w35): only the erasing screen runs an erase\'s follow-up work', async () => {
+  const { clients, handles, effects, before } = await sameUserScreens('usage-budget-erase-owner');
+  assert.ok(await until(() => effects[0].length === 1), 'the erasing screen ran the follow-up');
+  await settle(400);
+  const used = clients.map((c, i) => diff(c.count, before[i]));
+  assert.deepEqual(effects[1], [], 'the other screen of the same user ran the follow-up too');
+  assert.equal(used[1].walAppends, 0, `the watching screen wrote ${used[1].walAppends} rows for someone else's erase`);
+  assert.equal(used[1].snapshotWrites, 0, 'the watching screen checkpointed');
+  assert.ok(used[0].walAppends <= 2, `the erasing screen wrote ${used[0].walAppends} rows (erase + follow-up ack)`);
+  for (const handle of handles) await handle.destroy();
+});
+
+test('usage budget (w35): another screen of the same user takes over follow-up work the erasing screen left pending', async () => {
+  const { handles, effects } = await sameUserScreens('usage-budget-erase-takeover', { takeoverMs: 300, failFirst: true });
+  await settle(100);
+  assert.deepEqual(effects[1], [], 'no takeover inside the takeover period');
+  assert.ok(await until(() => effects[1].length === 1, { timeoutMs: 3_000 }), 'the other screen took over after the takeover period');
+  for (const handle of handles) await handle.destroy();
 });

@@ -726,6 +726,12 @@ export async function commitEraseIntent({
   const outboxEntry = {
     mutationId: intent.mutationId,
     actorUserId: initiatingActorId || null,
+    // w35 (2026-09-25): the screen that made the erase runs its follow-up
+    // work (History row, trash, Excel). Another open screen of the same user
+    // receives this entry with the erase's row and must not run it too (it
+    // used to: a second History POST and a second WAL row per erase on every
+    // other screen of that user). See drainEraseOutbox's deferEntry.
+    writerId: typeof eraserWriterId === 'string' && eraserWriterId ? eraserWriterId : null,
     status: effects.length === 0 ? 'acknowledged' : 'pending',
     committedAt: new Date().toISOString(),
     effects,
@@ -993,6 +999,7 @@ export async function drainEraseOutbox({
   validateEntry = null,
   actorUserId,
   origin = 'erase-outbox',
+  deferEntry = null,
   injectFailure,
 } = {}) {
   if (!doc || typeof doc.getMap !== 'function') {
@@ -1048,6 +1055,19 @@ export async function drainEraseOutbox({
         || entry.actorUserId !== drainingActorId
       )
     ) {
+      continue;
+    }
+    // Another live screen of this actor made the erase: its follow-up work is
+    // that screen's (the caller decides; it takes over after a grace period
+    // for a screen that closed before finishing). Still pending here, so the
+    // caller keeps its local retry timer until the owner's ack row arrives.
+    if (
+      effects.length > 0
+      && entry.status !== 'acknowledged'
+      && typeof deferEntry === 'function'
+      && deferEntry({ mutationId, entry: clone(entry) })
+    ) {
+      pending += 1;
       continue;
     }
 

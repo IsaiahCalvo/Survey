@@ -522,8 +522,22 @@ function writeAnnotationMarkInTransaction(doc, key, page, plainNext, {
     if (storedPolygonsIsMarker || compact === object || !isDerivedPolygonsMarker(compact.polygons)) return compact;
     return { ...compact, polygons: object.polygons };
   };
-  const next = toStoredMarkObject(plainNext);
+  let next = toStoredMarkObject(plainNext);
   const base = toStoredCopy(plainBase);
+  // w35 review A: an edit that leaves the polygons as they were (a recolour
+  // of a mark the compaction has not reached yet) writes only its own
+  // fields. Turning the stored explicit array into the marker is the store
+  // compaction's job; doing it here wrote a `polygons` change the live-edit
+  // conflict check (w32) never saw.
+  if (
+    !storedPolygonsIsMarker
+    && base
+    && isDerivedPolygonsMarker(next?.polygons)
+    && Array.isArray(base.polygons)
+    && JSON.stringify(base.polygons) === JSON.stringify(plainNext.polygons)
+  ) {
+    next = { ...next, polygons: base.polygons };
+  }
   const echoVersions = Array.isArray(plainEchoVersions)
     ? plainEchoVersions.map((version) => toStoredCopy(version))
     : plainEchoVersions;

@@ -133,6 +133,9 @@ const REGISTRY_PREFIX = 'annoflat:';
 //     an older one is taken in first (prepareRoutineCheckpoint);
 //   * durability repairs (failed append, gap after reconnect) and an explicit
 //     save are unchanged.
+// w35: another screen of the same user takes over an erase's follow-up work
+// only when the erasing screen has not acknowledged it for this long.
+const ERASE_OUTBOX_TAKEOVER_MS = 60_000;
 const CHECKPOINT_EVERY_ROWS = 40;
 const CHECKPOINT_OWN_BYTES = 512 * 1024;
 const CHECKPOINT_MIN_TAIL_ROWS = 8;
@@ -396,6 +399,7 @@ export async function openAnnotationDoc({
   eraseEffectConsumer = null,
   eraseOutboxRetryBaseMs = 250,
   eraseOutboxRetryMaxMs = 30_000,
+  eraseOutboxTakeoverMs = ERASE_OUTBOX_TAKEOVER_MS,
   // Open speed (w29): optional display-only early paint. Called with a byPage
   // read of the live doc as soon as it holds marks from this device's saved
   // copy (before any network) and again once the cloud snapshot is in, while
@@ -477,6 +481,8 @@ export async function openAnnotationDoc({
     liveEditTokens: new Map(),       // token -> { key, object } handed to the screen (bounded)
     liveEditBases: new Map(),        // token -> this screen's own copy when the overlay arrived (kept longer)
     liveMarkEpochs: new Map(),       // mark key -> bumped when an applied row changes the mark
+    liveMarkEpochClock: 0,
+    liveMarkEpochFloor: 0,
     liveSentObjects: new Map(),      // key -> the mark as this screen last broadcast it (delta base)
     appliedSeqByWriter: new Map(),   // writer -> highest client_seq applied here (bounded)
     livePreviewListeners: new Set(),
@@ -496,6 +502,8 @@ export async function openAnnotationDoc({
     dueCheckpointSince: 0,
     routineCheckpointRunning: false,
     checkpointMustWrite: false, // the store compaction's checkpoint (w33)
+    compactionCheckpointEpoch: 0, // editEpoch of the compaction's last row (w35)
+    liveSendSuppressed: false,    // the store compaction is never broadcast (w35)
     checkpointDue: false,
     ownRowsSinceCheckpoint: 0,
     ownBytesSinceCheckpoint: 0,
@@ -583,6 +591,14 @@ export async function openAnnotationDoc({
     ),
     eraseOutboxClosing: false,
     eraseOutboxOrigin: Object.freeze({ source: 'erase-outbox', writerId: activeWriterId }),
+    // w35: erase follow-up work belongs to the screen that erased. Entries
+    // already in the document when this screen opened are recovery work
+    // (their screen is gone) and run here as before; entries another screen
+    // of this user makes while this one is open wait for that screen's ack,
+    // up to eraseOutboxTakeoverMs after this screen first saw them.
+    eraseOutboxTakeoverMs: Math.max(0, Number(eraseOutboxTakeoverMs) || 0),
+    eraseOutboxKnownAtOpen: null,
+    eraseOutboxForeignSeenAt: new Map(),
     persistenceGeneration: readPersistenceGeneration(documentId, actorUserId),
     legacyPersistenceDoc: null,
     legacyClearDocument: null,
@@ -821,6 +837,7 @@ export async function openAnnotationDoc({
     // Recover side effects from a core erase that survived a prior crash.
     // The consumer runs only after local/cloud hydration and observer wiring,
     // so its acknowledgements are themselves persisted like any other edit.
+    state.eraseOutboxKnownAtOpen = new Set(state.doc.getMap(ERASE_OUTBOX_MAP).keys());
     if (state.eraseEffectConsumer) {
       void queueEraseOutboxDrain(state);
     }
@@ -1441,10 +1458,18 @@ function applyToLiveDoc(state, update, origin) {
           state.lastAppliedTouched ??= new Set();
           for (const key of [...touched.markKeys, ...touched.laneMarkKeys]) {
             state.lastAppliedTouched.add(key);
-            state.liveMarkEpochs.set(key, (state.liveMarkEpochs.get(key) || 0) + 1);
+            // w35 review B: one clock for every mark, newest last, and a
+            // forgotten mark reads as the clock at the last eviction (never
+            // 0 again), so an arrival copy recorded before a big row (the
+            // store compaction touches thousands of marks) is never taken
+            // for current.
+            state.liveMarkEpochClock += 1;
+            state.liveMarkEpochs.delete(key);
+            state.liveMarkEpochs.set(key, state.liveMarkEpochClock);
           }
           while (state.liveMarkEpochs.size > 2_000) {
             state.liveMarkEpochs.delete(state.liveMarkEpochs.keys().next().value);
+            state.liveMarkEpochFloor = state.liveMarkEpochClock;
           }
         }
       } catch { /* only narrows overlay removal */ }
@@ -3969,7 +3994,10 @@ async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
     // candidate remains staged until the snapshot CAS accepts it.
     Y.applyUpdate(state.acceptedDoc, latest.update, HYDRATE_ORIGIN);
     Y.applyUpdate(state.stagedDoc, latest.update, HYDRATE_ORIGIN);
-    Y.applyUpdate(state.doc, latest.update, REMOTE_ORIGIN);
+    // w35 review B: through the same path as a row, so marks the stored
+    // checkpoint changes refresh their live-edit arrival copies (w33's
+    // routine "rebase" takes a checkpoint in without its rows).
+    applyToLiveDoc(state, latest.update, REMOTE_ORIGIN);
     state.snapshotBaseAtSeq = latest.baseAtSeq;
     state.snapshotBaseWriterId = latest.baseWriterId;
     state.snapshotBaseWriterEpoch = latest.baseWriterEpoch;
@@ -4172,7 +4200,19 @@ async function writeSnapshotNow(state, {
         }
       }
       if (!error && accepted) {
-        state.checkpointMustWrite = false;
+        // w35 review B: a checkpoint encoded before the store compaction's
+        // rows were accepted does not stand for them (its reset of the owed
+        // flags at encode would otherwise drop the compaction's checkpoint
+        // for good): still owed, and due.
+        if (!state.compactionCheckpointEpoch || (Number(epochAtStart) || 0) >= state.compactionCheckpointEpoch) {
+          state.checkpointMustWrite = false;
+          state.compactionCheckpointEpoch = 0;
+        } else if (state.checkpointMustWrite) {
+          // Written once this screen is quiet (the compaction row's own ack
+          // may already have come and gone); the idle rule is the backstop.
+          state.checkpointDue = true;
+          if (!state.destroyed && !state.durabilityGap) scheduleDueCheckpoint(state);
+        }
         // Only advance the captured generation — never regress it — so a stale
         // snapshot completing late can't clear a newer edit's dirty state.
         if (epochAtStart > state.snapshottedEpoch) state.snapshottedEpoch = epochAtStart;
@@ -4680,6 +4720,7 @@ function takeLiveToken(state) {
 function sendLiveUpdate(state, record, transaction) {
   const bus = state.liveBus;
   if (!bus || !record?.update || state.closePromise || state.destroyed) return;
+  if (state.liveSendSuppressed) return; // the store compaction (w35)
   // After a refusal this screen's edits are likely refused again: never show
   // other screens something the log will not take.
   if (state.permissionRejectedCutoff > 0) return;
@@ -4949,7 +4990,7 @@ function onLiveEditMessage(state, payload) {
       object,
       page: value.page,
       base: arrivalBase,
-      epoch: state.liveMarkEpochs.get(markKey) || 0,
+      epoch: liveMarkEpoch(state, markKey),
     });
     shown.set(markKey, { page: value.page, object });
   }
@@ -4963,8 +5004,12 @@ function onLiveEditMessage(state, payload) {
 // While an overlay of this mark is still showing, the next one of it is
 // measured against the same own copy (the screen never showed the doc copy
 // in between).
+function liveMarkEpoch(state, markKey) {
+  return state.liveMarkEpochs.has(markKey) ? state.liveMarkEpochs.get(markKey) : state.liveMarkEpochFloor;
+}
+
 function previousArrivalBase(state, markKey, writerId) {
-  const epoch = state.liveMarkEpochs.get(markKey) || 0;
+  const epoch = liveMarkEpoch(state, markKey);
   for (const edit of state.liveEdits.values()) {
     if (edit.writerId !== writerId) continue; // same writer only (verify pass 2)
     const overlay = edit.entries.get(markKey);
@@ -5451,6 +5496,35 @@ function scheduleEraseOutboxRetry(state) {
   state.eraseOutboxRetryTimer.unref?.();
 }
 
+// w35 (2026-09-25): measured on the combined w32/w33/w34 main, a whole-stroke
+// erase on one screen made every other open screen of the same user (another
+// tab or device) post the same History row and write its own ack WAL row.
+// That work belongs to the screen that erased (entry.writerId). Entries found
+// when this screen opened, entries without a writer (older builds) and
+// entries still pending eraseOutboxTakeoverMs after this screen first saw
+// them (their screen closed or went offline) run here as before; every effect
+// is idempotent by key, so a late takeover at worst repeats a no-op upsert.
+function deferForeignWriterEraseEntry(state, mutationId, entry) {
+  const writerId = typeof entry?.writerId === 'string' ? entry.writerId : '';
+  if (!writerId || writerId === state.writerId) return false;
+  if (!state.eraseOutboxKnownAtOpen || state.eraseOutboxKnownAtOpen.has(mutationId)) return false;
+  const now = Date.now();
+  let seenAt = state.eraseOutboxForeignSeenAt.get(mutationId);
+  if (seenAt == null) {
+    seenAt = now;
+    state.eraseOutboxForeignSeenAt.set(mutationId, seenAt);
+  }
+  return now - seenAt < state.eraseOutboxTakeoverMs;
+}
+
+function pruneForeignEraseSeen(state) {
+  if (state.eraseOutboxForeignSeenAt.size === 0) return;
+  const outbox = state.doc.getMap(ERASE_OUTBOX_MAP);
+  for (const mutationId of [...state.eraseOutboxForeignSeenAt.keys()]) {
+    if (outbox.get(mutationId)?.status !== 'pending') state.eraseOutboxForeignSeenAt.delete(mutationId);
+  }
+}
+
 function queueEraseOutboxDrain(state, options = {}) {
   if (!state.eraseEffectConsumer || state.destroyed || state.eraseOutboxClosing) {
     return Promise.resolve({
@@ -5475,8 +5549,10 @@ function queueEraseOutboxDrain(state, options = {}) {
       },
       actorUserId: state.actorUserId,
       origin: state.eraseOutboxOrigin,
+      deferEntry: ({ mutationId, entry }) => deferForeignWriterEraseEntry(state, mutationId, entry),
     }))
     .then((result) => {
+      pruneForeignEraseSeen(state);
       if (result.pending === 0) {
         state.eraseOutboxRetryAttempt = 0;
         clearEraseOutboxRetry(state);
@@ -5760,7 +5836,19 @@ function makeHandle(state) {
               // Selection delete removes only the stable base. Lanes remain so
               // restoring that base naturally reveals the prior erased state.
               if (!desiredRecord) {
-                if (!viewer.had.has(storageKey) || !annotations.has(storageKey)) continue;
+                // w35 (2026-09-25): only a mark the document still hands this
+                // screen can be one the user deleted. A whole-stroke erase is
+                // a delete LANE over a kept stored mark (so Undo and Revisions
+                // can bring it back); the document stops showing that mark,
+                // and treating its absence as a selection delete used to
+                // delete the stored mark on the erasing screen AND on every
+                // other open screen (one extra row each, Undo then restored
+                // nothing, imported marks kept a tombstone).
+                if (
+                  !viewer.had.has(storageKey)
+                  || !annotations.has(storageKey)
+                  || !viewer.lastDelivered.has(storageKey)
+                ) continue;
                 const stored = readAnnotationEntry(state.doc, storageKey);
                 const nativeId = stored?.o?.pdfAnnotationId;
                 if (nativeId) {
@@ -6079,10 +6167,26 @@ function makeHandle(state) {
       // one (checkpointDue is acted on after each own append, see appendOp).
       const wasDue = state.checkpointDue;
       state.checkpointDue = true;
-      const result = compactAnnotationStore(state.doc, { origin: 'local' });
+      // w35 review A: never a live message. The pass changes nothing anyone
+      // sees, and as a v2 overlay (a small store fits the 64-mark / 32 KB
+      // budget) other screens showed those marks as this screen's in-flight
+      // edit: an erase of them was cancelled as a conflict and their own
+      // unsaved change of them reverted until this row landed.
+      state.liveSendSuppressed = true;
+      let result;
+      try {
+        result = compactAnnotationStore(state.doc, { origin: 'local' });
+      } finally {
+        state.liveSendSuppressed = false;
+      }
       if (result.batches === 0) state.checkpointDue = wasDue;
       // Another screen's recent checkpoint does not stand in for this one.
-      else state.checkpointMustWrite = true;
+      else {
+        state.checkpointMustWrite = true;
+        // w35 review B: owed until a checkpoint whose bytes hold these rows
+        // is accepted (a routine one already encoding does not count).
+        state.compactionCheckpointEpoch = state.editEpoch;
+      }
       if (result.marksCompacted > 0) {
         state.lastByPage = null;
         if (notify) notifyChange(state);
