@@ -468,11 +468,13 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
 * **Edits (v2 message, `src/services/annotationLiveOverlay.js`).** Any
   small local edit that changes how a mark looks is broadcast, keyed by the
   edit's WAL row (writer id + client_seq) like a v1 preview:
-  `{ v: 2, w, s, e: [...] }`, one entry per mark it touched: `{ k, p, s, u }`
-  = only the top-level fields that changed (`s`) or went away (`u`),
-  measured against the mark as the sender last sent it or was last handed
-  it; `{ k, p, o }` = the whole mark when that is smaller; `{ k, d: 1 }` =
-  gone. The mark is what `materializeAnnotationKeys` builds (stored fields +
+  `{ v: 2, w, s, e: [...] }`, one entry per mark it touched: `{ k, p, o }`
+  = the whole mark; `{ k, p, s, u }` = only the top-level fields that
+  changed (`s`) or went away (`u`), sent ONLY when this screen's
+  immediately previous message (client_seq - 1) carried that mark, and
+  applied by receivers onto that previous message's object (never onto
+  their own copy); `{ k, d: 1 }` = gone. An entry with nothing new is not
+  sent. The mark is what `materializeAnnotationKeys` builds (stored fields +
   eraser lanes, the same code docToByPage uses, now shared as
   `applyEraserLanesToObject`). A pure addition of whole new marks still goes
   as v1 (Yjs bytes); a lane-only change (partial erase) no longer sends a v1
@@ -481,8 +483,8 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
 * **Receiver.** Validated (key = the mark's own id; a patch cannot change
   identity; incoming live flags stripped; over 64 KB refused), rate-capped
   with v1 (50/s per writer, 200 in flight), ignored once its row (or a later
-  row of that writer) is in. A patch is applied onto the mark as this screen
-  shows it; with nothing to apply it to, the entry waits for its row. Shown
+  row of that writer) is in. A patch whose previous message is not here is
+  not shown (its row brings the change). Shown
   BESIDE the document: `handle.withLiveOverlays` (used by `useAnnotationDoc`)
   replaces the mark in place (z-order kept) or hides it; an edit of a mark
   this screen does not hold is not shown (no resurrection). Newest message
@@ -502,18 +504,23 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
     own change onto the document's copy (`mergeEditOntoCurrent`), the screen
     is swapped to what was saved and that mark's overlay is dropped (the
     other change shows when its row lands) — UNLESS it would write a field
-    the other screen's in-flight edit changed (dragging a stroke someone is
-    partly erasing, moving a mark someone is moving): then it is not
-    applied and the screen goes back to the saved mark (review A: otherwise
-    the other screen's unsaved erase was baked into the mark);
+    path (as the merge writes them: `diffAnnotationFields`, linked geometry
+    groups included) that the other screen's in-flight edit changed,
+    measured against this screen's own copy when the overlay arrived
+    (dragging a stroke someone is partly erasing, moving a mark someone is
+    moving): then it is not applied and the screen goes back to the saved
+    mark (review A: otherwise the other screen's unsaved erase was baked into
+    the mark). A callout or counter edit touching other nested fields is
+    applied; a counter's number shown from this screen is not an edit;
   * an eraser gesture planned on an overlay copy is not applied to that mark
     (`commitEraseIntent` cancels as a conflict, the page-mutation path drops
     that mark's entry);
   * a flagged copy of a mark the document no longer holds (an Undo of a
-    delete made while an overlay showed it), or one spread into a mark with
-    another id, is an ordinary object without the flag: the capture's own
-    rules decide (a mark deleted by someone else stays deleted). A paste
-    strips the flag. A copy renumbered by a page insert/delete here stays on
+    delete made while an overlay showed it) is rebuilt from this screen's own
+    copy when the overlay arrived plus the user's own changes (never the
+    other screen's in-flight fields), then the capture's own rules decide (a
+    mark deleted by someone else stays deleted); one spread into a mark with
+    another id is that mark, without the flag. A paste strips the flag. A copy renumbered by a page insert/delete here stays on
     this screen's page.
 * **Live ink (v3 message, `src/services/annotationLiveStrokes.js`).** While
   a pen or highlighter stroke is drawn, the new points go out at most every
@@ -521,7 +528,9 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   caps a whole project at 100 messages/s on Free, 500 on Pro, and each
   broadcast is delivered to every other screen; nothing while the pen is
   still): `{ v: 3, w, g: stroke id, p, t, c, sw, i, pts, f?, x? }`. The
-  stroke id is the id the finished mark gets. A stroke that ends inside the
+  stroke id is the id the finished mark gets. Points count as sent only
+  when a message went out, so a stroke begun while alone goes out whole,
+  from its first point, when someone else arrives. A stroke that ends inside the
   first 125 ms sends nothing extra (its v1 preview covers it). Other screens
   draw a ghost polyline (`LiveStrokeGhosts`, inside the page SVG, looks like
   the local in-progress stroke, no pointer events, not an annotation) until
@@ -530,17 +539,23 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   points. Lost messages are joined straight. Caps: 4,000 points per ghost,
   24 ghosts. One sender and one ghost list per document (the app keeps
   several documents mounted).
-* **Alone = silent.** A screen sends NO live message (v1, v2 or v3) unless
-  it knows another screen has the document open. Two signals, either is
-  enough: Realtime Presence on the live channel (one entry per screen; needs
-  `supabase/migrations/20260925120000_live_channel_presence_policies.sql`,
-  NOT applied; without it the track is refused and the channel still
-  works), and a tiny hello on the channel itself that needs no policy: a
-  joining screen says hello, each screen that hears a new hello answers
-  once, a leaving screen says bye (2-3 messages per screen that opens, none
-  while idle). A person working alone costs zero live messages (was one
-  preview per stroke). If a hello is lost, that pair falls back to the saved
-  row (~0.5 s) until one of them opens the document again.
+* **Alone = silent.** A screen sends no live message (v1, v2 or v3) when
+  it knows nobody else has the document open, and must never go quiet on a
+  screen that is there (a viewer must keep seeing live changes):
+  * Realtime Presence answered (needs
+    `supabase/migrations/20260925120000_live_channel_presence_policies.sql`,
+    NOT applied): trusted alone;
+  * Presence not answered: company assumed, exactly as before w32;
+  * Presence refused (the policy is not applied: today's prod): a tiny
+    hello on the channel itself. A joining screen says hello, each screen
+    that hears a new hello answers once, a leaving screen says bye. A screen
+    about to send that has heard from nobody for 10 minutes asks "who is
+    here?" (at most once per 30 s, only while editing; everyone answers);
+    peers that do not answer within 5 s are forgotten; peers it knew are
+    assumed present until then. If the first hellos are lost, the first
+    edit's ask finds the others (that edit rides the saved row).
+  2-3 messages per screen that opens, none while idle. A person working
+  alone costs zero live messages (was one preview per stroke).
 * The saved-row path itself was already direct: capture ~4 ms after the
   input, enqueue in the same tick, the WAL insert starts ~15-20 ms later
   (after the local outbox write), the receiver applies a row as it arrives.
@@ -580,7 +595,13 @@ may send on the channel; nothing is saved). Edits over the budget (>32 KB,
 e.g. a very long partly erased stroke) arrive with their row only.
 
 Reviews: two adversarial passes (write safety; delivery, ordering and
-cost) plus a check of the fixes. Found and fixed: an edit on an overlay copy
+cost) plus two checks of the fixes. The second check found and fixed:
+screens going quiet on a viewer when Presence never answered or a hello
+was lost (now: unknown = company, re-ask, expiry), an Undo that could still
+save the other screen's in-flight colour, patches applied onto a different
+copy than the sender diffed against (now: only against the previous
+message), conflict checks too coarse for callouts and counters (now per
+field path), and ink begun while alone never reaching a newcomer. Found and fixed: an edit on an overlay copy
 could save the other screen's unsaved erase into the mark; an Undo of a
 delete made on an overlay copy was lost; page renumbering moved an overlaid
 mark back; live ink was global (could go out on another document's

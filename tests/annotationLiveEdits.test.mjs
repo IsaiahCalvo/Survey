@@ -163,7 +163,7 @@ test('an untouched overlay copy writes nothing, and a stale or expired overlay l
   // is in.
   const before = edits(cloud)[0].payload;
   await Promise.all([a.destroy(), b.destroy()]);
-  assert.deepEqual(before.e[0].s, { top: 222 }, 'only the changed field is sent');
+  assert.equal(before.e[0].o.top, 222, 'a first edit of a mark carries the whole mark');
 });
 
 test('a later row from the same screen drops its older overlay; a replayed message after its row is ignored', async () => {
@@ -474,4 +474,96 @@ test('a v2 delta patch cannot change identity and is applied onto this screen\'s
   assert.equal(parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: { id: 'm2' } }] }), null);
   const huge = 'x'.repeat(80 * 1024);
   assert.equal(parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: { note: huge } }] }), null, 'oversized messages are refused');
+});
+
+// --- w32 fix-verification pass (2026-09-25) ---
+
+test('verify #3: an Undo of a delete made on an overlay copy re-creates the mark with THIS screen\'s colour, never the other screen\'s in-flight one', async () => {
+  const { alice, bob, a, b } = await twoScreens('live-edit-undo-colour', [rect('m1', { stroke: '#ff0000' })]);
+  const gate = deferred();
+  alice.appendGate = gate.promise;
+  alice.appendError = { code: '42501', message: 'annotation write is not permitted' }; // Alice's recolour is refused
+  const screen = a.getByPage();
+  a.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, stroke: '#00ff00' })) } });
+  assert.ok(await until(() => markOn(screenOf(b), 'm1')?.stroke === '#00ff00'));
+  b.applyByPage(screenOf(b));
+  const history = JSON.parse(JSON.stringify(markOn(screenOf(b), 'm1')));
+  b.applyByPage({ 1: { objects: screenOf(b)[1].objects.filter((o) => o.data.id !== 'm1') } });
+  await b.drain();
+  assert.ok(await until(() => !hasMark(b, 'm1')));
+  b.applyByPage({ 1: { objects: [...(b.getByPage()[1]?.objects || []), { ...history, left: 77 }] } });
+  await b.drain();
+  const restored = markOn(b.getByPage(), 'm1');
+  assert.ok(restored, 'Undo re-creates it');
+  assert.equal(restored.stroke, '#ff0000', 'with the colour this screen had, not Alice\'s unsaved green');
+  assert.equal(restored.left, 77, 'and the user\'s own change');
+  gate.resolve();
+  alice.appendGate = null;
+  await Promise.all([a.destroy(), b.destroy()]);
+});
+
+test('verify #4: consecutive edits send only changed fields against the previous message; nothing is sent for no change', async () => {
+  const { cloud, a, b } = await twoScreens('live-edit-patch-chain', [rect('m1')]);
+  const edit = (patch) => {
+    const screen = a.getByPage();
+    a.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, ...patch })) } });
+  };
+  edit({ left: 111 });
+  edit({ stroke: '#0000ff' });
+  const [first, second] = edits(cloud).map((m) => m.payload);
+  assert.ok(first.e[0].o, 'first: whole mark');
+  assert.deepEqual(second.e[0].s, { stroke: '#0000ff' }, 'second: the changed field only');
+  assert.equal(second.s, first.s + 1);
+  assert.ok(await until(() => {
+    const mark = markOn(screenOf(b), 'm1');
+    return mark?.left === 111 && mark?.stroke === '#0000ff';
+  }), 'applied onto the previous message\'s object');
+  // A patch whose previous message never arrived here is not shown (the row
+  // brings the change).
+  cloud.inject({ v: 2, w: 'someone', s: 9, e: [{ k: 'm1', p: 1, s: { stroke: '#123123' } }] });
+  await settle(30);
+  assert.notEqual(markOn(screenOf(b), 'm1').stroke, '#123123');
+  const built = buildLiveEditEntries(new Map([['m1', { page: 1, object: rect('m1') }]]), { baseOf: () => rect('m1') });
+  assert.equal(built, null, 'an entry with nothing new is not sent');
+  await a.drain();
+  await Promise.all([a.destroy(), b.destroy()]);
+});
+
+test('verify #5: a callout/counter edit on an overlay copy that touches different nested fields is applied; the same field is refused', () => {
+  const callout = (extra = {}) => ({
+    type: 'group', left: 0, top: 0,
+    data: { id: 'c1', type: 'callout', legacyCallout: { text: 'hi', style: { color: '#000' } }, ...extra },
+  });
+  const arrivalBase = callout();
+  const overlay = { ...callout({ legacyCallout: { text: 'hi', style: { color: '#f00' } } }), [LIVE_EDIT_FLAG]: 't' };
+  const run = (edited) => stripLiveEditObjects({ 1: { objects: [edited] } }, {
+    resolveToken: () => ({ key: 'c1', object: overlay, page: 1, base: arrivalBase }),
+    deliveredOf: () => arrivalBase,
+    docPageOf: () => 1,
+  });
+  const textEdit = { ...overlay, data: { ...overlay.data, legacyCallout: { ...overlay.data.legacyCallout, text: 'hello' } } };
+  const applied = run(textEdit);
+  assert.deepEqual(applied.editedKeys, ['c1'], 'a different nested field is applied');
+  assert.equal(applied.byPage[1].objects[0].data.legacyCallout.text, 'hello');
+  assert.equal(applied.byPage[1].objects[0].data.legacyCallout.style.color, '#000', 'without the other screen\'s colour');
+  const colourEdit = { ...overlay, data: { ...overlay.data, legacyCallout: { ...overlay.data.legacyCallout, style: { color: '#0f0' } } } };
+  assert.deepEqual(run(colourEdit).editedKeys, [], 'the field the other screen is changing is refused');
+
+  // Counter: this screen's number shown on the overlay copy is not an edit.
+  const counter = (n, extra = {}) => ({ type: 'group', left: 1, top: 1, data: { id: 'k1', type: 'counter', seriesId: 's', displayNumber: n, seriesStart: 1 }, ...extra });
+  const counterOverlay = { ...counter(1, { left: 50 }), [LIVE_EDIT_FLAG]: 'tk' };
+  const shown = mergeLiveOverlays({ 1: { objects: [counter(3)] } }, {
+    edits: new Map([['k1', { page: 1, object: counterOverlay }]]),
+    docPageOf: () => 1,
+  })[1].objects[0];
+  const recoloured = { ...shown, fill: '#00f' };
+  const out = stripLiveEditObjects({ 1: { objects: [recoloured] } }, {
+    resolveToken: () => ({ key: 'k1', object: counterOverlay, page: 1, base: counter(3) }),
+    deliveredOf: () => counter(3),
+    docPageOf: () => 1,
+  });
+  assert.deepEqual(out.editedKeys, ['k1'], 'a counter edit is applied');
+  assert.equal(out.byPage[1].objects[0].fill, '#00f');
+  assert.equal(out.byPage[1].objects[0].data.displayNumber, 3, 'the shown number is not written as a change');
+  assert.equal(out.byPage[1].objects[0].left, 1, 'nor the other screen\'s move');
 });

@@ -4401,11 +4401,15 @@ function sendLiveUpdate(state, record, transaction) {
   let materialized = null;
   try {
     materialized = materializeAnnotationKeys(state.doc, keys);
-    // Only the changed fields, against the mark as other screens most
-    // likely show it: what this screen last sent for it, else the copy the
-    // store last handed this screen (before this edit).
+    // Only the changed fields, and only against what this screen broadcast
+    // for that mark in its IMMEDIATELY previous message (receivers apply the
+    // patch onto that message's object; verify pass: never onto their own,
+    // possibly different, copy). Anything else: the whole mark.
     built = buildLiveEditEntries(materialized, {
-      baseOf: (key) => state.liveSentObjects.get(key) || state.viewer?.lastDelivered?.get(key) || null,
+      baseOf: (key) => {
+        const previous = state.liveSentObjects.get(key);
+        return previous && previous.seq === record.clientSeq - 1 ? previous.object : null;
+      },
     });
   } catch (error) {
     console.warn('[annotationDocSync] live edit not sent', error?.message);
@@ -4422,7 +4426,7 @@ function sendLiveUpdate(state, record, transaction) {
   if (sent) {
     for (const [key, value] of materialized) {
       state.liveSentObjects.delete(key);
-      if (value?.object) state.liveSentObjects.set(key, value.object);
+      if (value?.object) state.liveSentObjects.set(key, { object: value.object, seq: record.clientSeq });
     }
     while (state.liveSentObjects.size > 500) {
       state.liveSentObjects.delete(state.liveSentObjects.keys().next().value);
@@ -4582,7 +4586,6 @@ function onLiveEditMessage(state, payload) {
   if (state.liveEdits.size >= LIVE_PREVIEW_MAX_ENTRIES) return;
   if (!livePreviewReceiveAllowed(state, writerId)) return;
   const shown = new Map();
-  let current = null;
   for (const [markKey, value] of entries) {
     if (!value) {
       shown.set(markKey, null);
@@ -4590,19 +4593,24 @@ function onLiveEditMessage(state, payload) {
     }
     let drawn = value.object;
     if (value.patch) {
-      // A delta: applied onto the mark as this screen shows it now.
-      current ??= activeLiveEdits(state);
-      const base = current?.get(markKey)?.object
-        || livePreviewObjectFor(state, markKey)
-        || (getAnnotationsMap(state.doc).has(markKey) ? state.viewer?.lastDelivered?.get(markKey) : null)
-        || materializeAnnotationKeys(state.doc, [markKey]).get(markKey)?.object
-        || null;
-      drawn = applyLiveEditPatch(base, value.patch, markKey);
-      if (!drawn) continue; // nothing to apply it to here: its row brings it
+      // A delta against the SAME screen's previous message for this mark
+      // (client_seq - 1). Without that message here, the row brings it.
+      const previous = state.liveEditTokens.get(liveEditToken(writerId, clientSeq - 1, markKey));
+      drawn = previous ? applyLiveEditPatch(previous.object, value.patch, markKey) : null;
+      if (!drawn) continue;
     }
+    // This screen's own copy of the mark as the overlay arrives (never a
+    // preview): what an edit made on the overlay is rebuilt from, and what
+    // "the other screen changed" is measured against.
+    const arrivalBase = getAnnotationsMap(state.doc).has(markKey)
+      ? (previousArrivalBase(state, markKey)
+        || state.viewer?.lastDelivered?.get(markKey)
+        || materializeAnnotationKeys(state.doc, [markKey]).get(markKey)?.object
+        || null)
+      : null;
     const token = liveEditToken(writerId, clientSeq, markKey);
     const object = { ...drawn, [LIVE_EDIT_FLAG]: token };
-    rememberLiveEditToken(state, token, { key: markKey, object, page: value.page });
+    rememberLiveEditToken(state, token, { key: markKey, object, page: value.page, base: arrivalBase });
     shown.set(markKey, { page: value.page, object });
   }
   if (shown.size === 0) return;
@@ -4612,14 +4620,15 @@ function onLiveEditMessage(state, payload) {
   notifyLivePreviewListeners(state);
 }
 
-function livePreviewObjectFor(state, markKey) {
-  for (const preview of state.livePreviews.values()) {
-    if (!preview.keys.includes(markKey)) continue;
-    for (const page of Object.values(preview.byPage || {})) {
-      for (const object of page?.objects || []) {
-        if (String(extractAnnotationId(object)) === markKey) return object;
-      }
-    }
+// While an overlay of this mark is still showing, the next one of it is
+// measured against the same own copy (the screen never showed the doc copy
+// in between).
+function previousArrivalBase(state, markKey) {
+  for (const edit of state.liveEdits.values()) {
+    const overlay = edit.entries.get(markKey);
+    if (!overlay?.object) continue;
+    const record = state.liveEditTokens.get(overlay.object[LIVE_EDIT_FLAG]);
+    if (record?.base) return record.base;
   }
   return null;
 }

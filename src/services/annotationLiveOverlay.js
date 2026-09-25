@@ -32,6 +32,7 @@
 // the capture translation. annotationDocSync.js owns the state.
 
 import { mergeEditOntoCurrent } from '../utils/dragCommitMerge.js';
+import { diffAnnotationFields } from '../utils/annotationLocalHistory.js';
 
 export const LIVE_EDIT_VERSION = 2;
 export const LIVE_EDIT_FLAG = '__surveyLiveEdit';
@@ -74,10 +75,12 @@ export function withoutLiveFlags(object) {
 /**
  * Sender: the message entries for the marks an edit touched.
  * `materialized` is Map<key, { page, object } | null> (materializeAnnotationKeys).
- * `baseOf(key)` = the mark as other screens most likely show it now (the
- * sender's copy before this edit): then only the top-level fields that
- * differ are sent, `{ k, p, s: { field: value }, u: [removed field] }`,
- * when that is smaller than the whole mark `{ k, p, o }`.
+ * `baseOf(key)` = the mark exactly as this screen broadcast it in its
+ * IMMEDIATELY previous message (client_seq - 1), else null: then only the
+ * top-level fields that differ are sent, `{ k, p, s: { field: value }, u:
+ * [removed field] }` (receivers apply it onto that same previous message's
+ * object, never onto their own copy), when smaller than the whole mark
+ * `{ k, p, o }`. An entry with nothing new is not sent.
  * Returns null when there is nothing to send or it is too big to be worth it.
  */
 export function buildLiveEditEntries(materialized, { maxJsonBytes = LIVE_EDIT_MAX_JSON_BYTES, baseOf = null } = {}) {
@@ -97,12 +100,14 @@ export function buildLiveEditEntries(materialized, { maxJsonBytes = LIVE_EDIT_MA
     const object = withoutLiveFlags(value.object);
     const base = typeof baseOf === 'function' ? withoutLiveFlags(baseOf(key)) : null;
     const patch = base && typeof base === 'object' ? topLevelPatch(base, object) : null;
+    if (patch && Object.keys(patch.set).length === 0 && patch.unset.length === 0) continue; // nothing new to show
     if (patch && patch.bytes < jsonLength(object)) {
       entries.push({ k: key, p: page, s: patch.set, ...(patch.unset.length ? { u: patch.unset } : {}) });
     } else {
       entries.push({ k: key, p: page, o: object });
     }
   }
+  if (entries.length === 0) return null;
   let bytes = 0;
   try {
     bytes = JSON.stringify(entries).length;
@@ -285,31 +290,51 @@ function keepCounterNumbers(overlayObject, current) {
   return copy;
 }
 
-const fieldJson = (value) => {
-  try { return JSON.stringify(value) ?? 'undefined'; } catch { return String(Math.random()); }
+const pathsOverlap = (left, right) => {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (String(left[index]) !== String(right[index])) return false;
+  }
+  return true;
 };
 
-// Would writing `merged` over `delivered` write a field the OTHER screen's
-// in-flight edit changed (overlay vs delivered)? Then the user's edit was
-// made on top of that screen's unsaved geometry or style, and saving it
-// would save their unsaved part too (review A: a partly erased stroke moved
-// on another screen baked the erase into the mark). Such an edit is not
-// applied.
-function writesInFlightFields(delivered, overlay, merged) {
-  for (const field of new Set([...Object.keys(merged), ...Object.keys(delivered)])) {
-    if (field === LIVE_EDIT_FLAG || field === LIVE_PREVIEW_FLAG) continue;
-    const saved = fieldJson(delivered[field]);
-    if (fieldJson(merged[field]) === saved) continue;
-    if (fieldJson(overlay[field]) !== saved) return true;
+// Would writing `merged` over `delivered` write a field path the OTHER
+// screen's in-flight edit changed (its overlay vs this screen's copy when
+// the overlay arrived)? Then the user's edit was made on top of that
+// screen's unsaved geometry or style, and saving it would save their unsaved
+// part too (review A: a partly erased stroke moved on another screen baked
+// the erase into the mark). Compared per field path exactly as the merge
+// writes (diffAnnotationFields, linked geometry groups included), so a
+// callout or counter edit that touches other nested fields is applied.
+function writesInFlightFields(delivered, arrivalBase, overlay, merged) {
+  const inFlight = diffAnnotationFields(arrivalBase, overlay).map((change) => change.path);
+  if (inFlight.length === 0) return false;
+  for (const change of diffAnnotationFields(delivered, merged)) {
+    if (inFlight.some((path) => pathsOverlap(path, change.path))) return true;
   }
   return false;
+}
+
+// A counter overlay copy shows THIS screen's number (keepCounterNumbers);
+// a user edit spread from it must not write that number as a change.
+function withOverlayCounterNumbers(edited, overlay) {
+  if (edited?.data?.type !== 'counter' || overlay?.data?.type !== 'counter') return edited;
+  const shown = COUNTER_COPIES.get(overlay);
+  if (!shown) return edited;
+  if (edited.data.displayNumber !== shown.displayNumber || edited.data.seriesStart !== shown.seriesStart) return edited;
+  return {
+    ...edited,
+    data: { ...edited.data, displayNumber: overlay.data.displayNumber, seriesStart: overlay.data.seriesStart },
+  };
 }
 
 /**
  * Capture: take other screens' in-flight edits back out of a page list the
  * screen hands to the store, so none of them is ever written.
  *
- *   resolveToken(token) → { key, object, page } | null  the overlay handed out
+ *   resolveToken(token) → { key, object, page, base } | null  the overlay
+ *                         handed out, and this screen's own copy of the mark
+ *                         when it arrived (null if it had none)
  *   deliveredOf(key)    → the document's copy last handed to the screen, or
  *                         null when the document does not hold the mark
  *   docPageOf(key)      → page the document keeps it on
@@ -374,12 +399,20 @@ export function stripLiveEditObjects(byPage, {
       if (!delivered) {
         // The document does not hold it. The overlay copy itself is never
         // written. Any other copy (an Undo bringing back a mark the user
-        // deleted while an overlay showed it) is an ordinary object: the
-        // capture's own rules decide (a mark deleted by someone else stays
-        // deleted), without the flag (review A).
-        if (untouched || key == null) continue;
+        // deleted while an overlay showed it) is rebuilt from THIS screen's
+        // own copy when the overlay arrived plus the user's own changes, so
+        // the other screen's in-flight fields are never saved; the capture's
+        // own rules then decide (a mark deleted by someone else stays
+        // deleted). Without that copy it is not written (review A, verify).
+        if (untouched || key == null || !record?.base) continue;
+        const rebuilt = mergeEditOntoCurrent(
+          withoutLiveFlags(record.base),
+          withoutLiveFlags(record.object),
+          withOverlayCounterNumbers(withoutLiveFlags(object), record.object),
+        );
+        if (!rebuilt) continue;
         present.add(key);
-        kept.push(withoutLiveFlags(object));
+        kept.push(withoutLiveFlags(rebuilt));
         continue;
       }
       present.add(key);
@@ -397,9 +430,10 @@ export function stripLiveEditObjects(byPage, {
           // onto the document's copy — unless it touches what the other
           // screen is changing (then it is not applied).
           const overlay = withoutLiveFlags(record.object);
-          const merged = mergeEditOntoCurrent(delivered, overlay, withoutLiveFlags(object));
+          const edited = withOverlayCounterNumbers(withoutLiveFlags(object), record.object);
+          const merged = mergeEditOntoCurrent(delivered, overlay, edited);
           if (merged && merged !== delivered) {
-            if (writesInFlightFields(delivered, overlay, merged)) {
+            if (writesInFlightFields(delivered, withoutLiveFlags(record.base || delivered), overlay, merged)) {
               back(delivered);
             } else {
               substitute = merged;

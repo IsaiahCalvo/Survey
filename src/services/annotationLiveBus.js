@@ -50,9 +50,40 @@ function closeBus(supabase, byDocument, documentId, bus) {
     });
 }
 
-// w32 company hellos: { v: 0, h: busKey, r?: 1 (an answer), b?: 1 (bye) }.
+// w32 company hellos: { v: 0, h: busKey, r?: 1 (an answer), q?: 1 (who is
+// here? everyone answers), b?: 1 (bye) }.
 const HELLO_VERSION = 0;
 const HELLO_MAX_PEERS = 64;
+const HELLO_PEER_TTL_MS = 10 * 60_000;   // a peer not heard from for this long is asked again
+const HELLO_QUERY_MIN_GAP_MS = 30_000;   // at most one "who is here?" per 30 s, only while editing
+const HELLO_ANSWER_WAIT_MS = 5_000;      // a peer that does not answer a query by then is gone
+
+function askWhoIsHere(bus, now) {
+  if (now - bus.helloQueryAt < HELLO_QUERY_MIN_GAP_MS) return;
+  bus.helloQueryAt = now;
+  sendHello(bus, { q: 1 });
+}
+
+// Hello-based company (presence unavailable). Called only when about to send.
+function helloCompany(bus, now = Date.now()) {
+  // Peers that stayed silent after the last query are gone (a closed tab
+  // that could not say bye).
+  if (bus.helloQueryAt && now - bus.helloQueryAt >= HELLO_ANSWER_WAIT_MS) {
+    for (const [key, seenAt] of bus.helloPeers) {
+      if (seenAt < bus.helloQueryAt) bus.helloPeers.delete(key);
+    }
+  }
+  let fresh = false;
+  for (const seenAt of bus.helloPeers.values()) {
+    if (now - seenAt < HELLO_PEER_TTL_MS) { fresh = true; break; }
+  }
+  if (fresh) return true;
+  // Nobody heard from lately: ask (throttled). Peers we knew are still
+  // assumed present until they fail to answer; with none, this message
+  // rides the log only.
+  askWhoIsHere(bus, now);
+  return bus.helloPeers.size > 0;
+}
 
 function sendHello(bus, extra) {
   if (!bus.channel || bus.closing) return;
@@ -74,10 +105,10 @@ function onHello(bus, payload) {
     return;
   }
   const isNew = !bus.helloPeers.has(key);
-  if (isNew && bus.helloPeers.size < HELLO_MAX_PEERS) bus.helloPeers.add(key);
-  // Answer a newcomer once so it learns this screen is here; never answer
-  // an answer (no ping-pong).
-  if (isNew && payload.r !== 1) sendHello(bus, { r: 1 });
+  if (!isNew || bus.helloPeers.size < HELLO_MAX_PEERS) bus.helloPeers.set(key, Date.now());
+  // Answer a newcomer once, and every "who is here?", so the other screen
+  // learns this one is here; never answer an answer (no ping-pong).
+  if (payload.r !== 1 && (isNew || payload.q === 1)) sendHello(bus, { r: 1 });
 }
 
 function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
@@ -91,17 +122,22 @@ function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
     channel: null,
     // w32: who else has this document open on the channel, so a screen
     // alone sends nothing live (w34 review: Realtime messages are capped per
-    // project and billed). Two independent signals, either one is enough:
-    //   * Realtime Presence (needs the presence policy migration; 'off' once
-    //     the server refuses a track, 'unknown' until it answers);
-    //   * a tiny hello on the channel itself (works without any policy): a
-    //     screen says hello when it joins, every screen that hears a NEW
-    //     hello answers once, and says bye when it leaves.
+    // project and billed):
+    //   * Realtime Presence answered ('on', needs the presence policy
+    //     migration): trusted alone;
+    //   * Presence not answered yet ('unknown'): company assumed, as before
+    //     w32 (a viewer must never miss live changes because of this);
+    //   * Presence refused ('off', no policy): a tiny hello on the channel
+    //     itself: a screen says hello when it joins, every screen that hears
+    //     a NEW hello (or a "who is here?") answers, a leaving screen says
+    //     bye; peers not heard from for 10 min are asked again (only when
+    //     this screen is about to send), and dropped if they do not answer.
     // With company gating off (tests, older callers) every screen is assumed
     // to have company, exactly as before.
     gating: Boolean(presence),
     presence: { key: presenceKey, state: presence ? 'unknown' : 'off', peers: 0 },
-    helloPeers: new Set(),
+    helloPeers: new Map(), // key -> last heard (ms)
+    helloQueryAt: 0,
   };
   const channel = supabase.channel(`anno-live:${documentId}`, {
     // self:false — the sender already holds its own edit. ack:false — a
@@ -210,8 +246,9 @@ export async function acquireLiveBus(supabase, documentId, listener, { isPrivate
     // open on the channel (so nothing live would be delivered to anyone).
     hasCompany() {
       if (!bus.gating) return true;
-      if (bus.presence.state === 'on' && bus.presence.peers > 0) return true;
-      return bus.helloPeers.size > 0;
+      if (bus.presence.state === 'on') return bus.presence.peers > 0;
+      if (bus.presence.state === 'unknown') return true;
+      return helloCompany(bus);
     },
     presenceState() { return { ...bus.presence, helloPeers: bus.helloPeers.size }; },
     isClosed() { return released || Boolean(bus.closing); },

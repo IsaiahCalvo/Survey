@@ -185,3 +185,24 @@ test('end to end: a v3 message becomes a ghost on the other screen, the finished
   await Promise.all([a.destroy(), b.destroy()]);
   __liveStrokesTest.reset();
 });
+
+test('verify #6: a stroke begun while alone goes out whole, from its first point, when someone else arrives', () => {
+  __liveStrokesTest.reset();
+  let company = false;
+  const sent = [];
+  setLiveStrokeSink({ documentId: 'd', writerId: 'w1', send: (payload) => { if (!company) return false; sent.push(payload); return true; } });
+  const clock = fakeClock();
+  const live = beginLiveStroke({ documentId: 'd', id: 'alone-1', page: 1, tool: 'pen', color: '#000', width: 2 }, clock);
+  const all = points(5);
+  live.push(all);
+  clock.advance(LIVE_STROKE_INTERVAL_MS * 3);
+  assert.equal(sent.length, 0, 'nothing while alone');
+  company = true;
+  all.push(...points(3, 5));
+  live.push(all);
+  clock.advance(LIVE_STROKE_INTERVAL_MS);
+  assert.equal(sent[0].i, 0, 'from the first point');
+  assert.equal(sent[0].pts.length, 16, 'all 8 points so far');
+  live.end(true, all);
+  __liveStrokesTest.reset();
+});

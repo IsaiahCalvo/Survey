@@ -114,10 +114,15 @@ export function beginLiveStroke({ documentId, id, page, tool, color, width }, { 
       pts.push(round(Number(point?.x) || 0), round(Number(point?.y) || 0));
     }
     const payload = { ...base, i: sentCount, pts, ...(extra || {}) };
-    if (sink.send(payload)) messages += 1;
-    sentCount = end;
     lastSentAt = now();
-    // More than one batch behind (a very fast long stroke): keep going.
+    // Not sent (nobody else is here yet, or the channel is down): nothing
+    // counts as delivered, so when company appears mid-stroke the ink goes
+    // out from its first point (review: a stroke begun alone must show whole).
+    if (!sink.send(payload)) return;
+    messages += 1;
+    sentCount = end;
+    // More than one batch behind (a very fast long stroke, or company that
+    // just appeared): keep going.
     if (!extra && sentCount < latest.length) schedule();
   };
   const schedule = () => {

@@ -1089,7 +1089,7 @@ try {
       const cleanupResult = await deleteThrowaway(pageA, documentId, docName);
       log('cleanup:', JSON.stringify(cleanupResult));
       log(`storage requests blocked this run: ${storageBlocked.count} (allowed only ${throwawayObjectPath})`);
-      if (!REUSE_NAME && !/removed|kept/.test(JSON.stringify(cleanupResult || {}))) {
+      if (!REUSE_NAME && !(cleanupResult?.status === 'deleted' && cleanupResult?.storage === 'removed')) {
         log('CLEANUP INCOMPLETE — the stored file may be left behind:', JSON.stringify(cleanupResult));
         process.exitCode = 1;
       }
