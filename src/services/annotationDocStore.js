@@ -759,50 +759,11 @@ export function docToByPage(doc, { replayStats = null } = {}) {
       (object) => getAnnotationStorageKey(object) === storageKey,
     );
     if (objectIndex < 0) continue;
-    if (lanes.some(([, lane]) => lane.deleted === true)) {
-      byPage[page] = {
-        ...pageAnnotations,
-        objects: pageAnnotations.objects.filter((_object, index) => index !== objectIndex),
-      };
-      continue;
-    }
     const baseObject = pageAnnotations.objects[objectIndex];
-    const survivors = lanes.map(([, lane]) => (
-      rebaseStoredEraserSurvivor(baseObject, lane.base, lane.survivor)
-    )).filter(Boolean);
-    if (!survivors.length) continue;
-    const onlyAnalyticSurvivors = survivors.every(
-      (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
-    );
-    if (!onlyAnalyticSurvivors) {
-      polygonIntersections += Math.max(0, survivors.length - 1);
-    }
-    // A single analytic hairline survivor has no polygon carrier by design.
-    // Preserve it directly; the polygon intersection helper intentionally
-    // accepts only filled-outline survivors.
-    let intersected;
-    if (survivors.length === 1) {
-      [intersected] = survivors;
-    } else if (onlyAnalyticSurvivors) {
-      const combined = intersectAnalyticEraserLanes(baseObject, lanes);
-      // Old lanes predate gesture retention. Fail closed by keeping one real
-      // survivor instead of treating an unsupported analytic intersection as
-      // a full deletion.
-      intersected = combined.supported ? combined.survivor : survivors[0];
-    } else if (survivors.some(
-      (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
-    )) {
-      intersected = survivors[0];
-    } else {
-      intersected = intersectErasedPathSurvivors(survivors);
-    }
-    const survivor = intersected
-      ? projectEraserGeometryOntoCurrentBase(
-        pageAnnotations.objects[objectIndex],
-        intersected,
-      )
-      : null;
-    if (survivor) setAnnotationStorageKey(survivor, storageKey);
+    const applied = applyEraserLanesToObject(baseObject, lanes, storageKey);
+    polygonIntersections += applied.polygonIntersections;
+    if (applied.object === baseObject) continue;
+    const survivor = applied.object;
     byPage[page] = {
       ...pageAnnotations,
       objects: survivor
@@ -816,6 +777,84 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     replayStats.polygonIntersections = polygonIntersections;
   }
   return deriveCounterPresentationNumbers(byPage);
+}
+
+// One mark's eraser lanes (sorted [laneKey, lane] pairs) applied to its
+// stored object: { object } is the object to show — the base itself when no
+// lane changes it, null when the lanes remove it — keyed like the base.
+function applyEraserLanesToObject(baseObject, lanes, storageKey) {
+  if (lanes.some(([, lane]) => lane.deleted === true)) {
+    return { object: null, polygonIntersections: 0 };
+  }
+  const survivors = lanes.map(([, lane]) => (
+    rebaseStoredEraserSurvivor(baseObject, lane.base, lane.survivor)
+  )).filter(Boolean);
+  if (!survivors.length) return { object: baseObject, polygonIntersections: 0 };
+  const onlyAnalyticSurvivors = survivors.every(
+    (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
+  );
+  const polygonIntersections = onlyAnalyticSurvivors ? 0 : Math.max(0, survivors.length - 1);
+  // A single analytic hairline survivor has no polygon carrier by design.
+  // Preserve it directly; the polygon intersection helper intentionally
+  // accepts only filled-outline survivors.
+  let intersected;
+  if (survivors.length === 1) {
+    [intersected] = survivors;
+  } else if (onlyAnalyticSurvivors) {
+    const combined = intersectAnalyticEraserLanes(baseObject, lanes);
+    // Old lanes predate gesture retention. Fail closed by keeping one real
+    // survivor instead of treating an unsupported analytic intersection as
+    // a full deletion.
+    intersected = combined.supported ? combined.survivor : survivors[0];
+  } else if (survivors.some(
+    (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
+  )) {
+    intersected = survivors[0];
+  } else {
+    intersected = intersectErasedPathSurvivors(survivors);
+  }
+  const survivor = intersected
+    ? projectEraserGeometryOntoCurrentBase(baseObject, intersected)
+    : null;
+  if (survivor) setAnnotationStorageKey(survivor, storageKey);
+  return { object: survivor, polygonIntersections };
+}
+
+/**
+ * w32 live edits: what the screen shows for a few marks, exactly as
+ * docToByPage would build it (stored object + eraser lanes), without
+ * building every page. Map<storageKey, { page, object } | null> — null when
+ * the mark is gone (deleted, or erased by a delete lane). Counter numbers are
+ * NOT derived here (they depend on the whole series).
+ */
+export function materializeAnnotationKeys(doc, storageKeys) {
+  const wanted = new Set([...(storageKeys || [])].map(String));
+  const result = new Map();
+  if (wanted.size === 0) return result;
+  const lanesByKey = new Map();
+  getEraserOpsMap(doc).forEach((lane, laneKey) => {
+    if (!lane || typeof lane !== 'object' || lane.storageKey == null) return;
+    const key = String(lane.storageKey);
+    if (!wanted.has(key)) return;
+    if (!lanesByKey.has(key)) lanesByKey.set(key, []);
+    lanesByKey.get(key).push([String(laneKey), lane]);
+  });
+  for (const key of wanted) {
+    const entry = readAnnotationEntry(doc, key);
+    if (!entry || entry.p == null || !entry.o) {
+      result.set(key, null);
+      continue;
+    }
+    const lanes = lanesByKey.get(key);
+    if (!lanes) {
+      result.set(key, { page: Number(entry.p), object: entry.o });
+      continue;
+    }
+    lanes.sort(([a], [b]) => a.localeCompare(b));
+    const { object } = applyEraserLanesToObject(entry.o, lanes, key);
+    result.set(key, object ? { page: Number(entry.p), object } : null);
+  }
+  return result;
 }
 
 function collectEraserMutations(byPage, writerId) {

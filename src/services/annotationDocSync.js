@@ -69,6 +69,7 @@ import {
   getViewerEchoVersions,
   readAnnotationEntry,
   writeAnnotationMark,
+  materializeAnnotationKeys,
 } from './annotationDocStore.js';
 import {
   copyDurableMapValue,
@@ -84,6 +85,27 @@ import {
   base64ToBytes,
   bytesToBase64,
 } from './annotationLiveBus.js';
+import {
+  LIVE_EDIT_EXPIRE_MS,
+  LIVE_EDIT_FLAG,
+  LIVE_EDIT_MAX_ENTRIES,
+  LIVE_EDIT_VERSION,
+  applyLiveEditPatch,
+  buildLiveEditEntries,
+  carriesLiveEditFlag,
+  liveEditToken,
+  mergeLiveOverlays,
+  parseLiveEditPayload,
+  stripLiveEditObjects,
+} from './annotationLiveOverlay.js';
+import {
+  LIVE_STROKE_VERSION,
+  applyRemoteLiveStroke,
+  clearLiveStrokes,
+  hasLiveStrokeGhosts,
+  markLiveStrokesLanded,
+  setLiveStrokeSink,
+} from './annotationLiveStrokes.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -146,6 +168,12 @@ const LIVE_PREVIEW_EXPIRE_MS = 20_000;
 const LIVE_PREVIEW_SWEEP_MS = 5_000;
 const LIVE_PREVIEW_MAX_ENTRIES = 200;
 const LIVE_PREVIEW_KEYS_MAX = 2_000;
+// w32: overlay objects remembered for the capture (an edit made on one after
+// it left the screen is still recognised). Whole marks: keep it small.
+const LIVE_EDIT_TOKENS_MAX = 300;
+const LIVE_EDIT_BASES_MAX = 1_500;
+const LIVE_EDIT_FULL_EVERY = 8;
+const LIVE_EDIT_FULL_MS = 500;
 // Set on every preview object handed to the screen (never on a real mark), so
 // any copy of one is recognised by applyByPage however it got there.
 const LIVE_PREVIEW_FLAG = '__surveyLivePreview';
@@ -359,7 +387,7 @@ export async function openAnnotationDoc({
   // The live channel is private (only the document's people may join; needs
   // the realtime.messages policies). false = a public topic: dev/test only.
   livePreviewPrivate = true,
-  // Tests shorten these: { expireMs, sweepMs }.
+  // Tests shorten these: { expireMs, sweepMs, editExpireMs }.
   livePreviewTimings = null,
   snapshotRetryDelayMs = 400,
   repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
@@ -442,6 +470,15 @@ export async function openAnnotationDoc({
     livePreviewTokensAt: 0,
     livePreviewReceiveCounts: new Map(), // writer -> { second, count }
     expiredPreviewMarks: new Map(),  // mark id -> key of previews that expired (still never written)
+    // w32 live edits (annotationLiveOverlay.js): writer + clientSeq ->
+    // { writerId, clientSeq, receivedAt, entries: Map<key, {page, object}|null> }
+    liveEdits: new Map(),
+    liveEditExpireMs: Number(livePreviewTimings?.editExpireMs) || LIVE_EDIT_EXPIRE_MS,
+    liveEditTokens: new Map(),       // token -> { key, object } handed to the screen (bounded)
+    liveEditBases: new Map(),        // token -> this screen's own copy when the overlay arrived (kept longer)
+    liveMarkEpochs: new Map(),       // mark key -> bumped when an applied row changes the mark
+    liveSentObjects: new Map(),      // key -> the mark as this screen last broadcast it (delta base)
+    appliedSeqByWriter: new Map(),   // writer -> highest client_seq applied here (bounded)
     livePreviewListeners: new Set(),
     realtimeRowRecoveryAttempt: 0,
     realtimeRowRecoveryFromSeq: null,
@@ -768,7 +805,8 @@ export async function openAnnotationDoc({
           collectRecords: enqueuedRecords,
         });
         // w30: other screens see it now, not after the WAL round trip.
-        if (enqueuedRecords.length === 1) sendLivePreview(state, enqueuedRecords[0]);
+        // w32: edits too (move, recolour, erase, delete), as an overlay.
+        if (enqueuedRecords.length === 1) sendLiveUpdate(state, enqueuedRecords[0], transaction);
         // The full-state checkpoint is the durability GUARANTEE: even if an
         // individual op insert fails (network), the next checkpoint re-captures
         // the whole doc from memory. Schedule it on every local edit.
@@ -1389,7 +1427,29 @@ function applyAuthoritativeCloudUpdate(state, update) {
 // changes nothing: w30).
 function applyToLiveDoc(state, update, origin) {
   let changed = false;
-  const onUpdate = () => { changed = true; };
+  state.lastAppliedTouched = null;
+  const onUpdate = (_update, _origin, _doc, transaction) => {
+    changed = true;
+    // w32: which marks this row changed (older edit overlays of the same
+    // screen are dropped for those marks only, see confirmLivePreview), and
+    // their arrival copies go stale (every path that applies a row or a
+    // snapshot comes through here).
+    if (state.liveEdits?.size > 0 || state.liveEditBases?.size > 0) {
+      try {
+        const touched = liveTouchedMarks(state, transaction);
+        if (touched) {
+          state.lastAppliedTouched ??= new Set();
+          for (const key of [...touched.markKeys, ...touched.laneMarkKeys]) {
+            state.lastAppliedTouched.add(key);
+            state.liveMarkEpochs.set(key, (state.liveMarkEpochs.get(key) || 0) + 1);
+          }
+          while (state.liveMarkEpochs.size > 2_000) {
+            state.liveMarkEpochs.delete(state.liveMarkEpochs.keys().next().value);
+          }
+        }
+      } catch { /* only narrows overlay removal */ }
+    }
+  };
   state.doc.on('update', onUpdate);
   try {
     Y.applyUpdate(state.doc, update, origin);
@@ -1896,6 +1956,10 @@ async function applyAuthoritativeCloudRow(state, row) {
   const update = pgHexToBytes(row.data);
   const liveChanged = applyAuthoritativeCloudUpdate(state, update);
   confirmLivePreview(state, row?.client_id, row?.client_seq);
+  if (hasLiveStrokeGhosts(state.documentId)) {
+    const marks = getAnnotationsMap(state.doc);
+    markLiveStrokesLanded(state.documentId, (id) => marks.has(String(id)));
+  }
   const { record, collision } = appendRecordForCloudRow(state, row, update);
   if (collision && record) {
     state.permissionRejectedCutoff = state.localMutationOrdinal;
@@ -4512,7 +4576,23 @@ function acquireLiveChannel(state) {
     .then((bus) => {
       if (!bus) return;
       if (state.destroyed || state.closePromise || state.liveBus) bus.release();
-      else state.liveBus = bus;
+      else {
+        state.liveBus = bus;
+        // w32: this screen's in-progress pen strokes go out on the same
+        // channel (annotationLiveStrokes.js; SVGAnnotationLayer sends).
+        state.unregisterLiveStrokeSink?.();
+        state.unregisterLiveStrokeSink = setLiveStrokeSink({
+          documentId: state.documentId,
+          writerId: state.writerId,
+          send: (payload) => (
+            state.liveBus === bus
+            && !state.destroyed
+            && !state.closePromise
+            && !(state.permissionRejectedCutoff > 0)
+            && bus.send(payload)
+          ),
+        });
+      }
     })
     .catch((error) => {
       console.warn('[annotationDocSync] live channel unavailable; edits arrive through the log only', error?.message);
@@ -4520,28 +4600,64 @@ function acquireLiveChannel(state) {
     .finally(() => { state.liveBusAcquiring = false; });
 }
 
+// One screen update per frame however many live messages or rows arrive in
+// it (review B: a peer editing at the send rate made every receiver re-read
+// the whole document per message).
 function notifyLivePreviewListeners(state) {
-  for (const cb of state.livePreviewListeners) {
-    try { cb(); } catch (error) {
-      console.warn('[annotationDocSync] live preview listener threw', error?.message);
+  if (state.livePreviewNotifyScheduled) return;
+  state.livePreviewNotifyScheduled = true;
+  const run = () => {
+    state.livePreviewNotifyScheduled = false;
+    if (state.destroyed) return;
+    for (const cb of state.livePreviewListeners) {
+      try { cb(); } catch (error) {
+        console.warn('[annotationDocSync] live preview listener threw', error?.message);
+      }
     }
+  };
+  if (typeof requestAnimationFrame === 'function'
+    && typeof document !== 'undefined' && document.visibilityState !== 'hidden') {
+    requestAnimationFrame(run);
+  } else {
+    setTimeout(run, 0);
   }
 }
 
-// Sender: one message per small local edit that only adds, the exact bytes
-// its WAL row will carry, keyed by the row's idempotency key.
-function sendLivePreview(state, record) {
-  const bus = state.liveBus;
-  if (!bus || !record?.update || state.closePromise || state.destroyed) return;
-  // After a refusal this screen's edits are likely refused again: never show
-  // other screens something the log will not take.
-  if (state.permissionRejectedCutoff > 0) return;
-  if (record.update.length > LIVE_PREVIEW_MAX_BYTES) return;
-  try {
-    if (Y.decodeUpdate(record.update).ds.clients.size > 0) return; // not a pure addition
-  } catch {
-    return;
+// Which marks a local transaction changed as the screen sees them: mark
+// keys (rootLevel = the mark's entry itself was set, i.e. created or
+// replaced whole) and eraser lanes (by the mark they belong to).
+function liveTouchedMarks(state, transaction) {
+  if (!transaction?.changed) return null;
+  const marksMap = getAnnotationsMap(state.doc);
+  const eraserMap = getEraserOpsMap(state.doc);
+  const roots = DURABLE_MAP_NAMES.map((name) => state.doc.getMap(name));
+  const changed = rootKeysChangedByTransaction(transaction, roots);
+  const markKeys = new Set();
+  const laneMarkKeys = new Set();
+  let otherRoots = false;
+  for (const [root, keys] of changed) {
+    if (keys.has(null)) return null; // unknown: skip the fast lane
+    if (root === marksMap) {
+      for (const key of keys) markKeys.add(String(key));
+    } else if (root === eraserMap) {
+      for (const laneKey of keys) {
+        const text = String(laneKey);
+        const lane = eraserMap.get(text);
+        const separator = text.indexOf('\u0000');
+        const storageKey = lane?.storageKey != null
+          ? String(lane.storageKey)
+          : (separator >= 0 ? text.slice(separator + 1) : null);
+        if (storageKey) laneMarkKeys.add(storageKey);
+      }
+    } else if (keys.size > 0) {
+      otherRoots = true;
+    }
   }
+  const rootLevel = transaction.changed.get(marksMap) || new Set();
+  return { markKeys, laneMarkKeys, otherRoots, rootLevel };
+}
+
+function takeLiveToken(state) {
   const now = Date.now();
   state.livePreviewTokens = Math.min(
     LIVE_PREVIEW_BURST,
@@ -4549,19 +4665,111 @@ function sendLivePreview(state, record) {
       + ((now - (state.livePreviewTokensAt || now)) * LIVE_PREVIEW_RATE_PER_SEC) / 1000,
   );
   state.livePreviewTokensAt = now;
-  if (state.livePreviewTokens < 1) return;
+  if (state.livePreviewTokens < 1) return false;
   state.livePreviewTokens -= 1;
+  return true;
+}
+
+// Sender: one message per small local edit, keyed by its WAL row's
+// idempotency key (writer id + client_seq).
+//   * a brand-new mark (the update only adds whole marks): v1, the exact
+//     bytes its WAL row will carry (w30);
+//   * anything else that changes what a mark looks like (a field edit, an
+//     eraser lane, a delete): v2, what the screen shows for each such mark
+//     (w32, annotationLiveOverlay.js).
+function sendLiveUpdate(state, record, transaction) {
+  const bus = state.liveBus;
+  if (!bus || !record?.update || state.closePromise || state.destroyed) return;
+  // After a refusal this screen's edits are likely refused again: never show
+  // other screens something the log will not take.
+  if (state.permissionRejectedCutoff > 0) return;
+  const touched = liveTouchedMarks(state, transaction);
+  if (!touched) return;
+  if (touched.markKeys.size === 0 && touched.laneMarkKeys.size === 0) return; // nothing drawn changed
+  let pureAddition = false;
+  try {
+    pureAddition = Y.decodeUpdate(record.update).ds.clients.size === 0;
+  } catch {
+    return;
+  }
+  const onlyNewMarks = pureAddition
+    && !touched.otherRoots
+    && touched.laneMarkKeys.size === 0
+    && [...touched.markKeys].every((key) => touched.rootLevel.has(key));
+  if (onlyNewMarks) {
+    if (record.update.length > LIVE_PREVIEW_MAX_BYTES) return;
+    if (!takeLiveToken(state)) return;
+    const sent = bus.send({
+      v: 1,
+      w: state.writerId,
+      s: record.clientSeq,
+      u: bytesToBase64(record.update),
+    });
+    if (sent) {
+      syncTrace('preview-sent', {
+        writer: state.writerId,
+        clientSeq: record.clientSeq,
+        bytes: record.update.length,
+      });
+    }
+    return;
+  }
+  const keys = new Set([...touched.markKeys, ...touched.laneMarkKeys]);
+  if (keys.size > LIVE_EDIT_MAX_ENTRIES) return; // a bulk edit: the row only
+  let built = null;
+  let materialized = null;
+  try {
+    materialized = materializeAnnotationKeys(state.doc, keys);
+    // Only the changed fields, and only against what this screen broadcast
+    // for that mark in its IMMEDIATELY previous message (receivers apply the
+    // patch onto that message's object; verify pass: never onto their own,
+    // possibly different, copy). Anything else: the whole mark.
+    built = buildLiveEditEntries(materialized, {
+      baseOf: (key) => {
+        const previous = state.liveSentObjects.get(key);
+        if (!previous || previous.seq !== record.clientSeq - 1) return null;
+        // A whole copy at least every 8 messages / 500 ms per mark, so one
+        // lost message never ends live display of that mark for long.
+        if (previous.sinceFull >= LIVE_EDIT_FULL_EVERY - 1 || Date.now() - previous.fullAt >= LIVE_EDIT_FULL_MS) return null;
+        return previous.object;
+      },
+    });
+  } catch (error) {
+    console.warn('[annotationDocSync] live edit not sent', error?.message);
+    return;
+  }
+  if (!built) return;
+  if (!takeLiveToken(state)) return;
   const sent = bus.send({
-    v: 1,
+    v: LIVE_EDIT_VERSION,
     w: state.writerId,
     s: record.clientSeq,
-    u: bytesToBase64(record.update),
+    e: built.entries,
   });
   if (sent) {
-    syncTrace('preview-sent', {
+    // Only marks this message actually carried (verify pass 2).
+    const now = Date.now();
+    for (const entry of built.entries) {
+      const value = materialized.get(entry.k);
+      const previous = state.liveSentObjects.get(entry.k);
+      state.liveSentObjects.delete(entry.k);
+      if (!value?.object) continue;
+      const full = entry.o !== undefined;
+      state.liveSentObjects.set(entry.k, {
+        object: value.object,
+        seq: record.clientSeq,
+        fullAt: full ? now : (previous?.fullAt ?? now),
+        sinceFull: full ? 0 : (previous?.sinceFull ?? 0) + 1,
+      });
+    }
+    while (state.liveSentObjects.size > 500) {
+      state.liveSentObjects.delete(state.liveSentObjects.keys().next().value);
+    }
+    syncTrace('live-edit-sent', {
       writer: state.writerId,
       clientSeq: record.clientSeq,
-      bytes: record.update.length,
+      marks: built.entries.length,
+      bytes: built.bytes,
     });
   }
 }
@@ -4661,6 +4869,18 @@ function clockPlaceholderUpdate(ranges) {
 // Receiver: validate, decode, show. Never touches the doc.
 function onLivePreviewMessage(state, payload) {
   if (state.destroyed || state.closePromise || state.deleted) return;
+  if (payload?.v === LIVE_EDIT_VERSION) {
+    onLiveEditMessage(state, payload);
+    return;
+  }
+  if (payload?.v === LIVE_STROKE_VERSION) {
+    // w32: another screen's stroke while it is being drawn (a ghost line).
+    if (typeof payload.w !== 'string' || payload.w === state.writerId) return;
+    if (!livePreviewReceiveAllowed(state, payload.w)) return;
+    if (getAnnotationsMap(state.doc).has(String(payload.g))) return; // already a mark here
+    applyRemoteLiveStroke(state.documentId, payload, { ownWriterId: state.writerId });
+    return;
+  }
   if (!payload || payload.v !== 1) return;
   const writerId = typeof payload.w === 'string' ? payload.w : '';
   const clientSeq = Number(payload.s);
@@ -4682,15 +4902,268 @@ function onLivePreviewMessage(state, payload) {
   state.livePreviews.set(key, { ...preview, receivedAt: Date.now() });
   scheduleLivePreviewSweep(state);
   notifyLivePreviewListeners(state);
+  // The finished stroke is on screen: its in-progress ghost can go.
+  markLiveStrokesLanded(state.documentId, (id) => preview.keys.includes(id));
   syncTrace('preview-applied', { writer: writerId, clientSeq });
+}
+
+// w32 receiver: another screen's edit of existing marks, shown as an overlay
+// until its row is applied. Never touches the doc.
+function onLiveEditMessage(state, payload) {
+  const parsed = parseLiveEditPayload(payload, { ownWriterId: state.writerId });
+  if (!parsed) return;
+  const { writerId, clientSeq, entries } = parsed;
+  const key = livePreviewKey(writerId, clientSeq);
+  if (state.confirmedPreviewKeys.has(key) || state.liveEdits.has(key)) return;
+  // Its row (or a later one from the same screen) is already in.
+  if ((state.appliedSeqByWriter.get(writerId) || 0) >= clientSeq) return;
+  if (state.liveEdits.size >= LIVE_PREVIEW_MAX_ENTRIES) return;
+  if (!livePreviewReceiveAllowed(state, writerId)) return;
+  const shown = new Map();
+  for (const [markKey, value] of entries) {
+    if (!value) {
+      shown.set(markKey, null);
+      continue;
+    }
+    let drawn = value.object;
+    if (value.patch) {
+      // A delta against the SAME screen's previous message for this mark
+      // (client_seq - 1). Without that message here, the row brings it.
+      const previous = state.liveEditTokens.get(liveEditToken(writerId, clientSeq - 1, markKey));
+      drawn = previous ? applyLiveEditPatch(previous.object, value.patch, markKey) : null;
+      if (!drawn) continue;
+    }
+    // This screen's own copy of the mark as the overlay arrives (never a
+    // preview): what an edit made on the overlay is rebuilt from, and what
+    // "the other screen changed" is measured against.
+    const arrivalBase = getAnnotationsMap(state.doc).has(markKey)
+      ? (previousArrivalBase(state, markKey, writerId)
+        || state.viewer?.lastDelivered?.get(markKey)
+        || materializeAnnotationKeys(state.doc, [markKey]).get(markKey)?.object
+        || null)
+      : null;
+    const token = liveEditToken(writerId, clientSeq, markKey);
+    const object = { ...drawn, [LIVE_EDIT_FLAG]: token };
+    rememberLiveEditToken(state, token, {
+      key: markKey,
+      object,
+      page: value.page,
+      base: arrivalBase,
+      epoch: state.liveMarkEpochs.get(markKey) || 0,
+    });
+    shown.set(markKey, { page: value.page, object });
+  }
+  if (shown.size === 0) return;
+  syncTrace('live-edit-recv', { writer: writerId, clientSeq, marks: shown.size });
+  state.liveEdits.set(key, { writerId, clientSeq, receivedAt: Date.now(), entries: shown });
+  scheduleLivePreviewSweep(state);
+  notifyLivePreviewListeners(state);
+}
+
+// While an overlay of this mark is still showing, the next one of it is
+// measured against the same own copy (the screen never showed the doc copy
+// in between).
+function previousArrivalBase(state, markKey, writerId) {
+  const epoch = state.liveMarkEpochs.get(markKey) || 0;
+  for (const edit of state.liveEdits.values()) {
+    if (edit.writerId !== writerId) continue; // same writer only (verify pass 2)
+    const overlay = edit.entries.get(markKey);
+    if (!overlay?.object) continue;
+    const record = state.liveEditTokens.get(overlay.object[LIVE_EDIT_FLAG]);
+    // A row that changed the mark since: the screen's own copy moved on.
+    if (record?.base && record.epoch === epoch) return record.base;
+  }
+  return null;
+}
+
+function rememberLiveEditToken(state, token, record) {
+  // The arrival base outlives the overlay object (an Undo much later may
+  // still bring back a copy of this overlay: verify pass 2).
+  if (record.base) {
+    state.liveEditBases.delete(token);
+    state.liveEditBases.set(token, { key: record.key, base: record.base });
+    while (state.liveEditBases.size > LIVE_EDIT_BASES_MAX) {
+      state.liveEditBases.delete(state.liveEditBases.keys().next().value);
+    }
+  }
+  state.liveEditTokens.delete(token);
+  state.liveEditTokens.set(token, record);
+  if (state.liveEditTokens.size > LIVE_EDIT_TOKENS_MAX) {
+    state.liveEditTokens.delete(state.liveEditTokens.keys().next().value);
+  }
+}
+
+// Newest overlay per mark: the latest message received wins (a later one
+// from the same screen always has a higher client_seq).
+function activeLiveEdits(state) {
+  if (state.liveEdits.size === 0) return null;
+  const edits = new Map();
+  const newest = new Map();
+  for (const edit of state.liveEdits.values()) {
+    for (const [markKey, overlay] of edit.entries) {
+      const previous = newest.get(markKey);
+      if (previous && (previous.receivedAt > edit.receivedAt
+        || (previous.receivedAt === edit.receivedAt && previous.writerId === edit.writerId && previous.clientSeq > edit.clientSeq))) continue;
+      newest.set(markKey, edit);
+      edits.set(markKey, overlay);
+    }
+  }
+  return edits.size > 0 ? edits : null;
+}
+
+// Marks an overlay hides that the document holds (deleted on another screen,
+// row not here yet): the capture puts them back so hiding is never a delete.
+function liveEditHiddenKeys(state, edits) {
+  if (!edits) return null;
+  const live = getAnnotationsMap(state.doc);
+  const hidden = new Set();
+  for (const [markKey, overlay] of edits) {
+    if (!overlay && live.has(markKey)) hidden.add(markKey);
+  }
+  return hidden.size > 0 ? hidden : null;
+}
+
+function docPageOfMark(state, markKey) {
+  const entry = readAnnotationEntry(state.doc, String(markKey));
+  if (!entry || entry.p == null) return null;
+  return Number(entry.p);
+}
+
+// The screen = document + other screens' in-flight new marks and edits.
+function applyLiveOverlaysToByPage(state, byPage) {
+  if (state.livePreviews.size === 0 && state.liveEdits.size === 0) return byPage;
+  return mergeLiveOverlays(byPage, {
+    previewsByPage: state.livePreviews.size > 0 ? livePreviewByPage(state) : null,
+    edits: activeLiveEdits(state),
+    docPageOf: (markKey) => docPageOfMark(state, markKey),
+  });
+}
+
+// Capture side of w32: overlay copies out, the user's own changes on them in.
+function stripLiveEdits(state, byPage, swaps = null, { translate = true } = {}) {
+  const edits = activeLiveEdits(state);
+  // Marks an eraser gesture on this list touched: never translated (see
+  // stripLiveEditObjects), the erase of them is simply not applied.
+  const noTranslateKeys = new Set();
+  for (const page of Object.values(byPage || {})) {
+    const mutation = page?.eraserMutation;
+    if (!mutation) continue;
+    for (const list of [mutation.touchedIds, mutation.changedIds, mutation.deletedIds]) {
+      for (const id of Array.isArray(list) ? list : []) if (id != null) noTranslateKeys.add(String(id));
+    }
+    for (const entry of Array.isArray(mutation.objectMutations) ? mutation.objectMutations : []) {
+      if (entry?.storageKey != null) noTranslateKeys.add(String(entry.storageKey));
+      if (entry?.annotationId != null) noTranslateKeys.add(String(entry.annotationId));
+    }
+  }
+  const result = stripLiveEditObjects(byPage, {
+    resolveToken: (token) => {
+      const record = state.liveEditTokens.get(token);
+      if (record) return record;
+      const kept = state.liveEditBases.get(token);
+      if (!kept) return null;
+      const { key, base } = kept;
+      // The overlay object itself is gone: rebuild-only record (an edit on
+      // it cannot be told apart, so only the base is ever written).
+      return key ? { key, object: base, page: null, base, rebuildOnly: true } : null;
+    },
+    deliveredOf: (markKey) => (
+      getAnnotationsMap(state.doc).has(String(markKey))
+        ? state.viewer?.lastDelivered?.get(String(markKey)) || null
+        : null
+    ),
+    docPageOf: (markKey) => docPageOfMark(state, markKey),
+    hiddenKeys: liveEditHiddenKeys(state, edits),
+    swaps,
+    translate,
+    noTranslateKeys: noTranslateKeys.size > 0 ? noTranslateKeys : null,
+  });
+  return result;
+}
+
+// The user changed a mark while another screen's edit of it was on the way:
+// from now on this screen shows its own copy (the other edit shows when its
+// row lands), so a repaint never hides the user's change behind the overlay.
+function dropLiveEditsForMarks(state, markKeys) {
+  if (!markKeys?.length || state.liveEdits.size === 0) return false;
+  let removed = false;
+  for (const [key, edit] of [...state.liveEdits]) {
+    for (const markKey of markKeys) {
+      if (edit.entries.delete(markKey)) removed = true;
+    }
+    if (edit.entries.size === 0) state.liveEdits.delete(key);
+  }
+  return removed;
+}
+
+// An eraser gesture whose plan was built on an overlay copy is not applied
+// to that mark (its geometry is another screen's in-flight state).
+function stripLiveEditEraserMutation(page) {
+  const mutation = page?.eraserMutation;
+  if (!mutation || !Array.isArray(mutation.objectMutations)) return page;
+  const flagged = new Set();
+  for (const entry of mutation.objectMutations) {
+    if (typeof entry?.base?.[LIVE_EDIT_FLAG] === 'string' || typeof entry?.survivor?.[LIVE_EDIT_FLAG] === 'string') {
+      if (entry?.storageKey != null) flagged.add(String(entry.storageKey));
+      if (entry?.annotationId != null) flagged.add(String(entry.annotationId));
+    }
+  }
+  if (flagged.size === 0) return page;
+  return { ...page, eraserMutation: stripEraserMutation(mutation, flagged, new Set()) };
 }
 
 // Its WAL row was applied: the marks now come from the doc.
 function confirmLivePreview(state, writerId, clientSeq) {
   if (writerId == null || clientSeq == null) return;
-  const key = livePreviewKey(String(writerId), Number(clientSeq));
+  const writer = String(writerId);
+  const seq = Number(clientSeq);
+  const key = livePreviewKey(writer, seq);
   rememberBounded(state.confirmedPreviewKeys, key);
-  if (state.livePreviews.delete(key)) notifyLivePreviewListeners(state);
+  let changed = state.livePreviews.delete(key);
+  if (Number.isSafeInteger(seq)) {
+    if ((state.appliedSeqByWriter.get(writer) || 0) < seq) {
+      state.appliedSeqByWriter.delete(writer);
+      state.appliedSeqByWriter.set(writer, seq);
+      if (state.appliedSeqByWriter.size > 256) {
+        state.appliedSeqByWriter.delete(state.appliedSeqByWriter.keys().next().value);
+      }
+    }
+    // This row's own overlay leaves. An OLDER overlay of the same screen
+    // loses only the marks this row changed (this row is newer for them);
+    // its other marks wait for their own row: one writer's rows are NOT
+    // always applied in client_seq order (a failed append is replayed later
+    // while the queue moves on; review B). If Yjs had to hold the row back
+    // (a struct it depends on has not arrived), the overlay stays until the
+    // document can show the change (or its expiry).
+    const heldBack = Boolean(state.doc?.store?.pendingStructs || state.doc?.store?.pendingDs);
+    const touched = state.lastAppliedTouched;
+    for (const [editKey, edit] of state.liveEdits) {
+      if (edit.writerId !== writer || edit.clientSeq > seq) continue;
+      if (edit.clientSeq === seq) {
+        if (heldBack) {
+          edit.awaitingIntegration = true;
+          continue;
+        }
+        state.liveEdits.delete(editKey);
+        changed = true;
+        continue;
+      }
+      if (!touched || heldBack) continue;
+      for (const markKey of touched) {
+        if (edit.entries.delete(markKey)) changed = true;
+      }
+      if (edit.entries.size === 0) state.liveEdits.delete(editKey);
+    }
+  }
+  if (!state.doc?.store?.pendingStructs && !state.doc?.store?.pendingDs) {
+    for (const [editKey, edit] of state.liveEdits) {
+      if (edit.awaitingIntegration) {
+        state.liveEdits.delete(editKey);
+        changed = true;
+      }
+    }
+  }
+  if (changed) notifyLivePreviewListeners(state);
 }
 
 // The overlay to show: every preview mark whose key the doc does not hold yet.
@@ -4866,12 +5339,13 @@ function eraseIntentInvolvesLivePreview(state, intent) {
     const key = target?.storageKey == null ? null : String(target.storageKey);
     if (key && ids?.has(key) && !live.has(key)) return true;
   }
-  return carriesLivePreviewFlag(intent);
+  // w32: a plan built on another screen's in-flight edit of a mark.
+  return carriesLivePreviewFlag(intent) || carriesLiveEditFlag(intent);
 }
 
 function scheduleLivePreviewSweep(state) {
   if (state.livePreviewSweepTimer || state.destroyed || state.closePromise) return;
-  if (state.livePreviews.size === 0) return;
+  if (state.livePreviews.size === 0 && state.liveEdits.size === 0) return;
   state.livePreviewSweepTimer = setTimeout(() => {
     state.livePreviewSweepTimer = null;
     sweepLivePreviews(state);
@@ -4882,9 +5356,18 @@ function scheduleLivePreviewSweep(state) {
 // A preview whose row has not come (refused, or never sent) leaves the screen.
 // If the row comes later after all, it is applied like any row.
 function sweepLivePreviews(state) {
-  if (state.destroyed || state.closePromise || state.livePreviews.size === 0) return;
+  if (state.destroyed || state.closePromise) return;
+  if (state.livePreviews.size === 0 && state.liveEdits.size === 0) return;
   const now = Date.now();
   let removed = 0;
+  // w32: an edit overlay whose row has not come (refused, or never sent)
+  // leaves the screen; the document's copy shows again.
+  for (const [key, edit] of state.liveEdits) {
+    if (now - edit.receivedAt >= state.liveEditExpireMs) {
+      state.liveEdits.delete(key);
+      removed += 1;
+    }
+  }
   for (const [key, preview] of state.livePreviews) {
     if (now - preview.receivedAt >= state.livePreviewExpireMs) {
       state.livePreviews.delete(key);
@@ -4909,8 +5392,12 @@ function closeLivePreviews(state) {
   }
   try { state.liveBus?.release(); } catch { /* */ }
   state.liveBus = null;
-  if (state.livePreviews.size > 0) {
+  state.unregisterLiveStrokeSink?.();
+  state.unregisterLiveStrokeSink = null;
+  clearLiveStrokes(state.documentId);
+  if (state.livePreviews.size > 0 || state.liveEdits.size > 0) {
     state.livePreviews.clear();
+    state.liveEdits.clear();
     notifyLivePreviewListeners(state);
   }
 }
@@ -5207,6 +5694,14 @@ function makeHandle(state) {
      */
     getLivePreviewByPage() { return livePreviewByPage(state); },
 
+    /**
+     * w32: `byPage` (read from this handle) as the screen shows it: other
+     * screens' in-flight new marks added and in-flight edits (moves,
+     * restyles, erases, deletes) applied. Display only; applyByPage takes
+     * them back out.
+     */
+    withLiveOverlays(byPage) { return applyLiveOverlaysToByPage(state, byPage); },
+
     /** Subscribe to live-preview arrivals/removals. Returns an unsubscribe fn. */
     onLivePreviewChange(cb) {
       state.livePreviewListeners.add(cb);
@@ -5232,6 +5727,16 @@ function makeHandle(state) {
       // screen's edit (w30).
       const previewSwaps = [];
       byPage = stripLivePreviewObjects(state, byPage, previewSwaps);
+      // ...nor is another screen's in-flight edit of a mark (w32): only the
+      // user's own change on top of it is written.
+      const liveEditStrip = stripLiveEdits(state, byPage, previewSwaps);
+      byPage = liveEditStrip.byPage;
+      if (byPage && typeof byPage === 'object') {
+        for (const [pageNumber, page] of Object.entries(byPage)) {
+          const stripped = stripLiveEditEraserMutation(page);
+          if (stripped !== page) byPage = { ...byPage, [pageNumber]: stripped };
+        }
+      }
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
       const hasEraserMutation = Object.values(byPage || {}).some((page) => page?.eraserMutation?.id);
@@ -5339,6 +5844,7 @@ function makeHandle(state) {
       const reconcile = previewSwaps.length > 0
         ? [...(res.reconcile || []), ...previewSwaps]
         : res.reconcile;
+      if (dropLiveEditsForMarks(state, liveEditStrip.editedKeys)) notifyLivePreviewListeners(state);
       return {
         ...res,
         ...(reconcile ? { reconcile } : {}),
@@ -5361,10 +5867,13 @@ function makeHandle(state) {
       const current = state.lastByPage || docToByPage(state.doc);
       // Another screen's in-flight mark is neither erased nor written here,
       // not even as an eraser lane's base (w30 review B).
-      const preparedPage = stripLivePreviewObjects(
+      const previewFree = stripLivePreviewObjects(
         state,
         { [pageNumber]: { ...(pageAnnotations || { objects: [] }), eraserMutation } },
-      )[pageNumber];
+      );
+      // w32: nor on another screen's in-flight edit of a mark.
+      const liveEditFree = stripLiveEdits(state, previewFree, null, { translate: false }).byPage;
+      const preparedPage = stripLiveEditEraserMutation(liveEditFree[pageNumber]);
       const prepared = {
         ...current,
         [pageNumber]: preparedPage,

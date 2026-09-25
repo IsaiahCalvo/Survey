@@ -41,6 +41,9 @@ const PASTE_STRIPPED_PROVENANCE_KEYS = [
   // live preview (annotationDocSync.js LIVE_PREVIEW_FLAG). The paste is this
   // user's own new mark and must be saved like one.
   '__surveyLivePreview',
+  // w32: the same for another screen's in-flight edit shown as an overlay
+  // (annotationLiveOverlay.js LIVE_EDIT_FLAG).
+  '__surveyLiveEdit',
 ];
 
 function freshUuid() {

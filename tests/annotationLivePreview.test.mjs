@@ -385,7 +385,19 @@ test('only brand-new marks are previewed; edits, deletions and forged or floodin
   const screen = a.getByPage();
   a.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, stroke: '#0000ff' })) } });
   await settle(40);
-  assert.equal(previewChanges, 0, 'an edit waits for its row');
+  // w32 (owner request 2026-09-25, deliberate change of this w30 assertion):
+  // edits of existing marks now reach other screens early too, but as a v2
+  // display overlay (annotationLiveOverlay.js), never as a v1 new-mark
+  // preview. What still holds from w30: no new-mark preview is made from an
+  // edit, and the document does not change before the row.
+  assert.deepEqual(previewIds(b), [], 'an edit is never a new-mark preview');
+  assert.equal(b.getByPage()[1].objects[0].stroke, '#ff0000', 'the document waits for the row');
+  assert.equal(
+    b.withLiveOverlays(b.getByPage())[1].objects[0].stroke,
+    '#0000ff',
+    'the screen shows the edit at once (w32 overlay)',
+  );
+  assert.equal(previewChanges, 1, 'one overlay arrival');
   gate.resolve();
   alice.appendGate = null;
   await a.drain();

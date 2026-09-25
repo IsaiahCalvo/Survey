@@ -135,6 +135,8 @@ import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
+import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
+import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -341,6 +343,9 @@ const SVGAnnotationLayer = memo(({
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
+  // w32: the open document's id — live ink (in-progress strokes) is sent on,
+  // and shown from, this document's channel only.
+  documentId = null,
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
   // UX 2026-09-15 (Drawboard parity — Pan is a selection mode):
   // panEditEntryEnabled is set by PDFViewer when the PAN tool is armed. It does
@@ -879,6 +884,15 @@ const SVGAnnotationLayer = memo(({
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
   const freehandPointsRef = useRef([]);
+  // w32: the in-progress stroke streamed to other screens (ghost ink there,
+  // annotationLiveStrokes.js); ended on commit or cancel.
+  const liveStrokeRef = useRef(null);
+  const endLiveStroke = useCallback((committed, points = null) => {
+    const live = liveStrokeRef.current;
+    liveStrokeRef.current = null;
+    live?.end(committed, points);
+  }, []);
+  useEffect(() => () => endLiveStroke(false), [endLiveStroke]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place draft (page coords).
@@ -1475,6 +1489,7 @@ const SVGAnnotationLayer = memo(({
     }
     if (!SHAPE_CREATION_TOOLS.includes(activeTool) && !FREEHAND_CREATION_TOOLS.includes(activeTool)) {
       freehandPointsRef.current = [];
+      endLiveStroke(false);
       setShapeCreation(null);
     }
     // UX: leaving the Polygon/Polyline tool abandons an unfinished draft. A
@@ -1518,9 +1533,11 @@ const SVGAnnotationLayer = memo(({
       spaces,
       isRegionOverlayEnabled,
     });
-    const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    // w32: a freehand stroke already has its id (other screens drew its ink
+    // under that id while it was drawn, and drop it when this mark arrives).
+    const id = state.liveId || ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
-      : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
     const dispatchCommit = (rawJson) => {
       const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
       updateAnnotationGesture(state.gestureId, { annotationId: id });
@@ -1566,6 +1583,7 @@ const SVGAnnotationLayer = memo(({
         stampRegionId,
         activeRegionId,
       });
+      endLiveStroke(Boolean(json), points);
       if (json) dispatchCommit(json);
       return;
     }
@@ -1833,6 +1851,7 @@ const SVGAnnotationLayer = memo(({
       markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
       if (isFreehand) {
         appendCoalescedPagePoints(e);
+        liveStrokeRef.current?.push(freehandPointsRef.current);
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
       } else {
         const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -1855,6 +1874,7 @@ const SVGAnnotationLayer = memo(({
       if (!isGesturePointer(e)) return;
       shapeCreationRef.current = null;
       freehandPointsRef.current = [];
+      endLiveStroke(false);
       markAnnotationPointerRelease(shapeCreation.gestureId, { action });
       setShapeCreation(null);
     };
@@ -1866,7 +1886,7 @@ const SVGAnnotationLayer = memo(({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [shapeCreation, appendCoalescedPagePoints]);
+  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke]);
 
   // zoomGeneration contract (CLAUDE.md invariant): a zoom gesture starting
   // mid-stroke commits the in-flight freehand work before the page re-lays
@@ -1894,6 +1914,7 @@ const SVGAnnotationLayer = memo(({
       // that flush would commit the drag-out shape the pinch just discarded.
       shapeCreationRef.current = null;
       freehandPointsRef.current = [];
+      endLiveStroke(false);
       setShapeCreation(null);
     };
     window.addEventListener('survey-pdfjs-pinch-start', cancelPinchGesture);
@@ -5527,7 +5548,22 @@ const SVGAnnotationLayer = memo(({
               if (isFreehandCreationTool) {
                 freehandPointsRef.current = [];
                 appendCoalescedPagePoints(e.nativeEvent);
-                setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0 });
+                // w32: other screens see this stroke grow while it is drawn.
+                const liveId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+                  ? crypto.randomUUID()
+                  : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+                endLiveStroke(false);
+                liveStrokeRef.current = beginLiveStroke({
+                  documentId,
+                  id: liveId,
+                  page: pageNumber,
+                  tool,
+                  color: tool === 'highlighter' ? highlightColor : strokeColor,
+                  width: tool === 'highlighter'
+                    ? Math.max(Number(strokeWidth) || 3, 8)
+                    : (Number(strokeWidth) || 3),
+                });
+                setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0, liveId });
               } else {
                 setShapeCreation({ tool, gestureId, start: point, current: point, pointerId: e.pointerId });
               }
@@ -5979,6 +6015,8 @@ const SVGAnnotationLayer = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* w32: other screens' strokes while they are being drawn. */}
+      <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
       {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
         && freehandPointsRef.current.length > 0 && (
         <polyline
