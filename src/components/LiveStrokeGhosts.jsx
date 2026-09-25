@@ -23,10 +23,10 @@ function pointsAttribute(points) {
   return text;
 }
 
-export default function LiveStrokeGhosts({ pageNumber }) {
+export default function LiveStrokeGhosts({ documentId, pageNumber }) {
   const strokes = useSyncExternalStore(
     subscribeLiveStrokes,
-    () => getLiveStrokesForPage(pageNumber),
+    () => (documentId ? getLiveStrokesForPage(pageNumber, documentId) : EMPTY),
     () => EMPTY,
   );
   if (!strokes || strokes.length === 0) return null;

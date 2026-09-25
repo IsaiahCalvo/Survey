@@ -29,7 +29,14 @@ const BUDGET = {
     walAppendsPerEdit: 1,
     snapshotWrites: 4,         // measured 1 (debounced); slack for timing
     channelsPerOpen: 2,
-    broadcastsSent: 20,         // new strokes only (erase/move ride the WAL)
+    // w32 (2026-09-25, owner request: erases, moves and deletes show on
+    // other screens in ~100 ms, not with their row): one live message per
+    // edit as well as per new stroke = 20 strokes + 10 erases + 5 moves.
+    // Edit messages carry only the changed fields (a delete ~40 B, a move of
+    // a small mark ~100 B), so the bytes-per-message ceiling below is kept.
+    // A screen alone in the document sends none of them (company gating is
+    // on in the app; this test opens handles without it).
+    broadcastsSent: 35,
     tailReadsWhileReceiving: 4, // realtime rows apply without re-reading the log
     walBytesPerStroke: 512,     // measured ~224 B for a small mark's row
     broadcastBytesPerStroke: 1_024, // measured ~560 B

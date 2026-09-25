@@ -343,6 +343,9 @@ const SVGAnnotationLayer = memo(({
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
+  // w32: the open document's id — live ink (in-progress strokes) is sent on,
+  // and shown from, this document's channel only.
+  documentId = null,
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
   // UX 2026-09-15 (Drawboard parity — Pan is a selection mode):
   // panEditEntryEnabled is set by PDFViewer when the PAN tool is armed. It does
@@ -5551,6 +5554,7 @@ const SVGAnnotationLayer = memo(({
                   : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
                 endLiveStroke(false);
                 liveStrokeRef.current = beginLiveStroke({
+                  documentId,
                   id: liveId,
                   page: pageNumber,
                   tool,
@@ -6012,7 +6016,7 @@ const SVGAnnotationLayer = memo(({
         />
       )}
       {/* w32: other screens' strokes while they are being drawn. */}
-      <LiveStrokeGhosts pageNumber={pageNumber} />
+      <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
       {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
         && freehandPointsRef.current.length > 0 && (
         <polyline

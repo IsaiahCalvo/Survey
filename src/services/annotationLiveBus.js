@@ -40,6 +40,7 @@ function registryFor(supabase) {
 
 function closeBus(supabase, byDocument, documentId, bus) {
   if (bus.closing) return;
+  if (bus.gating && bus.joined) sendHello(bus, { b: 1 });
   bus.joined = false;
   bus.closing = Promise.resolve()
     .then(() => supabase.removeChannel?.(bus.channel))
@@ -47,6 +48,36 @@ function closeBus(supabase, byDocument, documentId, bus) {
     .finally(() => {
       if (byDocument.get(documentId) === bus) byDocument.delete(documentId);
     });
+}
+
+// w32 company hellos: { v: 0, h: busKey, r?: 1 (an answer), b?: 1 (bye) }.
+const HELLO_VERSION = 0;
+const HELLO_MAX_PEERS = 64;
+
+function sendHello(bus, extra) {
+  if (!bus.channel || bus.closing) return;
+  try {
+    const result = bus.channel.send({
+      type: 'broadcast',
+      event: LIVE_PREVIEW_EVENT,
+      payload: { v: HELLO_VERSION, h: bus.presence.key, ...extra },
+    });
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch { /* the hello is best effort */ }
+}
+
+function onHello(bus, payload) {
+  const key = typeof payload.h === 'string' ? payload.h : '';
+  if (!key || key.length > 64 || key === bus.presence.key || !bus.gating) return;
+  if (payload.b === 1) {
+    bus.helloPeers.delete(key);
+    return;
+  }
+  const isNew = !bus.helloPeers.has(key);
+  if (isNew && bus.helloPeers.size < HELLO_MAX_PEERS) bus.helloPeers.add(key);
+  // Answer a newcomer once so it learns this screen is here; never answer
+  // an answer (no ping-pong).
+  if (isNew && payload.r !== 1) sendHello(bus, { r: 1 });
 }
 
 function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
@@ -58,11 +89,19 @@ function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
     everJoined: false,
     closing: null,
     channel: null,
-    // w32: who else has this document open on the channel. 'unknown' until
-    // Realtime Presence answers; 'off' when it cannot be used (no presence
-    // policy yet): then every screen is assumed to have company, exactly as
-    // before. 'on' + peers 0 = alone: nothing live is sent.
+    // w32: who else has this document open on the channel, so a screen
+    // alone sends nothing live (w34 review: Realtime messages are capped per
+    // project and billed). Two independent signals, either one is enough:
+    //   * Realtime Presence (needs the presence policy migration; 'off' once
+    //     the server refuses a track, 'unknown' until it answers);
+    //   * a tiny hello on the channel itself (works without any policy): a
+    //     screen says hello when it joins, every screen that hears a NEW
+    //     hello answers once, and says bye when it leaves.
+    // With company gating off (tests, older callers) every screen is assumed
+    // to have company, exactly as before.
+    gating: Boolean(presence),
     presence: { key: presenceKey, state: presence ? 'unknown' : 'off', peers: 0 },
+    helloPeers: new Set(),
   };
   const channel = supabase.channel(`anno-live:${documentId}`, {
     // self:false — the sender already holds its own edit. ack:false — a
@@ -75,6 +114,11 @@ function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
   });
   bus.channel = channel;
   channel.on('broadcast', { event: LIVE_PREVIEW_EVENT }, (message) => {
+    const payload = message?.payload;
+    if (payload?.v === HELLO_VERSION) {
+      onHello(bus, payload);
+      return;
+    }
     for (const listener of [...bus.listeners]) {
       try { listener(message?.payload); } catch (error) {
         console.warn('[annotationLiveBus] listener threw', error?.message);
@@ -95,14 +139,18 @@ function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
     if (bus.joined) {
       bus.everJoined = true;
       REFUSED.delete(documentId);
-      if (presence && bus.presence.state !== 'off') {
-        // One presence entry per open screen; only joins and leaves are
-        // messages (no heartbeat traffic). Refused (no presence policy) =
-        // 'off': send as before.
-        Promise.resolve()
-          .then(() => channel.track({ at: Date.now() }))
-          .then((result) => { if (result !== 'ok') bus.presence.state = 'off'; })
-          .catch(() => { bus.presence.state = 'off'; });
+      if (presence) {
+        sendHello(bus, {});
+        if (bus.presence.state !== 'off') {
+          // One presence entry per open screen; only joins and leaves are
+          // messages (no heartbeat traffic). Refused (no presence policy):
+          // 'off' for good, the hellos carry it. Anything else (a timeout)
+          // is tried again at the next join (review B).
+          Promise.resolve()
+            .then(() => channel.track({ at: Date.now() }))
+            .then((result) => { if (result === 'error') bus.presence.state = 'off'; })
+            .catch(() => {});
+        }
       }
       return;
     }
@@ -160,8 +208,12 @@ export async function acquireLiveBus(supabase, documentId, listener, { isPrivate
     isJoined() { return !released && bus.joined && !bus.closing; },
     // w32: false only when Presence says no other screen has the document
     // open on the channel (so nothing live would be delivered to anyone).
-    hasCompany() { return bus.presence.state !== 'on' || bus.presence.peers > 0; },
-    presenceState() { return { ...bus.presence }; },
+    hasCompany() {
+      if (!bus.gating) return true;
+      if (bus.presence.state === 'on' && bus.presence.peers > 0) return true;
+      return bus.helloPeers.size > 0;
+    },
+    presenceState() { return { ...bus.presence, helloPeers: bus.helloPeers.size }; },
     isClosed() { return released || Boolean(bus.closing); },
     release() {
       if (released) return;

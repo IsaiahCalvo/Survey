@@ -7,8 +7,9 @@
 // of the finished mark, w30). Drawboard/Figma-level feel means the ink grows
 // on the other screen as it is drawn. The drawing screen now sends the new
 // points of its in-progress stroke at most every LIVE_STROKE_INTERVAL_MS
-// (~15 messages a second while the pen moves, nothing when it is still or
-// idle) on the same private live channel (v3 message):
+// (at most 8 messages a second while the pen moves, nothing when it is still
+// or idle, nothing at all when no other screen has the document open) on the
+// same private live channel (v3 message):
 //
 //   { v: 3, w: writerId, g: strokeId, p: page, t: tool, c: colour, sw: width,
 //     i: index of the first point, pts: [x0, y0, x1, y1, ...], f?: 1, x?: 1 }
@@ -19,7 +20,7 @@
 // A receiving screen draws it as a GHOST: a plain polyline in the page's SVG
 // (LiveStrokeGhosts), never an annotation — nothing can select, save, export
 // or undo it. It leaves when the finished mark is on that screen (its
-// preview or its row: `markLanded`), on cancel, 4 s after the pen lifted, or
+// preview or its row: `markLanded`), on cancel, 20 s after the pen lifted, or
 // 10 s after the last points (a sender that vanished). A later preview/row
 // is what makes the stroke real; the ghost only fills the time before it.
 //
@@ -27,11 +28,11 @@
 // transport (annotationDocSync.js), SVGAnnotationLayer the sender and view.
 
 export const LIVE_STROKE_VERSION = 3;
-export const LIVE_STROKE_INTERVAL_MS = 66;     // ≤ ~15 messages / s per drawing screen
+export const LIVE_STROKE_INTERVAL_MS = 125;    // ≤ 8 messages / s per drawing screen (w34 review: project Realtime cap)
 export const LIVE_STROKE_MAX_POINTS = 4_000;   // per ghost (a long stroke keeps its start)
 export const LIVE_STROKE_MAX_BATCH = 600;      // points per message
 export const LIVE_STROKE_MAX_GHOSTS = 24;      // shown at once, all screens together
-export const LIVE_STROKE_ENDED_TTL_MS = 4_000;
+export const LIVE_STROKE_ENDED_TTL_MS = 20_000; // = the v1 preview expiry: the row may be slow (review B)
 export const LIVE_STROKE_IDLE_TTL_MS = 10_000;
 export const LIVE_STROKE_LANDED_DELAY_MS = 120; // let the real mark paint first
 const TOOLS = new Set(['pen', 'highlighter']);
@@ -44,7 +45,7 @@ const round = (value) => Math.round(value * 10) / 10;
 // ---------------------------------------------------------------------------
 
 const REGISTRY = (globalThis.__annotationLiveStrokes__ ??= {
-  sink: null,          // { documentId, writerId, send(payload) → boolean }
+  sinks: new Map(),    // documentId → { documentId, writerId, send(payload) → boolean }
   ghosts: new Map(),   // `${documentId}\0${writerId}\0${strokeId}` → ghost
   listeners: new Set(),
   version: 0,
@@ -52,16 +53,25 @@ const REGISTRY = (globalThis.__annotationLiveStrokes__ ??= {
   sweepTimer: null,
 });
 
-/** The doc handle registers how to send; returns an unregister function. */
+/**
+ * The doc handle registers how to send for ITS document; returns an
+ * unregister function. One per document: a stroke drawn in one document can
+ * never go out on another document's channel (review A).
+ */
 export function setLiveStrokeSink(sink) {
-  REGISTRY.sink = sink;
+  if (!sink?.documentId) return () => {};
+  REGISTRY.sinks.set(sink.documentId, sink);
+  emit();
   return () => {
-    if (REGISTRY.sink === sink) REGISTRY.sink = null;
+    if (REGISTRY.sinks.get(sink.documentId) === sink) {
+      REGISTRY.sinks.delete(sink.documentId);
+      emit();
+    }
   };
 }
 
-export function hasLiveStrokeSink() {
-  return Boolean(REGISTRY.sink);
+export function hasLiveStrokeSink(documentId) {
+  return REGISTRY.sinks.has(documentId);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,8 +83,8 @@ export function hasLiveStrokeSink() {
  * `points` is the gesture's whole point array (page units, { x, y }); only the
  * points not sent yet go out. Safe to call when no channel is open (no-op).
  */
-export function beginLiveStroke({ id, page, tool, color, width }, { now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
-  const sink = REGISTRY.sink;
+export function beginLiveStroke({ documentId, id, page, tool, color, width }, { now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  const sink = documentId ? REGISTRY.sinks.get(documentId) : null;
   if (!sink || !id || !TOOLS.has(tool) || !Number.isInteger(Number(page))) {
     return { push() {}, end() {}, sent: () => 0 };
   }
@@ -95,7 +105,7 @@ export function beginLiveStroke({ id, page, tool, color, width }, { now = () => 
   };
   const flush = (extra = null) => {
     timer = null;
-    if (REGISTRY.sink !== sink) return;
+    if (REGISTRY.sinks.get(sink.documentId) !== sink) return;
     const end = Math.min(latest.length, sentCount + LIVE_STROKE_MAX_BATCH);
     if (end <= sentCount && !extra) return;
     const pts = [];
@@ -279,13 +289,16 @@ export function subscribeLiveStrokes(listener) {
   return () => REGISTRY.listeners.delete(listener);
 }
 
-export function getLiveStrokesForPage(page) {
+// Only that document's ghosts (reviews A/B: never draw one document's ink on
+// another).
+export function getLiveStrokesForPage(page, documentId) {
   const pageKey = Number(page);
-  const cached = REGISTRY.snapshots.get(pageKey);
-  if (cached && cached.version === REGISTRY.version) return cached.list;
+  const cacheKey = `${documentId}\u0000${pageKey}`;
+  const cached = REGISTRY.snapshots.get(cacheKey);
+  if (cached && cached.version === REGISTRY.version && cached.documentId === documentId) return cached.list;
   const list = [];
   for (const ghost of REGISTRY.ghosts.values()) {
-    if (ghost.page === pageKey && ghost.points.length >= 2) {
+    if (ghost.documentId === documentId && ghost.page === pageKey && ghost.points.length >= 2) {
       list.push({
         key: ghost.key,
         tool: ghost.tool,
@@ -300,13 +313,13 @@ export function getLiveStrokesForPage(page) {
   const same = previous && previous.length === list.length
     && previous.every((entry, index) => entry.key === list[index].key && entry.count === list[index].count);
   const result = same ? previous : list;
-  REGISTRY.snapshots.set(pageKey, { version: REGISTRY.version, list: result });
+  REGISTRY.snapshots.set(cacheKey, { version: REGISTRY.version, documentId, list: result });
   return result;
 }
 
 export const __liveStrokesTest = {
   reset() {
-    REGISTRY.sink = null;
+    REGISTRY.sinks.clear();
     REGISTRY.ghosts.clear();
     REGISTRY.listeners.clear();
     REGISTRY.snapshots.clear();

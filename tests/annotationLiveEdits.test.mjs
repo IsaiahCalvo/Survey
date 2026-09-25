@@ -163,7 +163,7 @@ test('an untouched overlay copy writes nothing, and a stale or expired overlay l
   // is in.
   const before = edits(cloud)[0].payload;
   await Promise.all([a.destroy(), b.destroy()]);
-  assert.ok(before.e[0].o.top === 222);
+  assert.deepEqual(before.e[0].s, { top: 222 }, 'only the changed field is sent');
 });
 
 test('a later row from the same screen drops its older overlay; a replayed message after its row is ignored', async () => {
@@ -340,4 +340,138 @@ test('pure helpers: entries, merge, strip', () => {
   assert.equal(untouched.byPage[1].objects[0], delivered.a, 'untouched overlay = the delivered copy');
   assert.deepEqual(untouched.editedKeys, []);
   assert.equal(mintPastedCloneIdentity({ ...rect('src'), [LIVE_EDIT_FLAG]: 't' })[LIVE_EDIT_FLAG], undefined);
+});
+
+// --- w32 review fixes (reviews A and B, 2026-09-25) ---
+
+const pen = (id, extra = {}) => ({
+  type: 'path',
+  left: 0,
+  top: 0,
+  width: 100,
+  height: 10,
+  path: [['M', 0, 0], ['L', 100, 0]],
+  stroke: '#000000',
+  strokeWidth: 3,
+  data: { id, type: 'pen' },
+  ...extra,
+});
+
+test('review A #1: moving a mark whose geometry another screen is changing is not applied (its in-flight geometry is never saved)', async () => {
+  const { alice, bob, a, b } = await twoScreens('live-edit-inflight-geometry', [pen('p1')]);
+  const gate = deferred();
+  alice.appendGate = gate.promise;
+  // Alice's in-flight change of the geometry (as a partial erase leaves it).
+  const screen = a.getByPage();
+  a.applyByPage({ 1: { ...screen[1], objects: [{ ...screen[1].objects[0], width: 40, path: [['M', 0, 0], ['L', 40, 0]] }] } });
+  assert.ok(await until(() => markOn(screenOf(b), 'p1')?.width === 40));
+  // Bob drags the overlay copy.
+  const bobScreen = screenOf(b);
+  const result = b.applyByPage({ 1: { ...bobScreen[1], objects: bobScreen[1].objects.map((o) => ({ ...o, left: o.left + 10 })) } });
+  await b.drain();
+  assert.equal(bob.appendCalls, 0, 'nothing is written');
+  assert.equal(markOn(b.getByPage(), 'p1').width, 100, 'the saved mark keeps its own geometry');
+  const swap = (result.reconcile || []).find((entry) => entry.key === 'p1');
+  assert.ok(swap && swap.to?.width === 100, 'the screen goes back to the saved mark');
+  // A recolour on the same overlay copy (a field Alice is not changing) is fine.
+  const again = screenOf(b);
+  b.applyByPage({ 1: { ...again[1], objects: again[1].objects.map((o) => ({ ...o, stroke: '#00aa00' })) } });
+  await b.drain();
+  assert.equal(bob.appendCalls, 1);
+  assert.equal(markOn(b.getByPage(), 'p1').stroke, '#00aa00');
+  assert.equal(markOn(b.getByPage(), 'p1').width, 100);
+  gate.resolve();
+  alice.appendGate = null;
+  await a.drain();
+  const both = (h) => markOn(h.getByPage(), 'p1')?.width === 40 && markOn(h.getByPage(), 'p1')?.stroke === '#00aa00';
+  assert.ok(await until(() => both(a) && both(b)));
+  await Promise.all([a.destroy(), b.destroy()]);
+});
+
+test('review A #2/#5: an Undo that brings back a mark deleted while an overlay showed it re-creates it; a flagged copy with another id is its own mark', async () => {
+  const { alice, bob, a, b } = await twoScreens('live-edit-undo-delete', [rect('m1'), rect('m2', { left: 300 })]);
+  const screen = a.getByPage();
+  const gate = deferred();
+  alice.appendGate = gate.promise;
+  a.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => (o.data.id === 'm1' ? { ...o, stroke: '#00ff00' } : o)) } });
+  assert.ok(await until(() => typeof markOn(screenOf(b), 'm1')?.[LIVE_EDIT_FLAG] === 'string'));
+  const flagged = markOn(screenOf(b), 'm1');
+  const history = JSON.parse(JSON.stringify(flagged)); // history clones keep the flag
+  // Bob's screen is captured as shown (the app captures after every render),
+  // then he deletes m1 and undoes.
+  b.applyByPage(screenOf(b));
+  assert.equal(bob.appendCalls, 0);
+  const withoutM1 = screenOf(b)[1].objects.filter((o) => o.data.id !== 'm1');
+  b.applyByPage({ 1: { objects: withoutM1 } });
+  await b.drain();
+  assert.ok(await until(() => !hasMark(b, 'm1')));
+  b.applyByPage({ 1: { objects: [...b.getByPage()[1].objects, history] } });
+  await b.drain();
+  assert.ok(hasMark(b, 'm1'), 'Undo re-creates the mark');
+  assert.equal(markOn(b.getByPage(), 'm1')[LIVE_EDIT_FLAG], undefined, 'without the flag');
+  // An overlay copy spread into a new mark (any path that forgets to mint a
+  // clean identity) is that new mark, not an edit of the original.
+  const spread = { ...flagged, data: { ...flagged.data, id: 'copy-1' } };
+  b.applyByPage({ 1: { objects: [...b.getByPage()[1].objects, spread] } });
+  await b.drain();
+  assert.ok(hasMark(b, 'copy-1'));
+  assert.equal(markOn(b.getByPage(), 'copy-1')[LIVE_EDIT_FLAG], undefined);
+  assert.ok(bob.appendCalls >= 3);
+  gate.resolve();
+  alice.appendGate = null;
+  await a.drain();
+  await Promise.all([a.destroy(), b.destroy()]);
+});
+
+test('review A #3: a page renumbered here keeps an overlaid mark with its page', () => {
+  const overlay = { ...rect('m1', { left: 5 }), [LIVE_EDIT_FLAG]: 't-1' };
+  const delivered = rect('m1');
+  // The overlay was shown on page 2; this screen then deleted page 1, so the
+  // screen now holds the mark on page 1 (the document still says 2).
+  const moved = { ...overlay };
+  const out = stripLiveEditObjects({ 1: { objects: [moved, rect('other')] } }, {
+    resolveToken: () => ({ key: 'm1', object: overlay, page: 2 }),
+    deliveredOf: () => delivered,
+    docPageOf: () => 2,
+  });
+  assert.ok(out.byPage[1].objects.some((o) => o.data.id === 'm1'), 'stays on the page this screen has it');
+  assert.equal(out.byPage[2], undefined);
+});
+
+test('review A #6: a counter overlay keeps this screen\'s number and still counts as untouched', () => {
+  const counter = (id, n) => ({ type: 'group', left: 1, top: 1, data: { id, type: 'counter', seriesId: 's', displayNumber: n, seriesStart: 1 } });
+  const overlay = { ...counter('c1', 1), left: 50, [LIVE_EDIT_FLAG]: 't-c' };
+  const byPage = { 1: { objects: [counter('c1', 3)] } };
+  const edits = new Map([['c1', { page: 1, object: overlay }]]);
+  const first = mergeLiveOverlays(byPage, { edits, docPageOf: () => 1 });
+  const second = mergeLiveOverlays(byPage, { edits, docPageOf: () => 1 });
+  const shown = first[1].objects[0];
+  assert.equal(shown.data.displayNumber, 3);
+  assert.equal(shown.left, 50);
+  assert.equal(second[1].objects[0], shown, 'the same object every render');
+  const out = stripLiveEditObjects(first, {
+    resolveToken: () => ({ key: 'c1', object: overlay, page: 1 }),
+    deliveredOf: () => byPage[1].objects[0],
+    docPageOf: () => 1,
+  });
+  assert.equal(out.byPage[1].objects[0], byPage[1].objects[0], 'untouched: nothing to write');
+  assert.deepEqual(out.editedKeys, []);
+});
+
+test('review B #6: an edit of a mark this screen does not hold is not shown (no resurrection)', () => {
+  const merged = mergeLiveOverlays({ 1: { objects: [] } }, {
+    edits: new Map([['gone', { page: 1, object: { ...rect('gone'), [LIVE_EDIT_FLAG]: 't' } }]]),
+    docPageOf: () => null,
+  });
+  assert.deepEqual(merged[1].objects, []);
+});
+
+test('a v2 delta patch cannot change identity and is applied onto this screen\'s copy', () => {
+  const ok = parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: { stroke: '#00ff00' } }] });
+  assert.deepEqual(ok.entries.get('m1').patch, { set: { stroke: '#00ff00' }, unset: [] });
+  assert.equal(parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: { data: { id: 'other' } } }] }), null);
+  assert.equal(parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: {}, u: ['data'] }] }), null);
+  assert.equal(parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: { id: 'm2' } }] }), null);
+  const huge = 'x'.repeat(80 * 1024);
+  assert.equal(parseLiveEditPayload({ v: 2, w: 'x', s: 1, e: [{ k: 'm1', p: 1, s: { note: huge } }] }), null, 'oversized messages are refused');
 });

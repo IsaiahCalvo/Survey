@@ -160,7 +160,8 @@ for (const context of allContexts) {
     const request = route.request();
     const url = decodeURIComponent(request.url());
     const isSign = /\/object\/sign\//.test(url);
-    if (!throwawayObjectPath && request.method() === 'POST' && !isSign && /\/object\/documents\//.test(url)) {
+    // Only screen A uploads, once (review B: never let another request claim it).
+    if (context === ctxA && !throwawayObjectPath && !REUSE_NAME && request.method() === 'POST' && !isSign && /\/object\/documents\//.test(url)) {
       // The throwaway's own upload: remember its object path.
       throwawayObjectPath = url.split('/object/documents/')[1]?.split('?')[0] || null;
       return route.continue();
@@ -1085,8 +1086,13 @@ try {
       if (pageB) await pageB.close();
       await pageA.goto(BASE, { waitUntil: 'domcontentloaded' });
       await waitForHub(pageA);
-      log('cleanup:', JSON.stringify(await deleteThrowaway(pageA, documentId, docName)));
+      const cleanupResult = await deleteThrowaway(pageA, documentId, docName);
+      log('cleanup:', JSON.stringify(cleanupResult));
       log(`storage requests blocked this run: ${storageBlocked.count} (allowed only ${throwawayObjectPath})`);
+      if (!REUSE_NAME && !/removed|kept/.test(JSON.stringify(cleanupResult || {}))) {
+        log('CLEANUP INCOMPLETE — the stored file may be left behind:', JSON.stringify(cleanupResult));
+        process.exitCode = 1;
+      }
     } catch (error) {
       log('CLEANUP FAILED — delete by hand:', documentId, docName, error?.message);
     }

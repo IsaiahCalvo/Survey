@@ -38,9 +38,12 @@ export const LIVE_EDIT_FLAG = '__surveyLiveEdit';
 // Mirrors annotationDocSync's LIVE_PREVIEW_FLAG (a new mark's preview).
 export const LIVE_PREVIEW_FLAG = '__surveyLivePreview';
 export const LIVE_EDIT_MAX_ENTRIES = 64;
-// The JSON of one message's marks. A pen stroke is ~5-15 KB, a partly
-// erased one ~20-40 KB (outline polygons). Bigger edits ride the WAL only.
-export const LIVE_EDIT_MAX_JSON_BYTES = 96 * 1024;
+// The JSON of one message's marks. Only the fields that changed are sent
+// when the sender knows the mark's previous look (a recolour is ~100 B, a
+// delete ~40 B); a partly erased pen stroke carries its new outline
+// (~5-30 KB). Bigger edits ride the WAL only (w34 review: keep it compact).
+export const LIVE_EDIT_MAX_JSON_BYTES = 32 * 1024;
+const MAX_PATCH_FIELDS = 200;
 export const LIVE_EDIT_EXPIRE_MS = 12_000;
 
 const MAX_KEY_LENGTH = 512;
@@ -71,9 +74,13 @@ export function withoutLiveFlags(object) {
 /**
  * Sender: the message entries for the marks an edit touched.
  * `materialized` is Map<key, { page, object } | null> (materializeAnnotationKeys).
+ * `baseOf(key)` = the mark as other screens most likely show it now (the
+ * sender's copy before this edit): then only the top-level fields that
+ * differ are sent, `{ k, p, s: { field: value }, u: [removed field] }`,
+ * when that is smaller than the whole mark `{ k, p, o }`.
  * Returns null when there is nothing to send or it is too big to be worth it.
  */
-export function buildLiveEditEntries(materialized, { maxJsonBytes = LIVE_EDIT_MAX_JSON_BYTES } = {}) {
+export function buildLiveEditEntries(materialized, { maxJsonBytes = LIVE_EDIT_MAX_JSON_BYTES, baseOf = null } = {}) {
   if (!materialized || materialized.size === 0 || materialized.size > LIVE_EDIT_MAX_ENTRIES) return null;
   const entries = [];
   for (const [key, value] of materialized) {
@@ -87,7 +94,14 @@ export function buildLiveEditEntries(materialized, { maxJsonBytes = LIVE_EDIT_MA
     // A mark whose screen copy is another screen's in-flight preview/overlay
     // never reaches this point (the capture strips those), but never
     // forward the markers anyway.
-    entries.push({ k: key, p: page, o: withoutLiveFlags(value.object) });
+    const object = withoutLiveFlags(value.object);
+    const base = typeof baseOf === 'function' ? withoutLiveFlags(baseOf(key)) : null;
+    const patch = base && typeof base === 'object' ? topLevelPatch(base, object) : null;
+    if (patch && patch.bytes < jsonLength(object)) {
+      entries.push({ k: key, p: page, s: patch.set, ...(patch.unset.length ? { u: patch.unset } : {}) });
+    } else {
+      entries.push({ k: key, p: page, o: object });
+    }
   }
   let bytes = 0;
   try {
@@ -99,9 +113,43 @@ export function buildLiveEditEntries(materialized, { maxJsonBytes = LIVE_EDIT_MA
   return { entries, bytes };
 }
 
+function jsonLength(value) {
+  try { return JSON.stringify(value)?.length || 0; } catch { return Infinity; }
+}
+
+// Top-level fields of `next` that differ from `base` (by JSON value).
+function topLevelPatch(base, next) {
+  const set = {};
+  const unset = [];
+  for (const [field, value] of Object.entries(next)) {
+    if (!Object.prototype.hasOwnProperty.call(base, field) || jsonLength(base[field]) !== jsonLength(value)
+      || JSON.stringify(base[field]) !== JSON.stringify(value)) {
+      set[field] = value;
+    }
+  }
+  for (const field of Object.keys(base)) {
+    if (!Object.prototype.hasOwnProperty.call(next, field)) unset.push(field);
+  }
+  if (Object.keys(set).length + unset.length > MAX_PATCH_FIELDS) return null;
+  return { set, unset, bytes: jsonLength(set) + jsonLength(unset) };
+}
+
+/**
+ * Receiver: a patch entry applied onto the mark as this screen shows it.
+ * null when there is nothing to apply it to, or the result is not that mark.
+ */
+export function applyLiveEditPatch(base, patch, key) {
+  if (!base || typeof base !== 'object' || !patch) return null;
+  const next = { ...withoutLiveFlags(base), ...withoutLiveFlags(patch.set) };
+  for (const field of patch.unset || []) delete next[field];
+  return markIdOf(next) === key ? next : null;
+}
+
 /**
  * Receiver: a v2 message, validated. null when malformed or not for us.
- * Returns { writerId, clientSeq, entries: Map<key, { page, object } | null> }.
+ * Returns { writerId, clientSeq, entries: Map<key, { page, object } |
+ * { page, patch: { set, unset } } | null> } (a patch still needs a base:
+ * applyLiveEditPatch).
  */
 export function parseLiveEditPayload(payload, { ownWriterId = null } = {}) {
   if (!isPlainObject(payload) || payload.v !== LIVE_EDIT_VERSION) return null;
@@ -110,6 +158,8 @@ export function parseLiveEditPayload(payload, { ownWriterId = null } = {}) {
   if (!writerId || writerId.length > 256 || writerId === ownWriterId) return null;
   if (!Number.isSafeInteger(clientSeq) || clientSeq <= 0) return null;
   if (!Array.isArray(payload.e) || payload.e.length === 0 || payload.e.length > LIVE_EDIT_MAX_ENTRIES) return null;
+  // Receivers enforce the size too (a forged sender is not bound by ours).
+  if (jsonLength(payload.e) > LIVE_EDIT_MAX_JSON_BYTES * 2) return null;
   const entries = new Map();
   for (const entry of payload.e) {
     if (!isPlainObject(entry)) return null;
@@ -122,6 +172,17 @@ export function parseLiveEditPayload(payload, { ownWriterId = null } = {}) {
     }
     const page = Number(entry.p);
     if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return null;
+    if (entry.o === undefined && isPlainObject(entry.s)) {
+      const unset = entry.u === undefined ? [] : entry.u;
+      if (!Array.isArray(unset) || unset.length > MAX_PATCH_FIELDS) return null;
+      if (!unset.every((field) => typeof field === 'string' && field.length > 0 && field.length <= 128)) return null;
+      if (Object.keys(entry.s).length > MAX_PATCH_FIELDS) return null;
+      // Identity can never be changed by a patch.
+      if (unset.includes('data') || unset.includes('id')) return null;
+      if ('id' in entry.s || ('data' in entry.s && markIdOf({ data: entry.s.data }) !== key)) return null;
+      entries.set(key, { page, patch: { set: withoutLiveFlags(entry.s), unset } });
+      continue;
+    }
     if (!isPlainObject(entry.o)) return null;
     // The mark's own id must be its key (identity is the map key).
     if (markIdOf(entry.o) !== key) return null;
@@ -198,36 +259,57 @@ export function mergeLiveOverlays(byPage, { previewsByPage = null, edits = null,
       if (added.length > 0) pageObjects(pageNumber).push(...added);
     }
   }
-  if (hasEdits) {
-    // An edit overlay of a mark this screen does not hold at all (its row and
-    // preview are both still on the way): shown as the sender draws it.
-    for (const [key, overlay] of edits) {
-      if (placed.has(key) || !overlay) continue;
-      if (docPageOf(key) != null) continue; // held, but filtered off this list
-      const list = pageObjects(overlay.page);
-      if (list.some((object) => markIdOf(object) === key)) continue;
-      list.push(overlay.object);
-    }
-  }
+  // An edit of a mark this screen does not hold at all (deleted here
+  // meanwhile, or its row and preview both still on the way) is NOT shown:
+  // it would bring a deleted mark back until the row decides (review B).
   return next;
 }
 
 // A counter's number depends on its whole series; the sender computes the
-// mark alone. Keep the number this screen shows until the row lands.
+// mark alone. Keep the number this screen shows until the row lands. The
+// adjusted copy is remembered (same object every render) and counts as the
+// untouched overlay for the capture (review A).
+const DERIVED_FROM = new WeakMap(); // adjusted copy -> overlay object
+const COUNTER_COPIES = new WeakMap(); // overlay object -> { displayNumber, seriesStart, copy }
 function keepCounterNumbers(overlayObject, current) {
   if (overlayObject?.data?.type !== 'counter' || current?.data?.type !== 'counter') return overlayObject;
   const { displayNumber, seriesStart } = current.data;
   if (overlayObject.data.displayNumber === displayNumber && overlayObject.data.seriesStart === seriesStart) {
     return overlayObject;
   }
-  return { ...overlayObject, data: { ...overlayObject.data, displayNumber, seriesStart } };
+  const cached = COUNTER_COPIES.get(overlayObject);
+  if (cached && cached.displayNumber === displayNumber && cached.seriesStart === seriesStart) return cached.copy;
+  const copy = { ...overlayObject, data: { ...overlayObject.data, displayNumber, seriesStart } };
+  COUNTER_COPIES.set(overlayObject, { displayNumber, seriesStart, copy });
+  DERIVED_FROM.set(copy, overlayObject);
+  return copy;
+}
+
+const fieldJson = (value) => {
+  try { return JSON.stringify(value) ?? 'undefined'; } catch { return String(Math.random()); }
+};
+
+// Would writing `merged` over `delivered` write a field the OTHER screen's
+// in-flight edit changed (overlay vs delivered)? Then the user's edit was
+// made on top of that screen's unsaved geometry or style, and saving it
+// would save their unsaved part too (review A: a partly erased stroke moved
+// on another screen baked the erase into the mark). Such an edit is not
+// applied.
+function writesInFlightFields(delivered, overlay, merged) {
+  for (const field of new Set([...Object.keys(merged), ...Object.keys(delivered)])) {
+    if (field === LIVE_EDIT_FLAG || field === LIVE_PREVIEW_FLAG) continue;
+    const saved = fieldJson(delivered[field]);
+    if (fieldJson(merged[field]) === saved) continue;
+    if (fieldJson(overlay[field]) !== saved) return true;
+  }
+  return false;
 }
 
 /**
  * Capture: take other screens' in-flight edits back out of a page list the
  * screen hands to the store, so none of them is ever written.
  *
- *   resolveToken(token) → { key, object } | null  the overlay object handed out
+ *   resolveToken(token) → { key, object, page } | null  the overlay handed out
  *   deliveredOf(key)    → the document's copy last handed to the screen, or
  *                         null when the document does not hold the mark
  *   docPageOf(key)      → page the document keeps it on
@@ -277,35 +359,63 @@ export function stripLiveEditObjects(byPage, {
       }
       pageChanged = true;
       const record = resolveToken(token);
-      const key = record?.key ?? markIdOf(object);
+      const ownId = markIdOf(object);
+      if (record && ownId != null && ownId !== record.key) {
+        // An overlay copy spread into a DIFFERENT mark: that mark is the
+        // user's own; the flag only rode along (review A).
+        present.add(ownId);
+        kept.push(withoutLiveFlags(object));
+        continue;
+      }
+      const key = record?.key ?? ownId;
+      const untouched = Boolean(record)
+        && (object === record.object || DERIVED_FROM.get(object) === record.object);
       const delivered = key != null ? deliveredOf(key) : null;
       if (!delivered) {
-        // The document does not hold it (an in-flight mark, or deleted since):
-        // never written. An edit made on it is taken off the screen; the
-        // untouched overlay copy stays on screen until its row decides.
-        if (swaps && record && object !== record.object) {
-          swaps.push({ pageKey: pageNumber, from: object, to: null, toPage: pageNumber, key });
-        }
+        // The document does not hold it. The overlay copy itself is never
+        // written. Any other copy (an Undo bringing back a mark the user
+        // deleted while an overlay showed it) is an ordinary object: the
+        // capture's own rules decide (a mark deleted by someone else stays
+        // deleted), without the flag (review A).
+        if (untouched || key == null) continue;
+        present.add(key);
+        kept.push(withoutLiveFlags(object));
         continue;
       }
       present.add(key);
       let substitute = delivered;
       const mayTranslate = translate && !(noTranslateKeys && noTranslateKeys.has(key));
-      if (record && object !== record.object && !mayTranslate) {
-        // Not applied: the screen goes back to the document's copy.
-        if (swaps) swaps.push({ pageKey: pageNumber, from: object, to: delivered, toPage: String(docPageOf(key) ?? pageNumber), key });
-      } else if (record && object !== record.object) {
-        // The user changed the overlay copy: only THEIR change is written,
-        // onto the document's copy.
-        const merged = mergeEditOntoCurrent(delivered, withoutLiveFlags(record.object), withoutLiveFlags(object));
-        if (merged && merged !== delivered) {
-          substitute = merged;
-          editedKeys.push(key);
-          if (swaps) swaps.push({ pageKey: pageNumber, from: object, to: merged, toPage: String(docPageOf(key) ?? pageNumber), key });
+      const docPage = docPageOf(key);
+      const back = (to) => {
+        if (swaps) swaps.push({ pageKey: pageNumber, from: object, to, toPage: String(docPage ?? pageNumber), key });
+      };
+      if (record && !untouched) {
+        if (!mayTranslate) {
+          back(delivered); // not applied: the screen goes back to the document's copy
+        } else {
+          // The user changed the overlay copy: only THEIR change is written,
+          // onto the document's copy — unless it touches what the other
+          // screen is changing (then it is not applied).
+          const overlay = withoutLiveFlags(record.object);
+          const merged = mergeEditOntoCurrent(delivered, overlay, withoutLiveFlags(object));
+          if (merged && merged !== delivered) {
+            if (writesInFlightFields(delivered, overlay, merged)) {
+              back(delivered);
+            } else {
+              substitute = merged;
+              editedKeys.push(key);
+              back(merged);
+            }
+          }
         }
       }
-      const targetPage = docPageOf(key);
-      if (targetPage != null && String(targetPage) !== String(pageNumber)) moved.push([String(targetPage), substitute]);
+      // Where the substitute goes: the document's page when the copy sits
+      // where the overlay put it (another screen moved it across pages);
+      // otherwise where this screen has it (a page was inserted, deleted or
+      // moved here meanwhile: review A).
+      const onOverlayPage = record?.page != null && String(record.page) === String(pageNumber);
+      const targetPage = onOverlayPage && docPage != null ? docPage : pageNumber;
+      if (String(targetPage) !== String(pageNumber)) moved.push([String(targetPage), substitute]);
       else kept.push(substitute);
     }
     if (pageChanged) changed = true;

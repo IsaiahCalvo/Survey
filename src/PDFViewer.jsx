@@ -33845,6 +33845,7 @@ ${pageBlocks}
                               >
                                 <SVGAnnotationLayer
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
+                                  documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
                                   isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
