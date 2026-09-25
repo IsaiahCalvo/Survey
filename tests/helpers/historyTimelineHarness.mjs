@@ -26,7 +26,10 @@ import {
   restrictAnnotationHistoryActionFields,
 } from '../../src/utils/annotationLocalHistory.js';
 import {
+  eraseTransitionChangedScreen,
   historyActionChangedPages,
+  isTransientEraseHistoryFailure,
+  legacyRestoreChangesState,
   runHistoryPress,
   scopeLegacyRestoreToOwnSlices,
   shouldRedoLocalBeforeLegacy,
@@ -64,6 +67,7 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
   let seq = 0;
   let byPage = clone(handle.getByPage()) || {};
   let surveyMarkers = clone(handle.getSurveyMarkers?.() || {}) || {};
+  let spaces = [];
   const localUndo = [];
   let localRedo = [];
   let legacyUndo = []; // { meta, entry }
@@ -72,6 +76,7 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
   let previewBaseline = null;
   let touches = null;
   let eraseCount = 0;
+  let injectedEraseFailure = null;
 
   const capture = () => handle.applyByPage(byPage);
   const setScreen = (next) => {
@@ -79,6 +84,7 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
     capture();
   };
   const pageOf = (source, pageNumber) => source?.[pageNumber] || source?.[String(pageNumber)] || { objects: [] };
+  const state = () => ({ annotationsByPage: clone(byPage), surveyMarkers: clone(surveyMarkers), spaces: clone(spaces) });
 
   const pushLocal = (action) => {
     if (!action) return;
@@ -105,23 +111,63 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
     return 'applied';
   };
 
+  // Mirrors PDFViewer: 'transient' keeps the step and stops the press;
+  // 'conflict' drops it and stops; 'hidden' (applied, nothing visible) keeps
+  // it in step and lets the press go on; 'unchanged' snapshot is dropped.
   const applyLegacy = (item, direction) => {
     if (item.entry.kind === 'erase') {
-      const result = handle.applyEraseHistoryTransition(item.entry.transition, direction);
-      if (result.status !== 'applied' && result.status !== 'noop') return { outcome: 'conflict' };
+      const before = byPage;
+      let result;
+      if (injectedEraseFailure) {
+        result = { status: 'conflict', reason: injectedEraseFailure };
+        injectedEraseFailure = null;
+      } else {
+        result = handle.applyEraseHistoryTransition(item.entry.transition, direction);
+      }
+      if (isTransientEraseHistoryFailure(result)) return { outcome: 'transient' };
+      if (result.status !== 'applied' && result.status !== 'noop') return { outcome: 'conflict', reason: result.reason };
       setScreen(clone(result.byPage));
-      return { outcome: result.status === 'noop' ? 'noop' : 'applied' };
+      return { outcome: eraseTransitionChangedScreen(result, before, item.meta, jsonEqual) ? 'applied' : 'hidden' };
     }
     if (item.entry.kind === 'snapshot') {
-      const current = { annotationsByPage: clone(byPage), surveyMarkers: clone(surveyMarkers) };
-      const target = scopeLegacyRestoreToOwnSlices(item.meta, current, item.entry.snapshot);
+      const current = state();
+      const target = scopeLegacyRestoreToOwnSlices(item.meta, current, item.entry.snapshot, { direction });
+      if (!legacyRestoreChangesState(current, target, jsonEqual)) return { outcome: 'unchanged' };
       byPage = clone(target.annotationsByPage);
       surveyMarkers = clone(target.surveyMarkers);
+      spaces = clone(target.spaces || spaces);
       handle.applySurveyMarkers?.(surveyMarkers);
       capture();
       return { outcome: 'applied', swapped: current };
     }
     return { outcome: 'dead' };
+  };
+
+  const runLegacy = (item, direction, removeFromSource, pushToOther) => {
+    if (!isLegacyAnnotationHistoryMeta(item.meta)) {
+      removeFromSource();
+      events.push({ [`${direction}Skipped`]: 'legacy-unknown' });
+      return 'skipped';
+    }
+    const { outcome, swapped, reason } = applyLegacy(item, direction);
+    if (outcome === 'transient') {
+      events.push({ [`${direction}Deferred`]: 'legacy' });
+      return 'none';
+    }
+    removeFromSource();
+    if (outcome === 'conflict') {
+      events.push({ [`${direction}Conflict`]: 'legacy', reason });
+      return 'none';
+    }
+    if (outcome === 'unchanged' || outcome === 'dead') {
+      events.push({ [`${direction}Skipped`]: 'legacy', outcome });
+      return 'skipped';
+    }
+    pushToOther(item.entry.kind === 'snapshot'
+      ? { meta: item.meta, entry: { kind: 'snapshot', snapshot: swapped } }
+      : item);
+    events.push({ [direction]: 'legacy', kind: item.entry.kind, outcome });
+    return outcome === 'hidden' ? 'skipped' : 'applied';
   };
 
   const undoOnce = () => {
@@ -139,21 +185,7 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
       return 'skipped';
     }
     if (legacy) {
-      legacyUndo.pop();
-      if (!isLegacyAnnotationHistoryMeta(legacy.meta)) {
-        events.push({ undoSkipped: 'legacy-unknown' });
-        return 'skipped';
-      }
-      const { outcome, swapped } = applyLegacy(legacy, 'undo');
-      if (outcome === 'conflict' || outcome === 'dead') {
-        events.push({ undoSkipped: 'legacy', outcome });
-        return 'skipped';
-      }
-      legacyRedo.unshift(legacy.entry.kind === 'snapshot'
-        ? { meta: legacy.meta, entry: { kind: 'snapshot', snapshot: swapped } }
-        : legacy);
-      events.push({ undo: 'legacy', kind: legacy.entry.kind, outcome });
-      return outcome === 'noop' ? 'skipped' : 'applied';
+      return runLegacy(legacy, 'undo', () => legacyUndo.pop(), (entry) => legacyRedo.unshift(entry));
     }
     return 'none';
   };
@@ -173,18 +205,7 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
       return 'skipped';
     }
     if (legacy) {
-      legacyRedo.shift();
-      if (!isLegacyAnnotationHistoryMeta(legacy.meta)) return 'skipped';
-      const { outcome, swapped } = applyLegacy(legacy, 'redo');
-      if (outcome === 'conflict' || outcome === 'dead') {
-        events.push({ redoSkipped: 'legacy', outcome });
-        return 'skipped';
-      }
-      legacyUndo.push(legacy.entry.kind === 'snapshot'
-        ? { meta: legacy.meta, entry: { kind: 'snapshot', snapshot: swapped } }
-        : legacy);
-      events.push({ redo: 'legacy', kind: legacy.entry.kind, outcome });
-      return outcome === 'noop' ? 'skipped' : 'applied';
+      return runLegacy(legacy, 'redo', () => legacyRedo.shift(), (entry) => legacyUndo.push(entry));
     }
     return 'none';
   };
@@ -195,6 +216,11 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
     events,
     get byPage() { return byPage; },
     get surveyMarkers() { return surveyMarkers; },
+    get spaces() { return spaces; },
+    /** What the shared store shows for page N right now (not the screen). */
+    storeSignature(pageNumber = 1) { return pageSignature(handle.getByPage(), pageNumber); },
+    /** The next erase Undo/Redo fails with `reason` (e.g. 'sync-not-ready'). */
+    failNextEraseTransition(reason) { injectedEraseFailure = reason; },
     objects(pageNumber = 1) { return pageOf(byPage, pageNumber).objects || []; },
     mark(id, pageNumber = 1) {
       return (pageOf(byPage, pageNumber).objects || []).find((o) => String(o?.data?.id ?? o?.id) === String(id)) || null;
@@ -285,14 +311,24 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
       setScreen(clone(result.byPage));
       return result;
     },
-    /** A Survey Marker gesture: legacy snapshot step (surveyMarkers only). */
-    surveyMarker(reason, mutate) {
-      pushLegacy({ reason }, {
-        kind: 'snapshot',
-        snapshot: { annotationsByPage: clone(byPage), surveyMarkers: clone(surveyMarkers) },
-      });
+    /** A Survey Marker gesture: legacy snapshot step (context.annotationId). */
+    surveyMarker(reason, annotationId, mutate) {
+      pushLegacy({ reason, context: { annotationId } }, { kind: 'snapshot', snapshot: state() });
       surveyMarkers = mutate(clone(surveyMarkers));
       handle.applySurveyMarkers?.(surveyMarkers);
+    },
+    /**
+     * A space gesture (context.spaceId). `mutate({ byPage, spaces,
+     * surveyMarkers })` returns the next values (a delete cascades: it removes
+     * the marks and Survey Markers in the space).
+     */
+    space(reason, spaceId, mutate) {
+      pushLegacy({ reason, context: { spaceId } }, { kind: 'snapshot', snapshot: state() });
+      const next = mutate({ byPage: clone(byPage), spaces: clone(spaces), surveyMarkers: clone(surveyMarkers) });
+      spaces = next.spaces ?? spaces;
+      surveyMarkers = next.surveyMarkers ?? surveyMarkers;
+      handle.applySurveyMarkers?.(surveyMarkers);
+      setScreen(next.byPage ?? byPage);
     },
     /** A checkpoint Undo does not restore (was: 'excel:auto-sync'). */
     pushUnknownLegacyStep(reason = 'excel:auto-sync') {

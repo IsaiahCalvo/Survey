@@ -27,7 +27,10 @@ import { createCloud, openFor, until, settle } from './helpers/liveSyncFakeCloud
 import { createHistoryScreen } from './helpers/historyTimelineHarness.mjs';
 import {
   HISTORY_SKIP_LIMIT,
+  eraseTransitionChangedScreen,
   foldIntoCreateStep,
+  isTransientEraseHistoryFailure,
+  legacyRestoreChangesState,
   historyActionChangedPages,
   legacyRestoreKeepsCurrentMarks,
   runHistoryPress,
@@ -192,19 +195,86 @@ test('a step counts as visible only when a page it touches changed', () => {
   }, jsonEqual), true);
 });
 
-test('Survey Marker and space steps restore their own slices, never the marks', () => {
-  const current = { annotationsByPage: { 1: { objects: ['now'] } }, callouts: ['c-now'], surveyMarkers: { m: 2 } };
-  const target = { annotationsByPage: { 1: { objects: ['then'] } }, callouts: ['c-then'], surveyMarkers: { m: 1 }, spaces: [] };
-  for (const reason of ['highlight:create', 'highlight:delete', 'survey-marker:move', 'space:delete']) {
+test('a Survey Marker step restores only its own marker: marks and others\' markers stay as they are now', () => {
+  const current = {
+    annotationsByPage: { 1: { objects: [{ data: { id: 'now' } }] } },
+    callouts: ['c-now'],
+    surveyMarkers: { mine: { id: 'mine', v: 2 }, theirs: { id: 'theirs' }, synced: { id: 'synced', v: 'excel' } },
+    spaces: [{ id: 's1' }],
+  };
+  const target = {
+    annotationsByPage: { 1: { objects: [{ data: { id: 'then' } }] } },
+    callouts: ['c-then'],
+    surveyMarkers: { mine: { id: 'mine', v: 1 }, synced: { id: 'synced', v: 'old' } },
+    spaces: [],
+  };
+  for (const reason of ['highlight:create', 'highlight:delete', 'survey-marker:move']) {
     assert.equal(legacyRestoreKeepsCurrentMarks({ reason }), true, reason);
-    const scoped = scopeLegacyRestoreToOwnSlices({ reason }, current, target);
+    const scoped = scopeLegacyRestoreToOwnSlices({ reason, context: { annotationId: 'mine' } }, current, target);
     assert.deepEqual(scoped.annotationsByPage, current.annotationsByPage, reason);
     assert.deepEqual(scoped.callouts, current.callouts, reason);
-    assert.deepEqual(scoped.surveyMarkers, target.surveyMarkers, reason);
+    assert.deepEqual(scoped.spaces, current.spaces, reason);
+    assert.deepEqual(scoped.surveyMarkers, {
+      mine: { id: 'mine', v: 1 }, theirs: { id: 'theirs' }, synced: { id: 'synced', v: 'excel' },
+    }, `${reason}: only my marker goes back; a collaborator's and an Excel sync's stay`);
   }
+  const created = scopeLegacyRestoreToOwnSlices({ reason: 'highlight:create', context: { annotationId: 'new' } }, current, target);
+  assert.equal('new' in created.surveyMarkers, false);
+  // No id recorded: Undo brings back what is missing and removes nothing.
+  const noId = scopeLegacyRestoreToOwnSlices({ reason: 'highlight:delete', context: {} }, { ...current, surveyMarkers: { theirs: {} } }, target);
+  assert.deepEqual(Object.keys(noId.surveyMarkers).sort(), ['mine', 'synced', 'theirs']);
   for (const reason of ['annotations:save', 'callouts:update', 'delete:batch']) {
     assert.equal(scopeLegacyRestoreToOwnSlices({ reason }, current, target), target, reason);
   }
+});
+
+test('a space delete: Undo brings back the space and what its cascade removed, nothing else; Redo removes them again', () => {
+  const space = { id: 'sp', name: 'Room', assignedPages: [{ pageId: 1, regions: [{ regionId: 'r1' }] }] };
+  const inRoom = { data: { id: 'in-room' }, regionId: 'r1' };
+  const tagged = { data: { id: 'tagged' }, spaceId: 'sp' };
+  const outside = { data: { id: 'outside' } };
+  const deletedByB = { data: { id: 'deleted-by-b' } };
+  const before = {
+    annotationsByPage: { 1: { objects: [inRoom, outside, deletedByB, tagged] } },
+    surveyMarkers: { smIn: { regionId: 'r1' }, smOut: {} },
+    spaces: [{ id: 'other' }, space],
+    callouts: [],
+  };
+  // After my delete (cascade) and B deleting a mark outside the space, B adding one.
+  const now = {
+    annotationsByPage: { 1: { objects: [outside, { data: { id: 'b-new' } }] } },
+    surveyMarkers: { smOut: {} },
+    spaces: [{ id: 'other' }],
+    callouts: [],
+  };
+  const meta = { reason: 'space:delete', context: { spaceId: 'sp' } };
+  const undone = scopeLegacyRestoreToOwnSlices(meta, now, before, { direction: 'undo', deriveCallouts: () => ['derived'] });
+  assert.deepEqual(undone.spaces.map((s) => s.id), ['other', 'sp']);
+  assert.deepEqual(undone.annotationsByPage[1].objects.map((o) => o.data.id).sort(), ['b-new', 'in-room', 'outside', 'tagged']);
+  assert.deepEqual(Object.keys(undone.surveyMarkers).sort(), ['smIn', 'smOut']);
+  assert.deepEqual(undone.callouts, ['derived'], 'callouts rebuilt from the merged marks');
+  const redone = scopeLegacyRestoreToOwnSlices(meta, undone, now, { direction: 'redo' });
+  assert.deepEqual(redone.spaces.map((s) => s.id), ['other']);
+  assert.deepEqual(redone.annotationsByPage[1].objects.map((o) => o.data.id).sort(), ['b-new', 'outside']);
+  assert.deepEqual(Object.keys(redone.surveyMarkers), ['smOut']);
+  // A space create never removes marks on Redo.
+  const createMeta = { reason: 'space:create', context: { spaceId: 'sp' } };
+  const recreated = scopeLegacyRestoreToOwnSlices(createMeta, { ...now, annotationsByPage: { 1: { objects: [tagged] } } }, before, { direction: 'redo' });
+  assert.deepEqual(recreated.annotationsByPage[1].objects.map((o) => o.data.id), ['tagged']);
+  assert.equal(legacyRestoreChangesState(now, now, jsonEqual), false);
+  assert.equal(legacyRestoreChangesState(now, undone, jsonEqual), true);
+});
+
+test('erase Undo/Redo: store not ready is transient (keep, stop); an empty transition changes nothing', () => {
+  assert.equal(isTransientEraseHistoryFailure({ status: 'conflict', reason: 'sync-not-ready' }), true);
+  assert.equal(isTransientEraseHistoryFailure({ status: 'conflict', reason: 'authoritative-rollback' }), true);
+  assert.equal(isTransientEraseHistoryFailure({ status: 'conflict', reason: 'lane-conflict' }), false);
+  assert.equal(isTransientEraseHistoryFailure({ status: 'applied' }), false);
+  const page = (ids) => ({ 1: { objects: ids.map((id) => ({ data: { id } })) } });
+  const meta = { context: { pageNumber: 1 } };
+  assert.equal(eraseTransitionChangedScreen({ status: 'noop', byPage: page(['a']) }, page([]), meta, jsonEqual), false);
+  assert.equal(eraseTransitionChangedScreen({ status: 'applied', byPage: page(['a']) }, page(['a']), meta, jsonEqual), false);
+  assert.equal(eraseTransitionChangedScreen({ status: 'applied', byPage: page(['a']) }, page([]), meta, jsonEqual), true);
 });
 
 test('a new callout\'s first commit folds into its create step (typed, left blank, or Esc)', () => {
@@ -256,6 +326,7 @@ test('owner report: pens, partial + whole + multi-stroke erases, undo each erase
     for (let step = 8; step > 4; step -= 1) {
       assert.equal(a.undo(), 'applied');
       assert.deepEqual(a.signature(), states[step - 1], `undo of erase ${step - 4} restores exactly what it erased`);
+      assert.deepEqual(a.storeSignature(), a.signature(), `undo of erase ${step - 4}: the store shows the same`);
     }
     assert.deepEqual(a.signature(), states[4], 'all four pens back, whole and unerased');
     a.save(1, (objects) => [...objects, TOOLS.pen('p5', 220)]);
@@ -377,7 +448,7 @@ test('lanes interleave in order: pen, erase, move, partial erase, recolour, Surv
     await step(() => a.gesture(1, MOVE('p1')));
     await step(() => a.erase(1, (o) => [{ id: 'p1', after: { ...byId(o, 'p1'), path: byId(o, 'p1').path.slice(0, 2) } }]));
     await step(() => a.save(1, withMark('p1', (m) => ({ ...m, stroke: '#000000' }))));
-    await step(() => a.surveyMarker('highlight:create', (m) => ({ ...m, sm1: { id: 'sm1', pageNumber: 1, bounds: { x: 1, y: 2, width: 3, height: 4 } } })));
+    await step(() => a.surveyMarker('highlight:create', 'sm1', (m) => ({ ...m, sm1: { id: 'sm1', pageNumber: 1, bounds: { x: 1, y: 2, width: 3, height: 4 } } })));
     for (let index = states.length - 1; index > 0; index -= 1) {
       assert.equal(a.undo(), 'applied', `undo ${index}`);
       assert.deepEqual(a.signature(), states[index - 1], `undo ${index} marks`);
@@ -484,7 +555,7 @@ test('Survey Marker undo keeps a collaborator\'s newer stroke (was deleted throu
   const { a, b } = s;
   try {
     a.save(1, (o) => [...o, TOOLS.pen('a1', 40)]);
-    a.surveyMarker('highlight:create', (m) => ({ ...m, sm1: { id: 'sm1', pageNumber: 1, bounds: { x: 1, y: 2, width: 3, height: 4 } } }));
+    a.surveyMarker('highlight:create', 'sm1', (m) => ({ ...m, sm1: { id: 'sm1', pageNumber: 1, bounds: { x: 1, y: 2, width: 3, height: 4 } } }));
     await s.sync();
     b.save(1, (o) => [...o, TOOLS.pen('b1', 300, B)]);
     await s.sync();
@@ -495,6 +566,109 @@ test('Survey Marker undo keeps a collaborator\'s newer stroke (was deleted throu
     assert.ok(a.mark('a1'), 'my earlier stroke stays');
     await s.sync();
     assert.ok(b.mark('b1'), 'and in the shared document');
+  } finally {
+    await s.close();
+  }
+});
+
+test('store not ready (tab just shown again): the erase Undo waits, it never undoes an older step instead', async () => {
+  const { a, close } = await openScreens('w37-erase-transient');
+  try {
+    a.save(1, (o) => [...o, TOOLS.pen('p1', 40)]);
+    a.save(1, (o) => [...o, TOOLS.pen('p2', 80)]);
+    await a.erase(1, () => [{ id: 'p2', after: null }], { mode: 'full' });
+    const erased = a.signature();
+    const depths = a.depths();
+    a.failNextEraseTransition('sync-not-ready');
+    assert.equal(a.undo(), 'none', 'the press stops');
+    assert.deepEqual(a.signature(), erased, 'nothing changed: p1 was NOT undone');
+    assert.deepEqual(a.depths(), depths, 'the erase step is kept');
+    assert.equal(a.undo(), 'applied', 'the next press undoes the erase');
+    assert.deepEqual(Object.keys(a.signature()).sort(), ['p1', 'p2']);
+    assert.deepEqual(a.storeSignature(), a.signature());
+  } finally {
+    await close();
+  }
+});
+
+test('an erase Undo that truly conflicts drops that step and stops the press (never runs on into older work)', async () => {
+  const { a, close } = await openScreens('w37-erase-conflict');
+  try {
+    a.save(1, (o) => [...o, TOOLS.pen('p1', 40)]);
+    a.save(1, (o) => [...o, TOOLS.pen('p2', 80)]);
+    await a.erase(1, (o) => [{ id: 'p1', after: { ...byId(o, 'p1'), path: byId(o, 'p1').path.slice(0, 2) } }]);
+    const erased = a.signature();
+    a.failNextEraseTransition('lane-conflict');
+    assert.equal(a.undo(), 'none');
+    assert.deepEqual(a.signature(), erased, 'no older step was taken back');
+    assert.equal(a.depths().legacyUndo, 0, 'the conflicting erase step is gone');
+    assert.equal(a.undo(), 'applied', 'the next press undoes p2');
+    assert.deepEqual(Object.keys(a.signature()), ['p1']);
+  } finally {
+    await close();
+  }
+});
+
+test('an erase whose marks someone deleted meanwhile: its Undo shows nothing, so the same press undoes my previous step', async () => {
+  const s = await openScreens('w37-erase-hidden', { second: true });
+  const { a, b } = s;
+  try {
+    a.save(1, (o) => [...o, TOOLS.pen('p1', 40), TOOLS.pen('p2', 80)]);
+    a.save(1, (o) => [...o, TOOLS.rect('r1')]);
+    await a.erase(1, (o) => [{ id: 'p1', after: { ...byId(o, 'p1'), path: byId(o, 'p1').path.slice(0, 2) } }]);
+    await s.sync();
+    b.save(1, (o) => o.filter((m) => m.data.id !== 'p1'));
+    await s.sync();
+    assert.equal(a.undo(), 'applied');
+    assert.equal(a.mark('r1'), null, 'the same press undid my rectangle');
+    assert.equal(a.mark('p1'), null, 'and never brought back what B deleted');
+    await s.sync();
+    assert.deepEqual(a.storeSignature(), a.signature());
+  } finally {
+    await s.close();
+  }
+});
+
+test('Undo of my delete, on a stroke someone partly erased: my own recolour comes back with it (store and screen)', async () => {
+  const s = await openScreens('w37-undo-delete-partly-erased', { second: true });
+  const { a, b } = s;
+  try {
+    a.save(1, (o) => [...o, TOOLS.pen('p1', 40)]);
+    await s.sync();
+    assert.equal((await b.erase(1, (o) => [{ id: 'p1', after: { ...byId(o, 'p1'), path: byId(o, 'p1').path.slice(0, 2), width: 80 } }])).status, 'committed');
+    await s.sync();
+    a.save(1, withMark('p1', (m) => ({ ...m, stroke: '#0000ff' })));
+    await s.sync();
+    const recoloured = a.mark('p1');
+    a.save(1, (o) => o.filter((m) => m.data.id !== 'p1'));
+    await s.sync();
+    assert.equal(a.undo(), 'applied');
+    await s.sync();
+    assert.equal(a.mark('p1')?.stroke, '#0000ff', 'my recolour is back on my screen');
+    assert.equal(b.mark('p1')?.stroke, '#0000ff', 'and on the other screen');
+    assert.deepEqual(a.mark('p1').path, recoloured.path, 'still partly erased');
+    assert.equal(a.undo(), 'applied', 'the recolour is still its own step');
+    await s.sync();
+    assert.equal(a.mark('p1')?.stroke, '#ff0000');
+    assert.equal(b.mark('p1')?.stroke, '#ff0000');
+  } finally {
+    await s.close();
+  }
+});
+
+test('my Survey Marker Undo keeps a collaborator\'s Survey Marker (was deleted in both stores)', async () => {
+  const s = await openScreens('w37-survey-marker-theirs', { second: true });
+  const { a, b } = s;
+  try {
+    a.surveyMarker('highlight:create', 'smA', (m) => ({ ...m, smA: { id: 'smA', pageNumber: 1, bounds: { x: 1, y: 2, width: 3, height: 4 } } }));
+    await s.sync();
+    b.surveyMarker('highlight:create', 'smB', (m) => ({ ...m, smB: { id: 'smB', pageNumber: 1, bounds: { x: 9, y: 9, width: 3, height: 4 } } }));
+    await s.sync();
+    assert.deepEqual(Object.keys(a.surveyMarkers).sort(), ['smA', 'smB']);
+    assert.equal(a.undo(), 'applied');
+    assert.deepEqual(Object.keys(a.surveyMarkers), ['smB']);
+    await s.sync();
+    assert.deepEqual(Object.keys(b.surveyMarkers), ['smB'], 'B\'s marker survives in the shared document');
   } finally {
     await s.close();
   }
@@ -555,8 +729,16 @@ test('PDFViewer follows the timeline rules', () => {
   for (const [name, body] of [['undo', undo], ['redo', redo]]) {
     assert.match(body, /runHistoryPress\(/, `${name}: one press = one visible step`);
     assert.match(body, /return 'skipped';/, `${name}: dead steps are dropped`);
-    assert.match(body, /scopeLegacyRestoreToOwnSlices\(/, `${name}: Survey Marker steps keep the marks`);
+    assert.match(body, /scopeLegacyRestoreToOwnSlices\(/, `${name}: Survey Marker / space steps restore only what they own`);
+    assert.match(body, new RegExp(`direction: '${name}'`), `${name}: scoping knows the direction`);
+    assert.match(body, /isTransientEraseHistoryFailure\(transitionResult\)/, `${name}: store not ready keeps the step`);
+    assert.match(body, /eraseTransitionChangedScreen\(transitionResult/, `${name}: an invisible erase step does not end the press`);
+    assert.match(body, /legacyRestoreChangesState\(currentState/, `${name}: an empty snapshot step does not end the press`);
+    assert.doesNotMatch(body, /quarantined\.redoMeta;[\s\S]{0,900}?return 'skipped';/, `${name}: a real erase conflict stops the press`);
   }
+  assert.match(between('const handleCalloutTextStyleChange = useCallback(', '\n  }, ['), /foldIntoCreateOf: calloutId/, 'a style picked while typing a new callout folds too');
+  assert.match(between('const handleSpaceCreate = useCallback(', '\n  }, ['), /spaceId: newSpaceId/, 'a space create records its space');
+  assert.match(between('const handleCounterGroupUpdate = useCallback(', '\n  }, ['), /type: 'fabric:document-batch'/, 'a counter series on several pages is one step');
   const key = between('const handleUndoRedoKey = (e) => {', '\n    };');
   assert.match(key, /if \(!undoRedoKeyActiveRef\.current\) return;/, 'only the visible document answers Cmd+Z');
   assert.ok(key.indexOf('undoRedoKeyActiveRef') < key.indexOf('stopImmediatePropagation'), 'checked before the event is stopped');

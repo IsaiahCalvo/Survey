@@ -789,6 +789,25 @@ export function docToByPage(doc, { replayStats = null } = {}) {
   return deriveCounterPresentationNumbers(byPage);
 }
 
+/**
+ * w37: how `baseObject` shows under the eraser lanes the document holds for
+ * `storageKey` right now (every writer's lanes, in docToByPage's order), or
+ * null when a delete lane hides it. Used when a deleted mark comes back
+ * (Undo of a delete) to tell the user's own edits apart from erase geometry.
+ */
+export function materializeObjectUnderLanes(doc, storageKey, baseObject) {
+  const key = String(storageKey);
+  const pairs = [];
+  getEraserOpsMap(doc).forEach((lane, laneKey) => {
+    if (lane && typeof lane === 'object' && String(lane.storageKey) === key) {
+      pairs.push([String(laneKey), lane]);
+    }
+  });
+  if (pairs.length === 0 || !baseObject) return baseObject || null;
+  pairs.sort(([a], [b]) => a.localeCompare(b));
+  return applyEraserLanesToObject(baseObject, pairs, key).object;
+}
+
 // One mark's eraser lanes (sorted [laneKey, lane] pairs) applied to its
 // stored object: { object } is the object to show — the base itself when no
 // lane changes it, null when the lanes remove it — keyed like the base.

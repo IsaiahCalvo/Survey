@@ -826,6 +826,70 @@ Overlays and ghosts for rows a taken-in checkpoint covered still leave by
 expiry (12 / 20 s), not at once; a new mark's v1 preview vanishes while Yjs
 holds its row back (w30).
 
+## Undo and Redo as one timeline (w37, 2026-09-25)
+
+Owner report: pen strokes, then eraser strokes; Undo of the erasures did not
+bring every stroke back, and Undo of a new stroke took older strokes too.
+Replayed live (`agent-cli/undo-redo-probe.mjs`): before w35 a whole-stroke
+erase's Undo showed nothing (the capture had deleted the stored mark), so
+presses looked dead and later presses took pen strokes; w35 fixed that. On
+today's main the rest was in how the viewer keeps its two undo lanes (the
+field-level "local" lane for marks, the "legacy" lane for eraser gestures
+and Survey Marker / space snapshots, interleaved by one checkpoint counter):
+
+* **A new step clears Redo in both lanes.** Each lane cleared only its own,
+  so after "erase, Undo it, draw" Redo re-applied the old erase over the new
+  stroke.
+* **One press = one visible step** (`historyStacks.runHistoryPress`). A step
+  that can no longer change anything (someone deleted or changed back what it
+  touched, its erase lanes were replaced, a checkpoint kind Undo does not
+  restore) is dropped and the same press takes the next step. Before, a dead
+  local step stayed on top while presses fell through to OLDER steps of the
+  other lane, and an unrestorable checkpoint on top ('excel:auto-sync') made
+  every older step unreachable.
+  An erase Undo that fails only because the store is not open yet (it closes
+  while its tab is hidden) keeps the step and stops the press; a real conflict
+  drops that one step, stops the press and says so. Neither ever runs on into
+  older work (review finding: a failed erase Undo used to take the previous
+  pen stroke back in the same press).
+* **Survey Marker / space Undo restores only what the step owns**
+  (`scopeLegacyRestoreToOwnSlices`): that Survey Marker; that space plus the
+  marks and markers its delete / region replace removed. It used to put back
+  every mark, marker and space as they were: the capture then deleted a
+  collaborator's newer stroke or marker, and reverted an Excel sync.
+* **A new callout is one step:** its first text commit, a style picked while
+  typing it, or its removal when left blank / Esc, folds into the create step
+  (`foldIntoCreateStep`).
+* **A counter series recoloured / renumbered across pages is one step** (a
+  document batch). Only the last page used to be undoable, and the other
+  pages' leftovers folded into their next unrelated step.
+* **Undo of a delete on a mark someone partly erased** keeps the user's own
+  changes to it (the capture stored the eraser lane's old copy, so a recolour
+  made before the delete was lost).
+* **Cmd+Z acts on the visible document only.** Every open document tab stays
+  mounted and each registered a window key handler; the first one opened
+  stopped the event for the rest.
+* The Excel file-watcher sync is no longer an undo step; a Survey Marker
+  checkpoint is taken only when a marker is really created.
+
+History is in memory only (not kept across reloads, like Figma / Acrobat).
+
+Pinned by `tests/undoRedoTimeline.test.mjs` (the real store and history
+engine through `tests/helpers/historyTimelineHarness.mjs`: the owner's
+sequence, every tool x create / move / resize / recolour / text edit / paste
+/ delete, multi-select, partial / whole / multi-stroke erases, interleaved
+lanes, a collaborator mid-sequence, reload, erase Undo failing or hidden,
+Survey Markers and space cascades, plus a source contract for the PDFViewer
+wiring) and live by `agent-cli/undo-redo-probe.mjs` (`--extra`, `--second`,
+`--matrix`, `--tabs`).
+
+Limits: one eraser drag that hits ink AND a Survey Marker is still two steps
+(the marker delete is its own snapshot step). Within the ~0.5 s a live overlay
+of someone else's in-flight edit is on screen, an Undo of the same mark can be
+judged by the overlay copy. A new callout removed by the fold (left blank)
+keeps its "created" History row. A hidden tab left mid region edit still
+listens for Cmd+Z (region editor only).
+
 ## Offline edits reach peers that are already open
 
 Open peers only receive WAL rows (realtime inserts + catch-up), never
