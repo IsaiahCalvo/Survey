@@ -14,7 +14,7 @@ import {
   normalizeMultiPolygon,
   styledStrokeCommandsToPolygonSet,
 } from './paperAnnotationGeometry.js';
-import { union } from 'martinez-polygon-clipping';
+import { union } from '../vendor/martinezPolygonClipping.js';
 // UX 2026-09-09: a revision cloud hit-tests on its scalloped crowns (and, when
 // filled, across the scalloped region), never on the inner box/ellipse/polygon
 // it was built from - the same resolver that paints the cloud supplies the

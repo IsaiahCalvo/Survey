@@ -10,7 +10,7 @@
  */
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icons';
-import { diff, union, intersection } from 'martinez-polygon-clipping';
+import { diff, union, intersection } from './vendor/martinezPolygonClipping.js';
 import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion, rotateCoordsAroundPoint, getRegionRotation, normalizeRegionRotation, deriveRegionChromeGeometry } from './utils/regionMath';
 import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
 import { calculateViewportSafePosition } from './utils/menuPositioning';

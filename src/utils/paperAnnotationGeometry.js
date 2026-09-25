@@ -1,4 +1,4 @@
-import { diff, intersection, union, xor } from 'martinez-polygon-clipping';
+import { diff, intersection, union, xor } from '../vendor/martinezPolygonClipping.js';
 import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
@@ -571,18 +571,405 @@ const sweptDiskSemicircleSteps = (radius, options) => {
   return DEFAULT_ARC_STEPS;
 };
 
+/**
+ * Drop near-duplicate centerline vertices without moving the centerline by
+ * more than `tolerance`. A vertex closer than `minDistance` to the last kept
+ * vertex is dropped only while every vertex dropped since that anchor stays
+ * within `tolerance` of the chord that replaces them, so the compacted
+ * polyline is within `tolerance` of the input (both ways).
+ *
+ * Why (w39, 2026-09-25): plain distance compaction (`compactPoints`) dropped
+ * the tip of a tight authored curve. A flattened quadratic whose turn has a
+ * 0.07-unit curvature radius puts its tip vertices ~0.12 apart; all fell
+ * under the 0.35 floor, the centerline lost 0.17 at the tip, and the stroke
+ * outline missed a 0.18-deep crescent of the true round stroke there. Both
+ * renderers clip the true source stroke to that outline after a bite, so ink
+ * vanished at the turn, far from the eraser.
+ */
+const compactCenterlineWithinTolerance = (points, minDistance, tolerance) => {
+  const valid = (points || []).filter((point) => (
+    point && Number.isFinite(point.x) && Number.isFinite(point.y)
+  ));
+  if (!valid.length) return [];
+  const output = [{ x: valid[0].x, y: valid[0].y }];
+  // Bounds the re-check below; a denser cluster simply keeps a vertex.
+  const MAX_PENDING = 64;
+  let pending = [];
+  for (let index = 1; index < valid.length; index += 1) {
+    const point = valid[index];
+    const anchor = output.at(-1);
+    if (point.x === anchor.x && point.y === anchor.y) continue;
+    const next = valid[index + 1];
+    if (
+      next
+      && pending.length < MAX_PENDING
+      && Math.hypot(point.x - anchor.x, point.y - anchor.y) < minDistance
+      && perpendicularDistance(point, anchor, next) <= tolerance
+      && pending.every((dropped) => (
+        perpendicularDistance(dropped, anchor, next) <= tolerance
+      ))
+    ) {
+      pending.push(point);
+      continue;
+    }
+    output.push({ x: point.x, y: point.y });
+    pending = [];
+  }
+  return output;
+};
+
 const compactSweptDiskPoints = (points, radius, options) => {
   // Sampling thresholds are geometry-relative. In particular, do not restore
   // an absolute epsilon here: imported PDF ink can legitimately be many
   // orders of magnitude smaller than one page unit.
   const minDistance = options.minDistance
     ?? Math.max(Number.MIN_VALUE, Math.min(0.35, radius * 0.1));
+  const compactionTolerance = Number(options.compactionTolerance);
+  if (Number.isFinite(compactionTolerance) && compactionTolerance >= 0) {
+    return compactCenterlineWithinTolerance(points, minDistance, compactionTolerance);
+  }
   return compactPoints(points, minDistance).filter((point, index, values) => (
     index === 0
     || point.x !== values[index - 1].x
     || point.y !== values[index - 1].y
   ));
 };
+
+const balancedUnion = (geometries) => {
+  let level = geometries;
+  while (level.length > 1) {
+    const merged = [];
+    for (let index = 0; index < level.length; index += 2) {
+      merged.push(
+        index + 1 < level.length
+          ? union(level[index], level[index + 1])
+          : level[index],
+      );
+    }
+    level = merged;
+  }
+  return normalizeMultiPolygon(level[0]);
+};
+
+/**
+ * Round-stroke outline for a centerline whose single direct offset ring is
+ * unsafe (a turn tighter than the stroke radius, a fold, a self-crossing).
+ *
+ * The swept disk of a polyline is exactly the union of the swept disks of
+ * consecutive sub-polylines that share their end vertices: the round caps at
+ * a shared vertex are the round join. So split only where the direct offset
+ * breaks, build a direct ring per run, and union the few runs. Before this,
+ * one tight tip sent the whole stroke to a per-segment capsule union (tens of
+ * milliseconds for a few hundred vertices).
+ *
+ * Break rule: a segment whose inside-join insets meet or cross (the direct
+ * ring's own safety test) is cut out at both ends, as is a full reversal.
+ * Removing a join only shrinks its neighbours' insets, so every remaining run
+ * passes that test. A run that still fails (its ring crosses itself, or it is
+ * closed) is halved until it passes; a two-vertex run is a plain capsule.
+ */
+function sweptDiskPolygonByRuns(points, radius, semicircleSteps, strict = false) {
+  const count = points.length;
+  const segments = [];
+  for (let index = 1; index < count; index += 1) {
+    const dx = points[index].x - points[index - 1].x;
+    const dy = points[index].y - points[index - 1].y;
+    const length = Math.hypot(dx, dy);
+    segments.push({ length, ux: length ? dx / length : 0, uy: length ? dy / length : 0 });
+  }
+  const breakAt = new Uint8Array(count);
+  const startInsets = [new Float64Array(segments.length), new Float64Array(segments.length)];
+  const endInsets = [new Float64Array(segments.length), new Float64Array(segments.length)];
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    const next = segments[index];
+    if (!previous.length || !next.length) {
+      breakAt[index] = 1;
+      continue;
+    }
+    const cross = previous.ux * next.uy - previous.uy * next.ux;
+    const dot = previous.ux * next.ux + previous.uy * next.uy;
+    const turn = Math.atan2(Math.abs(cross), dot);
+    const inset = radius * Math.tan(turn / 2);
+    if (turn >= Math.PI - Number.EPSILON * 32 || !Number.isFinite(inset)) {
+      breakAt[index] = 1;
+      continue;
+    }
+    const insideSide = cross >= 0 ? 0 : 1;
+    endInsets[insideSide][index - 1] = inset;
+    startInsets[insideSide][index] = inset;
+  }
+  for (let index = 0; index < segments.length; index += 1) {
+    for (let side = 0; side < 2; side += 1) {
+      if (startInsets[side][index] + endInsets[side][index] >= segments[index].length) {
+        breakAt[index] = 1;
+        breakAt[index + 1] = 1;
+      }
+    }
+  }
+
+  const pieces = [];
+  const buildRun = (run) => {
+    const ring = directSweptDiskRing(run, radius, semicircleSteps, true);
+    if (ring) {
+      pieces.push([[ring]]);
+      return;
+    }
+    if (run.length <= 2) {
+      if (
+        run.length === 2
+        && (run[0].x !== run[1].x || run[0].y !== run[1].y)
+      ) {
+        pieces.push([capsulePolygon(run[0], run[1], radius, semicircleSteps)]);
+      } else {
+        pieces.push([circlePolygon(run[0], radius, semicircleSteps * 2)]);
+      }
+      return;
+    }
+    const middle = Math.floor((run.length - 1) / 2);
+    buildRun(run.slice(0, middle + 1));
+    buildRun(run.slice(middle));
+  };
+  let start = 0;
+  for (let index = 1; index < count; index += 1) {
+    if (index === count - 1 || breakAt[index]) {
+      buildRun(points.slice(start, index + 1));
+      start = index;
+    }
+  }
+  return verifiedSweptDiskUnion(pieces, points, radius, semicircleSteps, strict);
+}
+
+/**
+ * Even-odd point-in-polygon-set tester with a horizontal band index, so
+ * checking a few probes per centerline segment against a large outline stays
+ * roughly linear.
+ */
+function polygonSetPointTester(polygons) {
+  const edges = [];
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const polygon of polygons) {
+    for (const ring of polygon) {
+      for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+        const [x0, y0] = ring[previous];
+        const [x1, y1] = ring[index];
+        if (y0 === y1) continue;
+        edges.push([x0, y0, x1, y1]);
+        minY = Math.min(minY, y0, y1);
+        maxY = Math.max(maxY, y0, y1);
+      }
+    }
+  }
+  if (!edges.length) return () => false;
+  const bandCount = Math.max(1, Math.ceil(Math.sqrt(edges.length)));
+  const bandHeight = (maxY - minY) / bandCount || 1;
+  const bands = Array.from({ length: bandCount }, () => []);
+  const bandOf = (y) => Math.min(bandCount - 1, Math.max(0, Math.floor((y - minY) / bandHeight)));
+  for (const edge of edges) {
+    const first = bandOf(Math.min(edge[1], edge[3]));
+    const last = bandOf(Math.max(edge[1], edge[3]));
+    for (let band = first; band <= last; band += 1) bands[band].push(edge);
+  }
+  return ([x, y]) => {
+    if (y < minY || y > maxY) return false;
+    let inside = false;
+    for (const [x0, y0, x1, y1] of bands[bandOf(y)]) {
+      if ((y0 > y) !== (y1 > y) && x < ((x1 - x0) * (y - y0)) / (y1 - y0) + x0) inside = !inside;
+    }
+    return inside;
+  };
+}
+
+/**
+ * Distance from a point to a polyline, for points near it: segments are
+ * hashed into square cells 1.25 radii wide, and a query only looks at the
+ * 3x3 cells around the point. A point with no segment that near gets
+ * Infinity, which callers treat as "off the rim".
+ */
+function centerlineDistanceIndex(points, radius) {
+  // One cell spans more than the largest distance a caller asks about
+  // (a radius plus a facet sag), so the 3x3 cells around a point suffice.
+  const cell = radius > 0 ? radius * 1.25 : 1;
+  const cells = new Map();
+  const key = (ix, iy) => `${ix},${iy}`;
+  const segments = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const a = points[Math.max(0, index - 1)];
+    const b = points[index];
+    if (index > 0 && a.x === b.x && a.y === b.y) continue;
+    const segment = { a, b };
+    segments.push(segment);
+    const minX = Math.floor(Math.min(a.x, b.x) / cell);
+    const maxX = Math.floor(Math.max(a.x, b.x) / cell);
+    const minY = Math.floor(Math.min(a.y, b.y) / cell);
+    const maxY = Math.floor(Math.max(a.y, b.y) / cell);
+    for (let ix = minX; ix <= maxX; ix += 1) {
+      for (let iy = minY; iy <= maxY; iy += 1) {
+        const bucket = cells.get(key(ix, iy));
+        if (bucket) bucket.push(segment); else cells.set(key(ix, iy), [segment]);
+      }
+    }
+  }
+  return (x, y) => {
+    const cx = Math.floor(x / cell);
+    const cy = Math.floor(y / cell);
+    let best = Infinity;
+    for (let ix = cx - 1; ix <= cx + 1; ix += 1) {
+      for (let iy = cy - 1; iy <= cy + 1; iy += 1) {
+        for (const { a, b } of cells.get(key(ix, iy)) || []) {
+          best = Math.min(best, perpendicularDistance({ x, y }, a, b));
+        }
+      }
+    }
+    return best;
+  };
+}
+
+/**
+ * Union run pieces into the stroke outline, and check the result.
+ *
+ * Martinez mishandles some unions of round caps that meet on one circle
+ * (w39 review: a closed square whose two halves union to 137 instead of 185,
+ * a right-angle polyline whose union has zero area, a thin wedge cut across
+ * the stroke, a throw). Such a result would make ink vanish after the first
+ * bite. So a candidate is accepted only if
+ *   - it contains probes every true swept disk contains (each centerline
+ *     vertex and 8 points 3/4 of a radius around it; each segment midpoint
+ *     and 3/4 of a radius out along both normals),
+ *   - every boundary vertex and edge midpoint lies on the rim (a radius from
+ *     the centerline, less at most two facet sags), and
+ *   - its area does not exceed the pieces' total.
+ * Strategies, first valid wins: balanced union; left-to-right union; the
+ * same union on a rotated copy (moves the vertical and collinear
+ * coincidences Martinez trips on); the old per-segment capsule union. All
+ * deterministic, so every screen reaches the same outline.
+ *
+ * When none validates: `strict` (the eraser's outline) throws and the eraser
+ * leaves that mark exactly as it was; otherwise (a newly drawn pen stroke)
+ * the candidate failing the fewest checks is kept. Measured 2026-09-25: no
+ * refusals over 230 realistic pen / jittery legacy / scribble strokes; about
+ * 1.5% of adversarial right-angle polylines with legs shorter than the
+ * radius (which the old code turned into outlines with holes).
+ */
+function verifiedSweptDiskUnion(pieces, points, radius, semicircleSteps, strict = false) {
+  if (pieces.length === 1) return normalizeMultiPolygon(pieces[0]);
+  const probes = [];
+  for (const point of points) {
+    probes.push([point.x, point.y]);
+    for (let k = 0; k < 8; k += 1) {
+      const angle = k * Math.PI / 4 + 0.3;
+      probes.push([
+        point.x + Math.cos(angle) * radius * 0.75,
+        point.y + Math.sin(angle) * radius * 0.75,
+      ]);
+    }
+  }
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1];
+    const b = points[index];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!length) continue;
+    const nx = -(b.y - a.y) / length;
+    const ny = (b.x - a.x) / length;
+    const x = (a.x + b.x) / 2;
+    const y = (a.y + b.y) / 2;
+    probes.push(
+      [x, y],
+      [x + nx * radius * 0.75, y + ny * radius * 0.75],
+      [x - nx * radius * 0.75, y - ny * radius * 0.75],
+    );
+  }
+  const pieceAreaSum = pieces.reduce((total, piece) => total + polygonSetArea(piece), 0);
+  // Every boundary point of a true outline lies on an offset edge (exactly
+  // r from the centerline) or on an arc facet (at most one facet's sag
+  // inside). An edge that cuts across the stroke — the thin wedge a bad
+  // union leaves — has its midpoint far inside, which probes can miss.
+  const distanceToCenterline = centerlineDistanceIndex(points, radius);
+  const facetSag = radius * (1 - Math.cos(Math.PI / Math.max(1, semicircleSteps)));
+  const magnitude = points.reduce(
+    (largest, point) => Math.max(largest, Math.abs(point.x), Math.abs(point.y)),
+    0,
+  );
+  const roundingSlack = radius * 1e-9 + magnitude * 1e-12;
+  const offRim = (x, y) => {
+    const distance = distanceToCenterline(x, y);
+    return distance < radius - facetSag * 2 - roundingSlack
+      || distance > radius + facetSag + roundingSlack;
+  };
+  const score = (candidate) => {
+    const inside = polygonSetPointTester(candidate);
+    let failures = 0;
+    for (const probe of probes) if (!inside(probe)) failures += 1;
+    if (polygonSetArea(candidate) > pieceAreaSum * (1 + 1e-9)) failures += 1;
+    for (const polygon of candidate) {
+      for (const ring of polygon) {
+        for (let index = 1; index < ring.length; index += 1) {
+          const [x0, y0] = ring[index - 1];
+          const [x1, y1] = ring[index];
+          if (offRim(x1, y1) || offRim((x0 + x1) / 2, (y0 + y1) / 2)) failures += 1;
+        }
+      }
+    }
+    return failures;
+  };
+
+  const rotated = (angle) => {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const originX = points[0].x;
+    const originY = points[0].y;
+    const map = (value, c, s) => normalizeMultiPolygon(value).map((polygon) => polygon.map((ring) => ring.map(([x, y]) => [
+      originX + (x - originX) * c - (y - originY) * s,
+      originY + (x - originX) * s + (y - originY) * c,
+    ])));
+    return map(balancedUnion(pieces.map((piece) => map(piece, cos, sin))), cos, -sin);
+  };
+  const strategies = [
+    () => balancedUnion(pieces),
+    () => pieces.slice(1).reduce(
+      (total, piece) => normalizeMultiPolygon(union(total, piece)),
+      normalizeMultiPolygon(pieces[0]),
+    ),
+    () => rotated(0.1234567),
+    () => sweptDiskPolygonByCapsules(points, radius, semicircleSteps),
+  ];
+  let best = null;
+  for (const strategy of strategies) {
+    let candidate;
+    try {
+      candidate = normalizeMultiPolygon(strategy());
+    } catch {
+      continue;
+    }
+    if (!candidate.length) continue;
+    const failures = score(candidate);
+    if (failures === 0) return candidate;
+    const area = polygonSetArea(candidate);
+    if (
+      !best
+      || failures < best.failures
+      || (failures === best.failures && area > best.area)
+    ) best = { candidate, failures, area };
+  }
+  if (strict) {
+    // An eraser outline must be right or not exist: after the first bite the
+    // renderers clip the true stroke to it, so a wrong outline deletes ink
+    // nowhere near the eraser. The eraser leaves this mark as it was.
+    throw new StrokeOutlineUnionError(best ? best.failures : null);
+  }
+  // A drawn pen stroke has no other geometry to fall back to: keep the
+  // candidate that fails the fewest checks (then the one keeping most ink).
+  if (best) return best.candidate;
+  return balancedUnion(pieces);
+}
+
+export class StrokeOutlineUnionError extends Error {
+  constructor(failures) {
+    super(`stroke outline union could not be verified (${failures ?? 'every strategy threw'})`);
+    this.name = 'StrokeOutlineUnionError';
+  }
+}
 
 export function sweptDiskPolygon(points, radius, options = {}) {
   if (!Number.isFinite(radius) || radius <= 0) return [];
@@ -604,6 +991,9 @@ export function sweptDiskPolygon(points, radius, options = {}) {
     compacted, radius, semicircleSteps, options.inkOutline,
   );
   if (directRing) return [[directRing]];
+  if (options.inkOutline) {
+    return sweptDiskPolygonByRuns(compacted, radius, semicircleSteps, options.strictOutline === true);
+  }
   return sweptDiskPolygonByCapsules(
     compacted,
     radius,
@@ -1345,7 +1735,19 @@ export function commandsToPolygonSet(commands, {
     const outlined = sweptDiskPolygon(
       points,
       strokeWidth / 2,
-      { curveTolerance: outlineCurveTolerance, inkOutline: true },
+      {
+        curveTolerance: outlineCurveTolerance,
+        inkOutline: true,
+        // The flattened centerline is already exactly as dense as the curve
+        // needs. Compaction may only merge near-duplicates, never cut a tight
+        // tip (see compactCenterlineWithinTolerance). A quarter of the curve
+        // tolerance keeps the total outline error (flattening + compaction
+        // + round-arc facets) under two curve tolerances.
+        compactionTolerance: outlineCurveTolerance / 4,
+        // This outline is what the renderers clip the true stroke to after
+        // a bite: an unverifiable union throws instead of losing ink.
+        strictOutline: true,
+      },
     );
     if (!outlined.length) continue;
     geometry = geometry ? union(geometry, outlined) : outlined;

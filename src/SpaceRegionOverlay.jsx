@@ -8,7 +8,7 @@
  * are disabled (visual only). Rendered per page when a space is active.
  */
 import { useId, useLayoutEffect, useMemo, useRef } from 'react';
-import { union, diff } from 'martinez-polygon-clipping';
+import { union, diff } from './vendor/martinezPolygonClipping.js';
 import { regionToPolygon } from './utils/regionMath';
 
 const spaceRegionDebug = (...args) => {

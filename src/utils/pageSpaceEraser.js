@@ -9,7 +9,7 @@ import {
   polygonSetToCommands,
   roundCircleStepCount,
 } from './paperAnnotationGeometry.js';
-import { diff as polygonDifference, union } from 'martinez-polygon-clipping';
+import { diff as polygonDifference, union } from '../vendor/martinezPolygonClipping.js';
 import {
   eraserStrokeTouchesObject,
   getEraserCandidateId,
@@ -818,12 +818,21 @@ function bakePagePathResult(object, result) {
   const bounds = boundsOfCommands(result.cmds);
   const filled = hasVisiblePaint(result.fill) && numberOr(result.strokeWidth) === 0;
   const paperSourceStroke = result.paperSourceStroke || object?.paperSourceStroke || null;
-  const paperEraserCuts = paperSourceStroke
-    ? subtractPolygonGeometries(
+  let paperEraserCuts = [];
+  if (paperSourceStroke) {
+    try {
+      paperEraserCuts = subtractPolygonGeometries(
         paperSourceStrokeOutlinePolygons(paperSourceStroke),
         result.polygons,
-      )
-    : [];
+      );
+    } catch (error) {
+      // The source outline itself could not be built (w39: an unverifiable
+      // round-stroke union throws). The survivor polygon is still exact; it
+      // renders as its own polygon, like a failed cut subtraction.
+      console.warn('Paper eraser cut-mask construction failed; polygon rendering retained:', error);
+      paperEraserCuts = [];
+    }
+  }
 
   const baked = {
     ...metadata,
@@ -1085,6 +1094,48 @@ const getPdfAppearanceCompositeId = (object) => (
  * Applies one eraser gesture directly to the latest persisted page model.
  * Untouched objects retain their exact references and ordering.
  */
+// A mark whose geometry the polygon engine cannot process (it throws, or
+// hits the vendored engine's hard iteration bound) stays exactly as it was.
+// One eraser tap must never freeze the page or corrupt a mark (w39,
+// 2026-09-25: a self-crossing stroked curve spun Martinez forever).
+function skipMarkForFailedGeometry(object, index, stage, error) {
+  const annotationId = object ? getEraserCandidateId(object, index) : null;
+  console.warn('[EraserSkippedMark]', JSON.stringify({
+    annotationId,
+    stage,
+    error: error?.name === 'MartinezNonConvergenceError'
+      ? `${error.name}: ${error.stage}`
+      : String(error?.message || error),
+  }));
+  return { annotationId, failedStages: { [stage]: 1 }, recovered: false, skipped: true };
+}
+
+// Erase a group in one pass (the eraser mask is built once); if any mark's
+// geometry throws, redo the group one mark at a time so only that mark is
+// left unchanged.
+function eraseAnnotationsIsolatingFailures(annotations, points, radius, operation, onFailed) {
+  try {
+    return eraseAnnotations(annotations, points, radius, operation);
+  } catch {
+    const merged = { annotations: [], changedIds: [], deletedIds: [], failures: [] };
+    for (const annotation of annotations) {
+      let result;
+      try {
+        result = eraseAnnotations([annotation], points, radius, operation);
+      } catch (error) {
+        onFailed(annotation, error);
+        merged.annotations.push(annotation);
+        continue;
+      }
+      merged.annotations.push(...result.annotations);
+      merged.changedIds.push(...result.changedIds);
+      merged.deletedIds.push(...result.deletedIds);
+      merged.failures.push(...(result.failures || []));
+    }
+    return merged;
+  }
+}
+
 export function erasePageAnnotations({
   pageAnnotations,
   eraserPoints,
@@ -1124,14 +1175,20 @@ export function erasePageAnnotations({
     const operation = requestedMode === 'full'
       ? 'full'
       : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
-    const annotation = pathToPageAnnotation(object, internalId, {
-      // Both modes hit-test the stroke's actual painted outline. Solid round
-      // strokes remain their authored centerlines because a radius-expanded
-      // capsule is their exact outline; styled strokes promote to polygons so
-      // dash gaps and butt/square/bevel/miter geometry remain exact.
-      forcePolygon: true,
-      eraserRadius: radius,
-    });
+    let annotation;
+    try {
+      annotation = pathToPageAnnotation(object, internalId, {
+        // Both modes hit-test the stroke's actual painted outline. Solid round
+        // strokes remain their authored centerlines because a radius-expanded
+        // capsule is their exact outline; styled strokes promote to polygons so
+        // dash gaps and butt/square/bevel/miter geometry remain exact.
+        forcePolygon: true,
+        eraserRadius: radius,
+      });
+    } catch (error) {
+      failedStages.push(skipMarkForFailedGeometry(object, index, 'outline', error));
+      return;
+    }
     if (!annotation) return;
     pathGroups[operation].push(annotation);
     pathRecords.set(internalId, { object, index });
@@ -1140,7 +1197,18 @@ export function erasePageAnnotations({
   for (const operation of ['partial', 'full']) {
     const annotations = pathGroups[operation];
     if (!annotations.length) continue;
-    const result = eraseAnnotations(annotations, points, radius, operation);
+    const result = eraseAnnotationsIsolatingFailures(
+      annotations,
+      points,
+      radius,
+      operation,
+      (annotation, error) => {
+        const record = pathRecords.get(annotation.id);
+        failedStages.push(skipMarkForFailedGeometry(
+          record?.object, record?.index, `${operation}-erase`, error,
+        ));
+      },
+    );
     failedStages.push(...(result.failures || []));
     if (!result.changedIds.length) continue;
     const survivorById = new Map(result.annotations.map((annotation) => [annotation.id, annotation]));
@@ -1163,7 +1231,13 @@ export function erasePageAnnotations({
       const survivor = survivorById.get(internalId);
       const originalGeometry = annotations.find((annotation) => annotation.id === internalId);
       if (!survivor || JSON.stringify(survivor.cmds) === JSON.stringify(originalGeometry?.cmds)) continue;
-      const replacement = bakePagePathResult(record.object, survivor);
+      let replacement;
+      try {
+        replacement = bakePagePathResult(record.object, survivor);
+      } catch (error) {
+        failedStages.push(skipMarkForFailedGeometry(record.object, record.index, 'bake', error));
+        continue;
+      }
       replacementByIndex.set(record.index, replacement);
       changedIds.push(objectId);
     }

@@ -1,5 +1,5 @@
 // Import martinez-polygon-clipping for polygon boolean operations
-import { union, diff, intersection } from 'martinez-polygon-clipping';
+import { union, diff, intersection } from '../vendor/martinezPolygonClipping.js';
 
 export const REGION_OPERATIONS = {
   ADD: 'add',

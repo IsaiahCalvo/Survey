@@ -19,7 +19,7 @@
 //  * The crown outline and the scalloped fill region come from one engine
 //    pass (buildCloudRenderPaths), so fill and stroke can never disagree.
 
-import { union as polygonUnion } from 'martinez-polygon-clipping';
+import { union as polygonUnion } from '../vendor/martinezPolygonClipping.js';
 import {
   buildCloudRenderPaths,
   cloudCommandsToPathData,

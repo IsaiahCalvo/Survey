@@ -8,7 +8,7 @@
  * splitPathDataByEraser (a simpler segment-cutting fallback). Used by the eraser
  * tool to reshape ink strokes in local path space.
  */
-import { diff, union } from 'martinez-polygon-clipping';
+import { diff, union } from '../vendor/martinezPolygonClipping.js';
 // Copied from geometryHitTest.js to avoid circular dependencies or just for self-containment
 const transformPointInverse = (point, matrix) => {
     if (!matrix) return point;
