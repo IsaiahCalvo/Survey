@@ -36,6 +36,7 @@ const GRAPH_SCOPES = ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All']
 const AZURE_CLIENT_ID = '0da81a9e-2b05-46ee-b826-5efc5114c765';
 const MS_OAUTH_REDIRECT_URI_KEY = 'ms_oauth_redirect_uri';
 const MS_OAUTH_RETURN_URL_KEY = 'ms_oauth_return_url';
+const MS_OAUTH_SURVEY_USER_KEY = 'ms_oauth_survey_user_id';
 const MS_REFRESH_COOLDOWN_MS = 60 * 1000;
 const MS_HARD_REFRESH_BLOCK_MS = 30 * 60 * 1000;
 const MS_REFRESH_BLOCK_UNTIL_KEY = 'ms_refresh_block_until';
@@ -52,24 +53,24 @@ const restoreMicrosoftReturnUrl = (returnUrl) => {
     }
 };
 
-const readRefreshBlockUntil = () => {
+const readRefreshBlockUntil = (userId) => {
     if (typeof window === 'undefined') return 0;
     try {
-        const value = Number(window.sessionStorage.getItem(MS_REFRESH_BLOCK_UNTIL_KEY) || 0);
+        const value = Number(window.sessionStorage.getItem(`${MS_REFRESH_BLOCK_UNTIL_KEY}:${userId}`) || 0);
         return Number.isFinite(value) ? value : 0;
     } catch {
         return 0;
     }
 };
 
-const writeRefreshBlockUntil = (value) => {
+const writeRefreshBlockUntil = (value, userId) => {
     if (typeof window === 'undefined') return;
     try {
         if (!value || value <= 0) {
-            window.sessionStorage.removeItem(MS_REFRESH_BLOCK_UNTIL_KEY);
+            window.sessionStorage.removeItem(`${MS_REFRESH_BLOCK_UNTIL_KEY}:${userId}`);
             return;
         }
-        window.sessionStorage.setItem(MS_REFRESH_BLOCK_UNTIL_KEY, String(value));
+        window.sessionStorage.setItem(`${MS_REFRESH_BLOCK_UNTIL_KEY}:${userId}`, String(value));
     } catch {
         // Ignore storage errors
     }
@@ -85,6 +86,7 @@ export const useMSGraph = () => {
 
 export const MSGraphProvider = ({ children }) => {
     const { user } = useAuth();
+    const [stateUserId, setStateUserId] = useState(user?.id ?? null);
     const [account, setAccount] = useState(null);
     const [graphClient, setGraphClient] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -111,14 +113,55 @@ export const MSGraphProvider = ({ children }) => {
         hardBlockedUntil: 0,
         lastErrorCode: null
     });
+    const authUserId = user?.id ?? null;
+    const authScopeRef = useRef({ userId: authUserId, active: true });
+    if (authScopeRef.current.userId !== authUserId) {
+        authScopeRef.current.active = false;
+        authScopeRef.current = { userId: authUserId, active: true };
+        tokenRef.current = null;
+        tokenMetadataRef.current = null;
+        custodyRef.current = null;
+    }
+    const isCurrentAuthScope = useCallback((scope) => Boolean(
+        scope?.active && scope === authScopeRef.current && scope.userId === authUserId
+    ), [authUserId]);
+
+    useEffect(() => {
+        const scope = { userId: authUserId, active: true };
+        authScopeRef.current = scope;
+        tokenRef.current = null;
+        tokenMetadataRef.current = null;
+        custodyRef.current = null;
+        refreshStateRef.current = { inFlight: null, cooldownUntil: 0, hardBlockedUntil: 0, lastErrorCode: null };
+        oauthProcessing.current = false;
+        setAccount(null);
+        setGraphClient(null);
+        setIsAuthenticated(false);
+        setNeedsReconnect(false);
+        setError(null);
+        setConnectionRestored(false);
+        setStateUserId(authUserId);
+        return () => {
+            scope.active = false;
+            if (authScopeRef.current.userId === scope.userId) {
+                authScopeRef.current.active = false;
+                tokenRef.current = null;
+                tokenMetadataRef.current = null;
+                custodyRef.current = null;
+            }
+        };
+    }, [authUserId]);
 
     // Initialize Graph client
     const initializeGraphClient = useCallback(async (accessToken) => {
+        const scope = authScopeRef.current;
+        if (!scope.userId || !isCurrentAuthScope(scope)) return null;
         tokenRef.current = accessToken;
         const { Client } = await import('@microsoft/microsoft-graph-client');
+        if (!isCurrentAuthScope(scope)) return null;
         const client = Client.init({
             authProvider: (done) => {
-                if (tokenRef.current) {
+                if (isCurrentAuthScope(scope) && tokenRef.current) {
                     done(null, tokenRef.current);
                 } else {
                     done(new Error('No access token available'), null);
@@ -127,7 +170,7 @@ export const MSGraphProvider = ({ children }) => {
         });
         setGraphClient(client);
         return client;
-    }, []);
+    }, [isCurrentAuthScope]);
 
     // Populate the in-memory token metadata cache from a freshly read/written
     // token + account snapshot. Always called alongside a DB read or write so
@@ -152,6 +195,8 @@ export const MSGraphProvider = ({ children }) => {
     // in the Electron main process is now the source of truth; the renderer keeps
     // only the access token, and connected_services is reduced to a NO-TOKEN marker.
     const adoptMainAuthResult = useCallback(async (authResult) => {
+        const scope = authScopeRef.current;
+        if (!scope.userId || !isCurrentAuthScope(scope)) return false;
         const acct = buildMainAuthAccount(authResult.account || {});
         custodyRef.current = 'main';
         tokenMetadataRef.current = {
@@ -168,10 +213,11 @@ export const MSGraphProvider = ({ children }) => {
         setIsAuthenticated(true);
         setNeedsReconnect(false);
         await initializeGraphClient(authResult.accessToken);
+        if (!isCurrentAuthScope(scope)) return false;
         refreshStateRef.current.cooldownUntil = 0;
         refreshStateRef.current.hardBlockedUntil = 0;
         refreshStateRef.current.lastErrorCode = null;
-        writeRefreshBlockUntil(0);
+        writeRefreshBlockUntil(0, authUserId);
         if (user && isSupabaseAvailable()) {
             try {
                 await supabase
@@ -182,11 +228,13 @@ export const MSGraphProvider = ({ children }) => {
             }
         }
         return true;
-    }, [user, initializeGraphClient]);
+    }, [user, initializeGraphClient, isCurrentAuthScope]);
 
     // Store tokens in Supabase database
     const storeTokens = useCallback(async (tokens, accountInfo) => {
         if (!user || !isSupabaseAvailable()) return false;
+        const scope = authScopeRef.current;
+        if (!isCurrentAuthScope(scope)) return false;
 
         try {
             const { error } = await supabase
@@ -209,6 +257,7 @@ export const MSGraphProvider = ({ children }) => {
                     last_used_at: new Date().toISOString(),
                 }, { onConflict: 'user_id,service_name' });
 
+            if (!isCurrentAuthScope(scope)) return false;
             if (!error) {
                 // Keep the in-memory cache in lockstep with the persisted row so
                 // ensureFreshToken() can read it without another DB round-trip.
@@ -223,11 +272,13 @@ export const MSGraphProvider = ({ children }) => {
         } catch (err) {
             return false;
         }
-    }, [user, setTokenMetadataCache]);
+    }, [user, setTokenMetadataCache, isCurrentAuthScope]);
 
     // Fetch stored tokens from database
     const fetchStoredTokens = useCallback(async () => {
         if (!user || !isSupabaseAvailable()) return null;
+        const scope = authScopeRef.current;
+        if (!isCurrentAuthScope(scope)) return null;
 
         try {
             const { data, error } = await supabase
@@ -237,20 +288,22 @@ export const MSGraphProvider = ({ children }) => {
                 .eq('service_name', 'microsoft')
                 .maybeSingle();
 
-            if (error || !data) return null;
+            if (!isCurrentAuthScope(scope) || error || !data) return null;
             return data;
         } catch (err) {
             return null;
         }
-    }, [user]);
+    }, [user, isCurrentAuthScope]);
 
     // Refresh access token using refresh token
     const refreshAccessToken = useCallback(async (refreshToken, options = {}) => {
         if (!refreshToken) return null;
+        const scope = authScopeRef.current;
+        if (!isCurrentAuthScope(scope)) return null;
 
         const state = refreshStateRef.current;
         const nowMs = Date.now();
-        const persistedBlockedUntil = readRefreshBlockUntil();
+        const persistedBlockedUntil = readRefreshBlockUntil(authUserId);
         if (persistedBlockedUntil > state.hardBlockedUntil) {
             state.hardBlockedUntil = persistedBlockedUntil;
         }
@@ -276,6 +329,7 @@ export const MSGraphProvider = ({ children }) => {
                         grant_type: 'refresh_token',
                     }).toString(),
                 });
+                if (!isCurrentAuthScope(scope)) return null;
 
                 if (!response.ok) {
                     let errorPayload = null;
@@ -284,6 +338,7 @@ export const MSGraphProvider = ({ children }) => {
                     } catch {
                         errorPayload = null;
                     }
+                    if (!isCurrentAuthScope(scope)) return null;
 
                     const errorCode = String(errorPayload?.error || '').toLowerCase();
                     const errorDescription = String(errorPayload?.error_description || '').toLowerCase();
@@ -304,7 +359,7 @@ export const MSGraphProvider = ({ children }) => {
                         const blockUntil = Date.now() + MS_HARD_REFRESH_BLOCK_MS;
                         state.hardBlockedUntil = blockUntil;
                         state.cooldownUntil = blockUntil;
-                        writeRefreshBlockUntil(blockUntil);
+                        writeRefreshBlockUntil(blockUntil, authUserId);
                         setNeedsReconnect(true);
                         setIsAuthenticated(false);
                         setGraphClient(null);
@@ -332,10 +387,11 @@ export const MSGraphProvider = ({ children }) => {
                 }
 
                 const tokens = await response.json();
+                if (!isCurrentAuthScope(scope)) return null;
                 state.cooldownUntil = 0;
                 state.hardBlockedUntil = 0;
                 state.lastErrorCode = null;
-                writeRefreshBlockUntil(0);
+                writeRefreshBlockUntil(0, authUserId);
 
                 return {
                     access_token: tokens.access_token,
@@ -345,6 +401,7 @@ export const MSGraphProvider = ({ children }) => {
                     refresh_reason: options.reason || 'unspecified'
                 };
             } catch {
+                if (!isCurrentAuthScope(scope)) return null;
                 state.cooldownUntil = Date.now() + MS_REFRESH_COOLDOWN_MS;
                 return null;
             } finally {
@@ -354,11 +411,12 @@ export const MSGraphProvider = ({ children }) => {
 
         state.inFlight = runRefresh();
         return state.inFlight;
-    }, [setGraphClient, setIsAuthenticated, setNeedsReconnect, user]);
+    }, [setGraphClient, setIsAuthenticated, setNeedsReconnect, user, isCurrentAuthScope]);
 
     // Remove connection
     const removeConnection = useCallback(async () => {
         if (!user || !isSupabaseAvailable()) return;
+        if (!isCurrentAuthScope(authScopeRef.current)) return;
 
         try {
             await supabase
@@ -369,11 +427,12 @@ export const MSGraphProvider = ({ children }) => {
         } catch (err) {
             // Silently fail
         }
-    }, [user]);
+    }, [user, isCurrentAuthScope]);
 
     // Update last_used timestamp
     const updateLastUsed = useCallback(async () => {
         if (!user || !isSupabaseAvailable()) return;
+        if (!isCurrentAuthScope(authScopeRef.current)) return;
 
         try {
             await supabase
@@ -384,11 +443,13 @@ export const MSGraphProvider = ({ children }) => {
         } catch (err) {
             // Silently fail
         }
-    }, [user]);
+    }, [user, isCurrentAuthScope]);
 
     // Restore connection on mount
     useEffect(() => {
         let isMounted = true;
+        const scope = authScopeRef.current;
+        const isCurrent = () => isMounted && isCurrentAuthScope(scope);
 
         const restoreConnection = async () => {
             if (!user) {
@@ -400,6 +461,8 @@ export const MSGraphProvider = ({ children }) => {
             setIsLoading(true);
 
             try {
+                const storedData = await fetchStoredTokens();
+                if (!isCurrent()) return;
                 // Main-process custody first: if the MSAL cache (system-browser
                 // sign-in) already holds an account, restore from it and ignore
                 // any legacy renderer-managed tokens. Legacy rows keep working
@@ -407,15 +470,23 @@ export const MSGraphProvider = ({ children }) => {
                 if (isMainAuthAvailable()) {
                     try {
                         const status = await window.electronAPI.microsoftAuthStatus();
-                        if (status?.signedIn) {
+                        if (!isCurrent()) return;
+                        // The device-wide MSAL cache is not evidence that THIS
+                        // Survey account linked it. Only restore its exact link.
+                        if (status?.signedIn && storedData?.is_connected && storedData.account_id
+                            && storedData.account_id === status.account?.homeAccountId) {
                             let res = await window.electronAPI.microsoftGetAccessToken();
+                            if (!isCurrent()) return;
                             if (!res?.success && !res?.needsInteraction) {
                                 // One retry for transient failures (network blip) before
                                 // surfacing reconnect — never lock out on a single miss.
                                 res = await window.electronAPI.microsoftGetAccessToken();
+                                if (!isCurrent()) return;
                             }
-                            if (res?.success && res.accessToken) {
-                                if (isMounted) await adoptMainAuthResult(res);
+                            if (res?.success && res.accessToken
+                                && res.account?.homeAccountId === storedData.account_id) {
+                                if (isCurrent()) await adoptMainAuthResult(res);
+                                if (!isCurrent()) return;
                                 setIsLoading(false);
                                 setConnectionRestored(true);
                                 return;
@@ -424,7 +495,7 @@ export const MSGraphProvider = ({ children }) => {
                             // acquired. Surface reconnect against the cached account
                             // here — do NOT fall through, where the no-token marker
                             // row would be misread as a missing legacy connection.
-                            if (isMounted) {
+                            if (isCurrent()) {
                                 custodyRef.current = 'main';
                                 const acct = buildMainAuthAccount(status.account || {});
                                 setAccount({ username: acct.username, name: acct.name, homeAccountId: acct.homeAccountId });
@@ -440,11 +511,10 @@ export const MSGraphProvider = ({ children }) => {
                         // Fall through to the legacy restore path.
                     }
                 }
-
-                const storedData = await fetchStoredTokens();
+                if (!isCurrent()) return;
 
                 if (!storedData?.is_connected || !storedData?.metadata?.refresh_token) {
-                    if (isMounted) {
+                    if (isCurrent()) {
                         setIsAuthenticated(false);
                         setGraphClient(null);
                         setAccount(null);
@@ -467,7 +537,7 @@ export const MSGraphProvider = ({ children }) => {
                 });
                 const refreshState = refreshStateRef.current;
                 const nowMs = Date.now();
-                const persistedBlockedUntil = readRefreshBlockUntil();
+                const persistedBlockedUntil = readRefreshBlockUntil(authUserId);
                 if (persistedBlockedUntil > refreshState.hardBlockedUntil) {
                     refreshState.hardBlockedUntil = persistedBlockedUntil;
                 }
@@ -491,6 +561,7 @@ export const MSGraphProvider = ({ children }) => {
 
                 if (!expires_at || expires_at < now + 300) {
                     const newTokens = await refreshAccessToken(refresh_token, { reason: 'restore' });
+                    if (!isCurrent()) return;
 
                     if (!newTokens) {
                         if (isMounted) {
@@ -511,18 +582,19 @@ export const MSGraphProvider = ({ children }) => {
                         name: account_name,
                         tenantId: metadata.tenant_id,
                     });
+                    if (!isCurrent()) return;
                 }
 
-                if (isMounted) {
+                if (isCurrent()) {
                     setAccount({ username: account_email, name: account_name, homeAccountId: account_id });
                     setIsAuthenticated(true);
                     setNeedsReconnect(false);
-                    initializeGraphClient(currentAccessToken);
+                    await initializeGraphClient(currentAccessToken);
                 }
             } catch (err) {
-                if (isMounted) setError(err.message);
+                if (isCurrent()) setError(err.message);
             } finally {
-                if (isMounted) {
+                if (isCurrent()) {
                     setIsLoading(false);
                     setConnectionRestored(true);
                 }
@@ -531,7 +603,7 @@ export const MSGraphProvider = ({ children }) => {
 
         restoreConnection();
         return () => { isMounted = false; };
-    }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient, setTokenMetadataCache, adoptMainAuthResult]);
+    }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient, setTokenMetadataCache, adoptMainAuthResult, isCurrentAuthScope]);
 
     // Periodic token refresh - refresh every 10 minutes to stay ahead of expiry
     // Microsoft access tokens typically last 60-90 minutes, but can be revoked anytime
@@ -542,9 +614,11 @@ export const MSGraphProvider = ({ children }) => {
         if (custodyRef.current === 'main') return;
 
         const refreshInterval = setInterval(async () => {
+            const scope = authScopeRef.current;
+            if (!isCurrentAuthScope(scope)) return;
             const state = refreshStateRef.current;
             const nowMs = Date.now();
-            const persistedBlockedUntil = readRefreshBlockUntil();
+            const persistedBlockedUntil = readRefreshBlockUntil(authUserId);
             if (persistedBlockedUntil > state.hardBlockedUntil) {
                 state.hardBlockedUntil = persistedBlockedUntil;
             }
@@ -553,8 +627,10 @@ export const MSGraphProvider = ({ children }) => {
             }
 
             const storedData = await fetchStoredTokens();
+            if (!isCurrentAuthScope(scope)) return;
             if (storedData?.metadata?.refresh_token) {
                 const newTokens = await refreshAccessToken(storedData.metadata.refresh_token, { reason: 'interval' });
+                if (!isCurrentAuthScope(scope)) return;
                 if (newTokens) {
                     tokenRef.current = newTokens.access_token;
                     await storeTokens(newTokens, {
@@ -576,11 +652,13 @@ export const MSGraphProvider = ({ children }) => {
         }, 10 * 60 * 1000); // Refresh every 10 minutes
 
         return () => clearInterval(refreshInterval);
-    }, [isAuthenticated, user, needsReconnect, fetchStoredTokens, refreshAccessToken, storeTokens]);
+    }, [isAuthenticated, user, needsReconnect, fetchStoredTokens, refreshAccessToken, storeTokens, isCurrentAuthScope]);
 
     // Ensure fresh token before API operations - call this before making Graph API calls
     const ensureFreshToken = useCallback(async () => {
         if (!user || needsReconnect) return false;
+        const scope = authScopeRef.current;
+        if (!isCurrentAuthScope(scope)) return false;
 
         // Main-process custody: the MSAL cache in the Electron main process owns
         // refresh; ask it for a valid access token. Short-circuit while the current
@@ -592,6 +670,14 @@ export const MSGraphProvider = ({ children }) => {
                 return true;
             }
             const res = await window.electronAPI.microsoftGetAccessToken();
+            if (!isCurrentAuthScope(scope)) return false;
+            if (res?.success && res.account?.homeAccountId !== meta?.account_id) {
+                setNeedsReconnect(true);
+                setIsAuthenticated(false);
+                setGraphClient(null);
+                tokenRef.current = null;
+                return false;
+            }
             if (res?.success && res.accessToken) {
                 tokenRef.current = res.accessToken;
                 if (tokenMetadataRef.current) {
@@ -614,7 +700,7 @@ export const MSGraphProvider = ({ children }) => {
 
         const state = refreshStateRef.current;
         const nowMs = Date.now();
-        const persistedBlockedUntil = readRefreshBlockUntil();
+        const persistedBlockedUntil = readRefreshBlockUntil(authUserId);
         if (persistedBlockedUntil > state.hardBlockedUntil) {
             state.hardBlockedUntil = persistedBlockedUntil;
         }
@@ -629,6 +715,7 @@ export const MSGraphProvider = ({ children }) => {
         let metadata = tokenMetadataRef.current;
         if (!metadata) {
             const storedData = await fetchStoredTokens();
+            if (!isCurrentAuthScope(scope)) return false;
             if (storedData?.metadata) {
                 setTokenMetadataCache(storedData.metadata, {
                     tenant_id: storedData.metadata.tenant_id,
@@ -653,6 +740,7 @@ export const MSGraphProvider = ({ children }) => {
         // Refresh if token expires within 10 minutes
         if (!metadata.expires_at || metadata.expires_at < now + 600) {
             const newTokens = await refreshAccessToken(metadata.refresh_token, { reason: 'ensure_fresh' });
+            if (!isCurrentAuthScope(scope)) return false;
             if (newTokens) {
                 tokenRef.current = newTokens.access_token;
                 await storeTokens(newTokens, {
@@ -661,6 +749,7 @@ export const MSGraphProvider = ({ children }) => {
                     name: metadata.account_name,
                     tenantId: metadata.tenant_id,
                 });
+                if (!isCurrentAuthScope(scope)) return false;
                 setNeedsReconnect(false);
                 return true;
             } else {
@@ -679,18 +768,24 @@ export const MSGraphProvider = ({ children }) => {
             tokenRef.current = metadata.access_token;
         }
         return true;
-    }, [user, needsReconnect, fetchStoredTokens, refreshAccessToken, storeTokens, setTokenMetadataCache]);
+    }, [user, needsReconnect, fetchStoredTokens, refreshAccessToken, storeTokens, setTokenMetadataCache, isCurrentAuthScope]);
 
     const clearOAuthSession = useCallback(() => {
         sessionStorage.removeItem('ms_pkce_verifier');
         sessionStorage.removeItem('ms_oauth_state');
         sessionStorage.removeItem(MS_OAUTH_REDIRECT_URI_KEY);
         sessionStorage.removeItem(MS_OAUTH_RETURN_URL_KEY);
+        sessionStorage.removeItem(MS_OAUTH_SURVEY_USER_KEY);
     }, []);
 
     const completeOAuthLogin = useCallback(async (code, returnedState) => {
+        const scope = authScopeRef.current;
+        if (!scope.userId || !isCurrentAuthScope(scope)) return false;
         const storedState = sessionStorage.getItem('ms_oauth_state');
         const codeVerifier = sessionStorage.getItem('ms_pkce_verifier');
+        if (sessionStorage.getItem(MS_OAUTH_SURVEY_USER_KEY) !== scope.userId) {
+            throw new Error('The Survey account changed. Please start Microsoft sign-in again.');
+        }
 
         if (returnedState !== storedState) {
             throw new Error('OAuth state mismatch - possible CSRF attack');
@@ -719,6 +814,7 @@ export const MSGraphProvider = ({ children }) => {
                 code_verifier: codeVerifier,
             }).toString(),
         });
+        if (!isCurrentAuthScope(scope)) return false;
 
         if (!tokenResponse.ok) {
             let errorMessage = 'Token exchange failed';
@@ -732,6 +828,7 @@ export const MSGraphProvider = ({ children }) => {
         }
 
         const tokens = await tokenResponse.json();
+        if (!isCurrentAuthScope(scope)) return false;
 
         // Decode ID token to get user info
         const idTokenParts = tokens.id_token.split('.');
@@ -753,6 +850,7 @@ export const MSGraphProvider = ({ children }) => {
 
         // Store tokens in database
         const stored = await storeTokens(tokenData, accountInfo);
+        if (!isCurrentAuthScope(scope)) return false;
         if (!stored) {
             throw new Error('Failed to store Microsoft authentication tokens');
         }
@@ -764,17 +862,30 @@ export const MSGraphProvider = ({ children }) => {
         });
         setIsAuthenticated(true);
         setNeedsReconnect(false);
-        initializeGraphClient(tokens.access_token);
+        await initializeGraphClient(tokens.access_token);
+        if (!isCurrentAuthScope(scope)) return false;
         refreshStateRef.current.cooldownUntil = 0;
         refreshStateRef.current.hardBlockedUntil = 0;
         refreshStateRef.current.lastErrorCode = null;
-        writeRefreshBlockUntil(0);
+        writeRefreshBlockUntil(0, authUserId);
 
         return true;
-    }, [storeTokens, initializeGraphClient]);
+    }, [storeTokens, initializeGraphClient, isCurrentAuthScope]);
 
     // Login using direct OAuth flow (not Supabase linkIdentity)
     const login = useCallback(async () => {
+        if (!authUserId || !isCurrentAuthScope(authScopeRef.current)) return false;
+        authScopeRef.current.active = false;
+        const scope = { userId: authUserId, active: true };
+        authScopeRef.current = scope;
+        tokenRef.current = null;
+        tokenMetadataRef.current = null;
+        custodyRef.current = null;
+        oauthProcessing.current = false;
+        refreshStateRef.current = { inFlight: null, cooldownUntil: 0, hardBlockedUntil: 0, lastErrorCode: null };
+        setAccount(null);
+        setGraphClient(null);
+        setIsAuthenticated(false);
         try {
             setError(null);
 
@@ -784,6 +895,7 @@ export const MSGraphProvider = ({ children }) => {
             // as the web-build fallback.
             if (isMainAuthAvailable()) {
                 const result = await window.electronAPI.microsoftSignIn();
+                if (!isCurrentAuthScope(scope)) return false;
                 if (!result?.success) {
                     throw new Error(result?.error || 'Microsoft sign-in was cancelled');
                 }
@@ -799,6 +911,7 @@ export const MSGraphProvider = ({ children }) => {
 
             const codeVerifier = generatePKCE();
             const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+            if (!isCurrentAuthScope(scope)) return false;
             const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
                 .replace(/\+/g, '-')
                 .replace(/\//g, '_')
@@ -812,6 +925,7 @@ export const MSGraphProvider = ({ children }) => {
             sessionStorage.setItem('ms_oauth_state', state);
             sessionStorage.setItem(MS_OAUTH_REDIRECT_URI_KEY, redirectUri);
             sessionStorage.setItem(MS_OAUTH_RETURN_URL_KEY, microsoftReturnUrlFor());
+            sessionStorage.setItem(MS_OAUTH_SURVEY_USER_KEY, authUserId);
 
             // Build authorization URL
             const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize');
@@ -828,6 +942,7 @@ export const MSGraphProvider = ({ children }) => {
             // In Electron, use a dedicated OAuth window so app state (open PDF/export flow) is preserved.
             if (window?.electronAPI?.openOAuthWindow) {
                 const oauthResult = await window.electronAPI.openOAuthWindow(authUrl.toString(), redirectUri);
+                if (!isCurrentAuthScope(scope)) return false;
                 if (!oauthResult?.success || !oauthResult?.url) {
                     throw new Error(oauthResult?.error || 'Microsoft sign-in was cancelled');
                 }
@@ -845,6 +960,7 @@ export const MSGraphProvider = ({ children }) => {
                 }
 
                 const success = await completeOAuthLogin(code, callbackState);
+                if (!isCurrentAuthScope(scope)) return false;
                 clearOAuthSession();
                 return success;
             }
@@ -853,14 +969,17 @@ export const MSGraphProvider = ({ children }) => {
             window.location.href = authUrl.toString();
             return true;
         } catch (err) {
+            if (!isCurrentAuthScope(scope)) return false;
             clearOAuthSession();
             setError(err.message);
             throw err;
         }
-    }, [clearOAuthSession, completeOAuthLogin, adoptMainAuthResult]);
+    }, [clearOAuthSession, completeOAuthLogin, adoptMainAuthResult, isCurrentAuthScope]);
 
     // Handle OAuth callback (call this from App.jsx on mount)
     const handleOAuthCallback = useCallback(async () => {
+        const scope = authScopeRef.current;
+        if (!scope.userId || !isCurrentAuthScope(scope)) return false;
         // Prevent duplicate processing
         if (oauthProcessing.current) return false;
 
@@ -885,14 +1004,16 @@ export const MSGraphProvider = ({ children }) => {
             const success = await completeOAuthLogin(code, state);
             return success;
         } catch (err) {
-            setError(err.message);
+            if (isCurrentAuthScope(scope)) setError(err.message);
             return false;
         } finally {
-            clearOAuthSession();
-            restoreMicrosoftReturnUrl(returnUrl);
-            oauthProcessing.current = false;
+            if (isCurrentAuthScope(scope)) {
+                clearOAuthSession();
+                restoreMicrosoftReturnUrl(returnUrl);
+                oauthProcessing.current = false;
+            }
         }
-    }, [clearOAuthSession, completeOAuthLogin]);
+    }, [clearOAuthSession, completeOAuthLogin, isCurrentAuthScope]);
 
     // Check for OAuth callback on mount
     useEffect(() => {
@@ -902,6 +1023,17 @@ export const MSGraphProvider = ({ children }) => {
     }, [user, handleOAuthCallback]);
 
     const logout = async () => {
+        if (!isCurrentAuthScope(authScopeRef.current)) return;
+        authScopeRef.current.active = false;
+        const scope = { userId: authUserId, active: true };
+        authScopeRef.current = scope;
+        tokenRef.current = null;
+        tokenMetadataRef.current = null;
+        custodyRef.current = null;
+        setAccount(null);
+        setIsAuthenticated(false);
+        setGraphClient(null);
+        setNeedsReconnect(false);
         try {
             if (isMainAuthAvailable()) {
                 try {
@@ -910,8 +1042,10 @@ export const MSGraphProvider = ({ children }) => {
                     // Best-effort; the marker row below is removed regardless.
                 }
             }
+            if (!isCurrentAuthScope(scope)) return;
             custodyRef.current = null;
             await removeConnection();
+            if (!isCurrentAuthScope(scope)) return;
             setAccount(null);
             setIsAuthenticated(false);
             setGraphClient(null);
@@ -921,9 +1055,9 @@ export const MSGraphProvider = ({ children }) => {
             refreshStateRef.current.cooldownUntil = 0;
             refreshStateRef.current.hardBlockedUntil = 0;
             refreshStateRef.current.lastErrorCode = null;
-            writeRefreshBlockUntil(0);
+            writeRefreshBlockUntil(0, authUserId);
         } catch (err) {
-            setError(err.message);
+            if (isCurrentAuthScope(scope)) setError(err.message);
         }
     };
 
@@ -941,18 +1075,19 @@ export const MSGraphProvider = ({ children }) => {
             : (tokenMetadataRef.current ? 'legacy' : null),
     }), []);
 
+    const stateIsCurrent = stateUserId === authUserId;
     const value = {
         msalInstance: null,
-        account,
-        graphClient,
-        isAuthenticated,
-        isLoading,
-        error,
+        account: stateIsCurrent ? account : null,
+        graphClient: stateIsCurrent ? graphClient : null,
+        isAuthenticated: stateIsCurrent && isAuthenticated,
+        isLoading: stateIsCurrent ? isLoading : Boolean(authUserId),
+        error: stateIsCurrent ? error : null,
         login,
         logout,
         updateLastUsed,
-        connectionRestored,
-        needsReconnect,
+        connectionRestored: stateIsCurrent && connectionRestored,
+        needsReconnect: stateIsCurrent && needsReconnect,
         handleOAuthCallback,
         ensureFreshToken, // Call this before Graph API operations to ensure valid token
         getAuthSignals, // tenant id + token custody, sampled at call time (capability gating)

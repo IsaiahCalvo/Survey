@@ -50,3 +50,21 @@ export function stampExportAck(surveyMarkers, { exportedAt, eTag = null } = {}) 
 export function wasReceivedByExcel(marker) {
   return Boolean(marker && marker.exportedAt);
 }
+
+// An upload acknowledges the captured export, not edits made while it was in
+// flight. Keep current content, never revive deleted markers or stamp new ones.
+export function mergeExportAck(currentMarkers, exportedMarkers, { exportedAt, identityRecords = {} }) {
+  const next = { ...currentMarkers };
+  for (const key of Object.keys(exportedMarkers || {})) {
+    if (!next[key]) continue;
+    next[key] = { ...next[key], exportedAt, exportAckEtag: null };
+    if (identityRecords?.[key]) next[key].excelSync = identityRecords[key];
+  }
+  return next;
+}
+
+export function excelExportScope(documentScope, template) {
+  return JSON.stringify([documentScope, template?.supabaseId || template?.id || null,
+    template?.linkedExcelPath || null, template?.oneDriveFileId || null,
+    template?.sharePointDriveId || null]);
+}

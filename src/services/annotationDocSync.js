@@ -495,9 +495,9 @@ export async function openAnnotationDoc({
 
     // --- seed the per-(doc,client) op counter so client_seq stays unique ---
     if (supabase) {
-      const { data, error } = await withCloudRequest(
+      const { data, error } = await withActorRequest(
         state,
-        supabase
+        () => supabase
           .from('annotation_updates')
           .select('client_seq')
           .eq('document_id', documentId)
@@ -1011,6 +1011,32 @@ function withCloudRequest(state, request, label) {
   });
 }
 
+async function withActorRequest(state, createRequest, label) {
+  // Older local test adapters have no auth transport. Production Supabase
+  // clients must bind each request to the actor who owns this handle/outbox.
+  if (typeof state.supabase.auth?.getSession !== 'function') {
+    return withCloudRequest(state, createRequest(), label);
+  }
+  const { data, error } = await withCloudRequest(
+    state, state.supabase.auth.getSession(), `${label} session`,
+  );
+  const session = data?.session;
+  if (error || session?.user?.id !== state.actorUserId || !session?.access_token) {
+    const mismatch = new Error('Annotation sync is waiting for its original signed-in user');
+    mismatch.code = 'ANNOTATION_ACTOR_MISMATCH';
+    throw mismatch;
+  }
+  const request = createRequest();
+  if (typeof request?.setHeader !== 'function') {
+    throw new Error('Authenticated annotation requests require request-local headers');
+  }
+  // Request-local only: do not change the shared client's auth or headers.
+  // Capturing the JWT also closes the account-switch race before actual fetch.
+  return withCloudRequest(
+    state, request.setHeader('Authorization', `Bearer ${session.access_token}`), label,
+  );
+}
+
 function applyAuthoritativeCloudUpdate(state, update) {
   // A committed row can be an idempotent self-echo in the optimistic live doc,
   // so its live update event may not fire. Cloud acceptance must still advance
@@ -1425,9 +1451,9 @@ async function loadPendingOutboxRecords(state) {
 async function loadFromBackend(state) {
   const { supabase, documentId, doc } = state;
   // 1. snapshot baseline
-  const { data: snapRow, error: snapshotError } = await withCloudRequest(
+  const { data: snapRow, error: snapshotError } = await withActorRequest(
     state,
-    supabase
+    () => supabase
       .from('annotation_snapshots')
       .select('snapshot, at_seq, encoding_version, writer_id, writer_epoch')
       .eq('document_id', documentId)
@@ -1468,9 +1494,9 @@ async function loadFromBackend(state) {
   // 2. tail ops after the snapshot, in order
   let cursor = state.lastSeq;
   for (;;) {
-    const { data: rows, error } = await withCloudRequest(
+    const { data: rows, error } = await withActorRequest(
       state,
-      supabase
+      () => supabase
         .from('annotation_updates')
         .select('seq, data, client_id, client_seq, actor_user_id')
         .eq('document_id', documentId)
@@ -1520,9 +1546,9 @@ function catchUpTail(state) {
     for (;;) {
       let response;
       try {
-        response = await withCloudRequest(
+        response = await withActorRequest(
           state,
-          state.supabase
+          () => state.supabase
             .from('annotation_updates')
             .select('seq, data, client_id, client_seq, actor_user_id')
             .eq('document_id', state.documentId)
@@ -2403,9 +2429,9 @@ async function appendOp(state, record) {
   let data;
   let error;
   if (typeof state.supabase.rpc === 'function') {
-    ({ data, error } = await withCloudRequest(
+    ({ data, error } = await withActorRequest(
       state,
-      state.supabase.rpc('append_annotation_update', {
+      () => state.supabase.rpc('append_annotation_update', {
         p_document_id: row.document_id,
         p_client_id: row.client_id,
         p_client_seq: row.client_seq,
@@ -2414,9 +2440,9 @@ async function appendOp(state, record) {
       'annotation WAL append',
     ));
   } else {
-    ({ data, error } = await withCloudRequest(
+    ({ data, error } = await withActorRequest(
       state,
-      state.supabase
+      () => state.supabase
         .from('annotation_updates')
         .insert(row)
         .select('seq')
@@ -2529,9 +2555,9 @@ async function loadLatestCloudCheckpoint(state) {
     `snapshot-refresh:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
   try {
-    const { data: snapRow, error: snapshotError } = await withCloudRequest(
+    const { data: snapRow, error: snapshotError } = await withActorRequest(
       state,
-      state.supabase
+      () => state.supabase
         .from('annotation_snapshots')
         .select('snapshot, at_seq, encoding_version, writer_id, writer_epoch')
         .eq('document_id', state.documentId)
@@ -2555,9 +2581,9 @@ async function loadLatestCloudCheckpoint(state) {
     }
 
     for (;;) {
-      const { data: rows, error } = await withCloudRequest(
+      const { data: rows, error } = await withActorRequest(
         state,
-        state.supabase
+        () => state.supabase
           .from('annotation_updates')
           .select('seq, data, client_id, client_seq, actor_user_id')
           .eq('document_id', state.documentId)
@@ -2692,9 +2718,9 @@ async function writeSnapshotNow(state, {
       let accepted = true;
       if (typeof state.supabase.rpc === 'function') {
         let data;
-        ({ data, error } = await withCloudRequest(
+        ({ data, error } = await withActorRequest(
           state,
-          state.supabase.rpc('store_annotation_snapshot', {
+          () => state.supabase.rpc('store_annotation_snapshot', {
             p_document_id: state.documentId,
             p_at_seq: atSeq,
             p_snapshot: hex,
@@ -2713,9 +2739,9 @@ async function writeSnapshotNow(state, {
         // Compatibility path for older test doubles/dev backends. The
         // production RPC below performs this check atomically under a
         // per-document advisory lock.
-        const { data: current } = await withCloudRequest(
+        const { data: current } = await withActorRequest(
           state,
-          state.supabase
+          () => state.supabase
             .from('annotation_snapshots')
             .select('at_seq, writer_id, writer_epoch')
             .eq('document_id', state.documentId)
@@ -2740,9 +2766,9 @@ async function writeSnapshotNow(state, {
           accepted = false;
         }
         if (accepted) {
-          ({ error } = await withCloudRequest(
+          ({ error } = await withActorRequest(
             state,
-            state.supabase
+            () => state.supabase
               .from('annotation_snapshots')
               .upsert({
                 document_id: state.documentId,
@@ -2855,6 +2881,14 @@ async function writeSnapshotNow(state, {
       }
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
     } catch (err) {
+      if (err?.code === 'ANNOTATION_ACTOR_MISMATCH') {
+        return {
+          ok: false,
+          permissionDenied: false,
+          containsUnacceptedPrefix: repairsGapAtStart,
+          error: err,
+        };
+      }
       if (isPermissionDenied(err)) {
         return {
           ok: false,

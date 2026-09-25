@@ -3,6 +3,7 @@
  * Handles Excel file operations using Microsoft Graph API
  * Works with Excel files stored in OneDrive or SharePoint
  */
+import { workbookItemBase, graphServiceError, readGraphCollection, withWorkbookWrite, withoutGraphWriteRetry } from './excelSessionService.js';
 
 /**
  * Upload or update an entire Excel file to OneDrive/SharePoint
@@ -47,15 +48,15 @@ export async function uploadExcelFile(graphClient, filePath, fileContent) {
 
     // Upload file to OneDrive with explicit content-type header
     // Use @microsoft.graph.conflictBehavior=replace to overwrite existing files
-    const response = await graphClient
+    const response = await withoutGraphWriteRetry(graphClient
       .api(`/me/drive/root:${filePath}:/content?@microsoft.graph.conflictBehavior=replace`)
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
       .put(blob);
 
     return response;
   } catch (error) {
     console.error('Failed to upload Excel file:', error);
-    throw new Error(`Failed to upload Excel file: ${error.message}`);
+    throw graphServiceError(`Failed to upload Excel file: ${error.message}`, error);
   }
 }
 
@@ -65,20 +66,20 @@ export async function uploadExcelFile(graphClient, filePath, fileContent) {
  * @param {string} filePath - Path in OneDrive (e.g., '/Documents/survey.xlsx')
  * @returns {Promise<Object>} - File metadata including ID
  */
-export async function getFileMetadata(graphClient, filePath) {
+export async function getFileMetadata(graphClient, filePath, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
 
   try {
     const response = await graphClient
-      .api(`/me/drive/root:${filePath}`)
+      .api(`${driveId ? `/drives/${driveId}` : '/me/drive'}/root:${filePath}`)
       .get();
 
     return response;
   } catch (error) {
     console.error('Failed to get file metadata:', error);
-    throw new Error(`Failed to get file metadata: ${error.message}`);
+    throw graphServiceError(`Failed to get file metadata: ${error.message}`, error);
   }
 }
 
@@ -89,7 +90,7 @@ export async function getFileMetadata(graphClient, filePath) {
  * @param {string} fileId - The OneDrive item ID
  * @returns {Promise<Object|null>} - File metadata or null if not found
  */
-export async function getFileById(graphClient, fileId) {
+export async function getFileById(graphClient, fileId, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -100,7 +101,7 @@ export async function getFileById(graphClient, fileId) {
 
   try {
     const response = await graphClient
-      .api(`/me/drive/items/${fileId}`)
+      .api(workbookItemBase(fileId, driveId))
       .select('id,name,parentReference,webUrl,@microsoft.graph.downloadUrl')
       .get();
 
@@ -121,7 +122,7 @@ export async function getFileById(graphClient, fileId) {
  * @param {string} fileId - The OneDrive item ID
  * @returns {Promise<ArrayBuffer>} - File content as ArrayBuffer
  */
-export async function downloadExcelFile(graphClient, fileId) {
+export async function downloadExcelFile(graphClient, fileId, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -133,7 +134,7 @@ export async function downloadExcelFile(graphClient, fileId) {
   try {
     // First get the download URL (more reliable than direct /content endpoint)
     const metadata = await graphClient
-      .api(`/me/drive/items/${fileId}`)
+      .api(workbookItemBase(fileId, driveId))
       .select('@microsoft.graph.downloadUrl')
       .get();
 
@@ -154,7 +155,7 @@ export async function downloadExcelFile(graphClient, fileId) {
     const errorMessage = error.body?.error?.message || error.body?.message || error.message || 'Unknown error';
     const statusCode = error.statusCode || error.code || '';
     console.error('Failed to download Excel file:', { error, statusCode, errorMessage });
-    throw new Error(`Failed to download Excel file: ${statusCode ? `[${statusCode}] ` : ''}${errorMessage}`);
+    throw graphServiceError(`Failed to download Excel file: ${statusCode ? `[${statusCode}] ` : ''}${errorMessage}`, error);
   }
 }
 
@@ -164,7 +165,7 @@ export async function downloadExcelFile(graphClient, fileId) {
  * @param {string} filePath - Path in OneDrive (e.g., '/Documents/survey.xlsx')
  * @returns {Promise<ArrayBuffer>} - File content as ArrayBuffer
  */
-export async function downloadExcelFileByPath(graphClient, filePath) {
+export async function downloadExcelFileByPath(graphClient, filePath, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -172,7 +173,7 @@ export async function downloadExcelFileByPath(graphClient, filePath) {
   try {
     // First, get the file metadata to obtain the download URL
     const metadata = await graphClient
-      .api(`/me/drive/root:${filePath}`)
+      .api(`${driveId ? `/drives/${driveId}` : '/me/drive'}/root:${filePath}`)
       .select('@microsoft.graph.downloadUrl')
       .get();
 
@@ -192,7 +193,7 @@ export async function downloadExcelFileByPath(graphClient, filePath) {
     console.error('Failed to download Excel file by path:', error);
     // Extract more detailed error info from Graph API errors
     const errorMessage = error.body?.message || error.message || 'Unknown error';
-    throw new Error(`Failed to download Excel file: ${errorMessage}`);
+    throw graphServiceError(`Failed to download Excel file: ${errorMessage}`, error);
   }
 }
 
@@ -203,7 +204,7 @@ export async function downloadExcelFileByPath(graphClient, filePath) {
  * @param {string} fileId - The OneDrive item ID
  * @returns {Promise<Object>} - Object containing eTag, lastModifiedDateTime, and other metadata
  */
-export async function getFileETag(graphClient, fileId) {
+export async function getFileETag(graphClient, fileId, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -214,7 +215,7 @@ export async function getFileETag(graphClient, fileId) {
 
   try {
     const response = await graphClient
-      .api(`/me/drive/items/${fileId}`)
+      .api(workbookItemBase(fileId, driveId))
       .select('id,name,eTag,lastModifiedDateTime,size')
       .get();
 
@@ -231,7 +232,7 @@ export async function getFileETag(graphClient, fileId) {
       return null;
     }
     console.error('Failed to get file ETag:', error);
-    throw new Error(`Failed to get file ETag: ${error.message}`);
+    throw graphServiceError(`Failed to get file ETag: ${error.message}`, error);
   }
 }
 
@@ -268,7 +269,7 @@ export async function getDriveType(graphClient, driveId = null) {
  * @param {ArrayBuffer|Uint8Array} fileContent - Excel file content
  * @returns {Promise<Object>} - Upload result with file metadata including new eTag
  */
-export async function uploadFileContentById(graphClient, fileId, fileContent) {
+export async function uploadFileContentById(graphClient, fileId, fileContent, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -300,15 +301,15 @@ export async function uploadFileContentById(graphClient, fileId, fileContent) {
     });
 
     // Upload file content by ID - this replaces the file content
-    const response = await graphClient
-      .api(`/me/drive/items/${fileId}/content`)
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .put(blob);
+    const response = await withWorkbookWrite(graphClient, fileId, driveId, () => withoutGraphWriteRetry(graphClient
+      .api(`${workbookItemBase(fileId, driveId)}/content`)
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .put(blob));
 
     return response;
   } catch (error) {
     console.error('Failed to upload file content by ID:', error);
-    throw new Error(`Failed to upload file content: ${error.message}`);
+    throw graphServiceError(`Failed to upload file content: ${error.message}`, error);
   }
 }
 
@@ -331,16 +332,14 @@ export async function listFolders(graphClient, folderPath = '/') {
       apiPath = `/me/drive/root:${folderPath}:/children`;
     }
 
-    const response = await graphClient
+    const request = graphClient
       .api(apiPath)
       .filter("folder ne null")
-      .select('id,name,folder,parentReference,webUrl')
-      .get();
-
-    return response.value || [];
+      .select('id,name,folder,parentReference,webUrl');
+    return await readGraphCollection(graphClient, request);
   } catch (error) {
     console.error('Failed to list folders:', error);
-    throw new Error(`Failed to list folders: ${error.message}`);
+    throw graphServiceError(`Failed to list folders: ${error.message}`, error);
   }
 }
 
@@ -366,11 +365,10 @@ export async function listDriveItems(graphClient, driveId, folderId = 'root', fo
       request = request.filter("folder ne null");
     }
 
-    const response = await request.get();
-    return response.value || [];
+    return await readGraphCollection(graphClient, request);
   } catch (error) {
     console.error('Failed to list drive items:', error);
-    throw new Error(`Failed to list drive items: ${error.message}`);
+    throw graphServiceError(`Failed to list drive items: ${error.message}`, error);
   }
 }
 
@@ -386,19 +384,17 @@ export async function listSharePointSites(graphClient) {
 
   try {
     // Search for all sites the user has access to
-    const response = await graphClient
+    const request = graphClient
       .api('/sites?search=*')
       .select('id,name,displayName,webUrl')
-      .top(100)
-      .get();
-
-    return response.value || [];
+      .top(100);
+    return await readGraphCollection(graphClient, request);
   } catch (error) {
     // Don't log MSA (personal account) errors - expected behavior
     if (!error.message?.includes('MSA') && !error.message?.includes('not supported')) {
       console.error('Failed to list SharePoint sites:', error);
     }
-    throw new Error(`Failed to list SharePoint sites: ${error.message}`);
+    throw graphServiceError(`Failed to list SharePoint sites: ${error.message}`, error);
   }
 }
 
@@ -414,15 +410,13 @@ export async function listSiteDocumentLibraries(graphClient, siteId) {
   }
 
   try {
-    const response = await graphClient
+    const request = graphClient
       .api(`/sites/${siteId}/drives`)
-      .select('id,name,driveType,webUrl')
-      .get();
-
-    return response.value || [];
+      .select('id,name,driveType,webUrl');
+    return await readGraphCollection(graphClient, request);
   } catch (error) {
     console.error('Failed to list site document libraries:', error);
-    throw new Error(`Failed to list site document libraries: ${error.message}`);
+    throw graphServiceError(`Failed to list site document libraries: ${error.message}`, error);
   }
 }
 
@@ -472,7 +466,7 @@ export async function checkFileExistsInDrive(graphClient, driveId, folderId, fil
     // List children and find the file by name
     const response = await graphClient
       .api(`/drives/${driveId}/items/${folderId}/children`)
-      .filter(`name eq '${fileName}'`)
+      .filter(`name eq '${String(fileName).replace(/'/g, "''")}'`)
       .select('id,name')
       .get();
 
@@ -492,7 +486,7 @@ export async function checkFileExistsInDrive(graphClient, driveId, folderId, fil
  * @param {string} fileId - The OneDrive file ID
  * @returns {Promise<{templateId: string, templateName: string}|null>} - Template metadata or null if not found
  */
-export async function getTemplateIdFromExcel(graphClient, fileId) {
+export async function getTemplateIdFromExcel(graphClient, fileId, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -502,7 +496,7 @@ export async function getTemplateIdFromExcel(graphClient, fileId) {
     const ExcelJS = (await import('exceljs')).default;
 
     // Download the file
-    const fileBuffer = await downloadExcelFile(graphClient, fileId);
+    const fileBuffer = await downloadExcelFile(graphClient, fileId, driveId);
 
     // Load with ExcelJS
     const workbook = new ExcelJS.Workbook();
@@ -565,14 +559,14 @@ export async function uploadFileToDrive(graphClient, driveId, folderId, fileName
     });
 
     // Upload to the specific drive and folder
-    const response = await graphClient
+    const response = await withoutGraphWriteRetry(graphClient
       .api(`/drives/${driveId}/items/${folderId}:/${fileName}:/content?@microsoft.graph.conflictBehavior=replace`)
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
       .put(blob);
 
     return response;
   } catch (error) {
     console.error('Failed to upload file to drive:', error);
-    throw new Error(`Failed to upload file: ${error.message}`);
+    throw graphServiceError(`Failed to upload file: ${error.message}`, error);
   }
 }

@@ -106,6 +106,23 @@ async function baseFingerprintsFor({ changedBy = '', changedDate = '', item = ''
 // 1–2. submitChangeSet
 // ===========================================================================
 
+test('materialization stops for review when local changes exhaust the re-read retries', async () => {
+  let reads = 0;
+  const store = makeStores();
+  const writes = [];
+  const result = await materializeAcceptedOps({
+    ...store,
+    templateId: 'tpl-race',
+    ops: [opRow({ opUuid: 'race-op', revision: 1, markerId: 'changing', opType: 'create', changedFieldKeys: ['item'], fields: { item: 'Excel' } })],
+    getMarkers: () => ({ changing: { id: 'changing', name: `local-${++reads}` } }),
+    writeMarker: (...args) => writes.push(args),
+  });
+  assert.equal(writes.length, 0, 'never write a clone that failed the final live re-read');
+  assert.equal(result.frontier, 0);
+  assert.equal(result.halted, true);
+  assert.deepEqual(result.conflicts, ['race-op']);
+});
+
 test('submitChangeSet shapes the Edge body and invokes excel-apply-changeset', async () => {
   const supabase = makeSupabaseMock({
     invokeResult: { data: { excelRevision: 7, outcomes: [{ opId: 'a', outcome: 'applied' }], writebackJobs: [], replayed: false }, error: null },
