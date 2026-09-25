@@ -5815,10 +5815,19 @@ test('never-settling append and snapshot transports do not hold drain forever', 
 
   handle.setMeta('offline', 'outbox');
   const drainPromise = handle.drain();
+  // RULED 2026-09-25 (flake fix, assertion unchanged): the property is that
+  // drain settles while BOTH transports are still pending — they are only
+  // released after this race. The old 100 ms wall-clock cap was a timing
+  // assumption, not the contract (the bound comes from requestTimeoutMs: 10);
+  // under full-suite CPU load the 10 ms timers fired late and drain settled
+  // after 100 ms (reproduced 4/12 with a busy loop). The watchdog below only
+  // turns a real "held forever" regression into a failure instead of a hang.
+  let watchdog;
   const settledBeforeRelease = await Promise.race([
     drainPromise.then(() => true),
-    new Promise((resolve) => setTimeout(() => resolve(false), 100)),
+    new Promise((resolve) => { watchdog = setTimeout(() => resolve(false), 10_000); }),
   ]);
+  clearTimeout(watchdog);
   const boundedStatus = handle.getSyncStatus();
 
   releaseTransport = true;
