@@ -1005,3 +1005,8 @@ Rebased staging collects changed ROOT keys with
   failing, open peers get the edit when they reopen.
 * Marks drawn on older builds are carried over once (w28, above); edits an
   older build makes after that are not.
+
+### w36 applied on prod (2026-09-25, owner approved)
+- Legacy cleanup (`supabase/proposed/20260925_w36_legacy_annotation_tables_cleanup.sql`) applied, then `VACUUM FULL` on both tables: database 318 MB -> 107 MB. 523 Survey Marker rows kept. Backup of the 11,506 deleted rows and all 107 `doc_yjs_state` rows: `~/Documents/Survey-backups/2026-09-25/` on the owner's Mac.
+- 61 orphan PDFs (380 MB) backed up to the same folder (`orphan-pdfs/`) and removed with `scripts/w36-orphan-pdf-storage.mjs --apply --confirm 61 --backup-dir ...`.
+- Prune file applied with ONE change: the history job runs `prune_document_history_events(200, 14, 50000, 60)` (owner: keep History to 60 days). Jobs `w36-prune-annotation-wal` 03:20 and `w36-prune-history-events` 03:25 daily. The 30-day trash sweep stays off.
