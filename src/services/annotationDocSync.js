@@ -358,8 +358,13 @@ export async function openAnnotationDoc({
   // The live channel is private (only the document's people may join; needs
   // the realtime.messages policies). false = a public topic: dev/test only.
   livePreviewPrivate = true,
-  // Tests shorten these: { expireMs, sweepMs }.
+  // Tests shorten these: { expireMs, sweepMs, editExpireMs }.
   livePreviewTimings = null,
+  // w32: use Realtime Presence on the live channel to learn whether any
+  // other screen has the document open; alone, nothing live is sent (no
+  // Realtime messages for a user working by themselves). Without the
+  // presence policy it falls back to sending as before.
+  livePresence = false,
   snapshotRetryDelayMs = 400,
   repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
   outboxStore = null,
@@ -428,6 +433,7 @@ export async function openAnnotationDoc({
     realtimeRowRecoveryTimer: null, // w26: re-read a row Realtime could not carry
     livePreview: Boolean(livePreview && useRealtime),
     livePreviewPrivate: livePreviewPrivate !== false,
+    livePresence: Boolean(livePresence),
     livePreviewExpireMs: Number(livePreviewTimings?.expireMs) || LIVE_PREVIEW_EXPIRE_MS,
     livePreviewSweepMs: Number(livePreviewTimings?.sweepMs) || LIVE_PREVIEW_SWEEP_MS,
     liveBus: null,
@@ -4218,7 +4224,7 @@ function acquireLiveChannel(state) {
     state.supabase,
     state.documentId,
     (payload) => onLivePreviewMessage(state, payload),
-    { isPrivate: state.livePreviewPrivate },
+    { isPrivate: state.livePreviewPrivate, presence: state.livePresence },
   )
     .then((bus) => {
       if (!bus) return;
@@ -4236,6 +4242,7 @@ function acquireLiveChannel(state) {
             && !state.destroyed
             && !state.closePromise
             && !(state.permissionRejectedCutoff > 0)
+            && liveBusHasCompany(bus)
             && bus.send(payload)
           ),
         });
@@ -4289,6 +4296,10 @@ function liveTouchedMarks(state, transaction) {
   return { markKeys, laneMarkKeys, otherRoots, rootLevel };
 }
 
+function liveBusHasCompany(bus) {
+  return typeof bus?.hasCompany === 'function' ? bus.hasCompany() : true;
+}
+
 function takeLiveToken(state) {
   const now = Date.now();
   state.livePreviewTokens = Math.min(
@@ -4315,6 +4326,8 @@ function sendLiveUpdate(state, record, transaction) {
   // After a refusal this screen's edits are likely refused again: never show
   // other screens something the log will not take.
   if (state.permissionRejectedCutoff > 0) return;
+  // Nobody else has the document open: nothing to deliver (w32).
+  if (!liveBusHasCompany(bus)) return;
   const touched = liveTouchedMarks(state, transaction);
   if (!touched) return;
   if (touched.markKeys.size === 0 && touched.laneMarkKeys.size === 0) return; // nothing drawn changed

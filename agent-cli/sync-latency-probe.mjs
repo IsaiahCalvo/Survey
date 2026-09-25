@@ -137,14 +137,43 @@ const WATCH_INIT = () => {
   }
 };
 
-const browser = await chromium.launch({ headless: !flag('headed') });
-const contextOptions = { viewport: { width: 1440, height: 900 } };
-const ctxA = await browser.newContext(contextOptions);
-const ctxB = MODE === 'same' ? ctxA : await browser.newContext(contextOptions);
+// Storage egress (w32, 2026-09-25: prod is on a plan with little storage
+// egress, and fresh headless profiles re-downloaded the owner's whole library
+// — thumbnails and big PDFs — on every run). Each profile is a PERSISTENT
+// directory reused across runs (--profile-dir, one sub-folder per screen),
+// and every Supabase Storage object request is refused except the upload of
+// the throwaway copy and reads of that same file.
+const PROFILE_ROOT = opt('profile-dir', path.join(os.homedir(), '.cache', 'survey-sync-probe-profiles'));
+const contextOptions = { viewport: { width: 1440, height: 900 }, headless: !flag('headed') };
+const openProfile = (label) => chromium.launchPersistentContext(path.join(PROFILE_ROOT, label), contextOptions);
+const ctxA = await openProfile('A');
+const ctxB = MODE === 'same' ? ctxA : await openProfile('B');
 // --concurrent N: N separate profiles (A, B, and N-2 more).
 const extraContexts = [];
-for (let index = 2; index < CONCURRENT; index += 1) extraContexts.push(await browser.newContext(contextOptions));
+for (let index = 2; index < CONCURRENT; index += 1) extraContexts.push(await openProfile(String.fromCharCode(65 + index)));
 const allContexts = [...new Set([ctxA, ctxB, ...extraContexts])];
+const browser = { close: () => Promise.all(allContexts.map((context) => context.close().catch(() => {}))) };
+let throwawayObjectPath = null;
+const storageBlocked = { count: 0 };
+for (const context of allContexts) {
+  await context.route('**/storage/v1/object/**', (route) => {
+    const request = route.request();
+    const url = decodeURIComponent(request.url());
+    const isSign = /\/object\/sign\//.test(url);
+    if (!throwawayObjectPath && request.method() === 'POST' && !isSign && /\/object\/documents\//.test(url)) {
+      // The throwaway's own upload: remember its object path.
+      throwawayObjectPath = url.split('/object/documents/')[1]?.split('?')[0] || null;
+      return route.continue();
+    }
+    if (throwawayObjectPath && url.includes(throwawayObjectPath)) return route.continue();
+    // Removing the throwaway's file at cleanup (the path is in the body).
+    if (throwawayObjectPath && request.method() === 'DELETE' && (request.postData() || '').includes(throwawayObjectPath)) {
+      return route.continue();
+    }
+    storageBlocked.count += 1;
+    return route.abort('blockedbyclient');
+  });
+}
 const LEASED = !flag('dev-auto-login');
 if (LEASED) {
   for (const context of allContexts) await installLeasedBrowserAccount(context);
@@ -369,6 +398,8 @@ async function liveChannelStatus(page) {
         topic: channel.topic,
         private: Boolean(channel.params?.config?.private),
         state: channel.state,
+        presenceKeys: Object.keys(channel.presenceState?.() || {}).length,
+        presenceEnabled: Boolean(channel.params?.config?.presence?.enabled),
       }));
   }).catch((error) => [{ error: error?.message }]);
 }
@@ -889,6 +920,21 @@ try {
   log('A viewer open; documentId', documentId);
   await realtimeReady(pageA);
   await waitForQuiet(pageA, 'A');
+  if (flag('alone-check')) {
+    // w32: with nobody else in the document, a stroke and an edit should
+    // send no live messages at all (Presence says A is alone).
+    await pageA.waitForTimeout(2_000);
+    const t0 = Date.now();
+    const box = await pageBox(pageA);
+    await pageA.keyboard.press('p');
+    await pageA.waitForTimeout(250);
+    await drawStrokeAt(pageA, { x0: box.x + box.w * 0.6, x1: box.x + box.w * 0.9, y: box.y + box.h - 80 });
+    await pageA.waitForTimeout(GAP_MS);
+    const alone = usageBetween(t0, Date.now(), ['A']);
+    log('alone (one screen) stroke:', JSON.stringify(usageTotals(alone)),
+      JSON.stringify(Object.fromEntries(Object.entries(alone).filter(([key]) => /ws-/.test(key)))));
+    log('A live channel (alone):', JSON.stringify(await liveChannelStatus(pageA)));
+  }
 
   pageB = await ctxB.newPage();
   consoleTail(pageB, 'B');
@@ -913,6 +959,22 @@ try {
   }
   log('A live channel:', JSON.stringify(await liveChannelStatus(pageA)));
   log('B live channel:', JSON.stringify(await liveChannelStatus(pageB)));
+  if (flag('presence-debug')) {
+    // What Realtime answers a presence track on the private channel.
+    const answer = await pageA.evaluate(async () => {
+      const { supabase } = await import('/src/supabaseClient.js');
+      const channel = (supabase.getChannels?.() || []).find((c) => /anno-live:/.test(c.topic));
+      if (!channel) return 'no channel';
+      const replies = [];
+      const original = channel.socket?.onMessage;
+      const result = await channel.track({ debug: Date.now() }).catch((error) => `threw ${error?.message}`);
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      return { result, keys: Object.keys(channel.presenceState?.() || {}), replies, hasOriginal: Boolean(original) };
+    }).catch((error) => `evaluate failed ${error?.message}`);
+    log('presence track answer:', JSON.stringify(answer));
+    const frames = usageLog.filter((entry) => /presence|phx_reply/.test(entry.kind)).slice(-12);
+    log('presence frames:', JSON.stringify(frames));
+  }
   // Let each side finish any open-time writes (embedded import, carry-over).
   await pageA.waitForTimeout(Number(opt('settle', '4000')));
   await trace(pageA);
@@ -1006,6 +1068,7 @@ try {
       await pageA.goto(BASE, { waitUntil: 'domcontentloaded' });
       await waitForHub(pageA);
       log('cleanup:', JSON.stringify(await deleteThrowaway(pageA, documentId, docName)));
+      log(`storage requests blocked this run: ${storageBlocked.count} (allowed only ${throwawayObjectPath})`);
     } catch (error) {
       log('CLEANUP FAILED — delete by hand:', documentId, docName, error?.message);
     }

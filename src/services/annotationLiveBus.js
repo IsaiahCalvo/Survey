@@ -49,7 +49,8 @@ function closeBus(supabase, byDocument, documentId, bus) {
     });
 }
 
-function createBus(supabase, byDocument, documentId, { isPrivate }) {
+function createBus(supabase, byDocument, documentId, { isPrivate, presence }) {
+  const presenceKey = `s-${Math.random().toString(36).slice(2, 12)}`;
   const bus = {
     refs: 0,
     listeners: new Set(),
@@ -57,11 +58,20 @@ function createBus(supabase, byDocument, documentId, { isPrivate }) {
     everJoined: false,
     closing: null,
     channel: null,
+    // w32: who else has this document open on the channel. 'unknown' until
+    // Realtime Presence answers; 'off' when it cannot be used (no presence
+    // policy yet): then every screen is assumed to have company, exactly as
+    // before. 'on' + peers 0 = alone: nothing live is sent.
+    presence: { key: presenceKey, state: presence ? 'unknown' : 'off', peers: 0 },
   };
   const channel = supabase.channel(`anno-live:${documentId}`, {
     // self:false — the sender already holds its own edit. ack:false — a
     // preview that is lost costs nothing: the WAL row still arrives.
-    config: { private: isPrivate, broadcast: { self: false, ack: false } },
+    config: {
+      private: isPrivate,
+      broadcast: { self: false, ack: false },
+      ...(presence ? { presence: { key: presenceKey, enabled: true } } : {}),
+    },
   });
   bus.channel = channel;
   channel.on('broadcast', { event: LIVE_PREVIEW_EVENT }, (message) => {
@@ -71,11 +81,29 @@ function createBus(supabase, byDocument, documentId, { isPrivate }) {
       }
     }
   });
+  if (presence) {
+    channel.on('presence', { event: 'sync' }, () => {
+      if (bus.presence.state === 'off') return;
+      let keys = [];
+      try { keys = Object.keys(channel.presenceState?.() || {}); } catch { keys = []; }
+      bus.presence.peers = keys.filter((key) => key !== presenceKey).length;
+      bus.presence.state = 'on';
+    });
+  }
   channel.subscribe((status, error) => {
     bus.joined = status === 'SUBSCRIBED';
     if (bus.joined) {
       bus.everJoined = true;
       REFUSED.delete(documentId);
+      if (presence && bus.presence.state !== 'off') {
+        // One presence entry per open screen; only joins and leaves are
+        // messages (no heartbeat traffic). Refused (no presence policy) =
+        // 'off': send as before.
+        Promise.resolve()
+          .then(() => channel.track({ at: Date.now() }))
+          .then((result) => { if (result !== 'ok') bus.presence.state = 'off'; })
+          .catch(() => { bus.presence.state = 'off'; });
+      }
       return;
     }
     // Never joined and the server said no (no channel policy, or no access):
@@ -97,7 +125,7 @@ function createBus(supabase, byDocument, documentId, { isPrivate }) {
  * Join the document's live channel (or share the one this tab already has).
  * Resolves to { send(payload) → boolean, release() }.
  */
-export async function acquireLiveBus(supabase, documentId, listener, { isPrivate = true } = {}) {
+export async function acquireLiveBus(supabase, documentId, listener, { isPrivate = true, presence = false } = {}) {
   if (!supabase || typeof supabase.channel !== 'function' || !documentId) return null;
   const refusedAt = REFUSED.get(documentId);
   if (refusedAt && Date.now() - refusedAt < REFUSED_BACKOFF_MS) return null;
@@ -112,7 +140,7 @@ export async function acquireLiveBus(supabase, documentId, listener, { isPrivate
   }
   let bus = byDocument.get(documentId);
   if (!bus || bus.closing) {
-    bus = createBus(supabase, byDocument, documentId, { isPrivate });
+    bus = createBus(supabase, byDocument, documentId, { isPrivate, presence });
     byDocument.set(documentId, bus);
   }
   bus.refs += 1;
@@ -130,6 +158,10 @@ export async function acquireLiveBus(supabase, documentId, listener, { isPrivate
       }
     },
     isJoined() { return !released && bus.joined && !bus.closing; },
+    // w32: false only when Presence says no other screen has the document
+    // open on the channel (so nothing live would be delivered to anyone).
+    hasCompany() { return bus.presence.state !== 'on' || bus.presence.peers > 0; },
+    presenceState() { return { ...bus.presence }; },
     isClosed() { return released || Boolean(bus.closing); },
     release() {
       if (released) return;
