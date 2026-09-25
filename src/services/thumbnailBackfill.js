@@ -35,6 +35,22 @@ export function defaultWaitForIdle() {
   });
 }
 
+/**
+ * Is the Documents list really on screen? w34 (2026-09-25): the hub stays
+ * mounted and laid out under an open document (AppShell only marks <html>
+ * with `survey-viewer-open`), so a laid-out host alone is not enough: the
+ * usage probe caught the fill downloading other documents' PDFs (~14 MB in
+ * the first minute on the owner's library) while a document was open and
+ * being drawn on. The fill is for the list; it waits while the viewer is up
+ * and resumes when the user is back on the list.
+ */
+export function isBackfillHostVisible(host, root = typeof document !== 'undefined' ? document.documentElement : null) {
+  // The class check first: it is free, while getClientRects() forces a layout
+  // of the (large) viewer DOM on every busy re-check.
+  if (root?.classList?.contains('survey-viewer-open')) return false;
+  return Boolean(host && host.isConnected && host.getClientRects().length > 0);
+}
+
 export function createThumbnailBackfill({
   needsThumbnail,
   generate,

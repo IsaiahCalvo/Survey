@@ -1463,7 +1463,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   useEffect(() => {
     if (!docId) { setIsDocShared(false); return undefined; }
     let cancelled = false;
-    const refreshSharedState = async () => {
+    const refreshSharedState = async (options) => {
+      // w34 (2026-09-25): the 30 s fallback poll (called with no options)
+      // skips while the tab is hidden (background tab, minimised window): it
+      // costs two reads (document_collaborators + my role), ~240 requests an
+      // hour per open document, and a hidden tab shows no sync banner. The
+      // first check, realtime collaborator changes and becoming visible again
+      // always run ({ force: true }), so nothing a change sends is dropped.
+      if (!options?.force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         // "Shared" = an explicit active row for another user, or my own
         // collaborator row when I am not the owner. The latter matters because
@@ -1510,7 +1517,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         }
       } catch { if (!cancelled) setIsDocShared(null); }
     };
-    void refreshSharedState();
+    void refreshSharedState({ force: true });
 
     const channelSuffix = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
@@ -1523,14 +1530,19 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         table: 'document_collaborators',
         filter: `document_id=eq.${docId}`,
       }, () => {
-        void refreshSharedState();
+        void refreshSharedState({ force: true });
       })
       .subscribe();
     const refreshTimer = setInterval(refreshSharedState, 30_000);
+    const refreshWhenShown = () => {
+      if (document.visibilityState !== 'hidden') void refreshSharedState({ force: true });
+    };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', refreshWhenShown);
 
     return () => {
       cancelled = true;
       clearInterval(refreshTimer);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', refreshWhenShown);
       try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
     };
   }, [docId]);

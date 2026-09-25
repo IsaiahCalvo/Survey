@@ -245,7 +245,14 @@ export default function RevisionsPanel({
       }, 900);
     };
     window.addEventListener('document-history:event-recorded', handleRecorded);
-    const intervalId = window.setInterval(() => refresh({ silent: true }), 10000);
+    // w34 (2026-09-25): the 10 s poll only picks up other people's history
+    // rows for someone looking at the panel. A backgrounded tab or minimised
+    // window is not looking, so it skips the read (the next tick after it is
+    // shown again catches up).
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refresh({ silent: true });
+    }, 10000);
     return () => {
       window.removeEventListener('document-history:event-recorded', handleRecorded);
       window.clearInterval(intervalId);
