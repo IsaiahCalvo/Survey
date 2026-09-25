@@ -71,17 +71,20 @@ function createBus(supabase, byDocument, documentId, { isPrivate }) {
       }
     }
   });
-  channel.subscribe((status) => {
+  channel.subscribe((status, error) => {
     bus.joined = status === 'SUBSCRIBED';
     if (bus.joined) {
       bus.everJoined = true;
       REFUSED.delete(documentId);
       return;
     }
-    // Never joined: the join itself was refused (no channel policy, or no
-    // access). Stop here instead of letting the client retry every few
-    // seconds; the log path carries every edit anyway.
-    if (status === 'CHANNEL_ERROR' && !bus.everJoined) {
+    // Never joined and the server said no (no channel policy, or no access):
+    // stop here instead of letting the client retry every few seconds; the
+    // log path carries every edit anyway. Any other error (a network blip)
+    // is left to the client's own rejoin.
+    const refused = /unauthori|permission|forbidden|denied|not allowed/i
+      .test(String(error?.message || error || ''));
+    if (status === 'CHANNEL_ERROR' && !bus.everJoined && refused) {
       REFUSED.set(documentId, Date.now());
       console.info('[annotationLiveBus] live channel refused; edits arrive through the log only');
       closeBus(supabase, byDocument, documentId, bus);
@@ -127,6 +130,7 @@ export async function acquireLiveBus(supabase, documentId, listener, { isPrivate
       }
     },
     isJoined() { return !released && bus.joined && !bus.closing; },
+    isClosed() { return released || Boolean(bus.closing); },
     release() {
       if (released) return;
       released = true;

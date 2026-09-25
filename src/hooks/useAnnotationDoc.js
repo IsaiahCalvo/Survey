@@ -548,10 +548,23 @@ export function useAnnotationDoc({
       // and leaves when its row brings the real mark or it never comes.
       unsubscribeLivePreview = handle.onLivePreviewChange?.(() => {
         if (cancelled) return;
+        // Same read-only fallback upkeep as a remote change (above).
+        const fallback = metaFallbackIdsRef.current.size > 0
+          ? getUnmigratedMetaCallouts(handle.doc)
+          : null;
+        if (fallback) metaFallbackIdsRef.current = new Set(fallback.ids);
         setAnnotationsByPage((previousByPage) => {
           if (cancelled) return previousByPage;
           let nextByPage = previousByPage;
           try { nextByPage = withLivePreviews(handle.getByPage(), handle); } catch { return previousByPage; }
+          if (fallback && fallback.callouts.length > 0) {
+            nextByPage = projectCalloutsIntoByPage(
+              nextByPage,
+              [...deriveCalloutsFromByPage(nextByPage), ...fallback.callouts],
+              pageSizesRef?.current || {},
+              { preserveUnmeasured: true },
+            );
+          }
           return preserveTransientPagePresentationState(previousByPage, nextByPage);
         });
       }) || null;
@@ -767,7 +780,7 @@ export function useAnnotationDoc({
       // eraserMutation is a one-render transport envelope, not page content.
       // Replace it immediately with the operation-materialized Y.Doc view so
       // localStorage/export never retain the raw gesture payload.
-      const materialized = h.getByPage();
+      const materialized = withLivePreviews(h.getByPage(), h);
       setAnnotationsByPage((previousByPage) => (
         preserveTransientPagePresentationState(previousByPage, materialized)
       ));
@@ -775,7 +788,10 @@ export function useAnnotationDoc({
       setAnnotationsByPage((previousByPage) => {
         let nextByPage = previousByPage;
         if (result.identityChanged && result.normalizedByPage) {
-          nextByPage = preserveTransientPagePresentationState(previousByPage, result.normalizedByPage);
+          nextByPage = preserveTransientPagePresentationState(
+            previousByPage,
+            withLivePreviews(result.normalizedByPage, h),
+          );
         }
         // The screen was behind the document for some marks (see
         // applyReconcileSwaps): show the document's copy.
@@ -1025,7 +1041,10 @@ export function useAnnotationDoc({
         },
       };
     }
-    nextByPage = preserveTransientPagePresentationState(byPageRef.current, nextByPage);
+    nextByPage = preserveTransientPagePresentationState(
+      byPageRef.current,
+      withLivePreviews(nextByPage, ownerHandle),
+    );
     const nextSurveyMarkers = result.surveyMarkers || ownerHandle.getSurveyMarkers();
     setDeletedPdfAnnotations(ownerHandle.getDeletedPdfAnnotations?.() || []);
     byPageRef.current = nextByPage;
@@ -1051,7 +1070,7 @@ export function useAnnotationDoc({
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
       byPageRef.current,
-      result.byPage || ownerHandle.getByPage(),
+      withLivePreviews(result.byPage || ownerHandle.getByPage(), ownerHandle),
     );
     byPageRef.current = nextByPage;
     setDeletedPdfAnnotations(
@@ -1072,7 +1091,7 @@ export function useAnnotationDoc({
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
       byPageRef.current,
-      result.byPage || ownerHandle.getByPage(),
+      withLivePreviews(result.byPage || ownerHandle.getByPage(), ownerHandle),
     );
     byPageRef.current = nextByPage;
     setDeletedPdfAnnotations(

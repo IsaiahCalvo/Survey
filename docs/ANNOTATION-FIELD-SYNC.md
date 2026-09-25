@@ -405,9 +405,16 @@ What changed:
   `useAnnotationDoc`. It never enters the Y.Doc, so nothing can build on it,
   persist it, checkpoint it or send it back; `applyByPage` and
   `applyEraserMutation` drop preview marks (and expired ones, in case an Undo
-  brings one back) that the doc does not hold. A preview leaves when its row is
-  applied (the real mark then comes from the doc) or after 20 s. Receivers cap
-  previews per writer (50 a second) and in total (200).
+  brings one back) that the doc does not hold. Every preview object carries a
+  `__surveyLivePreview` flag, so ANY copy of one (a JSON clone in the display
+  cache or a Save backup that seeds a reopened empty store, an Undo snapshot, a
+  re-keyed duplicate) is recognised and dropped; if the doc holds that mark by
+  then, the copy stands for the mark as last delivered (nothing written,
+  nothing deleted). Eraser envelopes are cleaned the same way, and an erase
+  intent skips preview targets instead of cancelling the whole gesture. A key
+  another preview already announced is refused. A preview leaves when its row
+  is applied (the real mark then comes from the doc) or after 20 s. Receivers
+  cap previews per writer (50 a second) and in total (200).
 * The channel is private: only people who can open the document may listen,
   and only its editors may send, while it is unlocked
   (`supabase/migrations/20260924230000_live_preview_channel_policies.sql`,
@@ -424,7 +431,22 @@ Limits: an edit of an existing mark (move, recolour, erase, delete) still
 arrives with its WAL row (~0.3-0.7 s). A stroke edited on another screen in
 the ~0.3 s before its row lands is shown as drawn (the edit is not written: it
 was made on a preview). A preview's counter number is computed on its own
-until its row lands. A refused stroke shows elsewhere for up to 20 s.
+until its row lands. A refused stroke shows elsewhere for up to 20 s, and an
+export, print or survey-data upload made in that window includes it. Realtime
+checks the channel policies when a screen joins, so a lock or role change
+takes effect on previews at the next join (the WAL still refuses at once, and
+a refused sender stops broadcasting). The receive cap is per announced writer
+id, which a document editor could vary.
+
+Reviews: two adversarial passes (plus a check of the fixes). The first found
+that previews applied INTO the Y.Doc let local edits depend on structs the log
+might never accept, and let refused content be laundered back through rebase
+mode or saving repairs; that design was replaced by the display-only overlay
+above. The second found a checkpoint clearing a refusal's red status (fixed:
+a compaction that finishes after a refusal cannot mark the handle healthy),
+preview copies written through cached lists, duplicates or eraser lanes
+(fixed: the flag and envelope cleaning), and a replayed recovery record not
+repainting (fixed: it repaints when accepted).
 
 ## Offline edits reach peers that are already open
 

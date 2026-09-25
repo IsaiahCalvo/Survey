@@ -126,6 +126,9 @@ const LIVE_PREVIEW_EXPIRE_MS = 20_000;
 const LIVE_PREVIEW_SWEEP_MS = 5_000;
 const LIVE_PREVIEW_MAX_ENTRIES = 200;
 const LIVE_PREVIEW_KEYS_MAX = 2_000;
+// Set on every preview object handed to the screen (never on a real mark), so
+// any copy of one is recognised by applyByPage however it got there.
+const LIVE_PREVIEW_FLAG = '__surveyLivePreview';
 const DURABLE_MAP_NAMES = [
   ANNOTATIONS_MAP,
   DELETED_PDF_ANNOTATIONS_MAP,
@@ -1654,7 +1657,10 @@ async function settleAcceptedRecord(
   { alreadyApplied = false } = {},
 ) {
   if (!record || record.status === 'accepted') return;
-  if (!alreadyApplied) applyAuthoritativeCloudUpdate(state, update);
+  // A record held back from the screen until accepted (publishAfterAcceptance)
+  // changes the live doc here; its own realtime echo is then a no-op and no
+  // longer repaints (w30), so repaint now.
+  if (!alreadyApplied && applyAuthoritativeCloudUpdate(state, update)) notifyChange(state);
   const previousStatus = record.status;
   if (typeof state.outbox?.settleAccepted === 'function') {
     try {
@@ -3456,8 +3462,16 @@ async function appendOp(state, record) {
     state.opsSinceSnapshot = 0;
     // drain() still waits for it (a caller that drains expects the
     // checkpoint the drained rows triggered); the append queue does not.
+    // A refusal that lands while it uploads must stay red: its result may
+    // not mark the handle healthy then (w30 review B).
+    const quarantineGeneration = state.historyQuarantineGeneration;
     state.compactionChain = writeSnapshot(state, { repairsGap: false })
-      .then((result) => finalizeSnapshotResult(state, result))
+      .then((result) => finalizeSnapshotResult(
+        state,
+        result?.ok && state.historyQuarantineGeneration !== quarantineGeneration
+          ? { ...result, ok: false }
+          : result,
+      ))
       .catch((error) => {
         console.warn('[annotationDocSync] compaction checkpoint failed', error?.message);
       });
@@ -3951,22 +3965,7 @@ function subscribeRealtime(state) {
   // channel the (non-replayed) supabase client still caches. postgres_changes
   // delivery is filter-driven, not topic-driven, so the suffix is transparent
   // server-side.
-  if (state.livePreview && !state.liveBus) {
-    acquireLiveBus(
-      state.supabase,
-      state.documentId,
-      (payload) => onLivePreviewMessage(state, payload),
-      { isPrivate: state.livePreviewPrivate },
-    )
-      .then((bus) => {
-        if (!bus) return;
-        if (state.destroyed || state.closePromise || state.liveBus) bus.release();
-        else state.liveBus = bus;
-      })
-      .catch((error) => {
-        console.warn('[annotationDocSync] live channel unavailable; edits arrive through the log only', error?.message);
-      });
-  }
+  acquireLiveChannel(state);
   const ch = state.supabase.channel(`anno-${state.documentId}-${randomClientId()}`);
   // Assign before wiring callbacks so a synchronous throw from .on()/.subscribe()
   // during a failed open is still cleanable by the teardown catch (removeChannel).
@@ -4025,6 +4024,10 @@ function subscribeRealtime(state) {
       // Fires on the initial join AND after every reconnect re-join. Each time,
       // sweep the log for ops that landed while we weren't listening.
       if (status === 'SUBSCRIBED') {
+        if (state.livePreview && state.liveBus?.isClosed?.()) {
+          state.liveBus = null;
+          acquireLiveChannel(state);
+        }
         const catchupGeneration = ++state.realtimeCatchupGeneration;
         state.realtimePhase = 'catching-up';
         notifySyncStatus(state);
@@ -4165,6 +4168,26 @@ function rememberBounded(set, key) {
   if (set.size > LIVE_PREVIEW_KEYS_MAX) set.delete(set.values().next().value);
 }
 
+function acquireLiveChannel(state) {
+  if (!state.livePreview || state.liveBus || state.liveBusAcquiring) return;
+  state.liveBusAcquiring = true;
+  acquireLiveBus(
+    state.supabase,
+    state.documentId,
+    (payload) => onLivePreviewMessage(state, payload),
+    { isPrivate: state.livePreviewPrivate },
+  )
+    .then((bus) => {
+      if (!bus) return;
+      if (state.destroyed || state.closePromise || state.liveBus) bus.release();
+      else state.liveBus = bus;
+    })
+    .catch((error) => {
+      console.warn('[annotationDocSync] live channel unavailable; edits arrive through the log only', error?.message);
+    })
+    .finally(() => { state.liveBusAcquiring = false; });
+}
+
 function notifyLivePreviewListeners(state) {
   for (const cb of state.livePreviewListeners) {
     try { cb(); } catch (error) {
@@ -4260,7 +4283,19 @@ function decodeLivePreview(state, update) {
     if (keys.length === 0) return null;
     const live = getAnnotationsMap(state.doc);
     if (keys.some((key) => live.has(key))) return null;
+    // Two screens (or a forger) announcing the same new key: first one wins,
+    // the row decides (w30 review B).
+    for (const other of state.livePreviews.values()) {
+      if (keys.some((key) => other.keys.includes(key))) return null;
+    }
     const byPage = docToByPage(scratch);
+    // Marked so that ANY copy of it (a clone, a cached page list, an Undo
+    // snapshot, a re-keyed duplicate) is recognised and never written.
+    for (const page of Object.values(byPage)) {
+      if (Array.isArray(page?.objects)) {
+        page.objects = page.objects.map((object) => ({ ...object, [LIVE_PREVIEW_FLAG]: true }));
+      }
+    }
     const ids = new Set(keys);
     for (const page of Object.values(byPage)) {
       for (const object of page?.objects || []) {
@@ -4331,13 +4366,17 @@ function livePreviewByPage(state) {
   const result = {};
   if (state.livePreviews.size === 0) return result;
   const live = getAnnotationsMap(state.doc);
+  const seen = new Set();
   for (const preview of state.livePreviews.values()) {
     if (preview.keys.some((key) => live.has(key))) continue;
     for (const [pageNumber, page] of Object.entries(preview.byPage || {})) {
-      const objects = page?.objects || [];
-      if (objects.length === 0) continue;
-      if (!result[pageNumber]) result[pageNumber] = [];
-      result[pageNumber].push(...objects);
+      for (const object of page?.objects || []) {
+        const id = String(extractAnnotationId(object));
+        if (seen.has(id)) continue;
+        seen.add(id);
+        if (!result[pageNumber]) result[pageNumber] = [];
+        result[pageNumber].push(object);
+      }
     }
   }
   return result;
@@ -4365,9 +4404,46 @@ function livePreviewIdsToStrip(state) {
 // A capture never writes another screen's in-flight mark: not as a new mark of
 // this screen, not with an edit made to it in the moment before its row
 // arrives. Same byPage object back when there is nothing to drop.
+function isLivePreviewCopy(object, ids) {
+  if (!object || typeof object !== 'object') return false;
+  if (object[LIVE_PREVIEW_FLAG] === true) return true;
+  const id = extractAnnotationId(object);
+  return id != null && Boolean(ids?.has(String(id)));
+}
+
+// A copy of a preview whose mark the doc now holds (its row landed, then an
+// Undo or a cached list brought the preview copy back) stands for that mark
+// as delivered: untouched, so nothing is written and nothing is deleted.
+function deliveredCopyFor(state, object) {
+  const id = extractAnnotationId(object);
+  if (id == null || !getAnnotationsMap(state.doc).has(String(id))) return null;
+  return state.viewer?.lastDelivered?.get(String(id)) || null;
+}
+
+function stripEraserMutation(mutation, ids, keepIds) {
+  if (!mutation || typeof mutation !== 'object') return mutation;
+  const dropId = (value) => value != null && ids.has(String(value)) && !keepIds.has(String(value));
+  const objectMutations = Array.isArray(mutation.objectMutations)
+    ? mutation.objectMutations.filter((entry) => !(
+      dropId(entry?.storageKey)
+      || dropId(entry?.annotationId)
+      || entry?.base?.[LIVE_PREVIEW_FLAG] === true
+      || entry?.survivor?.[LIVE_PREVIEW_FLAG] === true
+    ))
+    : mutation.objectMutations;
+  const filterIds = (list) => (Array.isArray(list) ? list.filter((value) => !dropId(value)) : list);
+  return {
+    ...mutation,
+    objectMutations,
+    touchedIds: filterIds(mutation.touchedIds),
+    changedIds: filterIds(mutation.changedIds),
+    deletedIds: filterIds(mutation.deletedIds),
+  };
+}
+
 function stripLivePreviewObjects(state, byPage) {
-  const ids = livePreviewIdsToStrip(state);
-  if (!ids || !byPage || typeof byPage !== 'object') return byPage;
+  if (!byPage || typeof byPage !== 'object') return byPage;
+  const ids = livePreviewIdsToStrip(state) || new Set();
   let changed = false;
   const next = {};
   for (const [pageNumber, page] of Object.entries(byPage)) {
@@ -4376,18 +4452,44 @@ function stripLivePreviewObjects(state, byPage) {
       next[pageNumber] = page;
       continue;
     }
-    const kept = objects.filter((object) => {
+    let pageChanged = false;
+    const kept = [];
+    const flaggedIds = new Set();
+    for (const object of objects) {
+      if (!isLivePreviewCopy(object, ids)) {
+        kept.push(object);
+        continue;
+      }
+      pageChanged = true;
       const id = extractAnnotationId(object);
-      return id == null || !ids.has(String(id));
-    });
-    if (kept.length !== objects.length) {
-      changed = true;
-      next[pageNumber] = { ...page, objects: kept };
-    } else {
-      next[pageNumber] = page;
+      if (id != null) flaggedIds.add(String(id));
+      const delivered = deliveredCopyFor(state, object);
+      if (delivered) kept.push(delivered);
     }
+    let nextPage = pageChanged ? { ...page, objects: kept } : page;
+    if (page?.eraserMutation && (ids.size > 0 || flaggedIds.size > 0)) {
+      const all = new Set([...ids, ...flaggedIds]);
+      const keepIds = new Set([...flaggedIds].filter((id) => getAnnotationsMap(state.doc).has(id)));
+      const eraserMutation = stripEraserMutation(page.eraserMutation, all, keepIds);
+      nextPage = { ...nextPage, eraserMutation };
+      pageChanged = true;
+    }
+    if (pageChanged) changed = true;
+    next[pageNumber] = nextPage;
   }
   return changed ? next : byPage;
+}
+
+function withoutLivePreviewTargets(state, intent) {
+  const ids = livePreviewIdsToStrip(state);
+  if (!ids || !Array.isArray(intent?.targets)) return intent;
+  const live = getAnnotationsMap(state.doc);
+  const targets = intent.targets.filter((target) => !(
+    target?.storageKey != null
+    && ids.has(String(target.storageKey))
+    && !live.has(String(target.storageKey))
+  ));
+  return targets.length === intent.targets.length ? intent : { ...intent, targets };
 }
 
 function scheduleLivePreviewSweep(state) {
@@ -4875,16 +4977,15 @@ function makeHandle(state) {
       assertHandleWritable(state);
       if (!eraserMutation?.id) return null;
       const current = state.lastByPage || docToByPage(state.doc);
-      const pageWithoutPreviews = stripLivePreviewObjects(
+      // Another screen's in-flight mark is neither erased nor written here,
+      // not even as an eraser lane's base (w30 review B).
+      const preparedPage = stripLivePreviewObjects(
         state,
-        { [pageNumber]: pageAnnotations || { objects: [] } },
+        { [pageNumber]: { ...(pageAnnotations || { objects: [] }), eraserMutation } },
       )[pageNumber];
       const prepared = {
         ...current,
-        [pageNumber]: {
-          ...(pageWithoutPreviews || { objects: [] }),
-          eraserMutation,
-        },
+        [pageNumber]: preparedPage,
       };
       syncByPageToDoc(state.doc, prepared, {
         origin: 'local',
@@ -4922,6 +5023,9 @@ function makeHandle(state) {
      */
     async commitEraseIntent(intent, opts = {}) {
       assertHandleWritable(state);
+      // A preview (another screen's stroke not in the doc yet) is not a target:
+      // it would cancel the whole gesture as a conflict (w30 review B).
+      intent = withoutLivePreviewTargets(state, intent);
       const quarantineGeneration = state.historyQuarantineGeneration;
       const materializedByStorageKey = annotationsByStorageKey(docToByPage(state.doc));
       const result = await commitEraseIntentOnDoc({

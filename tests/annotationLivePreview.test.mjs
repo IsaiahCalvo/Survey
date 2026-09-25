@@ -483,3 +483,93 @@ test('a refused private join is not retried; edits still arrive through the log'
   assert.equal(alice.liveJoins, 1, 'one refused join, no retry storm');
   await Promise.all([again.destroy(), b.destroy()]);
 });
+
+test('a copy of a preview never gets written: not from a cached page list on reopen, not re-keyed, not by a second announcer', async () => {
+  const documentId = 'live-preview-copies';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const bob = cloud.makeClient('user-b');
+  const a = await openFor(alice, documentId);
+  const b = await openFor(bob, documentId, { livePreviewTimings: { expireMs: 80, sweepMs: 20 } });
+  await until(() => a.isRealtimeReady() && b.isRealtimeReady());
+  alice.appendError = { code: '42501', message: 'annotation write is not permitted' };
+  a.applyByPage({ 1: { objects: [rect('cached-1')] } });
+  assert.ok(await until(() => previewIds(b).includes('cached-1')));
+  // What a display cache or a Save backup would hold: a JSON copy.
+  const cachedList = JSON.parse(JSON.stringify(screenOf(b)));
+  // The same key announced again by someone else is ignored.
+  const other = new Y.Doc();
+  writeAnnotationMark(other, 'cached-1', 1, rect('cached-1', { left: 999 }));
+  cloud.inject({ v: 1, w: 'someone-else', s: 1, u: Buffer.from(Y.encodeStateAsUpdate(other)).toString('base64') });
+  await settle(20);
+  assert.equal(Object.values(b.getLivePreviewByPage()).flat().length, 1, 'one copy on screen');
+  await b.destroy();
+
+  // Bob reopens; the store is empty and the viewer seeds from its cached list.
+  const b2 = await openFor(bob, documentId);
+  b2.applyByPage(cachedList);
+  // A re-keyed clone (a duplicate id repair) is still recognised.
+  const rekeyed = JSON.parse(JSON.stringify(cachedList));
+  rekeyed[1].objects = rekeyed[1].objects.map((o) => ({ ...o, data: { ...o.data, id: 'rect-fresh' } }));
+  b2.applyByPage(rekeyed);
+  await b2.drain();
+  assert.equal(bob.appendCalls, 0, 'a preview copy is never Bob\'s edit');
+  assert.equal(cloud.rows.length, 0);
+  await Promise.all([a.destroy(), b2.destroy()]);
+});
+
+test('erasing across another screen\'s in-flight stroke writes nothing of it, not even an eraser lane', async () => {
+  const documentId = 'live-preview-eraser';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const bob = cloud.makeClient('user-b');
+  const a = await openFor(alice, documentId);
+  const b = await openFor(bob, documentId);
+  await until(() => a.isRealtimeReady() && b.isRealtimeReady());
+  alice.appendError = { code: '42501', message: 'annotation write is not permitted' };
+  a.applyByPage({ 1: { objects: [rect('erased-1', { left: 777, stroke: '#123456' })] } });
+  assert.ok(await until(() => previewIds(b).includes('erased-1')));
+  const screen = screenOf(b);
+  const base = screen[1].objects.find((o) => o.data.id === 'erased-1');
+  const survivor = { ...base, width: 40 };
+  b.applyEraserMutation(1, { ...screen[1], objects: [survivor] }, {
+    id: 'erase-op-1',
+    pageNumber: 1,
+    points: [{ x: 1, y: 1 }],
+    radius: 4,
+    mode: 'partial',
+    touchedIds: ['erased-1'],
+    changedIds: ['erased-1'],
+    deletedIds: [],
+    objectMutations: [{ index: 0, storageKey: 'erased-1', annotationId: 'erased-1', base, deleted: false, survivor }],
+  });
+  await b.drain();
+  assert.equal(bob.appendCalls, 0);
+  assert.equal(JSON.stringify(b.doc.getMap('annotationEraserOps').toJSON()).includes('#123456'), false);
+  await a.destroy();
+  await b.destroy();
+});
+
+test('a checkpoint that finishes after a refusal does not turn the status back to healthy', async () => {
+  const documentId = 'live-preview-compaction-refusal';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const a = await openFor(alice, documentId, { livePreview: false });
+  const gate = deferred();
+  cloud.snapshotGate = gate.promise;
+  for (let index = 0; index < 40; index += 1) {
+    a.setMeta(`k${index}`, index);
+    await until(() => cloud.rows.length === index + 1, { timeoutMs: 1_000, stepMs: 2 });
+  }
+  assert.ok(await until(() => cloud.snapshotCalls >= 1), 'the 40-row checkpoint is uploading');
+  alice.appendError = { code: '42501', message: 'permission revoked' };
+  a.setMeta('refused', true);
+  assert.ok(await until(() => a.isSyncHealthy() === false), 'the refusal turns the status red');
+  gate.resolve();
+  cloud.snapshotGate = null;
+  await a.drain();
+  await settle(20);
+  assert.equal(a.isSyncHealthy(), false, 'and it stays red after the checkpoint lands');
+  alice.appendError = null;
+  await a.destroy();
+});
