@@ -1710,6 +1710,9 @@ const PDF_IMPORTED_EDIT_MARKER_KEYS = new Set([
   'pdfImportedEditedAt',
   'pdfImportedEditedBy',
   'pdfImportedEditSource',
+  // w33: provenance the store does not keep (annotationMarkCodec.js
+  // UNSTORED_DATA_FIELDS). A copy that still carries it is not an edit.
+  'pdfInkSourceGeometry',
 ]);
 
 const isPdfImportedAnnotationObject = (obj) => Boolean(obj?.isPdfImported || obj?.pdfAnnotationId);

@@ -1,4 +1,4 @@
-Written: 2026-09-24 10:15 (revised 2026-09-24 11:30 after reviews A and B; "Opening fast" added 2026-09-24 19:45)
+Written: 2026-09-24 10:15 (revised 2026-09-24 11:30 after reviews A and B; "Opening fast" added 2026-09-24 19:45; "Small snapshots" and "Fewer checkpoints" added 2026-09-25 by w33)
 
 # Per-field sync for annotation marks (store version 3)
 
@@ -219,7 +219,9 @@ per document; `useAnnotationDoc` runs it on a writable open.
   converter dropped) are NOT carried: which layer shows such a page's
   markup is the importer's call (w27), and carrying could draw it twice.
   Package 2 has none.
-* Nothing is deleted from either map; the old map is only read.
+* The carry-over itself deletes nothing. Once it is finished (its marker is
+  there, or it has nothing to carry) the old map's entries are deleted by the
+  one-time store compaction (w33, "Small snapshots" below).
 * Each batch (~192 KB of mark JSON, one transaction) first writes a record of
   the old keys it handles (`legacyMarksCarriedBatch:<client>:<clock>` in
   annoMeta), then the marks. The record has the lower clocks, so any screen
@@ -307,7 +309,7 @@ database went unhealthy.
   backoff, unless a reconnect catch-up is already doing it; sync turns green
   only once it is in.
 * The 40-row checkpoint does not stop the append queue while more rows are
-  queued behind it; the debounced checkpoint runs once the queue is empty.
+  queued behind it (w33: see "Fewer checkpoints" for when checkpoints run).
   Checkpoint uploads get ~3 s more per MB (capped at 60 s). The outbox
   encodes its accepted-state checkpoint only when it actually compacts.
 * A failed open no longer leaves the page covered: hydration becomes
@@ -388,9 +390,9 @@ What changed:
 * The 40-row compaction checkpoint runs off the append queue
   (`state.compactionChain`, encoding the accepted state only); `drain()` still
   waits for it. With a durability gap it stays inline as before.
-* The checkpoint debounce grows with the checkpoint's gzipped size: 1.2 s for
-  a small document, ~4 s per MB, at most 30 s (Package 2: ~18 s). The WAL row
-  is what makes an edit durable; the checkpoint only shortens reopen.
+* (Replaced by w33, "Fewer checkpoints": there is no per-edit checkpoint
+  debounce any more.) The WAL row is what makes an edit durable; the
+  checkpoint only shortens reopen.
 * A realtime row that changes nothing on this screen (its own echo) no longer
   re-renders the page list.
 * Live previews (`src/services/annotationLiveBus.js`). Each small local edit
@@ -457,6 +459,154 @@ is swapped back), and any checkpoint (not only compaction) turning a refusal
 green (fixed: every snapshot result carries the refusal generation it
 started under). Still open (low): erasing a counter while a same-series
 preview counter is on screen cancels as a conflict.
+
+## Small snapshots (w33, 2026-09-25)
+
+Every fresh open (new device, cleared cache) downloads the checkpoint row, and
+downloads cost Supabase egress. "Package 2 - Rev 4 -- IC.pdf" stored 21.6 MB
+(5.5 MB gzipped, ~11 MB as the hex PostgREST sends). ~3.5 MB of it was the old
+`annotations` map, already carried into `marks` (w28); most of the rest was
+imported ink stored 4-5 ways per mark: the live `path`, `polygons` derived from
+it, and the PDF's source geometry (`data.pdfInkSourceGeometry`: InkList, the
+appearance path, and each paint operation with its path again).
+
+* One geometry per imported mark (`src/services/annotationMarkCodec.js`,
+  applied by `writeAnnotationMark` and every decode in
+  `annotationMarkStore.js`):
+  * `data.pdfInkSourceGeometry` is not stored. It is provenance only: the
+    importer classifies its own output from it before anything is stored, and
+    no renderer, editor, eraser or exporter reads it from a stored mark; the
+    PDF file still carries it. The importer itself is unchanged (its tests pin
+    its output); the embedded import strips the field before the screen sees
+    the marks (`withoutUnstoredFieldsByPage`), so the screen's copy equals
+    what the store reads back (an erase compares the two).
+  * `polygons` that `filledOutlineCommandsToPolygonSet(path, rule)` gives back
+    EXACTLY, with the mark's own `fillRule` ('evenodd', else 'nonzero'), are
+    stored as the marker `~polygons-from-path:v1` (checked number for number
+    with Object.is when written) and rebuilt on read; anything else (a user
+    pen stroke, float differences, polygons made with the other rule) stays an
+    explicit array. Erased outlines usually do derive exactly (evenodd), so
+    they get the marker too. Package 2: 2,559 of 2,922 polygon sets derive
+    exactly; rebuilding all of them takes ~90 ms (Node). A marker a build does
+    not know reads as "no polygons" (the renderer draws from `path`). If that
+    function ever changes its output, bump the marker version.
+  * The marker names no rule: `path` (in `#pointGeometry`), `fillRule` and
+    `polygons` are separate keys, so after concurrent edits it always rebuilds
+    from the path and rule that won (review A: a compaction racing an erase
+    that made a hole keeps the hole).
+  * Writes compare compact forms, so an untouched mark writes nothing and a
+    field the store does not keep never reads as a change. A base or echo copy
+    takes the marker only while the store already holds one; a mark still
+    stored with an explicit array (not compacted yet) gets its new polygons
+    written when its path changes (review A).
+  * Hardening: the erase compare-and-swap and the "imported mark edited"
+    check ignore the dropped field, so a screen copy that still carries it is
+    the same mark.
+* One-time compaction of stores written before this
+  (`src/services/annotationStoreCompaction.js`, `useAnnotationDoc`): on a
+  writable, unlocked open, ~6-9 s after realtime is ready, once the embedded
+  import has run and the w28 carry-over is finished, ONE transaction deletes
+  the old map's entries and, per mark, deletes the dropped field and turns
+  derivable polygons into the marker (no other key is touched). It then asks
+  for one checkpoint (its row owes one), so the next fresh open gets the small
+  one. Package 2: one 128 KB WAL row.
+* Why plain deletes are enough (no fresh-doc rewrite, no change to the WAL,
+  the checkpoint RPC, at_seq or the checkpoint rules): every Y.Doc here
+  garbage-collects deleted content, so the next checkpoint of the live doc no
+  longer carries it; only a small tombstone per deleted key stays. Measured on
+  Package 2: in-place deletes 5.85 MB raw / 2.03 MB gzipped, a fresh-doc
+  rewrite of the same content 5.60 / 1.97.
+* Concurrent screens: deletes commute, so two screens compacting at once
+  converge; a concurrent edit of any other field survives; a concurrent write
+  of `polygons` competes with the marker last-writer-wins, as two polygon
+  writes always did (the marker then reads as the polygons of whichever path
+  and fill rule won).
+* After a permission refusal (rebase mode) the old-map deletes stay local
+  (only the durable maps are re-staged): no loss, just no shrink until a later
+  open. Old-map entries an out-of-date build writes after the carry-over are
+  deleted too (older builds are unsupported).
+
+Package 2 (the owner's store, Node, same bytes): snapshot 21.6 MB -> 6.3 MB
+raw, 5.50 -> 2.17 MB gzipped (11.0 -> 4.3 MB of hex on the wire); an imported
+ink mark 7.3 -> 2.7 KB of JSON, 5.8 -> 1.9 KB stored, 1.4 -> 0.65 KB gzipped.
+Applying the snapshot: 330-950 ms -> 210-320 ms. Every one of its 3,078 marks
+reads back identical apart from the dropped field, with the same SVG path and
+attributes (`tests/annotationStoreCompaction.test.mjs` imports the real PDF).
+
+Limits: the remaining bulk is the live `path` itself (~2.7 MB raw); storing it
+more compactly would either round its numbers (a visible-parity risk) or
+re-derive it from the PDF's authored coordinates (float-exactness needs the
+importer's exact arithmetic). Eraser lanes still carry a copy of their base
+mark as it was (Package 2: 280 KB raw).
+
+## Fewer checkpoints (w33, 2026-09-25)
+
+w32 measured main: 3 screens drawing 45 strokes made 45 WAL rows but 85
+checkpoint uploads (every screen ~1.2 s after each of its own edits; each
+refused upload also re-downloaded the whole stored checkpoint). w34: 5 paced
+strokes -> 5 checkpoints. A checkpoint only shortens reopen (the WAL row makes
+an edit durable and live), so now (`annotationDocSync.js`,
+`CHECKPOINT_EVERY_ROWS` and neighbours):
+
+* No checkpoint per edit.
+* The screen whose OWN row gets a document seq that is a multiple of 40
+  checkpoints; seqs are document-local and gapless (allocated under the
+  document lock), so exactly one screen owns each boundary with no
+  coordination. Or a screen whose own rows since its last checkpoint reach
+  512 KB (an import). Either waits until that screen's appends have been quiet
+  for 2 s (at most ~30 s), so an import written page by page checkpoints once,
+  at its end.
+* Idle: after 60 s without an own edit, only the author of the newest row, and
+  only when it wrote rows since its last checkpoint and the tail a reopen
+  would read is at least 8 rows.
+* Close and tab hide: the same rule without the newest-author condition. A
+  screen that only watched, or wrote a few rows, writes nothing: a reopen reads
+  that short tail after the existing checkpoint (and w29's saved copy still
+  skips the unchanged checkpoint row).
+* Unchanged: the repair checkpoint after a failed append / a gap found on
+  reconnect, the explicit save (Cmd+S), and the one after the store
+  compaction.
+* Before a routine upload, one small identity read (review B): if another
+  screen checkpointed since the row this screen built on and fewer than
+  2 x 40 rows followed it, this screen skips (that checkpoint covers it);
+  past that it takes the stored checkpoint in (one download, it may hold
+  repaired edits the WAL lacks) and writes on top of it. Rows this screen saw
+  by Realtime but has not read in order are read first, so at_seq is the WAL
+  head (otherwise the upload is refused).
+* A refused upload whose stored checkpoint is still the one this screen built
+  on (only the WAL head moved) reads the new rows and retries; it no longer
+  downloads the whole stored checkpoint. A routine upload refused because
+  another screen just checkpointed gives up. A changed stored checkpoint still
+  takes the full refresh on the repair and save paths.
+* at_seq never claims a row the bytes lack: bytes encoded before the snapshot
+  chain reached them (the chain serializes uploads) are merged with the
+  accepted state in the same tick as at_seq whenever rows were covered in
+  between (review B found an idle checkpoint queued behind a slow upload
+  losing a stroke on reopen); retries do the same.
+* Another screen's recent checkpoint never stands in for one this screen
+  owes after writing 512 KB of its own rows (an import) or after the store
+  compaction: those take the stored checkpoint in (if it moved) and write.
+  One routine checkpoint runs at a time per screen (drawing during its
+  identity read cannot start a second upload).
+* A failed routine upload stays owed (next own append, idle or close writes
+  it). A live re-send row that owns a boundary counts too.
+* Only a store compacted by the first w33 build (marker `...:v1:<rule>`)
+  would read without polygons; the only such store was a throwaway copy on
+  the dev server, since deleted.
+
+Pinned by `tests/annotationCheckpointPolicy.test.mjs` against a stand-in with
+the real RPC rules: 5 paced strokes -> 0 checkpoints (8 -> exactly one idle
+one); a receiver -> 0, close included; 3 screens x 45 strokes -> 1-3
+checkpoints, only the writer of row 40, no re-download; 3 screens x 125
+strokes -> at most one download, tail under 80 rows, a failed one retried on
+close; an import page by page -> 1; a checkpoint queued behind a slow one
+keeps every stroke. In the real app (dev server, tiny throwaway PDF): 5 paced
+strokes -> 5 WAL rows, 0 checkpoints on the drawing and the watching tab,
+closing both -> still 0.
+
+Limits: with several editors, the tail a reopen reads can reach ~80 rows
+(before, a checkpoint followed nearly every edit). A tab killed before its
+owed checkpoint leaves it to the next boundary.
 
 ## Offline edits reach peers that are already open
 

@@ -46,6 +46,10 @@ import {
   EMBEDDED_IMPORT_INCOMPLETE_KEY,
   EMBEDDED_IMPORT_MARKER_KEY,
 } from '../utils/embeddedImportGate.js';
+import {
+  annotationStoreCompactionPending,
+  annotationStoreCompactionReady,
+} from '../services/annotationStoreCompaction.js';
 
 const SPACES_KEY = 'spaces';
 function livePreviewPublicChannelInDev() {
@@ -80,6 +84,11 @@ const LEGACY_CARRY_WAIT_MS = 60_000;
 // ...and the random spread before carrying, so two screens that open at once
 // rarely carry at once.
 const LEGACY_CARRY_JITTER_MS = 1_500;
+// w33: the one-time store compaction runs this long after realtime is ready
+// (plus a random spread): after the carry-over and away from the open's own
+// work (first paint, embedded import).
+const STORE_COMPACTION_DELAY_MS = 6_000;
+const STORE_COMPACTION_JITTER_MS = 3_000;
 // Failed-open retry (w26): 2 s, 4 s, 8 s ... capped at 60 s, 8 tries per document.
 const OPEN_RETRY_BASE_DELAY_MS = 2_000;
 const OPEN_RETRY_MAX_DELAY_MS = 60_000;
@@ -291,6 +300,9 @@ export function useAnnotationDoc({
   // sliders); it always lifts on release or after 1.5s and then re-renders,
   // so the next capture writes the full current state.
   capturePauseRef = null,
+  // w33: a locked document refuses every write (WAL lock gate); the one-time
+  // store compaction below never runs while it is locked.
+  documentLocked = false,
 }) {
   const handleRef = useRef(null);
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
@@ -911,6 +923,78 @@ export function useAnnotationDoc({
     }
     return stop;
   }, [docRole, initialHydration.ready, initialHydration.documentId, documentId]);
+
+  // w33 (2026-09-25): shrink what this document already stores, once
+  // (annotationStoreCompaction.js): delete the old `annotations` map after the
+  // w28 carry-over finished, and rewrite marks still holding the dropped
+  // provenance field or derivable polygons. Writable, unlocked opens only,
+  // after the embedded import and the carry-over (it re-checks both, and
+  // waits on meta changes when either is not done yet). Idempotent: a second
+  // screen doing the same converges; with nothing to shrink nothing is
+  // written. The next checkpoint of the live doc is then small, so every
+  // later open downloads less.
+  const documentLockedRef = useRef(documentLocked);
+  documentLockedRef.current = documentLocked;
+  useEffect(() => {
+    if (!isWritableDocRole(docRole) || documentLocked) return undefined;
+    if (!initialHydration.ready || initialHydration.documentId !== documentId) return undefined;
+    const h = handleRef.current;
+    if (!h || !readyRef.current || typeof h.compactAnnotationStore !== 'function') return undefined;
+    let finished = false;
+    let timer = null;
+    let unsubscribeStatus = null;
+    const meta = h.doc.getMap(META_MAP);
+    const stop = () => {
+      finished = true;
+      meta.unobserve(onMeta);
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    const schedule = (ms) => {
+      if (finished || timer) return;
+      timer = setTimeout(() => { timer = null; run(); }, ms);
+    };
+    function onMeta() {
+      // Observers run inside Yjs's transaction cleanup: act from a fresh task.
+      schedule(Math.floor(Math.random() * STORE_COMPACTION_JITTER_MS));
+    }
+    function run() {
+      if (finished) return;
+      if (handleRef.current !== h || !readyRef.current || documentLockedRef.current) { stop(); return; }
+      // Not yet: the embedded import or the carry-over is still to come.
+      // A meta change (their markers) brings us back here.
+      if (!annotationStoreCompactionReady(h.doc) || legacyMarksCarryOverPending(h.doc)) return;
+      let pending = false;
+      try { pending = annotationStoreCompactionPending(h.doc); } catch { pending = false; }
+      stop();
+      if (!pending) return;
+      try {
+        const result = h.compactAnnotationStore({ notify: true });
+        console.log('[useAnnotationDoc] compacted the stored annotations', { documentId, ...result });
+      } catch (err) {
+        console.error('[useAnnotationDoc] compacting the stored annotations failed', err?.message);
+      }
+    }
+    let begun = false;
+    const begin = () => {
+      if (finished || begun) return;
+      begun = true;
+      unsubscribeStatus?.();
+      unsubscribeStatus = null;
+      meta.observe(onMeta);
+      schedule(STORE_COMPACTION_DELAY_MS + Math.floor(Math.random() * STORE_COMPACTION_JITTER_MS));
+    };
+    if (typeof h.isRealtimeReady !== 'function' || h.isRealtimeReady()) {
+      begin();
+    } else {
+      unsubscribeStatus = h.onSyncStatus?.(() => {
+        if (h.isRealtimeReady()) setTimeout(begin, 0);
+      }) || null;
+    }
+    return stop;
+  }, [docRole, documentLocked, initialHydration.ready, initialHydration.documentId, documentId]);
 
   // Capture space changes (document-level; coarse whole-array, no-op when
   // unchanged). Spaces + their region polygons now live durably in the Y.Doc

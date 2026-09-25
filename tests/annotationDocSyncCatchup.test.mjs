@@ -431,6 +431,9 @@ test('same-install catch-up applies a stale handle delete and cannot snapshot th
 
   assert.equal(doc.getMap('marks').has('stale-mark'), false, 'same-install delete is applied');
   assert.ok(changes.length >= 1, 'listeners receive the deletion');
+  // w33: a screen that only received rows writes no checkpoint on close; an
+  // explicit save still does, and must not put the stale mark back.
+  await handle.flushSnapshot();
   await handle.destroy();
 
   assert.equal(

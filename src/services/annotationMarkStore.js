@@ -38,6 +38,12 @@ import {
 } from '../utils/annotationLocalHistory.js';
 import { deepClone } from '../utils/deepClone.js';
 import {
+  UNSTORED_DATA_FIELDS,
+  fromStoredMarkObject,
+  isDerivedPolygonsMarker,
+  toStoredMarkObject,
+} from './annotationMarkCodec.js';
+import {
   normalizeAnnotationIdentity,
   setAnnotationStorageKey,
 } from '../utils/annotationStorageIdentity.js';
@@ -249,7 +255,8 @@ export function decodeObjectMap(objectMap) {
     out[fieldKey(key)] = isYMap(value) ? decodeRecordMap(value) : value;
   });
   for (const [path, value] of nested) setNested(out, path, value);
-  return out;
+  // w33: the compact stored form (derived polygons) becomes a plain mark.
+  return fromStoredMarkObject(out);
 }
 
 /**
@@ -492,12 +499,34 @@ export function writeAnnotationMark(doc, key, page, next, options = {}) {
   return result;
 }
 
-function writeAnnotationMarkInTransaction(doc, key, page, next, {
-  base = undefined,
+function writeAnnotationMarkInTransaction(doc, key, page, plainNext, {
+  base: plainBase = undefined,
   basePage = undefined,
-  echoVersions = null,
+  echoVersions: plainEchoVersions = null,
 } = {}) {
+  // w33: everything below compares and writes the compact stored form
+  // (annotationMarkCodec.js), so a field the store does not keep never reads
+  // as a change and derived polygons are written as their marker.
   const root = doc.getMap(MARKS_MAP);
+  // The polygons marker stands for "whatever the STORED path derives to", so
+  // a base or echo copy may take the marker only while the store holds one.
+  // While the store still holds an explicit array (a mark written before w33
+  // and not compacted yet), they keep their explicit arrays: a path edit then
+  // reads as a polygons change and the new polygons are written (review A).
+  const storedObjectMap = isYMap(root.get(key)) ? root.get(key).get(MARK_OBJECT_KEY) : null;
+  const storedPolygonsIsMarker = isYMap(storedObjectMap)
+    && isDerivedPolygonsMarker(storedObjectMap.get(storeKey('polygons')));
+  const toStoredCopy = (object) => {
+    if (object === undefined || object === null) return object;
+    const compact = toStoredMarkObject(object);
+    if (storedPolygonsIsMarker || compact === object || !isDerivedPolygonsMarker(compact.polygons)) return compact;
+    return { ...compact, polygons: object.polygons };
+  };
+  const next = toStoredMarkObject(plainNext);
+  const base = toStoredCopy(plainBase);
+  const echoVersions = Array.isArray(plainEchoVersions)
+    ? plainEchoVersions.map((version) => toStoredCopy(version))
+    : plainEchoVersions;
   const stored = root.get(key);
   const pageNumber = Number(page);
   const hasBaseObject = base !== undefined && base !== null;
@@ -560,6 +589,52 @@ function writeAnnotationMarkInTransaction(doc, key, page, next, {
     }
   }
   return { created: false, writes };
+}
+
+/**
+ * w33: does this stored mark still hold what the compact form drops (a field
+ * the store no longer keeps, or polygons its own path reproduces exactly)?
+ * Cheap Y checks first; the derivation check runs only for explicit polygons.
+ */
+export function storedMarkNeedsCompaction(doc, key) {
+  const stored = doc.getMap(MARKS_MAP).get(key);
+  const objectMap = isYMap(stored) ? stored.get(MARK_OBJECT_KEY) : null;
+  if (!isYMap(objectMap)) return false;
+  const dataMap = objectMap.get(storeKey('data'));
+  if (isYMap(dataMap) && UNSTORED_DATA_FIELDS.some((field) => dataMap.has(storeKey(field)))) return true;
+  if (!Array.isArray(objectMap.get(storeKey('polygons')))) return false;
+  const decoded = decodeObjectMap(objectMap);
+  return isDerivedPolygonsMarker(toStoredMarkObject(decoded).polygons);
+}
+
+/**
+ * w33: rewrite one stored mark into its compact form in place: delete the
+ * fields the store no longer keeps and replace polygons its own path
+ * reproduces exactly with the marker. Touches nothing else (no other field is
+ * re-set), so a concurrent edit of any other field is unaffected. Must run
+ * inside the caller's transaction. Returns the number of keys written.
+ */
+export function compactStoredMark(doc, key) {
+  const stored = doc.getMap(MARKS_MAP).get(key);
+  const objectMap = isYMap(stored) ? stored.get(MARK_OBJECT_KEY) : null;
+  if (!isYMap(objectMap)) return 0;
+  let writes = 0;
+  const dataMap = objectMap.get(storeKey('data'));
+  if (isYMap(dataMap)) {
+    for (const field of UNSTORED_DATA_FIELDS) {
+      if (!dataMap.has(storeKey(field))) continue;
+      dataMap.delete(storeKey(field));
+      writes += 1;
+    }
+  }
+  if (Array.isArray(objectMap.get(storeKey('polygons')))) {
+    const compact = toStoredMarkObject(decodeObjectMap(objectMap));
+    if (isDerivedPolygonsMarker(compact.polygons)) {
+      objectMap.set(storeKey('polygons'), compact.polygons);
+      writes += 1;
+    }
+  }
+  return writes;
 }
 
 /**
