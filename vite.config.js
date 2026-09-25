@@ -305,6 +305,13 @@ export default defineConfig(({ mode }) => {
       // (anti-DNS-rebinding). Leading-dot = suffix match on any tailnet host.
       // Dev-server only; production ships static files, so this has no prod effect.
       allowedHosts: ['.ts.net'],
+      // Helper agents create and delete whole-repo copies under .claude/worktrees
+      // (plus graphify output). Watching them made the main dev server reload
+      // every open tab and clear its dependency cache each time one was removed,
+      // which left Chrome on a blank page (2026-09-24). Dev-server only.
+      watch: {
+        ignored: ['**/.claude/**', '**/graphify-out/**'],
+      },
       headers: {
         // Allow MSAL popup authentication to work properly
         // Using 'same-origin-allow-popups' allows the popup to communicate back to the parent
