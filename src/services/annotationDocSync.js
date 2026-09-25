@@ -424,6 +424,7 @@ export async function openAnnotationDoc({
     liveResendTimer: null,
     liveResendAttempt: 0,
     liveResendChain: Promise.resolve(),
+    compactionChain: Promise.resolve(), // w30: the 40-row checkpoint, off the append queue
     snapshotTimer: null,   // debounced full-state checkpoint
     lastSnapshotBytes: 0,  // gzipped size of the last checkpoint read or written (w30)
     repairTimer: null,
@@ -2393,7 +2394,10 @@ async function replayOutbox(state) {
       Y.applyUpdate(state.doc, record.update, HYDRATE_ORIGIN);
     }
     Y.applyUpdate(state.stagedDoc, record.update, HYDRATE_ORIGIN);
-    if (!record.checkpointUpdate) record.checkpointUpdate = encodeSnapshot(state.stagedDoc);
+    // w30: no whole-staged checkpoint here. stagedDoc already holds every
+    // later local edit (live records no longer carry a per-edit checkpoint),
+    // and a repair checkpoint must stop at this record: setRecordRepairCheckpoint
+    // rebuilds exactly that prefix when one is needed.
     try {
       await appendOp(state, record);
     } catch (error) {
@@ -2415,7 +2419,7 @@ async function replayOutbox(state) {
       record.status = String(error?.code || '') === 'ETIMEDOUT' ? 'ambiguous' : 'pending';
       state.durabilityGap = true;
       state.durabilityGapGeneration += 1;
-      setRepairCheckpoint(state, record.checkpointUpdate, record.editEpoch);
+      setRecordRepairCheckpoint(state, record, record.editEpoch);
       markSyncHealth(state, false, error);
       await persistOutboxRecord(state, record).catch((persistError) => {
         console.warn('[annotationDocSync] replay status persistence failed', persistError?.message);
@@ -3034,7 +3038,9 @@ async function appendOp(state, record) {
     // snapshot chain reaches it, so strokes drawn while a multi-MB upload
     // runs are written and delivered at once instead of after it.
     state.opsSinceSnapshot = 0;
-    void writeSnapshot(state, { repairsGap: false })
+    // drain() still waits for it (a caller that drains expects the
+    // checkpoint the drained rows triggered); the append queue does not.
+    state.compactionChain = writeSnapshot(state, { repairsGap: false })
       .then((result) => finalizeSnapshotResult(state, result))
       .catch((error) => {
         console.warn('[annotationDocSync] compaction checkpoint failed', error?.message);
@@ -4198,11 +4204,13 @@ async function drainStateQueues(state) {
     const replayQueue = state.outboxReplayChain;
     const authoritativeQueue = state.authoritativeChain;
     const resendQueue = state.liveResendChain;
+    const compactionQueue = state.compactionChain;
     await Promise.all([
       flushQueue.catch(() => {}),
       replayQueue.catch(() => {}),
       authoritativeQueue.catch(() => {}),
       resendQueue.catch(() => {}),
+      compactionQueue.catch(() => {}),
     ]);
     await Promise.resolve();
     if (
@@ -4210,6 +4218,7 @@ async function drainStateQueues(state) {
       && replayQueue === state.outboxReplayChain
       && authoritativeQueue === state.authoritativeChain
       && resendQueue === state.liveResendChain
+      && compactionQueue === state.compactionChain
       && !state.outboxReplayScheduled
     ) return;
   }
