@@ -2457,12 +2457,37 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
     // lower late commit visible on the next sweep; Yjs makes overlap free.
     let cursor = state.replayFromSeq;
     let applied = 0;
+    let seen = 0;
+    let checkGap = true;
     const stopped = { stop: true };
-    try {
+    const pruned = { pruned: true };
+    for (;;) { try {
       // Byte-safe pages (w26): an oversized row shrinks the page instead of
       // failing the whole catch-up.
       await readWalRowsAfter(state, cursor, 'realtime catch-up read', async (row) => {
         if (state.destroyed) throw stopped; // handle torn down mid-sweep — stop touching the doc
+        // w36: the server prunes WAL rows a newer stored checkpoint covers
+        // once they are old (supabase/proposed/..._w36_prune_annotation_wal).
+        // Seqs are gapless per document (allocated under the document lock),
+        // so a first row past cursor + 1 means rows this screen still needed
+        // are gone (it slept or stayed offline for days): applying the rest
+        // would silently miss those edits. Take the stored checkpoint in
+        // instead (recoverFromPrunedTail) - but only when the stored
+        // checkpoint really is past the cursor (the prune never deletes rows
+        // at or after its at_seq). Rows written before the July 2026 WAL
+        // migration can carry identity gaps: those read on (w36 review B).
+        // Rows at or below coveredSeq were applied by an ordered read already
+        // (a viewer's replayFromSeq stays behind while coveredSeq climbs), so
+        // only a gap above coveredSeq can hide an edit (w36 review C); a gap
+        // already found to be history at this cursor is not asked about again.
+        if (
+          checkGap
+          && seen === 0
+          && Number(row.seq) > Number(cursor) + 1
+          && Number(row.seq) - 1 > (Number(state.coveredSeq) || 0)
+          && state.historyGapCursor !== Number(cursor)
+        ) throw pruned;
+        seen += 1;
         try {
           // clientId is stable per install, not per open handle. Another tab or
           // a handle still tearing down can therefore author a row with OUR
@@ -2487,14 +2512,25 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
         // re-reads rows below the frontier already proven (w26 review).
         if (cursor > state.coveredSeq) state.coveredSeq = cursor;
       });
+      break;
     } catch (error) {
+      if (error === pruned) {
+        const verdict = await prunedTailVerdict(state, cursor);
+        if (verdict === 'pruned') return recoverFromPrunedTail(state, cursor);
+        if (verdict === 'gap-is-history' && !state.destroyed) {
+          state.historyGapCursor = Number(cursor);
+          checkGap = false;
+          continue;
+        }
+        return false; // identity unreadable: the next catch-up tries again
+      }
       if (error !== stopped) {
         // coveredSeq stays on the last applied row — the next SUBSCRIBED retries from here
         console.warn('[annotationDocSync] post-subscribe catch-up read failed', error?.message);
         if (applied > 0 && !state.destroyed) notifyChange(state);
       }
       return false;
-    }
+    } }
     if (applied > 0 && !state.destroyed) notifyChange(state);
     if (applied > 0 && !state.destroyed) void queueEraseOutboxDrain(state);
     return true;
@@ -2505,6 +2541,66 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
     if (counted) state.catchupPending = Math.max(0, (Number(state.catchupPending) || 0) - 1);
   });
   return state.catchupChain;
+}
+
+// w36: catch-up found the rows after its baseline pruned (see catchUpTail).
+// Take in the stored checkpoint and the rows after it, exactly as a cloud row
+// is taken in (live, accepted, local copy, staged), then move the baselines up
+// to it so the next catch-up starts where rows still exist, and build the next
+// checkpoint on it. One checkpoint download, only for a screen that missed
+// more than the server's retention window.
+// w36 review B: is a gap after `fromSeq` pruning (the stored checkpoint is past
+// it: the prune only deletes rows below a checkpoint's at_seq) or history
+// (identity-era gaps before the July 2026 WAL migration)? One small identity
+// read. 'unknown' when it cannot be read.
+async function prunedTailVerdict(state, fromSeq) {
+  if (state.destroyed || !state.supabase) return 'unknown';
+  try {
+    const { data, error } = await withCloudRequest(state, snapshotIdentityReadQuery(state), 'pruned-tail identity read');
+    if (error) return 'unknown';
+    const storedAtSeq = Number(data?.at_seq);
+    return Number.isFinite(storedAtSeq) && storedAtSeq > Number(fromSeq) ? 'pruned' : 'gap-is-history';
+  } catch {
+    return 'unknown';
+  }
+}
+
+async function recoverFromPrunedTail(state, fromSeq) {
+  if (state.destroyed || !state.supabase) return false;
+  console.warn('[annotationDocSync] catch-up rows after seq', fromSeq, 'were pruned; taking the stored checkpoint in');
+  let latest;
+  try {
+    latest = await loadLatestCloudCheckpoint(state);
+  } catch (error) {
+    console.warn('[annotationDocSync] pruned-tail recovery failed; retrying on the next catch-up', error?.message);
+    return false;
+  }
+  if (state.destroyed) return false;
+  try {
+    applyAuthoritativeCloudUpdate(state, latest.update);
+  } catch (error) {
+    console.warn('[annotationDocSync] pruned-tail recovery apply failed', error?.message);
+    return false;
+  }
+  const covered = Number(latest.coveredSeq) || 0;
+  if (covered > state.lastSeq) state.lastSeq = covered;
+  if (covered > state.coveredSeq) state.coveredSeq = covered;
+  const base = Number(latest.baseAtSeq) || 0;
+  if (base > state.replayFromSeq) state.replayFromSeq = base;
+  // w36 review B: build on the checkpoint just taken in (as
+  // refreshAfterSnapshotConflict does), so the next repair/save checkpoint
+  // is not refused and made to download it a second time. acceptedDoc
+  // already holds it; a request already sent with the old base is refused
+  // and rebases as usual.
+  if (latest.baseAtSeq != null && latest.baseAtSeq >= (Number(state.snapshotBaseAtSeq) || 0)) {
+    state.snapshotBaseAtSeq = latest.baseAtSeq;
+    state.snapshotBaseWriterId = latest.baseWriterId;
+    state.snapshotBaseWriterEpoch = latest.baseWriterEpoch;
+    state.snapshotGeneration = Math.max(state.snapshotGeneration, latest.baseWriterEpoch);
+  }
+  notifyChange(state);
+  void queueEraseOutboxDrain(state);
+  return true;
 }
 
 function currentSyncStatus(state) {

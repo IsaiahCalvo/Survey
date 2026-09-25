@@ -17,7 +17,7 @@
 //
 //   node agent-cli/usage-budget-probe.mjs <pdf> [--port 5347] [--users 1]
 //        [--idle 300000] [--strokes 20] [--erases 10] [--moves 5]
-//        [--settle 20000] [--budget agent-cli/usage-budget.json] [--json out.json]
+//        [--settle 20000] [--reopens 1] [--budget agent-cli/usage-budget.json] [--json out.json]
 //        [--profile-dir dir] [--fresh-profiles] [--dev-auto-login] [--keep] [--headed]
 //
 // --budget  fail (exit 1) when any per-user phase count is above the limits in
@@ -55,6 +55,7 @@ const STROKES = Number(opt('strokes', '20'));
 const ERASES = Math.min(STROKES, Number(opt('erases', '10')));
 const MOVES = Math.min(STROKES - ERASES, Number(opt('moves', '5')));
 const SETTLE_MS = Number(opt('settle', '20000'));
+const REOPENS = Number(opt('reopens', '1'));
 const KEEP = flag('keep');
 const BASE = `http://localhost:${PORT}/`;
 const LEASED = !flag('dev-auto-login');
@@ -444,6 +445,8 @@ async function deleteThrowaway(page, id, expectedName) {
       storage = storageError ? `error ${storageError.message}` : 'removed';
     }
     try { await purgeAnnotationDoc(id); } catch { /* local copy only */ }
+    // w36: this profile's cached copy of the throwaway PDF.
+    try { (await import('/src/services/pdfByteCache.js')).pdfByteCache().removePath(row.file_path); } catch { /* older build */ }
     const { data: remaining } = await supabase.from('documents').select('id').eq('id', id).maybeSingle();
     return { status: remaining ? 'STILL-PRESENT' : 'deleted', storage };
   }, { id, expectedName, prefix: DOC_PREFIX });
@@ -457,7 +460,7 @@ function rollup(userCounters = {}) {
     const t = {
       httpRequests: 0, httpReqBytes: 0, httpResBytes: 0,
       walAppends: 0, walAppendBytes: 0, snapshotWrites: 0, snapshotWriteBytes: 0,
-      restReads: 0, storageDownloads: 0, storageDownloadBytes: 0, historyEvents: 0, historyEventBytes: 0,
+      restReads: 0, storageDownloads: 0, storageDownloadBytes: 0, storageInfoChecks: 0, storageInfoBytes: 0, historyEvents: 0, historyEventBytes: 0,
       wsSent: 0, wsRecv: 0, wsBytesRecv: 0, wsBytesSent: 0,
       channelJoins: 0, heartbeats: 0, broadcastsSent: 0, broadcastsRecv: 0, dbChangesRecv: 0,
       presenceRecv: 0,
@@ -469,9 +472,10 @@ function rollup(userCounters = {}) {
         if (/rpc store_annotation_snapshot|rest (POST|PATCH) annotation_snapshots/.test(key)) { t.snapshotWrites += e.n; t.snapshotWriteBytes += e.reqBytes; }
         if (/^http rest GET /.test(key)) t.restReads += e.n;
         if (/^http rest POST document_history_events/.test(key)) { t.historyEvents += e.n; t.historyEventBytes += e.reqBytes; }
-        if (/^http storage GET /.test(key) || /^http storage POST sign/.test(key)) {
-          if (/^http storage GET /.test(key)) { t.storageDownloads += e.n; t.storageDownloadBytes += e.resBytes; }
-        }
+        // w36: a metadata check (`storage GET info ...`, the per-open access
+        // check of the device PDF cache) is not a download.
+        if (/^http storage GET info /.test(key)) { t.storageInfoChecks += e.n; t.storageInfoBytes += e.resBytes; }
+        else if (/^http storage GET /.test(key)) { t.storageDownloads += e.n; t.storageDownloadBytes += e.resBytes; }
       } else if (key.startsWith('ws-sent ')) {
         t.wsSent += e.n; t.wsBytesSent += e.reqBytes;
         if (/ phx_join$/.test(key)) t.channelJoins += e.n;
@@ -566,6 +570,24 @@ try {
   setPhase('settle');
   await owner.waitForTimeout(SETTLE_MS);
 
+  // w36: every user reloads the app and opens the document again. With the
+  // device PDF cache this downloads 0 PDF bytes (one small Storage metadata
+  // check per open); before it, each reopen downloaded the whole file.
+  if (REOPENS > 0) {
+    for (let round = 1; round <= REOPENS; round += 1) {
+      setPhase(`reopen${round}`);
+      await Promise.all(pages.map(async (page, user) => {
+        await openFromHub(page, 0);
+        await assertOpenIsThrowaway(page);
+        await page.waitForTimeout(5_000);
+        const cache = await page.evaluate(async () => {
+          try { return await (await import('/src/services/pdfByteCache.js')).pdfByteCache().stats(); } catch { return null; }
+        }).catch(() => null);
+        log(`U${user} reopen ${round}: marks on page 1 = ${await pageMarkCount(page)}, device PDF cache ${JSON.stringify(cache)}`);
+      }));
+    }
+  }
+
   setPhase('footprint');
   const footprint = documentId ? await documentFootprint(owner, documentId, flag('dump-wal')) : null;
   setPhase('done');
@@ -579,7 +601,7 @@ try {
   for (const [user, phases] of summary.entries()) {
     for (const [ph, t] of Object.entries(phases)) {
       if (ph === 'footprint' || ph === 'done') continue;
-      console.log(`U${user} ${ph.padEnd(6)} http=${t.httpRequests} (wal=${t.walAppends} ${t.walAppendBytes}B, snap=${t.snapshotWrites} ${t.snapshotWriteBytes}B, hist=${t.historyEvents} ${t.historyEventBytes}B, reads=${t.restReads}, storageGET=${t.storageDownloads} ${t.storageDownloadBytes}B) egress=${t.httpResBytes}B | ws sent=${t.wsSent} recv=${t.wsRecv} (${t.wsBytesRecv}B) joins=${t.channelJoins} hb=${t.heartbeats} bcastOut=${t.broadcastsSent} bcastIn=${t.broadcastsRecv} dbIn=${t.dbChangesRecv} presIn=${t.presenceRecv} billableRT=${t.billableRealtimeMessages}`);
+      console.log(`U${user} ${ph.padEnd(6)} http=${t.httpRequests} (wal=${t.walAppends} ${t.walAppendBytes}B, snap=${t.snapshotWrites} ${t.snapshotWriteBytes}B, hist=${t.historyEvents} ${t.historyEventBytes}B, reads=${t.restReads}, storageGET=${t.storageDownloads} ${t.storageDownloadBytes}B, storageInfo=${t.storageInfoChecks} ${t.storageInfoBytes}B) egress=${t.httpResBytes}B | ws sent=${t.wsSent} recv=${t.wsRecv} (${t.wsBytesRecv}B) joins=${t.channelJoins} hb=${t.heartbeats} bcastOut=${t.broadcastsSent} bcastIn=${t.broadcastsRecv} dbIn=${t.dbChangesRecv} presIn=${t.presenceRecv} billableRT=${t.billableRealtimeMessages}`);
     }
   }
   console.log('\n=== document footprint ===\n' + JSON.stringify({ ...footprint, rows: footprint?.rows?.map(({ hex, ...rest }) => rest) }));

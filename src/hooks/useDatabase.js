@@ -16,7 +16,41 @@ import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange } from './libraryChangeBus.js';
 import { storageDownloads } from '../services/storageDownloads.js';
+import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload } from '../services/pdfByteCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
+
+// The device PDF cache follows the signed-in account: emptied on sign-out,
+// other accounts' entries dropped on sign-in. Bound once at startup so a
+// signed-out start clears it even before anything is downloaded.
+if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
+
+// Storage's metadata for one stored PDF, always from the server: the browser's
+// HTTP cache must never answer the per-open access check (uploads are stored
+// with max-age=3600, and the metadata answer can carry it). Same route and
+// auth as storage-js's info() (the client's fetch adds the session token).
+async function fetchStoredPdfInfo(filePath) {
+  const api = supabase.storage.from('documents');
+  const objectPath = `documents/${String(filePath).replace(/^\/+/, '')}`;
+  try {
+    const response = await api.fetch(`${api.url}/object/info/${objectPath}`, {
+      method: 'GET',
+      headers: api.headers,
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try { message = (await response.json())?.message || message; } catch { /* no body */ }
+      return { data: null, error: { status: response.status, message } };
+    }
+    return { data: await response.json(), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+const withTimeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((resolve) => setTimeout(resolve, ms)),
+]);
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -765,6 +799,22 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    // w36: the path names these bytes (content hash, or a fresh unique path),
+    // so this device keeps them: its first reopen downloads nothing. Awaited
+    // (one small metadata read + a local write; uploads already run in the
+    // background) so a read the finished upload triggers finds the copy.
+    // Capped at 2 s (w36 review A): a stuck IndexedDB must not hold what
+    // follows an upload; losing the race costs one download later.
+    await withTimeout((async () => {
+      await pdfByteCache().removePath(filePath);
+      await seedPdfCacheFromUpload({
+        cache: pdfByteCache(),
+        actorId: user.id,
+        path: filePath,
+        file,
+        fetchInfo: () => fetchStoredPdfInfo(filePath),
+      });
+    })().catch(() => { /* cache only: the upload itself succeeded */ }), 2_000);
     return filePath;
   }, [user]);
 
@@ -783,6 +833,7 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    void pdfByteCache().removePath(filePath);
     return filePath;
   }, [user]);
 
@@ -800,6 +851,7 @@ export const useStorage = () => {
       });
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    void pdfByteCache().removePath(filePath);
     return filePath;
   }, [user]);
 
@@ -808,13 +860,27 @@ export const useStorage = () => {
       throw new Error('Supabase not available');
     }
 
-    return storageDownloads(supabase).read(user?.id, filePath, async () => {
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .download(filePath);
-      if (error) throw error;
-      return data;
-    });
+    // w36: an unchanged PDF is served from this device's cache after Storage
+    // confirms (a metadata read under the same access rules) that this account
+    // may still read it and that it is the cached version. See
+    // services/pdfByteCache.js for why that keeps the #802 "every open passes
+    // the server's access check" rule.
+    const actorId = user?.id ?? null;
+    return storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
+      cache: pdfByteCache(),
+      actorId,
+      path: filePath,
+      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      download: async () => {
+        // no-store: never the browser's HTTP copy (it could be an older
+        // version than the one the check just named, and it outlives sign-out).
+        const { data, error } = await supabase.storage
+          .from('documents')
+          .download(filePath, {}, { cache: 'no-store' });
+        if (error) throw error;
+        return data;
+      },
+    }));
   }, [user?.id]);
 
   const deleteDocumentFile = useCallback(async (filePath) => {
@@ -828,6 +894,7 @@ export const useStorage = () => {
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
+    void pdfByteCache().removePath(filePath);
   }, []);
 
   return {

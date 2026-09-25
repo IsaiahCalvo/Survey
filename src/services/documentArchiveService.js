@@ -13,6 +13,7 @@
  */
 
 import { supabase } from '../supabaseClient';
+import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeDocumentItem } from './archiveContract';
 
@@ -105,6 +106,8 @@ export async function deleteDocumentForever(documentId) {
       console.warn('[KAL-428] stored PDF removal threw:', err);
     }
   }
+  // w36: this device's cached copy of a file nobody references any more.
+  for (const path of orphanedPaths) void pdfByteCache().removePath(path);
 
   try {
     await purgeAnnotationDoc(documentId);

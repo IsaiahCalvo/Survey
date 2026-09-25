@@ -526,3 +526,46 @@ test('usage budget (w35): another screen of the same user takes over follow-up w
   assert.ok(await until(() => effects[1].length === 1, { timeoutMs: 3_000 }), 'the other screen took over after the takeover period');
   for (const handle of handles) await handle.destroy();
 });
+
+// w36 (2026-09-25, stay inside Supabase Free): PDF downloads scale with the
+// number of distinct files a device opens, not with the number of opens.
+// Before, every open re-downloaded the whole PDF (the w34 audit's biggest
+// real-use cost). Drives the real device cache (src/services/pdfByteCache.js,
+// fake-indexeddb) through a month of one user's opens against a counting fake
+// Storage. The live-app counterpart is the probe's reopen1 phase
+// (agent-cli/usage-budget.json: 0 downloads, 1 metadata check per reopen).
+test('usage budget (w36): a month of opens downloads each PDF once per device; reopens cost one small check', async () => {
+  const { IDBFactory } = await import('fake-indexeddb');
+  const { createPdfByteCache, readPdfThroughCache } = await import('../src/services/pdfByteCache.js');
+  const FILE_BYTES = 200_000; // stands in for a 2 MB drawing (scaled down 10x)
+  const DISTINCT = 20; // new/changed files the user opens in a month
+  const OPENS = 252; // 12 opens a working day x 21 days
+  const storage = { downloads: 0, downloadBytes: 0, infoChecks: 0 };
+  const files = Array.from({ length: DISTINCT }, (_, i) => `user-a/${String(i).padStart(64, '0')}.pdf`);
+  const bytesOf = new Map(files.map((path, i) => [path, new Uint8Array(FILE_BYTES).fill(i + 1)]));
+  const devices = [new IDBFactory(), new IDBFactory()].map((indexedDb) => createPdfByteCache({ indexedDb, timeoutMs: 2000 }));
+  const open = (cache, path) => readPdfThroughCache({
+    cache,
+    actorId: 'user-a',
+    path,
+    fetchInfo: async () => {
+      storage.infoChecks += 1;
+      return { data: { version: `v-${path}`, etag: 'e', size: FILE_BYTES }, error: null };
+    },
+    download: async () => {
+      storage.downloads += 1;
+      storage.downloadBytes += FILE_BYTES;
+      return new Blob([bytesOf.get(path)], { type: 'application/pdf' });
+    },
+  });
+  for (let n = 0; n < OPENS; n += 1) {
+    const device = devices[n % 3 === 0 ? 1 : 0]; // a third of the opens on the phone
+    const blob = await open(device, files[n % DISTINCT]);
+    assert.equal(blob.size, FILE_BYTES);
+    if (n < DISTINCT * 3) await settle(5); // let the first copies land
+  }
+  assert.ok(storage.downloads <= DISTINCT * devices.length,
+    `${storage.downloads} downloads for ${OPENS} opens of ${DISTINCT} files on 2 devices (was ${OPENS})`);
+  assert.equal(storage.infoChecks, OPENS, 'every open still passed the Storage access check');
+  assert.ok(storage.downloadBytes <= DISTINCT * devices.length * FILE_BYTES);
+});

@@ -18,6 +18,7 @@ import {
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
+import { pdfByteCache } from '../services/pdfByteCache.js';
 
 export const AuthContext = createContext({});
 
@@ -655,6 +656,16 @@ export const AuthProvider = ({ children }) => {
       console.warn('Sign out API call failed, clearing local session anyway:', error);
     }
 
+    // w36: cloud PDFs this device kept for fast reopen must not outlive the
+    // account on a shared computer. Awaited (at most 1.5 s): the reload below
+    // would cut an unfinished IndexedDB clear short. (The next signed-out
+    // start clears it too - except after an OFFLINE sign-out, which auth-js
+    // abandons with the session still stored; the cache is then emptied by
+    // the next real sign-out or another account signing in.)
+    try {
+      await Promise.race([pdfByteCache().clear(), new Promise((resolve) => setTimeout(resolve, 1_500))]);
+    } catch { /* cache only */ }
+
     // Always clear local state and refresh, even if API call failed
     userRef.current = null;
     setUser(null);
@@ -687,6 +698,9 @@ export const AuthProvider = ({ children }) => {
     // The server has removed the Auth user. Clear the local refresh token even
     // when GoTrue can no longer accept a normal sign-out for that deleted user.
     try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* local state below is authoritative */ }
+    try {
+      await Promise.race([pdfByteCache().clear(), new Promise((resolve) => setTimeout(resolve, 1_500))]);
+    } catch { /* cache only */ }
     userRef.current = null;
     setUser(null);
     setSession(null);

@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../supabaseClient';
+import { pdfByteCache } from './pdfByteCache.js';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeProjectItem } from './archiveContract';
 
@@ -100,6 +101,8 @@ export async function deleteProjectForever(projectId) {
       console.warn('[KAL-429] stored PDF removal threw:', err);
     }
   }
+  // w36: this device's cached copy of a file nobody references any more.
+  for (const path of orphanedPaths) void pdfByteCache().removePath(path);
 
   // Best-effort, same as the single-document path: the rows are already gone, so
   // a local-cache hiccup must not report the delete as failed.
