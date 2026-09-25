@@ -89,14 +89,34 @@ const consoleTail = (page, label) => page.on('console', (message) => {
   const text = message.text();
   recentConsole.push(`${label} ${message.type()}: ${text.slice(0, 200)}`);
   if (recentConsole.length > 200) recentConsole.shift();
-  if (/annotationDocSync|realtime|DocumentDelete/i.test(text)) log(`${label} console:`, text.slice(0, 240));
+  if (/annotationDocSync|annotationLiveBus|realtime|DocumentDelete/i.test(text)) log(`${label} console:`, text.slice(0, 240));
 });
 
 async function waitForHub(page) {
-  if (LEASED) await assertBrowserUsesLeasedAccount(page, { timeoutMs: 60_000 });
-  await page.getByRole('heading', { name: 'Documents', exact: true }).first()
-    .waitFor({ state: 'visible', timeout: 90_000 });
+  try {
+    if (LEASED) await assertBrowserUsesLeasedAccount(page, { timeoutMs: 60_000 });
+    await page.getByRole('heading', { name: 'Documents', exact: true }).first()
+      .waitFor({ state: 'visible', timeout: 90_000 });
+  } catch (error) {
+    // w31: say WHY the hub never showed (sign-in screen, blank page from a
+    // failed module import, an error boundary) instead of a bare timeout.
+    log('hub did not show. Page text:', (await page.evaluate(() => document.body?.innerText.slice(0, 1500)).catch(() => '')).replace(/\s+/g, ' ') || '(empty page)');
+    log('failed requests:\n' + failedRequests.slice(-20).join('\n'));
+    log('recent console:\n' + recentConsole.slice(-40).join('\n'));
+    throw error;
+  }
 }
+
+const failedRequests = [];
+const watchFailures = (page, label) => {
+  page.on('response', (response) => {
+    if (response.status() >= 400) failedRequests.push(`${label} HTTP ${response.status()} ${response.url().slice(0, 200)}`);
+  });
+  page.on('requestfailed', (request) => {
+    failedRequests.push(`${label} FAILED ${request.failure()?.errorText} ${request.url().slice(0, 200)}`);
+  });
+  page.on('pageerror', (error) => recentConsole.push(`${label} pageerror: ${error.message.slice(0, 300)}`));
+};
 
 const recentConsole = [];
 async function waitForViewer(page) {
@@ -154,6 +174,21 @@ async function waitForQuiet(page, label, quietMs = 6_000, timeoutMs = 300_000) {
     await page.waitForTimeout(1_000);
   }
   log(`${label} never went quiet: ${lastKey}`);
+}
+
+// The live-preview channel as the page's own Supabase client sees it: topic,
+// private flag and join state (w31: proves the PRIVATE join succeeded).
+async function liveChannelStatus(page) {
+  return page.evaluate(async () => {
+    const { supabase } = await import('/src/supabaseClient.js');
+    return (supabase.getChannels?.() || [])
+      .filter((channel) => /anno-live:/.test(channel.topic))
+      .map((channel) => ({
+        topic: channel.topic,
+        private: Boolean(channel.params?.config?.private),
+        state: channel.state,
+      }));
+  }).catch((error) => [{ error: error?.message }]);
 }
 
 const pageOneCount = (page) => page.evaluate(() => (
@@ -264,6 +299,7 @@ function summarize(a, b, pointerUpT, nextT) {
 const pageA = await ctxA.newPage();
 watchDocumentId(pageA);
 consoleTail(pageA, 'A');
+watchFailures(pageA, 'A');
 let pageB = null;
 const results = [];
 if (opt('delete-id', null)) {
@@ -296,10 +332,13 @@ try {
 
   pageB = await ctxB.newPage();
   consoleTail(pageB, 'B');
+  watchFailures(pageB, 'B');
   await openFromHub(pageB);
   log('B viewer open');
   await realtimeReady(pageB);
   await waitForQuiet(pageB, 'B');
+  log('A live channel:', JSON.stringify(await liveChannelStatus(pageA)));
+  log('B live channel:', JSON.stringify(await liveChannelStatus(pageB)));
   // Let each side finish any open-time writes (embedded import, carry-over).
   await pageA.waitForTimeout(Number(opt('settle', '4000')));
   await trace(pageA);
@@ -318,17 +357,23 @@ try {
       await profiler.send('Profiler.setSamplingInterval', { interval: 200 });
       await profiler.send('Profiler.start');
     }
+    // w31: compare with B's count right before THIS stroke (a cumulative
+    // target hides a mark B shows twice, or one it lost).
+    const beforeB = await pageOneCount(pageB);
+    const drawStart = Date.now();
     await drawStroke(pageA, index);
     const drawnAt = Date.now();
     // Wait for B's page list to grow (or give up after 30 s).
     let seenAt = null;
     while (Date.now() - drawnAt < 30_000) {
       const count = await pageOneCount(pageB);
-      if (count >= baseCount + index + 1) { seenAt = Date.now(); break; }
+      if (count > beforeB) { seenAt = Date.now(); break; }
       await pageB.waitForTimeout(20);
     }
-    log(`stroke ${index + 1}: B saw it after ~${seenAt ? seenAt - drawnAt : 'NEVER (30 s)'} ms (poll)`);
+    log(`stroke ${index + 1}: B saw it after ~${seenAt ? seenAt - drawnAt : 'NEVER (30 s)'} ms (poll; drawing took ${drawnAt - drawStart} ms)`);
     await pageA.waitForTimeout(GAP_MS);
+    const [countA, countB] = [await pageOneCount(pageA), await pageOneCount(pageB)];
+    log(`  page 1 marks after the gap: A ${countA}, B ${countB} (B before this stroke ${beforeB}, at start ${baseCount})`);
   }
   if (profiler) {
     const { profile } = await profiler.send('Profiler.stop');
