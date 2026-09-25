@@ -70,6 +70,7 @@ import {
   readAnnotationEntry,
   writeAnnotationMark,
   materializeAnnotationKeys,
+  materializeObjectUnderLanes,
 } from './annotationDocStore.js';
 import {
   copyDurableMapValue,
@@ -6000,9 +6001,23 @@ function makeHandle(state) {
                 previousVisible,
                 ...[...(echoVersions || [])].reverse(),
               ].filter(Boolean);
-              const madeFrom = candidates.find((candidate) => (
+              let madeFrom = candidates.find((candidate) => (
                 laneVisibleGeometryMatches(candidate, desiredRecord.object, stableBase)
               )) || previousVisible;
+              // w37: a mark coming back with no stored copy (Undo of a delete
+              // on a mark someone else partly erased): the base is the lane's
+              // old copy, so the edit is measured from how that copy shows
+              // under the lanes. Before, the old copy was stored as it was and
+              // the user's own later changes (a recolour) were lost; the next
+              // Undo then had nothing to change.
+              // A move / resize / width change the user made before deleting
+              // is a geometry edit: mergeLaneOwnedNormalEdit then stores the
+              // restored object itself, exactly like such an edit on a
+              // partly erased mark always does.
+              if (!madeFrom && !stored && fallbackBase) {
+                const shown = materializeObjectUnderLanes(state.doc, storageKey, stableBase);
+                if (shown) madeFrom = shown;
+              }
               const nextBase = madeFrom
                 ? mergeLaneOwnedNormalEdit(
                   stableBase,

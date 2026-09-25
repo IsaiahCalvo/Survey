@@ -242,7 +242,7 @@ import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } fr
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
-import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
+import { eraseTransitionChangedScreen as eraseTransitionChangedScreenWith, foldIntoCreateStep, getHistoryOrder, historyActionChangedPages, isTransientEraseHistoryFailure, legacyRestoreChangesState, runHistoryPress, scopeLegacyRestoreToOwnSlices, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { withoutUnstoredFieldsByPage } from './services/annotationMarkCodec.js';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
@@ -472,6 +472,11 @@ function readWorkbookRegistration(workbook) {
 // timer there meant that dismissing an editor and tapping another annotation
 // inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
 const PAN_EDIT_ENTRY_RESTORE_MS = 600;
+
+// w37: erase Undo/Redo visibility check with the viewer's JSON equality.
+const eraseTransitionChangedScreen = (result, before, meta) => (
+  eraseTransitionChangedScreenWith(result, before, meta, jsonEqual)
+);
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
@@ -2911,11 +2916,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // UNDO = Cmd+Z or Ctrl+Z; REDO = Cmd+Shift+Z, Ctrl+Shift+Z, Cmd+Y, or
   // Ctrl+Y. Predicates shared with RegionSelectionTool via
   // utils/undoRedoHotkeys.js so the two surfaces can't drift.
+  // w37: every open document tab stays mounted (hidden ones display:none) and
+  // each registers this window listener; the first one registered stops the
+  // event for the rest. Without this check Cmd+Z in the second document you
+  // opened undid (invisibly) in the FIRST one. Only the visible tab answers.
+  const undoRedoKeyActiveRef = useRef(isActive);
+  undoRedoKeyActiveRef.current = isActive;
   useEffect(() => {
     const handleUndoRedoKey = (e) => {
       const isUndoCombo = isUndoKeyEvent(e);
       const isRedoCombo = isRedoKeyEvent(e);
       if (!isUndoCombo && !isRedoCombo) return;
+      if (!undoRedoKeyActiveRef.current) return;
 
       if (isUndoRedoBlocked(document)) return;
 
@@ -3825,7 +3837,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== calloutId) return c;
       return { ...c, style: { ...(c.style || {}), ...stylePatch } };
-    }), { source: 'callout:style', action: 'callout-text-style' });
+    }), {
+      source: 'callout:style',
+      action: 'callout-text-style',
+      // w37: a style picked while typing a NEW callout is part of creating
+      // it (one Undo removes the whole new callout).
+      ...(newlyCreatedCalloutIdsRef.current.has(calloutId) ? { foldIntoCreateOf: calloutId } : {}),
+    });
   }, [commitCalloutMutation, resolveCalloutPageNumber]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
@@ -11372,6 +11390,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [migrateHistorySpaces]);
 
+  // w37 (2026-09-25): a new step clears Redo in BOTH lanes (Drawboard /
+  // Acrobat / Figma: any new action ends the redo branch). Each lane used to
+  // clear only its own, so after "erase, Undo the erase, draw a stroke" Redo
+  // re-applied the old erase instead of doing nothing.
+  const clearLegacyRedoForNewStep = useCallback((reason) => {
+    const cleared = Math.max(redoHistoryRef.current.length, redoHistoryMetaRef.current.length);
+    if (cleared === 0) return;
+    redoHistoryRef.current = [];
+    redoHistoryMetaRef.current = [];
+    setRedoHistory([]);
+    pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+      reason,
+      clearedRedoStack: 'legacyRedoHistory',
+      clearedRedoEntries: cleared,
+      redoDepth: 0,
+    });
+  }, [pushHistoryDebugEvent]);
+  const clearLocalRedoForNewStep = useCallback((reason) => {
+    const cleared = localAnnotationRedoRef.current.length;
+    if (cleared === 0) return;
+    localAnnotationRedoRef.current = [];
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
+    pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+      reason,
+      clearedRedoStack: 'localAnnotationRedo',
+      clearedRedoEntries: cleared,
+      redoDepth: 0,
+    });
+  }, [pushHistoryDebugEvent]);
+
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
     const snapshotFingerprint = getHistoryFingerprint(snapshot);
     return {
@@ -11442,6 +11490,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       redoHistoryMetaRef.current = nextHistory.redoMeta;
       setUndoHistory(nextHistory.undoHistory);
       setRedoHistory(nextHistory.redoHistory);
+      clearLocalRedoForNewStep(normalizedReason);
       // Transition checkpoints are mutation-addressed rather than snapshots.
       // A later ordinary checkpoint must fingerprint its actual current state.
       lastCheckpointHashRef.current = null;
@@ -11535,6 +11584,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setRedoHistory([]);
       redoHistoryRef.current = [];
       redoHistoryMetaRef.current = [];
+      clearLocalRedoForNewStep(normalizedReason);
       lastCheckpointHashRef.current = null;
 
       pushHistoryDebugEvent('checkpoint_added_annotation_fast', {
@@ -11623,6 +11673,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRedoHistory([]); // Clear redo history when new action is performed
     redoHistoryRef.current = [];
     redoHistoryMetaRef.current = [];
+    clearLocalRedoForNewStep(normalizedReason);
     lastCheckpointHashRef.current = currentFingerprint.hash;
 
     pushHistoryDebugEvent('checkpoint_added', {
@@ -11655,7 +11706,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         snapshotHash: checkpointMeta.snapshotHash
       });
     }
-  }, [createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
+  }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
@@ -12456,9 +12507,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // Returns 'applied' (the screen changed), 'unchanged' (nothing left for this
+  // step to change: its marks were deleted or changed back by someone else),
+  // 'out-of-scope' (not this user's to undo) or 'no-viewer' (signed-in user
+  // not known yet). w37: Undo / Redo skip a step that is 'unchanged' or
+  // 'out-of-scope' within the same press (historyStacks.runHistoryPress).
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
-    if (!action) return false;
+    if (!action) return 'unchanged';
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    if (!viewerId) return 'no-viewer';
     const scopedAction = filterAnnotationHistoryActionByOwner(
       action,
       viewerId,
@@ -12469,7 +12526,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         requestedAction: summarizeHistoryActionForLog(action),
         viewerId,
       });
-      return false;
+      return 'out-of-scope';
     }
     // Undo/Redo writes only the fields the action changed onto each mark as it
     // is now. When that leaves a mark in a state neither snapshot had (a
@@ -12488,7 +12545,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         },
       ),
     });
-    if (nextAnnotationsByPage === annotationsByPageRef.current) return false;
+    // w37: a step that no longer changes what the pages show (its mark was
+    // deleted by someone else, or already changed back) is not a step: the
+    // press moves on to the next one instead of doing nothing visible.
+    if (!historyActionChangedPages(
+      annotationsByPageRef.current || {},
+      nextAnnotationsByPage,
+      scopedAction,
+      jsonEqual,
+    )) {
+      pushHistoryDebugEvent('local_annotation_history_unchanged', {
+        ...summarizeHistoryActionForLog(scopedAction),
+        pageNumber: scopedAction.pageNumber,
+        viewerId,
+      });
+      return 'unchanged';
+    }
 
     const counterRenumberDecision = shouldRenumberCountersForSave({
       source: scopedAction.type,
@@ -12533,7 +12605,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         requestedAction: summarizeHistoryActionForLog(action),
         viewerId,
 	    });
-    return true;
+    return 'applied';
   }, [documentOwnerId, pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
 
   const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
@@ -12651,6 +12723,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
       yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
     });
+    // w37 (2026-09-25): one press = one VISIBLE step, newest first across both
+    // lanes. A step that can no longer change anything (someone else deleted
+    // or changed back what it touched, its erase lanes were replaced) is
+    // dropped and the SAME press takes the next one — a press never looks dead
+    // while there is something left to undo (historyStacks.runHistoryPress).
+    runHistoryPress(() => {
 	    const localAction = localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1] || null;
 	    const legacyUndoMeta = undoHistoryMetaRef.current[undoHistoryMetaRef.current.length - 1] || null;
 	    const shouldUndoLocal = shouldUndoLocalBeforeLegacy(localAction, legacyUndoMeta);
@@ -12718,7 +12796,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const inverse = invertAnnotationHistoryAction(localAction);
       isUndoingRef.current = true;
       try {
-	        if (applyLocalAnnotationHistoryAction(inverse)) {
+	        const localOutcome = applyLocalAnnotationHistoryAction(inverse);
+	        if (localOutcome === 'applied') {
 	          localAnnotationUndoRef.current = localAnnotationUndoRef.current.slice(0, -1);
 	          localAnnotationRedoRef.current = [...localAnnotationRedoRef.current, localAction].slice(-100);
 	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
@@ -12732,8 +12811,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	            undoDepth: localAnnotationUndoRef.current.length,
             redoDepth: localAnnotationRedoRef.current.length
           });
-          return;
+          return 'applied';
         }
+        // Sign-in not known yet: keep every step, do nothing this press.
+        if (localOutcome === 'no-viewer') return 'none';
+        // w37: nothing left for this step to change. It used to stay on top
+        // of the stack while the press fell through to an OLDER step of the
+        // other lane (and to it again on every later press). Drop it and let
+        // the same press take the next step in order.
+        localAnnotationUndoRef.current = localAnnotationUndoRef.current.slice(0, -1);
+        setLocalAnnotationHistoryVersion((prev) => prev + 1);
+        pushHistoryDebugEvent('local_annotation_undo_skipped', {
+          historySource: 'local annotation history',
+          chosenStack: 'localAnnotationUndo',
+          reason: localOutcome,
+          ...summarizeHistoryActionForLog(localAction),
+          pageNumber: localAction.pageNumber,
+          annotationId: localAction.annotationId,
+          undoDepth: localAnnotationUndoRef.current.length,
+          redoDepth: localAnnotationRedoRef.current.length,
+        });
+        return 'skipped';
       } finally {
         isUndoingRef.current = false;
       }
@@ -12750,12 +12848,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               isEraseTransitionHistorySentinel(stateToRestore)
               && stateToRestore.mutationId === eraseHistoryTransition.mutationId
             );
+            const eraseScreenBefore = annotationsByPageRef.current || {};
             const transitionResult = sentinelMatches
               ? applyDurableEraseHistoryTransitionRef.current(
                 eraseHistoryTransition,
                 'undo',
               )
               : { status: 'conflict', reason: 'history-sentinel-mismatch' };
+            // w37: the store is (re)opening (a tab just shown again) or an
+            // authoritative rollback is resetting history: keep the step and
+            // stop — it works on the next press. Never drop it for this.
+            if (isTransientEraseHistoryFailure(transitionResult)) {
+              pushHistoryDebugEvent('erase_history_transition_deferred', {
+                direction: 'undo',
+                reason: transitionResult?.reason || 'unknown',
+                mutationId: eraseHistoryTransition.mutationId || null,
+              });
+              return 'none';
+            }
             if (!['applied', 'noop'].includes(transitionResult?.status)) {
               const quarantined = removeEraseTransitionHistoryCheckpoints({
                 mutationIds: [eraseHistoryTransition.mutationId],
@@ -12779,7 +12889,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 undoDepth: quarantined.undoHistory.length,
                 redoDepth: quarantined.redoHistory.length,
               });
-              return;
+              // w37: a real conflict (the marks this erase touched changed
+              // since in a way its lanes cannot be taken back). The step is
+              // gone; the press STOPS and says so — running on would take back
+              // an older step the user did not ask for.
+              showToast('That erase can no longer be undone: the marks changed since.', 'info');
+              return 'none';
             }
             const moved = moveEraseTransitionHistoryCheckpointByMutationId({
               mutationId: eraseHistoryTransition.mutationId,
@@ -12789,7 +12904,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               redoHistory: redoHistoryRef.current,
               redoMeta: redoHistoryMetaRef.current,
             });
-            if (!moved) return;
+            // An authoritative rollback reset history inside apply(): done.
+            if (!moved) return 'applied';
             undoHistoryRef.current = moved.undoHistory;
             undoHistoryMetaRef.current = moved.undoMeta;
             redoHistoryRef.current = moved.redoHistory;
@@ -12809,7 +12925,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               undoDepth: moved.undoHistory.length,
               redoDepth: moved.redoHistory.length,
             });
-            return;
+            // 'noop' (nothing left to take back), or lanes on marks no longer
+            // shown (someone deleted them): the step moved to Redo in step with
+            // the store, but nothing visible changed, so the same press takes
+            // the next step.
+            return eraseTransitionChangedScreen(transitionResult, eraseScreenBefore, legacyUndoMeta)
+              ? 'applied'
+              : 'skipped';
           } finally {
             isUndoingRef.current = false;
           }
@@ -12832,7 +12954,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             meta: legacyUndoMeta,
             userId: yjsUndoCtx?.userId || user?.id || null,
           })
-          : stateToRestore;
+          // w37: a Survey Marker / space step restores only what it owns
+          // (that marker; that space and what its cascade removed), never
+          // every mark / marker / space as it was (that deleted a
+          // collaborator's newer work and reverted Excel syncs).
+          : scopeLegacyRestoreToOwnSlices(legacyUndoMeta, currentState, stateToRestore, {
+            direction: 'undo',
+            deriveCallouts: deriveCalloutsFromByPage,
+          });
+        // w37: nothing to put back (an empty checkpoint, or someone already
+        // did it): drop the step, the same press takes the next one.
+        if (!legacyRestoreChangesState(currentState, scopedStateToRestore, jsonEqual)) {
+          undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+          undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+          setUndoHistory(undoHistoryRef.current);
+          lastCheckpointHashRef.current = null;
+          pushHistoryDebugEvent('legacy_annotation_undo_skipped', {
+            historySource: 'legacy history',
+            chosenStack: 'legacyUndoHistory',
+            ...summarizeHistoryMetaForLog(legacyUndoMeta),
+            reason: 'unchanged',
+            undoDepth: undoHistoryRef.current.length,
+            redoDepth: redoHistoryRef.current.length,
+          });
+          return 'skipped';
+        }
         isUndoingRef.current = true;
         try {
           restoreHistoryState(scopedStateToRestore);
@@ -12858,11 +13004,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             undoDepth: undoHistoryRef.current.length,
             redoDepth: redoHistoryRef.current.length
           });
-          return;
+          return 'applied';
         } finally {
           isUndoingRef.current = false;
         }
       }
+    }
+
+    // w37: the newest legacy step is one Undo cannot take (a checkpoint of a
+    // kind it does not restore, or its snapshot is missing). It used to block
+    // every older step: presses fell through to the (empty) Yjs lane and did
+    // nothing. Drop it; the same press takes the next step.
+    if (!(localAction && shouldUndoLocal) && (undoHistoryMetaRef.current.length > 0 || undoHistoryRef.current.length > 0)) {
+      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+      undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+      setUndoHistory(undoHistoryRef.current);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('legacy_annotation_undo_skipped', {
+        historySource: 'legacy history',
+        chosenStack: 'legacyUndoHistory',
+        ...summarizeHistoryMetaForLog(legacyUndoMeta),
+        reason: legacyUndoMeta?.reason || null,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+      });
+      return 'skipped';
     }
 
     // 2026-05-07 — Diagnostic logging for undo path. Surfaces the three
@@ -12887,7 +13053,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ctxUserId: yjsUndoCtx?.userId ?? null,
       yMapAnnotationsSize,
     });
-    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return 'none';
+    if ((yjsUndoManager.undoStack?.length || 0) === 0) return 'none';
     const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.undoStack?.[yjsUndoManager.undoStack.length - 1]);
     userUndo(yjsDoc, yjsUndoManager, yjsUndoCtx);
     refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'undo');
@@ -12897,6 +13064,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
       yMapAnnotationsSize: (() => { try { return yjsDoc?.getMap?.('annotations')?.size ?? null; } catch (_e) { return null; } })(),
+    });
+    return 'applied';
     });
 	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldUndoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
@@ -12919,6 +13088,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
       yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
     });
+    // w37: one press = one visible step, oldest undone first across both
+    // lanes; a step that can no longer change anything is dropped and the
+    // same press takes the next one (historyStacks.runHistoryPress).
+    runHistoryPress(() => {
     const localAction = localAnnotationRedoRef.current[localAnnotationRedoRef.current.length - 1] || null;
     const legacyRedoState = redoHistoryRef.current[0] || null;
 	    const legacyRedoMeta = redoHistoryMetaRef.current[0] || null;
@@ -12986,7 +13159,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (localAction && shouldRedoLocal) {
       isUndoingRef.current = true;
       try {
-	        if (applyLocalAnnotationHistoryAction(localAction)) {
+	        const localOutcome = applyLocalAnnotationHistoryAction(localAction);
+	        if (localOutcome === 'applied') {
 	          localAnnotationRedoRef.current = localAnnotationRedoRef.current.slice(0, -1);
 	          localAnnotationUndoRef.current = [...localAnnotationUndoRef.current, localAction].slice(-100);
 	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
@@ -13000,8 +13174,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             undoDepth: localAnnotationUndoRef.current.length,
             redoDepth: localAnnotationRedoRef.current.length
           });
-          return;
+          return 'applied';
         }
+        if (localOutcome === 'no-viewer') return 'none';
+        // w37: nothing left for this step to change: drop it (see Undo).
+        localAnnotationRedoRef.current = localAnnotationRedoRef.current.slice(0, -1);
+        setLocalAnnotationHistoryVersion((prev) => prev + 1);
+        pushHistoryDebugEvent('local_annotation_redo_skipped', {
+          historySource: 'local annotation history',
+          chosenStack: 'localAnnotationRedo',
+          reason: localOutcome,
+          ...summarizeHistoryActionForLog(localAction),
+          pageNumber: localAction.pageNumber,
+          annotationId: localAction.annotationId,
+          undoDepth: localAnnotationUndoRef.current.length,
+          redoDepth: localAnnotationRedoRef.current.length,
+        });
+        return 'skipped';
       } finally {
         isUndoingRef.current = false;
       }
@@ -13016,12 +13205,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             isEraseTransitionHistorySentinel(legacyRedoState)
             && legacyRedoState.mutationId === eraseHistoryTransition.mutationId
           );
+          const eraseScreenBefore = annotationsByPageRef.current || {};
           const transitionResult = sentinelMatches
             ? applyDurableEraseHistoryTransitionRef.current(
               eraseHistoryTransition,
               'redo',
             )
             : { status: 'conflict', reason: 'history-sentinel-mismatch' };
+          // w37: store not ready / rollback in progress: keep the step, stop.
+          if (isTransientEraseHistoryFailure(transitionResult)) {
+            pushHistoryDebugEvent('erase_history_transition_deferred', {
+              direction: 'redo',
+              reason: transitionResult?.reason || 'unknown',
+              mutationId: eraseHistoryTransition.mutationId || null,
+            });
+            return 'none';
+          }
           if (!['applied', 'noop'].includes(transitionResult?.status)) {
             const quarantined = removeEraseTransitionHistoryCheckpoints({
               mutationIds: [eraseHistoryTransition.mutationId],
@@ -13045,7 +13244,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               undoDepth: quarantined.undoHistory.length,
               redoDepth: quarantined.redoHistory.length,
             });
-            return;
+            showToast('That erase can no longer be redone: the marks changed since.', 'info');
+            return 'none';
           }
           const moved = moveEraseTransitionHistoryCheckpointByMutationId({
             mutationId: eraseHistoryTransition.mutationId,
@@ -13055,7 +13255,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             redoHistory: redoHistoryRef.current,
             redoMeta: redoHistoryMetaRef.current,
           });
-          if (!moved) return;
+          if (!moved) return 'applied';
           undoHistoryRef.current = moved.undoHistory;
           undoHistoryMetaRef.current = moved.undoMeta;
           redoHistoryRef.current = moved.redoHistory;
@@ -13075,7 +13275,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             undoDepth: moved.undoHistory.length,
             redoDepth: moved.redoHistory.length,
           });
-          return;
+          return eraseTransitionChangedScreen(transitionResult, eraseScreenBefore, legacyRedoMeta)
+            ? 'applied'
+            : 'skipped';
         } finally {
           isUndoingRef.current = false;
         }
@@ -13098,7 +13300,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           meta: legacyRedoMeta,
           userId: yjsUndoCtx?.userId || user?.id || null,
         })
-        : legacyRedoState;
+        : scopeLegacyRestoreToOwnSlices(legacyRedoMeta, currentState, legacyRedoState, {
+          direction: 'redo',
+          deriveCallouts: deriveCalloutsFromByPage,
+        });
+      // w37: nothing to re-apply: drop the step, the press takes the next one.
+      if (!legacyRestoreChangesState(currentState, scopedRedoState, jsonEqual)) {
+        redoHistoryRef.current = redoHistoryRef.current.slice(1);
+        redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+        setRedoHistory(redoHistoryRef.current);
+        pushHistoryDebugEvent('legacy_annotation_redo_skipped', {
+          historySource: 'legacy history',
+          chosenStack: 'legacyRedoHistory',
+          ...summarizeHistoryMetaForLog(legacyRedoMeta),
+          reason: 'unchanged',
+          undoDepth: undoHistoryRef.current.length,
+          redoDepth: redoHistoryRef.current.length,
+        });
+        return 'skipped';
+      }
       isUndoingRef.current = true;
       try {
         restoreHistoryState(scopedRedoState);
@@ -13121,10 +13341,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           undoDepth: undoHistoryRef.current.length,
           redoDepth: redoHistoryRef.current.length
         });
-        return;
+        return 'applied';
       } finally {
         isUndoingRef.current = false;
       }
+    }
+
+    // w37: a legacy redo step Redo cannot take: drop it (see Undo).
+    if (redoHistoryMetaRef.current.length > 0 || redoHistoryRef.current.length > 0) {
+      redoHistoryRef.current = redoHistoryRef.current.slice(1);
+      redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+      setRedoHistory(redoHistoryRef.current);
+      pushHistoryDebugEvent('legacy_annotation_redo_skipped', {
+        historySource: 'legacy history',
+        chosenStack: 'legacyRedoHistory',
+        ...summarizeHistoryMetaForLog(legacyRedoMeta),
+        reason: legacyRedoMeta?.reason || null,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+      });
+      return 'skipped';
     }
 
 	    pushHistoryDebugEvent('yjs_redo_invoked', {
@@ -13136,7 +13372,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
     });
-    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return 'none';
+    if ((yjsUndoManager.redoStack?.length || 0) === 0) return 'none';
     const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.redoStack?.[yjsUndoManager.redoStack.length - 1]);
     userRedo(yjsDoc, yjsUndoManager, yjsUndoCtx);
     refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'redo');
@@ -13145,6 +13382,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       receivedStack: 'yjsUndoStack',
       undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
       redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
+    });
+    return 'applied';
     });
 	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldRedoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
@@ -13727,11 +13966,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // w37: { spaceId, ids } of the last space cascade, read once by the space
+  // step that owns it (space:update for a region replace, space:delete).
+  const pendingSpaceCascadeRef = useRef(null);
   const handleSpaceCreate = useCallback((space) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before creating space
+    // w37: the new space's id is known before the checkpoint, so Undo / Redo
+    // restore exactly this space (historyStacks.scopeLegacyRestoreToOwnSlices).
+    const newSpaceId = space?.id || crypto.randomUUID();
     addHistoryCheckpoint('space:create', {
-      requestedName: typeof space?.name === 'string' ? space.name : null
+      requestedName: typeof space?.name === 'string' ? space.name : null,
+      spaceId: newSpaceId,
     });
 
     setSpaces(prev => {
@@ -13756,7 +14002,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const newSpace = {
         ...space,
         name: finalName,
-        id: space?.id || crypto.randomUUID(),
+        id: newSpaceId,
         assignedPages: Array.isArray(space?.assignedPages) ? space.assignedPages : []
       };
       return [...prev, newSpace];
@@ -13766,9 +14012,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceUpdate = useCallback((id, updates) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before updating space
+    // w37: a region replace ran its cascade just before this update; the step
+    // records what it removed (a rename / recolour removed nothing).
+    const cascade = pendingSpaceCascadeRef.current;
+    pendingSpaceCascadeRef.current = null;
     addHistoryCheckpoint('space:update', {
       spaceId: id,
-      updateKeys: Object.keys(updates || {})
+      updateKeys: Object.keys(updates || {}),
+      ...(cascade?.spaceId === id && cascade.ids.length > 0 ? { cascadeIds: cascade.ids } : {}),
     });
 
     setSpaces(prev => {
@@ -14004,6 +14255,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       regionIds: Array.from(collectedRegionIds),
       cloudDeleteIds: ids.length,
     }));
+    // w37: the ids this cascade removed, so the space step's Undo / Redo puts
+    // back / removes exactly these (historyStacks.scopeLegacyRestoreToOwnSlices).
+    pendingSpaceCascadeRef.current = { spaceId, ids };
+    return ids;
   }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
@@ -14013,6 +14268,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageIds: [pageId],
       reason: 'space-page-delete',
     });
+    // No undo step records this cascade: it must not be claimed by a later one.
+    pendingSpaceCascadeRef.current = null;
 
     // KAL-313 / history F1 (2026-06-11): the sidebar trash button on a region
     // row commits the deletion immediately (no Confirm step), so journal the
@@ -14127,6 +14384,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageIds: [pageId],
       reason: 'space-page-regions-clear',
     });
+    // No undo step records this cascade: it must not be claimed by a later one.
+    pendingSpaceCascadeRef.current = null;
 
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
@@ -18093,10 +18352,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
-    // Checkpoint history before sync
-    addHistoryCheckpoint('excel:auto-sync', {
-      templateId: selectedTemplate?.id || null
-    });
+    // w37: no Undo step. The file watcher is not a gesture made in this
+    // document, and Undo never restored this checkpoint ('excel:' is not a
+    // lane Undo takes): sitting on top of the stack it made every older step
+    // unreachable (presses did nothing) and cleared Redo in the background.
 
     if (!selectedTemplate?.linkedExcelPath) {
       return;
@@ -20122,6 +20381,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { status: 'conflict', reason: 'history-checkpoint-missing' };
     }
     const result = applyDurableEraseHistoryTransition(transition, 'undo');
+    // w37: store not ready / rollback: keep the step (same rule as Cmd+Z).
+    if (isTransientEraseHistoryFailure(result)) return result;
     if (!['applied', 'noop'].includes(result?.status)) {
       const cleaned = removeEraseTransitionHistoryCheckpoints({
         mutationIds: [mutationId],
@@ -20474,7 +20735,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceDelete = useCallback((id) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before deleting space
-    addHistoryCheckpoint('space:delete', { spaceId: id });
+    // w37: the checkpoint keeps this very context object; the cascade below
+    // adds what it removed to it (cascadeIds).
+    const spaceDeleteContext = { spaceId: id };
+    addHistoryCheckpoint('space:delete', spaceDeleteContext);
 
     // KAL-313: emit a space_deleted history row so the region cascade restore
     // path (resolveRegionRestoreCascade) can find the space's restore record
@@ -20498,10 +20762,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (spaceTrashRow) void recordAndNotifyDocumentHistoryEvent(spaceTrashRow);
     }
 
-    cascadeDeleteScopedAppState({
+    const cascadeIds = cascadeDeleteScopedAppState({
       spaceId: id,
       reason: 'space-delete',
-    });
+    }) || [];
+    pendingSpaceCascadeRef.current = null;
+    spaceDeleteContext.cascadeIds = cascadeIds;
     setSpaces(prev => prev.filter(s => s.id !== id));
     if (activeSpaceId === id) {
       setActiveSpaceId(null);
@@ -25320,7 +25586,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ...(scrollMode === 'single' && { justifyContent: 'center' })
   }), [scrollMode]);
 
+  // w37: set by handleSaveAnnotations for exactly one push (a new callout's
+  // first commit), cleared by that push whatever it does.
+  const historyFoldIntoCreateRef = useRef(null);
   const pushLocalAnnotationHistoryAction = useCallback((action) => {
+    const foldIntoCreateOf = historyFoldIntoCreateRef.current;
+    historyFoldIntoCreateRef.current = null;
     if (!action || isUndoingRef.current) return;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
     const scopedAction = filterAnnotationHistoryActionByOwner(
@@ -25334,6 +25605,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         viewerId,
       });
       return;
+    }
+    // w37: a new callout's first text commit (or its removal when left blank
+    // / Esc) is part of the create gesture: it folds into the create step
+    // instead of adding a second one. Live-verified before: one Undo after
+    // "draw callout, type, click away" left an empty callout behind.
+    if (foldIntoCreateOf) {
+      const fold = foldIntoCreateStep(
+        localAnnotationUndoRef.current,
+        scopedAction,
+        foldIntoCreateOf,
+        historyCheckpointSeqRef.current,
+      );
+      if (fold.folded) {
+        localAnnotationUndoRef.current = fold.stack;
+        setLocalAnnotationHistoryVersion((prev) => prev + 1);
+        pushHistoryDebugEvent('local_annotation_history_folded_into_create', {
+          historySource: 'local annotation history',
+          folded: fold.folded,
+          ...summarizeHistoryActionForLog(scopedAction),
+          pageNumber: scopedAction.pageNumber,
+          annotationId: scopedAction.annotationId,
+          undoDepth: fold.stack.length,
+        });
+        return;
+      }
     }
     const checkpointId = historyCheckpointSeqRef.current + 1;
     historyCheckpointSeqRef.current = checkpointId;
@@ -25349,6 +25645,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     localAnnotationUndoRef.current = nextUndo;
     const clearedRedoEntries = localAnnotationRedoRef.current.length;
     localAnnotationRedoRef.current = [];
+    // w37: a new action clears Redo in EVERY lane. Only this lane's Redo was
+    // cleared, so after "erase, Undo, draw" a Redo re-applied the old erase
+    // on top of the new stroke (live-verified: Redo after a new pen stroke
+    // re-erased marks instead of doing nothing).
+    clearLegacyRedoForNewStep(scopedAction.type || 'annotations:local');
     setLocalAnnotationHistoryVersion((prev) => prev + 1);
 
     // KAL-313 / history F2 (2026-06-11): ONE restorable History row per delete.
@@ -25424,7 +25725,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
-  }, [documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
+  }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
@@ -25782,6 +26083,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       gestureFieldTouchesByPageRef.current.set(interactionPageKey, touches);
     }
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
+      // w37: a new callout's first commit folds into its create step (read
+      // and cleared by the push below).
+      historyFoldIntoCreateRef.current = normalizedSaveContext?.foldIntoCreateOf || null;
       if (previewBaseline && !isEraserCommit) {
         pushLocalAnnotationHistoryAction(restrictAnnotationHistoryActionFields(
           finalLocalHistoryAction,
@@ -25792,6 +26096,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // commit whose precise builder already names exactly what it changed.
         pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
       }
+      historyFoldIntoCreateRef.current = null;
     }
     if (!shouldSkipCheckpointByPolicy) {
       previewBaselineByPageRef.current.delete(interactionPageKey);
@@ -27342,18 +27647,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> NO matching pins (no-op)`);
       return;
     }
-    // Save all but the last with 'skip' so the undo history stays compact;
-    // the last save uses 'normal' to commit a single undo entry that captures
-    // the full multi-page change.
-    updates.forEach(({ pageKey, json }, idx) => {
-      const isLast = idx === updates.length - 1;
+    if (updates.length === 1) {
+      const [{ pageKey, json }] = updates;
       const numericKey = Number(pageKey);
       handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
         source: 'counter:group-update',
         action: 'counter-group-update',
-        checkpointPolicy: isLast ? 'normal' : 'skip',
+        checkpointPolicy: 'normal',
       });
-    });
+    } else {
+      // w37: a series on several pages is ONE step for all of them (a
+      // document batch, like the counter-series delete). It used to save all
+      // but the last page as live frames: Undo reverted only the last page,
+      // and the other pages' leftover gesture baselines folded this change
+      // into the next, unrelated step on each of those pages.
+      // A colour-slider drag calls this every frame: frames are live saves
+      // only (each page keeps its pre-drag baseline and touch record); the
+      // release records the one step from those baselines.
+      const phase = paintPhaseRef.current;
+      const isDragFrame = phase === 'preview' || phase === 'settle';
+      updates.forEach(({ pageKey, json }) => {
+        const numericKey = Number(pageKey);
+        handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+          source: 'counter:group-update',
+          action: 'counter-group-update',
+          checkpointPolicy: 'skip',
+        });
+      });
+      if (!isDragFrame) {
+        const viewerId = yjsUndoCtx?.userId || user?.id || null;
+        const pageActions = updates.map(({ pageKey, json }) => {
+          const numericKey = Number(pageKey);
+          const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+          const baseline = previewBaselineByPageRef.current.get(String(pageKey)) || allPages[pageKey];
+          const touches = gestureFieldTouchesByPageRef.current.get(String(pageKey));
+          const built = buildAnnotationHistoryAction({ pageNumber, previousPage: baseline, nextPage: json });
+          const own = touches ? restrictAnnotationHistoryActionFields(built, touches) : built;
+          endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
+          // Per page: a collaborator's pin on one page must not take away
+          // the step for the user's own pins (a document batch is
+          // all-or-nothing under the owner filter).
+          return filterAnnotationHistoryActionByOwner(own, viewerId, documentOwnerId);
+        }).filter(Boolean);
+        if (pageActions.length > 0) {
+          pushLocalAnnotationHistoryAction({ type: 'fabric:document-batch', actions: pageActions });
+        }
+      }
+    }
     // [COUNTER STEP 7] When the group whose color was just changed is the
     // ACTIVE series (i.e. the one new pins land in), sync the active-series
     // color refs so the next pin matches and the bottom toolbar caret swatch
@@ -27375,7 +27715,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setCounterUITick((t) => t + 1);
     }
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
-  }, [handleSaveAnnotations]);
+  }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
 
   // Request deletion of one complete counter series. The existing shared
@@ -29348,14 +29688,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // "created a survey marker" row to spotlight the mark on click. The locate
     // branch reuses the pending item's id; the standard branch uses this one.
     const newMarkerId = pendingLocationItem?.id || `surveyMarker-${crypto.randomUUID()}`;
-    // Checkpoint history before creation
-    addHistoryCheckpoint('highlight:create', {
-      pageNumber,
-      hasPendingLocationItem: Boolean(pendingLocationItem),
-      selectedCategoryId: selectedCategoryId || null,
-      annotationId: newMarkerId
-    });
-
 
     // Only handle if survey mode is active
     if (!showSurveyPanel || !selectedTemplate) {
@@ -29373,6 +29705,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
     }
+
+    // Checkpoint history before creation. w37: only once a marker will really
+    // be created — a checkpoint taken before the early returns above was an
+    // empty Undo step (the press did nothing) and cleared Redo for nothing.
+    addHistoryCheckpoint('highlight:create', {
+      pageNumber,
+      hasPendingLocationItem: Boolean(pendingLocationItem),
+      selectedCategoryId: selectedCategoryId || null,
+      annotationId: newMarkerId
+    });
 
     const pageRegionId = getPageSurveyRegionId(pageNumber);
 
@@ -34529,6 +34871,8 @@ ${pageBlocks}
                                           source: 'callout:delete-blank',
                                           action: 'callout-delete-blank',
                                           checkpointPolicy: 'normal',
+                                          // w37: a new callout left blank undoes as nothing.
+                                          ...(isNewCallout ? { foldIntoCreateOf: editingAnnotation.reactCalloutId } : {}),
                                         });
                                         editModeCooldownRef.current = Date.now();
                                         newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
@@ -34559,6 +34903,8 @@ ${pageBlocks}
                                         source: 'callout:edit-commit',
                                         action: 'callout-edit-commit',
                                         checkpointPolicy: 'normal',
+                                        // w37: drawing a callout and typing its text is one Undo step.
+                                        ...(isNewCallout ? { foldIntoCreateOf: editingAnnotation.reactCalloutId } : {}),
                                       });
                                       editModeCooldownRef.current = Date.now();
                                       newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
@@ -34589,6 +34935,8 @@ ${pageBlocks}
                                           source: 'callout:cancel-new',
                                           action: 'callout-cancel-new',
                                           checkpointPolicy: 'normal',
+                                          // w37: Esc on a new callout leaves no Undo step behind.
+                                          foldIntoCreateOf: editingAnnotation.reactCalloutId,
                                         });
                                         newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       }
