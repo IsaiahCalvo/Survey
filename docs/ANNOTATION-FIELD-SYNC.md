@@ -473,8 +473,8 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   changed (`s`) or went away (`u`), sent ONLY when this screen's
   immediately previous message (client_seq - 1) carried that mark, and
   applied by receivers onto that previous message's object (never onto
-  their own copy); a whole copy again at least every 8 messages or 500 ms
-  per mark, so one lost message never ends live display of it for long;
+  their own copy); a whole copy again at least every 8th message or every
+  500 ms per mark, so one lost message never ends live display of it for long;
   `{ k, d: 1 }` = gone. An entry with nothing new is not sent. The mark is what `materializeAnnotationKeys` builds (stored fields +
   eraser lanes, the same code docToByPage uses, now shared as
   `applyEraserLanesToObject`). A pure addition of whole new marks still goes
@@ -548,8 +548,8 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   Verification found it made editors go quiet for viewers (viewers cannot
   send hellos) and for screens whose join timed out, so it was removed
   (coordinator decision): live messages always go out under the rate caps.
-  Realtime bills delivered messages, so a message to an empty channel costs
-  about nothing; the caps bound everything else.
+  A send to an empty channel is 1 billed message and 0 deliveries; the caps
+  bound everything else.
 * The saved-row path itself was already direct: capture ~4 ms after the
   input, enqueue in the same tick, the WAL insert starts ~15-20 ms later
   (after the local outbox write), the receiver applies a row as it arrives.
@@ -570,8 +570,7 @@ Realtime cost (billed messages sent by the actor → delivered to the other
 screen; WAL rows, REST/RPC calls, bytes and checkpoints are unchanged): a
 ~0.5 s stroke 1 → 8 sent (7 ink + 1 preview); move, recolour, delete 0 → 1;
 partial erase 1 → 1 (was a wasted v1); whole erase 0 → 2-3. Working alone
-the messages are still sent; nobody receives them, so nothing is
-delivered. Three people drawing non-stop: ~45 billed messages/s for the
+the messages are still sent: each is 1 billed message with 0 deliveries. Three people drawing non-stop: ~45 billed messages/s for the
 whole project (sent + delivered), under Free's 100/s; a fourth and fifth
 non-stop drawer would approach it (each extra screen adds its own ink and
 receives everyone's).

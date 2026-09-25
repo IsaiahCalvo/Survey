@@ -601,7 +601,7 @@ test('verify2 #5/#6: only marks a message carried become the next patch base, an
   for (let i = 1; i <= 10; i += 1) edit('m1', { left: 10 + i });
   const m1 = edits(cloud).map((m) => m.payload.e.find((e) => e.k === 'm1')).filter(Boolean);
   const fullAt = m1.map((e, i) => (e.o ? i : -1)).filter((i) => i >= 0);
-  assert.ok(fullAt.includes(0) && fullAt.some((i) => i >= 1 && i <= 9), `a whole copy again within 9 messages (${fullAt})`);
+  assert.ok(fullAt.includes(0) && fullAt.some((i) => i >= 1 && i <= 8), `a whole copy at least every 8th message (${fullAt})`);
   assert.ok(await until(() => markOn(screenOf(b), 'm1')?.left === 20));
   // An edit of m2 in between breaks m1's chain: the next m1 edit is whole.
   edit('m2', { left: 401 });

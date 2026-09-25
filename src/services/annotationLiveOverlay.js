@@ -161,6 +161,7 @@ export function parseLiveEditPayload(payload, { ownWriterId = null } = {}) {
   const writerId = typeof payload.w === 'string' ? payload.w : '';
   const clientSeq = Number(payload.s);
   if (!writerId || writerId.length > 256 || writerId === ownWriterId) return null;
+  if (writerId.includes('\u0000')) return null; // tokens use it as a separator
   if (!Number.isSafeInteger(clientSeq) || clientSeq <= 0) return null;
   if (!Array.isArray(payload.e) || payload.e.length === 0 || payload.e.length > LIVE_EDIT_MAX_ENTRIES) return null;
   // Receivers enforce the size too (a forged sender is not bound by ours).

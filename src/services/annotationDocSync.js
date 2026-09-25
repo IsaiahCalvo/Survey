@@ -1390,14 +1390,21 @@ function applyToLiveDoc(state, update, origin) {
   const onUpdate = (_update, _origin, _doc, transaction) => {
     changed = true;
     // w32: which marks this row changed (older edit overlays of the same
-    // screen are dropped for those marks only, see confirmLivePreview).
-    if (state.liveEdits?.size > 0) {
+    // screen are dropped for those marks only, see confirmLivePreview), and
+    // their arrival copies go stale (every path that applies a row or a
+    // snapshot comes through here).
+    if (state.liveEdits?.size > 0 || state.liveEditBases?.size > 0) {
       try {
         const touched = liveTouchedMarks(state, transaction);
         if (touched) {
           state.lastAppliedTouched ??= new Set();
-          for (const key of touched.markKeys) state.lastAppliedTouched.add(key);
-          for (const key of touched.laneMarkKeys) state.lastAppliedTouched.add(key);
+          for (const key of [...touched.markKeys, ...touched.laneMarkKeys]) {
+            state.lastAppliedTouched.add(key);
+            state.liveMarkEpochs.set(key, (state.liveMarkEpochs.get(key) || 0) + 1);
+          }
+          while (state.liveMarkEpochs.size > 2_000) {
+            state.liveMarkEpochs.delete(state.liveMarkEpochs.keys().next().value);
+          }
         }
       } catch { /* only narrows overlay removal */ }
     }
@@ -4403,7 +4410,7 @@ function sendLiveUpdate(state, record, transaction) {
         if (!previous || previous.seq !== record.clientSeq - 1) return null;
         // A whole copy at least every 8 messages / 500 ms per mark, so one
         // lost message never ends live display of that mark for long.
-        if (previous.sinceFull >= LIVE_EDIT_FULL_EVERY || Date.now() - previous.fullAt >= LIVE_EDIT_FULL_MS) return null;
+        if (previous.sinceFull >= LIVE_EDIT_FULL_EVERY - 1 || Date.now() - previous.fullAt >= LIVE_EDIT_FULL_MS) return null;
         return previous.object;
       },
     });
@@ -4654,7 +4661,7 @@ function rememberLiveEditToken(state, token, record) {
   // still bring back a copy of this overlay: verify pass 2).
   if (record.base) {
     state.liveEditBases.delete(token);
-    state.liveEditBases.set(token, record.base);
+    state.liveEditBases.set(token, { key: record.key, base: record.base });
     while (state.liveEditBases.size > LIVE_EDIT_BASES_MAX) {
       state.liveEditBases.delete(state.liveEditBases.keys().next().value);
     }
@@ -4733,11 +4740,11 @@ function stripLiveEdits(state, byPage, swaps = null, { translate = true } = {}) 
     resolveToken: (token) => {
       const record = state.liveEditTokens.get(token);
       if (record) return record;
-      const base = state.liveEditBases.get(token);
-      if (!base) return null;
+      const kept = state.liveEditBases.get(token);
+      if (!kept) return null;
+      const { key, base } = kept;
       // The overlay object itself is gone: rebuild-only record (an edit on
       // it cannot be told apart, so only the base is ever written).
-      const key = String(token).split('\u0000')[2];
       return key ? { key, object: base, page: null, base, rebuildOnly: true } : null;
     },
     deliveredOf: (markKey) => (
@@ -4810,12 +4817,6 @@ function confirmLivePreview(state, writerId, clientSeq) {
     // document can show the change (or its expiry).
     const heldBack = Boolean(state.doc?.store?.pendingStructs || state.doc?.store?.pendingDs);
     const touched = state.lastAppliedTouched;
-    for (const markKey of touched || []) {
-      state.liveMarkEpochs.set(markKey, (state.liveMarkEpochs.get(markKey) || 0) + 1);
-    }
-    while (state.liveMarkEpochs.size > 2_000) {
-      state.liveMarkEpochs.delete(state.liveMarkEpochs.keys().next().value);
-    }
     for (const [editKey, edit] of state.liveEdits) {
       if (edit.writerId !== writer || edit.clientSeq > seq) continue;
       if (edit.clientSeq === seq) {

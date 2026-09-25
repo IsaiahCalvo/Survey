@@ -907,14 +907,35 @@ watchFailures(pageA, 'A');
 meterUsage(pageA, 'A');
 let pageB = null;
 const results = [];
+// The throwaway's stored file, read from its documents row, so the storage
+// block lets its removal through (--delete-id, --reuse-name: this run did
+// not upload it).
+async function allowThrowawayFile(page, id) {
+  if (throwawayObjectPath || !id) return;
+  const filePath = await page.evaluate(async (documentId) => {
+    const { supabase } = await import('/src/supabaseClient.js');
+    const { data } = await supabase.from('documents').select('file_path').eq('id', documentId).maybeSingle();
+    return data?.file_path || null;
+  }, id).catch(() => null);
+  if (filePath) throwawayObjectPath = filePath;
+}
+const cleanupSucceeded = (result) => result?.status === 'deleted' && result?.storage === 'removed';
+
 if (opt('delete-id', null)) {
   // Leftover from an interrupted run: --delete-id <uuid> --delete-name <name>
   await pageA.goto(BASE, { waitUntil: 'domcontentloaded' });
   await waitForHub(pageA);
   await pageA.waitForTimeout(3_000);
-  log('cleanup:', JSON.stringify(await deleteThrowaway(pageA, opt('delete-id'), opt('delete-name'))));
+  await allowThrowawayFile(pageA, opt('delete-id'));
+  let result = null;
+  try {
+    result = await deleteThrowaway(pageA, opt('delete-id'), opt('delete-name'));
+  } catch (error) {
+    result = { status: 'error', error: error?.message };
+  }
+  log('cleanup:', JSON.stringify(result));
   await browser.close();
-  process.exit(0);
+  process.exit(cleanupSucceeded(result) ? 0 : 1);
 }
 try {
   if (REUSE_NAME) {
@@ -1073,10 +1094,11 @@ try {
       if (pageB) await pageB.close();
       await pageA.goto(BASE, { waitUntil: 'domcontentloaded' });
       await waitForHub(pageA);
+      await allowThrowawayFile(pageA, documentId);
       const cleanupResult = await deleteThrowaway(pageA, documentId, docName);
       log('cleanup:', JSON.stringify(cleanupResult));
       log(`storage requests blocked this run: ${storageBlocked.count} (allowed only ${throwawayObjectPath})`);
-      if (!REUSE_NAME && !(cleanupResult?.status === 'deleted' && cleanupResult?.storage === 'removed')) {
+      if (!cleanupSucceeded(cleanupResult)) {
         log('CLEANUP INCOMPLETE — the stored file may be left behind:', JSON.stringify(cleanupResult));
         process.exitCode = 1;
       }
