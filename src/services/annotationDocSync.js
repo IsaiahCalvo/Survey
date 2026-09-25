@@ -457,6 +457,8 @@ export async function openAnnotationDoc({
     },
     dueCheckpointTimer: null,
     dueCheckpointSince: 0,
+    routineCheckpointRunning: false,
+    checkpointMustWrite: false, // the store compaction's checkpoint (w33)
     checkpointDue: false,
     ownRowsSinceCheckpoint: 0,
     ownBytesSinceCheckpoint: 0,
@@ -3616,7 +3618,7 @@ function snapshotRowMatchesBase(state, identity) {
  * 'rebase' (another screen's checkpoint is 2 x everyRows or more behind: take
  * it in, then write, instead of an upload that would be refused) or 'failed'.
  */
-async function prepareRoutineCheckpoint(state) {
+async function prepareRoutineCheckpoint(state, { coverable = true } = {}) {
   if (!state.supabase || typeof state.supabase.from !== 'function') return 'go';
   let identity = null;
   try {
@@ -3635,7 +3637,7 @@ async function prepareRoutineCheckpoint(state) {
   // out the rest).
   if (identity && !snapshotRowMatchesBase(state, identity)) {
     const head = Math.max(Number(state.coveredSeq) || 0, Number(state.lastSeq) || 0);
-    if (head - (Number(identity?.at_seq) || 0) < 2 * state.checkpointPolicy.everyRows) return 'covered';
+    if (coverable && head - (Number(identity?.at_seq) || 0) < 2 * state.checkpointPolicy.everyRows) return 'covered';
     return 'rebase';
   }
   if ((Number(state.lastSeq) || 0) > (Number(state.coveredSeq) || 0)) {
@@ -3652,39 +3654,55 @@ async function writeRoutineCheckpoint(state) {
     const result = await writeSnapshot(state, captureSnapshotOptions(state));
     return finalizeSnapshotResult(state, result);
   }
-  const quarantineGeneration = state.historyQuarantineGeneration;
-  const decision = await prepareRoutineCheckpoint(state);
-  if (decision === 'covered') {
-    resetOwnCheckpointCounters(state);
-    return { ok: false, skipped: 'covered' };
-  }
-  if (decision !== 'go' && decision !== 'rebase') return { ok: false, skipped: 'failed' };
-  let result;
-  if (decision === 'rebase') {
-    // The stored checkpoint may hold repaired edits the WAL lacks: merge it
-    // (one download) and build on it, as a refused upload would.
-    let merged;
-    try {
-      merged = await refreshAfterSnapshotConflict(state, encodeSnapshot(state.acceptedDoc));
-    } catch {
-      state.checkpointDue = true;
-      return { ok: false, skipped: 'failed' };
+  // Review B pass 2: one at a time (own appends during the identity read or
+  // a rebase download re-arm the due timer; a second run would upload the
+  // same checkpoint again). The owed flag stays for the next trigger.
+  if (state.routineCheckpointRunning) return { ok: false, skipped: 'running' };
+  state.routineCheckpointRunning = true;
+  try {
+    const quarantineGeneration = state.historyQuarantineGeneration;
+    // Another screen's recent checkpoint may stand in for this one, unless
+    // this screen wrote a lot since (an import) or the store compaction asked
+    // for it: those rows would otherwise stay in every reopen's tail.
+    const coverable = state.ownBytesSinceCheckpoint < state.checkpointPolicy.ownBytes
+      && !state.checkpointMustWrite;
+    const decision = await prepareRoutineCheckpoint(state, { coverable });
+    if (decision === 'covered') {
+      resetOwnCheckpointCounters(state);
+      return { ok: false, skipped: 'covered' };
     }
-    result = await writeSnapshot(state, { snapshotUpdate: merged, mergeAcceptedAtStart: true, routine: true });
-  } else {
-    // Encoded in the snapshot chain, in the same tick as its at_seq.
-    result = await writeSnapshot(state, { routine: true });
+    if (decision !== 'go' && decision !== 'rebase') return { ok: false, skipped: 'failed' };
+    let result;
+    if (decision === 'rebase') {
+      // The stored checkpoint may hold repaired edits the WAL lacks: merge it
+      // (one download) and build on it, as a refused upload would.
+      let merged;
+      try {
+        merged = await refreshAfterSnapshotConflict(state, encodeSnapshot(state.acceptedDoc));
+      } catch {
+        state.checkpointDue = true;
+        return { ok: false, skipped: 'failed' };
+      }
+      result = await writeSnapshot(state, {
+        snapshotUpdate: merged, mergeAcceptedAtStart: true, repairsGap: false, routine: true, coverable,
+      });
+    } else {
+      // Encoded in the snapshot chain, in the same tick as its at_seq.
+      result = await writeSnapshot(state, { repairsGap: false, routine: true, coverable });
+    }
+    if (result?.covered) resetOwnCheckpointCounters(state);
+    else if (!result?.ok && !result?.permissionDenied) state.checkpointDue = true;
+    // A refusal that lands while it uploads must stay red: its result may not
+    // mark the handle healthy then (w30 review B).
+    return finalizeSnapshotResult(
+      state,
+      result?.ok && state.historyQuarantineGeneration !== quarantineGeneration
+        ? { ...result, ok: false }
+        : result,
+    );
+  } finally {
+    state.routineCheckpointRunning = false;
   }
-  if (result?.covered) resetOwnCheckpointCounters(state);
-  else if (!result?.ok && !result?.permissionDenied) state.checkpointDue = true;
-  // A refusal that lands while it uploads must stay red: its result may not
-  // mark the handle healthy then (w30 review B).
-  return finalizeSnapshotResult(
-    state,
-    result?.ok && state.historyQuarantineGeneration !== quarantineGeneration
-      ? { ...result, ok: false }
-      : result,
-  );
 }
 
 /**
@@ -3817,7 +3835,7 @@ async function loadLatestCloudCheckpoint(state) {
 // than the tail it saves.
 const ROUTINE_CHECKPOINT_COVERED = Symbol('routine-checkpoint-covered');
 
-async function refreshAfterWalHeadMoved(state, localSnapshotUpdate, { routine = false } = {}) {
+async function refreshAfterWalHeadMoved(state, localSnapshotUpdate, { routine = false, coverable = true } = {}) {
   let identity = null;
   try {
     const { data, error } = await withCloudRequest(
@@ -3840,7 +3858,7 @@ async function refreshAfterWalHeadMoved(state, localSnapshotUpdate, { routine = 
     : (state.snapshotBaseAtSeq == null && state.snapshotBaseWriterId == null);
   if (!same) {
     const head = Math.max(Number(state.coveredSeq) || 0, Number(state.lastSeq) || 0);
-    if (routine && identity && head - (Number(storedAtSeq) || 0) < 2 * state.checkpointPolicy.everyRows) {
+    if (routine && coverable && identity && head - (Number(storedAtSeq) || 0) < 2 * state.checkpointPolicy.everyRows) {
       return ROUTINE_CHECKPOINT_COVERED;
     }
     return null;
@@ -3854,8 +3872,8 @@ async function refreshAfterWalHeadMoved(state, localSnapshotUpdate, { routine = 
 
 // One conflict retry's bytes: the cheap path when only the WAL head moved,
 // else the full refresh (which merges the stored checkpoint's content).
-async function rebaseAfterSnapshotConflict(state, localSnapshotUpdate, { routine = false } = {}) {
-  const cheap = await refreshAfterWalHeadMoved(state, localSnapshotUpdate, { routine });
+async function rebaseAfterSnapshotConflict(state, localSnapshotUpdate, { routine = false, coverable = true } = {}) {
+  const cheap = await refreshAfterWalHeadMoved(state, localSnapshotUpdate, { routine, coverable });
   if (cheap) return cheap;
   return refreshAfterSnapshotConflict(state, localSnapshotUpdate);
 }
@@ -3931,8 +3949,10 @@ async function writeSnapshotNow(state, {
   // covered meanwhile, the accepted state is merged in (unknown = merge).
   atSeqAtEncode = undefined,
   // w33: a routine checkpoint gives up (instead of downloading the stored
-  // one to rebase) when another screen's recent checkpoint covers it.
+  // one to rebase) when another screen's recent checkpoint covers it and it
+  // is `coverable` (see writeRoutineCheckpoint).
   routine = false,
+  coverable = true,
   epoch = null,
   conflictAttempt = 0,
   repairsGap = null,
@@ -4088,6 +4108,7 @@ async function writeSnapshotNow(state, {
         }
       }
       if (!error && accepted) {
+        state.checkpointMustWrite = false;
         // Only advance the captured generation — never regress it — so a stale
         // snapshot completing late can't clear a newer edit's dirty state.
         if (epochAtStart > state.snapshottedEpoch) state.snapshottedEpoch = epochAtStart;
@@ -4140,7 +4161,7 @@ async function writeSnapshotNow(state, {
           };
         }
         try {
-          const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart, { routine });
+          const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart, { routine: routine && !repairsGapAtStart, coverable });
           if (rebasedUpdate === ROUTINE_CHECKPOINT_COVERED) {
             return { ok: false, permissionDenied: false, stale: true, covered: true, containsUnacceptedPrefix: repairsGapAtStart, error: null };
           }
@@ -4148,6 +4169,7 @@ async function writeSnapshotNow(state, {
             snapshotUpdate: rebasedUpdate,
             mergeAcceptedAtStart: true,
             routine,
+            coverable,
             epoch: epochAtStart,
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
@@ -4183,7 +4205,7 @@ async function writeSnapshotNow(state, {
             error: toSyncError(error, 'snapshot conflict'),
           };
         }
-        const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart, { routine });
+        const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart, { routine: routine && !repairsGapAtStart, coverable });
         if (rebasedUpdate === ROUTINE_CHECKPOINT_COVERED) {
           return { ok: false, permissionDenied: false, stale: true, covered: true, containsUnacceptedPrefix: repairsGapAtStart, error: null };
         }
@@ -4191,6 +4213,7 @@ async function writeSnapshotNow(state, {
           snapshotUpdate: rebasedUpdate,
           mergeAcceptedAtStart: true,
           routine,
+          coverable,
           epoch: epochAtStart,
           conflictAttempt: conflictAttempt + 1,
           repairsGap: repairsGapAtStart,
@@ -4220,7 +4243,7 @@ async function writeSnapshotNow(state, {
           };
         }
         try {
-          const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart, { routine });
+          const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart, { routine: routine && !repairsGapAtStart, coverable });
           if (rebasedUpdate === ROUTINE_CHECKPOINT_COVERED) {
             return { ok: false, permissionDenied: false, stale: true, covered: true, containsUnacceptedPrefix: repairsGapAtStart, error: null };
           }
@@ -4228,6 +4251,7 @@ async function writeSnapshotNow(state, {
             snapshotUpdate: rebasedUpdate,
             mergeAcceptedAtStart: true,
             routine,
+            coverable,
             epoch: epochAtStart,
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
@@ -5548,6 +5572,8 @@ function makeHandle(state) {
       state.checkpointDue = true;
       const result = compactAnnotationStore(state.doc, { origin: 'local' });
       if (result.batches === 0) state.checkpointDue = wasDue;
+      // Another screen's recent checkpoint does not stand in for this one.
+      else state.checkpointMustWrite = true;
       if (result.marksCompacted > 0) {
         state.lastByPage = null;
         if (notify) notifyChange(state);

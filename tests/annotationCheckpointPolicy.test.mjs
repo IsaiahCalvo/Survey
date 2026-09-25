@@ -422,3 +422,68 @@ test('three screens, 125 strokes: at most one stored-checkpoint download, tail u
   assert.equal(markIds(reopened.getByPage()).length, 125);
   await reopened.destroy();
 });
+
+// Review B pass 2 (w33): own appends during a slow identity read re-arm the
+// owed checkpoint; only one upload may result.
+test('drawing during a slow identity read uploads the owed checkpoint once', async () => {
+  const documentId = 'checkpoint-slow-identity';
+  const cloud = createCloud(documentId);
+  const client = cloud.makeClient('user-a').supabase;
+  const from = client.from.bind(client);
+  client.from = (table) => {
+    const query = from(table);
+    if (table !== 'annotation_snapshots') return query;
+    return {
+      select(columns) {
+        const inner = query.select(columns);
+        const real = inner.maybeSingle.bind(inner);
+        const wrapped = {
+          eq() { return wrapped; },
+          abortSignal() { return wrapped; },
+          async maybeSingle() { await wait(150); return real(); },
+        };
+        return wrapped;
+      },
+    };
+  };
+  const handle = await openAnnotationDoc({
+    documentId, supabase: client, clientId: 'a', actorUserId: 'user-a',
+    enableLocal: false, enableRealtime: false, doc: new Y.Doc(),
+    outboxStore: createMemoryAnnotationOutbox(), snapshotRetryDelayMs: 0, repairRetryDelayMs: 60_000,
+    checkpointPolicy: { everyRows: 4, dueQuietMs: 30, idleMs: 60_000 },
+  });
+  const mine = [];
+  for (let index = 0; index < 4; index += 1) { strokeOn(handle, mine, `d${index}`); await handle.drain(); }
+  await wait(45);
+  strokeOn(handle, mine, 'd4');
+  await handle.drain();
+  await wait(650);
+  assert.equal(cloud.stats.snapshotCalls.length, 1, 'one upload for one owed checkpoint');
+  await handle.destroy();
+});
+
+// Review B pass 2 (w33): another screen's recent checkpoint does not stand in
+// for an import this screen just wrote (its rows would stay in every reopen's
+// tail).
+test('an import right after another screen checkpointed is still checkpointed', async () => {
+  const documentId = 'checkpoint-import-after-other';
+  const cloud = createCloud(documentId);
+  const a = await open(cloud, 'user-a', 'a', documentId, { walUpdateMaxBytes: 16 * 1024 });
+  const b = await open(cloud, 'user-b', 'b', documentId);
+  await settle(a, b);
+  const mineB = [];
+  strokeOn(b, mineB, 'b0');
+  await b.drain();
+  await b.flushSnapshot(); // another screen's checkpoint (explicit save)
+  const big = [];
+  for (let index = 0; index < 300; index += 1) big.push({ ...rect(`i${index}`), text: 'x'.repeat(2_000) });
+  const others = a.getByPage()?.[1]?.objects || [];
+  a.applyByPage({ 1: { objects: [...others, ...big] } });
+  await a.drain();
+  await wait(150);
+  await settle(a, b);
+  assert.ok(cloud.rows.length > 30, `${cloud.rows.length} rows`);
+  assert.equal(cloud.snapshot.at_seq, cloud.rows.length, 'the import is in the stored checkpoint');
+  await a.destroy();
+  await b.destroy();
+});

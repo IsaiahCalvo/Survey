@@ -583,8 +583,16 @@ an edit durable and live), so now (`annotationDocSync.js`,
   accepted state in the same tick as at_seq whenever rows were covered in
   between (review B found an idle checkpoint queued behind a slow upload
   losing a stroke on reopen); retries do the same.
+* Another screen's recent checkpoint never stands in for one this screen
+  owes after writing 512 KB of its own rows (an import) or after the store
+  compaction: those take the stored checkpoint in (if it moved) and write.
+  One routine checkpoint runs at a time per screen (drawing during its
+  identity read cannot start a second upload).
 * A failed routine upload stays owed (next own append, idle or close writes
   it). A live re-send row that owns a boundary counts too.
+* Only a store compacted by the first w33 build (marker `...:v1:<rule>`)
+  would read without polygons; the only such store was a throwaway copy on
+  the dev server, since deleted.
 
 Pinned by `tests/annotationCheckpointPolicy.test.mjs` against a stand-in with
 the real RPC rules: 5 paced strokes -> 0 checkpoints (8 -> exactly one idle
