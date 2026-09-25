@@ -470,8 +470,10 @@ function rollup(userCounters = {}) {
 
 function checkBudget(summary, budget) {
   const failures = [];
+  const perUserPhase = budget.byUsers?.[String(USERS)] || budget.perUserPhase;
+  if (!perUserPhase) return [`no budget for --users ${USERS} in the budget file`];
   for (const [user, phases] of summary.entries()) {
-    for (const [ph, limits] of Object.entries(budget.perUserPhase || {})) {
+    for (const [ph, limits] of Object.entries(perUserPhase)) {
       const got = phases[ph] || {};
       for (const [metric, max] of Object.entries(limits)) {
         const value = got[metric] ?? 0;
