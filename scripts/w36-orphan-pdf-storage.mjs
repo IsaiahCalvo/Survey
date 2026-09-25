@@ -34,6 +34,10 @@ const APPLY = args.includes('--apply');
 const confirmIndex = args.indexOf('--confirm');
 const CONFIRM = confirmIndex >= 0 ? Number(args[confirmIndex + 1]) : null;
 const MIN_AGE_MS = 7 * 24 * 3600 * 1000;
+// --backup-dir <dir>: download every orphan there first; any failed download
+// aborts before anything is removed (owner asked for a local copy, 2026-09-25).
+const backupIndex = args.indexOf('--backup-dir');
+const BACKUP_DIR = backupIndex >= 0 ? args[backupIndex + 1] : null;
 
 function envValue(name) {
   if (process.env[name]) return process.env[name];
@@ -106,6 +110,20 @@ if (!APPLY) {
 if (CONFIRM !== orphans.length) {
   console.error(`Refusing: --confirm ${CONFIRM} does not match the ${orphans.length} objects found now.`);
   process.exit(1);
+}
+if (BACKUP_DIR) {
+  const path = await import('node:path');
+  for (const o of orphans) {
+    const target = path.join(BACKUP_DIR, o.path);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (fs.existsSync(target) && fs.statSync(target).size === o.size) continue;
+    const { data, error } = await supabase.storage.from('documents').download(o.path);
+    if (error || !data) { console.error(`backup failed for ${o.path}: ${error?.message}`); process.exit(1); }
+    const bytes = Buffer.from(await data.arrayBuffer());
+    if (o.size && bytes.length !== o.size) { console.error(`backup size mismatch for ${o.path}`); process.exit(1); }
+    fs.writeFileSync(target, bytes);
+  }
+  console.log(`Backed up ${orphans.length} objects to ${BACKUP_DIR}.`);
 }
 let removed = 0;
 for (let i = 0; i < orphans.length; i += 100) {
