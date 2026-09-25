@@ -72,6 +72,13 @@ if (LEASED) {
 }
 await ctxA.addInitScript(TRACE_INIT);
 if (ctxB !== ctxA) await ctxB.addInitScript(TRACE_INIT);
+// --public-channel: dev builds only, live previews on a public topic (for
+// measuring before the private channel's policies exist).
+if (flag('public-channel')) {
+  const PUBLIC_INIT = () => { try { localStorage.setItem('survey:livePreviewPublicChannel', '1'); } catch { /* */ } };
+  await ctxA.addInitScript(PUBLIC_INIT);
+  if (ctxB !== ctxA) await ctxB.addInitScript(PUBLIC_INIT);
+}
 
 let documentId = null;
 const watchDocumentId = (page) => page.on('request', (request) => {

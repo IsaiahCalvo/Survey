@@ -17,6 +17,7 @@
 // durable path is proved before the viewer is wired to it.
 
 import * as Y from 'yjs';
+import * as encoding from 'lib0/encoding';
 import {
   createDetachedYDoc,
   getOrCreateYDoc,
@@ -111,25 +112,20 @@ const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
 const PERMISSION_ROLLBACK_ORIGIN = 'permission-rollback';
-// w30 live previews (annotationLiveBus.js): another screen's edit, broadcast
-// the moment it was made, applied to the LIVE doc only. It is never written to
-// the WAL, the accepted/staged shadows or IndexedDB; its WAL row, when it
-// arrives, is what accepts it (applyAuthoritativeCloudRow).
-const LIVE_PREVIEW_ORIGIN = 'live-preview';
+// w30 live previews (annotationLiveBus.js): another screen's NEW mark,
+// broadcast the moment it was drawn, shown here as an overlay until its WAL row
+// arrives. It never enters this screen's Y.Doc (so nothing can build on it,
+// persist it, checkpoint it or write it back), and it is taken off the screen
+// when its row arrives (the real mark then comes from the doc) or after
+// LIVE_PREVIEW_EXPIRE_MS if it never does.
 const LIVE_PREVIEW_MAX_BYTES = 48 * 1024;   // pen strokes are ~5 KB; bigger edits ride the WAL only
-const LIVE_PREVIEW_RATE_PER_SEC = 20;       // a drag writes a row per frame; cap the extra messages
+const LIVE_PREVIEW_RATE_PER_SEC = 20;       // sender: cap the extra messages (a drag is many rows)
 const LIVE_PREVIEW_BURST = 40;
-const LIVE_PREVIEW_CONFIRM_MS = 10_000;     // an older preview is checked against the accepted state
-const LIVE_PREVIEW_EXPIRE_MS = 30_000;      // then one catch-up read; still absent = never accepted
+const LIVE_PREVIEW_RECEIVE_PER_SEC = 50;    // receiver: per writer, a flood is dropped
+const LIVE_PREVIEW_EXPIRE_MS = 20_000;
 const LIVE_PREVIEW_SWEEP_MS = 5_000;
+const LIVE_PREVIEW_MAX_ENTRIES = 200;
 const LIVE_PREVIEW_KEYS_MAX = 2_000;
-// A local edit made on top of a preview (e.g. moving a stroke that has not
-// reached the log yet) waits for that preview's row before its own row is
-// written; see waitForRemoteReferences.
-const REMOTE_REF_WAIT_MS = 45_000;
-// A live doc that still held unconfirmed previews when its handle closed: the
-// next handle on it starts in rebase mode (see openAnnotationDoc).
-const LIVE_PREVIEW_TAINTED_DOCS = (globalThis.__annotationLivePreviewTaintedDocs__ ??= new WeakMap());
 const DURABLE_MAP_NAMES = [
   ANNOTATIONS_MAP,
   DELETED_PDF_ANNOTATIONS_MAP,
@@ -336,7 +332,10 @@ export async function openAnnotationDoc({
   // as previews (annotationLiveBus.js). The app turns it on; off by default so
   // a handle without it behaves exactly as before.
   livePreview = false,
-  // Tests shorten these: { confirmMs, expireMs, sweepMs, remoteRefWaitMs }.
+  // The live channel is private (only the document's people may join; needs
+  // the realtime.messages policies). false = a public topic: dev/test only.
+  livePreviewPrivate = true,
+  // Tests shorten these: { expireMs, sweepMs }.
   livePreviewTimings = null,
   snapshotRetryDelayMs = 400,
   repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
@@ -405,18 +404,18 @@ export async function openAnnotationDoc({
     outboxReplayRetryAttempt: 0,
     realtimeRowRecoveryTimer: null, // w26: re-read a row Realtime could not carry
     livePreview: Boolean(livePreview && useRealtime),
-    livePreviewConfirmMs: Number(livePreviewTimings?.confirmMs) || LIVE_PREVIEW_CONFIRM_MS,
+    livePreviewPrivate: livePreviewPrivate !== false,
     livePreviewExpireMs: Number(livePreviewTimings?.expireMs) || LIVE_PREVIEW_EXPIRE_MS,
     livePreviewSweepMs: Number(livePreviewTimings?.sweepMs) || LIVE_PREVIEW_SWEEP_MS,
-    remoteRefWaitMs: Number(livePreviewTimings?.remoteRefWaitMs) || REMOTE_REF_WAIT_MS,
     liveBus: null,
-    livePreviews: new Map(),        // writer + clientSeq -> { update, receivedAt } not yet accepted
-    confirmedPreviewKeys: new Set(), // rows already accepted (a late broadcast is ignored)
-    expiredPreviewKeys: new Set(),   // previews dropped as never accepted
+    livePreviews: new Map(),        // writer + clientSeq -> { receivedAt, byPage, ids } shown, not in the doc
+    confirmedPreviewKeys: new Set(), // rows already applied (a late broadcast is ignored)
     livePreviewSweepTimer: null,
     livePreviewTokens: LIVE_PREVIEW_BURST,
     livePreviewTokensAt: 0,
-    remoteRefWaiters: new Set(),
+    livePreviewReceiveCounts: new Map(), // writer -> { second, count }
+    expiredPreviewMarks: new Map(),  // mark id -> key of previews that expired (still never written)
+    livePreviewListeners: new Set(),
     realtimeRowRecoveryAttempt: 0,
     realtimeRowRecoveryFromSeq: null,
     catchupPending: 0,     // catch-ups running or queued (row recovery defers to them)
@@ -682,18 +681,6 @@ export async function openAnnotationDoc({
     // live updates into that detached actor-scoped persistence document.
     attachLocalPersistenceMirror(state);
 
-    // w30: the previous handle on this registry doc closed while another
-    // screen's broadcast edit was still unconfirmed. Those structs live only
-    // in this doc; exact updates could chain onto them and never integrate
-    // anywhere else. Rebase every edit onto the accepted state instead (the
-    // mode a permission rollback uses), on a fresh Yjs client clock.
-    const taintedPreviewKeys = LIVE_PREVIEW_TAINTED_DOCS.get(activeDoc);
-    if (taintedPreviewKeys) {
-      LIVE_PREVIEW_TAINTED_DOCS.delete(activeDoc);
-      for (const key of taintedPreviewKeys) state.expiredPreviewKeys.add(key);
-      enterRebaseMode(state);
-    }
-
     // --- observe local mutations → append to the durable log ---
     state.onDocUpdate = (update, origin, _doc, transaction) => {
       if (state.destroyed || state.deleted) return;
@@ -703,7 +690,7 @@ export async function openAnnotationDoc({
       if (origin?.source === 'erase-outbox' && origin !== state.eraseOutboxOrigin) return;
       // Ignore writes we didn't originate as user edits: remote ops, the initial
       // hydrate, and the local IndexedDB replay (re-appending those would loop).
-      if (origin === REMOTE_ORIGIN || origin === LIVE_PREVIEW_ORIGIN) {
+      if (origin === REMOTE_ORIGIN) {
         // Never mirror the live doc's derived conflict-resolution update into
         // clean shadows. It can contain a tombstone for the authoritative row
         // when an optimistic same-key item wins by client-id ordering. Only
@@ -814,7 +801,6 @@ export async function openAnnotationDoc({
     try { state.stagedDoc.destroy(); } catch { /* */ }
     releasePersistedCandidate(state);
     try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
-    taintLiveDocIfUnconfirmed(state);
     if (ownsRegistryDoc) releaseYDoc(registryKey);
     throw err;
   }
@@ -855,8 +841,6 @@ function attachLocalPersistenceMirror(state) {
       // the original server bytes applied explicitly by
       // applyAuthoritativeCloudUpdate, never that derived live update.
       || origin === REMOTE_ORIGIN
-      // A preview is not accepted; only its WAL row may reach IndexedDB (w30).
-      || origin === LIVE_PREVIEW_ORIGIN
     ) return;
     // This is one-way only: the provider observes `target`; no listener ever
     // applies target updates back to the live doc, so there is no update loop.
@@ -1354,12 +1338,11 @@ function applyAuthoritativeCloudUpdate(state, update) {
   // Before the open seeds stagedDoc from acceptedDoc (which then holds this
   // row), rows would only sit there as pending structs (w29 review A).
   if (state.stagedSeeded) Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
-  wakeRemoteReferenceWaiters(state);
   return liveChanged;
 }
 
-// Apply to the live doc and report whether anything visible changed (an
-// already-previewed row, or an own echo, changes nothing: w30).
+// Apply to the live doc and report whether anything changed (an own echo
+// changes nothing: w30).
 function applyToLiveDoc(state, update, origin) {
   let changed = false;
   const onUpdate = () => { changed = true; };
@@ -1529,7 +1512,7 @@ async function quarantineRejectedRecords(
   state,
   rejectedKeys,
   error,
-  { terminalStatus = 'rejected', reason = null } = {},
+  { terminalStatus = 'rejected' } = {},
 ) {
   // This can run during replay, after the open-time quarantine sample. Flip the
   // live state immediately so actorless legacy storage cannot be re-enqueued
@@ -1572,9 +1555,9 @@ async function quarantineRejectedRecords(
   );
   // Visible rollback must not depend on IndexedDB cleanup succeeding.
   restoreAcceptedState(state, {
-    reason: reason || (terminalStatus === 'integrity-error'
+    reason: terminalStatus === 'integrity-error'
       ? 'wal-integrity-collision'
-      : 'permission-denied'),
+      : 'permission-denied',
     code: error?.code || (terminalStatus === 'integrity-error' ? '23505' : '42501'),
     mutationIds,
     requiresFullHistoryReset,
@@ -2951,29 +2934,7 @@ function publishProjectedState(state, projectedDoc) {
 // disappear immediately and prevents the registry-backed Y.Doc from reviving it
 // on reopen.
 function publishAcceptedState(state) {
-  if (state.livePreviews.size === 0) {
-    publishProjectedState(state, state.acceptedDoc);
-    return;
-  }
-  // Keep other screens' in-flight previews on screen (w30): their rows will
-  // be no-ops on this live doc, so a projection that dropped them would hide
-  // them until reopen.
-  const projection = createDetachedYDoc(
-    `accepted-projection:${state.documentId}:${state.writerId}:${randomClientId()}`,
-  );
-  try {
-    Y.applyUpdate(projection, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
-    applyLivePreviewsTo(projection, state);
-    publishProjectedState(state, projection);
-  } finally {
-    try { projection.destroy(); } catch { /* */ }
-  }
-}
-
-function applyLivePreviewsTo(doc, state) {
-  for (const preview of state.livePreviews.values()) {
-    try { Y.applyUpdate(doc, preview.update, HYDRATE_ORIGIN); } catch { /* validated on receipt */ }
-  }
+  publishProjectedState(state, state.acceptedDoc);
 }
 
 // Two docs hold the same Yjs content (the same structs and the same
@@ -3004,10 +2965,9 @@ function publishAcceptedAndVisiblePendingState(state) {
     || record.status === 'integrity-error'
     || record.status === 'dependency-error'
   ));
-  if (records.length === 0 && state.livePreviews.size === 0) {
+  if (records.length === 0) {
     // Nothing pending to show: the projection is acceptedDoc itself (w29, no
-    // ~20 MB copy on every open). Other screens' live previews (w30) still
-    // need the copy, or the projection would take them off the screen.
+    // ~20 MB copy on every open).
     publishProjectedStateIfChanged(state, state.acceptedDoc);
     return;
   }
@@ -3019,7 +2979,6 @@ function publishAcceptedAndVisiblePendingState(state) {
     for (const record of records) {
       Y.applyUpdate(projection, record.update, HYDRATE_ORIGIN);
     }
-    applyLivePreviewsTo(projection, state);
     publishProjectedStateIfChanged(state, projection);
   } finally {
     try { projection.destroy(); } catch { /* */ }
@@ -3036,17 +2995,13 @@ function restoreAcceptedState(state, quarantineDetails = {}) {
   // Rejected and compensating structs remain in this live Y.Doc's history.
   // Start later authorized edits on a fresh Yjs client clock so their exact
   // updates never depend on the quarantined clock range.
-  enterRebaseMode(state);
-  emitHistoryQuarantine(state, quarantineDetails);
-}
-
-function enterRebaseMode(state) {
   const freshClock = createDetachedYDoc(
     `post-denial-clock:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
   state.doc.clientID = freshClock.clientID;
   try { freshClock.destroy(); } catch { /* */ }
   state.rebaseLocalMutations = true;
+  emitHistoryQuarantine(state, quarantineDetails);
 }
 
 async function resolveAmbiguousAppends(state) {
@@ -3273,12 +3228,6 @@ function enqueueAppendRecord(
     record.splitPartIndex = splitPartIndex;
     record.splitPartCount = splitPartCount;
   }
-  // w30: an edit made on top of another screen's unconfirmed preview must not
-  // reach the log before that preview's own row (see waitForRemoteReferences).
-  if (state.livePreviews.size > 0) {
-    const remoteRefs = unconfirmedRemoteReferences(state, record.update, record.key);
-    if (remoteRefs.length > 0) record.remoteRefs = remoteRefs;
-  }
   state.appendRecords.set(record.key, record);
   syncTrace('enqueued', { writer: state.writerId, clientSeq, deps: record.dependsOn.length, pending: state.appendRecords.size });
   const persisted = persistOutboxRecord(state, record);
@@ -3315,18 +3264,6 @@ function enqueueAppendRecord(
           false,
           new Error(`annotation update waits for unresolved record ${dependency.key}`),
         );
-        return;
-      }
-      if (record.remoteRefs?.length && !(await waitForRemoteReferences(state, record))) {
-        // The preview it was built on never reached the log: roll this edit
-        // (and the local edits after it, which chain onto it) back, like a
-        // refused one, and rebase from here on.
-        const error = new Error('an edit was made on another screen\'s change that was never saved');
-        error.code = 'REMOTE_DEPENDENCY_MISSING';
-        await quarantineRejectedRecords(state, [record.key], error, {
-          terminalStatus: 'dependency-error',
-          reason: 'unconfirmed-remote-edit',
-        });
         return;
       }
       await appendOp(state, record);
@@ -4015,7 +3952,12 @@ function subscribeRealtime(state) {
   // delivery is filter-driven, not topic-driven, so the suffix is transparent
   // server-side.
   if (state.livePreview && !state.liveBus) {
-    acquireLiveBus(state.supabase, state.documentId, (payload) => onLivePreviewMessage(state, payload))
+    acquireLiveBus(
+      state.supabase,
+      state.documentId,
+      (payload) => onLivePreviewMessage(state, payload),
+      { isPrivate: state.livePreviewPrivate },
+    )
       .then((bus) => {
         if (!bus) return;
         if (state.destroyed || state.closePromise || state.liveBus) bus.release();
@@ -4202,8 +4144,16 @@ async function runRealtimeRowRecovery(state) {
 }
 
 // ---------------------------------------------------------------------------
-// w30 live previews
+// w30 live previews: other screens' new marks, shown before their WAL row
 // ---------------------------------------------------------------------------
+//
+// Why an overlay and not the Y.Doc: bytes that reach the live doc become
+// something this screen's own edits can build on (a move, a delete, a repair),
+// and those edits would then depend on data the log may never accept (a
+// refused or forged broadcast): stuck for every other screen. So a preview is
+// decoded in a throwaway doc and kept beside the document, display only. Only
+// brand-new marks qualify (an update that needs nothing it does not carry);
+// an edit to an existing mark arrives through its WAL row as before.
 
 function livePreviewKey(writerId, clientSeq) {
   return `${writerId}\u0000${clientSeq}`;
@@ -4215,8 +4165,16 @@ function rememberBounded(set, key) {
   if (set.size > LIVE_PREVIEW_KEYS_MAX) set.delete(set.values().next().value);
 }
 
-// Sender: one message per small local edit, the exact bytes its WAL row will
-// carry, keyed by the row's idempotency key (writer, client_seq).
+function notifyLivePreviewListeners(state) {
+  for (const cb of state.livePreviewListeners) {
+    try { cb(); } catch (error) {
+      console.warn('[annotationDocSync] live preview listener threw', error?.message);
+    }
+  }
+}
+
+// Sender: one message per small local edit that only adds, the exact bytes
+// its WAL row will carry, keyed by the row's idempotency key.
 function sendLivePreview(state, record) {
   const bus = state.liveBus;
   if (!bus || !record?.update || state.closePromise || state.destroyed) return;
@@ -4224,6 +4182,11 @@ function sendLivePreview(state, record) {
   // other screens something the log will not take.
   if (state.permissionRejectedCutoff > 0) return;
   if (record.update.length > LIVE_PREVIEW_MAX_BYTES) return;
+  try {
+    if (Y.decodeUpdate(record.update).ds.clients.size > 0) return; // not a pure addition
+  } catch {
+    return;
+  }
   const now = Date.now();
   state.livePreviewTokens = Math.min(
     LIVE_PREVIEW_BURST,
@@ -4248,9 +4211,87 @@ function sendLivePreview(state, record) {
   }
 }
 
-// Receiver: show it now, in the live doc only. Its WAL row (or a checkpoint
-// that holds it) accepts it later; until then it is never persisted, never in
-// a checkpoint, and an own edit built on it waits for that row.
+function livePreviewReceiveAllowed(state, writerId) {
+  const second = Math.floor(Date.now() / 1000);
+  const entry = state.livePreviewReceiveCounts.get(writerId);
+  if (!entry || entry.second !== second) {
+    state.livePreviewReceiveCounts.set(writerId, { second, count: 1 });
+    if (state.livePreviewReceiveCounts.size > 64) {
+      state.livePreviewReceiveCounts.delete(state.livePreviewReceiveCounts.keys().next().value);
+    }
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= LIVE_PREVIEW_RECEIVE_PER_SEC;
+}
+
+// Decode a broadcast into the marks it adds, in a throwaway doc. null unless
+// it is self-contained (nothing pending), deletes nothing, touches only the
+// marks map, and every mark it adds is new to this screen's document.
+function decodeLivePreview(state, update) {
+  const decoded = Y.decodeUpdate(update);
+  if (decoded.ds.clients.size > 0 || decoded.structs.length === 0) return null;
+  // Self-contained: every struct it points at (left/right neighbour, parent)
+  // is one of its own. A new mark qualifies; an edit of an existing one
+  // points into the document and waits for its row.
+  const ranges = updateClockRanges(update);
+  for (const struct of decoded.structs) {
+    for (const reference of [struct.origin, struct.rightOrigin, struct.parent]) {
+      if (reference == null || typeof reference !== 'object') continue;
+      const range = ranges.get(Number(reference.client));
+      const clock = Number(reference.clock);
+      if (!range || !(range.start <= clock && clock < range.end)) return null;
+    }
+  }
+  const scratch = createDetachedYDoc(`live-preview:${state.documentId}:${randomClientId()}`);
+  try {
+    // The sender's earlier edits (lower clocks of its Yjs client) are not
+    // needed (checked above), but Yjs integrates a client's structs in clock
+    // order: stand in for them with one placeholder (GC) struct per client.
+    Y.applyUpdate(scratch, clockPlaceholderUpdate(ranges), HYDRATE_ORIGIN);
+    Y.applyUpdate(scratch, update, HYDRATE_ORIGIN);
+    if (scratch.store.pendingStructs || scratch.store.pendingDs) return null;
+    for (const [name, type] of scratch.share) {
+      if (name === ANNOTATIONS_MAP) continue;
+      if ((type?._map?.size || 0) > 0 || type?._start) return null;
+    }
+    const marks = getAnnotationsMap(scratch);
+    const keys = [...marks.keys()];
+    if (keys.length === 0) return null;
+    const live = getAnnotationsMap(state.doc);
+    if (keys.some((key) => live.has(key))) return null;
+    const byPage = docToByPage(scratch);
+    const ids = new Set(keys);
+    for (const page of Object.values(byPage)) {
+      for (const object of page?.objects || []) {
+        const id = extractAnnotationId(object);
+        if (id != null) ids.add(String(id));
+      }
+    }
+    return { byPage, keys, ids };
+  } finally {
+    try { scratch.destroy(); } catch { /* */ }
+  }
+}
+
+// A Yjs update (v1) holding, per client, one GC struct over clocks
+// [0, start): what a fresh doc needs before structs that start later.
+function clockPlaceholderUpdate(ranges) {
+  const clients = [...ranges.entries()].filter(([, range]) => range.start > 0);
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, clients.length);
+  for (const [client, range] of clients) {
+    encoding.writeVarUint(encoder, 1);           // one struct
+    encoding.writeVarUint(encoder, client);
+    encoding.writeVarUint(encoder, 0);           // from clock 0
+    encoding.writeUint8(encoder, 0);             // a GC struct
+    encoding.writeVarUint(encoder, range.start); // its length
+  }
+  encoding.writeVarUint(encoder, 0);             // no deletions
+  return encoding.toUint8Array(encoder);
+}
+
+// Receiver: validate, decode, show. Never touches the doc.
 function onLivePreviewMessage(state, payload) {
   if (state.destroyed || state.closePromise || state.deleted) return;
   if (!payload || payload.v !== 1) return;
@@ -4261,38 +4302,92 @@ function onLivePreviewMessage(state, payload) {
   if (typeof payload.u !== 'string' || payload.u.length > LIVE_PREVIEW_MAX_BYTES * 2) return;
   const key = livePreviewKey(writerId, clientSeq);
   if (state.confirmedPreviewKeys.has(key) || state.livePreviews.has(key)) return;
-  let update;
+  if (state.livePreviews.size >= LIVE_PREVIEW_MAX_ENTRIES) return;
+  if (!livePreviewReceiveAllowed(state, writerId)) return;
+  let preview = null;
   try {
-    update = base64ToBytes(payload.u);
-    Y.decodeUpdate(update); // malformed bytes never reach the doc
+    preview = decodeLivePreview(state, base64ToBytes(payload.u));
   } catch {
-    return;
+    return; // malformed
   }
-  syncTrace('preview-recv', { writer: writerId, clientSeq, bytes: update.length });
-  let changed = false;
-  try {
-    changed = applyToLiveDoc(state, update, LIVE_PREVIEW_ORIGIN);
-  } catch (error) {
-    console.warn('[annotationDocSync] live preview could not be applied', error?.message);
-    return;
-  }
-  state.livePreviews.set(key, { update, receivedAt: Date.now(), writerId, clientSeq });
+  if (!preview) return;
+  syncTrace('preview-recv', { writer: writerId, clientSeq, marks: preview.keys.length });
+  state.livePreviews.set(key, { ...preview, receivedAt: Date.now() });
   scheduleLivePreviewSweep(state);
-  if (changed) notifyChange(state);
-  syncTrace('preview-applied', { writer: writerId, clientSeq, changed });
+  notifyLivePreviewListeners(state);
+  syncTrace('preview-applied', { writer: writerId, clientSeq });
 }
 
+// Its WAL row was applied: the marks now come from the doc.
 function confirmLivePreview(state, writerId, clientSeq) {
   if (writerId == null || clientSeq == null) return;
   const key = livePreviewKey(String(writerId), Number(clientSeq));
   rememberBounded(state.confirmedPreviewKeys, key);
-  state.livePreviews.delete(key);
-  if (state.expiredPreviewKeys.delete(key)) {
-    // A preview dropped as never accepted did arrive after all. Its row was a
-    // no-op on the live doc (the drop removed it there), so show the
-    // accepted state again. Rebase mode is already on (expireLivePreviews).
-    publishAcceptedAndVisiblePendingState(state);
+  if (state.livePreviews.delete(key)) notifyLivePreviewListeners(state);
+}
+
+// The overlay to show: every preview mark whose key the doc does not hold yet.
+function livePreviewByPage(state) {
+  const result = {};
+  if (state.livePreviews.size === 0) return result;
+  const live = getAnnotationsMap(state.doc);
+  for (const preview of state.livePreviews.values()) {
+    if (preview.keys.some((key) => live.has(key))) continue;
+    for (const [pageNumber, page] of Object.entries(preview.byPage || {})) {
+      const objects = page?.objects || [];
+      if (objects.length === 0) continue;
+      if (!result[pageNumber]) result[pageNumber] = [];
+      result[pageNumber].push(...objects);
+    }
   }
+  return result;
+}
+
+// The ids a capture must ignore: preview marks the doc does not hold.
+// An expired preview's ids stay here too: an Undo can bring back a page list
+// captured while it was on screen, and that must not write it either.
+function livePreviewIdsToStrip(state) {
+  if (state.livePreviews.size === 0 && state.expiredPreviewMarks.size === 0) return null;
+  const live = getAnnotationsMap(state.doc);
+  const ids = new Set();
+  for (const preview of state.livePreviews.values()) {
+    if (preview.keys.some((key) => live.has(key))) continue;
+    for (const id of preview.ids) ids.add(id);
+  }
+  for (const [id, key] of [...state.expiredPreviewMarks]) {
+    // Its row came late after all: from then on it is an ordinary mark.
+    if (live.has(key)) state.expiredPreviewMarks.delete(id);
+    else ids.add(id);
+  }
+  return ids.size > 0 ? ids : null;
+}
+
+// A capture never writes another screen's in-flight mark: not as a new mark of
+// this screen, not with an edit made to it in the moment before its row
+// arrives. Same byPage object back when there is nothing to drop.
+function stripLivePreviewObjects(state, byPage) {
+  const ids = livePreviewIdsToStrip(state);
+  if (!ids || !byPage || typeof byPage !== 'object') return byPage;
+  let changed = false;
+  const next = {};
+  for (const [pageNumber, page] of Object.entries(byPage)) {
+    const objects = Array.isArray(page?.objects) ? page.objects : null;
+    if (!objects) {
+      next[pageNumber] = page;
+      continue;
+    }
+    const kept = objects.filter((object) => {
+      const id = extractAnnotationId(object);
+      return id == null || !ids.has(String(id));
+    });
+    if (kept.length !== objects.length) {
+      changed = true;
+      next[pageNumber] = { ...page, objects: kept };
+    } else {
+      next[pageNumber] = page;
+    }
+  }
+  return changed ? next : byPage;
 }
 
 function scheduleLivePreviewSweep(state) {
@@ -4300,134 +4395,32 @@ function scheduleLivePreviewSweep(state) {
   if (state.livePreviews.size === 0) return;
   state.livePreviewSweepTimer = setTimeout(() => {
     state.livePreviewSweepTimer = null;
-    void sweepLivePreviews(state).catch((error) => {
-      console.warn('[annotationDocSync] live preview sweep failed', error?.message);
-    }).finally(() => scheduleLivePreviewSweep(state));
+    sweepLivePreviews(state);
+    scheduleLivePreviewSweep(state);
   }, state.livePreviewSweepMs);
 }
 
-async function sweepLivePreviews(state) {
+// A preview whose row has not come (refused, or never sent) leaves the screen.
+// If the row comes later after all, it is applied like any row.
+function sweepLivePreviews(state) {
   if (state.destroyed || state.closePromise || state.livePreviews.size === 0) return;
   const now = Date.now();
-  const old = [...state.livePreviews.entries()]
-    .filter(([, preview]) => now - preview.receivedAt >= state.livePreviewConfirmMs);
-  if (old.length === 0) return;
-  // A row can reach this screen inside a checkpoint instead of as a row: then
-  // its content is in the accepted state even though its key never came.
-  const accepted = Y.snapshot(state.acceptedDoc);
-  for (const [key, preview] of old) {
-    if (Y.snapshotContainsUpdate(accepted, preview.update)) {
-      rememberBounded(state.confirmedPreviewKeys, key);
+  let removed = 0;
+  for (const [key, preview] of state.livePreviews) {
+    if (now - preview.receivedAt >= state.livePreviewExpireMs) {
       state.livePreviews.delete(key);
+      const markKey = preview.keys[0];
+      for (const id of preview.ids) {
+        state.expiredPreviewMarks.delete(id);
+        state.expiredPreviewMarks.set(id, preview.keys.includes(id) ? id : markKey);
+        if (state.expiredPreviewMarks.size > LIVE_PREVIEW_KEYS_MAX) {
+          state.expiredPreviewMarks.delete(state.expiredPreviewMarks.keys().next().value);
+        }
+      }
+      removed += 1;
     }
   }
-  const stale = [...state.livePreviews.entries()]
-    .filter(([, preview]) => now - preview.receivedAt >= state.livePreviewExpireMs);
-  if (stale.length === 0) return;
-  // Only judge while this screen is actually receiving the log.
-  if (state.realtimePhase !== 'ready' || (Number(state.catchupPending) || 0) > 0) return;
-  if (stale.some(([, preview]) => !preview.caughtUp)) {
-    const caughtUp = await catchUpTail(state);
-    if (caughtUp) {
-      for (const [, preview] of stale) preview.caughtUp = true;
-    }
-    return;
-  }
-  expireLivePreviews(state, stale.map(([key]) => key));
-}
-
-// A preview whose row never came: take it off the screen. Its structs stay in
-// the live doc (Yjs cannot remove them), so from here on every local edit is
-// rebased onto the accepted state (as after a refusal), never chained onto
-// them.
-function expireLivePreviews(state, keys) {
-  if (keys.length === 0) return;
-  for (const key of keys) {
-    state.livePreviews.delete(key);
-    rememberBounded(state.expiredPreviewKeys, key);
-  }
-  console.warn('[annotationDocSync] another screen\'s change never reached the log; removed from view', keys.length);
-  publishAcceptedAndVisiblePendingState(state);
-  enterRebaseMode(state);
-}
-
-// The (client, clock) pairs this local update builds on that are neither
-// accepted, nor its own, nor in a pending local record: another screen's
-// unconfirmed preview. One entry per client, its highest needed clock.
-function unconfirmedRemoteReferences(state, update, excludeKey) {
-  const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
-  const records = [...state.appendRecords.values()];
-  const decoded = Y.decodeUpdate(update);
-  const ownRanges = updateClockRanges(update);
-  const needed = new Map();
-  const need = (client, clock) => {
-    if (!Number.isFinite(client) || !Number.isFinite(clock)) return;
-    if (clock < (Number(acceptedVector.get(client)) || 0)) return;
-    const own = ownRanges.get(client);
-    if (own && own.start <= clock && clock < own.end) return;
-    if (recordCoveringClock(records, client, clock, excludeKey)) return;
-    needed.set(client, Math.max(needed.get(client) ?? -1, clock));
-  };
-  for (const struct of decoded.structs) {
-    for (const reference of [struct.origin, struct.rightOrigin, struct.parent]) {
-      need(Number(reference?.client), Number(reference?.clock));
-    }
-  }
-  for (const [client, deleteRanges] of decoded.ds.clients) {
-    for (const deleteRange of deleteRanges) {
-      const end = Number(deleteRange.clock) + Number(deleteRange.len || 0);
-      if (end > 0) need(Number(client), end - 1);
-    }
-  }
-  return [...needed.entries()];
-}
-
-function remoteReferencesAccepted(state, refs) {
-  const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
-  return refs.every(([client, clock]) => (Number(acceptedVector.get(client)) || 0) > clock);
-}
-
-function wakeRemoteReferenceWaiters(state) {
-  if (!state.remoteRefWaiters || state.remoteRefWaiters.size === 0) return;
-  for (const wake of [...state.remoteRefWaiters]) wake();
-}
-
-// Resolves true once every struct the record builds on is accepted (normally
-// within a second: the preview's row), or when the handle is closing (the
-// record is then written as it is, best effort). False only when, after
-// REMOTE_REF_WAIT_MS and one catch-up read with realtime live, they are still
-// missing: the preview it built on was never accepted.
-async function waitForRemoteReferences(state, record) {
-  const deadline = Date.now() + state.remoteRefWaitMs;
-  let caughtUp = false;
-  syncTrace('remote-ref-wait', { clientSeq: record.clientSeq, refs: record.remoteRefs.length });
-  for (;;) {
-    if (remoteReferencesAccepted(state, record.remoteRefs)) {
-      syncTrace('remote-ref-ready', { clientSeq: record.clientSeq });
-      return true;
-    }
-    if (state.destroyed || state.deleted || state.closePromise) return true;
-    if (
-      Date.now() >= deadline
-      && state.realtimePhase === 'ready'
-      && !((Number(state.catchupPending) || 0) > 0)
-    ) {
-      if (caughtUp) return false;
-      caughtUp = true;
-      await catchUpTail(state);
-      continue;
-    }
-    await new Promise((resolve) => {
-      let timer = null;
-      const wake = () => {
-        clearTimeout(timer);
-        state.remoteRefWaiters.delete(wake);
-        resolve();
-      };
-      timer = setTimeout(wake, 1_000);
-      state.remoteRefWaiters.add(wake);
-    });
-  }
+  if (removed > 0) notifyLivePreviewListeners(state);
 }
 
 function closeLivePreviews(state) {
@@ -4437,19 +4430,9 @@ function closeLivePreviews(state) {
   }
   try { state.liveBus?.release(); } catch { /* */ }
   state.liveBus = null;
-  wakeRemoteReferenceWaiters(state);
-}
-
-// Structs of previews that never got their row stay in the registry doc,
-// which the next open of this document reuses: that handle must not chain
-// exact edits onto them (see the taint check in openAnnotationDoc). Run as the
-// handle lets go of the doc, after its last rows were applied.
-function taintLiveDocIfUnconfirmed(state) {
-  const unconfirmed = [...state.livePreviews.keys(), ...state.expiredPreviewKeys];
-  if (unconfirmed.length > 0 && state.ownsRegistryDoc) {
-    const tainted = LIVE_PREVIEW_TAINTED_DOCS.get(state.doc) || new Set();
-    for (const key of unconfirmed) tainted.add(key);
-    LIVE_PREVIEW_TAINTED_DOCS.set(state.doc, tainted);
+  if (state.livePreviews.size > 0) {
+    state.livePreviews.clear();
+    notifyLivePreviewListeners(state);
   }
 }
 
@@ -4738,6 +4721,19 @@ function makeHandle(state) {
       return byPage;
     },
 
+    /**
+     * w30: other screens' new marks that are on their way (broadcast, WAL row
+     * not here yet), per page. Display only: merge onto getByPage() to show
+     * them; applyByPage drops them again.
+     */
+    getLivePreviewByPage() { return livePreviewByPage(state); },
+
+    /** Subscribe to live-preview arrivals/removals. Returns an unsubscribe fn. */
+    onLivePreviewChange(cb) {
+      state.livePreviewListeners.add(cb);
+      return () => state.livePreviewListeners.delete(cb);
+    },
+
     /** Imported PDF-native annotations intentionally removed in app state. */
     getDeletedPdfAnnotations() {
       return docToDeletedPdfAnnotations(state.doc);
@@ -4753,6 +4749,9 @@ function makeHandle(state) {
       assertHandleWritable(state);
       syncTrace('capture-start');
       const viewer = state.viewer;
+      // Another screen's in-flight mark shown on this screen is never this
+      // screen's edit (w30).
+      byPage = stripLivePreviewObjects(state, byPage);
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
       const hasEraserMutation = Object.values(byPage || {}).some((page) => page?.eraserMutation?.id);
@@ -4876,10 +4875,14 @@ function makeHandle(state) {
       assertHandleWritable(state);
       if (!eraserMutation?.id) return null;
       const current = state.lastByPage || docToByPage(state.doc);
+      const pageWithoutPreviews = stripLivePreviewObjects(
+        state,
+        { [pageNumber]: pageAnnotations || { objects: [] } },
+      )[pageNumber];
       const prepared = {
         ...current,
         [pageNumber]: {
-          ...(pageAnnotations || { objects: [] }),
+          ...(pageWithoutPreviews || { objects: [] }),
           eraserMutation,
         },
       };
@@ -5188,7 +5191,6 @@ function makeHandle(state) {
       try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
       // Release the registry doc (the registry never destroys — keeps undo/state
       // across reopen). Only destroy a doc we were explicitly handed (tests).
-      taintLiveDocIfUnconfirmed(state);
       if (state.ownsRegistryDoc) releaseYDoc(state.registryKey);
       else { try { state.doc.destroy(); } catch { /* */ } }
       })();

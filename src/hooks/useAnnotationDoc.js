@@ -48,6 +48,32 @@ import {
 } from '../utils/embeddedImportGate.js';
 
 const SPACES_KEY = 'spaces';
+function livePreviewPublicChannelInDev() {
+  if (!import.meta.env?.DEV) return false;
+  try { return globalThis.localStorage?.getItem('survey:livePreviewPublicChannel') === '1'; } catch { return false; }
+}
+
+// w30: add other screens' in-flight new marks (handle.getLivePreviewByPage)
+// to a page list read from the document. A mark the document already holds
+// wins; the page list is returned unchanged when there is nothing to add.
+function withLivePreviews(byPage, handle) {
+  const overlay = handle?.getLivePreviewByPage?.();
+  if (!overlay || Object.keys(overlay).length === 0) return byPage;
+  const next = { ...(byPage || {}) };
+  for (const [pageNumber, objects] of Object.entries(overlay)) {
+    const page = next[pageNumber] || { objects: [] };
+    const present = new Set((page.objects || []).map((object) => (
+      object?.data?.id ?? object?.id ?? null
+    )).filter((id) => id != null).map(String));
+    const added = objects.filter((object) => {
+      const id = object?.data?.id ?? object?.id ?? null;
+      return id == null || !present.has(String(id));
+    });
+    if (added.length > 0) next[pageNumber] = { ...page, objects: [...(page.objects || []), ...added] };
+  }
+  return next;
+}
+
 // w28: how long a writable open waits for the PDF's own embedded import
 // before carrying old marks anyway (see the carry-over effect below).
 const LEGACY_CARRY_WAIT_MS = 60_000;
@@ -327,6 +353,7 @@ export function useAnnotationDoc({
     let cancelled = false;
     let unsubscribeSync = null;
     let unsubscribeHistoryQuarantine = null;
+    let unsubscribeLivePreview = null;
     let retryTimer = null;
     readyRef.current = false;
     metaFallbackIdsRef.current = new Set();
@@ -363,6 +390,10 @@ export function useAnnotationDoc({
           // trip (~1 s, several seconds on a big document). Each small edit
           // is also broadcast; the log still decides what is saved.
           livePreview: true,
+          // Private channel (document members only). A dev build can use a
+          // public topic for measuring before the channel policies exist:
+          // localStorage 'survey:livePreviewPublicChannel' = '1'.
+          livePreviewPrivate: !livePreviewPublicChannelInDev(),
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
             ? eraseEffectConsumerProxyRef.current
             : null,
@@ -494,6 +525,7 @@ export function useAnnotationDoc({
           let nextByPage = byPage;
           try { nextByPage = handle.getByPage(); } catch { /* closed handle: keep the notified copy */ }
           syncTrace('react-update-read');
+          nextByPage = withLivePreviews(nextByPage, handle);
           if (fallback && fallback.callouts.length > 0) {
             nextByPage = projectCalloutsIntoByPage(
               nextByPage,
@@ -510,6 +542,19 @@ export function useAnnotationDoc({
         if (sm && typeof sm === 'object') setSurveyMarkers(sm);
         setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
       });
+
+      // w30: another screen's new mark, broadcast before its WAL row, shows
+      // at once (display only; the handle drops it again from every capture)
+      // and leaves when its row brings the real mark or it never comes.
+      unsubscribeLivePreview = handle.onLivePreviewChange?.(() => {
+        if (cancelled) return;
+        setAnnotationsByPage((previousByPage) => {
+          if (cancelled) return previousByPage;
+          let nextByPage = previousByPage;
+          try { nextByPage = withLivePreviews(handle.getByPage(), handle); } catch { return previousByPage; }
+          return preserveTransientPagePresentationState(previousByPage, nextByPage);
+        });
+      }) || null;
 
       // Old import/sync races could save one path repeatedly under fresh ids.
       // After partial erase those copies become identical hairline fragments:
@@ -643,6 +688,7 @@ export function useAnnotationDoc({
       readyRef.current = false;
       unsubscribeSync?.();
       unsubscribeHistoryQuarantine?.();
+      unsubscribeLivePreview?.();
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers, openRetryTick]);

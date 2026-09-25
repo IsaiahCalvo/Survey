@@ -2,9 +2,9 @@
 //
 // A stroke drawn on one screen used to reach another only as its WAL row came
 // back through Postgres Changes (~1 s; several seconds on a big document). Now
-// each small local edit is also broadcast the moment it is made, and other
-// screens show it as a PREVIEW: in the live doc only, never accepted,
-// persisted or checkpointed until its own WAL row arrives. These tests pin:
+// each small new mark is also broadcast the moment it is drawn, and other
+// screens show it as a PREVIEW until its own WAL row arrives: display only,
+// never in their Y.Doc. These tests pin:
 //   * the broadcast leaves before (independent of) the WAL insert;
 //   * the receiver applies it with no log read, and the later row causes no
 //     second repaint;
@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import * as Y from 'yjs';
 import { openAnnotationDoc, __test } from '../src/services/annotationDocSync.js';
+import { writeAnnotationMark } from '../src/services/annotationDocStore.js';
 
 const rect = (id, extra = {}) => ({
   type: 'rect',
@@ -98,6 +99,12 @@ function createCloud(documentId) {
     };
     return builder;
   };
+  // A message from outside any client (a forged or broken sender).
+  cloud.inject = (payload) => {
+    for (const live of liveChannels) {
+      if (live.joined) queueMicrotask(() => live.handler?.({ payload }));
+    }
+  };
   cloud.makeClient = (actor) => {
     const client = {
       actor,
@@ -162,6 +169,12 @@ function createCloud(documentId) {
           const api = {
             on(_type, _filter, callback) { live.handler = callback; return api; },
             subscribe(callback) {
+              client.liveJoins = (client.liveJoins || 0) + 1;
+              if (cloud.refuseLive) {
+                // No channel policy: Realtime refuses the private join.
+                queueMicrotask(() => callback('CHANNEL_ERROR', new Error('Unauthorized')));
+                return api;
+              }
               queueMicrotask(() => { live.joined = true; callback('SUBSCRIBED'); });
               return api;
             },
@@ -220,7 +233,21 @@ const snapshotHasMark = (cloud, id) => {
   return doc.getMap('marks').has(id);
 };
 
-test('a stroke reaches the other screen before its WAL row exists, with no log read, and its row causes no second repaint', async () => {
+const previewIds = (handle) => Object.values(handle.getLivePreviewByPage())
+  .flatMap((objects) => objects.map((object) => object?.data?.id));
+
+// What the app's screen holds: the document plus the overlay (useAnnotationDoc
+// merges them the same way).
+const screenOf = (handle) => {
+  const byPage = handle.getByPage();
+  for (const [pageNumber, objects] of Object.entries(handle.getLivePreviewByPage())) {
+    const page = byPage[pageNumber] || { objects: [] };
+    byPage[pageNumber] = { ...page, objects: [...(page.objects || []), ...objects] };
+  }
+  return byPage;
+};
+
+test('a new stroke reaches the other screen before its WAL row exists, with no log read, and leaves the overlay when its row lands', async () => {
   const documentId = 'live-preview-fast-path';
   const cloud = createCloud(documentId);
   const alice = cloud.makeClient('user-a');
@@ -229,74 +256,53 @@ test('a stroke reaches the other screen before its WAL row exists, with no log r
   const b = await openFor(bob, documentId);
   await until(() => a.isRealtimeReady() && b.isRealtimeReady());
   await settle();
-  let bobRepaints = 0;
-  b.onChange(() => { bobRepaints += 1; });
+  let previewChanges = 0;
+  let docChanges = 0;
+  b.onLivePreviewChange(() => { previewChanges += 1; });
+  b.onChange(() => { docChanges += 1; });
   const bobTailReadsBefore = bob.tailReads;
 
   const gate = deferred();
   alice.appendGate = gate.promise; // the WAL insert is slow
   a.applyByPage({ 1: { objects: [rect('stroke-1')] } });
 
-  assert.equal(cloud.sent.length, 1, 'the edit is broadcast at once');
+  assert.equal(cloud.sent.length, 1, 'the new mark is broadcast at once');
   assert.equal(cloud.sent[0].rowsAtSend, 0, 'before its WAL row is written');
-  assert.ok(await until(() => hasMark(b, 'stroke-1')), 'the other screen shows it while the insert is still running');
-  assert.equal(cloud.rows.length, 0);
-  assert.equal(bobRepaints, 1, 'one repaint for the preview');
+  assert.ok(await until(() => previewIds(b).includes('stroke-1')), 'the other screen shows it while the insert is still running');
+  assert.equal(previewChanges, 1);
+  assert.equal(hasMark(b, 'stroke-1'), false, 'shown beside the document, never in it');
   assert.equal(bob.tailReads, bobTailReadsBefore, 'no log read on the fast path');
 
   gate.resolve();
   alice.appendGate = null;
   await a.drain();
-  assert.ok(await until(() => cloud.rows.length === 1));
-  await settle(30);
-  assert.equal(bobRepaints, 1, 'its row (already shown) does not repaint again');
-  assert.ok(hasMark(b, 'stroke-1'));
+  assert.ok(await until(() => hasMark(b, 'stroke-1')), 'its row brings the real mark');
+  assert.deepEqual(previewIds(b), [], 'and the overlay copy leaves');
+  assert.ok(docChanges >= 1);
 
-  // Bob can edit it right away: the preview was confirmed by its row, so his
-  // edit is not held.
+  // Bob can edit it normally now.
   const screen = b.getByPage();
   b.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, width: 222 })) } });
   await b.drain();
   assert.ok(await until(() => a.getByPage()[1].objects[0].width === 222));
+
+  // Alice's next stroke is not her Yjs client's first struct: it is
+  // previewed all the same.
+  const gate2 = deferred();
+  alice.appendGate = gate2.promise;
+  const aliceScreen = a.getByPage();
+  a.applyByPage({ 1: { ...aliceScreen[1], objects: [...aliceScreen[1].objects, rect('stroke-2')] } });
+  assert.ok(await until(() => previewIds(b).includes('stroke-2')), 'a later stroke is previewed too');
+  gate2.resolve();
+  alice.appendGate = null;
+  await a.drain();
+  assert.ok(await until(() => hasMark(b, 'stroke-2') && previewIds(b).length === 0));
   await a.destroy();
   await b.destroy();
 });
 
-test('the receiver never checkpoints a preview; a refused edit\'s phantom leaves the screen', async () => {
-  const documentId = 'live-preview-refused';
-  const cloud = createCloud(documentId);
-  const alice = cloud.makeClient('user-a');
-  const bob = cloud.makeClient('user-b');
-  const a = await openFor(alice, documentId);
-  const b = await openFor(bob, documentId, {
-    livePreviewTimings: { confirmMs: 40, expireMs: 120, sweepMs: 25, remoteRefWaitMs: 150 },
-  });
-  await until(() => a.isRealtimeReady() && b.isRealtimeReady());
-  // Alice's write will be refused (e.g. the document was just locked).
-  alice.appendError = { code: '42501', message: 'annotation write is not permitted' };
-  a.applyByPage({ 1: { objects: [rect('refused-1')] } });
-  assert.ok(await until(() => hasMark(b, 'refused-1')), 'Bob sees the preview');
-
-  assert.equal(await b.flushSnapshot(), true);
-  assert.equal(snapshotHasMark(cloud, 'refused-1'), false, 'Bob\'s checkpoint holds only accepted rows');
-
-  assert.ok(
-    await until(() => !hasMark(b, 'refused-1'), { timeoutMs: 3_000 }),
-    'a preview whose row never comes is taken off the screen',
-  );
-  // Bob keeps working normally afterwards (his edits are rebased).
-  const screen = b.getByPage();
-  b.applyByPage({ 1: { ...(screen[1] || {}), objects: [...(screen[1]?.objects || []), rect('bob-1')] } });
-  await b.drain();
-  assert.ok(cloud.rows.some((row) => row.actor_user_id === 'user-b'));
-  assert.ok(await until(() => hasMark(a, 'bob-1')), 'Bob\'s later edit reaches Alice');
-  assert.equal(b.isSyncHealthy(), true);
-  await a.destroy();
-  await b.destroy();
-});
-
-test('an edit made on a preview waits for the preview\'s row, then goes through', async () => {
-  const documentId = 'live-preview-dependent-edit';
+test('a screen never writes, checkpoints or builds on another screen\'s preview, even when it edits it', async () => {
+  const documentId = 'live-preview-never-written';
   const cloud = createCloud(documentId);
   const alice = cloud.makeClient('user-a');
   const bob = cloud.makeClient('user-b');
@@ -306,52 +312,102 @@ test('an edit made on a preview waits for the preview\'s row, then goes through'
 
   const gate = deferred();
   alice.appendGate = gate.promise;
-  a.applyByPage({ 1: { objects: [rect('moved-1')] } });
-  assert.ok(await until(() => hasMark(b, 'moved-1')));
+  a.applyByPage({ 1: { objects: [rect('shared-1')] } });
+  assert.ok(await until(() => previewIds(b).includes('shared-1')));
 
-  // Bob moves Alice's stroke before its row exists.
-  const screen = b.getByPage();
+  // Bob's screen holds the preview (as the app's page list does) and he moves
+  // it before its row exists: nothing of it is written by Bob.
+  const screen = screenOf(b);
   b.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, left: 300 })) } });
-  await settle(60);
-  assert.equal(bob.appendCalls, 0, 'Bob\'s row waits: it builds on a struct not yet in the log');
+  await b.drain();
+  assert.equal(bob.appendCalls, 0, 'the preview is not Bob\'s edit');
+  assert.equal(await b.flushSnapshot(), true);
+  assert.equal(snapshotHasMark(cloud, 'shared-1'), false, 'nor in Bob\'s checkpoint');
 
   gate.resolve();
   alice.appendGate = null;
   await a.drain();
-  assert.ok(await until(() => bob.appendCalls === 1), 'released once Alice\'s row arrived');
-  await b.drain();
-  assert.deepEqual(cloud.rows.map((row) => row.actor_user_id), ['user-a', 'user-b'], 'log order: the stroke, then the move');
-  assert.ok(await until(() => a.getByPage()[1].objects[0].left === 300), 'Alice sees Bob\'s move');
-  // A fresh open from the log alone holds both.
-  const carol = cloud.makeClient('user-c');
-  const c = await openFor(carol, documentId, { livePreview: false });
-  assert.equal(c.getByPage()[1].objects[0].left, 300);
-  await Promise.all([a.destroy(), b.destroy(), c.destroy()]);
+  assert.ok(await until(() => hasMark(b, 'shared-1')));
+  assert.equal(b.getByPage()[1].objects[0].left, 10, 'Alice\'s stroke as she drew it');
+  assert.deepEqual(cloud.rows.map((row) => row.actor_user_id), ['user-a']);
+  await a.destroy();
+  await b.destroy();
 });
 
-test('an edit made on a preview that never reaches the log is rolled back', async () => {
-  const documentId = 'live-preview-dependent-refused';
+test('a refused stroke\'s preview leaves the screen and is never written, even by an Undo that brings it back', async () => {
+  const documentId = 'live-preview-refused';
   const cloud = createCloud(documentId);
   const alice = cloud.makeClient('user-a');
   const bob = cloud.makeClient('user-b');
   const a = await openFor(alice, documentId);
-  const b = await openFor(bob, documentId, {
-    livePreviewTimings: { confirmMs: 40, expireMs: 120, sweepMs: 25, remoteRefWaitMs: 150 },
-  });
+  const b = await openFor(bob, documentId, { livePreviewTimings: { expireMs: 80, sweepMs: 20 } });
   await until(() => a.isRealtimeReady() && b.isRealtimeReady());
-  const quarantines = [];
-  b.onHistoryQuarantine((event) => quarantines.push(event));
-
+  // Alice's write is refused (e.g. the document was just locked).
   alice.appendError = { code: '42501', message: 'annotation write is not permitted' };
-  a.applyByPage({ 1: { objects: [rect('ghost-1')] } });
-  assert.ok(await until(() => hasMark(b, 'ghost-1')));
-  const screen = b.getByPage();
-  b.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, left: 400 })) } });
+  a.applyByPage({ 1: { objects: [rect('refused-1')] } });
+  assert.ok(await until(() => previewIds(b).includes('refused-1')), 'Bob sees the preview');
+  const staleScreen = screenOf(b);
+  assert.ok(await until(() => previewIds(b).length === 0), 'it expires');
 
-  assert.ok(await until(() => quarantines.length > 0, { timeoutMs: 3_000 }), 'the dependent edit is rolled back');
-  assert.equal(quarantines[0].reason, 'unconfirmed-remote-edit');
-  assert.equal(cloud.rows.length, 0, 'nothing that builds on the refused stroke reached the log');
-  assert.ok(await until(() => !hasMark(b, 'ghost-1'), { timeoutMs: 3_000 }));
+  // An Undo restores a page list captured while it was on screen.
+  b.applyByPage(staleScreen);
+  b.applyByPage({ 1: { objects: [...(staleScreen[1]?.objects || []), rect('bob-1')] } });
+  await b.drain();
+  assert.equal(hasMark(b, 'refused-1'), false);
+  assert.ok(hasMark(b, 'bob-1'), 'Bob\'s own new mark is written as usual');
+  assert.deepEqual(cloud.rows.map((row) => row.actor_user_id), ['user-b']);
+  assert.ok(await until(() => hasMark(a, 'bob-1')), 'and reaches Alice');
+  assert.equal(b.isSyncHealthy(), true);
+  await a.destroy();
+  await b.destroy();
+});
+
+test('only brand-new marks are previewed; edits, deletions and forged or flooding messages are ignored', async () => {
+  const documentId = 'live-preview-only-new';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const bob = cloud.makeClient('user-b');
+  const a = await openFor(alice, documentId);
+  const b = await openFor(bob, documentId);
+  await until(() => a.isRealtimeReady() && b.isRealtimeReady());
+  a.applyByPage({ 1: { objects: [rect('existing-1')] } });
+  await a.drain();
+  assert.ok(await until(() => hasMark(b, 'existing-1')));
+  let previewChanges = 0;
+  b.onLivePreviewChange(() => { previewChanges += 1; });
+
+  // An edit of an existing mark needs structs the message does not carry.
+  const gate = deferred();
+  alice.appendGate = gate.promise;
+  const screen = a.getByPage();
+  a.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => ({ ...o, stroke: '#0000ff' })) } });
+  await settle(40);
+  assert.equal(previewChanges, 0, 'an edit waits for its row');
+  gate.resolve();
+  alice.appendGate = null;
+  await a.drain();
+  assert.ok(await until(() => b.getByPage()[1].objects[0].stroke === '#0000ff'));
+
+  // Forged and malformed messages on the channel.
+  const forge = (payload) => cloud.inject(payload);
+  forge({ v: 1, w: 'x', s: 1, u: 'not base64 !!' });
+  forge({ v: 1, w: 'x', s: 2, u: 'AAAA' });
+  const deleter = new Y.Doc();
+  deleter.getMap('marks').set('tmp', 1);
+  const deleteOnly = Y.encodeStateAsUpdate(deleter);
+  forge({ v: 1, w: 'x', s: 3, u: Buffer.from(deleteOnly).toString('base64') });
+  await settle(20);
+  assert.deepEqual(previewIds(b), [], 'malformed and delete-only messages show nothing');
+  // A flood from one writer is capped per second.
+  for (let index = 0; index < 120; index += 1) {
+    const flood = new Y.Doc();
+    writeAnnotationMark(flood, `flood-${index}`, 1, rect(`flood-${index}`));
+    const update = Y.encodeStateAsUpdate(flood);
+    forge({ v: 1, w: 'flooder', s: index + 1, u: Buffer.from(update).toString('base64') });
+  }
+  await settle(40);
+  const shown = previewIds(b).length;
+  assert.ok(shown > 0 && shown <= 50, `a flood is capped per writer (${shown} shown)`);
   await a.destroy();
   await b.destroy();
 });
@@ -404,4 +460,26 @@ test('live previews are off unless asked for: no live channel is joined', async 
   assert.deepEqual(alice.liveTopics, []);
   assert.equal(cloud.sent.length, 0);
   await a.destroy();
+});
+
+test('a refused private join is not retried; edits still arrive through the log', async () => {
+  const documentId = 'live-preview-refused-join';
+  const cloud = createCloud(documentId);
+  cloud.refuseLive = true;
+  const alice = cloud.makeClient('user-a');
+  const bob = cloud.makeClient('user-b');
+  const a = await openFor(alice, documentId);
+  const b = await openFor(bob, documentId);
+  await until(() => a.isRealtimeReady() && b.isRealtimeReady());
+  await settle(30);
+  a.applyByPage({ 1: { objects: [rect('log-only-1')] } });
+  await a.drain();
+  assert.equal(cloud.sent.length, 0, 'nothing is broadcast on a refused channel');
+  assert.ok(await until(() => hasMark(b, 'log-only-1')), 'the WAL row still delivers it');
+  await a.destroy();
+  // Reopening within the back-off does not knock on the channel again.
+  const again = await openFor(alice, documentId);
+  await settle(30);
+  assert.equal(alice.liveJoins, 1, 'one refused join, no retry storm');
+  await Promise.all([again.destroy(), b.destroy()]);
 });

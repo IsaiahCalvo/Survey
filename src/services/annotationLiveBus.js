@@ -13,11 +13,21 @@
 // only thing that makes an edit durable or accepted (annotationDocSync treats a
 // broadcast as a preview until its row arrives).
 //
+// The channel is PRIVATE: Realtime lets a screen join only when the
+// realtime.messages policies say its user can open the document (receive) or
+// edit it (send); see supabase/migrations/*_live_preview_channel_policies.sql.
+// Without those policies the join is refused: this module then gives up for a
+// while (no retry storm against the database) and edits arrive through the
+// log only, exactly as before w30.
+//
 // This module is transport only: no Yjs, no document state.
 
 export const LIVE_PREVIEW_EVENT = 'u';
 
 const REGISTRY = (globalThis.__annotationLiveBusRegistry__ ??= new WeakMap());
+// documentId -> time a join was refused; no new attempt for this long.
+const REFUSED = (globalThis.__annotationLiveBusRefused__ ??= new Map());
+const REFUSED_BACKOFF_MS = 5 * 60_000;
 
 function registryFor(supabase) {
   let byDocument = REGISTRY.get(supabase);
@@ -28,18 +38,30 @@ function registryFor(supabase) {
   return byDocument;
 }
 
-function createBus(supabase, documentId) {
+function closeBus(supabase, byDocument, documentId, bus) {
+  if (bus.closing) return;
+  bus.joined = false;
+  bus.closing = Promise.resolve()
+    .then(() => supabase.removeChannel?.(bus.channel))
+    .catch(() => {})
+    .finally(() => {
+      if (byDocument.get(documentId) === bus) byDocument.delete(documentId);
+    });
+}
+
+function createBus(supabase, byDocument, documentId, { isPrivate }) {
   const bus = {
     refs: 0,
     listeners: new Set(),
     joined: false,
+    everJoined: false,
     closing: null,
     channel: null,
   };
   const channel = supabase.channel(`anno-live:${documentId}`, {
     // self:false — the sender already holds its own edit. ack:false — a
     // preview that is lost costs nothing: the WAL row still arrives.
-    config: { broadcast: { self: false, ack: false } },
+    config: { private: isPrivate, broadcast: { self: false, ack: false } },
   });
   bus.channel = channel;
   channel.on('broadcast', { event: LIVE_PREVIEW_EVENT }, (message) => {
@@ -51,6 +73,19 @@ function createBus(supabase, documentId) {
   });
   channel.subscribe((status) => {
     bus.joined = status === 'SUBSCRIBED';
+    if (bus.joined) {
+      bus.everJoined = true;
+      REFUSED.delete(documentId);
+      return;
+    }
+    // Never joined: the join itself was refused (no channel policy, or no
+    // access). Stop here instead of letting the client retry every few
+    // seconds; the log path carries every edit anyway.
+    if (status === 'CHANNEL_ERROR' && !bus.everJoined) {
+      REFUSED.set(documentId, Date.now());
+      console.info('[annotationLiveBus] live channel refused; edits arrive through the log only');
+      closeBus(supabase, byDocument, documentId, bus);
+    }
   });
   return bus;
 }
@@ -59,8 +94,10 @@ function createBus(supabase, documentId) {
  * Join the document's live channel (or share the one this tab already has).
  * Resolves to { send(payload) → boolean, release() }.
  */
-export async function acquireLiveBus(supabase, documentId, listener) {
+export async function acquireLiveBus(supabase, documentId, listener, { isPrivate = true } = {}) {
   if (!supabase || typeof supabase.channel !== 'function' || !documentId) return null;
+  const refusedAt = REFUSED.get(documentId);
+  if (refusedAt && Date.now() - refusedAt < REFUSED_BACKOFF_MS) return null;
   const byDocument = registryFor(supabase);
   // A bus whose last user left is removing its channel; a new channel for the
   // same topic can only be made once that removal is done.
@@ -72,7 +109,7 @@ export async function acquireLiveBus(supabase, documentId, listener) {
   }
   let bus = byDocument.get(documentId);
   if (!bus || bus.closing) {
-    bus = createBus(supabase, documentId);
+    bus = createBus(supabase, byDocument, documentId, { isPrivate });
     byDocument.set(documentId, bus);
   }
   bus.refs += 1;
@@ -95,14 +132,8 @@ export async function acquireLiveBus(supabase, documentId, listener) {
       released = true;
       bus.listeners.delete(listener);
       bus.refs = Math.max(0, bus.refs - 1);
-      if (bus.refs > 0 || bus.closing) return;
-      bus.joined = false;
-      bus.closing = Promise.resolve()
-        .then(() => supabase.removeChannel?.(bus.channel))
-        .catch(() => {})
-        .finally(() => {
-          if (byDocument.get(documentId) === bus) byDocument.delete(documentId);
-        });
+      if (bus.refs > 0) return;
+      closeBus(supabase, byDocument, documentId, bus);
     },
   };
 }
