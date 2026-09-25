@@ -4683,9 +4683,24 @@ function confirmLivePreview(state, writerId, clientSeq) {
     }
     // This row, and any older edit overlay of that screen: one writer's rows
     // are appended in client_seq order, so an older one that is still here
-    // was refused or never sent.
+    // was refused or never sent. If Yjs had to hold the row back (a struct
+    // it depends on has not arrived), the overlay stays until the document
+    // can show the change (or its expiry).
+    const heldBack = Boolean(state.doc?.store?.pendingStructs || state.doc?.store?.pendingDs);
     for (const [editKey, edit] of state.liveEdits) {
       if (edit.writerId === writer && edit.clientSeq <= seq) {
+        if (heldBack) {
+          edit.awaitingIntegration = true;
+          continue;
+        }
+        state.liveEdits.delete(editKey);
+        changed = true;
+      }
+    }
+  }
+  if (!state.doc?.store?.pendingStructs && !state.doc?.store?.pendingDs) {
+    for (const [editKey, edit] of state.liveEdits) {
+      if (edit.awaitingIntegration) {
         state.liveEdits.delete(editKey);
         changed = true;
       }

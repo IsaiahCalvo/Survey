@@ -184,9 +184,16 @@ for (const context of allContexts) {
 }
 // --public-channel: dev builds only, live previews on a public topic (for
 // measuring before the private channel's policies exist).
-if (flag('public-channel')) {
-  const PUBLIC_INIT = () => { try { localStorage.setItem('survey:livePreviewPublicChannel', '1'); } catch { /* */ } };
-  for (const context of allContexts) await context.addInitScript(PUBLIC_INIT);
+// Set (or clear) it on every run: profiles are persistent now, and a screen
+// left on the public topic by an earlier run would not hear the others.
+{
+  const CHANNEL_INIT = (usePublic) => {
+    try {
+      if (usePublic) localStorage.setItem('survey:livePreviewPublicChannel', '1');
+      else localStorage.removeItem('survey:livePreviewPublicChannel');
+    } catch { /* */ }
+  };
+  for (const context of allContexts) await context.addInitScript(CHANNEL_INIT, flag('public-channel'));
 }
 
 // w32: what reached Supabase, per page, on the Node clock (epoch ms).
@@ -248,7 +255,10 @@ function meterUsage(page, label) {
     });
     socket.on('framereceived', ({ payload }) => {
       const frame = classifyFrame(payload, 'received');
-      usageLog.push({ t: Date.now(), page: label, kind: `ws-recv ${frame.kind}`, bytes: frame.bytes, topic: frame.topic });
+      usageLog.push({
+        t: Date.now(), page: label, kind: `ws-recv ${frame.kind}`, bytes: frame.bytes, topic: frame.topic,
+        ...(typeof payload === "string" && /anno-live/.test(frame.topic) && !/broadcast/.test(frame.kind) ? { raw: payload.slice(0, 400) } : {}),
+      });
     });
   });
 }
@@ -959,6 +969,14 @@ try {
   }
   log('A live channel:', JSON.stringify(await liveChannelStatus(pageA)));
   log('B live channel:', JSON.stringify(await liveChannelStatus(pageB)));
+  for (let index = 0; index < extraPages.length; index += 1) {
+    log(`${String.fromCharCode(67 + index)} live channel:`, JSON.stringify(await liveChannelStatus(extraPages[index])));
+  }
+  if (flag('join-debug')) {
+    // Every Realtime reply on the live topic, per screen (join answers).
+    const replies = usageLog.filter((entry) => /anno-live/.test(entry.topic || '') && /phx_reply|phx_error|phx_close/.test(entry.kind));
+    log("live-topic replies:", JSON.stringify(replies.map((entry) => `${entry.page} ${entry.kind} ${entry.raw || entry.bytes}`)));
+  }
   if (flag('presence-debug')) {
     // What Realtime answers a presence track on the private channel.
     const answer = await pageA.evaluate(async () => {
