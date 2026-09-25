@@ -4204,7 +4204,18 @@ async function writeSnapshotNow(state, {
         // rows were accepted does not stand for them (its reset of the owed
         // flags at encode would otherwise drop the compaction's checkpoint
         // for good): still owed, and due.
-        if (!state.compactionCheckpointEpoch || (Number(epochAtStart) || 0) >= state.compactionCheckpointEpoch) {
+        // Only while a compaction row is still on its way: one that ended
+        // refused or in error never will be accepted, and re-arming for it
+        // would upload a checkpoint every few seconds for good (w35 pass C).
+        const compactionRowPending = Boolean(state.compactionCheckpointEpoch) && [...state.appendRecords.values()].some((record) => (
+          !TERMINAL_RECORD_STATUSES.has(record?.status)
+          && (Number(record?.editEpoch) || 0) <= state.compactionCheckpointEpoch
+        ));
+        if (
+          !state.compactionCheckpointEpoch
+          || (Number(epochAtStart) || 0) >= state.compactionCheckpointEpoch
+          || !compactionRowPending
+        ) {
           state.checkpointMustWrite = false;
           state.compactionCheckpointEpoch = 0;
         } else if (state.checkpointMustWrite) {
@@ -5836,18 +5847,19 @@ function makeHandle(state) {
               // Selection delete removes only the stable base. Lanes remain so
               // restoring that base naturally reveals the prior erased state.
               if (!desiredRecord) {
-                // w35 (2026-09-25): only a mark the document still hands this
-                // screen can be one the user deleted. A whole-stroke erase is
-                // a delete LANE over a kept stored mark (so Undo and Revisions
-                // can bring it back); the document stops showing that mark,
-                // and treating its absence as a selection delete used to
-                // delete the stored mark on the erasing screen AND on every
-                // other open screen (one extra row each, Undo then restored
-                // nothing, imported marks kept a tombstone).
+                // w35 (2026-09-25): a mark a delete LANE hides is not on any
+                // screen, so its absence is never a user's delete. A
+                // whole-stroke erase is such a lane over a kept stored mark
+                // (so Undo and Revisions can bring it back); treating its
+                // absence as a selection delete used to delete the stored
+                // mark on the erasing screen AND on every other open screen
+                // (one extra row each, Undo then restored nothing, imported
+                // marks kept a tombstone). The lane itself names an imported
+                // mark as deleted (docToDeletedPdfAnnotations).
                 if (
                   !viewer.had.has(storageKey)
                   || !annotations.has(storageKey)
-                  || !viewer.lastDelivered.has(storageKey)
+                  || lanes.some((lane) => lane?.deleted === true)
                 ) continue;
                 const stored = readAnnotationEntry(state.doc, storageKey);
                 const nativeId = stored?.o?.pdfAnnotationId;

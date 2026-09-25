@@ -281,3 +281,30 @@ test('a recolour of a mark the compaction has not reached writes only its colour
   writeAnnotationMark(doc, 'm', 1, { ...after, path: moved, polygons: derivePolygonsFromPath(moved, 'nonzero') }, { base: after, basePage: 1 });
   assert.deepEqual(readAnnotationEntry(doc, 'm').o.polygons, derivePolygonsFromPath(moved, 'nonzero'));
 });
+
+test('a compaction row that ends in error does not make the screen upload checkpoints forever', async () => {
+  // w35 pass C: the owed checkpoint re-arms only while the compaction row is
+  // still on its way; a row that ended refused or in error never will be.
+  const cloud = createCloud('w35-compaction-row-error');
+  const alice = cloud.makeClient('user-a');
+  const a = await openFor(alice, 'w35-compaction-row-error', { checkpointPolicy: { dueQuietMs: 50, idleMs: 200 } });
+  try {
+    assert.ok(await until(() => a.isRealtimeReady()));
+    a.doc.transact(() => {
+      for (let i = 0; i < 5; i += 1) legacyInkMark(a.doc, `ink${i}`, i * 20);
+      a.doc.getMap(META_MAP).set(EMBEDDED_IMPORT_MARKER_KEY, { at: 'x', count: 5 });
+    }, 'local');
+    await a.drain();
+    await settle(400);
+    alice.appendError = { code: '23505', message: 'duplicate key' };
+    const result = a.compactAnnotationStore();
+    assert.ok(result.batches > 0);
+    await settle(300);
+    alice.appendError = null;
+    const before = cloud.snapshotCalls;
+    await settle(2_000);
+    assert.ok(cloud.snapshotCalls - before <= 1, `${cloud.snapshotCalls - before} checkpoint uploads in 2 s while idle`);
+  } finally {
+    await a.destroy().catch(() => {});
+  }
+});

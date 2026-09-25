@@ -107,7 +107,17 @@ export function docToDeletedPdfAnnotations(doc) {
     );
   });
   getEraserOpsMap(doc).forEach((lane) => {
-    const entry = lane?.deleted === true ? lane.deletedPdfAnnotation : null;
+    // A delete lane names the imported mark it hides; one written without
+    // that field (the page-mutation eraser path) is read from the stored
+    // mark it keeps (w35: the capture no longer deletes that mark).
+    const entry = lane?.deleted === true
+      ? (lane.deletedPdfAnnotation || (lane.storageKey != null
+        ? (() => {
+          const stored = readAnnotationEntry(doc, String(lane.storageKey));
+          return stored ? deletedPdfAnnotationEntry(stored.o, stored.p) : null;
+        })()
+        : null))
+      : null;
     if (!entry?.pdfAnnotationId) return;
     active.set(
       deletedPdfAnnotationStorageKey(entry.pageNumber, entry.pdfAnnotationId),

@@ -133,3 +133,82 @@ test('a selection delete of a partly erased mark still deletes it', async () => 
     await a.destroy();
   }
 });
+
+test('deleting a partly erased mark again after Undo still deletes it (another screen writing meanwhile)', async () => {
+  // w35 pass C: the delete-lane guard must not rest on what the document last
+  // handed the screen (a remote row refreshes that, local captures do not).
+  const pen2 = (id, x = 10) => ({ ...pen(id), path: [['M', x, 10], ['L', x + 40, 60]], left: x });
+  const cloud = createCloud('whole-erase-undo-delete-again');
+  const a = await openFor(cloud.makeClient('user-a'), 'whole-erase-undo-delete-again');
+  const b = await openFor(cloud.makeClient('user-a'), 'whole-erase-undo-delete-again');
+  try {
+    assert.ok(await until(() => a.isRealtimeReady() && b.isRealtimeReady()));
+    a.applyByPage({ 1: { objects: [pen2('m2')] } });
+    await a.drain();
+    const screen = a.getByPage();
+    a.applyByPage(screen);
+    const before = screen[1].objects[0];
+    const intent = prepareEraseIntentForCommit({
+      intent: buildEraseIntent({
+        mutationId: 'undo-delete-again', pageNumber: 1, renderer: 'svg',
+        gesture: { points: [{ x: 20, y: 20 }], radius: 4, mode: 'partial' },
+        targets: [{
+          domain: 'page-object', storageKey: 'm2', kind: 'pen', operation: 'replace', pageNumber: 1, index: 0,
+          before, after: { ...before, path: [['M', 10, 10], ['L', 30, 35]] },
+        }],
+      }),
+      annotationsByPage: screen, userId: 'user-a', includeDeleteHistory: false,
+    });
+    const res = await a.commitEraseIntent(intent, { permissionContext: { mode: 'local-only' } });
+    assert.equal(res.status, 'committed');
+    a.applyByPage(res.byPage);
+    await a.drain();
+    const survivorPage = res.byPage[1];
+    const survivor = survivorPage.objects.find((o) => o?.data?.id === 'm2');
+    a.applyByPage({ ...res.byPage, 1: { ...survivorPage, objects: survivorPage.objects.filter((o) => o?.data?.id !== 'm2') } });
+    await a.drain();
+    assert.equal(a.doc.getMap('marks').has('m2'), false, 'first delete');
+    const bp = b.getByPage();
+    b.applyByPage({ ...bp, 1: { objects: [...(bp[1]?.objects || []), pen2('other', 200)] } });
+    await b.drain();
+    assert.ok(await until(() => a.doc.getMap('marks').has('other')));
+    await settle(50);
+    const current = a.getByPage();
+    const undone = { 1: { ...current[1], objects: [...(current[1]?.objects || []), survivor] } };
+    a.applyByPage(undone);
+    await a.drain();
+    assert.equal(a.doc.getMap('marks').has('m2'), true, 'Undo put it back');
+    a.applyByPage({ 1: { ...undone[1], objects: undone[1].objects.filter((o) => o?.data?.id !== 'm2') } });
+    await a.drain();
+    assert.equal(a.doc.getMap('marks').has('m2'), false, 'the second delete removed the stored mark');
+    assert.equal((a.getByPage()[1]?.objects || []).some((o) => o?.data?.id === 'm2'), false);
+  } finally {
+    await Promise.all([a.destroy(), b.destroy()]);
+  }
+});
+
+test('a whole erase on the page-mutation path still names the imported mark as deleted', async () => {
+  const cloud = createCloud('whole-erase-legacy-tombstone');
+  const a = await openFor(cloud.makeClient('user-a'), 'whole-erase-legacy-tombstone');
+  try {
+    assert.ok(await until(() => a.isRealtimeReady()));
+    const imported = {
+      ...pen('m1'), isPdfImported: true, pdfAnnotationId: 'pdf-m1', pdfAnnotationType: 'Ink',
+    };
+    a.applyByPage({ 1: { objects: [imported] } });
+    await a.drain();
+    const screen = a.getByPage();
+    a.applyByPage(screen);
+    const page = a.applyEraserMutation(1, { objects: [] }, {
+      id: 'legacy-erase-1', pageNumber: 1, points: [{ x: 20, y: 20 }], radius: 4, mode: 'full',
+      touchedIds: ['m1'], changedIds: [], deletedIds: ['m1'],
+      objectMutations: [{ storageKey: 'm1', annotationId: 'm1', deleted: true, base: screen[1].objects[0] }],
+    });
+    a.applyByPage({ 1: page });
+    await a.drain();
+    assert.deepEqual(a.getDeletedPdfAnnotations().map((entry) => entry.pdfAnnotationId), ['pdf-m1']);
+    assert.equal((a.getByPage()[1]?.objects || []).length, 0);
+  } finally {
+    await a.destroy();
+  }
+});
