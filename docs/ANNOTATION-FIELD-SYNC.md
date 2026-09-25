@@ -363,6 +363,69 @@ first page sat under the grey loading cover all that time. Now:
   IndexedDB, and the open yields between its heavy steps so the PDF page and
   input get turns.
 
+## Live sync latency (w30, 2026-09-24)
+
+The owner drew a pen stroke in one tab on "Package 2 - Rev 4 -- IC.pdf" and
+it took ~8-10 s to show in the other. Measured hop by hop
+(`agent-cli/sync-latency-probe.mjs`, opt-in trace `src/services/syncTrace.js`):
+the sender encoded the whole staged doc (17.7 MB) on every edit (~165 ms)
+before queueing; a 4.5 MB gzipped checkpoint was uploaded 1.2 s after every
+stroke (~5 s each) and held the document lock, so the next stroke's WAL insert
+waited (seen: 1.8 s); every 40th row the append queue itself waited for that
+upload; the row then took 0.2-0.6 s through Postgres Changes; and each change
+ran two full JSON.stringify passes over every mark on both screens (fixed by
+w29). Result before: 0.4 s on a small document, 1-2.7 s on Package 2, far more
+while checkpoints piled up.
+
+What changed:
+
+* No per-edit checkpoint. A record carries no checkpoint; the repair
+  checkpoint a failed append (or a gap) needs is rebuilt on demand:
+  `localPrefixThrough` merges the pending, non-refused local records up to that
+  record (plus its split siblings) and `encodeRepairCheckpoint` adds the
+  accepted state, which only grows. Outbox replay does the same (it used to
+  checkpoint the whole staged doc, which already held later edits).
+* The 40-row compaction checkpoint runs off the append queue
+  (`state.compactionChain`, encoding the accepted state only); `drain()` still
+  waits for it. With a durability gap it stays inline as before.
+* The checkpoint debounce grows with the checkpoint's gzipped size: 1.2 s for
+  a small document, ~4 s per MB, at most 30 s (Package 2: ~18 s). The WAL row
+  is what makes an edit durable; the checkpoint only shortens reopen.
+* A realtime row that changes nothing on this screen (its own echo) no longer
+  re-renders the page list.
+* Live previews (`src/services/annotationLiveBus.js`). Each small local edit
+  that only adds (48 KB or less, no deletions) is broadcast as it is made, on
+  a private Realtime Broadcast channel `anno-live:<document id>`, under its WAL
+  row's key (writer id, client_seq). A receiver accepts one only if it is
+  self-contained: every struct it points at is its own, it touches only the
+  marks map, and it adds marks this screen does not hold. That is a brand-new
+  mark; an edit of an existing mark waits for its row. It is decoded in a
+  throwaway doc (seeded with a placeholder for the sender's earlier clocks) and
+  shown BESIDE the document: `getLivePreviewByPage()`, merged by
+  `useAnnotationDoc`. It never enters the Y.Doc, so nothing can build on it,
+  persist it, checkpoint it or send it back; `applyByPage` and
+  `applyEraserMutation` drop preview marks (and expired ones, in case an Undo
+  brings one back) that the doc does not hold. A preview leaves when its row is
+  applied (the real mark then comes from the doc) or after 20 s. Receivers cap
+  previews per writer (50 a second) and in total (200).
+* The channel is private: only people who can open the document may listen,
+  and only its editors may send, while it is unlocked
+  (`supabase/migrations/20260924230000_live_preview_channel_policies.sql`,
+  NOT applied yet). Without those policies the join is refused; the app backs
+  off for 5 minutes and every edit uses the log path. A dev build can measure
+  on a public topic with localStorage `survey:livePreviewPublicChannel` = `1`.
+
+Measured after (two headless tabs, this machine, prod database; paint = the
+frame that shows the stroke on the other screen): small document 40-130 ms,
+Package 2 70-110 ms with previews (same profile and separate profiles alike);
+0.3-0.6 s on the log path alone (no channel policies).
+
+Limits: an edit of an existing mark (move, recolour, erase, delete) still
+arrives with its WAL row (~0.3-0.7 s). A stroke edited on another screen in
+the ~0.3 s before its row lands is shown as drawn (the edit is not written: it
+was made on a preview). A preview's counter number is computed on its own
+until its row lands. A refused stroke shows elsewhere for up to 20 s.
+
 ## Offline edits reach peers that are already open
 
 Open peers only receive WAL rows (realtime inserts + catch-up), never
