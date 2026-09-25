@@ -90,16 +90,32 @@ import {
 // invariant requires all Y.Doc construction to live in the registry module.)
 const REGISTRY_PREFIX = 'annoflat:';
 
-const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
-const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state checkpoint
-// w30: a big document's checkpoint is megabytes (Package 2: ~4.5 MB gzipped).
-// Uploading it 1.2 s after every stroke loaded the database and, while its
-// write held the document lock, stalled the next stroke's WAL row by seconds.
-// The WAL row is what makes an edit durable and live; the checkpoint only
-// shortens reopen and repairs gaps, so a big one waits for a longer pause
-// (~4 s per MB, capped). A small document keeps the 1.2 s debounce.
-const SNAPSHOT_DEBOUNCE_MS_PER_MB = 4_000;
-const SNAPSHOT_DEBOUNCE_MAX_MS = 30_000;
+// w33 (2026-09-25): routine checkpoints are rare and written by ONE screen.
+// A checkpoint only shortens reopen (and records what a device's saved copy
+// holds); the WAL row is what makes an edit durable and live. w32 measured
+// today's main: 3 screens drawing 45 strokes made 45 WAL rows but 85
+// checkpoint uploads (every screen ~1.2 s after each of its own edits, plus
+// conflict retries that re-downloaded the whole snapshot). Now:
+//   * the writer whose OWN row got a document seq that is a multiple of
+//     CHECKPOINT_EVERY_ROWS checkpoints (seqs are document-local and gapless,
+//     so exactly one screen owns each boundary, with no coordination);
+//   * or a screen whose own rows since its last checkpoint add up to
+//     CHECKPOINT_OWN_BYTES (a big import checkpoints once, after its last part);
+//   * idle / close / tab hide: only a screen that wrote rows since the
+//     checkpoint it knows of, only once the tail since it is at least
+//     CHECKPOINT_MIN_TAIL_ROWS rows, and (idle) only the author of the newest
+//     row, after CHECKPOINT_IDLE_MS with no own edit;
+//   * a screen that only receives rows never checkpoints for them;
+//   * durability repairs (failed append, gap after reconnect) and an explicit
+//     save are unchanged.
+const CHECKPOINT_EVERY_ROWS = 40;
+const CHECKPOINT_OWN_BYTES = 512 * 1024;
+const CHECKPOINT_MIN_TAIL_ROWS = 8;
+const CHECKPOINT_IDLE_MS = 60_000;
+// A due checkpoint waits for this long without an own append (a burst such
+// as an import, one transaction per page, checkpoints once at its end).
+const CHECKPOINT_DUE_QUIET_MS = 2_000;
+const CHECKPOINT_DUE_MAX_WAIT_MS = 30_000;
 const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
 const SNAPSHOT_ENC_GZIP = 2;        // encoding_version 2 = gzipped Y.encodeStateAsUpdate
 const CLOUD_REQUEST_TIMEOUT_MS = 15_000;
@@ -200,6 +216,7 @@ function invalidateDeletedState(state, error = deletedDocumentError(state.docume
     clearTimeout(state.snapshotTimer);
     state.snapshotTimer = null;
   }
+  clearDueCheckpointTimer(state);
   if (state.outboxReplayTimer) {
     clearTimeout(state.outboxReplayTimer);
     state.outboxReplayTimer = null;
@@ -355,6 +372,9 @@ export async function openAnnotationDoc({
   // caller must not treat it as hydrated: no writes, no imports. The handle
   // (resolved later) is the authoritative read.
   onPreview = null,
+  // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
+  // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
+  checkpointPolicy = null,
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
   if (!actorUserId) throw new Error('openAnnotationDoc: actorUserId required');
@@ -424,7 +444,20 @@ export async function openAnnotationDoc({
     realtimeRowRecoveryFromSeq: null,
     catchupPending: 0,     // catch-ups running or queued (row recovery defers to them)
     clientSeq: 0,          // monotonic per-(doc,writer-open) op counter
-    opsSinceSnapshot: 0,
+    // w33 routine-checkpoint bookkeeping (see CHECKPOINT_EVERY_ROWS).
+    checkpointPolicy: {
+      everyRows: Math.max(1, Number(checkpointPolicy?.everyRows) || CHECKPOINT_EVERY_ROWS),
+      ownBytes: Math.max(1, Number(checkpointPolicy?.ownBytes) || CHECKPOINT_OWN_BYTES),
+      minTailRows: Math.max(1, Number(checkpointPolicy?.minTailRows) || CHECKPOINT_MIN_TAIL_ROWS),
+      idleMs: Math.max(1, Number(checkpointPolicy?.idleMs) || CHECKPOINT_IDLE_MS),
+      dueQuietMs: Math.max(0, Number(checkpointPolicy?.dueQuietMs ?? CHECKPOINT_DUE_QUIET_MS)),
+    },
+    dueCheckpointTimer: null,
+    dueCheckpointSince: 0,
+    checkpointDue: false,
+    ownRowsSinceCheckpoint: 0,
+    ownBytesSinceCheckpoint: 0,
+    lastOwnSeq: 0,
     lastByPage: null,      // last byPage applied or materialized (eraser page commits)
     // What the viewer holds, so a capture writes only the viewer's own edits
     // (per-field sync, 2026-09-24 — see createViewerCaptureState).
@@ -769,6 +802,9 @@ export async function openAnnotationDoc({
           state.destroyed
           || state.editEpoch === state.snapshottedEpoch
           || state.pendingAppends > 0
+          // w33: the WAL already holds every accepted edit; upload only when
+          // a reopen would otherwise read a long tail (or to repair a gap).
+          || !routineCheckpointWanted(state)
         ) return;
         try {
           writeSnapshot(state, captureSnapshotOptions(state))
@@ -3309,7 +3345,7 @@ function enqueueAppendRecord(
       }
       // The individual op insert failed (usually network). The mutation is already
       // applied to the in-memory doc, so an eager full-state checkpoint captures it
-      // durably NOW instead of waiting up to SNAPSHOT_DEBOUNCE_MS and hoping the tab
+      // durably NOW instead of waiting for a later checkpoint and hoping the tab
       // survives — this is BL-24's fix: a dropped op no longer relies on the debounce
       // + a clean unmount. Also surface the failure so the UI can stop claiming
       // "saved" while writes are failing.
@@ -3448,39 +3484,32 @@ async function appendOp(state, record) {
     // between the last contiguous baseline and this already-applied local op.
     if (assignedSeq === state.coveredSeq + 1) state.coveredSeq = assignedSeq;
   }
-  state.opsSinceSnapshot += 1;
+  // w33: this screen owes a checkpoint only when its own row owns a
+  // CHECKPOINT_EVERY_ROWS boundary, or its own rows since its last checkpoint
+  // reach CHECKPOINT_OWN_BYTES (see the constants).
+  state.ownRowsSinceCheckpoint += 1;
+  state.ownBytesSinceCheckpoint += update?.length || 0;
+  if (Number.isFinite(assignedSeq) && assignedSeq > state.lastOwnSeq) state.lastOwnSeq = assignedSeq;
+  if (
+    (Number.isFinite(assignedSeq) && assignedSeq > 0 && assignedSeq % state.checkpointPolicy.everyRows === 0)
+    || state.ownBytesSinceCheckpoint >= state.checkpointPolicy.ownBytes
+  ) {
+    state.checkpointDue = true;
+  }
   // A split bulk write (e.g. a PDF import cut into dozens of rows) still has
   // parts after this one: do not stop the queue to upload a multi-MB
   // checkpoint in the middle of it. The checkpoint runs after its last part
-  // (the counter keeps counting), or from the debounce once the queue is
-  // empty. Unrelated queued edits keep the usual every-40-rows checkpoint.
+  // (checkpointDue stays set).
   const midSplit = record.splitGroupId
     && (Number(record.splitPartIndex) || 0) < (Number(record.splitPartCount) || 1) - 1;
-  if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && midSplit) {
-    scheduleSnapshot(state);
-  } else if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS && !state.durabilityGap) {
-    // w30: the compaction checkpoint no longer holds the append queue. It
-    // encodes only the accepted state (never an unaccepted byte), when the
-    // snapshot chain reaches it, so strokes drawn while a multi-MB upload
-    // runs are written and delivered at once instead of after it.
-    state.opsSinceSnapshot = 0;
-    // drain() still waits for it (a caller that drains expects the
-    // checkpoint the drained rows triggered); the append queue does not.
-    // A refusal that lands while it uploads must stay red: its result may
-    // not mark the handle healthy then (w30 review B).
-    const quarantineGeneration = state.historyQuarantineGeneration;
-    state.compactionChain = writeSnapshot(state, { repairsGap: false })
-      .then((result) => finalizeSnapshotResult(
-        state,
-        result?.ok && state.historyQuarantineGeneration !== quarantineGeneration
-          ? { ...result, ok: false }
-          : result,
-      ))
-      .catch((error) => {
-        console.warn('[annotationDocSync] compaction checkpoint failed', error?.message);
-      });
-  } else if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
-    state.opsSinceSnapshot = 0;
+  if (state.checkpointDue && midSplit) {
+    // after the last part
+  } else if (state.checkpointDue && !state.durabilityGap) {
+    // w33: once this screen's burst of rows is over (an import writes a page
+    // per transaction), not per row.
+    scheduleDueCheckpoint(state);
+  } else if (state.checkpointDue) {
+    resetOwnCheckpointCounters(state);
     const repairsGap = state.durabilityGap;
     const result = await writeSnapshot(state, {
       snapshotUpdate: repairsGap ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc),
@@ -3507,7 +3536,80 @@ async function finalizeSnapshotResult(state, result) {
   return result;
 }
 
-// Debounce a full-state checkpoint after edits settle. Cheap to call on every op.
+function clearDueCheckpointTimer(state) {
+  if (state.dueCheckpointTimer) clearTimeout(state.dueCheckpointTimer);
+  state.dueCheckpointTimer = null;
+}
+
+// w33: the checkpoint this screen owes (row boundary / own bytes), written
+// once its own appends have been quiet for dueQuietMs. w30: it does not hold
+// the append queue; it encodes only the accepted state (never an unaccepted
+// byte) when the snapshot chain reaches it. drain() waits for a running one.
+function scheduleDueCheckpoint(state) {
+  if (state.destroyed) return;
+  // Someone drawing without a 2 s pause still checkpoints within ~30 s.
+  const now = Date.now();
+  if (!state.dueCheckpointSince) state.dueCheckpointSince = now;
+  const overdue = now - state.dueCheckpointSince >= CHECKPOINT_DUE_MAX_WAIT_MS;
+  if (overdue && state.dueCheckpointTimer) return;
+  clearDueCheckpointTimer(state);
+  state.dueCheckpointTimer = setTimeout(() => {
+    state.dueCheckpointTimer = null;
+    if (state.destroyed || !state.checkpointDue) return;
+    if (state.pendingAppends > 0) { scheduleDueCheckpoint(state); return; }
+    // A gap is repaired by its own checkpoint path.
+    if (state.durabilityGap) return;
+    resetOwnCheckpointCounters(state);
+    // A refusal that lands while it uploads must stay red: its result may
+    // not mark the handle healthy then (w30 review B).
+    const quarantineGeneration = state.historyQuarantineGeneration;
+    state.compactionChain = writeSnapshot(state, { repairsGap: false })
+      .then((result) => finalizeSnapshotResult(
+        state,
+        result?.ok && state.historyQuarantineGeneration !== quarantineGeneration
+          ? { ...result, ok: false }
+          : result,
+      ))
+      .catch((error) => {
+        console.warn('[annotationDocSync] compaction checkpoint failed', error?.message);
+      });
+  }, overdue ? Math.min(250, state.checkpointPolicy.dueQuietMs) : state.checkpointPolicy.dueQuietMs);
+}
+
+function resetOwnCheckpointCounters(state) {
+  state.checkpointDue = false;
+  state.dueCheckpointSince = 0;
+  state.ownRowsSinceCheckpoint = 0;
+  state.ownBytesSinceCheckpoint = 0;
+}
+
+// w33: rows the WAL holds after the checkpoint this screen knows of (a reopen
+// reads them one by one).
+function checkpointTailRows(state) {
+  const base = Number(state.snapshotBaseAtSeq) || 0;
+  return Math.max(0, (Number(state.coveredSeq) || 0) - base);
+}
+
+/**
+ * w33: whether an idle / close / tab-hide checkpoint is worth an upload. Only
+ * a screen that wrote rows since its last checkpoint, and only once the tail
+ * a reopen would read is long enough. `requireNewestAuthor`: the idle one is
+ * written only by the author of the newest row this screen has seen, so of
+ * several idle editors exactly one does it. A durability gap always is (the
+ * repair checkpoint is what makes those edits durable).
+ */
+function routineCheckpointWanted(state, { requireNewestAuthor = false } = {}) {
+  if (state.durabilityGap) return true;
+  if (state.checkpointDue) return true;
+  if (state.ownRowsSinceCheckpoint === 0) return false;
+  if (checkpointTailRows(state) < state.checkpointPolicy.minTailRows) return false;
+  if (requireNewestAuthor && state.lastOwnSeq < (Number(state.lastSeq) || 0)) return false;
+  return true;
+}
+
+// After a local edit: no checkpoint per edit any more (w33). At most one idle
+// checkpoint once this screen has been quiet for CHECKPOINT_IDLE_MS, and only
+// when routineCheckpointWanted says so. Cheap to call on every op.
 function scheduleSnapshot(state) {
   if (state.destroyed) return;
   if (state.snapshotTimer) clearTimeout(state.snapshotTimer);
@@ -3519,17 +3621,11 @@ function scheduleSnapshot(state) {
       scheduleSnapshot(state);
       return;
     }
+    if (!routineCheckpointWanted(state, { requireNewestAuthor: true })) return;
+    resetOwnCheckpointCounters(state);
     writeSnapshot(state, captureSnapshotOptions(state))
       .then((result) => finalizeSnapshotResult(state, result));
-  }, snapshotDebounceMs(state));
-}
-
-function snapshotDebounceMs(state) {
-  const megabytes = (Number(state.lastSnapshotBytes) || 0) / (1024 * 1024);
-  return Math.round(Math.min(
-    SNAPSHOT_DEBOUNCE_MAX_MS,
-    Math.max(SNAPSHOT_DEBOUNCE_MS, megabytes * SNAPSHOT_DEBOUNCE_MS_PER_MB),
-  ));
+  }, state.checkpointPolicy.idleMs);
 }
 
 // Serialize ALL snapshot writes through one chain so two can never run at once.
@@ -3611,6 +3707,65 @@ async function loadLatestCloudCheckpoint(state) {
   }
 }
 
+// w33: a checkpoint refused because rows landed after its at_seq (the RPC
+// needs at_seq == WAL head) while the stored checkpoint is still the one this
+// screen built on: read only those rows and retry, instead of downloading the
+// whole stored checkpoint again (Package 2: ~2-6 MB per retry). Returns
+// { update, atSeq } (atSeq taken in the same tick as the encode), or null
+// when the stored checkpoint changed or its identity could not be read: the
+// caller then takes the full refresh (refreshAfterSnapshotConflict), which
+// merges that checkpoint's content (it may hold repaired edits the WAL lacks).
+async function refreshAfterWalHeadMoved(state, localSnapshotUpdate) {
+  let identity = null;
+  try {
+    const { data, error } = await withCloudRequest(
+      state,
+      snapshotIdentityReadQuery(state),
+      'snapshot identity read',
+    );
+    if (error) return null;
+    identity = data || null;
+  } catch {
+    return null;
+  }
+  const storedAtSeq = identity ? Number(identity.at_seq) : null;
+  const same = identity
+    ? (
+      storedAtSeq === state.snapshotBaseAtSeq
+      && (identity.writer_id ?? null) === state.snapshotBaseWriterId
+      && (Number(identity.writer_epoch) || 0) === state.snapshotBaseWriterEpoch
+    )
+    : (state.snapshotBaseAtSeq == null && state.snapshotBaseWriterId == null);
+  if (!same) return null;
+  const caughtUp = await catchUpTail(state);
+  if (!caughtUp || state.destroyed) return null;
+  // The retry merges the (now caught-up) accepted state in the same tick as
+  // it takes at_seq (writeSnapshotNow's mergeAcceptedAtStart).
+  return localSnapshotUpdate;
+}
+
+// One conflict retry's bytes: the cheap path when only the WAL head moved,
+// else the full refresh (which merges the stored checkpoint's content).
+async function rebaseAfterSnapshotConflict(state, localSnapshotUpdate) {
+  const cheap = await refreshAfterWalHeadMoved(state, localSnapshotUpdate);
+  if (cheap) return cheap;
+  return refreshAfterSnapshotConflict(state, localSnapshotUpdate);
+}
+
+// Two Yjs updates as one (w33).
+function mergeSnapshotUpdates(left, right) {
+  const merged = createDetachedYDoc(
+    `snapshot-merge:${randomClientId()}`,
+  );
+  try {
+    Y.applyUpdate(merged, left, HYDRATE_ORIGIN);
+    Y.applyUpdate(merged, right, HYDRATE_ORIGIN);
+    return encodeSnapshot(merged);
+  } finally {
+    try { merged.destroy(); } catch { /* */ }
+  }
+}
+
 async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
   const latest = await loadLatestCloudCheckpoint(state);
   const candidate = createDetachedYDoc(
@@ -3659,6 +3814,10 @@ function snapshotWriteTimeoutMs(state, payloadChars) {
 // durability guarantee that makes dropped op inserts self-heal on next open.
 async function writeSnapshotNow(state, {
   snapshotUpdate = null,
+  // w33: a conflict retry's bytes are merged with the accepted state HERE,
+  // in the same tick as at_seq is taken, so rows applied while the retry was
+  // prepared are in the bytes whenever at_seq claims them.
+  mergeAcceptedAtStart = false,
   epoch = null,
   conflictAttempt = 0,
   repairsGap = null,
@@ -3689,6 +3848,11 @@ async function writeSnapshotNow(state, {
   // actually folded into this doc. Claiming lastSeq here could make a snapshot
   // skip an unseen delete forever on reopen.
   const atSeq = state.coveredSeq;
+  // w33: this capture covers every row this screen wrote so far.
+  resetOwnCheckpointCounters(state);
+  if (mergeAcceptedAtStart && snapshotUpdate) {
+    snapshotUpdate = mergeSnapshotUpdates(encodeSnapshot(state.acceptedDoc), snapshotUpdate);
+  }
   syncTrace('snapshot-encode-start');
   const epochAtStart = epoch ?? (
     repairsGapAtStart ? state.repairCheckpointEpoch : state.acceptedEditEpoch
@@ -3860,9 +4024,10 @@ async function writeSnapshotNow(state, {
           };
         }
         try {
-          const rebasedUpdate = await refreshAfterSnapshotConflict(state, updateAtStart);
+          const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart);
           return writeSnapshotNow(state, {
             snapshotUpdate: rebasedUpdate,
+            mergeAcceptedAtStart: true,
             epoch: epochAtStart,
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
@@ -3898,9 +4063,10 @@ async function writeSnapshotNow(state, {
             error: toSyncError(error, 'snapshot conflict'),
           };
         }
-        const rebasedUpdate = await refreshAfterSnapshotConflict(state, updateAtStart);
+        const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart);
         return writeSnapshotNow(state, {
           snapshotUpdate: rebasedUpdate,
+          mergeAcceptedAtStart: true,
           epoch: epochAtStart,
           conflictAttempt: conflictAttempt + 1,
           repairsGap: repairsGapAtStart,
@@ -3930,9 +4096,10 @@ async function writeSnapshotNow(state, {
           };
         }
         try {
-          const rebasedUpdate = await refreshAfterSnapshotConflict(state, updateAtStart);
+          const rebasedUpdate = await rebaseAfterSnapshotConflict(state, updateAtStart);
           return writeSnapshotNow(state, {
             snapshotUpdate: rebasedUpdate,
+            mergeAcceptedAtStart: true,
             epoch: epochAtStart,
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
@@ -5247,7 +5414,12 @@ function makeHandle(state) {
      */
     compactAnnotationStore({ notify = true } = {}) {
       assertHandleWritable(state);
+      // The pass exists to shrink the checkpoint: its last row then writes
+      // one (checkpointDue is acted on after each own append, see appendOp).
+      const wasDue = state.checkpointDue;
+      state.checkpointDue = true;
       const result = compactAnnotationStore(state.doc, { origin: 'local' });
+      if (result.batches === 0) state.checkpointDue = wasDue;
       if (result.marksCompacted > 0) {
         state.lastByPage = null;
         if (notify) notifyChange(state);
@@ -5323,6 +5495,7 @@ function makeHandle(state) {
         state.destroyed = true;
       }
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+      clearDueCheckpointTimer(state);
       if (state.outboxReplayTimer) {
         clearTimeout(state.outboxReplayTimer);
         state.outboxReplayTimer = null;
@@ -5342,8 +5515,13 @@ function makeHandle(state) {
       // An effect that was already running can acknowledge after the first
       // drain. Include that exact receipt before taking the final checkpoint.
       await drainStateQueues(state);
-      if (state.supabase) {
+      // w33: only when this screen wrote enough since its last checkpoint (or
+      // a durability gap needs the repair checkpoint). A screen that only
+      // watched, or wrote a few rows, leaves them to the WAL: a reopen reads
+      // that short tail after the existing checkpoint.
+      if (state.supabase && routineCheckpointWanted(state)) {
         try {
+          resetOwnCheckpointCounters(state);
           const result = await writeSnapshot(state, captureSnapshotOptions(state));
           await finalizeSnapshotResult(state, result);
         } catch { /* */ }
@@ -5403,6 +5581,7 @@ export async function purgeAnnotationDoc(documentId) {
       clearTimeout(state.snapshotTimer);
       state.snapshotTimer = null;
     }
+    clearDueCheckpointTimer(state);
     if (state.outboxReplayTimer) {
       clearTimeout(state.outboxReplayTimer);
       state.outboxReplayTimer = null;

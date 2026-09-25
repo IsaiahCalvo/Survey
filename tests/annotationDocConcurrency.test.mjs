@@ -4371,6 +4371,9 @@ test('42501 drains skipped causal dependents and a fresh authorized edit returns
     enableLocal: false,
     enableRealtime: false,
     doc,
+    // w33: the per-edit debounce is now an idle checkpoint past a minimum
+    // tail; this pins the same 1.2 s / one-row case.
+    checkpointPolicy: { idleMs: 1200, minTailRows: 1 },
   });
 
   handle.setMeta('X', 'rejected');
@@ -4552,12 +4555,16 @@ test('the 40-op accepted-prefix snapshot excludes a concurrently queued denied o
     enableLocal: false,
     enableRealtime: false,
     doc,
+    // w33: the row-40 checkpoint waits for a quiet moment; none here.
+    checkpointPolicy: { dueQuietMs: 0 },
   });
   for (let index = 0; index < 39; index += 1) handle.setMeta(`pre-${index}`, index);
   await handle.drain();
 
   handle.setMeta('Y', 'fortieth-authorized');
   handle.setMeta('Z', 'forty-first-denied');
+  await handle.drain();
+  await new Promise((resolve) => setTimeout(resolve, 20));
   await handle.drain();
 
   assert.equal(rows.length, 40);
@@ -4576,9 +4583,11 @@ function makeGapRepairBackend(documentId) {
   let appendAttempt = 0;
   let snapshotMode = 'fail';
   let subscribeCallback = null;
+  const snapshotAtSeqs = [];
   return {
     rows,
     snapshots,
+    snapshotAtSeqs,
     allowRepair() { snapshotMode = 'success'; },
     denyRepair() { snapshotMode = 'deny'; },
     fireSubscribed() { return subscribeCallback?.('SUBSCRIBED'); },
@@ -4610,6 +4619,7 @@ function makeGapRepairBackend(documentId) {
             return { data: null, error: { code: 'XX000', message: 'checkpoint unavailable' } };
           }
           snapshots.push(args.p_snapshot);
+          snapshotAtSeqs.push(Number(args.p_at_seq));
           return { data: true, error: null };
         }
         throw new Error(`unexpected RPC ${name}`);
@@ -4655,7 +4665,13 @@ test('scheduled staged-prefix repair returns sync health to idle', async () => {
     { healthy: true, error: null, stage: 'idle', queueSize: 0 },
     'debounced staged checkpoint explicitly repairs the gap',
   );
+  // w33 (checkpoint policy ruled 2026-09-25): no checkpoint per edit, so B
+  // (accepted by the WAL) is read from the tail after the repair checkpoint,
+  // as a cold reopen does: checkpoint + every row after its at_seq.
   const cold = await snapshotHexToDoc(backend.snapshots.at(-1));
+  for (const row of backend.rows.filter((entry) => entry.seq > backend.snapshotAtSeqs.at(-1))) {
+    Y.applyUpdate(cold, pgHexToBytes(row.data));
+  }
   assert.equal(getMetaValue(cold, 'A'), 'missed-predecessor');
   assert.equal(getMetaValue(cold, 'B'), 'later-wal');
 

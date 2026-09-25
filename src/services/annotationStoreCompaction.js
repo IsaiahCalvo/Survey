@@ -48,11 +48,9 @@ import {
 } from './legacyMarksCarryOver.js';
 import { EMBEDDED_IMPORT_MARKER_KEY } from '../utils/embeddedImportGate.js';
 
-// Marks per transaction. Each transaction becomes one WAL update (split under
-// 256 KB by the sync layer when needed); a mark's compaction writes ~40 bytes
-// plus its share of the delete set.
-const MARKS_PER_BATCH = 2_000;
-
+// The whole pass is ONE transaction, so ONE update (the sync layer cuts it
+// into chained parts under 256 KB when needed, and checkpoints after its last
+// part). Package 2: ~130 KB (deletes are ranges; a marker is ~40 bytes).
 function legacyEntryCount(doc) {
   return doc.share.has(LEGACY_ANNOTATIONS_MAP) ? doc.getMap(LEGACY_ANNOTATIONS_MAP).size : 0;
 }
@@ -98,31 +96,27 @@ export function annotationStoreCompactionPending(doc) {
  * Shrink the store (see the module comment). Idempotent.
  * Returns { legacyDeleted, marksCompacted, writes, batches }.
  */
-export function compactAnnotationStore(doc, { origin = 'local', marksPerBatch = MARKS_PER_BATCH } = {}) {
+export function compactAnnotationStore(doc, { origin = 'local' } = {}) {
   const result = { legacyDeleted: 0, marksCompacted: 0, writes: 0, batches: 0 };
-  if (legacyMapDroppable(doc)) {
-    const legacy = doc.getMap(LEGACY_ANNOTATIONS_MAP);
-    doc.transact(() => {
+  const dropLegacy = legacyMapDroppable(doc);
+  const keys = marksToCompact(doc);
+  if (!dropLegacy && keys.length === 0) return result;
+  doc.transact(() => {
+    if (dropLegacy) {
+      const legacy = doc.getMap(LEGACY_ANNOTATIONS_MAP);
       for (const key of [...legacy.keys()]) {
         legacy.delete(key);
         result.legacyDeleted += 1;
       }
-    }, origin);
-    result.batches += 1;
-  }
-  const keys = marksToCompact(doc);
-  for (let start = 0; start < keys.length; start += marksPerBatch) {
-    const slice = keys.slice(start, start + marksPerBatch);
-    doc.transact(() => {
-      for (const key of slice) {
-        const writes = compactStoredMark(doc, key);
-        if (writes > 0) {
-          result.marksCompacted += 1;
-          result.writes += writes;
-        }
+    }
+    for (const key of keys) {
+      const writes = compactStoredMark(doc, key);
+      if (writes > 0) {
+        result.marksCompacted += 1;
+        result.writes += writes;
       }
-    }, origin);
-    result.batches += 1;
-  }
+    }
+  }, origin);
+  result.batches = 1;
   return result;
 }

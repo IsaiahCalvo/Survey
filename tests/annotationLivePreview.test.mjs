@@ -419,7 +419,8 @@ test('the compaction checkpoint does not hold the append queue', async () => {
   const documentId = 'live-preview-compaction';
   const cloud = createCloud(documentId);
   const alice = cloud.makeClient('user-a');
-  const a = await openFor(alice, documentId, { livePreview: false });
+  // w33: the row-40 checkpoint waits for a quiet moment; none here.
+  const a = await openFor(alice, documentId, { livePreview: false, checkpointPolicy: { dueQuietMs: 0 } });
   const gate = deferred();
   cloud.snapshotGate = gate.promise; // a slow multi-MB checkpoint upload
   for (let index = 0; index < 45; index += 1) {
