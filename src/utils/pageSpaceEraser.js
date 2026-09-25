@@ -9,7 +9,7 @@ import {
   polygonSetToCommands,
   roundCircleStepCount,
 } from './paperAnnotationGeometry.js';
-import { diff as polygonDifference, union } from '../vendor/martinezPolygonClipping.js';
+import { diff as polygonDifference, union } from './polygonBooleans.js';
 import {
   eraserStrokeTouchesObject,
   getEraserCandidateId,

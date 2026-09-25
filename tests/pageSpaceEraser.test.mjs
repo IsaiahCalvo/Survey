@@ -292,11 +292,16 @@ test('partial erase preserves a boundary-touching evenodd hole instead of fillin
   });
   const survivor = result.pageAnnotations.objects[0];
 
-  assert.equal(
-    result.didChange,
-    false,
-    'pathological boundary-touching legacy topology fails closed instead of painting new ink',
-  );
+  // w39 (2026-09-25), ruled change: this used to assert didChange === false
+  // ("fails closed instead of painting new ink") because Martinez could not
+  // subtract from a hole that touches the outer boundary without risking
+  // painted ink. The eraser's booleans now run on Clipper2's exact integer
+  // grid, which handles this topology; the bite is applied and the safety
+  // property this test exists for — the empty notch is never repainted —
+  // is asserted below, unchanged.
+  assert.equal(result.didChange, true, 'the bite is applied exactly');
+  assert.equal(pointInPolygonSet({ x: 1, y: 1 }, survivor.polygons), false, 'the bitten spot is empty');
+  assert.equal(pointInPolygonSet({ x: 5, y: 5 }, survivor.polygons), true, 'ink away from the bite and notch stays');
   assert.equal(
     pointInPolygonSet({ x: 8, y: 5 }, survivor.polygons),
     false,

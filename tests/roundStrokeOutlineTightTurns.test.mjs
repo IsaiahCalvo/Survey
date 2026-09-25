@@ -312,6 +312,7 @@ const MIS_UNIONED = Object.freeze([
   { label: 'hairpin (was a notch)', width: 3.2445587983354924, path: [['M', 22.115980507805943, 9.446792607195675], ['L', 43.21461793407798, 9.446792607195675], ['L', 43.21461793407798, 10.214555225800723], ['L', 22.115980507805943, 9.658556486772985]] },
   { label: 'hairpin (was a throw)', width: 5.267300303746015, path: [['M', -38.261489500291646, 33.70527664665133], ['L', 1.6607542978599668, 33.70527664665133], ['L', 1.6607542978599668, 35.50361876329407], ['L', -38.261489500291646, 33.8622945756732]] },
   { label: 'short legs (was a wedge)', width: 5.09666277654469, path: [['M', -40.083504701033235, 12.778011872433126], ['L', -42.0156341560558, 12.778011872433126], ['L', -42.0156341560558, 11.993738874303336], ['L', -42.889724583016445, 11.993738874303336]] },
+  { label: '45-degree legs shorter than the radius (every Martinez union strategy left a hole)', width: 4.1715681198984385, path: [['M', -12.902115541510284, -31.650451640598476], ['L', -16.30420959536823, -27.078164317232012], ['L', -16.98290107410884, -31.703165015811614], ['L', -16.886123245218982, -31.04366428500359], ['L', -19.893822676921555, -33.281598086778175]] },
 ]);
 
 test('run pieces that Martinez used to mis-union still give the true round stroke', () => {
@@ -325,69 +326,3 @@ test('run pieces that Martinez used to mis-union still give the true round strok
   }
 });
 
-test('an outline that cannot be verified is refused, and the eraser leaves that mark exactly as it was', () => {
-  // Legs shorter than the radius at 45-degree turns: every union strategy
-  // leaves a hole here, so the eraser outline refuses rather than clip the
-  // stroke to a wrong shape after the first bite.
-  const path = [['M', -12.902115541510284, -31.650451640598476], ['L', -16.30420959536823, -27.078164317232012], ['L', -16.98290107410884, -31.703165015811614], ['L', -16.886123245218982, -31.04366428500359], ['L', -19.893822676921555, -33.281598086778175]];
-  const strokeWidth = 4.1715681198984385;
-  assert.throws(
-    () => commandsToPolygonSet(path, { fill: false, strokeWidth, curveTolerance: 0.05 }),
-    { name: 'StrokeOutlineUnionError' },
-  );
-  const object = {
-    type: 'path', tool: 'pen', data: { id: 'refused', tool: 'pen' }, stroke: '#ff0000', fill: null,
-    strokeWidth, strokeLineCap: 'round', strokeLineJoin: 'round', left: 0, top: 0, scaleX: 1, scaleY: 1, path,
-  };
-  const warn = console.warn;
-  const warnings = [];
-  console.warn = (...args) => warnings.push(args.map(String).join(' '));
-  let result;
-  try {
-    result = erasePageAnnotations({
-      pageAnnotations: { objects: [object] },
-      eraserPoints: [{ x: -16.3, y: -27.1 }],
-      eraserRadius: 2,
-      mode: 'partial',
-    });
-  } finally {
-    console.warn = warn;
-  }
-  assert.equal(result.didChange, false);
-  assert.equal(result.pageAnnotations.objects[0], object, 'the mark is untouched');
-  assert.deepEqual(result.failedStages, [{
-    annotationId: 'refused', failedStages: { outline: 1 }, recovered: false, skipped: true,
-  }]);
-  assert.ok(warnings.some((text) => text.startsWith('[EraserSkippedMark]')), 'a diagnostic is logged');
-
-  // Whole-mark erase needs no outline: the same mark is still removable.
-  console.warn = () => {};
-  let full;
-  try {
-    full = erasePageAnnotations({
-      pageAnnotations: { objects: [object] },
-      eraserPoints: [{ x: -16.3, y: -27.1 }],
-      eraserRadius: 2,
-      mode: 'entire',
-    });
-  } finally {
-    console.warn = warn;
-  }
-  assert.equal(full.didChange, true);
-  assert.deepEqual(full.deletedIds, ['refused']);
-  assert.deepEqual(full.pageAnnotations.objects, []);
-  // ...and a miss still removes nothing.
-  console.warn = () => {};
-  let miss;
-  try {
-    miss = erasePageAnnotations({
-      pageAnnotations: { objects: [object] },
-      eraserPoints: [{ x: 60, y: 60 }],
-      eraserRadius: 2,
-      mode: 'entire',
-    });
-  } finally {
-    console.warn = warn;
-  }
-  assert.equal(miss.didChange, false);
-});
