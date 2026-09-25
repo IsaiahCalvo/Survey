@@ -95,6 +95,14 @@ import {
   parseLiveEditPayload,
   stripLiveEditObjects,
 } from './annotationLiveOverlay.js';
+import {
+  LIVE_STROKE_VERSION,
+  applyRemoteLiveStroke,
+  clearLiveStrokes,
+  hasLiveStrokeGhosts,
+  markLiveStrokesLanded,
+  setLiveStrokeSink,
+} from './annotationLiveStrokes.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
@@ -1867,6 +1875,10 @@ async function applyAuthoritativeCloudRow(state, row) {
   const update = pgHexToBytes(row.data);
   const liveChanged = applyAuthoritativeCloudUpdate(state, update);
   confirmLivePreview(state, row?.client_id, row?.client_seq);
+  if (hasLiveStrokeGhosts(state.documentId)) {
+    const marks = getAnnotationsMap(state.doc);
+    markLiveStrokesLanded(state.documentId, (id) => marks.has(String(id)));
+  }
   const { record, collision } = appendRecordForCloudRow(state, row, update);
   if (collision && record) {
     state.permissionRejectedCutoff = state.localMutationOrdinal;
@@ -4211,7 +4223,23 @@ function acquireLiveChannel(state) {
     .then((bus) => {
       if (!bus) return;
       if (state.destroyed || state.closePromise || state.liveBus) bus.release();
-      else state.liveBus = bus;
+      else {
+        state.liveBus = bus;
+        // w32: this screen's in-progress pen strokes go out on the same
+        // channel (annotationLiveStrokes.js; SVGAnnotationLayer sends).
+        state.unregisterLiveStrokeSink?.();
+        state.unregisterLiveStrokeSink = setLiveStrokeSink({
+          documentId: state.documentId,
+          writerId: state.writerId,
+          send: (payload) => (
+            state.liveBus === bus
+            && !state.destroyed
+            && !state.closePromise
+            && !(state.permissionRejectedCutoff > 0)
+            && bus.send(payload)
+          ),
+        });
+      }
     })
     .catch((error) => {
       console.warn('[annotationDocSync] live channel unavailable; edits arrive through the log only', error?.message);
@@ -4443,6 +4471,14 @@ function onLivePreviewMessage(state, payload) {
     onLiveEditMessage(state, payload);
     return;
   }
+  if (payload?.v === LIVE_STROKE_VERSION) {
+    // w32: another screen's stroke while it is being drawn (a ghost line).
+    if (typeof payload.w !== 'string' || payload.w === state.writerId) return;
+    if (!livePreviewReceiveAllowed(state, payload.w)) return;
+    if (getAnnotationsMap(state.doc).has(String(payload.g))) return; // already a mark here
+    applyRemoteLiveStroke(state.documentId, payload, { ownWriterId: state.writerId });
+    return;
+  }
   if (!payload || payload.v !== 1) return;
   const writerId = typeof payload.w === 'string' ? payload.w : '';
   const clientSeq = Number(payload.s);
@@ -4464,6 +4500,8 @@ function onLivePreviewMessage(state, payload) {
   state.livePreviews.set(key, { ...preview, receivedAt: Date.now() });
   scheduleLivePreviewSweep(state);
   notifyLivePreviewListeners(state);
+  // The finished stroke is on screen: its in-progress ghost can go.
+  markLiveStrokesLanded(state.documentId, (id) => preview.keys.includes(id));
   syncTrace('preview-applied', { writer: writerId, clientSeq });
 }
 
@@ -4869,6 +4907,9 @@ function closeLivePreviews(state) {
   }
   try { state.liveBus?.release(); } catch { /* */ }
   state.liveBus = null;
+  state.unregisterLiveStrokeSink?.();
+  state.unregisterLiveStrokeSink = null;
+  clearLiveStrokes(state.documentId);
   if (state.livePreviews.size > 0 || state.liveEdits.size > 0) {
     state.livePreviews.clear();
     state.liveEdits.clear();

@@ -503,10 +503,16 @@ async function measureAction(name, pageActor, observers, perform, expectFor) {
     event.event === 'pointerup' || (event.event === 'keydown' && /^(Delete|Backspace)$/.test(event.key))
   ));
   const downEvent = actorTrace.find((event) => event.event === 'pointerdown');
+  // The actor's own screen showing the same change is the reference (a
+  // whole-stroke erase commits while the pointer is still down); the
+  // pointer-up / key reference is kept as well.
+  const actorEvents = await readWatch(pageActor);
+  const actorSaw = actorEvents.find((event) => event.e === expect.e && event.id === expect.id);
   const result = {
     action: name,
     target: performed?.id || null,
-    latencyMs: seen.map((event) => (event && endEvent ? Math.round(event.t - endEvent.t) : null)),
+    latencyMs: seen.map((event) => (event && actorSaw ? Math.round(event.t - actorSaw.t) : null)),
+    afterInputMs: seen.map((event) => (event && endEvent ? Math.round(event.t - endEvent.t) : null)),
   };
   if (name === 'stroke') {
     const ghosts = [];
@@ -521,7 +527,7 @@ async function measureAction(name, pageActor, observers, perform, expectFor) {
   const usage = usageBetween(t0, t1);
   result.usage = usage;
   result.totals = usageTotals(usage);
-  log(`${name}: B shows it after ${result.latencyMs.join(', ')} ms`
+  log(`${name}: others show it ${result.latencyMs.join(", ")} ms after the actor's screen (${result.afterInputMs.join(", ")} ms after pointer-up/key)`
     + (result.firstGhostAfterPointerDownMs ? `; first live ink ${result.firstGhostAfterPointerDownMs.join(', ')} ms after pen down` : '')
     + `; ${JSON.stringify(result.totals)}`);
   return result;
