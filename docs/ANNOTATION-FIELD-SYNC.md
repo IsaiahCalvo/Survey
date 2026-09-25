@@ -853,8 +853,9 @@ and Survey Marker / space snapshots, interleaved by one checkpoint counter):
   older work (review finding: a failed erase Undo used to take the previous
   pen stroke back in the same press).
 * **Survey Marker / space Undo restores only what the step owns**
-  (`scopeLegacyRestoreToOwnSlices`): that Survey Marker; that space plus the
-  marks and markers its delete / region replace removed. It used to put back
+  (`scopeLegacyRestoreToOwnSlices`): that Survey Marker; that space plus
+  exactly the marks, callouts and markers its delete / region replace removed
+  (the cascade's ids are recorded on the step; a rename touches no marks). It used to put back
   every mark, marker and space as they were: the capture then deleted a
   collaborator's newer stroke or marker, and reverted an Excel sync.
 * **A new callout is one step:** its first text commit, a style picked while
@@ -888,7 +889,11 @@ Limits: one eraser drag that hits ink AND a Survey Marker is still two steps
 of someone else's in-flight edit is on screen, an Undo of the same mark can be
 judged by the overlay copy. A new callout removed by the fold (left blank)
 keeps its "created" History row. A hidden tab left mid region edit still
-listens for Cmd+Z (region editor only).
+listens for Cmd+Z (region editor only). A Survey Marker Undo puts that whole
+marker back as it was (a collaborator's later rename of the same marker is
+reverted); a Survey Marker delete that recorded no id brings back every
+missing marker. An erase Undo pressed while the document is still opening
+does nothing (no message) until it has opened.
 
 ## Staying inside Supabase Free (w36, 2026-09-25)
 

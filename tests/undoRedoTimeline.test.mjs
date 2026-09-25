@@ -228,39 +228,51 @@ test('a Survey Marker step restores only its own marker: marks and others\' mark
   }
 });
 
-test('a space delete: Undo brings back the space and what its cascade removed, nothing else; Redo removes them again', () => {
+test('a space delete: Undo brings back the space and exactly what its cascade removed; Redo removes those again', () => {
   const space = { id: 'sp', name: 'Room', assignedPages: [{ pageId: 1, regions: [{ regionId: 'r1' }] }] };
   const inRoom = { data: { id: 'in-room' }, regionId: 'r1' };
   const tagged = { data: { id: 'tagged' }, spaceId: 'sp' };
   const outside = { data: { id: 'outside' } };
-  const deletedByB = { data: { id: 'deleted-by-b' } };
+  const deletedByB = { data: { id: 'deleted-by-b' }, regionId: 'r1' };
   const before = {
     annotationsByPage: { 1: { objects: [inRoom, outside, deletedByB, tagged] } },
     surveyMarkers: { smIn: { regionId: 'r1' }, smOut: {} },
     spaces: [{ id: 'other' }, space],
     callouts: [],
   };
-  // After my delete (cascade) and B deleting a mark outside the space, B adding one.
+  // After my delete (its cascade removed in-room, tagged, smIn; B had already
+  // deleted another in-room mark) and B adding a mark in the room.
   const now = {
-    annotationsByPage: { 1: { objects: [outside, { data: { id: 'b-new' } }] } },
+    annotationsByPage: { 1: { objects: [outside, { data: { id: 'b-new' }, regionId: 'r1' }] } },
     surveyMarkers: { smOut: {} },
     spaces: [{ id: 'other' }],
     callouts: [],
   };
-  const meta = { reason: 'space:delete', context: { spaceId: 'sp' } };
+  const meta = { reason: 'space:delete', context: { spaceId: 'sp', cascadeIds: ['in-room', 'tagged', 'smIn'] } };
   const undone = scopeLegacyRestoreToOwnSlices(meta, now, before, { direction: 'undo', deriveCallouts: () => ['derived'] });
   assert.deepEqual(undone.spaces.map((s) => s.id), ['other', 'sp']);
-  assert.deepEqual(undone.annotationsByPage[1].objects.map((o) => o.data.id).sort(), ['b-new', 'in-room', 'outside', 'tagged']);
+  assert.deepEqual(undone.annotationsByPage[1].objects.map((o) => o.data.id).sort(), ['b-new', 'in-room', 'outside', 'tagged'],
+    'what the cascade removed comes back; what B deleted stays deleted');
   assert.deepEqual(Object.keys(undone.surveyMarkers).sort(), ['smIn', 'smOut']);
   assert.deepEqual(undone.callouts, ['derived'], 'callouts rebuilt from the merged marks');
   const redone = scopeLegacyRestoreToOwnSlices(meta, undone, now, { direction: 'redo' });
   assert.deepEqual(redone.spaces.map((s) => s.id), ['other']);
-  assert.deepEqual(redone.annotationsByPage[1].objects.map((o) => o.data.id).sort(), ['b-new', 'outside']);
+  assert.deepEqual(redone.annotationsByPage[1].objects.map((o) => o.data.id).sort(), ['b-new', 'outside'],
+    'Redo removes only the cascade\'s marks, never B\'s new one in the room');
   assert.deepEqual(Object.keys(redone.surveyMarkers), ['smOut']);
-  // A space create never removes marks on Redo.
-  const createMeta = { reason: 'space:create', context: { spaceId: 'sp' } };
-  const recreated = scopeLegacyRestoreToOwnSlices(createMeta, { ...now, annotationsByPage: { 1: { objects: [tagged] } } }, before, { direction: 'redo' });
-  assert.deepEqual(recreated.annotationsByPage[1].objects.map((o) => o.data.id), ['tagged']);
+  // A rename / recolour / create never touches marks, either way.
+  for (const reason of ['space:update', 'space:create']) {
+    const renamed = { reason, context: { spaceId: 'sp' } };
+    for (const direction of ['undo', 'redo']) {
+      const out = scopeLegacyRestoreToOwnSlices(renamed, now, before, { direction });
+      assert.deepEqual(out.annotationsByPage, now.annotationsByPage, `${reason} ${direction}`);
+      assert.deepEqual(out.surveyMarkers, now.surveyMarkers, `${reason} ${direction}`);
+    }
+  }
+  // No space recorded: only the spaces list goes back.
+  const noId = scopeLegacyRestoreToOwnSlices({ reason: 'space:delete', context: {} }, now, before);
+  assert.deepEqual(noId.annotationsByPage, now.annotationsByPage);
+  assert.deepEqual(noId.spaces, before.spaces);
   assert.equal(legacyRestoreChangesState(now, now, jsonEqual), false);
   assert.equal(legacyRestoreChangesState(now, undone, jsonEqual), true);
 });
@@ -656,6 +668,30 @@ test('Undo of my delete, on a stroke someone partly erased: my own recolour come
   }
 });
 
+test('Undo of my delete, on a stroke someone partly erased: a width change I made before deleting comes back too', async () => {
+  const s = await openScreens('w37-undo-delete-partly-erased-width', { second: true });
+  const { a, b } = s;
+  try {
+    a.save(1, (o) => [...o, TOOLS.pen('p1', 40)]);
+    await s.sync();
+    await b.erase(1, (o) => [{ id: 'p1', after: { ...byId(o, 'p1'), path: byId(o, 'p1').path.slice(0, 2), width: 80 } }]);
+    await s.sync();
+    a.save(1, withMark('p1', (m) => ({ ...m, stroke: '#0000ff', strokeWidth: 9 })));
+    await s.sync();
+    const beforeDelete = a.mark('p1');
+    a.save(1, (o) => o.filter((m) => m.data.id !== 'p1'));
+    await s.sync();
+    assert.equal(a.undo(), 'applied');
+    await s.sync();
+    assert.equal(a.mark('p1')?.strokeWidth, 9);
+    assert.equal(a.mark('p1')?.stroke, '#0000ff');
+    assert.deepEqual(a.mark('p1').path, beforeDelete.path);
+    assert.equal(b.mark('p1')?.strokeWidth, 9, 'the other screen too');
+  } finally {
+    await s.close();
+  }
+});
+
 test('my Survey Marker Undo keeps a collaborator\'s Survey Marker (was deleted in both stores)', async () => {
   const s = await openScreens('w37-survey-marker-theirs', { second: true });
   const { a, b } = s;
@@ -738,7 +774,12 @@ test('PDFViewer follows the timeline rules', () => {
   }
   assert.match(between('const handleCalloutTextStyleChange = useCallback(', '\n  }, ['), /foldIntoCreateOf: calloutId/, 'a style picked while typing a new callout folds too');
   assert.match(between('const handleSpaceCreate = useCallback(', '\n  }, ['), /spaceId: newSpaceId/, 'a space create records its space');
-  assert.match(between('const handleCounterGroupUpdate = useCallback(', '\n  }, ['), /type: 'fabric:document-batch'/, 'a counter series on several pages is one step');
+  const groupUpdate = between('const handleCounterGroupUpdate = useCallback(', '\n  }, [');
+  assert.match(groupUpdate, /type: 'fabric:document-batch'/, 'a counter series on several pages is one step');
+  assert.match(groupUpdate, /if \(!isDragFrame\)/, 'slider frames add no steps');
+  assert.match(groupUpdate, /filterAnnotationHistoryActionByOwner\(own/, 'owner filter per page');
+  assert.match(between('const handleSpaceDelete = useCallback(', '\n  }, ['), /spaceDeleteContext\.cascadeIds = cascadeIds/, 'a space delete records its cascade');
+  assert.match(between('const handleSpaceUpdate = useCallback(', '\n  }, ['), /cascadeIds: cascade\.ids/, 'a region replace records its cascade');
   const key = between('const handleUndoRedoKey = (e) => {', '\n    };');
   assert.match(key, /if \(!undoRedoKeyActiveRef\.current\) return;/, 'only the visible document answers Cmd+Z');
   assert.ok(key.indexOf('undoRedoKeyActiveRef') < key.indexOf('stopImmediatePropagation'), 'checked before the event is stopped');

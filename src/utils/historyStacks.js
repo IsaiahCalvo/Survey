@@ -169,14 +169,13 @@ export function foldIntoCreateStep(stack, action, storageKey, latestOrder) {
 // that: a collaborator's newer stroke or Survey Marker was deleted, an Excel
 // sync reverted. Undo / Redo now restore only what the gesture owns:
 //   * Survey Marker steps: that marker (context.annotationId). Marks untouched.
-//   * space steps: that space (context.spaceId), plus the marks and Survey
-//     Markers its cascade removed (a space delete / region replace deletes
-//     what lies in the space): Undo puts back the ones in the space that are
-//     missing now; Redo of a delete / update removes the ones in the space the
-//     redo snapshot does not have. Marks outside the space are untouched.
+//   * space steps: that space (context.spaceId), plus exactly the marks,
+//     callouts and Survey Markers its cascade removed (context.cascadeIds: a
+//     space delete / region replace deletes what lies in the space). Undo puts
+//     those back where they are missing now; Redo removes them again. A
+//     rename / recolour / create touches no marks.
 const SURVEY_MARKER_REASON = /^(highlight|survey-marker):/;
 const SPACE_REASON = /^space:/;
-const SPACE_CASCADE_REASON = /^space:(delete|update)$/;
 
 export function legacyRestoreKeepsCurrentMarks(meta) {
   const reason = String(meta?.reason || '');
@@ -185,23 +184,6 @@ export function legacyRestoreKeepsCurrentMarks(meta) {
 
 const hasOwnKey = (record, key) => Object.prototype.hasOwnProperty.call(record || {}, key);
 const markId = (object) => String(object?.data?.id ?? object?.id ?? object?.annotationId ?? '');
-
-function spaceScope(spaceId, ...spaceLists) {
-  const regionIds = new Set();
-  for (const list of spaceLists) {
-    for (const space of Array.isArray(list) ? list : []) {
-      if (space?.id !== spaceId) continue;
-      for (const page of space.assignedPages || []) {
-        for (const region of page?.regions || []) if (region?.regionId) regionIds.add(region.regionId);
-      }
-    }
-  }
-  return (entry) => Boolean(entry) && (
-    Boolean(entry.regionId && regionIds.has(entry.regionId))
-    || entry.spaceId === spaceId
-    || entry.moduleId === spaceId
-  );
-}
 
 function mergeSpaces(current, target, spaceId) {
   const currentList = Array.isArray(current) ? current : [];
@@ -214,17 +196,15 @@ function mergeSpaces(current, target, spaceId) {
   return out;
 }
 
-function mergeScopedMarks(currentByPage, targetByPage, inScope, direction) {
+function mergeCascadeMarks(currentByPage, targetByPage, ids, direction) {
   const current = currentByPage || {};
-  const target = targetByPage || {};
-  const ids = (byPage) => new Set(Object.values(byPage).flatMap((page) => (page?.objects || []).map(markId)));
   let next = current;
   if (direction === 'undo') {
-    const present = ids(current);
-    for (const [pageKey, page] of Object.entries(target)) {
+    const present = new Set(Object.values(current).flatMap((page) => (page?.objects || []).map(markId)));
+    for (const [pageKey, page] of Object.entries(targetByPage || {})) {
       (page?.objects || []).forEach((object, index) => {
         const id = markId(object);
-        if (!id || present.has(id) || !inScope({ ...object, pageNumber: Number(pageKey) })) return;
+        if (!id || !ids.has(id) || present.has(id)) return;
         const currentPage = next[pageKey] || { ...page, objects: [] };
         const objects = [...(currentPage.objects || [])];
         objects.splice(Math.min(index, objects.length), 0, object);
@@ -234,27 +214,22 @@ function mergeScopedMarks(currentByPage, targetByPage, inScope, direction) {
     }
     return next;
   }
-  const kept = ids(target);
   for (const [pageKey, page] of Object.entries(current)) {
     const objects = page?.objects || [];
-    const filtered = objects.filter((object) => (
-      kept.has(markId(object)) || !inScope({ ...object, pageNumber: Number(pageKey) })
-    ));
+    const filtered = objects.filter((object) => !ids.has(markId(object)));
     if (filtered.length !== objects.length) next = { ...next, [pageKey]: { ...page, objects: filtered } };
   }
   return next;
 }
 
-function mergeScopedSurveyMarkers(current, target, inScope, direction) {
+function mergeCascadeSurveyMarkers(current, target, ids, direction) {
   const next = { ...(current || {}) };
-  if (direction === 'undo') {
-    for (const [id, marker] of Object.entries(target || {})) {
-      if (!hasOwnKey(next, id) && inScope(marker)) next[id] = marker;
+  for (const id of ids) {
+    if (direction === 'undo') {
+      if (!hasOwnKey(next, id) && hasOwnKey(target, id)) next[id] = target[id];
+    } else {
+      delete next[id];
     }
-    return next;
-  }
-  for (const [id, marker] of Object.entries(current || {})) {
-    if (!hasOwnKey(target, id) && inScope(marker)) delete next[id];
   }
   return next;
 }
@@ -264,8 +239,7 @@ function mergeScopedSurveyMarkers(current, target, inScope, direction) {
  * (target = the snapshot from before the gesture) or 'redo' (target = the
  * state from just before the Undo). `deriveCallouts(byPage)` rebuilds the
  * callout list from the merged marks. Other legacy steps (a local-only
- * document's annotation saves, callouts) restore their snapshot as before, and
- * so does a space step that recorded no space id.
+ * document's annotation saves, callouts) restore their snapshot as before.
  */
 export function scopeLegacyRestoreToOwnSlices(meta, currentState, target, { direction = 'undo', deriveCallouts = null } = {}) {
   if (!target || !legacyRestoreKeepsCurrentMarks(meta)) return target;
@@ -298,12 +272,13 @@ export function scopeLegacyRestoreToOwnSlices(meta, currentState, target, { dire
     return out;
   }
   const spaceId = context.spaceId != null ? String(context.spaceId) : null;
-  if (!spaceId) return target;
+  // No space recorded: only the spaces list goes back; marks and markers stay.
+  if (!spaceId) return { ...out, spaces: target.spaces || out.spaces };
   out.spaces = mergeSpaces(current.spaces, target.spaces, spaceId);
-  const inScope = spaceScope(spaceId, current.spaces, target.spaces);
-  if (direction === 'undo' || SPACE_CASCADE_REASON.test(reason)) {
-    out.annotationsByPage = mergeScopedMarks(current.annotationsByPage, target.annotationsByPage, inScope, direction);
-    out.surveyMarkers = mergeScopedSurveyMarkers(current.surveyMarkers, target.surveyMarkers, inScope, direction);
+  const ids = new Set((Array.isArray(context.cascadeIds) ? context.cascadeIds : []).map(String));
+  if (ids.size > 0) {
+    out.annotationsByPage = mergeCascadeMarks(current.annotationsByPage, target.annotationsByPage, ids, direction);
+    out.surveyMarkers = mergeCascadeSurveyMarkers(current.surveyMarkers, target.surveyMarkers, ids, direction);
     if (out.annotationsByPage !== current.annotationsByPage && typeof deriveCallouts === 'function') {
       out.callouts = deriveCallouts(out.annotationsByPage);
     }

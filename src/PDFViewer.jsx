@@ -13966,6 +13966,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, []);
 
+  // w37: { spaceId, ids } of the last space cascade, read once by the space
+  // step that owns it (space:update for a region replace, space:delete).
+  const pendingSpaceCascadeRef = useRef(null);
   const handleSpaceCreate = useCallback((space) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before creating space
@@ -14009,9 +14012,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceUpdate = useCallback((id, updates) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before updating space
+    // w37: a region replace ran its cascade just before this update; the step
+    // records what it removed (a rename / recolour removed nothing).
+    const cascade = pendingSpaceCascadeRef.current;
+    pendingSpaceCascadeRef.current = null;
     addHistoryCheckpoint('space:update', {
       spaceId: id,
-      updateKeys: Object.keys(updates || {})
+      updateKeys: Object.keys(updates || {}),
+      ...(cascade?.spaceId === id && cascade.ids.length > 0 ? { cascadeIds: cascade.ids } : {}),
     });
 
     setSpaces(prev => {
@@ -14247,6 +14255,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       regionIds: Array.from(collectedRegionIds),
       cloudDeleteIds: ids.length,
     }));
+    // w37: the ids this cascade removed, so the space step's Undo / Redo puts
+    // back / removes exactly these (historyStacks.scopeLegacyRestoreToOwnSlices).
+    pendingSpaceCascadeRef.current = { spaceId, ids };
+    return ids;
   }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
@@ -14256,6 +14268,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageIds: [pageId],
       reason: 'space-page-delete',
     });
+    // No undo step records this cascade: it must not be claimed by a later one.
+    pendingSpaceCascadeRef.current = null;
 
     // KAL-313 / history F1 (2026-06-11): the sidebar trash button on a region
     // row commits the deletion immediately (no Confirm step), so journal the
@@ -14370,6 +14384,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageIds: [pageId],
       reason: 'space-page-regions-clear',
     });
+    // No undo step records this cascade: it must not be claimed by a later one.
+    pendingSpaceCascadeRef.current = null;
 
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
@@ -20365,6 +20381,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { status: 'conflict', reason: 'history-checkpoint-missing' };
     }
     const result = applyDurableEraseHistoryTransition(transition, 'undo');
+    // w37: store not ready / rollback: keep the step (same rule as Cmd+Z).
+    if (isTransientEraseHistoryFailure(result)) return result;
     if (!['applied', 'noop'].includes(result?.status)) {
       const cleaned = removeEraseTransitionHistoryCheckpoints({
         mutationIds: [mutationId],
@@ -20717,7 +20735,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceDelete = useCallback((id) => {
     if (!requireSpaceManagement()) return;
     // Checkpoint history before deleting space
-    addHistoryCheckpoint('space:delete', { spaceId: id });
+    // w37: the checkpoint keeps this very context object; the cascade below
+    // adds what it removed to it (cascadeIds).
+    const spaceDeleteContext = { spaceId: id };
+    addHistoryCheckpoint('space:delete', spaceDeleteContext);
 
     // KAL-313: emit a space_deleted history row so the region cascade restore
     // path (resolveRegionRestoreCascade) can find the space's restore record
@@ -20741,10 +20762,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (spaceTrashRow) void recordAndNotifyDocumentHistoryEvent(spaceTrashRow);
     }
 
-    cascadeDeleteScopedAppState({
+    const cascadeIds = cascadeDeleteScopedAppState({
       spaceId: id,
       reason: 'space-delete',
-    });
+    }) || [];
+    pendingSpaceCascadeRef.current = null;
+    spaceDeleteContext.cascadeIds = cascadeIds;
     setSpaces(prev => prev.filter(s => s.id !== id));
     if (activeSpaceId === id) {
       setActiveSpaceId(null);
@@ -27638,26 +27661,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // but the last page as live frames: Undo reverted only the last page,
       // and the other pages' leftover gesture baselines folded this change
       // into the next, unrelated step on each of those pages.
-      const pageActions = updates.map(({ pageKey, json }) => {
-        const numericKey = Number(pageKey);
-        return buildAnnotationHistoryAction({
-          pageNumber: Number.isFinite(numericKey) ? numericKey : pageKey,
-          previousPage: allPages[pageKey],
-          nextPage: json,
-        });
-      }).filter(Boolean);
+      // A colour-slider drag calls this every frame: frames are live saves
+      // only (each page keeps its pre-drag baseline and touch record); the
+      // release records the one step from those baselines.
+      const phase = paintPhaseRef.current;
+      const isDragFrame = phase === 'preview' || phase === 'settle';
       updates.forEach(({ pageKey, json }) => {
         const numericKey = Number(pageKey);
-        const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
-        handleSaveAnnotations(pageNumber, json, {
+        handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
           source: 'counter:group-update',
           action: 'counter-group-update',
           checkpointPolicy: 'skip',
         });
-        endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
       });
-      if (pageActions.length > 0) {
-        pushLocalAnnotationHistoryAction({ type: 'fabric:document-batch', actions: pageActions });
+      if (!isDragFrame) {
+        const viewerId = yjsUndoCtx?.userId || user?.id || null;
+        const pageActions = updates.map(({ pageKey, json }) => {
+          const numericKey = Number(pageKey);
+          const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+          const baseline = previewBaselineByPageRef.current.get(String(pageKey)) || allPages[pageKey];
+          const touches = gestureFieldTouchesByPageRef.current.get(String(pageKey));
+          const built = buildAnnotationHistoryAction({ pageNumber, previousPage: baseline, nextPage: json });
+          const own = touches ? restrictAnnotationHistoryActionFields(built, touches) : built;
+          endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
+          // Per page: a collaborator's pin on one page must not take away
+          // the step for the user's own pins (a document batch is
+          // all-or-nothing under the owner filter).
+          return filterAnnotationHistoryActionByOwner(own, viewerId, documentOwnerId);
+        }).filter(Boolean);
+        if (pageActions.length > 0) {
+          pushLocalAnnotationHistoryAction({ type: 'fabric:document-batch', actions: pageActions });
+        }
       }
     }
     // [COUNTER STEP 7] When the group whose color was just changed is the
@@ -27681,7 +27715,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setCounterUITick((t) => t + 1);
     }
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
-  }, [handleSaveAnnotations, pushLocalAnnotationHistoryAction]);
+  }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
 
   // Request deletion of one complete counter series. The existing shared

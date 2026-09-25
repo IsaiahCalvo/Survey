@@ -6010,11 +6010,13 @@ function makeHandle(state) {
               // under the lanes. Before, the old copy was stored as it was and
               // the user's own later changes (a recolour) were lost; the next
               // Undo then had nothing to change.
+              // A move / resize / width change the user made before deleting
+              // is a geometry edit: mergeLaneOwnedNormalEdit then stores the
+              // restored object itself, exactly like such an edit on a
+              // partly erased mark always does.
               if (!madeFrom && !stored && fallbackBase) {
                 const shown = materializeObjectUnderLanes(state.doc, storageKey, stableBase);
-                if (shown && laneVisibleGeometryMatches(shown, desiredRecord.object, stableBase)) {
-                  madeFrom = shown;
-                }
+                if (shown) madeFrom = shown;
               }
               const nextBase = madeFrom
                 ? mergeLaneOwnedNormalEdit(
