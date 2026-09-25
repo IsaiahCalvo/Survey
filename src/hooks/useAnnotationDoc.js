@@ -57,6 +57,10 @@ function livePreviewPublicChannelInDev() {
 // to a page list read from the document. A mark the document already holds
 // wins; the page list is returned unchanged when there is nothing to add.
 function withLivePreviews(byPage, handle) {
+  // w32: the handle also applies other screens' in-flight EDITS (a move,
+  // restyle, erase or delete shows before its WAL row) — display only, the
+  // handle's applyByPage takes them back out of every capture.
+  if (typeof handle?.withLiveOverlays === 'function') return handle.withLiveOverlays(byPage);
   const overlay = handle?.getLivePreviewByPage?.();
   if (!overlay || Object.keys(overlay).length === 0) return byPage;
   const next = { ...(byPage || {}) };
