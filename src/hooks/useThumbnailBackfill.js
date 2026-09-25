@@ -21,7 +21,7 @@ import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
-import { createThumbnailBackfill } from '../services/thumbnailBackfill';
+import { createThumbnailBackfill, isBackfillHostVisible } from '../services/thumbnailBackfill';
 import { publishThumbnailUpdate } from '../services/thumbnailEvents';
 import { isUserBusy } from '../services/userActivity';
 import { encodeThumbnail, openRangedPdf, releaseCanvas, renderPageToCanvas } from '../services/thumbnailRender';
@@ -160,10 +160,7 @@ export function useThumbnailBackfill(documents, { downloadDocument, hostRef, ena
 
   useEffect(() => {
     if (!enabled) return undefined;
-    const listVisible = () => {
-      const host = hostRef?.current;
-      return Boolean(host && host.isConnected && host.getClientRects().length > 0);
-    };
+    const listVisible = () => isBackfillHostVisible(hostRef?.current);
     const backfill = createThumbnailBackfill({
       keyOf: thumbCacheKey,
       needsThumbnail: documentNeedsThumbnail,
