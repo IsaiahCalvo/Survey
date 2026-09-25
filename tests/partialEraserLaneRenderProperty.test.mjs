@@ -36,7 +36,6 @@ import { drawAnnotationObject } from '../src/utils/annotationCanvasPainter.js';
 import {
   erasePageAnnotations,
   intersectErasedPathSurvivors,
-  pathObjectToPagePolygons,
 } from '../src/utils/pageSpaceEraser.js';
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 
@@ -599,11 +598,10 @@ test('a partially erased stroked curve paints the same clip on canvas and in SVG
       return d - width / 2;
     };
     const clipRings = rings(survivor.polygons);
-    // Losses are judged against the stroke outline the eraser cut from. That
-    // outline can itself fall short of the true round stroke at a very tight
-    // turn (a separate, pre-w38 outline-builder defect — seed 0xc0ffee case
-    // 21 at 150 cases); this test is about the cut and the renderers.
-    const outlineRings = rings(pathObjectToPagePolygons(object, gesture.radius));
+    // Losses are judged against the TRUE round stroke. (w38 judged them
+    // against the outline the eraser cut from while that outline fell short
+    // at very tight turns — seed 0xc0ffee case 21 at 150 cases; w39 fixed the
+    // outline builder, tests/roundStrokeOutlineTightTurns.test.mjs.)
     const step = 0.25;
     const reach = gesture.radius + width;
     for (let py = hit.y - reach; py <= hit.y + reach; py += step) {
@@ -614,12 +612,7 @@ test('a partially erased stroked curve paints the same clip on canvas and in SVG
         const eraser = eraserDistance({ x: px, y: py }, [gesture]);
         if (painted) {
           assert.ok(eraser >= -GRID_TOLERANCE, `curve ${n}: ink painted inside the eraser at (${px}, ${py})`);
-        } else if (
-          eraser > GRID_TOLERANCE
-          && inStroke < -GRID_TOLERANCE
-          && evenOdd(outlineRings, px, py)
-          && ringEdgeDistance({ x: px, y: py }, outlineRings) > GRID_TOLERANCE
-        ) {
+        } else if (eraser > GRID_TOLERANCE && inStroke < -GRID_TOLERANCE) {
           assert.fail(`curve ${n}: ink lost at (${px}, ${py}), ${eraser.toFixed(2)} outside the eraser`);
         }
       }

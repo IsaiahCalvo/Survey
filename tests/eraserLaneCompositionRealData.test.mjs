@@ -190,7 +190,7 @@ for (const [storageKey, { base, lanes }] of marks) {
   });
 }
 
-test('the raw Martinez intersection of the two real survivors is what broke (pins the diagnosis)', () => {
+test('the plain intersection of the two real survivors is exact on the Clipper2 engine', () => {
   const [, { base, lanes }] = marks.find(([key]) => key.startsWith('6a89a34c'));
   const [first, second] = Object.values(lanes).map((lane) => lane.survivor.polygons);
   const result = compareWithExact({
@@ -198,9 +198,11 @@ test('the raw Martinez intersection of the two real survivors is what broke (pin
     shownPath: polygonSetToCommands(intersectPolygonSets(first, second)),
     gestures: Object.values(lanes).flatMap((lane) => lane.gestures),
   });
-  // Documented failure of the plain polygon engine on coincident edges (what
-  // the screen showed before w38). If a future engine gets this right, delete
-  // this pin — the composition tests above are the contract.
-  assert.ok(result.paintedInsideEraserArea > 200, JSON.stringify(result));
-  assert.ok(result.missingOutsideEraserArea > 400, JSON.stringify(result));
+  // w38 pinned this as the failure of the old engine (Martinez painted about
+  // 200 units^2 back inside the erased area and lost about 400 outside it on
+  // these coincident edges) and said to delete the pin once an engine got it
+  // right. w39 (2026-09-25) moved the eraser booleans to Clipper2's exact
+  // integer grid, which gets it right, so the pin now asserts that instead.
+  assert.equal(result.paintedInsideEraserArea, 0, JSON.stringify(result));
+  assert.equal(result.missingOutsideEraserArea, 0, JSON.stringify(result));
 });
