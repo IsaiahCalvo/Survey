@@ -13,8 +13,15 @@
 // --mode same      two tabs in ONE browser profile (shared IndexedDB,
 //                  BroadcastChannel, localStorage) — what the owner did.
 // --mode separate  two browser profiles (two devices).
-// Uses the dev server's own auto sign-in; never types credentials.
+// Signs in with the verified test-account lease (agent-cli/lib/leased-browser-
+// session.mjs), like the other app harnesses. --dev-auto-login instead uses the
+// dev server's own owner sign-in (w30 ran it that way, owner-approved, on
+// throwaway copies only). Never types credentials.
 import { chromium } from 'playwright';
+import {
+  assertBrowserUsesLeasedAccount,
+  installLeasedBrowserAccount,
+} from './lib/leased-browser-session.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -58,6 +65,11 @@ const browser = await chromium.launch({ headless: !flag('headed') });
 const contextOptions = { viewport: { width: 1440, height: 900 } };
 const ctxA = await browser.newContext(contextOptions);
 const ctxB = MODE === 'same' ? ctxA : await browser.newContext(contextOptions);
+const LEASED = !flag('dev-auto-login');
+if (LEASED) {
+  await installLeasedBrowserAccount(ctxA);
+  if (ctxB !== ctxA) await installLeasedBrowserAccount(ctxB);
+}
 await ctxA.addInitScript(TRACE_INIT);
 if (ctxB !== ctxA) await ctxB.addInitScript(TRACE_INIT);
 
@@ -74,6 +86,7 @@ const consoleTail = (page, label) => page.on('console', (message) => {
 });
 
 async function waitForHub(page) {
+  if (LEASED) await assertBrowserUsesLeasedAccount(page, { timeoutMs: 60_000 });
   await page.getByRole('heading', { name: 'Documents', exact: true }).first()
     .waitFor({ state: 'visible', timeout: 90_000 });
 }
