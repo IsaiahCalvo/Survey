@@ -755,6 +755,77 @@ the writer (rows are not always in order); per-message full-document
 re-reads on receivers; no
 receive-side size cap.
 
+## w32 + w33 + w34 together (w35, 2026-09-25)
+
+Each of the three branches was reviewed alone; this pass checked them merged
+(two adversarial reviews of the interaction, a third of the fixes, live runs).
+
+* **A whole-stroke erase wrote on every screen.** The erase is a delete lane
+  over a kept stored mark (so Undo and Revisions can restore it). The next
+  capture on the erasing screen AND on every other open screen took the
+  lane-hidden mark's absence for a selection delete: it deleted the stored
+  mark (one extra row per screen, plus a tombstone for an imported mark), and
+  Undo of the erase then reported "applied" with nothing to show (Revisions:
+  `stable-base-missing`). Now a mark any delete lane hides is never taken for
+  a user's delete (the same rule that hides it); a delete lane that does not
+  name its imported mark (the page-mutation eraser path) is read from the
+  stored mark it keeps (`docToDeletedPdfAnnotations`). Predates w32/w33
+  (per-field sync); found here because the viewing screen wrote rows.
+* **Erase follow-up work ran on every screen of the same user.** The History
+  row (and trash / Excel for Survey Markers) is the erasing screen's job: the
+  outbox entry now carries `writerId`, and another open screen of that user
+  waits for its ack, taking over only if it is still pending 60 s after this
+  screen first saw it (the screen closed or went offline; every effect is
+  idempotent by key). Entries found at open are recovery work and run as
+  before.
+* **The store compaction went out as a live edit** (a small store fits the
+  v2 budget): other screens showed those marks as this screen's in-flight
+  edit, cancelled an erase of them as a conflict and reverted their own unsaved
+  change of them until the row landed. It is never broadcast now.
+* **The compaction's checkpoint could be lost for good:** a routine checkpoint
+  already encoding reset the owed flags and its acceptance cleared "must
+  write". Now only a checkpoint whose bytes hold the compaction's rows clears
+  it, and one that does not re-arms it while those rows are still on their
+  way (a row that ended in error never will be: no re-arm, no upload loop).
+* A recolour of a mark the compaction has not reached writes only its colour
+  (it also rewrote `polygons` as the marker, a write the live-edit conflict
+  check never saw). A stored checkpoint taken in without its rows (w33's
+  routine rebase) now refreshes live-edit arrival copies like a row, and
+  their per-mark epochs survive eviction (one clock, a floor on eviction).
+
+Measured (dev server, prod database, small throwaway document, persistent
+headless profiles, every other stored file blocked). Per action, actor's
+screen to the other screen's: new stroke 32-49 ms (first live ink 31-136 ms
+after pen down), move 32-37, recolour 31-42, partial erase 22-35, whole erase
+27 (before the eraser lifts), delete 35-38. The watching screen writes
+nothing on any action (before: a whole erase cost 5 rows, 1-2 of them on the
+watching screen, and a second History POST when both screens were the same
+user; now 2 rows: the erase and its follow-up ack). Three screens drawing
+for 20 s: 43 strokes, all converged, median 73 ms, p90 112 ms. Usage probe
+(`agent-cli/usage-budget.json`, re-measured): 1 user 0 checkpoints in the
+whole session; 3 users 0-1 per user per phase (was up to 14), an erase phase
+12 rows per user (10 erases). Live ink raised the draw phase's messages (w32,
+owner request): ~3 sent per quick probe stroke, 248 billable per user with 3
+drawing.
+
+Pinned by `tests/annotationWholeEraseUndo.test.mjs`,
+`tests/annotationCompactionCombined.test.mjs` and
+`tests/supabaseUsageBudget.test.mjs` (w33 target is a real test now: 5 paced
+strokes, watchers 0 checkpoints, writer at most 2; erase follow-up only on the
+erasing screen, takeover after the grace period).
+
+Limits: entries that arrive in the catch-up right after this screen opened
+count as "new", so work left by a screen that closed just before waits up to
+~60-90 s (nothing is lost). If B deletes a mark in the same frame that A's
+whole-erase row for it lands, B's delete is skipped and A's Undo brings the
+mark back. A v2 whole copy still carries the sender's values for fields it
+did not change: a receiver whose copy is AHEAD (its own row not yet at the
+sender) sees that field revert until the rows land, and an edit of that field
+meanwhile is refused (w32 limit, now also when the receiver is ahead).
+Overlays and ghosts for rows a taken-in checkpoint covered still leave by
+expiry (12 / 20 s), not at once; a new mark's v1 preview vanishes while Yjs
+holds its row back (w30).
+
 ## Offline edits reach peers that are already open
 
 Open peers only receive WAL rows (realtime inserts + catch-up), never
