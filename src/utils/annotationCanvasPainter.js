@@ -235,53 +235,6 @@ function pathBounds(commands) {
   return { minX, minY, maxX, maxY };
 }
 
-function transformedPaperSourceBounds(source) {
-  if (
-    !Array.isArray(source?.path)
-    || !Array.isArray(source?.matrix)
-    || source.matrix.length !== 6
-  ) return null;
-  const [a, b, c, d, e, f] = source.matrix;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  const boundsPath = (
-    Array.isArray(source.operationalPath) && source.operationalPath.length > 0
-      ? source.operationalPath
-      : normalizeOperationalInkPath(source.path)
-  );
-  for (const command of boundsPath) {
-    for (let index = 1; index + 1 < command.length; index += 2) {
-      const x = Number(command[index]);
-      const y = Number(command[index + 1]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      const pageX = a * x + c * y + e;
-      const pageY = b * x + d * y + f;
-      if (!Number.isFinite(pageX) || !Number.isFinite(pageY)) continue;
-      minX = Math.min(minX, pageX);
-      minY = Math.min(minY, pageY);
-      maxX = Math.max(maxX, pageX);
-      maxY = Math.max(maxY, pageY);
-    }
-  }
-  if (!Number.isFinite(minX)) return null;
-  const strokeScale = Math.max(
-    Math.hypot(a, b),
-    Math.hypot(c, d),
-    Number.MIN_VALUE,
-  );
-  const pad = source.paintMode === 'fill'
-    ? 1
-    : Math.max(1, toNumber(source.strokeWidth) * strokeScale);
-  return {
-    x: minX - pad,
-    y: minY - pad,
-    width: Math.max(Number.MIN_VALUE, maxX - minX + pad * 2),
-    height: Math.max(Number.MIN_VALUE, maxY - minY + pad * 2),
-  };
-}
-
 function tracePolygonSetInto(context, polygons) {
   for (const polygon of polygons || []) {
     for (const ring of polygon || []) {
@@ -464,26 +417,32 @@ function drawPath(context, object, displayScale) {
   }
   context.lineDashOffset = toNumber(attrs.strokeDashoffset);
 
+  // Partially erased authored curve: paint the exact source stroke clipped to
+  // the SURVIVOR polygons (even-odd), the same clip the SVG layer uses
+  // (svgAnnotationRenderers renderPath). w38 (2026-09-25): this used to clip
+  // with (source bounds minus paperEraserCuts). The cuts come from a second
+  // polygon boolean (source outline minus survivor) whose operands share most
+  // of their edges, which Martinez gets wrong: the canvas painted slivers of
+  // ink inside erased holes and notched the ink beside them while the SVG
+  // layer was clean. The survivor is the eraser's own verified output.
   const paperSource = object?.paperSourceStroke;
-  const paperCuts = object?.paperEraserCuts;
-  const paperBounds = transformedPaperSourceBounds(paperSource);
+  const paperSurvivors = object?.polygons;
   if (
-    paperBounds
-    && Array.isArray(paperCuts)
-    && paperCuts.length > 0
+    Array.isArray(paperSource?.path)
+    && paperSource.path.length > 0
+    && Array.isArray(paperSource.matrix)
+    && paperSource.matrix.length === 6
+    && Array.isArray(paperSurvivors)
+    // Same test as the SVG layer's clip path: at least one real ring.
+    && paperSurvivors.some((polygon) => Array.isArray(polygon) && polygon.some((ring) => (
+      Array.isArray(ring) && ring.length >= 3
+    )))
     && typeof context.clip === 'function'
-    && typeof context.rect === 'function'
     && typeof context.transform === 'function'
   ) {
     context.save();
     context.beginPath();
-    context.rect(
-      paperBounds.x,
-      paperBounds.y,
-      paperBounds.width,
-      paperBounds.height,
-    );
-    tracePolygonSetInto(context, paperCuts);
+    tracePolygonSetInto(context, paperSurvivors);
     context.clip('evenodd');
     context.transform(...paperSource.matrix);
     context.lineCap = paperSource.strokeLineCap || 'round';

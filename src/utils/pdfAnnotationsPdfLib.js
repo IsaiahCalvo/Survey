@@ -1328,8 +1328,12 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
     && paperSource.path.length > 0
     && Array.isArray(paperSource?.matrix)
     && paperSource.matrix.length === 6
-    && Array.isArray(fabricObj?.paperEraserCuts)
-    && fabricObj.paperEraserCuts.length > 0
+    // w38: the screens clip the source to the survivor polygons, so a stored
+    // survivor alone qualifies (cuts are only the no-polygon fallback clip).
+    && (
+      normalizeMultiPolygon(fabricObj?.polygons).length > 0
+      || (Array.isArray(fabricObj?.paperEraserCuts) && fabricObj.paperEraserCuts.length > 0)
+    )
   );
   const sourcePageMatrix = hasAnalyticPaperSource
     ? multiplyInkMatrices(transform.matrix, paperSource.matrix)
@@ -1374,9 +1378,21 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
   );
 
   if (hasAnalyticPaperSource) {
-    const pageCuts = transformInkPolygons(fabricObj.paperEraserCuts, transform);
-    content.push(`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`);
-    for (const polygon of pageCuts) {
+    // w38 (2026-09-25): clip the authored source to the SURVIVOR polygons,
+    // exactly like the SVG layer and the canvas painter. (Box minus
+    // paperEraserCuts is kept only for a survivor with no polygons.) The cuts
+    // are a second boolean between two polygons that share most edges and
+    // can be wrong: slivers inside erased holes, notches beside them.
+    const survivorClip = normalizeMultiPolygon(polygons).some((polygon) => (
+      polygon.some((ring) => Array.isArray(ring) && ring.length >= 3)
+    ));
+    const clipPolygons = survivorClip
+      ? polygons
+      : transformInkPolygons(fabricObj.paperEraserCuts, transform);
+    if (!survivorClip) {
+      content.push(`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`);
+    }
+    for (const polygon of clipPolygons) {
       for (const ring of polygon) {
         if (!Array.isArray(ring) || ring.length < 3) continue;
         const end = (

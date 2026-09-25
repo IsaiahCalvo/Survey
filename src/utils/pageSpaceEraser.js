@@ -4,7 +4,7 @@ import {
   commandsToPolygonSet,
   eraseAnnotations,
   filledOutlineCommandsToPolygonSet,
-  intersectPolygonSets,
+  intersectSharedOutlinePolygonSets,
   normalizeMultiPolygon,
   polygonSetToCommands,
   roundCircleStepCount,
@@ -882,8 +882,13 @@ function bakePagePathResult(object, result) {
  * subset of the same stable base object, so their intersection is exactly
  * "apply every bite". One survivor is returned byte-for-byte; only concurrent
  * writer lanes require a polygon boolean operation.
+ * w38 (2026-09-25): those survivors share most edges bit for bit, so the
+ * intersection nudges one operand off the shared vertices first — a plain
+ * Martinez intersection painted erased dabs back in and dropped blocks of ink
+ * on the owner's Package 2 page-1 strokes
+ * (tests/eraserLaneCompositionRealData.test.mjs).
  */
-export function intersectErasedPathSurvivors(survivors) {
+export function intersectErasedPathSurvivors(survivors, { outlineArea = null } = {}) {
   const values = (survivors || []).filter((object) => (
     object
     && String(object.type || '').toLowerCase() === 'path'
@@ -894,7 +899,7 @@ export function intersectErasedPathSurvivors(survivors) {
 
   let polygons = normalizeMultiPolygon(values[0].polygons);
   for (let index = 1; index < values.length; index += 1) {
-    polygons = intersectPolygonSets(polygons, values[index].polygons);
+    polygons = intersectSharedOutlinePolygonSets(polygons, values[index].polygons, { outlineArea });
     if (!polygons.length) return null;
   }
   const cmds = polygonSetToCommands(polygons);
