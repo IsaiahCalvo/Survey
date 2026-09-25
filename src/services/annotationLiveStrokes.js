@@ -8,8 +8,7 @@
 // on the other screen as it is drawn. The drawing screen now sends the new
 // points of its in-progress stroke at most every LIVE_STROKE_INTERVAL_MS
 // (at most 8 messages a second while the pen moves, nothing when it is still
-// or idle, nothing at all when no other screen has the document open) on the
-// same private live channel (v3 message):
+// or idle) on the same private live channel (v3 message):
 //
 //   { v: 3, w: writerId, g: strokeId, p: page, t: tool, c: colour, sw: width,
 //     i: index of the first point, pts: [x0, y0, x1, y1, ...], f?: 1, x?: 1 }
@@ -115,9 +114,8 @@ export function beginLiveStroke({ documentId, id, page, tool, color, width }, { 
     }
     const payload = { ...base, i: sentCount, pts, ...(extra || {}) };
     lastSentAt = now();
-    // Not sent (nobody else is here yet, or the channel is down): nothing
-    // counts as delivered, so when company appears mid-stroke the ink goes
-    // out from its first point (review: a stroke begun alone must show whole).
+    // Not sent (the channel is down or rejoining): nothing counts as sent,
+    // so when it is back the ink goes out from the first unsent point.
     if (!sink.send(payload)) return;
     messages += 1;
     sentCount = end;

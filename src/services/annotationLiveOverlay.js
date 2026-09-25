@@ -404,13 +404,22 @@ export function stripLiveEditObjects(byPage, {
         // the other screen's in-flight fields are never saved; the capture's
         // own rules then decide (a mark deleted by someone else stays
         // deleted). Without that copy it is not written (review A, verify).
-        if (untouched || key == null || !record?.base) continue;
-        const rebuilt = mergeEditOntoCurrent(
-          withoutLiveFlags(record.base),
-          withoutLiveFlags(record.object),
-          withOverlayCounterNumbers(withoutLiveFlags(object), record.object),
-        );
-        if (!rebuilt) continue;
+        // The untouched copy is rebuilt as the base itself (verify pass 2:
+        // an Undo of a delete must bring the mark back even if the user
+        // changed nothing on it); an edit that touches what the other
+        // screen was changing falls back to the base too.
+        if (key == null || !record?.base) continue;
+        const base = withoutLiveFlags(record.base);
+        let rebuilt = base;
+        if (!untouched && !record.rebuildOnly) {
+          const overlay = withoutLiveFlags(record.object);
+          const merged = mergeEditOntoCurrent(
+            base,
+            overlay,
+            withOverlayCounterNumbers(withoutLiveFlags(object), record.object),
+          );
+          if (merged && !writesInFlightFields(base, base, overlay, merged)) rebuilt = merged;
+        }
         present.add(key);
         kept.push(withoutLiveFlags(rebuilt));
         continue;
@@ -423,7 +432,7 @@ export function stripLiveEditObjects(byPage, {
         if (swaps) swaps.push({ pageKey: pageNumber, from: object, to, toPage: String(docPage ?? pageNumber), key });
       };
       if (record && !untouched) {
-        if (!mayTranslate) {
+        if (!mayTranslate || record.rebuildOnly) {
           back(delivered); // not applied: the screen goes back to the document's copy
         } else {
           // The user changed the overlay copy: only THEIR change is written,

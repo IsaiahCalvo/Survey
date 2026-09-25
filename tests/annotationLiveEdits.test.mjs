@@ -567,3 +567,47 @@ test('verify #5: a callout/counter edit on an overlay copy that touches differen
   assert.equal(out.byPage[1].objects[0].data.displayNumber, 3, 'the shown number is not written as a change');
   assert.equal(out.byPage[1].objects[0].left, 1, 'nor the other screen\'s move');
 });
+
+// --- w32 verification pass 2 (2026-09-25) ---
+
+test('verify2 #3/#4: Undo of a delete re-creates the mark from this screen\'s own copy — untouched, or edited on the other screen\'s in-flight field', () => {
+  const base = rect('m1', { stroke: '#ff0000', left: 10 });
+  const overlay = { ...rect('m1', { stroke: '#00ff00', left: 10 }), [LIVE_EDIT_FLAG]: 't1' };
+  const run = (object, record = { key: 'm1', object: overlay, page: 1, base }) => stripLiveEditObjects(
+    { 1: { objects: [object] } },
+    { resolveToken: () => record, deliveredOf: () => null, docPageOf: () => null },
+  ).byPage[1].objects;
+  const untouched = run(overlay);
+  assert.equal(untouched.length, 1, 'an untouched copy comes back');
+  assert.equal(untouched[0].stroke, '#ff0000', 'as this screen\'s own copy');
+  const onInFlight = run({ ...overlay, stroke: '#0000ff' });
+  assert.equal(onInFlight[0].stroke, '#ff0000', 'an edit of the field the other screen was changing falls back to the base');
+  const ownField = run({ ...overlay, left: 99 });
+  assert.equal(ownField[0].left, 99, 'an edit of another field is kept');
+  assert.equal(ownField[0].stroke, '#ff0000');
+  // The overlay object itself long gone (only the base kept): rebuilt as the base.
+  const baseOnly = run({ ...overlay, left: 99 }, { key: 'm1', object: base, page: null, base, rebuildOnly: true });
+  assert.equal(baseOnly[0].stroke, '#ff0000');
+  assert.equal(baseOnly[0].left, 10, 'nothing of the flagged copy is taken when it cannot be told apart');
+  assert.equal(baseOnly[0][LIVE_EDIT_FLAG], undefined);
+});
+
+test('verify2 #5/#6: only marks a message carried become the next patch base, and a whole copy goes out at least every 8 messages', async () => {
+  const { cloud, a, b } = await twoScreens('live-edit-full-every', [rect('m1'), rect('m2', { left: 400 })]);
+  const edit = (id, patch) => {
+    const screen = a.getByPage();
+    a.applyByPage({ 1: { ...screen[1], objects: screen[1].objects.map((o) => (o.data.id === id ? { ...o, ...patch } : o)) } });
+  };
+  for (let i = 1; i <= 10; i += 1) edit('m1', { left: 10 + i });
+  const m1 = edits(cloud).map((m) => m.payload.e.find((e) => e.k === 'm1')).filter(Boolean);
+  const fullAt = m1.map((e, i) => (e.o ? i : -1)).filter((i) => i >= 0);
+  assert.ok(fullAt.includes(0) && fullAt.some((i) => i >= 1 && i <= 9), `a whole copy again within 9 messages (${fullAt})`);
+  assert.ok(await until(() => markOn(screenOf(b), 'm1')?.left === 20));
+  // An edit of m2 in between breaks m1's chain: the next m1 edit is whole.
+  edit('m2', { left: 401 });
+  edit('m1', { left: 55 });
+  const last = edits(cloud).at(-1).payload.e.find((e) => e.k === 'm1');
+  assert.ok(last.o, 'not a patch against a message that did not carry it');
+  await a.drain();
+  await Promise.all([a.destroy(), b.destroy()]);
+});

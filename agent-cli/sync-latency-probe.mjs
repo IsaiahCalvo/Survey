@@ -409,8 +409,6 @@ async function liveChannelStatus(page) {
         topic: channel.topic,
         private: Boolean(channel.params?.config?.private),
         state: channel.state,
-        presenceKeys: Object.keys(channel.presenceState?.() || {}).length,
-        presenceEnabled: Boolean(channel.params?.config?.presence?.enabled),
       }));
   }).catch((error) => [{ error: error?.message }]);
 }
@@ -835,8 +833,13 @@ async function deleteThrowaway(page, id, expectedName) {
     if (row.name !== expectedName || !/^w30-latency-/.test(row.name)) {
       throw new Error(`refusing to delete ${row.name}`);
     }
-    const { error: deleteError } = await supabase.from('documents').delete().eq('id', id);
+    // .select() returns the deleted rows: a silent 0-row delete (RLS) fails.
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from('documents').delete().eq('id', id).select('id');
     if (deleteError) throw new Error(deleteError.message);
+    if (!Array.isArray(deletedRows) || deletedRows.length !== 1) {
+      throw new Error(`the document row was not deleted (${deletedRows?.length ?? 'no'} rows)`);
+    }
     const { data: sharer } = await supabase.from('documents').select('id')
       .eq('file_path', row.file_path).limit(1).maybeSingle();
     let storage = 'kept (shared)';
@@ -978,22 +981,6 @@ try {
     const replies = usageLog.filter((entry) => /anno-live/.test(entry.topic || '') && /phx_reply|phx_error|phx_close/.test(entry.kind));
     log("live-topic replies:", JSON.stringify(replies.map((entry) => `${entry.page} ${entry.kind} ${entry.raw || entry.bytes}`)));
   }
-  if (flag('presence-debug')) {
-    // What Realtime answers a presence track on the private channel.
-    const answer = await pageA.evaluate(async () => {
-      const { supabase } = await import('/src/supabaseClient.js');
-      const channel = (supabase.getChannels?.() || []).find((c) => /anno-live:/.test(c.topic));
-      if (!channel) return 'no channel';
-      const replies = [];
-      const original = channel.socket?.onMessage;
-      const result = await channel.track({ debug: Date.now() }).catch((error) => `threw ${error?.message}`);
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
-      return { result, keys: Object.keys(channel.presenceState?.() || {}), replies, hasOriginal: Boolean(original) };
-    }).catch((error) => `evaluate failed ${error?.message}`);
-    log('presence track answer:', JSON.stringify(answer));
-    const frames = usageLog.filter((entry) => /presence|phx_reply/.test(entry.kind)).slice(-12);
-    log('presence frames:', JSON.stringify(frames));
-  }
   // Let each side finish any open-time writes (embedded import, carry-over).
   await pageA.waitForTimeout(Number(opt('settle', '4000')));
   await trace(pageA);
@@ -1095,6 +1082,7 @@ try {
       }
     } catch (error) {
       log('CLEANUP FAILED — delete by hand:', documentId, docName, error?.message);
+      process.exitCode = 1;
     }
   } else if (documentId) {
     log('kept throwaway document', documentId, docName);

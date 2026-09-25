@@ -473,8 +473,9 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   changed (`s`) or went away (`u`), sent ONLY when this screen's
   immediately previous message (client_seq - 1) carried that mark, and
   applied by receivers onto that previous message's object (never onto
-  their own copy); `{ k, d: 1 }` = gone. An entry with nothing new is not
-  sent. The mark is what `materializeAnnotationKeys` builds (stored fields +
+  their own copy); a whole copy again at least every 8 messages or 500 ms
+  per mark, so one lost message never ends live display of it for long;
+  `{ k, d: 1 }` = gone. An entry with nothing new is not sent. The mark is what `materializeAnnotationKeys` builds (stored fields +
   eraser lanes, the same code docToByPage uses, now shared as
   `applyEraserLanesToObject`). A pure addition of whole new marks still goes
   as v1 (Yjs bytes); a lane-only change (partial erase) no longer sends a v1
@@ -517,10 +518,14 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
     that mark's entry);
   * a flagged copy of a mark the document no longer holds (an Undo of a
     delete made while an overlay showed it) is rebuilt from this screen's own
-    copy when the overlay arrived plus the user's own changes (never the
-    other screen's in-flight fields), then the capture's own rules decide (a
-    mark deleted by someone else stays deleted); one spread into a mark with
-    another id is that mark, without the flag. A paste strips the flag. A copy renumbered by a page insert/delete here stays on
+    copy when the overlay arrived (kept for the last 1,500 overlays, longer
+    than the overlays themselves), plus the user's own changes unless they
+    touch what the other screen was changing (then the own copy alone);
+    never the other screen's in-flight fields. The capture's own rules then
+    decide (a mark deleted by someone else stays deleted). The own copy is
+    the one from the first overlay of that writer, refreshed whenever a row
+    changes the mark. One spread into a mark with another id is that mark,
+    without the flag. A paste strips the flag. A copy renumbered by a page insert/delete here stays on
     this screen's page.
 * **Live ink (v3 message, `src/services/annotationLiveStrokes.js`).** While
   a pen or highlighter stroke is drawn, the new points go out at most every
@@ -529,8 +534,7 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   broadcast is delivered to every other screen; nothing while the pen is
   still): `{ v: 3, w, g: stroke id, p, t, c, sw, i, pts, f?, x? }`. The
   stroke id is the id the finished mark gets. Points count as sent only
-  when a message went out, so a stroke begun while alone goes out whole,
-  from its first point, when someone else arrives. A stroke that ends inside the
+  when a message went out (a channel that is rejoining loses none). A stroke that ends inside the
   first 125 ms sends nothing extra (its v1 preview covers it). Other screens
   draw a ghost polyline (`LiveStrokeGhosts`, inside the page SVG, looks like
   the local in-progress stroke, no pointer events, not an annotation) until
@@ -539,23 +543,13 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   points. Lost messages are joined straight. Caps: 4,000 points per ghost,
   24 ghosts. One sender and one ghost list per document (the app keeps
   several documents mounted).
-* **Alone = silent.** A screen sends no live message (v1, v2 or v3) when
-  it knows nobody else has the document open, and must never go quiet on a
-  screen that is there (a viewer must keep seeing live changes):
-  * Realtime Presence answered (needs
-    `supabase/migrations/20260925120000_live_channel_presence_policies.sql`,
-    NOT applied): trusted alone;
-  * Presence not answered: company assumed, exactly as before w32;
-  * Presence refused (the policy is not applied: today's prod): a tiny
-    hello on the channel itself. A joining screen says hello, each screen
-    that hears a new hello answers once, a leaving screen says bye. A screen
-    about to send that has heard from nobody for 10 minutes asks "who is
-    here?" (at most once per 30 s, only while editing; everyone answers);
-    peers that do not answer within 5 s are forgotten; peers it knew are
-    assumed present until then. If the first hellos are lost, the first
-    edit's ask finds the others (that edit rides the saved row).
-  2-3 messages per screen that opens, none while idle. A person working
-  alone costs zero live messages (was one preview per stroke).
+* **No "who is here" gating.** An earlier cut of w32 sent nothing when a
+  screen believed it was alone (Realtime Presence, then a hello protocol).
+  Verification found it made editors go quiet for viewers (viewers cannot
+  send hellos) and for screens whose join timed out, so it was removed
+  (coordinator decision): live messages always go out under the rate caps.
+  Realtime bills delivered messages, so a message to an empty channel costs
+  about nothing; the caps bound everything else.
 * The saved-row path itself was already direct: capture ~4 ms after the
   input, enqueue in the same tick, the WAL insert starts ~15-20 ms later
   (after the local outbox write), the receiver applies a row as it arrives.
@@ -575,8 +569,9 @@ screen, all converged, median 62 ms, p90 143 ms, max 161 ms.
 Realtime cost (billed messages sent by the actor → delivered to the other
 screen; WAL rows, REST/RPC calls, bytes and checkpoints are unchanged): a
 ~0.5 s stroke 1 → 8 sent (7 ink + 1 preview); move, recolour, delete 0 → 1;
-partial erase 1 → 1 (was a wasted v1); whole erase 0 → 2-3. Alone: 0 for
-everything. Three people drawing non-stop: ~45 billed messages/s for the
+partial erase 1 → 1 (was a wasted v1); whole erase 0 → 2-3. Working alone
+the messages are still sent; nobody receives them, so nothing is
+delivered. Three people drawing non-stop: ~45 billed messages/s for the
 whole project (sent + delivered), under Free's 100/s; a fourth and fifth
 non-stop drawer would approach it (each extra screen adds its own ink and
 receives everyone's).
@@ -595,20 +590,20 @@ may send on the channel; nothing is saved). Edits over the budget (>32 KB,
 e.g. a very long partly erased stroke) arrive with their row only.
 
 Reviews: two adversarial passes (write safety; delivery, ordering and
-cost) plus two checks of the fixes. The second check found and fixed:
-screens going quiet on a viewer when Presence never answered or a hello
-was lost (now: unknown = company, re-ask, expiry), an Undo that could still
-save the other screen's in-flight colour, patches applied onto a different
-copy than the sender diffed against (now: only against the previous
-message), conflict checks too coarse for callouts and counters (now per
-field path), and ink begun while alone never reaching a newcomer. Found and fixed: an edit on an overlay copy
+cost) plus three checks of the fixes. Later checks found and fixed: the
+"alone" gating silencing editors for viewers (gating removed), an Undo that
+could still save the other screen's in-flight colour or lose an untouched
+mark, patches applied onto a different copy than the sender diffed against
+(now only against the previous message, whole copy every 8 / 500 ms),
+conflict checks too coarse for callouts and counters (now per field path),
+and arrival copies reused across writers or after the mark changed. Found and fixed: an edit on an overlay copy
 could save the other screen's unsaved erase into the mark; an Undo of a
 delete made on an overlay copy was lost; page renumbering moved an overlaid
 mark back; live ink was global (could go out on another document's
 channel); counter overlays were treated as edits; a stroke ghost could
 vanish before a slow row; older overlays were dropped on any later row of
-the writer (rows are not always in order); presence failures were
-permanent; per-message full-document re-reads on receivers; no
+the writer (rows are not always in order); per-message full-document
+re-reads on receivers; no
 receive-side size cap.
 
 ## Offline edits reach peers that are already open

@@ -398,9 +398,6 @@ export function useAnnotationDoc({
           // public topic for measuring before the channel policies exist:
           // localStorage 'survey:livePreviewPublicChannel' = '1'.
           livePreviewPrivate: !livePreviewPublicChannelInDev(),
-          // w32: skip every live message while nobody else has the document
-          // open (Realtime Presence on the same private channel).
-          livePresence: true,
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
             ? eraseEffectConsumerProxyRef.current
             : null,
