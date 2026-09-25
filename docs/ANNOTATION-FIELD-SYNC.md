@@ -466,58 +466,81 @@ row (~0.3-0.7 s), and a pen stroke appeared on the other screen only after
 the pen lifted. Now, on the same private channel `anno-live:<doc>`:
 
 * **Edits (v2 message, `src/services/annotationLiveOverlay.js`).** Any
-  small local edit that changes how a mark looks is broadcast as what the
-  sender's screen shows for each mark it touched: `{ v: 2, w, s, e: [{ k, p,
-  o } | { k, d: 1 }] }`, keyed by the edit's WAL row (writer id +
-  client_seq) like a v1 preview. `o` is the mark as
-  `materializeAnnotationKeys` builds it (stored fields + eraser lanes, the
-  same code docToByPage uses, now shared as `applyEraserLanesToObject`); `d`
-  = gone. A pure addition of whole new marks still goes as v1 (Yjs bytes); a
-  lane-only change (partial erase) no longer sends a v1 message every
-  receiver dropped. Over 96 KB of JSON or 64 marks: the row only.
-* **Receiver.** The message is validated (key = the mark's own id, page,
-  plain object, no incoming live flags), rate-capped with v1 (50/s per
-  writer, 200 in flight), ignored once its row (or a later row of that
-  writer) is in, and shown BESIDE the document: `handle.withLiveOverlays`
-  (used by `useAnnotationDoc`) replaces the mark in place (z-order kept) or
-  hides it. Newest message per mark wins. An overlay leaves when its row is
-  applied, when a later row of the same writer is applied (one writer's rows
-  are appended in client_seq order, so an older overlay still here was
-  refused or never sent), after 12 s, or when the channel closes.
+  small local edit that changes how a mark looks is broadcast, keyed by the
+  edit's WAL row (writer id + client_seq) like a v1 preview:
+  `{ v: 2, w, s, e: [...] }`, one entry per mark it touched: `{ k, p, s, u }`
+  = only the top-level fields that changed (`s`) or went away (`u`),
+  measured against the mark as the sender last sent it or was last handed
+  it; `{ k, p, o }` = the whole mark when that is smaller; `{ k, d: 1 }` =
+  gone. The mark is what `materializeAnnotationKeys` builds (stored fields +
+  eraser lanes, the same code docToByPage uses, now shared as
+  `applyEraserLanesToObject`). A pure addition of whole new marks still goes
+  as v1 (Yjs bytes); a lane-only change (partial erase) no longer sends a v1
+  message every receiver dropped. Over 32 KB of JSON or 64 marks: the row
+  only.
+* **Receiver.** Validated (key = the mark's own id; a patch cannot change
+  identity; incoming live flags stripped; over 64 KB refused), rate-capped
+  with v1 (50/s per writer, 200 in flight), ignored once its row (or a later
+  row of that writer) is in. A patch is applied onto the mark as this screen
+  shows it; with nothing to apply it to, the entry waits for its row. Shown
+  BESIDE the document: `handle.withLiveOverlays` (used by `useAnnotationDoc`)
+  replaces the mark in place (z-order kept) or hides it; an edit of a mark
+  this screen does not hold is not shown (no resurrection). Newest message
+  per mark wins. An overlay leaves when its row is applied (kept while Yjs
+  holds that row back), its marks leave when a later row of the same writer
+  changes them, after 12 s, or when the channel closes. Screen updates are
+  batched to one per frame.
 * **Never written.** Every overlay object carries `__surveyLiveEdit` = a
   token naming the message and mark. The capture (`applyByPage`,
   `applyEraserMutation`, `commitEraseIntent`) takes overlays back out
-  (`stripLiveEditObjects`): an untouched overlay copy (or any copy of one) is
-  replaced by the copy of the mark the document last handed the screen, so
-  nothing is written; a mark an overlay hides is put back for the capture,
-  so hiding is never captured as this screen deleting it; an edit the user
-  made ON an overlay copy (recoloured the mark someone is moving) is written
-  as only the user's own change onto the document's copy
-  (`mergeEditOntoCurrent`, the drag/editor rule), the screen is swapped to
-  what was saved and the overlay of that mark is dropped (the other change
-  shows when its row lands); an eraser gesture planned on an overlay copy is
-  not applied to that mark (`commitEraseIntent` cancels as a conflict, the
-  page-mutation path drops that mark's entry). A paste strips the flag.
+  (`stripLiveEditObjects`):
+  * an untouched overlay copy (or its counter-number copy) is replaced by
+    the copy of the mark the document last handed the screen: nothing is
+    written; a mark an overlay hides is put back for the capture, so hiding
+    is never captured as this screen deleting it;
+  * an edit the user made ON an overlay copy is written as only the user's
+    own change onto the document's copy (`mergeEditOntoCurrent`), the screen
+    is swapped to what was saved and that mark's overlay is dropped (the
+    other change shows when its row lands) — UNLESS it would write a field
+    the other screen's in-flight edit changed (dragging a stroke someone is
+    partly erasing, moving a mark someone is moving): then it is not
+    applied and the screen goes back to the saved mark (review A: otherwise
+    the other screen's unsaved erase was baked into the mark);
+  * an eraser gesture planned on an overlay copy is not applied to that mark
+    (`commitEraseIntent` cancels as a conflict, the page-mutation path drops
+    that mark's entry);
+  * a flagged copy of a mark the document no longer holds (an Undo of a
+    delete made while an overlay showed it), or one spread into a mark with
+    another id, is an ordinary object without the flag: the capture's own
+    rules decide (a mark deleted by someone else stays deleted). A paste
+    strips the flag. A copy renumbered by a page insert/delete here stays on
+    this screen's page.
 * **Live ink (v3 message, `src/services/annotationLiveStrokes.js`).** While
   a pen or highlighter stroke is drawn, the new points go out at most every
-  66 ms (~15 messages/s while the pen moves, nothing while it is still):
-  `{ v: 3, w, g: stroke id, p, t, c, sw, i, pts, f?, x? }`. The stroke id is
-  the id the finished mark gets. A stroke that ends inside the first 66 ms
-  sends nothing extra (its v1 preview covers it). Other screens draw a
-  ghost polyline (`LiveStrokeGhosts`, inside the page SVG, looks like the
-  local in-progress stroke, no pointer events, not an annotation) until the
-  finished mark is on screen (its preview or its row) plus 120 ms so it
-  never blinks, on cancel, 4 s after the pen lifted, or 10 s after the last
+  125 ms (≤ 8 messages a second per drawing screen, w34 review: Realtime
+  caps a whole project at 100 messages/s on Free, 500 on Pro, and each
+  broadcast is delivered to every other screen; nothing while the pen is
+  still): `{ v: 3, w, g: stroke id, p, t, c, sw, i, pts, f?, x? }`. The
+  stroke id is the id the finished mark gets. A stroke that ends inside the
+  first 125 ms sends nothing extra (its v1 preview covers it). Other screens
+  draw a ghost polyline (`LiveStrokeGhosts`, inside the page SVG, looks like
+  the local in-progress stroke, no pointer events, not an annotation) until
+  the finished mark is on screen (its preview or its row) plus 120 ms so it
+  never blinks, on cancel, 20 s after the pen lifted, or 10 s after the last
   points. Lost messages are joined straight. Caps: 4,000 points per ghost,
-  24 ghosts.
-* **Alone = silent (Presence).** Each screen tracks one Realtime Presence
-  entry on the live channel. When Presence answers and nobody else has the
-  document open, NOTHING live is sent (no v1, v2 or v3): a person working
-  alone costs zero Realtime messages. Presence traffic is one join and one
-  leave per screen. Needs
-  `supabase/migrations/20260925120000_live_channel_presence_policies.sql`
-  (NOT applied); until then the track is refused, the channel still works,
-  and every screen sends as before (verified against prod).
+  24 ghosts. One sender and one ghost list per document (the app keeps
+  several documents mounted).
+* **Alone = silent.** A screen sends NO live message (v1, v2 or v3) unless
+  it knows another screen has the document open. Two signals, either is
+  enough: Realtime Presence on the live channel (one entry per screen; needs
+  `supabase/migrations/20260925120000_live_channel_presence_policies.sql`,
+  NOT applied; without it the track is refused and the channel still
+  works), and a tiny hello on the channel itself that needs no policy: a
+  joining screen says hello, each screen that hears a new hello answers
+  once, a leaving screen says bye (2-3 messages per screen that opens, none
+  while idle). A person working alone costs zero live messages (was one
+  preview per stroke). If a hello is lost, that pair falls back to the saved
+  row (~0.5 s) until one of them opens the document again.
 * The saved-row path itself was already direct: capture ~4 ms after the
   input, enqueue in the same tick, the WAL insert starts ~15-20 ms later
   (after the local outbox write), the receiver applies a row as it arrives.
@@ -525,33 +548,47 @@ the pen lifted. Now, on the same private channel `anno-live:<doc>`:
   the live messages now hide.
 
 Measured (headless, this machine, prod, small document, two separate
-profiles; "after the actor" = from the frame the actor's own screen shows
-the change to the frame the other screen does; w30 baseline in brackets,
-measured from pointer-up): new stroke 31-118 ms [41-172], and the ink starts
-growing 30-140 ms after the pen touches down [only after pointer-up]; move
-28-44 ms [365-628]; recolour 30-38 ms [498-557]; partial erase 17-56 ms
-[410-430]; whole erase 16-17 ms, shown before the eraser lifts [166-651
-after pointer-up]; delete 23-48 ms [435-532]. Three profiles drawing at
-once for 20 s (45 strokes): every stroke on every screen, all converged,
-median 56 ms after the author's screen, p90 139 ms [49 / 68 ms, stroke
-previews only; edits were not live then].
+profiles; from the frame the actor's own screen shows the change to the
+frame the other screen does; before = w30 main, measured from pointer-up):
+new stroke 37-98 ms [41-172], and the ink starts growing ~33 ms after the
+pen touches down [only after the pen lifted]; move 37 ms [365-628];
+recolour 48-67 ms [498-557]; partial erase 23-25 ms [410-430]; whole erase
+18-30 ms, before the eraser lifts [166-651]; delete 32-35 ms [435-532].
+Three profiles drawing at once for 20 s (45 strokes): every stroke on every
+screen, all converged, median 62 ms, p90 143 ms, max 161 ms.
 
-Realtime cost per action with one other screen open (sent by the actor /
-received by the other; the WAL echo arrives on both screens as before):
-stroke 1 → ~13 sent while drawing (+1 preview), move/recolour/delete 0 → 1,
-partial erase 1 → 1 (was a wasted v1), whole erase 0 → 2. WAL rows, bytes,
-REST/RPC calls and checkpoints are unchanged. Alone (with the Presence
-policy): 0 live messages for everything (was 1 preview per stroke).
+Realtime cost (billed messages sent by the actor → delivered to the other
+screen; WAL rows, REST/RPC calls, bytes and checkpoints are unchanged): a
+~0.5 s stroke 1 → 8 sent (7 ink + 1 preview); move, recolour, delete 0 → 1;
+partial erase 1 → 1 (was a wasted v1); whole erase 0 → 2-3. Alone: 0 for
+everything. Three people drawing non-stop: ~45 billed messages/s for the
+whole project (sent + delivered), under Free's 100/s; a fourth and fifth
+non-stop drawer would approach it (each extra screen adds its own ink and
+receives everyone's).
 
 Limits: an overlay that arrives while the receiver's copy of the mark is
-behind (an earlier row still on the way) shows the sender's whole mark, so
-the missing change appears early too, and briefly disappears again if the
-overlay leaves before that earlier row lands. A counter overlay keeps this
-screen's number until the row lands (numbers depend on the whole series).
-Exports, prints and survey uploads made in the ~0.5 s window include what
-the screen shows. A row Yjs has to hold back (a dependency missing) keeps
-its overlay until the document can show it (or the 12 s expiry). Edits too big for the budget (>96 KB,
+behind shows the sender's changed fields early, and a patch applied onto
+that older copy can show a mix until the rows land (display only). A
+counter overlay keeps this screen's number until the row lands. Exports,
+prints and survey uploads made in the ~0.5 s window include what the
+screen shows. An edit made on a mark while another screen is changing the
+same fields of it is not applied (the user redoes it after ~0.5 s). A mark
+hidden by a delete overlay is put back on its old page number if this
+screen renumbers pages in that ~0.5 s. An editor can make other screens
+show made-up content or hide a mark for up to 12 s at a time (only editors
+may send on the channel; nothing is saved). Edits over the budget (>32 KB,
 e.g. a very long partly erased stroke) arrive with their row only.
+
+Reviews: two adversarial passes (write safety; delivery, ordering and
+cost) plus a check of the fixes. Found and fixed: an edit on an overlay copy
+could save the other screen's unsaved erase into the mark; an Undo of a
+delete made on an overlay copy was lost; page renumbering moved an overlaid
+mark back; live ink was global (could go out on another document's
+channel); counter overlays were treated as edits; a stroke ghost could
+vanish before a slow row; older overlays were dropped on any later row of
+the writer (rows are not always in order); presence failures were
+permanent; per-message full-document re-reads on receivers; no
+receive-side size cap.
 
 ## Offline edits reach peers that are already open
 
