@@ -24,7 +24,10 @@ import {
   setMetaValue as setMetaValueOnDoc,
 } from '../services/annotationDocStore.js';
 import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
-import { ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE } from '../utils/annotationHydrationGate.js';
+import {
+  ANNOTATION_HYDRATION_PREVIEW_SOURCE,
+  ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE,
+} from '../utils/annotationHydrationGate.js';
 import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
@@ -289,6 +292,12 @@ export function useAnnotationDoc({
   // the module's job; this just avoids re-running on unrelated re-renders).
   const migrationDoneRef = useRef(null);
   const inkRepairDoneRef = useRef(null);
+  // w29 preview: what the viewer held before the first early paint for this
+  // document (byPage null = no preview shown since the last successful
+  // hydrate). Kept across failed-open retries of the same document, so marks
+  // painted by a failed attempt are never taken for the viewer's own. The
+  // early paint is display-only: an empty store is never seeded from it.
+  const prePreviewRef = useRef({ documentId: null, byPage: null });
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
   // A failed open (e.g. the WAL tail read timing out) is retried with backoff
   // instead of leaving the page covered forever (w26). Bumping the tick re-runs
@@ -322,6 +331,9 @@ export function useAnnotationDoc({
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
+    if (prePreviewRef.current.documentId !== documentId) {
+      prePreviewRef.current = { documentId, byPage: null };
+    }
     if (openFailuresRef.current.documentId !== documentId) {
       openFailuresRef.current = { documentId, count: 0 };
     }
@@ -347,6 +359,40 @@ export function useAnnotationDoc({
           eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
             ? eraseEffectConsumerProxyRef.current
             : null,
+          // UX (w29, open speed): the document's marks paint as soon as this
+          // device's saved copy (or the cloud snapshot) is read, instead of
+          // after the whole open (seconds on a big document). Display only:
+          // hydration stays not-ready, so nothing is written or imported and
+          // the first page keeps blocking input (see annotationHydrationGate)
+          // until the real hydrate below replaces this with the same marks.
+          onPreview: (previewByPage) => {
+            if (cancelled) return;
+            if (prePreviewRef.current.byPage === null) {
+              prePreviewRef.current = { documentId, byPage: byPageRef.current || {} };
+            }
+            const calloutList = deriveCalloutsFromByPage(previewByPage);
+            const projected = calloutList.length > 0
+              ? projectCalloutsIntoByPage(
+                previewByPage,
+                calloutList,
+                pageSizesRef?.current || {},
+                { preserveUnmeasured: true },
+              )
+              : previewByPage;
+            setAnnotationsByPage((previousByPage) => (
+              preserveTransientPagePresentationState(previousByPage, projected)
+            ));
+            setInitialHydration((previous) => (
+              previous?.ready && previous.documentId === documentId
+                ? previous
+                : {
+                  ready: false,
+                  source: ANNOTATION_HYDRATION_PREVIEW_SOURCE,
+                  count: pageCount(projected),
+                  documentId,
+                }
+            ));
+          },
         });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
@@ -531,6 +577,9 @@ export function useAnnotationDoc({
               preserveTransientPagePresentationState(previousByPage, projectedByPage)
             ));
           }
+        } else if (prePreviewRef.current.byPage !== null) {
+          // w29: an early paint showed marks that are gone from the store now.
+          setAnnotationsByPage(prePreviewRef.current.byPage);
         }
         if (hasSpaces) setSpaces(storeSpaces);
         if (hasSurvey) setSurveyMarkers(storeSurvey);
@@ -550,7 +599,12 @@ export function useAnnotationDoc({
         // drawn (or imported) before this point is captured durably. Callout
         // groups already ride inside byPage (post-flip in-memory truth), so
         // applyByPage seeds them per-id too — no separate callout seed.
-        const curByPage = byPageRef.current;
+        // w29: marks shown by an early paint came from the store itself and are
+        // gone from it now (deleted meanwhile); take them off the screen and
+        // seed only what the viewer held before that paint.
+        const prePreview = prePreviewRef.current.byPage;
+        if (prePreview !== null) setAnnotationsByPage(prePreview);
+        const curByPage = prePreview !== null ? prePreview : byPageRef.current;
         if (curByPage && pageCount(curByPage) > 0) {
           const result = handle.applyByPage(curByPage);
           if (result?.identityChanged && result.normalizedByPage) {
@@ -564,6 +618,7 @@ export function useAnnotationDoc({
       }
 
       readyRef.current = true;
+      prePreviewRef.current = { documentId, byPage: null };
       // Drives the existing "import embedded marks when empty" effect: a
       // never-imported PDF hydrates empty (count 0) → that effect runs the
       // importer → its marks flow back through capture below → durable.
@@ -594,6 +649,19 @@ export function useAnnotationDoc({
     if (!storeUnavailable) return undefined;
     return claimBodyReadOnly(`annotation-store-unavailable:${documentId}`);
   }, [storeUnavailable, documentId]);
+
+  // UX (w29, open speed): while early-painted marks are showing and the store
+  // is still opening, nothing drawn could be saved (the capture waits for
+  // hydration, which then replaces the page). Same read-only layer as above,
+  // on every page and for the keyboard too, for the second or two until the
+  // open finishes; the marks are already visible meanwhile.
+  const storePreviewing = initialHydration?.source === ANNOTATION_HYDRATION_PREVIEW_SOURCE
+    && initialHydration?.ready !== true
+    && initialHydration?.documentId === documentId;
+  useEffect(() => {
+    if (!storePreviewing) return undefined;
+    return claimBodyReadOnly(`annotation-store-opening:${documentId}`);
+  }, [storePreviewing, documentId]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an

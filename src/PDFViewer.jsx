@@ -15,6 +15,7 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { jsonEqual } from './utils/jsonEqual.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
@@ -95,7 +96,7 @@ import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
-import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, resolveFirstVisibleAnnotationPage, shouldGateFirstVisibleAnnotationPage } from './utils/annotationHydrationGate';
+import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, isFirstVisibleAnnotationPagePreviewing, resolveFirstVisibleAnnotationPage, shouldGateFirstVisibleAnnotationPage } from './utils/annotationHydrationGate';
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
@@ -20629,6 +20630,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }), [visiblePagesSet, pageNum]);
 
   const isCloudBackedAnnotationDocument = !!pdfFile?.id && cloudSyncEnabled;
+  // UX (w29, open speed): while the store is still opening, marks from this
+  // device's saved copy / the cloud snapshot are already painted; the first
+  // page then shows the PDF and those marks (no grey loading cover) and only
+  // blocks input until hydration is ready.
+  const firstVisibleAnnotationPagePreviewing = isFirstVisibleAnnotationPagePreviewing({
+    documentId: pdfFile?.id || null,
+    isCloudBackedDocument: isCloudBackedAnnotationDocument,
+    normalHydration: normalAnnotationHydration,
+    surveyHydration: surveyAnnotationHydration,
+  });
   const isFirstVisibleAnnotationPageGated = useCallback((pageNumber) => {
     const gated = shouldGateFirstVisibleAnnotationPage({
       documentId: pdfFile?.id || null,
@@ -20674,6 +20685,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber: firstVisibleAnnotationPage,
       ready,
       visualCoverActive: !ready,
+      // w29: marks painted early; the grey cover is off, input still held.
+      previewing: firstVisibleAnnotationPagePreviewing,
       normal: normalAnnotationHydration,
       survey: surveyAnnotationHydration,
     }));
@@ -20681,10 +20694,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       documentId: pdfFile?.id || null,
       pdfId,
       pageNumber: firstVisibleAnnotationPage,
-      active: !ready,
-      reason: ready ? 'hydration-ready' : 'annotation-hydration-gated',
+      active: !ready && !firstVisibleAnnotationPagePreviewing,
+      inputBlocked: !ready,
+      reason: ready
+        ? 'hydration-ready'
+        : (firstVisibleAnnotationPagePreviewing ? 'annotation-hydration-preview' : 'annotation-hydration-gated'),
     }));
   }, [
+    firstVisibleAnnotationPagePreviewing,
     firstVisibleAnnotationPage,
     isCloudBackedAnnotationDocument,
     normalAnnotationHydration,
@@ -21778,11 +21795,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
 
-    // Compare current with saved to detect changes
-    const currentJson = JSON.stringify(annotationsByPage);
-    const savedJson = JSON.stringify(savedAnnotationsByPageRef.current);
+    // Compare current with saved to detect changes. jsonEqual answers exactly
+    // like comparing the two JSON.stringify strings, without building them
+    // (w29: ~70 ms per change on a 3,000-mark document).
+    const matchesSaved = jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current);
 
-    if (currentJson !== savedJson && Object.keys(annotationsByPage).length > 0) {
+    if (!matchesSaved && Object.keys(annotationsByPage).length > 0) {
       setHasUnsavedAnnotations(true);
       // Notify parent component
       if (onUnsavedAnnotationsChange) {
@@ -33146,7 +33164,12 @@ ${pageBlocks}
                       );
                       const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
                       const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
-                      const annotationHydrationGated = isFirstVisibleAnnotationPageGated(pageNumber);
+                      const annotationHydrationPending = isFirstVisibleAnnotationPageGated(pageNumber);
+                      // w29: a previewed page shows the PDF and its early-painted marks
+                      // (no grey cover) while a see-through blocker keeps input off it
+                      // until hydration is ready, so nothing drawn can be lost.
+                      const annotationPreviewInputBlocked = annotationHydrationPending && firstVisibleAnnotationPagePreviewing;
+                      const annotationHydrationGated = annotationHydrationPending && !annotationPreviewInputBlocked;
                       const annotationVisualCoverActive = annotationHydrationGated;
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
@@ -34594,6 +34617,13 @@ ${pageBlocks}
                           })()}
                           </div>
                           {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs', annotationVisualCoverActive)}
+                          {annotationPreviewInputBlocked && (
+                            <div
+                              data-annotation-preview-input-blocker={pageNumber}
+                              aria-busy="true"
+                              style={{ position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'auto', cursor: 'progress' }}
+                            />
+                          )}
                         </div>,
                         portalTarget,
                         `pdfjs-overlay-${pageNumber}`,
