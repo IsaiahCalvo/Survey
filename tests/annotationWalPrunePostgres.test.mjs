@@ -87,7 +87,7 @@ test('w36 prune: WAL rows a checkpoint covers go, nothing an open or the next ap
       RETURNS public.documents LANGUAGE plpgsql SECURITY DEFINER AS $$
       DECLARE d public.documents; BEGIN SELECT * INTO d FROM public.documents WHERE id = doc_id; RETURN d; END $$;
     INSERT INTO public.documents(id, user_id)
-      SELECT ('00000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid, '${OWNER}' FROM generate_series(1, 6) n;
+      SELECT ('00000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid, '${OWNER}' FROM generate_series(1, 7) n;
   `);
   run('psql', [...psqlArgs, '-f', walMigration]);
   run('psql', [...psqlArgs, '-f', pruneSql]);
@@ -127,8 +127,17 @@ test('w36 prune: WAL rows a checkpoint covers go, nothing an open or the next ap
   append(DOC(5), 300); age(DOC(5), 10);
   // Doc 6: 100 rows, idle for 40 days, checkpoint at the head.
   append(DOC(6), 100); age(DOC(6), 40); checkpoint(DOC(6), 100);
+  // Doc 7 (no documents row needed beyond the seed): 300 old rows, but row 50
+  // carries a newer created_at (seq and created_at can invert by a lock
+  // wait): the prune still removes a seq PREFIX, never leaving a hole.
 
-  const [docs, rows] = sql('SELECT documents_pruned, rows_deleted FROM public.prune_annotation_updates()').split('|').map(Number);
+  append(DOC(7), 300); age(DOC(7), 10); checkpoint(DOC(7), 300);
+  sql(`ALTER TABLE public.annotation_updates DISABLE TRIGGER USER;
+       UPDATE public.annotation_updates SET created_at = now() WHERE document_id = '${DOC(7)}' AND seq = 50;
+       ALTER TABLE public.annotation_updates ENABLE TRIGGER USER;`);
+
+  // Run as the service role (the grant path; cron runs as the owner).
+  const [docs, rows] = sql('SET ROLE service_role; SELECT documents_pruned, rows_deleted FROM public.prune_annotation_updates()').split('|').map(Number);
 
   assert.equal(seqs(DOC(1)).split(',')[0], '220', 'doc 1: kept at_seq - 80 .. head (220..300)');
   assert.equal(count(DOC(1)), 81);
@@ -138,8 +147,9 @@ test('w36 prune: WAL rows a checkpoint covers go, nothing an open or the next ap
   assert.equal(seqs(DOC(4)).split(',')[0], '101', 'doc 4: rows younger than 7 days stay even far below at_seq');
   assert.equal(count(DOC(5)), 300, 'doc 5: no checkpoint, untouched');
   assert.equal(seqs(DOC(6)), '100', 'doc 6: idle past 30 days: only the head row (= at_seq) stays');
-  assert.equal(docs, 4);
-  assert.equal(rows, 219 + 169 + 100 + 99);
+  assert.equal(seqs(DOC(7)).split(',')[0], '220', 'doc 7: a prefix, the inverted row 50 included (no hole)');
+  assert.equal(docs, 5);
+  assert.equal(rows, 219 + 169 + 100 + 99 + 219);
 
   // The next append continues after the head; the checkpoint RPC still works.
   append(DOC(1), 1);
@@ -167,12 +177,12 @@ test('w36 prune: WAL rows a checkpoint covers go, nothing an open or the next ap
     has_function_privilege('authenticated', 'public.prune_annotation_updates(integer,integer,integer,integer,integer)', 'EXECUTE'),
     has_function_privilege('anon', 'public.prune_annotation_updates(integer,integer,integer,integer,integer)', 'EXECUTE'),
     has_function_privilege('service_role', 'public.prune_annotation_updates(integer,integer,integer,integer,integer)', 'EXECUTE'),
-    has_function_privilege('authenticated', 'public.prune_document_history_events(integer,integer,integer)', 'EXECUTE'),
-    has_function_privilege('service_role', 'public.prune_document_history_events(integer,integer,integer)', 'EXECUTE'),
+    has_function_privilege('authenticated', 'public.prune_document_history_events(integer,integer,integer,integer)', 'EXECUTE'),
+    has_function_privilege('service_role', 'public.prune_document_history_events(integer,integer,integer,integer)', 'EXECUTE'),
     has_table_privilege('authenticated', 'public.annotation_updates', 'DELETE'))`), 'f,f,t,f,t,f',
   'only the service role (and pg_cron as the owner) may prune; the WAL stays append-only for users');
 
-  // History: newest 250 per document stay (the panel shows 200), younger than
+  // History: the newest 200 per document stay (what the panel shows), younger than
   // 14 days stay, delete-type (trash) rows stay.
   sql(`
     INSERT INTO public.document_history_events(document_id, event_type, occurred_at)
@@ -182,10 +192,18 @@ test('w36 prune: WAL rows a checkpoint covers go, nothing an open or the next ap
     INSERT INTO public.document_history_events(document_id, event_type, occurred_at)
       SELECT '${DOC(2)}', 'local_annotation_history_added', now() - make_interval(days => 3, secs => g) FROM generate_series(1, 400) g;
   `);
-  assert.equal(sql('SELECT public.prune_document_history_events()'), '150');
-  assert.equal(sql(`SELECT count(*) FROM public.document_history_events WHERE document_id = '${DOC(1)}' AND event_type <> 'annotation_deleted'`), '250');
+  assert.equal(sql('SELECT public.prune_document_history_events()'), '200');
+  assert.equal(sql(`SELECT count(*) FROM public.document_history_events WHERE document_id = '${DOC(1)}' AND event_type <> 'annotation_deleted'`), '200');
   assert.equal(sql(`SELECT count(*) FROM public.document_history_events WHERE event_type = 'annotation_deleted'`), '30', 'trash rows are the 30-day sweep\'s job');
   assert.equal(sql(`SELECT count(*) FROM public.document_history_events WHERE document_id = '${DOC(2)}'`), '400', 'recent activity stays');
   const refused = sqlFails('SELECT public.prune_document_history_events(p_keep_per_document => 100)');
   assert.notEqual(refused.status, 0);
+  assert.notEqual(sqlFails('SELECT public.prune_document_history_events(p_max_age_days => 7)').status, 0);
+  // The optional age cap (owner decision): activity older than it goes even
+  // inside the newest 200; trash rows still stay.
+  assert.equal(sql('SELECT public.prune_document_history_events(p_max_age_days => 30)'), '0');
+  sql(`INSERT INTO public.document_history_events(document_id, event_type, occurred_at)
+       SELECT '${DOC(3)}', 'checkpoint_added', now() - make_interval(days => 45, secs => g) FROM generate_series(1, 10) g;`);
+  assert.equal(sql('SELECT public.prune_document_history_events(p_max_age_days => 30)'), '10');
+  assert.equal(sql(`SELECT count(*) FROM public.document_history_events WHERE event_type = 'annotation_deleted'`), '30');
 });

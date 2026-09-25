@@ -35,10 +35,14 @@
 -- drops after the VACUUM FULL at the bottom (run separately; it cannot run
 -- inside a transaction).
 --
--- What changes for people: nothing visible. Saved revisions made after this
--- hold only Survey Markers from this table (restoring a revision never changed
--- what the viewer shows anyway). The hidden old Y.Doc backfill finds nothing
--- to import for documents it had not already migrated.
+-- What changes for people: no mark on any page. Version History's saved
+-- versions made after this count only Survey Markers ("N annotations" shows
+-- smaller numbers); restoring an OLDER saved version (kal48_restore_revision)
+-- writes its legacy rows back into this table (still invisible; it also
+-- rewrites that document's Survey Marker rows, as it always did). The hidden
+-- old Y.Doc backfill finds nothing to import for documents it had not already
+-- migrated; leftover old dual-write queue entries in a browser's localStorage
+-- may re-add a few legacy rows (harmless, invisible).
 --
 -- Rollback: none. A Free-plan project may have no restorable backup (check
 -- Database > Backups in the dashboard), so export the rows first:
@@ -48,10 +52,25 @@
 
 BEGIN;
 
+-- 0. Side effects of a big DELETE here (w36 review B):
+--    * trg_doc_annotations_changed_del updates documents.annotations_changed_at
+--      for the 52 documents, and documents' own update_documents_updated_at
+--      trigger would then show all 52 as "edited today" in the Documents list:
+--      switched off for this statement only;
+--    * the table is in the supabase_realtime publication with REPLICA IDENTITY
+--      FULL, so each delete would write the whole old row (~100+ MB) to the
+--      Postgres WAL for Realtime to decode. No live code subscribes to this
+--      table (the viewer's subscription returns early; the other has no
+--      callers), so the default identity (primary key only) is enough.
+ALTER TABLE public.document_annotations REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.document_annotations DISABLE TRIGGER trg_doc_annotations_changed_del;
+
 -- 1. Legacy marks. Survey Markers ('survey-marker', and the legacy
 --    'highlight' spelling) stay.
 DELETE FROM public.document_annotations
  WHERE annotation_type NOT IN ('survey-marker', 'highlight');
+
+ALTER TABLE public.document_annotations ENABLE TRIGGER trg_doc_annotations_changed_del;
 
 -- 2. The 61 MB GIN index over annotation_data. The one live jsonb query (the
 --    Templates editor's checklist count) filters annotation_data->checklistResponses,
@@ -63,8 +82,10 @@ TRUNCATE TABLE public.doc_yjs_state;
 
 COMMIT;
 
--- 4. Give the space back (separately, SQL editor, at a quiet moment; takes
---    an exclusive lock for a second or two at these sizes):
+-- 4. Give the space back (separately, SQL editor, at a quiet moment). It
+--    takes an exclusive lock that blocks reads AND writes of this table for
+--    a few seconds at these sizes; requests queued behind it can hit the 8 s
+--    statement timeout, so pick a moment nobody is working:
 --   VACUUM (FULL, ANALYZE) public.document_annotations;
 --
 -- Later (separate decision, not in this file): drop doc_yjs_state and the

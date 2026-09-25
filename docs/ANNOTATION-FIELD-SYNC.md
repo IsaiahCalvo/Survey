@@ -826,6 +826,110 @@ Overlays and ghosts for rows a taken-in checkpoint covered still leave by
 expiry (12 / 20 s), not at once; a new mark's v1 preview vanishes while Yjs
 holds its row back (w30).
 
+## Staying inside Supabase Free (w36, 2026-09-25)
+
+Prod "Survey" is on the Free plan (5 GB of downloads a month, 500 MB
+database, read-only at the cap, 1 GB file storage, 2M Realtime messages).
+This month's overage (~70 GB) was the helper test browsers; w34 put real use
+at 5 users at ~4.5 GB a month, mostly the PDF downloaded again on every open.
+
+* **Device PDF cache** (`src/services/pdfByteCache.js`, used by
+  `useStorage().downloadDocument`, so the viewer open, copies and thumbnails
+  all go through it; the same code runs in the browser, Electron and the
+  Capacitor apps). The 2026-09-07 rule (`storageDownloads.js`, #802) was "keep
+  no settled private PDF bytes: every open must pass the server's current
+  access check". It still holds: every open asks Storage for the object's
+  metadata (`info`, ~1 KB, same access rules as a download) and uses the cached
+  bytes only when that answer names exactly the cached version (version id,
+  etag, size, modified time). No answer (offline, error) = download as before,
+  never cached bytes; "not found / not allowed" also drops the copy. Entries
+  are per account; sign-out (and a signed-out start, and another account
+  signing in) empties it; a local upload/replace/delete drops the path; an
+  upload of a content-addressed path is kept at once (the uploader's first
+  reopen is free); an in-place replace is not seeded (a same-size replace
+  racing it could leave the wrong bytes under the new version). Bounded:
+  256 MB (or a fifth of the browser's quota), least recently used first, no
+  single file over 48 MB. A read that started before a sign-out or an account
+  change is never stored after it; an offline start whose token has not
+  refreshed yet (session still stored) keeps the cache. A document someone
+  lost access to stays cached until it is read again (then dropped), evicted,
+  or the account signs out.
+* **Pruning old rows** (proposed, NOT applied:
+  `supabase/proposed/20260925_w36_prune_annotation_wal_and_history.sql`, a
+  daily pg_cron job). WAL rows a stored checkpoint covers go once they are a
+  week old and 80 rows below its `at_seq` (all covered rows after 30 days);
+  never the head row (the next seq is MAX+1), never a row at or after `at_seq`
+  (every open reads from there), never while the checkpoint changed in the
+  last hour (an open may still be paging from the previous one). History rows
+  beyond the newest 200 per document (what the panel shows) go after 14 days;
+  trash rows are never touched (their KAL-313 30-day sweep exists but stays
+  unscheduled: owner's call, as is an optional age cap on history). The WAL
+  prune always removes a seq prefix per document (never a hole), and the file
+  refuses to install unless run as the tables' owner. Pinned by `tests/annotationWalPrunePostgres.test.mjs`
+  (real WAL migration, disposable local Postgres).
+* **A tab that slept past the retention window** replays from an older
+  baseline. Its catch-up now sees the first row past `cursor + 1` (seqs are
+  gapless per document), confirms with one small identity read that the
+  stored checkpoint is past its cursor (the prune never deletes at or after
+  `at_seq`), and takes that checkpoint in (`recoverFromPrunedTail`: applied
+  like a cloud row, baselines and the checkpoint base moved to it) instead of
+  applying the rest and missing the pruned edits. A gap the checkpoint does
+  not explain (identity gaps from before the July WAL migration) reads on as
+  before, with no download. Pinned by `tests/annotationWalPruneRecovery.test.mjs`
+  (the recovery tests fail without the change). Ship this client before
+  turning the prune on.
+* Known limits of the prune: an open that sleeps between reading the
+  checkpoint and its tail across a prune shows the missed edits only after
+  its next catch-up (the one-hour quiet window makes this unlikely); an append
+  whose reply was lost, on a device then closed longer than a week while the
+  document is locked or the person loses edit access, replays into a refusal
+  on reopen and shows as a rejected local change although the checkpoint
+  holds it.
+* **Legacy tables** (proposed, owner decision:
+  `supabase/proposed/20260925_w36_legacy_annotation_tables_cleanup.sql`):
+  `document_annotations` is 193 MB for ~20 MB of rows (dead space from the
+  dual-write era + a 61 MB index used 11 times); its 11,506 non-marker rows
+  (last written 2026-08-21) feed nothing anyone sees; its 523 Survey Marker
+  rows are live (the viewer re-copies markers there; the Templates editor
+  counts them) and stay. `doc_yjs_state` (18 MB) has no live reader. Together
+  ~208 MB back. Separately, 61 stored PDFs (380 MB of 562 MB) are referenced
+  by no document, template or survey (uploaded Feb-Jun 2026 under the old
+  timestamp paths): `scripts/w36-orphan-pdf-storage.mjs` (dry run by default).
+
+Measured (dev server, prod database, 23 KB throwaway PDF, persistent headless
+profiles, other stored files blocked, every throwaway deleted): a reopen
+downloaded the whole PDF every time before (1 download, 23.9 KB per reopen),
+0 downloads and 0 PDF bytes after (one ~1 KB metadata check, fetched with
+`cache: 'no-store'` so the browser's HTTP cache never answers it). Each other
+device downloaded the file once, then 0. The uploader's copy is kept when its
+upload finishes (capped at 2 s); a read racing that (the selected-document
+preview) can still download it once (seen in 1 of 2 runs). `agent-cli/usage-budget.json` pins it (`reopen1`: 0 downloads,
+1 check); `tests/supabaseUsageBudget.test.mjs` pins a month of one user's
+opens (252 opens of 20 files on 2 devices: at most 40 downloads, was 252).
+
+Monthly estimate (per the probe's per-unit costs; assumptions, per active
+user: 12 opens a working day, 21 working days, 20 new or changed drawings
+opened a month on 1.5 devices, 2 MB a drawing, 4 h a day with a document on
+screen, 80 edits a day, each seen by one other open screen; per team: 4
+uploads per user a month):
+
+| per month | 5 users before | 5 users after | 25 users before | 25 users after | Free |
+|---|---|---|---|---|---|
+| downloads: PDFs | 2.5 GB | 0.30 GB | 12.6 GB | 1.5 GB | |
+| downloads: opens (lists, checkpoint, tail) | 0.19 GB | 0.19 GB | 0.95 GB | 0.95 GB | |
+| downloads: live sync, idle, edits, thumbnails | 0.30 GB | 0.30 GB | 1.5 GB | 1.5 GB | |
+| **downloads total** | **3.0 GB (60%)** | **0.79 GB (16%)** | **15 GB (301%)** | **3.95 GB (79%)** | 5 GB |
+| Realtime messages | ~85k | ~85k | ~420k (21%) | ~420k (21%) | 2M |
+| database | 318 MB now | ~110 MB after cleanup, +~20 MB/month | | ~150-250 MB steady with a history age cap; +~80 MB/month without one | 500 MB |
+| file storage | 562 MB now | 182 MB after orphans, +40 MB/month | | +200 MB/month | 1 GB |
+
+Limits: at 25 users downloads fit Free but not under half; what is left is
+the per-open checkpoint/tail reads (~38 MB a user a month) and live sync
+(~34 MB: every WAL row reaches every open screen as hex, the author's own
+screen included, next to its live preview). File storage at 25 users is
+set by how many drawings are uploaded, not by the app: ~200 MB a month fills
+Free in about four months.
+
 ## Offline edits reach peers that are already open
 
 Open peers only receive WAL rows (realtime inserts + catch-up), never

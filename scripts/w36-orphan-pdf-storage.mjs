@@ -84,10 +84,20 @@ for (const row of await allRows('survey_sessions', 'excel_file_path')) if (row.e
 
 const objects = await listAll();
 const now = Date.now();
-const orphans = objects.filter((o) => !referenced.has(o.path) && now - Date.parse(o.createdAt) > MIN_AGE_MS);
+// PDFs only (w36 review B): survey data sidecars (<project>/<doc>_data.json)
+// are read by the viewer on open but referenced by no table.
+const byExtension = {};
+for (const o of objects) {
+  const ext = (o.path.match(/\.([a-z0-9]+)$/i)?.[1] || '(none)').toLowerCase();
+  byExtension[ext] = (byExtension[ext] || 0) + 1;
+}
+console.log('stored objects by extension:', JSON.stringify(byExtension));
+const orphans = objects.filter((o) => /\.pdf$/i.test(o.path)
+  && !referenced.has(o.path)
+  && now - Date.parse(o.createdAt) > MIN_AGE_MS);
 const total = orphans.reduce((sum, o) => sum + o.size, 0);
 for (const o of orphans) console.log(`${o.createdAt?.slice(0, 10)}  ${(o.size / 1e6).toFixed(2).padStart(8)} MB  ${o.path}`);
-console.log(`\n${objects.length} stored objects; ${orphans.length} referenced by nothing and older than 7 days: ${(total / 1e6).toFixed(1)} MB.`);
+console.log(`\n${objects.length} stored objects; ${orphans.length} PDFs referenced by nothing and older than 7 days: ${(total / 1e6).toFixed(1)} MB.`);
 
 if (!APPLY) {
   console.log(`Dry run. To remove exactly these: --apply --confirm ${orphans.length}`);

@@ -158,6 +158,8 @@ function createCloud(documentId) {
       rows = rows.filter((row) => !(row.seq < snapshot.at_seq - keepRows && row.seq < head));
       return before - rows.length;
     },
+    // Pre-July-2026 identity gaps: seqs that were never used.
+    skipSeqs(n) { nextSeq += n; },
     goOffline(actor) { screens.get(actor).online = false; },
     reconnect(actor) {
       const screen = screens.get(actor);
@@ -312,6 +314,31 @@ test('an ordinary reconnect (nothing pruned) never downloads the checkpoint', as
   await settle(a, b);
   assert.equal(markIds(b.getByPage()).length, 13);
   assert.equal(cloud.stats.snapshotBodyReads, reads, 'the gap guard stays quiet when rows are all there');
+  await a.destroy();
+  await b.destroy();
+});
+
+test('an old identity gap (nothing pruned) reads on, with no checkpoint download, on every reconnect', async () => {
+  const documentId = 'prune-identity-gap';
+  const cloud = createCloud(documentId);
+  const a = await open(cloud, 'user-a', 'a', documentId);
+  const b = await open(cloud, 'user-b', 'b', documentId);
+  await settle(a, b);
+  const mine = [];
+  await draw(a, mine, 'x', 3);
+  await a.flushSnapshot();
+  await settle(a, b);
+  cloud.goOffline('user-b');
+  cloud.skipSeqs(7); // the next rows start at 11, not 4
+  await draw(a, mine, 'y', 4);
+  const reads = cloud.stats.snapshotBodyReads;
+  for (let round = 0; round < 3; round += 1) {
+    cloud.goOffline('user-b');
+    cloud.reconnect('user-b');
+    await settle(a, b);
+  }
+  assert.equal(markIds(b.getByPage()).length, 7, 'B shows every stroke');
+  assert.equal(cloud.stats.snapshotBodyReads, reads, 'a gap the checkpoint does not explain is history: no download, ever');
   await a.destroy();
   await b.destroy();
 });

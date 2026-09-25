@@ -48,8 +48,10 @@ const REQUEST_TIMEOUT_MS = 8_000;
    its quota by a cache. */
 export const PDF_CACHE_BUDGET_BYTES = 256 * 1024 * 1024;
 /* A single file bigger than this is not kept: one giant drawing would evict
-   everything else and still cost a full write each open. */
-export const PDF_CACHE_MAX_ENTRY_BYTES = 96 * 1024 * 1024;
+   everything else, and keeping it briefly holds extra copies in memory (the
+   write copies the bytes), which a phone web view should not pay for a
+   rare 50 MB+ set (w36 review A). */
+export const PDF_CACHE_MAX_ENTRY_BYTES = 48 * 1024 * 1024;
 
 const SEP = '\u0000';
 export const pdfCacheKey = (actorId, path) => (actorId && path ? `${actorId}${SEP}${path}` : null);
@@ -137,7 +139,6 @@ function openDatabase(indexedDb, timeoutMs) {
         return;
       }
       const db = request.result;
-      db.onversionchange = () => db.close();
       finish(resolve, db);
     };
   });
@@ -170,7 +171,16 @@ export function createPdfByteCache({
   const db = async () => {
     if (disabled) return null;
     if (!dbPromise) {
-      dbPromise = openDatabase(indexedDb, timeoutMs).catch((error) => {
+      const opening = openDatabase(indexedDb, timeoutMs).then((database) => {
+        // Another tab upgrading the database: let it, and reopen next time
+        // instead of keeping a closed handle (w36 review A).
+        database.onversionchange = () => {
+          try { database.close(); } catch { /* already closed */ }
+          if (dbPromise === opening) dbPromise = null;
+        };
+        return database;
+      });
+      dbPromise = opening.catch((error) => {
         // Private mode / blocked upgrade: no cache for this page, downloads as before.
         disabled = true;
         dbPromise = null;
@@ -215,8 +225,11 @@ export function createPdfByteCache({
   };
 
   /** Keep `bytes` (an ArrayBuffer) as version `stamp` of `path` for `actorId`. */
-  const put = async ({ actorId, path, stamp, bytes }) => {
-    const startedIn = generation; // before any await: a clear() racing this write wins
+  const put = async ({ actorId, path, stamp, bytes, since = generation }) => {
+    // `since`: the generation the caller's READ started in (w36 review A: a
+    // download that began before a sign-out must not land after its clear).
+    const startedIn = since;
+    if (startedIn !== generation) return false;
     const key = pdfCacheKey(actorId, path);
     if (!key || !stamp || !(bytes instanceof ArrayBuffer)) return false;
     const size = bytes.byteLength;
@@ -327,7 +340,7 @@ export function createPdfByteCache({
 
   /** Every account's copy of `path` (it was just written or deleted here). */
   const removePath = async (path) => {
-    if (!path) return;
+    if (!isPdfPath(path)) return; // never cached: no transaction (survey data autosaves)
     try { await removeWhere(PATH_INDEX, path); } catch (error) {
       console.warn('[pdfByteCache] remove failed:', error?.message || error);
     }
@@ -335,6 +348,7 @@ export function createPdfByteCache({
 
   /** Keep only `actorId`'s entries (another account's must not stay on disk). */
   const retainOnly = async (actorId) => {
+    generation += 1; // a read of the previous account in flight must not land
     try { await removeWhere(null, (row) => row.actorId !== actorId); } catch (error) {
       console.warn('[pdfByteCache] retain failed:', error?.message || error);
     }
@@ -364,6 +378,7 @@ export function createPdfByteCache({
   };
 
   return {
+    get generation() { return generation; },
     get,
     put,
     remove,
@@ -408,6 +423,7 @@ export async function readPdfThroughCache({ cache, actorId, path, fetchInfo, dow
   if (!cache || cache.isDisabled || !key || !isPdfPath(path) || typeof fetchInfo !== 'function') {
     return download();
   }
+  const since = cache.generation;
   let info = null;
   try {
     const result = await fetchInfo();
@@ -432,7 +448,7 @@ export async function readPdfThroughCache({ cache, actorId, path, fetchInfo, dow
   // stamp, which the next open's check then rejects (one extra download).
   if (blob && typeof blob.arrayBuffer === 'function' && blob.size === pdfCacheInfoSize(info)) {
     blob.arrayBuffer()
-      .then((bytes) => cache.put({ actorId, path, stamp, bytes }))
+      .then((bytes) => cache.put({ actorId, path, stamp, bytes, since }))
       .catch(() => {});
   }
   return blob;
@@ -450,13 +466,14 @@ export async function readPdfThroughCache({ cache, actorId, path, fetchInfo, dow
 export async function seedPdfCacheFromUpload({ cache, actorId, path, fetchInfo, file }) {
   if (!cache || cache.isDisabled || !pdfCacheKey(actorId, path) || !isPdfPath(path)) return false;
   if (!file || typeof file.arrayBuffer !== 'function' || typeof fetchInfo !== 'function') return false;
+  const since = cache.generation;
   try {
     const result = await fetchInfo();
     if (result?.error) return false;
     const stamp = pdfCacheStamp(result?.data);
     if (!stamp || Number(file.size) !== pdfCacheInfoSize(result.data)) return false;
     const bytes = await file.arrayBuffer();
-    return cache.put({ actorId, path, stamp, bytes });
+    return cache.put({ actorId, path, stamp, bytes, since });
   } catch {
     return false;
   }
@@ -468,16 +485,31 @@ export async function seedPdfCacheFromUpload({ cache, actorId, path, fetchInfo, 
  * e.g. the tab closed first). Supabase calls this synchronously: never await
  * auth methods here.
  */
-export function bindPdfCacheToAuth(client, cache) {
+// Is a Supabase session still stored on this device? An offline start with an
+// expired access token reports INITIAL_SESSION without a session although the
+// refresh token is still there (auth-js _emitInitialSession): that must not
+// empty the cache (w36 review A) - the next refresh brings the account back.
+function storedSessionExists(storage) {
+  try {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key && /^sb-.*-auth-token$/.test(key) && storage.getItem(key)) return true;
+    }
+  } catch { /* storage unavailable: treat as signed out */ }
+  return false;
+}
+
+export function bindPdfCacheToAuth(client, cache, { storage = globalThis.localStorage } = {}) {
   if (!client?.auth?.onAuthStateChange || !cache) return;
   let lastActor;
   client.auth.onAuthStateChange((event, session) => {
     const actor = session?.user?.id ?? null;
-    if (!actor || event === 'SIGNED_OUT') {
+    if (event === 'SIGNED_OUT' || (!actor && !storedSessionExists(storage))) {
       lastActor = null;
       cache.clear().catch(() => {});
       return;
     }
+    if (!actor) return; // session still stored (offline start): keep the cache
     if (actor !== lastActor) {
       lastActor = actor;
       cache.retainOnly(actor).catch(() => {});

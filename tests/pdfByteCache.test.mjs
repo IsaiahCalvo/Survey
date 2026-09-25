@@ -30,6 +30,10 @@ const infoFor = (bytes, version = 'v1') => ({
   error: null,
 });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+const fakeStorage = (entries) => {
+  const keys = Object.keys(entries);
+  return { length: keys.length, key: (i) => keys[i] ?? null, getItem: (k) => entries[k] ?? null };
+};
 
 function harness({ budgetBytes, maxEntryBytes, now } = {}) {
   const cache = createPdfByteCache({ indexedDb: new IDBFactory(), timeoutMs: 2000, budgetBytes, maxEntryBytes, now });
@@ -218,7 +222,7 @@ test('a local upload/replace/delete of a path drops every account\'s copy of it'
 test('sign-out empties the cache; a different account signing in keeps only its own entries', async () => {
   const cache = createPdfByteCache({ indexedDb: new IDBFactory(), timeoutMs: 2000 });
   let emit;
-  bindPdfCacheToAuth({ auth: { onAuthStateChange(fn) { emit = fn; } } }, cache);
+  bindPdfCacheToAuth({ auth: { onAuthStateChange(fn) { emit = fn; } } }, cache, { storage: fakeStorage({}) });
   await cache.put({ actorId: 'a', path: 'a/1.pdf', stamp: 's', bytes: pdfBytes(100).buffer });
   await cache.put({ actorId: 'b', path: 'b/1.pdf', stamp: 's', bytes: pdfBytes(100).buffer });
   emit('INITIAL_SESSION', { user: { id: 'a' } });
@@ -239,10 +243,62 @@ test('a signed-out start clears what a previous session left (its clear never co
   await before.close();
   const after = createPdfByteCache({ indexedDb: factory, timeoutMs: 2000 });
   let emit;
-  bindPdfCacheToAuth({ auth: { onAuthStateChange(fn) { emit = fn; } } }, after);
+  bindPdfCacheToAuth({ auth: { onAuthStateChange(fn) { emit = fn; } } }, after, { storage: fakeStorage({}) });
   emit('INITIAL_SESSION', null);
   await settle();
   assert.equal((await after.stats()).entries, 0);
+});
+
+test('an offline start with an expired token (session still stored) keeps the cache', async () => {
+  const cache = createPdfByteCache({ indexedDb: new IDBFactory(), timeoutMs: 2000 });
+  await cache.put({ actorId: 'a', path: 'a/1.pdf', stamp: 's', bytes: pdfBytes(100).buffer });
+  let emit;
+  bindPdfCacheToAuth({ auth: { onAuthStateChange(fn) { emit = fn; } } }, cache, {
+    storage: fakeStorage({ 'sb-cvam-auth-token': '{"refresh_token":"r"}' }),
+  });
+  emit('INITIAL_SESSION', null); // auth-js could not refresh yet
+  await settle();
+  assert.equal((await cache.stats()).entries, 1, 'no wipe (and no month of re-downloads) for a slow network');
+  emit('SIGNED_IN', { user: { id: 'a' } });
+  await settle();
+  assert.equal((await cache.stats()).entries, 1);
+  emit('SIGNED_OUT', null);
+  await settle();
+  assert.equal((await cache.stats()).entries, 0, 'a real sign-out still empties it');
+});
+
+test('a download that started before a sign-out is not stored after it', async () => {
+  const cache = createPdfByteCache({ indexedDb: new IDBFactory(), timeoutMs: 2000 });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const reading = readPdfThroughCache({
+    cache, actorId: 'a', path: PATH,
+    fetchInfo: async () => infoFor(pdfBytes(1000)),
+    download: async () => { await gate; return new Blob([pdfBytes(1000)]); },
+  });
+  await settle();
+  await cache.clear(); // SIGNED_OUT mid-download (refresh-token failure: no reload)
+  release();
+  await reading;
+  await settle();
+  assert.equal((await cache.stats()).entries, 0);
+});
+
+test('a download of the previous account in flight when another signs in is not stored', async () => {
+  const cache = createPdfByteCache({ indexedDb: new IDBFactory(), timeoutMs: 2000 });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const reading = readPdfThroughCache({
+    cache, actorId: 'a', path: PATH,
+    fetchInfo: async () => infoFor(pdfBytes(1000)),
+    download: async () => { await gate; return new Blob([pdfBytes(1000)]); },
+  });
+  await settle();
+  await cache.retainOnly('b');
+  release();
+  await reading;
+  await settle();
+  assert.equal((await cache.stats()).entries, 0);
 });
 
 test('a write in flight when the account signs out does not survive the clear', async () => {

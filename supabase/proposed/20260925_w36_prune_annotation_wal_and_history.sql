@@ -41,9 +41,14 @@
 --     would silently miss those edits until reopened, so ship the client
 --     first and keep p_keep_days generous.
 --   * An exact re-send of a pruned row (lost reply, live re-send) inserts a
---     new row with the same bytes: Yjs applies it as a no-op. The in-memory
---     re-send queue gives up after minutes; outbox records are replayed on
---     open. Neither can collide with a row older than p_keep_days.
+--     new row with the same bytes: Yjs applies it as a no-op, as long as the
+--     sender may still edit. KNOWN LIMIT (w36 review B): a device whose append
+--     committed but whose reply was lost, that then stays closed longer than
+--     p_keep_days while the document gets locked or the person loses edit
+--     access, finds no receipt on reopen; the replay is refused and that
+--     already-saved edit shows as a rejected local change (nothing is lost:
+--     the checkpoint holds it). Keeping receipts past the prune would need a
+--     small receipts table; not worth it at this scale.
 --   * Nothing reads old WAL rows for history: the History panel reads
 --     document_history_events; revisions use document_revisions.
 --   * Realtime subscribers listen to INSERT only: deletes reach no client.
@@ -56,6 +61,26 @@
 --                        document keeps no dead tail forever)
 --   p_quiet_minutes  60  skip documents whose checkpoint just changed
 --   p_max_rows       50000 per run (the daily job catches up over days)
+
+-- Pre-flight (w36 review B): DELETE on these tables is revoked from every API
+-- role, so the SECURITY DEFINER functions below work only when whoever runs
+-- this file (their owner, normally postgres) owns the tables. Fail here, not
+-- silently every night in cron.
+DO $pre$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables
+     WHERE schemaname = 'public'
+       AND tablename IN ('annotation_updates', 'document_history_events')
+       AND tableowner <> current_user
+  ) THEN
+    RAISE EXCEPTION 'w36 prune: run this as the owner of annotation_updates and document_history_events';
+  END IF;
+END;
+$pre$;
+
+-- Re-runnable: an earlier draft's history prune took three arguments.
+DROP FUNCTION IF EXISTS public.prune_document_history_events(integer, integer, integer);
 
 CREATE OR REPLACE FUNCTION public.prune_annotation_updates(
   p_keep_days integer DEFAULT 7,
@@ -79,6 +104,11 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
+  -- Victims are always a seq PREFIX per document (w36 review B): the client's
+  -- pruned-tail check looks at the first row after its cursor, so the prune
+  -- must never leave a hole above a surviving row. Per document the bound is
+  -- the highest seq that qualifies by age; every row at or below it goes
+  -- (created_at and seq can invert by a lock wait of seconds).
   RETURN QUERY
   WITH eligible AS (
     SELECT s.document_id,
@@ -88,18 +118,28 @@ BEGIN
       FROM public.annotation_snapshots AS s
      WHERE s.updated_at < now() - make_interval(mins => p_quiet_minutes)
        AND s.at_seq > 0
+  ), bounds AS (
+    SELECT e.document_id,
+           e.at_seq,
+           e.head,
+           (SELECT max(u.seq) FROM public.annotation_updates AS u
+             WHERE u.document_id = e.document_id
+               AND u.seq < e.at_seq
+               AND u.created_at < now() - make_interval(days => p_keep_days)
+               AND (
+                 u.seq < e.at_seq - p_keep_rows
+                 OR u.created_at < now() - make_interval(days => p_idle_days)
+               )) AS bound
+      FROM eligible AS e
   ), victims AS (
     SELECT u.document_id, u.seq
       FROM public.annotation_updates AS u
-      JOIN eligible AS e ON e.document_id = u.document_id
-     WHERE u.seq < e.at_seq          -- covered by the stored checkpoint
-       AND u.seq < e.head            -- never the head row
-       AND u.created_at < now() - make_interval(days => p_keep_days)
-       AND (
-         u.seq < e.at_seq - p_keep_rows
-         OR u.created_at < now() - make_interval(days => p_idle_days)
-       )
-     ORDER BY u.created_at
+      JOIN bounds AS b ON b.document_id = u.document_id
+     WHERE b.bound IS NOT NULL
+       AND u.seq <= b.bound
+       AND u.seq < b.at_seq          -- covered by the stored checkpoint
+       AND u.seq < b.head            -- never the head row
+     ORDER BY u.document_id, u.seq   -- a cut by the limit still leaves a prefix
      LIMIT p_max_rows
   ), gone AS (
     DELETE FROM public.annotation_updates AS u
@@ -127,15 +167,23 @@ COMMENT ON FUNCTION public.prune_annotation_updates(integer, integer, integer, i
 --
 -- The Version History panel reads the newest 200 events per document
 -- (RevisionsPanel -> listDocumentHistoryEvents, limit 200); nothing else reads
--- this table. Rows beyond the newest p_keep_per_document are never shown.
+-- this table. Rows beyond the newest p_keep_per_document (200, what the panel
+-- shows) are never shown. At ~1.8 KB a row that caps an active document at
+-- ~0.4 MB of history.
 -- Delete-type rows (the trash: restore a deleted mark from its payload) are
--- left to their own 30-day sweep, sweep_annotation_trash_events (KAL-313),
--- which existed but was never scheduled; it is scheduled below.
+-- never touched here; their own 30-day sweep, sweep_annotation_trash_events
+-- (KAL-313), exists but was never scheduled (owner decision, below).
+-- p_max_age_days (OFF unless the owner picks a value, >= 30): also drop
+-- activity older than that, whatever its rank. At 25 users (~80 edits each a
+-- working day, ~1.9 KB a row) activity adds ~80 MB a month; the per-document
+-- cap alone only trims documents with more than 200 events, so without an age
+-- cap this table becomes the database's main growth.
 
 CREATE OR REPLACE FUNCTION public.prune_document_history_events(
-  p_keep_per_document integer DEFAULT 250,
+  p_keep_per_document integer DEFAULT 200,
   p_keep_days integer DEFAULT 14,
-  p_max_rows integer DEFAULT 50000
+  p_max_rows integer DEFAULT 50000,
+  p_max_age_days integer DEFAULT NULL
 )
 RETURNS bigint
 LANGUAGE plpgsql
@@ -147,8 +195,9 @@ DECLARE
 BEGIN
   IF p_keep_per_document IS NULL OR p_keep_per_document < 200
      OR p_keep_days IS NULL OR p_keep_days < 7
-     OR p_max_rows IS NULL OR p_max_rows < 1 THEN
-    RAISE EXCEPTION 'prune_document_history_events: unsafe settings (keep_per_document >= 200, keep_days >= 7)'
+     OR p_max_rows IS NULL OR p_max_rows < 1
+     OR (p_max_age_days IS NOT NULL AND p_max_age_days < 30) THEN
+    RAISE EXCEPTION 'prune_document_history_events: unsafe settings (keep_per_document >= 200, keep_days >= 7, max_age_days NULL or >= 30)'
       USING ERRCODE = '22023';
   END IF;
 
@@ -164,8 +213,13 @@ BEGIN
   ), victims AS (
     SELECT ranked.id
       FROM ranked
-     WHERE ranked.rn > p_keep_per_document
-       AND ranked.occurred_at < now() - make_interval(days => p_keep_days)
+     WHERE (
+         (ranked.rn > p_keep_per_document
+          AND ranked.occurred_at < now() - make_interval(days => p_keep_days))
+         -- OWNER DECISION (off by default): an age cap on the whole panel.
+         OR (p_max_age_days IS NOT NULL
+             AND ranked.occurred_at < now() - make_interval(days => p_max_age_days))
+       )
        AND ranked.event_type NOT IN (
          'annotation_deleted',
          'callout_deleted',
@@ -184,16 +238,16 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.prune_document_history_events(integer, integer, integer)
+REVOKE ALL ON FUNCTION public.prune_document_history_events(integer, integer, integer, integer)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.prune_document_history_events(integer, integer, integer)
+GRANT EXECUTE ON FUNCTION public.prune_document_history_events(integer, integer, integer, integer)
   TO service_role;
 
-COMMENT ON FUNCTION public.prune_document_history_events(integer, integer, integer) IS
+COMMENT ON FUNCTION public.prune_document_history_events(integer, integer, integer, integer) IS
   'w36: delete activity rows no History panel can show (beyond the newest keep_per_document per document, older than keep_days); delete-type trash rows excluded. Service-only; run daily by pg_cron.';
 
 -- ─── 3. Daily schedule (pg_cron 1.6 is installed on prod) ──────────────────
--- 03:20-03:30 UTC, after the existing archive-purge-sweep (03:00). Idempotent:
+-- 03:20-03:25 UTC, after the existing archive-purge-sweep (03:00). Idempotent:
 -- re-running this file replaces the jobs. Skipped where pg_cron is absent
 -- (local Postgres tests).
 DO $do$
@@ -203,8 +257,7 @@ BEGIN
        FROM cron.job
       WHERE jobname IN (
         'w36-prune-annotation-wal',
-        'w36-prune-history-events',
-        'annotation-trash-sweep'
+        'w36-prune-history-events'
       );
     PERFORM cron.schedule(
       'w36-prune-annotation-wal',
@@ -216,11 +269,11 @@ BEGIN
       '25 3 * * *',
       $job$SELECT public.prune_document_history_events()$job$
     );
-    PERFORM cron.schedule(
-      'annotation-trash-sweep',
-      '30 3 * * *',
-      $job$SELECT public.sweep_annotation_trash_events(30)$job$
-    );
+    -- OWNER DECISION (off): the KAL-313 30-day trash sweep was designed but
+    -- never scheduled. Turning it on removes deleted-item restore entries
+    -- older than 30 days from the History panel. To enable:
+    --   SELECT cron.schedule('annotation-trash-sweep', '30 3 * * *',
+    --     $job$SELECT public.sweep_annotation_trash_events(30)$job$);
   END IF;
 END;
 $do$;
@@ -228,8 +281,9 @@ $do$;
 -- ─── 4. One-time space return (run by hand, NOT part of this file) ─────────
 -- DELETE frees space for reuse inside each table; the database size Supabase
 -- measures only drops after a rewrite. Once, after the first nightly run, in
--- the SQL editor at a quiet moment (each takes an exclusive lock for seconds
--- at these sizes; appends wait, nothing fails):
+-- the SQL editor at a quiet moment. Each takes an exclusive lock that blocks
+-- reads and writes of that table for seconds at these sizes; requests queued
+-- behind it can hit the 8 s statement timeout, so pick a moment nobody works:
 --   VACUUM (FULL, ANALYZE) public.annotation_updates;
 --   VACUUM (FULL, ANALYZE) public.document_history_events;
 -- VACUUM cannot run inside a transaction/migration, hence not here.
@@ -237,8 +291,7 @@ $do$;
 -- ─── Rollback ───────────────────────────────────────────────────────────────
 --   SELECT cron.unschedule('w36-prune-annotation-wal');
 --   SELECT cron.unschedule('w36-prune-history-events');
---   SELECT cron.unschedule('annotation-trash-sweep');
 --   DROP FUNCTION public.prune_annotation_updates(integer, integer, integer, integer, integer);
---   DROP FUNCTION public.prune_document_history_events(integer, integer, integer);
+--   DROP FUNCTION public.prune_document_history_events(integer, integer, integer, integer);
 -- Deleted rows are not recoverable (except from Supabase's daily backup);
 -- every open reads the checkpoint, so none of them is needed to show a document.
