@@ -1,4 +1,4 @@
-Written: 2026-09-24 10:15 (revised 2026-09-24 11:30 after reviews A and B)
+Written: 2026-09-24 10:15 (revised 2026-09-24 11:30 after reviews A and B; "Opening fast" added 2026-09-24 19:45)
 
 # Per-field sync for annotation marks (store version 3)
 
@@ -319,6 +319,49 @@ Still large: the checkpoint of such a document is one row (~4.3 MB gzipped
 for Package 2; the old format was ~3.75 MB). Splitting checkpoints needs a
 schema change. Recovery for a document that already has oversized rows:
 `scripts/w26-reset-document-annotation-store.mjs` (dry run by default).
+
+## Opening fast (w29, 2026-09-24)
+
+"Package 2 - Rev 4 -- IC.pdf" (3,071 marks: a ~21 MB store, a ~6 MB
+snapshot row on the wire) showed its marks 6-10 s after the open started; the
+first page sat under the grey loading cover all that time. Now:
+
+* The marks paint early (`openAnnotationDoc({ onPreview })`, display only):
+  from this device's saved copy (the outbox's clean checkpoint) before any
+  network, and from the cloud snapshot as soon as it is applied to the live
+  doc. `useAnnotationDoc` sets hydration `{ ready: false, source: 'preview' }`;
+  the first page then shows the PDF and the marks with a see-through blocker
+  instead of the grey cover (`annotationHydrationGate.js`,
+  `isFirstVisibleAnnotationPagePreviewing`), and the document is read-only
+  (the body layer 'unavailable' uses) until hydration is ready, because
+  nothing drawn then could be saved. Nothing imports or writes until the
+  real hydrate, which replaces the preview. An empty store never seeds
+  itself from a preview; what the viewer held before the first preview is
+  kept across failed-open retries of the same document.
+* The saved copy records which snapshot row it contains
+  (`snapshotIdentity` = at_seq, writer_id, writer_epoch; the RPC's CAS makes
+  writer_epoch strictly increase, so the triple names one row). An open that
+  has it reads only the row's identity; if unchanged, the ~6 MB body is not
+  downloaded or applied again (the tail after at_seq is still read). A
+  snapshot this handle writes becomes the saved copy (stored as-is when the
+  outbox still holds only what the bytes contain, merged otherwise), so the
+  owner's own reopen also skips it. Any mismatch or failed identity read
+  downloads the row as before.
+* Compaction fast path: the outbox stores the accepted state as-is instead of
+  merging two ~20 MB updates when its checkpoint is the one the caller loaded
+  or last wrote (checkpoint `token`) and every stored record is one the
+  caller already applied.
+* Work removed from every open: the second publish pass when the live doc
+  already equals the accepted state (same Yjs snapshot), the empty legacy
+  IndexedDB merge (and opening that database when the browser lists it as
+  absent), the probe copy when the local copy holds no new structs and only
+  deletions staged already has, a second full encode for the staged seed, the
+  staged copy of the saved checkpoint (staged is seeded from acceptedDoc), and
+  the frozen copy of the IndexedDB doc (it is used directly until
+  reconciliation; a rotation first freezes a real copy).
+* The writer-sequence and snapshot reads start with the open, in parallel with
+  IndexedDB, and the open yields between its heavy steps so the PDF page and
+  input get turns.
 
 ## Offline edits reach peers that are already open
 

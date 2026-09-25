@@ -1873,8 +1873,19 @@ export const markEditedImportedPdfAnnotationsOnPage = (incomingPage, previousPag
   };
 };
 
+// w29 (open speed): a document whose marks do not fit in localStorage
+// (Package 2: 3,071 imported ink marks, many MB of JSON) failed this save on
+// EVERY change after ~70 ms of JSON.stringify on the main thread, and left an
+// older, smaller copy behind to paint next time. After a save does not fit,
+// the old copy is removed and saves are skipped while the page holds at least
+// that many marks (this session).
+const cloudRenderCacheTooLarge = new Map(); // pdfId -> object count that did not fit
+
 export const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByPage) => {
   if (!pdfId) return;
+  const objectCount = countAnnotationPageObjects(annotationsByPage);
+  const tooLargeAt = cloudRenderCacheTooLarge.get(pdfId);
+  if (tooLargeAt != null && objectCount >= tooLargeAt) return;
   try {
     localStorage.setItem(cloudRenderCacheKey(pdfId), JSON.stringify({
       version: 1,
@@ -1883,10 +1894,14 @@ export const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByP
       cutoverTs: metadata?.cutoverTs || null,
       annotationsByPage: annotationsByPage || {}
     }));
+    cloudRenderCacheTooLarge.delete(pdfId);
   } catch (e) {
     if (e?.name !== 'QuotaExceededError' && e?.code !== 22) {
       console.warn('[Cloud render cache] save failed:', e);
+      return;
     }
+    cloudRenderCacheTooLarge.set(pdfId, objectCount);
+    try { localStorage.removeItem(cloudRenderCacheKey(pdfId)); } catch { /* storage unavailable */ }
   }
 };
 

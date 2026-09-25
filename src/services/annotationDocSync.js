@@ -26,6 +26,7 @@ import {
 } from '../lib/collab/ydocRegistry.js';
 import {
   createAnnotationOutbox,
+  normalizeSnapshotIdentity,
 } from './annotationDocOutbox.js';
 import { erasedPathSurvivorsShareGeometry } from '../utils/pageSpaceEraser.js';
 import {
@@ -344,6 +345,13 @@ export async function openAnnotationDoc({
   eraseEffectConsumer = null,
   eraseOutboxRetryBaseMs = 250,
   eraseOutboxRetryMaxMs = 30_000,
+  // Open speed (w29): optional display-only early paint. Called with a byPage
+  // read of the live doc as soon as it holds marks from this device's saved
+  // copy (before any network) and again once the cloud snapshot is in, while
+  // the rest of the open (shadow copies, reconciliation) still runs. The
+  // caller must not treat it as hydrated: no writes, no imports. The handle
+  // (resolved later) is the authoritative read.
+  onPreview = null,
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
   if (!actorUserId) throw new Error('openAnnotationDoc: actorUserId required');
@@ -371,6 +379,7 @@ export async function openAnnotationDoc({
     acceptedDoc: createDetachedYDoc(`accepted:${documentId}:${activeWriterId}`),
     stagedDoc: createDetachedYDoc(`staged:${documentId}:${activeWriterId}`),
     persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
+    stagedSeeded: false,   // w29: stagedDoc is seeded from acceptedDoc late in the open
     localPersistenceDoc: null,
     onLocalPersistenceUpdate: null,
     map: getAnnotationsMap(activeDoc),
@@ -478,6 +487,7 @@ export async function openAnnotationDoc({
     localPersistenceFactory,
     legacyPersistenceFactory,
     localSyncTimeoutMs,
+    onPreview: typeof onPreview === 'function' ? onPreview : null,
     eraseEffectConsumer: typeof eraseEffectConsumer === 'function'
       ? eraseEffectConsumer
       : null,
@@ -509,6 +519,10 @@ export async function openAnnotationDoc({
   // leak on every failed open. Tear down whatever was attached, then rethrow so
   // the caller still sees the failure.
   try {
+    // Open speed (w29): the backend reads start early and run while IndexedDB
+    // loads (the writer-sequence read now, the snapshot read as soon as the
+    // saved copy is known). Their results are used at the same points as before.
+    if (supabase) startBackendPrefetch(state);
     if (supabase && !state.outbox) {
       state.outbox = await createAnnotationOutbox();
     }
@@ -517,6 +531,7 @@ export async function openAnnotationDoc({
         await state.outbox.getDocumentIncarnation?.(documentId),
       ) || 0;
       await hydrateCleanAcceptedState(state);
+      await yieldToMain();
       await loadPendingOutboxRecords(state);
       const quarantined = await state.outbox.listQuarantined?.(
         state.documentId,
@@ -569,12 +584,26 @@ export async function openAnnotationDoc({
     // Freeze the detached local cache before backend hydration or new user
     // edits. It is only an authorization candidate; it never seeds acceptedDoc.
     if (!state.quarantinedLocalHistory) {
-      const persistedCandidate = state.localPersistenceDoc || activeDoc;
-      Y.applyUpdate(
-        state.persistedDoc,
-        encodeSnapshot(persistedCandidate),
-        HYDRATE_ORIGIN,
-      );
+      if (state.localPersistenceDoc && !localPersistenceNearTrim(state)) {
+        // w29: the IndexedDB copy itself is the candidate (no ~20 MB copy).
+        // Until reconciliation this handle only applies backend-accepted bytes
+        // to it (the snapshot, tail rows), which stagedDoc also holds, so it
+        // yields the same local-only difference as a frozen copy would.
+        // y-indexeddb's own compaction (at 500 stored updates) re-reads the
+        // database and could pull in another tab's local updates, so a real
+        // copy is frozen instead (as before) whenever that is near: here, and
+        // before each backend apply (applyToLocalPersistence). A rotation
+        // before reconciliation also freezes a real copy.
+        try { state.persistedDoc?.destroy(); } catch { /* */ }
+        state.persistedDoc = state.localPersistenceDoc;
+        state.persistedDocIsLocalPersistence = true;
+      } else {
+        Y.applyUpdate(
+          state.persistedDoc,
+          encodeSnapshot(state.localPersistenceDoc || activeDoc),
+          HYDRATE_ORIGIN,
+        );
+      }
       // Local-only documents have no backend accepted-state reconciliation.
       // Their actor-scoped IndexedDB snapshot is authoritative on a fresh
       // process, so hydrate it into the exposed doc before any new mutation.
@@ -589,17 +618,8 @@ export async function openAnnotationDoc({
 
     // --- seed the per-(doc,client) op counter so client_seq stays unique ---
     if (supabase) {
-      const { data, error } = await withCloudRequest(
-        state,
-        supabase
-          .from('annotation_updates')
-          .select('client_seq')
-          .eq('document_id', documentId)
-          .eq('client_id', state.writerId)
-          .order('client_seq', { ascending: false })
-          .limit(1),
-        'writer sequence read',
-      );
+      await yieldToMain();
+      const { data, error } = await takeBackendPrefetch(state, 'writerSeq');
       if (error) throw toSyncError(error, 'writer sequence read failed');
       if (data && data[0]) state.clientSeq = Number(data[0].client_seq) || 0;
     }
@@ -609,8 +629,15 @@ export async function openAnnotationDoc({
     // The accepted shadow is populated only by backend snapshot/WAL bytes.
     // Never seed it from activeDoc: activeDoc may already contain optimistic
     // IndexedDB state that the backend has never authorized.
-    Y.applyUpdate(state.stagedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    // (w29: reuse the encoding loadFromBackend just made of acceptedDoc.)
+    Y.applyUpdate(
+      state.stagedDoc,
+      takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc),
+      HYDRATE_ORIGIN,
+    );
+    state.stagedSeeded = true;
     if (supabase) {
+      await yieldToMain();
       await loadLegacyPersistenceCandidate(state);
       // Reconcile the frozen pre-open local delta before exposing the handle.
       // New edits can therefore enqueue their exact observer bytes immediately
@@ -643,11 +670,11 @@ export async function openAnnotationDoc({
           });
         }
         state.rebaseLocalMutations = true;
-        try { state.persistedDoc?.destroy(); } catch { /* */ }
-        state.persistedDoc = null;
+        releasePersistedCandidate(state);
       } else {
         await reconcilePersistedLocalState(state);
       }
+      await yieldToMain();
       await reconcileLegacyLocalState(state);
     }
     // The provider is attached to a detached Y.Doc so pre-open bytes can be
@@ -771,6 +798,7 @@ export async function openAnnotationDoc({
     // either sees this opening state or its bumped incarnation rejects open.
     registerActiveState(state);
   } catch (err) {
+    abortBackendPrefetch(state);
     clearEraseOutboxRetry(state);
     state.destroyed = true;
     closeLivePreviews(state);
@@ -784,7 +812,7 @@ export async function openAnnotationDoc({
     try { await state.outbox?.close?.(); } catch { /* */ }
     try { state.acceptedDoc.destroy(); } catch { /* */ }
     try { state.stagedDoc.destroy(); } catch { /* */ }
-    try { state.persistedDoc?.destroy(); } catch { /* */ }
+    releasePersistedCandidate(state);
     try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
     taintLiveDocIfUnconfirmed(state);
     if (ownsRegistryDoc) releaseYDoc(registryKey);
@@ -837,8 +865,46 @@ function attachLocalPersistenceMirror(state) {
   state.doc.on('update', state.onLocalPersistenceUpdate);
 }
 
+// The pre-open local candidate may be the IndexedDB doc itself (w29); drop the
+// reference without destroying a doc this handle still persists through.
+function releasePersistedCandidate(state) {
+  const candidate = state.persistedDoc;
+  const aliased = state.persistedDocIsLocalPersistence;
+  state.persistedDoc = null;
+  state.persistedDocIsLocalPersistence = false;
+  if (candidate && !aliased) {
+    try { candidate.destroy(); } catch { /* */ }
+  }
+}
+
+// Reconciliation has not run yet and the local candidate is the IndexedDB
+// doc itself (w29): make it a real frozen copy before that doc can change in
+// a way the alias does not allow for.
+function freezePersistedCandidate(state) {
+  if (!state.persistedDocIsLocalPersistence || !state.persistedDoc) return;
+  const frozen = createDetachedYDoc(
+    `persisted:${state.documentId}:${state.writerId}:frozen`,
+  );
+  Y.applyUpdate(frozen, encodeSnapshot(state.persistedDoc), HYDRATE_ORIGIN);
+  state.persistedDoc = frozen;
+  state.persistedDocIsLocalPersistence = false;
+}
+
+// y-indexeddb compacts once 500 updates are stored (PREFERRED_TRIM_SIZE) and
+// re-reads its database then; stay well clear of it.
+function localPersistenceNearTrim(state) {
+  return Number(state.idbProvider?._dbsize) >= 450;
+}
+
+function applyToLocalPersistence(state, update) {
+  if (!state.localPersistenceDoc) return;
+  if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
+  Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
+}
+
 async function rotateCleanPersistence(state) {
   if (!state.localPersistenceDoc && !state.idbProvider) return;
+  freezePersistedCandidate(state);
   destroyLocalPersistence(state);
   state.persistenceGeneration += 1;
   writePersistenceGeneration(
@@ -896,6 +962,17 @@ function legacyEntryAuthorId(mapName, value) {
   return null;
 }
 
+async function legacyDatabaseMayExist(name) {
+  try {
+    if (typeof indexedDB?.databases !== 'function') return true;
+    const databases = await indexedDB.databases();
+    if (!Array.isArray(databases)) return true;
+    return databases.some((database) => database?.name === name);
+  } catch {
+    return true;
+  }
+}
+
 async function loadLegacyPersistenceCandidate(state) {
   if (
     !state.supabase
@@ -905,6 +982,11 @@ async function loadLegacyPersistenceCandidate(state) {
     )
   ) return;
   const name = `anno-${state.documentId}`;
+  // w29: opening a y-indexeddb provider CREATES its database, and the
+  // reconcile below deletes it again, so every open paid for an empty legacy
+  // store. When the browser can list its databases and this one is not there,
+  // there is nothing to recover.
+  if (!state.legacyPersistenceFactory && !(await legacyDatabaseMayExist(name))) return;
   const legacyDoc = createDetachedYDoc(
     `legacy-persistence:${state.documentId}:${state.writerId}`,
   );
@@ -941,6 +1023,24 @@ async function loadLegacyPersistenceCandidate(state) {
   }
 }
 
+function isEmptyYDoc(doc) {
+  return doc.store.clients.size === 0
+    && !doc.store.pendingStructs
+    && !doc.store.pendingDs;
+}
+
+async function clearLegacyPersistence(state, legacyDoc) {
+  try {
+    await state.legacyClearDocument?.();
+    try { legacyDoc.destroy(); } catch { /* */ }
+    state.legacyPersistenceDoc = null;
+  } catch (error) {
+    state.legacyRecoveryPending = true;
+    state.legacyUnresolvedEntries = Math.max(1, state.legacyUnresolvedEntries);
+    console.warn('[annotationDocSync] legacy IndexedDB retirement deferred', error?.message);
+  }
+}
+
 async function reconcileLegacyLocalState(state) {
   const legacyDoc = state.legacyPersistenceDoc;
   if (!legacyDoc) return;
@@ -966,6 +1066,17 @@ async function reconcileLegacyLocalState(state) {
       state.legacyUnresolvedEntries = Math.max(1, state.legacyUnresolvedEntries);
       console.warn('[annotationDocSync] legacy annotations remain quarantined after a rejected local write');
     }
+    return;
+  }
+  if (isEmptyYDoc(legacyDoc)) {
+    // w29: nothing was ever stored there (y-indexeddb creates the database on
+    // open). Merging an empty doc over cloud truth changes nothing and every
+    // key compares equal, so the full pass below would end exactly here:
+    // nothing unresolved, publish, clear. Skip straight to that.
+    state.legacyUnresolvedEntries = 0;
+    state.legacyRecoveryPending = false;
+    publishAcceptedAndVisiblePendingState(state);
+    await clearLegacyPersistence(state, legacyDoc);
     return;
   }
   const mergedDoc = createDetachedYDoc(
@@ -1239,10 +1350,10 @@ function applyAuthoritativeCloudUpdate(state, update) {
   // every clean shadow explicitly.
   const liveChanged = applyToLiveDoc(state, update, REMOTE_ORIGIN);
   Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
-  if (state.localPersistenceDoc) {
-    Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
-  }
-  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  applyToLocalPersistence(state, update);
+  // Before the open seeds stagedDoc from acceptedDoc (which then holds this
+  // row), rows would only sit there as pending structs (w29 review A).
+  if (state.stagedSeeded) Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
   wakeRemoteReferenceWaiters(state);
   return liveChanged;
 }
@@ -1580,14 +1691,25 @@ async function settleAcceptedRecord(
     Number(record.editEpoch) || 0,
   );
   try {
-    await state.outbox?.compactAccepted(
+    const token = newCleanCheckpointToken();
+    const outcome = {};
+    const compacted = await state.outbox?.compactAccepted(
       state.documentId,
       state.actorUserId,
       // Lazy: encoded only when the outbox actually compacts (w26).
       () => encodeSnapshot(state.acceptedDoc),
       false,
       state.documentIncarnation,
+      // w29: see cleanCoverage / currentSnapshotIdentity. The identity is read
+      // in the same tick as the lazy encode.
+      {
+        covered: cleanCoverage(state),
+        identity: () => currentSnapshotIdentity(state),
+        token,
+        outcome,
+      },
     );
+    noteCleanCompaction(state, compacted, token, outcome);
   } catch (error) {
     // The exact accepted delta is already durable in the clean journal. A
     // failed compaction is non-destructive and will be retried later.
@@ -1759,6 +1881,17 @@ async function hydrateCleanAcceptedState(state) {
     state.documentId,
     state.actorUserId,
   );
+  // w29: which checkpoint acceptedDoc is seeded with (its token; its bytes
+  // only for a checkpoint saved before tokens existed), so a later compaction
+  // can skip re-merging what acceptedDoc already holds, and which cloud
+  // snapshot row that checkpoint is known to contain, so the open can skip
+  // downloading that row again.
+  state.cleanCheckpointToken = clean?.checkpointToken ?? null;
+  state.cleanCheckpointBytes = clean?.checkpointUpdate && clean?.checkpointToken == null
+    ? new Uint8Array(clean.checkpointUpdate)
+    : null;
+  state.cleanSnapshotIdentity = normalizeSnapshotIdentity(clean?.snapshotIdentity);
+  startSnapshotPrefetch(state);
   const updates = [
     clean?.checkpointUpdate,
     ...(clean?.records || []).map((record) => record.update),
@@ -1767,11 +1900,53 @@ async function hydrateCleanAcceptedState(state) {
   for (const record of clean?.records || []) {
     state.acceptedReceiptKeys.add(record.key);
   }
+  // The live doc first, so the saved copy can be shown (w29 preview) before
+  // the accepted shadow is filled. stagedDoc is not filled here (w29, one
+  // ~20 MB apply less): the open seeds it from the complete acceptedDoc,
+  // which contains these updates, before anything reads it.
+  for (const update of updates) Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
+  if (updates.length) await emitOpenPreview(state, 'local-copy');
   for (const update of updates) {
-    Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
     Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
-    Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
   }
+}
+
+// w29 preview: hand the caller what the live doc holds right now, then give
+// the browser a frame to paint it before the open's next heavy step.
+async function emitOpenPreview(state, stage) {
+  const onPreview = state.onPreview;
+  if (!onPreview || state.destroyed) return;
+  let byPage;
+  try {
+    if (getAnnotationsMap(state.doc).size === 0) return;
+    byPage = docToByPage(state.doc);
+  } catch (error) {
+    console.warn('[annotationDocSync] open preview read failed', error?.message);
+    return;
+  }
+  try {
+    onPreview(byPage, { stage });
+  } catch (error) {
+    console.warn('[annotationDocSync] open preview failed', error?.message);
+    return;
+  }
+  await waitForPaint();
+}
+
+function waitForPaint() {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    // A hidden tab never runs animation frames: never wait more than a beat.
+    setTimeout(finish, 50);
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => setTimeout(finish, 0));
+    }
+  });
 }
 
 async function loadPendingOutboxRecords(state) {
@@ -1824,18 +1999,150 @@ async function loadPendingOutboxRecords(state) {
   }
 }
 
-async function loadFromBackend(state) {
-  const { supabase, documentId, doc } = state;
-  // 1. snapshot baseline
-  const { data: snapRow, error: snapshotError } = await withCloudRequest(
-    state,
-    supabase
-      .from('annotation_snapshots')
-      .select('snapshot, at_seq, encoding_version, writer_id, writer_epoch')
-      .eq('document_id', documentId)
-      .maybeSingle(),
-    'snapshot read',
+// Open speed (w29, 2026-09-24): the writer-sequence read starts with the open
+// and the snapshot read as soon as this device's saved copy is known (a few
+// ms in), both in parallel with the IndexedDB loads, instead of one after
+// another once those finished. A big document's snapshot (Package 2: ~6 MB
+// on the wire) used to start downloading 0.2-1.7 s into the open. Each
+// result is consumed exactly once, at the same point as the old sequential
+// read; a failed open aborts whatever is still downloading.
+function snapshotReadQuery(state, signal = null) {
+  let query = state.supabase
+    .from('annotation_snapshots')
+    .select('snapshot, at_seq, encoding_version, writer_id, writer_epoch')
+    .eq('document_id', state.documentId)
+    .maybeSingle();
+  if (signal && typeof query?.abortSignal === 'function') query = query.abortSignal(signal);
+  return query;
+}
+
+function writerSeqReadQuery(state, signal = null) {
+  let query = state.supabase
+    .from('annotation_updates')
+    .select('client_seq')
+    .eq('document_id', state.documentId)
+    .eq('client_id', state.writerId)
+    .order('client_seq', { ascending: false })
+    .limit(1);
+  if (signal && typeof query?.abortSignal === 'function') query = query.abortSignal(signal);
+  return query;
+}
+
+function snapshotIdentityReadQuery(state, signal = null) {
+  let query = state.supabase
+    .from('annotation_snapshots')
+    .select('at_seq, encoding_version, writer_id, writer_epoch')
+    .eq('document_id', state.documentId)
+    .maybeSingle();
+  if (signal && typeof query?.abortSignal === 'function') query = query.abortSignal(signal);
+  return query;
+}
+
+// Held until taken; never an unhandled rejection if the open fails first.
+function settlePrefetch(promise) {
+  return Promise.resolve(promise).then(
+    (value) => ({ value }),
+    (error) => ({ error }),
   );
+}
+
+function startBackendPrefetch(state) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  state.backendPrefetch = {
+    controller,
+    writerSeq: settlePrefetch(withCloudRequest(state, writerSeqReadQuery(state, controller?.signal), 'writer sequence read')),
+    // The snapshot read starts once this device's saved copy is known
+    // (startSnapshotPrefetch, a few ms into the open).
+    snapshot: null,
+  };
+}
+
+function snapshotIdentitiesEqual(left, right) {
+  return Boolean(left && right)
+    && left.atSeq === right.atSeq
+    && left.writerId === right.writerId
+    && left.writerEpoch === right.writerEpoch;
+}
+
+// w29 (open speed): this device's saved copy (the outbox's clean checkpoint)
+// records which cloud snapshot row it already contains. When the row is
+// unchanged, re-downloading it (Package 2: ~6 MB, 2-10 s, and a heavy read on
+// a small database) adds nothing, so only its identity is read. Anything
+// else (no saved copy, a different row, a failed identity read) downloads
+// the row exactly as before.
+function startSnapshotPrefetch(state) {
+  const prefetch = state.backendPrefetch;
+  if (!prefetch || prefetch.snapshot || prefetch.snapshotTaken) return;
+  const signal = prefetch.controller?.signal || null;
+  const download = () => settlePrefetch(
+    withCloudRequest(state, snapshotReadQuery(state, signal), 'snapshot read'),
+  );
+  const local = state.cleanSnapshotIdentity;
+  if (!local) {
+    prefetch.snapshot = download();
+    return;
+  }
+  // Only the row's identity (a few bytes) first.
+  prefetch.snapshot = settlePrefetch(
+    withCloudRequest(state, snapshotIdentityReadQuery(state, signal), 'snapshot identity read'),
+  )
+    .then((settled) => {
+      const row = settled?.value?.data;
+      const remote = !settled?.error && !settled?.value?.error && row
+        ? normalizeSnapshotIdentity({
+          atSeq: row.at_seq,
+          writerId: row.writer_id,
+          writerEpoch: row.writer_epoch,
+        })
+        : null;
+      if (snapshotIdentitiesEqual(remote, local)) {
+        return { value: { data: { ...row, snapshot: null, alreadyHeld: true }, error: null } };
+      }
+      return download();
+    });
+}
+
+async function takeBackendPrefetch(state, name) {
+  const held = state.backendPrefetch?.[name];
+  if (name === 'snapshot' && state.backendPrefetch) state.backendPrefetch.snapshotTaken = true;
+  if (!held) {
+    const query = name === 'snapshot' ? snapshotReadQuery(state) : writerSeqReadQuery(state);
+    return withCloudRequest(state, query, name === 'snapshot' ? 'snapshot read' : 'writer sequence read');
+  }
+  state.backendPrefetch[name] = null;
+  const settled = await held;
+  if (settled.error) throw settled.error;
+  return settled.value;
+}
+
+function abortBackendPrefetch(state) {
+  const prefetch = state.backendPrefetch;
+  state.backendPrefetch = null;
+  if (!prefetch) return;
+  try { prefetch.controller?.abort(); } catch { /* */ }
+}
+
+// The encoding of acceptedDoc loadFromBackend made for the clean-cache
+// receipt, handed once to the staged-doc seed right after it (w29: one 20 MB
+// encode instead of two). Dropped if anything touched acceptedDoc between.
+function takeAcceptedEncoding(state) {
+  const held = state.acceptedEncoding;
+  state.acceptedEncoding = null;
+  if (!held) return null;
+  return Y.equalSnapshots(Y.snapshot(state.acceptedDoc), held.snapshot) ? held.update : null;
+}
+
+// Give the browser a turn between the heavy steps of an open (w29): each step
+// is still one block of work, but the PDF page, the toolbar and input get to
+// run in between instead of waiting for the whole multi-second open.
+function yieldToMain() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function loadFromBackend(state) {
+  const { doc } = state;
+  // 1. snapshot baseline
+  const { data: snapRow, error: snapshotError } = await takeBackendPrefetch(state, 'snapshot');
   if (snapshotError) throw toSyncError(snapshotError, 'snapshot read failed');
   if (snapRow && snapRow.snapshot) {
     let bytes = pgHexToBytes(snapRow.snapshot);
@@ -1850,10 +2157,9 @@ async function loadFromBackend(state) {
     if (bytes) {
       try {
         Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+        await emitOpenPreview(state, 'cloud-snapshot');
         Y.applyUpdate(state.acceptedDoc, bytes, HYDRATE_ORIGIN);
-        if (state.localPersistenceDoc) {
-          Y.applyUpdate(state.localPersistenceDoc, bytes, HYDRATE_ORIGIN);
-        }
+        applyToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
       }
@@ -1867,6 +2173,26 @@ async function loadFromBackend(state) {
         state.snapshotBaseWriterEpoch,
       );
     }
+  } else if (snapRow?.alreadyHeld) {
+    // w29: the saved copy hydrated into doc and acceptedDoc already contains
+    // this exact row (startSnapshotPrefetch). Same baseline as applying it.
+    if (state.localPersistenceDoc) {
+      // The local mirror normally receives the row too; give it whatever of
+      // the accepted state it lacks (usually nothing).
+      applyToLocalPersistence(
+        state,
+        Y.encodeStateAsUpdate(state.acceptedDoc, Y.encodeStateVector(state.localPersistenceDoc)),
+      );
+    }
+    state.lastSeq = Number(snapRow.at_seq) || 0;
+    state.replayFromSeq = state.lastSeq;
+    state.snapshotBaseAtSeq = state.lastSeq;
+    state.snapshotBaseWriterId = snapRow.writer_id ?? null;
+    state.snapshotBaseWriterEpoch = Number(snapRow.writer_epoch) || 0;
+    state.snapshotGeneration = Math.max(
+      state.snapshotGeneration,
+      state.snapshotBaseWriterEpoch,
+    );
   }
   // 2. tail ops after the snapshot, in order (byte-safe pages, w26)
   let cursor = state.lastSeq;
@@ -1886,13 +2212,102 @@ async function loadFromBackend(state) {
   // One acknowledged custom IndexedDB transaction is the clean-cache receipt.
   // y-indexeddb's update observer is fire-and-forget and cannot authorize
   // deleting an outbox record or claiming crash durability by call order.
-  await state.outbox?.compactAccepted?.(
+  const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
+  // The checkpoint body was not downloaded (already held locally): estimate
+  // its gzipped size for the checkpoint debounce (w30; ~4:1 on real marks).
+  if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(acceptedUpdate.length / 4);
+  state.acceptedEncoding = {
+    update: acceptedUpdate,
+    snapshot: Y.snapshot(state.acceptedDoc),
+  };
+  const token = newCleanCheckpointToken();
+  const outcome = {};
+  const compacted = await state.outbox?.compactAccepted?.(
     state.documentId,
     state.actorUserId,
-    encodeSnapshot(state.acceptedDoc),
+    acceptedUpdate,
     true,
     state.documentIncarnation,
+    {
+      outcome,
+      // w29: acceptedDoc already holds the loaded checkpoint and records, so
+      // when IndexedDB still holds exactly them the receipt is acceptedUpdate
+      // alone, without re-merging ~20 MB; and it contains the snapshot row
+      // just applied (or already held), recorded so the next open can skip it.
+      covered: cleanCoverage(state),
+      identity: currentSnapshotIdentity(state),
+      token,
+    },
   );
+  noteCleanCompaction(state, compacted, token, outcome);
+}
+
+// ---- clean checkpoint bookkeeping (w29) ----------------------------------
+// What acceptedDoc is known to contain, for the outbox's compaction fast path
+// (annotationDocOutbox.js compactionPlan): the checkpoint it was seeded with
+// or last stored AS-IS from its own encoding (a merged checkpoint is never
+// claimed: token null), and every accepted record key applied to it.
+// acceptedDoc only grows, so this stays true for any later encoding of it.
+function cleanCoverage(state) {
+  return {
+    token: state.cleanCheckpointToken ?? null,
+    checkpointUpdate: state.cleanCheckpointBytes || null,
+    recordKeys: new Set(state.acceptedReceiptKeys),
+  };
+}
+
+// The cloud snapshot row acceptedDoc contains: every place that moves the
+// snapshot base applies that row's content to acceptedDoc in the same tick.
+function currentSnapshotIdentity(state) {
+  if (state.snapshotBaseAtSeq == null) return null;
+  return normalizeSnapshotIdentity({
+    atSeq: state.snapshotBaseAtSeq,
+    writerId: state.snapshotBaseWriterId,
+    writerEpoch: state.snapshotBaseWriterEpoch,
+  });
+}
+
+function newCleanCheckpointToken() {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  } catch { /* fall through */ }
+  return `${Date.now().toString(36)}-${randomClientId()}`;
+}
+
+// w29: a snapshot this handle wrote becomes this device's saved copy, named
+// by its cloud row, so the next open here can skip downloading that row.
+// `update` is exactly the row's content and contains everything `covered`
+// names (both taken when it was encoded), so the outbox stores it as-is when
+// nothing else was saved meanwhile; otherwise nothing is done (no merge on
+// the main thread after every snapshot). Best effort: skipping or failing
+// only means the next open downloads the row.
+async function recordWrittenSnapshotInCleanState(state, update, covered, identity) {
+  if (!covered || !update || typeof state.outbox?.compactAccepted !== 'function') return;
+  const token = newCleanCheckpointToken();
+  const outcome = {};
+  try {
+    const compacted = await state.outbox.compactAccepted(
+      state.documentId,
+      state.actorUserId,
+      update,
+      true,
+      state.documentIncarnation,
+      // Only the cheap as-is store (review A): anything that would need a
+      // ~20 MB merge is left for the next open's compaction.
+      { covered, identity, token, outcome, onlyIfCovered: true },
+    );
+    noteCleanCompaction(state, compacted, token, outcome);
+  } catch (error) {
+    console.warn('[annotationDocSync] saving the written snapshot locally failed', error?.message);
+  }
+}
+
+function noteCleanCompaction(state, compacted, token, outcome = {}) {
+  if (compacted !== true) return;
+  // A merged checkpoint may hold content acceptedDoc lacks (another tab's):
+  // never claim it as covered, so the next compaction merges again (review A).
+  state.cleanCheckpointToken = outcome.merged === false ? token : null;
+  state.cleanCheckpointBytes = null;
 }
 
 // Close the hydrate-vs-subscribe gap: Postgres realtime only forwards rows
@@ -2083,6 +2498,7 @@ function resetStagedToAccepted(state) {
     `staged:${state.documentId}:${state.writerId}:${state.localMutationOrdinal}`,
   );
   Y.applyUpdate(state.stagedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+  state.stagedSeeded = true;
 }
 
 function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
@@ -2195,18 +2611,24 @@ function encodeRepairCheckpoint(state) {
 }
 
 function captureSnapshotOptions(state) {
+  // cleanCoverage is taken in the same tick as the encoding (w29): the bytes
+  // contain everything it names, so a successful write can become this
+  // device's saved copy without another ~20 MB encode (writeSnapshotNow).
   if (state.durabilityGap) {
+    const snapshotUpdate = encodeRepairCheckpoint(state);
     return {
-      snapshotUpdate: encodeRepairCheckpoint(state),
+      snapshotUpdate,
       epoch: state.repairCheckpointEpoch,
       repairsGap: true,
       gapGeneration: state.repairCheckpointGeneration,
+      cleanCoverage: snapshotUpdate ? cleanCoverage(state) : null,
     };
   }
   return {
     snapshotUpdate: encodeSnapshot(state.acceptedDoc),
     epoch: state.acceptedEditEpoch,
     repairsGap: false,
+    cleanCoverage: cleanCoverage(state),
   };
 }
 
@@ -2223,6 +2645,15 @@ function stagePersistedLocalDifferences(state) {
   if (
     decodedLocalOnly.structs.length === 0
     && decodedLocalOnly.ds.clients.size === 0
+  ) return null;
+  // w29: an update always carries the doc's WHOLE delete set, so a local copy
+  // with nothing new still looked "different" and paid for a full probe copy
+  // plus a key-by-key compare (~1 s on a big document) on every warm open.
+  // No new structs and every deletion already in staged = applying it would
+  // change nothing, which is what the probe below would conclude.
+  if (
+    decodedLocalOnly.structs.length === 0
+    && deleteSetCoveredBy(decodedLocalOnly.ds, Y.createDeleteSetFromStructStore(state.stagedDoc.store))
   ) return null;
   const probe = createDetachedYDoc(
     `persisted-probe:${state.documentId}:${state.writerId}:${randomClientId()}`,
@@ -2257,6 +2688,32 @@ function stagePersistedLocalDifferences(state) {
     update: new Uint8Array(localOnly),
     snapshot: encodeSnapshot(state.stagedDoc),
   };
+}
+
+// Every deleted range in `inner` lies inside a deleted range of `outer`.
+// `outer` comes from createDeleteSetFromStructStore: per client, sorted,
+// maximal runs (adjacent deleted structs merged), so a contiguous deleted
+// range can only sit inside one run.
+function deleteSetCoveredBy(inner, outer) {
+  for (const [client, items] of inner.clients) {
+    if (!items?.length) continue;
+    const runs = outer.clients.get(client);
+    if (!runs?.length) return false;
+    for (const item of items) {
+      if (!item?.len) continue;
+      let lo = 0;
+      let hi = runs.length - 1;
+      let found = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (runs[mid].clock <= item.clock) { found = mid; lo = mid + 1; } else hi = mid - 1;
+      }
+      if (found < 0) return false;
+      const run = runs[found];
+      if (run.clock + run.len < item.clock + item.len) return false;
+    }
+  }
+  return true;
 }
 
 function stageExactLocalUpdate(state, update) {
@@ -2315,14 +2772,12 @@ function reconcilePersistedLocalState(state) {
   if (state.destroyed || state.persistedReconciliationDone) return Promise.resolve();
   state.persistedReconciliationDone = true;
   if (state.quarantinedLocalHistory) {
-    try { state.persistedDoc?.destroy(); } catch { /* */ }
-    state.persistedDoc = null;
+    releasePersistedCandidate(state);
     publishAcceptedState(state);
     return Promise.resolve();
   }
   const persisted = stagePersistedLocalDifferences(state);
-  try { state.persistedDoc?.destroy(); } catch { /* */ }
-  state.persistedDoc = null;
+  releasePersistedCandidate(state);
   if (!persisted) {
     publishAcceptedAndVisiblePendingState(state);
     return Promise.resolve();
@@ -2521,27 +2976,51 @@ function applyLivePreviewsTo(doc, state) {
   }
 }
 
+// Two docs hold the same Yjs content (the same structs and the same
+// deletions), so every map value in them is equal (w29).
+function sameYjsContent(leftDoc, rightDoc) {
+  return Y.equalSnapshots(Y.snapshot(leftDoc), Y.snapshot(rightDoc));
+}
+
+// publishProjectedState when the live doc already equals the projection
+// (w29): the key-by-key compare (every mark serialised twice) is skipped;
+// listeners are still told, as before.
+function publishProjectedStateIfChanged(state, projectedDoc) {
+  if (!sameYjsContent(state.doc, projectedDoc)) {
+    publishProjectedState(state, projectedDoc);
+    return;
+  }
+  state.lastByPage = null;
+  notifyChange(state);
+}
+
 function publishAcceptedAndVisiblePendingState(state) {
+  const records = [...state.appendRecords.values()].sort((left, right) => (
+    (left.ordinal || 0) - (right.ordinal || 0)
+    || String(left.key).localeCompare(String(right.key))
+  )).filter((record) => !(
+    record.publishAfterAcceptance
+    || record.status === 'rejected'
+    || record.status === 'integrity-error'
+    || record.status === 'dependency-error'
+  ));
+  if (records.length === 0 && state.livePreviews.size === 0) {
+    // Nothing pending to show: the projection is acceptedDoc itself (w29, no
+    // ~20 MB copy on every open). Other screens' live previews (w30) still
+    // need the copy, or the projection would take them off the screen.
+    publishProjectedStateIfChanged(state, state.acceptedDoc);
+    return;
+  }
   const projection = createDetachedYDoc(
     `pending-projection:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
   try {
     Y.applyUpdate(projection, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
-    const records = [...state.appendRecords.values()].sort((left, right) => (
-      (left.ordinal || 0) - (right.ordinal || 0)
-      || String(left.key).localeCompare(String(right.key))
-    ));
     for (const record of records) {
-      if (
-        record.publishAfterAcceptance
-        || record.status === 'rejected'
-        || record.status === 'integrity-error'
-        || record.status === 'dependency-error'
-      ) continue;
       Y.applyUpdate(projection, record.update, HYDRATE_ORIGIN);
     }
     applyLivePreviewsTo(projection, state);
-    publishProjectedState(state, projection);
+    publishProjectedStateIfChanged(state, projection);
   } finally {
     try { projection.destroy(); } catch { /* */ }
   }
@@ -3050,6 +3529,8 @@ async function appendOp(state, record) {
     const repairsGap = state.durabilityGap;
     const result = await writeSnapshot(state, {
       snapshotUpdate: repairsGap ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc),
+      // Same tick as the encode just above (w29, see captureSnapshotOptions).
+      cleanCoverage: cleanCoverage(state),
       epoch: repairsGap ? state.repairCheckpointEpoch : state.acceptedEditEpoch,
       repairsGap,
       ...(repairsGap ? { gapGeneration: state.repairCheckpointGeneration } : {}),
@@ -3218,6 +3699,10 @@ async function writeSnapshotNow(state, {
   conflictAttempt = 0,
   repairsGap = null,
   gapGeneration = null,
+  // What the bytes are known to contain of this device's saved copy, taken
+  // when they were encoded (w29, see captureSnapshotOptions). null = unknown:
+  // the write is not recorded in the saved copy.
+  cleanCoverage: cleanCoverageAtEncode = null,
 } = {}) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
   const gapGenerationAtStart = gapGeneration ?? state.durabilityGapGeneration;
@@ -3256,6 +3741,9 @@ async function writeSnapshotNow(state, {
   const updateAtStart = snapshotUpdate || (
     repairsGapAtStart ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc)
   );
+  const coverageAtStart = snapshotUpdate
+    ? cleanCoverageAtEncode
+    : (updateAtStart ? cleanCoverage(state) : null);
   if (!updateAtStart) {
     return {
       ok: false,
@@ -3380,6 +3868,11 @@ async function writeSnapshotNow(state, {
         Y.applyUpdate(state.acceptedDoc, updateAtStart, HYDRATE_ORIGIN);
         state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
         await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart);
+        await recordWrittenSnapshotInCleanState(state, updateAtStart, coverageAtStart, {
+          atSeq,
+          writerId: state.writerId,
+          writerEpoch: snapshotGenerationAtStart,
+        });
         void queueEraseOutboxDrain(state);
         if (repairedGap && state.pendingAppends === 0 && state.appendRecords.size > 0) {
           scheduleOutboxReplay(state);
@@ -3410,6 +3903,8 @@ async function writeSnapshotNow(state, {
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
             gapGeneration: gapGenerationAtStart,
+            // The rebased bytes contain the original bytes (w29).
+            cleanCoverage: coverageAtStart,
           });
         } catch (refreshError) {
           return {
@@ -3446,6 +3941,8 @@ async function writeSnapshotNow(state, {
           conflictAttempt: conflictAttempt + 1,
           repairsGap: repairsGapAtStart,
           gapGeneration: gapGenerationAtStart,
+          // The rebased bytes contain the original bytes (w29).
+          cleanCoverage: coverageAtStart,
         });
       }
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
@@ -3476,6 +3973,8 @@ async function writeSnapshotNow(state, {
             conflictAttempt: conflictAttempt + 1,
             repairsGap: repairsGapAtStart,
             gapGeneration: gapGenerationAtStart,
+            // The rebased bytes contain the original bytes (w29).
+            cleanCoverage: coverageAtStart,
           });
         } catch (refreshError) {
           return {
@@ -4685,7 +5184,7 @@ function makeHandle(state) {
       try { await state.outbox?.close?.(); } catch { /* */ }
       try { state.acceptedDoc.destroy(); } catch { /* */ }
       try { state.stagedDoc.destroy(); } catch { /* */ }
-      try { state.persistedDoc?.destroy(); } catch { /* */ }
+      releasePersistedCandidate(state);
       try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
       // Release the registry doc (the registry never destroys — keeps undo/state
       // across reopen). Only destroy a doc we were explicitly handed (tests).
