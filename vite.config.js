@@ -309,8 +309,11 @@ export default defineConfig(({ mode }) => {
       // (plus graphify output). Watching them made the main dev server reload
       // every open tab and clear its dependency cache each time one was removed,
       // which left Chrome on a blank page (2026-09-24). Dev-server only.
+      // Anchored to THIS checkout: a bare '**/.claude/**' also matched every
+      // file of a dev server running inside a helper worktree, so it never
+      // picked up edits (w34, 2026-09-25).
       watch: {
-        ignored: ['**/.claude/**', '**/graphify-out/**'],
+        ignored: [path.join(__dirname, '.claude', '**'), path.join(__dirname, 'graphify-out', '**')],
       },
       headers: {
         // Allow MSAL popup authentication to work properly
