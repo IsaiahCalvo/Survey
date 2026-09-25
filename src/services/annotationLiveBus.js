@@ -27,7 +27,7 @@ export const LIVE_PREVIEW_EVENT = 'u';
 const REGISTRY = (globalThis.__annotationLiveBusRegistry__ ??= new WeakMap());
 // documentId -> time a join was refused; no new attempt for this long.
 const REFUSED = (globalThis.__annotationLiveBusRefused__ ??= new Map());
-const REFUSED_BACKOFF_MS = 5 * 60_000;
+const REFUSED_BACKOFF_MS = 60_000; // one join a minute at most, per document
 
 function registryFor(supabase) {
   let byDocument = REGISTRY.get(supabase);

@@ -37,6 +37,10 @@ const PASTE_STRIPPED_PROVENANCE_KEYS = [
   'pdfImportedEditedBy',
   'pdfImportedEditSource',
   'pdfNativeAnnotationIdentity',
+  // w30: the mark copied was another screen's in-flight stroke shown as a
+  // live preview (annotationDocSync.js LIVE_PREVIEW_FLAG). The paste is this
+  // user's own new mark and must be saved like one.
+  '__surveyLivePreview',
 ];
 
 function freshUuid() {

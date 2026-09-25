@@ -3110,9 +3110,12 @@ async function quarantineDefinitivePermissionDenial(
 
 function handleSnapshotResult(state, result) {
   if (result?.ok) {
+    const refusedSince = result.quarantineGenerationAtStart != null
+      && result.quarantineGenerationAtStart !== state.historyQuarantineGeneration;
     if (
       state.appendRecords.size === 0
       && (result.repairedGap || !state.durabilityGap)
+      && !refusedSince
     ) markSyncHealth(state, true);
     return result;
   }
@@ -3537,7 +3540,16 @@ function snapshotDebounceMs(state) {
 // which drops those ops on the next reopen (they're skipped by the seq>at_seq
 // tail read). The chain guarantees the last write to land is always the freshest.
 function writeSnapshot(state, options = {}) {
-  state.snapshotChain = state.snapshotChain.then(() => writeSnapshotNow(state, options));
+  state.snapshotChain = state.snapshotChain.then(() => {
+    // Which refusals had happened when these bytes were taken: a result may
+    // not turn a later refusal's red status green (w30 review C).
+    const quarantineGenerationAtStart = state.historyQuarantineGeneration;
+    return writeSnapshotNow(state, options).then((result) => (
+      result && typeof result === 'object'
+        ? { ...result, quarantineGenerationAtStart }
+        : result
+    ));
+  });
   return state.snapshotChain;
 }
 
@@ -4024,7 +4036,7 @@ function subscribeRealtime(state) {
       // Fires on the initial join AND after every reconnect re-join. Each time,
       // sweep the log for ops that landed while we weren't listening.
       if (status === 'SUBSCRIBED') {
-        if (state.livePreview && state.liveBus?.isClosed?.()) {
+        if (state.livePreview && (!state.liveBus || state.liveBus.isClosed?.())) {
           state.liveBus = null;
           acquireLiveChannel(state);
         }
@@ -4382,6 +4394,14 @@ function livePreviewByPage(state) {
   return result;
 }
 
+function currentLivePreviewIds(state) {
+  const ids = new Set();
+  for (const preview of state.livePreviews.values()) {
+    for (const id of preview.ids) ids.add(id);
+  }
+  return ids;
+}
+
 // The ids a capture must ignore: preview marks the doc does not hold.
 // An expired preview's ids stay here too: an Undo can bring back a page list
 // captured while it was on screen, and that must not write it either.
@@ -4422,14 +4442,24 @@ function deliveredCopyFor(state, object) {
 
 function stripEraserMutation(mutation, ids, keepIds) {
   if (!mutation || typeof mutation !== 'object') return mutation;
-  const dropId = (value) => value != null && ids.has(String(value)) && !keepIds.has(String(value));
+  const droppedEntryIds = new Set();
+  const dropId = (value) => value != null && (
+    (ids.has(String(value)) && !keepIds.has(String(value)))
+    || droppedEntryIds.has(String(value))
+  );
   const objectMutations = Array.isArray(mutation.objectMutations)
-    ? mutation.objectMutations.filter((entry) => !(
-      dropId(entry?.storageKey)
-      || dropId(entry?.annotationId)
-      || entry?.base?.[LIVE_PREVIEW_FLAG] === true
-      || entry?.survivor?.[LIVE_PREVIEW_FLAG] === true
-    ))
+    ? mutation.objectMutations.filter((entry) => {
+      const drop = dropId(entry?.storageKey)
+        || dropId(entry?.annotationId)
+        || entry?.base?.[LIVE_PREVIEW_FLAG] === true
+        || entry?.survivor?.[LIVE_PREVIEW_FLAG] === true;
+      if (drop) {
+        // Its ids must not fall back to a whole-mark erase either (review C).
+        if (entry?.storageKey != null) droppedEntryIds.add(String(entry.storageKey));
+        if (entry?.annotationId != null) droppedEntryIds.add(String(entry.annotationId));
+      }
+      return !drop;
+    })
     : mutation.objectMutations;
   const filterIds = (list) => (Array.isArray(list) ? list.filter((value) => !dropId(value)) : list);
   return {
@@ -4441,9 +4471,10 @@ function stripEraserMutation(mutation, ids, keepIds) {
   };
 }
 
-function stripLivePreviewObjects(state, byPage) {
+function stripLivePreviewObjects(state, byPage, swaps = null) {
   if (!byPage || typeof byPage !== 'object') return byPage;
   const ids = livePreviewIdsToStrip(state) || new Set();
+  const liveIds = currentLivePreviewIds(state);
   let changed = false;
   const next = {};
   for (const [pageNumber, page] of Object.entries(byPage)) {
@@ -4465,6 +4496,13 @@ function stripLivePreviewObjects(state, byPage) {
       if (id != null) flaggedIds.add(String(id));
       const delivered = deliveredCopyFor(state, object);
       if (delivered) kept.push(delivered);
+      // The overlay copy of a preview still on its way stays on screen. Any
+      // other copy (a stale one, or an edit made on a preview whose row has
+      // landed since) is swapped for what the doc holds, or taken off the
+      // screen: the screen must not show an edit that was never saved.
+      if (swaps && !(id != null && liveIds.has(String(id)) && !delivered)) {
+        swaps.push({ pageKey: pageNumber, from: object, to: delivered, toPage: pageNumber, key: id });
+      }
     }
     let nextPage = pageChanged ? { ...page, objects: kept } : page;
     if (page?.eraserMutation && (ids.size > 0 || flaggedIds.size > 0)) {
@@ -4480,16 +4518,35 @@ function stripLivePreviewObjects(state, byPage) {
   return changed ? next : byPage;
 }
 
-function withoutLivePreviewTargets(state, intent) {
+function carriesLivePreviewFlag(value) {
+  const stack = [value];
+  let visited = 0;
+  while (stack.length > 0 && visited < 200_000) {
+    const node = stack.pop();
+    visited += 1;
+    if (!node || typeof node !== 'object') continue;
+    if (Array.isArray(node)) {
+      for (const item of node) if (item && typeof item === 'object') stack.push(item);
+      continue;
+    }
+    if (node[LIVE_PREVIEW_FLAG] === true) return true;
+    for (const child of Object.values(node)) if (child && typeof child === 'object') stack.push(child);
+  }
+  return false;
+}
+
+// An erase gesture that involves another screen's in-flight stroke (as a
+// target, or inside its history/side effects) is cancelled as a conflict, as
+// it was before previews existed: its plan and side effects were built from
+// the screen, and they would carry the preview into the log (w30 review C).
+function eraseIntentInvolvesLivePreview(state, intent) {
   const ids = livePreviewIdsToStrip(state);
-  if (!ids || !Array.isArray(intent?.targets)) return intent;
   const live = getAnnotationsMap(state.doc);
-  const targets = intent.targets.filter((target) => !(
-    target?.storageKey != null
-    && ids.has(String(target.storageKey))
-    && !live.has(String(target.storageKey))
-  ));
-  return targets.length === intent.targets.length ? intent : { ...intent, targets };
+  for (const target of intent?.targets || []) {
+    const key = target?.storageKey == null ? null : String(target.storageKey);
+    if (key && ids?.has(key) && !live.has(key)) return true;
+  }
+  return carriesLivePreviewFlag(intent);
 }
 
 function scheduleLivePreviewSweep(state) {
@@ -4853,7 +4910,8 @@ function makeHandle(state) {
       const viewer = state.viewer;
       // Another screen's in-flight mark shown on this screen is never this
       // screen's edit (w30).
-      byPage = stripLivePreviewObjects(state, byPage);
+      const previewSwaps = [];
+      byPage = stripLivePreviewObjects(state, byPage, previewSwaps);
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
       const hasEraserMutation = Object.values(byPage || {}).some((page) => page?.eraserMutation?.id);
@@ -4958,8 +5016,12 @@ function makeHandle(state) {
       for (const swap of res.reconcile || []) {
         if (swap.to) recordViewerObject(viewer, swap.key, swap.toPage ?? swap.pageKey, swap.to);
       }
+      const reconcile = previewSwaps.length > 0
+        ? [...(res.reconcile || []), ...previewSwaps]
+        : res.reconcile;
       return {
         ...res,
+        ...(reconcile ? { reconcile } : {}),
         added: (Number(res.added) || 0) + laneBaseChanges.added,
         updated: (Number(res.updated) || 0) + laneBaseChanges.updated,
         removed: (Number(res.removed) || 0) + laneBaseChanges.removed,
@@ -5023,9 +5085,9 @@ function makeHandle(state) {
      */
     async commitEraseIntent(intent, opts = {}) {
       assertHandleWritable(state);
-      // A preview (another screen's stroke not in the doc yet) is not a target:
-      // it would cancel the whole gesture as a conflict (w30 review B).
-      intent = withoutLivePreviewTargets(state, intent);
+      if (eraseIntentInvolvesLivePreview(state, intent)) {
+        return { status: 'cancelled', reason: 'conflict', mutationId: intent?.mutationId };
+      }
       const quarantineGeneration = state.historyQuarantineGeneration;
       const materializedByStorageKey = annotationsByStorageKey(docToByPage(state.doc));
       const result = await commitEraseIntentOnDoc({

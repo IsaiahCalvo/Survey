@@ -19,6 +19,9 @@ import { gunzipSync } from 'node:zlib';
 import * as Y from 'yjs';
 import { openAnnotationDoc, __test } from '../src/services/annotationDocSync.js';
 import { writeAnnotationMark } from '../src/services/annotationDocStore.js';
+import { buildEraseIntent } from '../src/utils/annotationEraseTransaction.js';
+import { prepareEraseIntentForCommit } from '../src/utils/annotationEraseCommitPlan.js';
+import { mintPastedCloneIdentity } from '../src/utils/pasteCloneIdentity.js';
 
 const rect = (id, extra = {}) => ({
   type: 'rect',
@@ -548,6 +551,52 @@ test('erasing across another screen\'s in-flight stroke writes nothing of it, no
   assert.equal(JSON.stringify(b.doc.getMap('annotationEraserOps').toJSON()).includes('#123456'), false);
   await a.destroy();
   await b.destroy();
+});
+
+test('an erase gesture that involves a preview is cancelled; nothing of the preview reaches the erase outbox or the log', async () => {
+  const documentId = 'live-preview-erase-intent';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const bob = cloud.makeClient('user-b');
+  const a = await openFor(alice, documentId);
+  const b = await openFor(bob, documentId);
+  await until(() => a.isRealtimeReady() && b.isRealtimeReady());
+  const gate = deferred();
+  alice.appendGate = gate.promise;
+  a.applyByPage({ 1: { objects: [rect('alice-new', { stroke: '#abcdef' })] } });
+  assert.ok(await until(() => previewIds(b).includes('alice-new')));
+  const screen = screenOf(b);
+  const before = screen[1].objects.find((o) => o.data.id === 'alice-new');
+  const intent = prepareEraseIntentForCommit({
+    intent: buildEraseIntent({
+      mutationId: 'erase-1',
+      pageNumber: 1,
+      renderer: 'svg',
+      gesture: { points: [{ x: 1, y: 1 }], radius: 4, mode: 'full' },
+      targets: [{
+        domain: 'page-object', storageKey: 'alice-new', kind: 'rect', operation: 'delete',
+        pageNumber: 1, index: 0, before, after: null,
+      }],
+    }),
+    annotationsByPage: screen,
+    userId: 'user-b',
+    includeDeleteHistory: true,
+  });
+  const result = await b.commitEraseIntent(intent, { permissionContext: { mode: 'local-only' } });
+  assert.equal(result.status, 'cancelled');
+  assert.equal(JSON.stringify(b.doc.getMap('eraseOutbox').toJSON()).includes('#abcdef'), false);
+  await b.drain();
+  assert.equal(bob.appendCalls, 0);
+  gate.resolve();
+  alice.appendGate = null;
+  await a.drain();
+  assert.ok(await until(() => hasMark(b, 'alice-new')), 'Alice\'s stroke is untouched');
+  await Promise.all([a.destroy(), b.destroy()]);
+});
+
+test('a paste of a preview is the user\'s own new mark and is saved', async () => {
+  const pasted = mintPastedCloneIdentity({ ...rect('src'), __surveyLivePreview: true });
+  assert.equal(pasted.__surveyLivePreview, undefined);
 });
 
 test('a checkpoint that finishes after a refusal does not turn the status back to healthy', async () => {

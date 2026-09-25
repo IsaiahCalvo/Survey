@@ -410,8 +410,11 @@ What changed:
   cache or a Save backup that seeds a reopened empty store, an Undo snapshot, a
   re-keyed duplicate) is recognised and dropped; if the doc holds that mark by
   then, the copy stands for the mark as last delivered (nothing written,
-  nothing deleted). Eraser envelopes are cleaned the same way, and an erase
-  intent skips preview targets instead of cancelling the whole gesture. A key
+  nothing deleted) and the screen is swapped back to it (an edit made on a
+  preview is never shown as saved). Eraser envelopes are cleaned the same way;
+  an erase intent that involves a preview in any way (target, history or side
+  effect) is cancelled as a conflict, as it was before previews existed. A
+  paste of a preview drops the flag (it is the user's own new mark). A key
   another preview already announced is refused. A preview leaves when its row
   is applied (the real mark then comes from the doc) or after 20 s. Receivers
   cap previews per writer (50 a second) and in total (200).
@@ -419,7 +422,7 @@ What changed:
   and only its editors may send, while it is unlocked
   (`supabase/migrations/20260924230000_live_preview_channel_policies.sql`,
   NOT applied yet). Without those policies the join is refused; the app backs
-  off for 5 minutes and every edit uses the log path. A dev build can measure
+  off (one join a minute per document) and every edit uses the log path. A dev build can measure
   on a public topic with localStorage `survey:livePreviewPublicChannel` = `1`.
 
 Measured after (two headless tabs, this machine, prod database; paint = the
@@ -446,7 +449,14 @@ above. The second found a checkpoint clearing a refusal's red status (fixed:
 a compaction that finishes after a refusal cannot mark the handle healthy),
 preview copies written through cached lists, duplicates or eraser lanes
 (fixed: the flag and envelope cleaning), and a replayed recovery record not
-repainting (fixed: it repaints when accepted).
+repainting (fixed: it repaints when accepted). A third pass on those fixes
+found an erase's history effect still carrying a preview into the erase
+outbox (fixed: such a gesture is cancelled), the flag riding into pastes and
+into edits finished after the row landed (fixed: paste strips it; the screen
+is swapped back), and any checkpoint (not only compaction) turning a refusal
+green (fixed: every snapshot result carries the refusal generation it
+started under). Still open (low): erasing a counter while a same-series
+preview counter is on screen cancels as a conflict.
 
 ## Offline edits reach peers that are already open
 
