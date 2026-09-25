@@ -244,6 +244,7 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normaliz
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
+import { withoutUnstoredFieldsByPage } from './services/annotationMarkCodec.js';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
 import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
@@ -20049,6 +20050,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // sync status in a permanent error state. Viewers still see legacy
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
+    // w33: no one-time store compaction write while the document is locked.
+    documentLocked,
   });
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
@@ -22836,7 +22839,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } else {
         try {
           const {
-            annotationsByPage: importedAnnotations,
+            annotationsByPage: importedAnnotationsWithSource,
             calloutsByPage: importedAppCalloutsByPage,
             appLayerState,
             unsupportedCounts,
@@ -22845,6 +22848,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             rawPdfBytes: arrayBuffer
           });
           if (isCancelled) return;
+          // w33: the store keeps one geometry per imported mark (not the PDF's
+          // source geometry); the screen gets the same copy the store reads back.
+          const importedAnnotations = withoutUnstoredFieldsByPage(importedAnnotationsWithSource);
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
           appDebug('[PDFImport] native layer policy ' + JSON.stringify({
             documentId: pdfFile?.id || null,

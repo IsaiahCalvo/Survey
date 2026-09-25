@@ -49,7 +49,10 @@ function importedInk(page, index) {
   const appearancePath = inkPath(seed, 14, 200);
   return {
     type: 'path',
-    path: inkPath(seed, 14),
+    // w33: the store no longer keeps data.pdfInkSourceGeometry (it used to
+    // carry most of this fixture's weight), so the stored path is longer to
+    // keep each mark ~Package-2 sized in the store.
+    path: inkPath(seed, 100),
     left: 600 + noisy(seed, 90), top: 580 + noisy(seed, 91), width: 3.8, height: 1.43,
     stroke: 'transparent', strokeWidth: 0, fill: 'rgba(255, 0, 0, 1)',
     isPdfImported: true, pdfAnnotationId: id, pdfAnnotationType: 'Ink',
@@ -289,7 +292,12 @@ test('importing a Package-2-sized page through the viewer capture writes no WAL 
   const byPage = docToByPage(replay);
   assert.equal(byPage[9].objects.length, 400);
   const first = byPage[9].objects.find((object) => object.id === objects[0].id);
-  assert.deepEqual(first.data.pdfInkSourceGeometry, objects[0].data.pdfInkSourceGeometry);
+  // w33 (owner ruling 2026-09-24, format change): the store keeps ONE
+  // geometry per imported mark. The rendered path must survive the split
+  // exactly; the PDF's source geometry (provenance only) is not stored.
+  assert.deepEqual(first.path, objects[0].path);
+  assert.deepEqual(first.polygons, objects[0].polygons);
+  assert.equal(first.data.pdfInkSourceGeometry, undefined);
   await handle.destroy();
 });
 

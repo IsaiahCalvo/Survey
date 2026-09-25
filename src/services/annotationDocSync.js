@@ -77,6 +77,7 @@ import {
 } from './annotationMarkStore.js';
 import { WAL_UPDATE_MAX_BYTES, splitYjsUpdate } from './annotationUpdateSplit.js';
 import { carryOverLegacyMarks, legacyCarryOverChangedCount } from './legacyMarksCarryOver.js';
+import { compactAnnotationStore } from './annotationStoreCompaction.js';
 import { syncTrace } from './syncTrace.js';
 import {
   acquireLiveBus,
@@ -5230,6 +5231,24 @@ function makeHandle(state) {
       assertHandleWritable(state);
       const result = carryOverLegacyMarks(state.doc, { origin: 'local' });
       if (legacyCarryOverChangedCount(result) > 0) {
+        state.lastByPage = null;
+        if (notify) notifyChange(state);
+      }
+      return result;
+    },
+
+    /**
+     * w33: shrink what this document already stores (annotationStoreCompaction.js):
+     * the old `annotations` map once the carry-over is done, and each mark's
+     * dropped fields / derivable polygons. Ordinary 'local' edits (WAL append,
+     * split under 256 KB); the next checkpoint of the live doc is then small.
+     * Marks read back without the dropped provenance field, so the screen is
+     * repainted from the store (an erase compares the screen's copy with it).
+     */
+    compactAnnotationStore({ notify = true } = {}) {
+      assertHandleWritable(state);
+      const result = compactAnnotationStore(state.doc, { origin: 'local' });
+      if (result.marksCompacted > 0) {
         state.lastByPage = null;
         if (notify) notifyChange(state);
       }
