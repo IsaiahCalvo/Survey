@@ -342,3 +342,29 @@ test('an old identity gap (nothing pruned) reads on, with no checkpoint download
   await a.destroy();
   await b.destroy();
 });
+
+test('a screen that already read the pruned rows in order does not download the checkpoint again', async () => {
+  const documentId = 'prune-already-covered';
+  const cloud = createCloud(documentId);
+  const a = await open(cloud, 'user-a', 'a', documentId);
+  const b = await open(cloud, 'user-b', 'b', documentId); // a viewer: never checkpoints
+  await settle(a, b);
+  const mine = [];
+  await draw(a, mine, 'z', 30);
+  await settle(a, b);
+  // A reconnect reads the rows in order: B's coveredSeq reaches the head while
+  // its replay baseline stays where it opened.
+  cloud.goOffline('user-b');
+  cloud.reconnect('user-b');
+  await settle(a, b);
+  await a.flushSnapshot();
+  cloud.prune(5);
+  const reads = cloud.stats.snapshotBodyReads;
+  cloud.goOffline('user-b');
+  cloud.reconnect('user-b');
+  await settle(a, b);
+  assert.equal(markIds(b.getByPage()).length, 30);
+  assert.equal(cloud.stats.snapshotBodyReads, reads, 'nothing B lacked was pruned: no checkpoint download');
+  await a.destroy();
+  await b.destroy();
+});

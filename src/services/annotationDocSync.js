@@ -2475,7 +2475,17 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
         // checkpoint really is past the cursor (the prune never deletes rows
         // at or after its at_seq). Rows written before the July 2026 WAL
         // migration can carry identity gaps: those read on (w36 review B).
-        if (checkGap && seen === 0 && Number(row.seq) > Number(cursor) + 1) throw pruned;
+        // Rows at or below coveredSeq were applied by an ordered read already
+        // (a viewer's replayFromSeq stays behind while coveredSeq climbs), so
+        // only a gap above coveredSeq can hide an edit (w36 review C); a gap
+        // already found to be history at this cursor is not asked about again.
+        if (
+          checkGap
+          && seen === 0
+          && Number(row.seq) > Number(cursor) + 1
+          && Number(row.seq) - 1 > (Number(state.coveredSeq) || 0)
+          && state.historyGapCursor !== Number(cursor)
+        ) throw pruned;
         seen += 1;
         try {
           // clientId is stable per install, not per open handle. Another tab or
@@ -2506,7 +2516,11 @@ function catchUpTail(state, { countsAsReconnect = true } = {}) {
       if (error === pruned) {
         const verdict = await prunedTailVerdict(state, cursor);
         if (verdict === 'pruned') return recoverFromPrunedTail(state, cursor);
-        if (verdict === 'gap-is-history' && !state.destroyed) { checkGap = false; continue; }
+        if (verdict === 'gap-is-history' && !state.destroyed) {
+          state.historyGapCursor = Number(cursor);
+          checkGap = false;
+          continue;
+        }
         return false; // identity unreadable: the next catch-up tries again
       }
       if (error !== stopped) {

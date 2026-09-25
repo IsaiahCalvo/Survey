@@ -658,8 +658,10 @@ export const AuthProvider = ({ children }) => {
 
     // w36: cloud PDFs this device kept for fast reopen must not outlive the
     // account on a shared computer. Awaited (at most 1.5 s): the reload below
-    // would cut an unfinished IndexedDB clear short (the next signed-out start
-    // clears it anyway).
+    // would cut an unfinished IndexedDB clear short. (The next signed-out
+    // start clears it too - except after an OFFLINE sign-out, which auth-js
+    // abandons with the session still stored; the cache is then emptied by
+    // the next real sign-out or another account signing in.)
     try {
       await Promise.race([pdfByteCache().clear(), new Promise((resolve) => setTimeout(resolve, 1_500))]);
     } catch { /* cache only */ }

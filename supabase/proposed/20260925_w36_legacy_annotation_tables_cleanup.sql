@@ -61,7 +61,10 @@ BEGIN;
 --      FULL, so each delete would write the whole old row (~100+ MB) to the
 --      Postgres WAL for Realtime to decode. No live code subscribes to this
 --      table (the viewer's subscription returns early; the other has no
---      callers), so the default identity (primary key only) is enough.
+--      callers), so the default identity (primary key only) is enough. This
+--      stays DEFAULT for good (FULL was set 2026-04-26 for a cross-device
+--      delete sync that is retired). The ALTERs hold an exclusive lock until
+--      COMMIT: the viewer's Survey Marker copy writes wait a few seconds.
 ALTER TABLE public.document_annotations REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.document_annotations DISABLE TRIGGER trg_doc_annotations_changed_del;
 

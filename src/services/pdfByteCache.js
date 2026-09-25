@@ -161,6 +161,11 @@ export function createPdfByteCache({
   // Bumped by clear(): a write that started before a sign-out must not land
   // after it (the account's bytes would outlive the sign-out).
   let generation = 0;
+  // Bumped by removePath (a local upload/replace/delete of that path): a write
+  // that began before it must not store the older bytes (w36 review C: an
+  // upload seed outliving its 2 s cap, then a page edit replacing the file).
+  const pathEpochs = new Map();
+  const pathEpoch = (path) => pathEpochs.get(path) || 0;
   let budgetPromise = null;
   const budget = () => {
     if (typeof budgetBytes !== 'function') return Promise.resolve(budgetBytes);
@@ -171,22 +176,23 @@ export function createPdfByteCache({
   const db = async () => {
     if (disabled) return null;
     if (!dbPromise) {
-      const opening = openDatabase(indexedDb, timeoutMs).then((database) => {
+      let stored = null;
+      stored = openDatabase(indexedDb, timeoutMs).then((database) => {
         // Another tab upgrading the database: let it, and reopen next time
-        // instead of keeping a closed handle (w36 review A).
+        // instead of keeping a closed handle (w36 reviews A, C).
         database.onversionchange = () => {
           try { database.close(); } catch { /* already closed */ }
-          if (dbPromise === opening) dbPromise = null;
+          if (dbPromise === stored) dbPromise = null;
         };
         return database;
-      });
-      dbPromise = opening.catch((error) => {
+      }).catch((error) => {
         // Private mode / blocked upgrade: no cache for this page, downloads as before.
         disabled = true;
-        dbPromise = null;
+        if (dbPromise === stored) dbPromise = null;
         console.warn('[pdfByteCache] disabled:', error?.message || error);
         return null;
       });
+      dbPromise = stored;
     }
     return dbPromise;
   };
@@ -225,11 +231,11 @@ export function createPdfByteCache({
   };
 
   /** Keep `bytes` (an ArrayBuffer) as version `stamp` of `path` for `actorId`. */
-  const put = async ({ actorId, path, stamp, bytes, since = generation }) => {
+  const put = async ({ actorId, path, stamp, bytes, since = generation, epoch = pathEpoch(path) }) => {
     // `since`: the generation the caller's READ started in (w36 review A: a
     // download that began before a sign-out must not land after its clear).
     const startedIn = since;
-    if (startedIn !== generation) return false;
+    if (startedIn !== generation || epoch !== pathEpoch(path)) return false;
     const key = pdfCacheKey(actorId, path);
     if (!key || !stamp || !(bytes instanceof ArrayBuffer)) return false;
     const size = bytes.byteLength;
@@ -237,7 +243,7 @@ export function createPdfByteCache({
     if (!size || size > maxEntryBytes || size > limit) return false;
     try {
       const database = await db();
-      if (!database || startedIn !== generation) return false;
+      if (!database || startedIn !== generation || epoch !== pathEpoch(path)) return false;
       const tx = database.transaction(ALL_STORES, 'readwrite');
       const committed = transactionResult(tx, timeoutMs);
       const files = tx.objectStore(FILE_STORE);
@@ -271,9 +277,10 @@ export function createPdfByteCache({
         };
       };
       await committed;
-      if (startedIn !== generation) {
-        // A sign-out cleared the cache while this write was in flight.
-        await clear();
+      if (startedIn !== generation || epoch !== pathEpoch(path)) {
+        // A sign-out/account change or a local write of this path landed while
+        // this write was in flight: drop just this entry (w36 review C).
+        await remove(key);
         return false;
       }
       return true;
@@ -341,14 +348,15 @@ export function createPdfByteCache({
   /** Every account's copy of `path` (it was just written or deleted here). */
   const removePath = async (path) => {
     if (!isPdfPath(path)) return; // never cached: no transaction (survey data autosaves)
+    pathEpochs.set(path, pathEpoch(path) + 1);
     try { await removeWhere(PATH_INDEX, path); } catch (error) {
       console.warn('[pdfByteCache] remove failed:', error?.message || error);
     }
   };
 
   /** Keep only `actorId`'s entries (another account's must not stay on disk). */
-  const retainOnly = async (actorId) => {
-    generation += 1; // a read of the previous account in flight must not land
+  const retainOnly = async (actorId, { abortInFlight = true } = {}) => {
+    if (abortInFlight) generation += 1; // a read of the previous account in flight must not land
     try { await removeWhere(null, (row) => row.actorId !== actorId); } catch (error) {
       console.warn('[pdfByteCache] retain failed:', error?.message || error);
     }
@@ -379,6 +387,7 @@ export function createPdfByteCache({
 
   return {
     get generation() { return generation; },
+    pathEpoch,
     get,
     put,
     remove,
@@ -424,6 +433,7 @@ export async function readPdfThroughCache({ cache, actorId, path, fetchInfo, dow
     return download();
   }
   const since = cache.generation;
+  const epoch = cache.pathEpoch?.(path);
   let info = null;
   try {
     const result = await fetchInfo();
@@ -448,7 +458,7 @@ export async function readPdfThroughCache({ cache, actorId, path, fetchInfo, dow
   // stamp, which the next open's check then rejects (one extra download).
   if (blob && typeof blob.arrayBuffer === 'function' && blob.size === pdfCacheInfoSize(info)) {
     blob.arrayBuffer()
-      .then((bytes) => cache.put({ actorId, path, stamp, bytes, since }))
+      .then((bytes) => cache.put({ actorId, path, stamp, bytes, since, epoch }))
       .catch(() => {});
   }
   return blob;
@@ -467,13 +477,14 @@ export async function seedPdfCacheFromUpload({ cache, actorId, path, fetchInfo, 
   if (!cache || cache.isDisabled || !pdfCacheKey(actorId, path) || !isPdfPath(path)) return false;
   if (!file || typeof file.arrayBuffer !== 'function' || typeof fetchInfo !== 'function') return false;
   const since = cache.generation;
+  const epoch = cache.pathEpoch?.(path);
   try {
     const result = await fetchInfo();
     if (result?.error) return false;
     const stamp = pdfCacheStamp(result?.data);
     if (!stamp || Number(file.size) !== pdfCacheInfoSize(result.data)) return false;
     const bytes = await file.arrayBuffer();
-    return cache.put({ actorId, path, stamp, bytes, since });
+    return cache.put({ actorId, path, stamp, bytes, since, epoch });
   } catch {
     return false;
   }
@@ -489,8 +500,11 @@ export async function seedPdfCacheFromUpload({ cache, actorId, path, fetchInfo, 
 // expired access token reports INITIAL_SESSION without a session although the
 // refresh token is still there (auth-js _emitInitialSession): that must not
 // empty the cache (w36 review A) - the next refresh brings the account back.
-function storedSessionExists(storage) {
+function storedSessionExists(storage, storageKey) {
   try {
+    // This client's own key only (w36 review C: another project's leftover
+    // token must not keep a signed-out device's cache).
+    if (storageKey) return Boolean(storage.getItem(storageKey));
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index);
       if (key && /^sb-.*-auth-token$/.test(key) && storage.getItem(key)) return true;
@@ -504,15 +518,18 @@ export function bindPdfCacheToAuth(client, cache, { storage = globalThis.localSt
   let lastActor;
   client.auth.onAuthStateChange((event, session) => {
     const actor = session?.user?.id ?? null;
-    if (event === 'SIGNED_OUT' || (!actor && !storedSessionExists(storage))) {
+    if (event === 'SIGNED_OUT' || (!actor && !storedSessionExists(storage, client.auth.storageKey))) {
       lastActor = null;
       cache.clear().catch(() => {});
       return;
     }
     if (!actor) return; // session still stored (offline start): keep the cache
     if (actor !== lastActor) {
+      // Reads in flight belong to the previous account only when there was
+      // one (the first event of a page load has none: w36 review C).
+      const abortInFlight = lastActor != null;
       lastActor = actor;
-      cache.retainOnly(actor).catch(() => {});
+      cache.retainOnly(actor, { abortInFlight }).catch(() => {});
     }
   });
 }

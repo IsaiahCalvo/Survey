@@ -364,3 +364,33 @@ test('an upload is not seeded when Storage names a different size or refuses', a
   assert.equal(await seedPdfCacheFromUpload({ cache, actorId: 'a', path: 'a/data.json', file, fetchInfo: async () => infoFor(pdfBytes(100)) }), false);
   assert.equal((await cache.stats()).entries, 0);
 });
+
+test('another tab deleting the database: this tab reopens it instead of keeping a dead handle', async () => {
+  const factory = new IDBFactory();
+  const cache = createPdfByteCache({ indexedDb: factory, timeoutMs: 2000 });
+  await cache.put({ actorId: 'a', path: 'a/1.pdf', stamp: 's', bytes: pdfBytes(100).buffer });
+  // Another tab (or "clear site data") deletes the database: versionchange.
+  await new Promise((resolve, reject) => {
+    const request = factory.deleteDatabase('survey-pdf-cache-v1');
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+  assert.equal(await cache.get(pdfCacheKey('a', 'a/1.pdf'), 's'), null, 'the copy went with the database');
+  assert.equal(await cache.put({ actorId: 'a', path: 'a/1.pdf', stamp: 's', bytes: pdfBytes(100).buffer }), true,
+    'the cache works again (a fresh handle), not InvalidStateError forever');
+  assert.equal((await cache.get(pdfCacheKey('a', 'a/1.pdf'), 's'))?.byteLength, 100);
+});
+
+test('an upload seed still running when the same file is replaced here does not store the old bytes', async () => {
+  const cache = createPdfByteCache({ indexedDb: new IDBFactory(), timeoutMs: 2000 });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const seeding = seedPdfCacheFromUpload({
+    cache, actorId: 'a', path: PATH, file: new Blob([pdfBytes(1000, 1)]),
+    fetchInfo: async () => { await gate; return infoFor(pdfBytes(1000), 'v2'); }, // already the replaced version
+  });
+  await cache.removePath(PATH); // replaceDocument on this device
+  release();
+  assert.equal(await seeding, false);
+  assert.equal((await cache.stats()).entries, 0);
+});
