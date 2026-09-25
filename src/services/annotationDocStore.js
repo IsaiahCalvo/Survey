@@ -25,8 +25,10 @@ import * as Y from 'yjs';
 import {
   erasePageAnnotations,
   intersectErasedPathSurvivors,
+  pathObjectToPagePolygons,
   rebaseErasedPathSurvivor,
 } from '../utils/pageSpaceEraser.js';
+import { polygonSetArea } from '../utils/paperAnnotationGeometry.js';
 import {
   applyInkGeometryMatrix,
   createInkPathAffine,
@@ -760,7 +762,7 @@ export function docToByPage(doc, { replayStats = null } = {}) {
   let polygonIntersections = 0;
   for (const [storageKey, lanes] of lanesByAnnotation) {
     annotationsWithLanes += 1;
-    lanes.sort(([a], [b]) => a.localeCompare(b));
+    lanes.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const location = baseLocations.get(storageKey);
     const page = location?.page ?? Number(lanes[0][1].pageNumber);
     const pageAnnotations = byPage[page];
@@ -804,7 +806,7 @@ export function materializeObjectUnderLanes(doc, storageKey, baseObject) {
     }
   });
   if (pairs.length === 0 || !baseObject) return baseObject || null;
-  pairs.sort(([a], [b]) => a.localeCompare(b));
+  pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return applyEraserLanesToObject(baseObject, pairs, key).object;
 }
 
@@ -840,7 +842,14 @@ function applyEraserLanesToObject(baseObject, lanes, storageKey) {
   )) {
     intersected = survivors[0];
   } else {
-    intersected = intersectErasedPathSurvivors(survivors);
+    // w38: the base outline's area lets the intersection check its answer.
+    let outlineArea = null;
+    try {
+      outlineArea = polygonSetArea(pathObjectToPagePolygons(baseObject));
+    } catch {
+      outlineArea = null;
+    }
+    intersected = intersectErasedPathSurvivors(survivors, { outlineArea });
   }
   const survivor = intersected
     ? projectEraserGeometryOntoCurrentBase(baseObject, intersected)
@@ -879,7 +888,7 @@ export function materializeAnnotationKeys(doc, storageKeys) {
       result.set(key, { page: Number(entry.p), object: entry.o });
       continue;
     }
-    lanes.sort(([a], [b]) => a.localeCompare(b));
+    lanes.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const { object } = applyEraserLanesToObject(entry.o, lanes, key);
     result.set(key, object ? { page: Number(entry.p), object } : null);
   }

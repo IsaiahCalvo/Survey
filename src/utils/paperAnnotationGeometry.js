@@ -42,6 +42,90 @@ export function intersectPolygonSets(left, right) {
   return normalizeMultiPolygon(intersection(a, b));
 }
 
+/**
+ * w38 (2026-09-25): intersection of two cuts of the SAME outline (two eraser
+ * lanes' survivors). They share most edges bit for bit, which Martinez
+ * mis-cuts (see separateCoincidentVertices); nudge the second operand off the
+ * shared vertices first. The result can differ from the exact answer only by
+ * ~1e-9 of the shape's size along shared edges.
+ */
+// Always move `movable` a little, and keep growing the move (x16) while any
+// of its vertices still equals one of `fixed`'s bit for bit.
+function nudgeApart(fixed, movable, factor) {
+  const fixedVertices = new Set();
+  for (const polygon of fixed) {
+    for (const ring of polygon) {
+      for (const point of ring) fixedVertices.add(`${point[0]},${point[1]}`);
+    }
+  }
+  const touches = (polygons) => polygons.some((polygon) => polygon.some((ring) => (
+    ring.some((point) => fixedVertices.has(`${point[0]},${point[1]}`))
+  )));
+  let moved = movable;
+  let step = factor;
+  for (let attempt = 0; attempt < 6; attempt += 1, step *= 16) {
+    moved = separateCoincidentVertices(fixed, movable, step);
+    if (!touches(moved)) return moved;
+  }
+  return moved;
+}
+
+export function intersectSharedOutlinePolygonSets(left, right, { outlineArea = null } = {}) {
+  const a = normalizeMultiPolygon(left);
+  const b = normalizeMultiPolygon(right);
+  if (!a.length || !b.length) return [];
+  // Even nudged, Martinez occasionally mis-cuts near-coincident edges. Check
+  // the answer against what must hold for two subsets of one outline —
+  // |A∩B| <= min(|A|, |B|) and, with the outline's area, |A∩B| >= |A|+|B|-|O|
+  // — and try the other operand order / a larger nudge before settling for
+  // the least-wrong attempt.
+  const areaA = polygonSetArea(a);
+  const areaB = polygonSetArea(b);
+  const scaleArea = Math.max(areaA, areaB, Number(outlineArea) || 0, Number.MIN_VALUE);
+  // Outlines are rebuilt at <= 0.05-unit curve tolerance; real mis-cuts
+  // measured 1e-3..5e-2 of the area.
+  const tolerance = scaleArea * 1e-4;
+  const upper = Math.min(areaA, areaB) + tolerance;
+  const lower = Number.isFinite(Number(outlineArea)) && Number(outlineArea) > 0
+    ? areaA + areaB - Number(outlineArea) - tolerance
+    : -Infinity;
+  // Each attempt also takes the union with the same operands: a correct pair
+  // satisfies |A∩B| + |A∪B| = |A| + |B|, which a mis-cut breaks even when
+  // painted-back and dropped ink happen to fit the bounds above.
+  // The nudge is checked against the operand it must avoid: lanes of one
+  // mark share one box, so with a fixed factor the third lane landed exactly
+  // on the second lane's nudged edges already in the running result, and
+  // Martinez ran out of memory (w38 review D, 3+ lanes).
+  const attempts = [
+    [a, () => nudgeApart(a, b, 1e-9)],
+    [b, () => nudgeApart(b, a, 1e-9)],
+    [a, () => nudgeApart(a, b, 1e-7)],
+    [b, () => nudgeApart(b, a, 1e-7)],
+  ];
+  let best = null;
+  for (const [fixed, moved] of attempts) {
+    let result;
+    let unionArea;
+    try {
+      const other = moved();
+      result = normalizeMultiPolygon(intersection(fixed, other));
+      unionArea = polygonSetArea(union(fixed, other));
+    } catch {
+      continue;
+    }
+    const area = polygonSetArea(result);
+    const violation = Math.max(
+      0,
+      area - upper,
+      lower - area,
+      Math.abs(area + unionArea - areaA - areaB) - tolerance,
+    );
+    if (violation === 0) return result;
+    if (!best || violation < best.violation) best = { result, violation };
+  }
+  return best ? best.result : [];
+}
+
 export function subtractPolygonSets(left, right) {
   const subject = normalizeMultiPolygon(left);
   const clip = normalizeMultiPolygon(right);
@@ -2561,7 +2645,75 @@ function ribbonPatch(chunk, ribbonWidth) {
   return normalizeMultiPolygon([ring]);
 }
 
-function subtractPolygonPart(subject, eraser, sourceWidth) {
+/**
+ * w38 (2026-09-25): Martinez (0.7.4) mis-cuts when the two operands share
+ * coincident edges, and moving one operand by ~1e-9 of its size is enough to
+ * avoid it (measured: 0 failures in 199 random repeats, was 49). Two places
+ * hand it such operands:
+ *   * an eraser disk identical to one already applied (the same spot erased
+ *     twice — a second click on the same pixel): Martinez dropped ink far
+ *     outside the eraser (up to 1,245 units^2 on a 30-unit pen stroke) or
+ *     rejected the gesture;
+ *   * two eraser lanes' survivors of one stroke (both cut from the same
+ *     outline): the intersection painted dabs back in and dropped blocks.
+ * Shared edges need not share a vertex (a collinear overlap, or a copy a few
+ * ulps off), so for the survivor intersection the nudge is unconditional
+ * (and the answer is checked); erasers use separateSharedEraserVertices.
+ * Grow `movable` by a factor of
+ * 1 + 1e-9 about a point inside its box that is not its centre (a vertex
+ * sitting exactly on the scaling point would never move). Invisible, the same
+ * on every screen, and a larger eraser still clears everything the gesture
+ * covered. `fixed` is accepted for symmetry with the callers.
+ */
+export function separateCoincidentVertices(fixed, movable, factor = 1e-9) {
+  void fixed;
+  const polygons = normalizeMultiPolygon(movable);
+  if (!polygons.length) return polygons;
+  const bounds = boundsOfCommands(polygonSetToCommands(polygons));
+  const size = Math.max(bounds.w, bounds.h);
+  if (!(size > 0) || !Number.isFinite(size)) return polygons;
+  const pivotX = bounds.x + bounds.w * 0.4142135623730951;
+  const pivotY = bounds.y + bounds.h * 0.7320508075688772;
+  const scale = 1 + factor;
+  return polygons.map((polygon) => polygon.map((ring) => ring.map(([x, y]) => [
+    pivotX + (x - pivotX) * scale,
+    pivotY + (y - pivotY) * scale,
+  ])));
+}
+
+/**
+ * The eraser-side use of the nudge (subtractPolygonPart) stays conditional:
+ * only an eraser that shares a vertex with the subject bit for bit (the same
+ * spot erased twice) is moved. Nudging every eraser made ordinary bites on
+ * axis-aligned PDF appearance layers fail (tests/pdfAppearanceMappingFidelity:
+ * a disk centred on a rectangle's edge), so the unconditional form is kept for
+ * the checked survivor intersection only. The scaling point avoids the box
+ * centre (a vertex exactly there would never move) and the factor grows if a
+ * shared vertex survives.
+ */
+function separateSharedEraserVertices(subject, movable) {
+  const subjectVertices = new Set();
+  for (const polygon of normalizeMultiPolygon(subject)) {
+    for (const ring of polygon) {
+      for (const point of ring) subjectVertices.add(`${point[0]},${point[1]}`);
+    }
+  }
+  const eraser = normalizeMultiPolygon(movable);
+  const touches = (polygons) => polygons.some((polygon) => polygon.some((ring) => (
+    ring.some((point) => subjectVertices.has(`${point[0]},${point[1]}`))
+  )));
+  if (!touches(eraser)) return eraser;
+  let factor = 1e-9;
+  let moved = eraser;
+  for (let attempt = 0; attempt < 4; attempt += 1, factor *= 16) {
+    moved = separateCoincidentVertices(subject, eraser, factor);
+    if (!touches(moved)) return moved;
+  }
+  return moved;
+}
+
+function subtractPolygonPart(subject, rawEraser, sourceWidth) {
+  const eraser = separateSharedEraserVertices(subject, rawEraser);
   let overlap;
   try {
     overlap = normalizeMultiPolygon(intersection(subject, eraser));
