@@ -157,6 +157,7 @@ import {
   summarizeSelectionRestyle,
 } from './utils/selectionRestyle.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
+import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
@@ -4533,7 +4534,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // polyline) puts the Style picker on Cloud and loads its bump size, so the
     // toolbar always reflects what is selected. Counters are circles internally
     // but are never clouds, hence the isCounter guard.
-    if (!isCounter && toolSupportsCloudBorderStyle(type) && annot.data?.pdfCloudIntensity != null) {
+    // w43: a clouded text box border loads Cloud + its bump size the same way.
+    if (!isCounter && toolOffersCloudLineStyle(type) && annot.data?.pdfCloudIntensity != null) {
       setLineBorderStyle('cloud');
       setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
     } else if (dash && dash.length >= 2) {
@@ -4591,11 +4593,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     // UX (2026-07-17, callout line style): reflect the selected callout's
     // leader style in the Style picker (absent field = legacy solid callout).
+    // w43: a callout whose text box is clouded shows Cloud and its bump size.
     setLineBorderStyle(
-      style.lineStyle === 'dashed' || style.lineStyle === 'dotted'
+      style.lineStyle === 'dashed' || style.lineStyle === 'dotted' || style.lineStyle === 'cloud'
         ? style.lineStyle
         : 'solid',
     );
+    if (style.lineStyle === 'cloud') setCloudIntensity(Number(style.cloudIntensity) || 2);
   }, [selectedToolbarCallout]);
 
   // w41: a restyle group loads ITS values into the bar (the first member that
@@ -8757,6 +8761,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (isCalloutSelected()) {
       if (next === 'solid' || next === 'dashed' || next === 'dotted') {
         handlePatchSelectedCallout({ lineStyle: next });
+      } else if (next === 'cloud') {
+        // w43: Cloud clouds the callout's text box (one undoable style
+        // patch); the leader and arrowhead stay straight.
+        handlePatchSelectedCallout({ lineStyle: 'cloud', cloudIntensity: Math.max(1, Number(cloudIntensity) || 2) });
       }
       return;
     }
@@ -8781,9 +8789,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       kind: 'cloudIntensity',
       cloudIntensity: Math.max(1, Number(next) || 2),
     })) return;
+    if (isCalloutSelected()) {
+      // w43: the bump size of a clouded callout text box.
+      if (selectedToolbarCalloutRef.current?.callout?.style?.lineStyle === 'cloud'
+        || lineBorderStyleRef.current === 'cloud') {
+        handlePatchSelectedCallout({ cloudIntensity: Math.max(1, Number(next) || 2) });
+      }
+      return;
+    }
     if (!isEditableShapeSelected()) return;
     handlePatchSelectedAnnotation({ data: { pdfCloudIntensity: Math.max(1, Number(next) || 2) } });
-  }, [handlePatchSelectedAnnotation]);
+  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
@@ -12323,10 +12339,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         lineThickness: Math.max(1, Number(strokeWidth) || 2),
         // UX (2026-07-17, callout line style): new callouts honor the Style
         // picker's current choice, exactly like new shapes do (applyBorderStyle
-        // at shape creation). 'cloud' is rect-only — treat as solid here.
-        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted')
+        // at shape creation). w43 (2026-09-26): 'cloud' clouds the new
+        // callout's TEXT BOX at the bar's bump size; its leader stays straight.
+        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted' || lineBorderStyle === 'cloud')
           ? lineBorderStyle
           : 'solid',
+        ...(lineBorderStyle === 'cloud'
+          ? { cloudIntensity: Math.max(1, Number(cloudIntensity) || 2) }
+          : {}),
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,
           fontFamily: textStyleDefaults.fontFamily,
@@ -12360,7 +12380,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, cloudIntensity, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -25347,8 +25367,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       supportsCloudStyle: groupSummary
         ? groupSummary.capabilities.cloud
         : selectionMappedTool && activeTool === 'select'
-        ? (selectedAnnot?.data?.type !== 'counter' && toolSupportsCloudBorderStyle(selectedType))
-        : toolSupportsCloudBorderStyle(activeTool),
+        ? (selectedToolbarCallout
+          ? true
+          : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
+        : toolOffersCloudLineStyle(activeTool),
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
       textMarkupOverlapMode: selectedAnnot?.data?.type === 'text-markup'
@@ -35179,6 +35201,7 @@ ${pageBlocks}
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
+                                  newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}
                                   // KAL-88 — survey/region scope inputs for NEW text commits;
                                   // same sources SVGAnnotationLayer's creation commit uses.

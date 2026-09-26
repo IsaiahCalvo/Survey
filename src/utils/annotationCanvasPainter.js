@@ -35,6 +35,7 @@ import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 // scale baked in, translate + rotate frame, crown outline, scalloped fill) so
 // the bitmap twin is the SVG layer's output, not a re-derivation of it.
 import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
@@ -954,11 +955,21 @@ function drawText(context, object) {
   context.translate(toNumber(object.left), toNumber(object.top));
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
 
-  if (isVisiblePaint(object.backgroundColor)) {
+  // w43: twin of renderText's cloud border - a text box with line style Cloud
+  // paints the house rectangle cloud (utils/textCloudBorder.js) in this local
+  // frame, its background filling the scalloped region.
+  const cloudBorder = textboxCloudStandIn(object, { left: 0, top: 0, width: effectiveWidth, height: effectiveHeight });
+  const cloudBorderGeometry = cloudBorder && resolveAnnotationCloudSpec({ ...cloudBorder, angle: 0 })
+    ? resolveCloudAnnotationGeometry({ ...cloudBorder, angle: 0 })
+    : null;
+  if (cloudBorderGeometry) {
+    drawCloud(context, { ...cloudBorder, angle: 0, opacity: object.opacity ?? 1, globalCompositeOperation: object.globalCompositeOperation }, cloudBorderGeometry);
+  }
+  if (!cloudBorderGeometry && isVisiblePaint(object.backgroundColor)) {
     context.fillStyle = object.backgroundColor;
     context.fillRect(0, 0, effectiveWidth, effectiveHeight);
   }
-  if (toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
+  if (!cloudBorderGeometry && toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
     context.strokeStyle = object.stroke;
     context.lineWidth = toNumber(object.strokeWidth);
     if (typeof context.setLineDash === 'function') context.setLineDash([]);
@@ -1378,7 +1389,25 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // every callout stroke scales with zoom now.
   paintArrowheadSpec(context, arrowheadSpec);
 
-  if (isVisiblePaint(fillColor)) {
+  // w43: twin of renderCallout - line style Cloud clouds ONLY the text box
+  // (the leaders above stay straight: calloutLineDashArray gives 'cloud' no
+  // dash). Same visible box, border width and fill as the plain branch.
+  const boxCloud = calloutBoxCloudStandIn(callout, {
+    x: textBox.x, y: textBox.y, width: textBox.width, height: boxHeightWithDescenders,
+  }, {
+    stroke: lineColor,
+    strokeWidth: Math.max(1, lineThickness * 0.7),
+    fill: colorWithAlpha(fillColor, fillOpacity),
+    opacity: borderOpacity,
+  });
+  const boxCloudGeometry = boxCloud && resolveAnnotationCloudSpec(boxCloud)
+    ? resolveCloudAnnotationGeometry(boxCloud)
+    : null;
+  if (boxCloudGeometry) {
+    drawCloud(context, boxCloud, boxCloudGeometry);
+    context.globalAlpha = borderOpacity;
+  }
+  if (!boxCloudGeometry && isVisiblePaint(fillColor)) {
     context.save();
     context.globalAlpha = borderOpacity * fillOpacity;
     context.fillStyle = fillColor;
@@ -1394,7 +1423,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // Box border shares the leader's line style (paintArrowheadSpec restored
   // its own dash state, so re-assert before the rect stroke).
   if (typeof context.setLineDash === 'function') context.setLineDash(leaderDash);
-  context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
+  if (!boxCloudGeometry) context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
   if (typeof context.setLineDash === 'function') context.setLineDash([]);
 
   const text = String(callout.text || '');

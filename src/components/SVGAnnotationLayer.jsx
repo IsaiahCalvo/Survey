@@ -5758,6 +5758,11 @@ const SVGAnnotationLayer = memo(({
             strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
             text: liveTextEditBounds.text || '',
             opacity: 1,
+            // w43: a box drawn with the Style picker on Cloud previews its
+            // cloud border while it is typed into.
+            ...(liveTextEditBounds.cloudIntensity != null
+              ? { data: { pdfCloudIntensity: liveTextEditBounds.cloudIntensity } }
+              : {}),
             // hideText=true (4th arg): TextEditOverlay shows the typed
             // glyphs + caret during creation; this preview contributes only
             // the box chrome (border/background) so text never double-paints.

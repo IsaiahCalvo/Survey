@@ -181,13 +181,16 @@ export function restyleCapabilities(annotation) {
     return { ...none, stroke: true, width: true, lineStyle: true, arrowheads: isArrowLine(annotation) };
   }
   if (type === 'textbox') {
-    return { ...none, stroke: true, fill: true, width: true, lineStyle: true };
+    // w43 (2026-09-26, owner request): a text box's border takes Cloud too
+    // (utils/textCloudBorder.js draws it as the house rectangle cloud).
+    return { ...none, stroke: true, fill: true, width: true, lineStyle: true, cloud: true };
   }
   return none;
 }
 
 const lineStyleOf = (annotation) => {
-  if (annotation?.data?.pdfCloudIntensity != null && toolSupportsCloudBorderStyle(lower(annotation.type))) {
+  if (annotation?.data?.pdfCloudIntensity != null
+    && (toolSupportsCloudBorderStyle(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
     return 'cloud';
   }
   const dash = Array.isArray(annotation?.strokeDashArray) ? annotation.strokeDashArray : null;
@@ -262,14 +265,16 @@ export function readCalloutRestyleStyle(callout) {
       ? (Number.isFinite(fillOpacity) ? clampPct(fillOpacity * 100) : 100)
       : 0,
     width: Number.isFinite(Number(style.lineThickness)) ? Number(style.lineThickness) : null,
-    lineStyle: style.lineStyle === 'dashed' || style.lineStyle === 'dotted' ? style.lineStyle : 'solid',
-    cloudIntensity: null,
+    lineStyle: ['dashed', 'dotted', 'cloud'].includes(style.lineStyle) ? style.lineStyle : 'solid',
+    // w43: a clouded callout text box carries its own bump size.
+    cloudIntensity: style.lineStyle === 'cloud' ? (Number(style.cloudIntensity) || 2) : null,
     arrowheadStyle: style.arrowheadStyle || null,
   };
 }
 
 const CALLOUT_CAPABILITIES = Object.freeze({
-  stroke: true, fill: true, width: true, lineStyle: true, cloud: false, arrowheads: true,
+  // w43: Cloud clouds the callout's TEXT BOX only; the leader stays straight.
+  stroke: true, fill: true, width: true, lineStyle: true, cloud: true, arrowheads: true,
 });
 
 /**
@@ -476,9 +481,22 @@ export function calloutRestylePatch(callout, change) {
     }
     case 'lineStyle': {
       const next = change.style;
+      if (next === 'cloud') {
+        // w43: Cloud on a callout clouds its text box (the leader and head
+        // never cloud); it keeps the bump size the bar is showing.
+        const intensity = Math.max(1, Number(change.cloudIntensity) || 2);
+        if (current.lineStyle === 'cloud' && current.cloudIntensity === intensity) return null;
+        return { lineStyle: 'cloud', cloudIntensity: intensity };
+      }
       if (next !== 'solid' && next !== 'dashed' && next !== 'dotted') return null;
       if (next === current.lineStyle) return null;
       return { lineStyle: next };
+    }
+    case 'cloudIntensity': {
+      if (current.lineStyle !== 'cloud') return null;
+      const intensity = Math.max(1, Number(change.cloudIntensity) || 2);
+      if (current.cloudIntensity === intensity) return null;
+      return { cloudIntensity: intensity };
     }
     case 'arrowhead': {
       if (!change.style || change.style === style.arrowheadStyle) return null;

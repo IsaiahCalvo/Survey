@@ -3179,8 +3179,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     real selected/armed shape in PDFViewer) rather than
                     contextTool, which folds a selected polygon onto 'rect' and a
                     selected polyline onto 'line'. Always opens downward.
+                    w43 (2026-09-26): the text box and callout offer Cloud
+                    too - it clouds the BOX border (a callout's leader stays
+                    straight); see utils/textCloudBorder.js.
                     A stale 'cloud' carried over from a shape tool reads as
-                    Solid on a tool that cannot cloud (arrow/line/text/callout);
+                    Solid on a tool that cannot cloud (arrow/line);
                     creation already treats it as solid, so the label matches
                     what will be drawn. Polygon and polyline read the same
                     picker because they are stroked shapes like line and rect. */}

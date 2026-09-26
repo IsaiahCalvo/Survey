@@ -62,6 +62,7 @@ import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 // guarantee import vs internal paths produce byte-identical SVG output
 // when their Fabric input fields match.
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
+import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 
@@ -1518,9 +1519,35 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
     angle !== 0 ? ` rotate(${angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
   }`;
 
+  // w43 (2026-09-26, owner request): a text box whose line style is Cloud
+  // draws its border as the house revision cloud - the same rectangle cloud a
+  // clouded rect draws (utils/textCloudBorder.js) - in this group's LOCAL
+  // frame (the group already carries translate + rotate + opacity). Its
+  // background fills the scalloped region, humps included, like a filled
+  // cloud rect; the text keeps its box.
+  const cloudBorder = textboxCloudStandIn(obj, { left: 0, top: 0, width: effectiveWidth, height: effectiveHeight });
+  if (cloudBorder) {
+    cloudBorder.angle = 0;
+    cloudBorder.opacity = 1;
+  }
+  const cloudBorderGeometry = cloudBorder && resolveAnnotationCloudSpec(cloudBorder)
+    ? resolveCloudAnnotationGeometry(cloudBorder)
+    : null;
+
   return (
     <g key={key} opacity={obj.opacity ?? 1} transform={positionTransform}>
-      {obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
+      {cloudBorderGeometry ? (
+        <CloudOutline
+          shapeId={obj.id || key}
+          shapeKind="cloud-text-border"
+          geometryKind="rectangle"
+          geometry={cloudBorderGeometry}
+          fill={cloudBorder.fill}
+          stroke={cloudBorder.stroke}
+          opacity={1}
+        />
+      ) : null}
+      {!cloudBorderGeometry && obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
         <rect
           x={0}
           y={0}
@@ -1536,7 +1563,7 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           land here. Textboxes with strokeWidth=0 render borderless. Uses
           effectiveHeight (not displayHeight with descenderBuffer) so the border
           hugs Fabric's logical bounds and matches the eraser-canvas render. */}
-      {obj.strokeWidth > 0 && obj.stroke ? (
+      {!cloudBorderGeometry && obj.strokeWidth > 0 && obj.stroke ? (
         <rect
           x={0}
           y={0}
@@ -1850,19 +1877,47 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
         // the growing box while editing. Only the inner text foreignObject
         // is gated by hideText — Fabric paints the live letters during
         // edit and the SVG copy would just create a ghost behind them.
+        // w43 (2026-09-26, owner request): line style Cloud clouds ONLY the
+        // text box - the house rectangle cloud (utils/textCloudBorder.js) on
+        // the same visible box, border width and fill. The leaders above stay
+        // straight and solid and the arrowhead stays a head
+        // (calloutLineDashArray has no dash for 'cloud'). The plain rect is
+        // kept, unpainted, as the textBox drag / hit surface.
+        const boxCloud = calloutBoxCloudStandIn(callout, {
+          x: textBox.x, y: textBox.y, width: textBox.width, height: boxHeightWithDescenders,
+        }, {
+          stroke: lineColor,
+          strokeWidth: Math.max(1, lineThickness * 0.7),
+          fill: colorWithAlpha(fillColor, fillOpacity),
+        });
+        const boxCloudGeometry = boxCloud && resolveAnnotationCloudSpec(boxCloud)
+          ? resolveCloudAnnotationGeometry(boxCloud)
+          : null;
         return (
         <>
+          {boxCloudGeometry && (
+            <CloudOutline
+              shapeId={callout.id || key}
+              shapeKind="cloud-callout-box"
+              geometryKind="rectangle"
+              geometry={boxCloudGeometry}
+              fill={boxCloud.fill}
+              stroke={boxCloud.stroke}
+              opacity={1}
+            />
+          )}
           <rect
             // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
             // collision clamp hit-test surface. (CALL-10)
             data-callout-part="textBox"
+            data-callout-box-cloud={boxCloudGeometry ? 'true' : undefined}
             x={textBox.x}
             y={textBox.y}
             width={textBox.width}
             height={boxHeightWithDescenders}
-            fill={fillColor}
-            fillOpacity={fillOpacity}
-            stroke={lineColor}
+            fill={boxCloudGeometry ? 'transparent' : fillColor}
+            fillOpacity={boxCloudGeometry ? undefined : fillOpacity}
+            stroke={boxCloudGeometry ? 'none' : lineColor}
             // UX 2026-07-14 (zoom-scaling unification): page-unit border that
             // scales with zoom (no vector-effect pin). The 0.7 ratio keeps the
             // box border visually lighter than the leader lines at any zoom.

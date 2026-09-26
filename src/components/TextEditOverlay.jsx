@@ -278,6 +278,9 @@ export default function TextEditOverlay({
   onCalloutTextStyleChange,
   onEditCommit,
   onEditCancel,
+  // w43: bump size when a NEW text box is drawn with the Style picker on
+  // Cloud (its border is then the house revision cloud); null = plain border.
+  newTextCloudIntensity = null,
 }) {
   const isCallout = !!reactCalloutId;
   const pad = TEXT_PADDING;
@@ -288,6 +291,8 @@ export default function TextEditOverlay({
   // ---------------------------------------------------------------------
   const originalRef = useRef(null);
   const styleRef = useRef(null);
+  // Read at the moment of drawing: the box keeps the style it was drawn with.
+  const newTextCloudIntensityRef = useRef(isNewText ? newTextCloudIntensity : null);
   const geomRef = useRef(null);
   if (styleRef.current === null) {
     const src = annotationData || {};
@@ -452,7 +457,12 @@ export default function TextEditOverlay({
       verticalAlign: s.verticalAlign,
       fontFamily: s.fontFamily,
       fill: s.fill,
-      ...(isNewText ? { stroke: s.stroke, strokeWidth: s.strokeWidth || 1, isCreating: true } : {}),
+      ...(isNewText ? {
+        stroke: s.stroke,
+        strokeWidth: s.strokeWidth || 1,
+        isCreating: true,
+        cloudIntensity: newTextCloudIntensityRef.current,
+      } : {}),
     });
   }, [onLiveTextGrow, isNewText, padY]);
 
@@ -557,6 +567,7 @@ export default function TextEditOverlay({
         fill: s.fill,
         stroke: s.stroke || '#000000',
         strokeWidth: s.strokeWidth ?? 1,
+        cloudIntensity: newTextCloudIntensityRef.current,
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
           regionId: activeRegionId,

@@ -122,7 +122,8 @@ import {
   stickyNoteOutlineColor,
 } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: printed clouds come from the same resolver the screen uses.
-import { cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import { cloudOutlineBounds, cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+import { calloutCloudIntensity, textboxCloudIntensity, textboxCloudStandIn } from './textCloudBorder.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
@@ -2342,6 +2343,36 @@ const inflateAppBounds = (bounds, pad) => ({
   maxY: bounds.maxY + pad,
 });
 
+/**
+ * w43: the app-space box an UN-ROTATED cloud stand-in's ink reaches (crowns
+ * plus half the ink width), for growing a text box's or a callout text part's
+ * appearance box around a clouded border. Null when it is not a cloud.
+ */
+const cloudStandInAppBounds = (standIn) => {
+  if (!standIn || !resolveAnnotationCloudSpec(standIn)) return null;
+  const geometry = resolveCloudAnnotationGeometry({ ...standIn, angle: 0 });
+  const local = geometry ? cloudOutlineBounds(geometry) : null;
+  if (!local) return null;
+  const pad = (Number(geometry.strokeWidth) || 0) / 2 + PLAIN_APPEARANCE_EXTRA_PAD + 0.5;
+  return {
+    minX: geometry.origin.x + local.left - pad,
+    minY: geometry.origin.y + local.top - pad,
+    maxX: geometry.origin.x + local.left + local.width + pad,
+    maxY: geometry.origin.y + local.top + local.height + pad,
+  };
+};
+
+const unionAppBounds = (a, b) => {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    minX: Math.min(a.minX, b.minX),
+    minY: Math.min(a.minY, b.minY),
+    maxX: Math.max(a.maxX, b.maxX),
+    maxY: Math.max(a.maxY, b.maxY),
+  };
+};
+
 const boundsOfPoints = (points, pad) => {
   // Linear, not `Math.min(...xs)`: an ink stroke or a many-vertex polygon can
   // carry more points than a spread can push onto the call stack.
@@ -2427,13 +2458,19 @@ const plainAppearanceGeometry = (obj, fonts = null) => {
     // keeps a third of an em of room on every side - then is grown to hold
     // whatever the glyphs REALLY reach, which for a box narrower than one
     // glyph is well past that allowance. See flattenedTextInkBounds.
+    // w43: a clouded border's crowns bulge past the box; the appearance box
+    // grows to hold them (the /RD still points back to the drawn box).
+    const cloudBounds = cloudStandInAppBounds(textboxCloudStandIn(
+      { ...obj, angle: 0 },
+      { left, top, width, height },
+    ));
     return {
       base,
-      bounds: boundsWithFlattenedTextInk(
+      bounds: unionAppBounds(boundsWithFlattenedTextInk(
         inflateAppBounds(base, halfStroke + fontSize * 0.35 + 1),
         obj,
         fonts,
-      ),
+      ), cloudBounds),
     };
   }
   return null;
@@ -3658,6 +3695,13 @@ export const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, op
       Border: [0, 0, 0], // No border for text boxes
       P: page.ref,
     };
+    // w43: a clouded text box border carries the same /BE the cloud shapes
+    // write (/S /C /I <bump>), so a reader that understands border effects
+    // knows it is a cloud; the /AP below paints the house crowns.
+    const textCloud = options.isCalloutPart ? null : textboxCloudIntensity(fabricObj);
+    if (textCloud != null) {
+      annotationDict.BE = pdfDoc.context.obj({ S: PDFName.of('C'), I: PDFNumber.of(textCloud) });
+    }
 
     if (options.calloutMetadataJson) {
       annotationDict.NM = pdfTextString(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
@@ -5456,7 +5500,12 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const border = resolvedPdfPaint(obj?.stroke, 'transparent');
   const borderWidth = border ? Math.max(0, Number(obj?.strokeWidth) || 0) : 0;
   const center = { x: left + width / 2, y: top + height / 2 };
-  if (background || borderWidth > 0) {
+  // w43: line style Cloud - the border (and the background, over the
+  // scalloped region) prints through the shared cloud path as the house
+  // rectangle cloud, exactly what renderText / drawText draw on screen.
+  const cloudBorder = textboxCloudStandIn(obj, { left, top, width, height });
+  const cloudPainted = !!cloudBorder && drawFlattenedCloud(page, cloudBorder, pageHeight);
+  if (!cloudPainted && (background || borderWidth > 0)) {
     const common = {
       color: background?.color,
       opacity: background ? (background.opacity ?? 1) * objectOpacity : undefined,
@@ -6404,6 +6453,10 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
   // it is a separate defect, and the /AP below reproduces the PRINT so export
   // and print cannot disagree about a callout.)
   const line2Object = { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps };
+  // w43: line style Cloud clouds ONLY the text box (the leaders above get no
+  // dash for 'cloud' and stay straight) - the box prints through the rect
+  // branch's shared cloud path with the callout's bump size.
+  const boxCloudIntensity = calloutCloudIntensity(calloutObj);
   const boxObject = {
     type: 'rect',
     left: textBox.left,
@@ -6414,6 +6467,7 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
     strokeWidth,
     ...leaderDashProps,
     fill: style.backgroundColor || '#ffffff',
+    ...(boxCloudIntensity != null ? { data: { pdfCloudIntensity: boxCloudIntensity } } : {}),
   };
   const fontSize = style.fontSize || 14;
   const textObject = {
@@ -6478,7 +6532,7 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
       // Grown to hold the glyphs the label really paints, exactly as a plain
       // text box's appearance box is - a callout narrow enough to clip one
       // wide glyph is the same defect (see flattenedTextInkBounds).
-      bounds: boundsWithFlattenedTextInk(
+      bounds: unionAppBounds(boundsWithFlattenedTextInk(
         inflateAppBounds(
           {
             minX: textBox.left,
@@ -6490,7 +6544,7 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
         ),
         textObject,
         fonts,
-      ),
+      ), cloudStandInAppBounds(boxObject.data ? boxObject : null)),
       draw: (page, pageHeight, fonts) => {
         const drawn = drawFlattenedObject(page, boxObject, pageHeight, fonts);
         drawFlattenedText(page, textObject, pageHeight, fonts);

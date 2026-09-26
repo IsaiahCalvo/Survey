@@ -181,7 +181,11 @@ test('what each mark type can change', () => {
   assert.equal(caps(poly('polyline', 'pl')), 'stroke,width,lineStyle,cloud');
   assert.equal(caps(line()), 'stroke,width,lineStyle');
   assert.equal(caps(line('ar', 'arrow')), 'stroke,width,lineStyle,arrowheads');
-  assert.equal(caps(textbox()), 'stroke,fill,width,lineStyle');
+  // w43 (2026-09-26): RULED CHANGE, not a fix-to-pass. The owner asked for
+  // Cloud on text boxes and callouts ("text boxes and callouts must allow line
+  // style Cloud for the box border"), so a text box now offers cloud. The
+  // old expectation was 'stroke,fill,width,lineStyle'.
+  assert.equal(caps(textbox()), 'stroke,fill,width,lineStyle,cloud');
   assert.equal(caps(counter()), '', 'a counter pin is restyled through its series');
   assert.equal(caps(stamp()), '', 'a stamp is a locked picture');
 });
@@ -213,7 +217,13 @@ test('callouts take the same changes as style patches', () => {
   assert.deepEqual(calloutRestylePatch(c, { kind: 'strokeOpacity', opacity: 50 }), { borderOpacity: 0.5 });
   assert.deepEqual(calloutRestylePatch(c, { kind: 'width', width: 4 }), { lineThickness: 4 });
   assert.deepEqual(calloutRestylePatch(c, { kind: 'lineStyle', style: 'dotted' }), { lineStyle: 'dotted' });
-  assert.equal(calloutRestylePatch(c, { kind: 'lineStyle', style: 'cloud' }), null);
+  // w43 (2026-09-26): RULED CHANGE (owner request above). Cloud on a callout
+  // used to be refused (null); it now clouds the text box and records the
+  // bump size. The leader stays straight - see tests/textCloudBorder.test.mjs.
+  assert.deepEqual(
+    calloutRestylePatch(c, { kind: 'lineStyle', style: 'cloud', cloudIntensity: 3 }),
+    { lineStyle: 'cloud', cloudIntensity: 3 },
+  );
   assert.equal(calloutRestylePatch(c, { kind: 'width', width: 2 }), null, 'no change, no write');
   assert.equal(readCalloutRestyleStyle(c).fillOpacity, 40);
 });

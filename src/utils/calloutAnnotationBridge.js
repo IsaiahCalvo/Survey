@@ -260,7 +260,15 @@ export function calloutToAnnotationObject(callout, pageSize) {
     textBackgroundColor: '',
     hasBorders: false,
     hasControls: false,
-    data: { calloutPart: 'textBox' },
+    // w43: a clouded text box records its bump size on the box child (a key
+    // of its own, never pdfCloudIntensity, so nothing draws this projection
+    // child as a clouded text box) so the fallback reader below keeps Cloud.
+    data: {
+      calloutPart: 'textBox',
+      ...(style.lineStyle === 'cloud'
+        ? { calloutCloudIntensity: Math.max(1, Number(style.cloudIntensity) || 2) }
+        : {}),
+    },
   };
 
   const id = callout.id ?? null;
@@ -557,6 +565,11 @@ export function annotationObjectToCallout(obj, pageSize) {
     // group→callout round trip keeps dashed/dotted callouts dashed.
     lineStyle: calloutLineStyleFromDash(line1.strokeDashArray || line2.strokeDashArray),
   };
+  // w43: Cloud rides on the box child (the leaders carry no dash for it).
+  if (textbox.data?.calloutCloudIntensity != null) {
+    style.lineStyle = 'cloud';
+    style.cloudIntensity = Math.max(1, Number(textbox.data.calloutCloudIntensity) || 2);
+  }
 
   return {
     id: obj.data?.id ?? null,
