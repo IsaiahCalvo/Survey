@@ -34708,7 +34708,9 @@ ${pageBlocks}
                                   // UX: Plan 15-04 Step 3 — live textbox bounds for
                                   // plain-text (non-callout) edits; feeds renderText so
                                   // typed characters appear in the SVG textbox live.
-                                  liveTextEditBounds={liveTextEditBounds}
+                                  // w43: only the page being typed on - the new-box
+                                  // preview used to paint its border on EVERY page.
+                                  liveTextEditBounds={isEditMode ? liveTextEditBounds : null}
                                   // UX: pan-mode quick-click selection command. See
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
