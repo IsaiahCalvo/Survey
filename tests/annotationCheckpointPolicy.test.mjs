@@ -361,7 +361,11 @@ test('a checkpoint queued behind a slow one never claims a row its bytes lack', 
   });
   const mine = [];
   for (let index = 0; index < 4; index += 1) { strokeOn(handle, mine, `s${index}`); await handle.drain(); }
-  await wait(60);
+  // RULED 2026-09-26 (flake fix, assertion unchanged): wait for the row-4
+  // upload to start instead of a fixed 60 ms, which under full-suite CPU
+  // load was sometimes too short. The cap only turns a missing upload into
+  // a failure instead of a hang.
+  for (let waited = 0; calls < 1 && waited < 5000; waited += 10) await wait(10);
   assert.equal(calls, 1, 'the row-4 checkpoint is uploading');
   strokeOn(handle, mine, 's4');
   await wait(110); // the idle checkpoint queues behind it
