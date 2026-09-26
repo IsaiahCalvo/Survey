@@ -2735,6 +2735,16 @@ textarea:focus-visible,
   }
 }
 
+/* RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
+   The formatting row (row 2) leaves the way it arrives: for 140ms after it
+   has nothing to show it stays drawn with data-leaving and fades up and out
+   (a Web Animation in useLeavingRow, so a row wanted again mid-fade runs
+   back instead of replaying the drop-in above). It takes no clicks while it
+   goes. */
+[data-chrome-format-row][data-leaving="true"] {
+  pointer-events: none;
+}
+
 /* PASS 7 (owner ruling 2026-09-22): the colour picker's opacity slider GLIDES
    to the other tab's value instead of snapping there. The thumb animates its
    own `left`; the track's tint animates this registered custom property,

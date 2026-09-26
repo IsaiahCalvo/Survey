@@ -77,9 +77,13 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
  * back. The row lies over the page (utils/viewerTopOverlay.js), so the page
  * does not move when it comes and goes.
  * Pan and Survey Marker placement have no settings: no row.
+ * w47 (2026-09-26): an ARMED drawing tool always has settings, even for the
+ * one render where the viewer has published the new tool but not yet its
+ * settings context (Eraser → Pen reported contextTool 'eraser' with
+ * activeTool 'pen'); counting only contextTool made row 2 blink out and back.
  */
 export function showsFormatRow(api) {
   if (!api) return false;
   if (api.activeTool === 'eraser' || api.richTextEditor) return true;
-  return FORMAT_ROW_TOOLS.includes(api.contextTool);
+  return FORMAT_ROW_TOOLS.includes(api.contextTool) || FORMAT_ROW_TOOLS.includes(api.activeTool);
 }

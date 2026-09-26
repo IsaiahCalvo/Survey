@@ -29,13 +29,16 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
  *
  * DOM contract:
  *   inside the tool bar (`hostRef`):
- *     [data-undo-redo-controls]      Undo / Redo
+ *     [data-toolbar-start]           the block pinned left: Undo / Redo
+ *                                    ([data-undo-redo-controls]), a rule, and
+ *                                    Pan / Select ([data-toolbar-left-block])
  *     [data-toolbar-export]          Export (optional)
- *     [data-tool-toolbar]            the Draw / Shapes / Text icons
- *     [data-toolbar-left-block]      the Pan / Select block
- *     [data-toolbar-subtools]        the chosen group's tools (w45: the row
- *                                    these three make is centred on the
- *                                    canvas span, the formatting row's host)
+ *     [data-tool-toolbar]            the Draw / Shapes / Text icons (w47:
+ *                                    centred on the canvas span — the
+ *                                    formatting row's host — and fixed there)
+ *     [data-toolbar-subtools]        the loadout, hanging off the icons'
+ *                                    right edge; NOT read by the plan, so it
+ *                                    never moves anything
  *   inside the formatting row (`formatRowRef`, display:none while hidden):
  *     [data-chrome-settings-holder]  the settings; its in-flow children, and
  *                                    those of [data-toolbar-settings-row], are
@@ -58,6 +61,7 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
 export const DEFAULT_TOOLBAR_PLAN = Object.freeze({
   anchor: 'center',
   shift: 0,
+  clusterLeft: null,
   formatLeft: null,
   formatUsableLeft: 0,
   textRowLeft: null,
@@ -193,19 +197,19 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     const hostRect = host.getBoundingClientRect();
     if (hostRect.width <= 0) return false;
     const rel = (element, edge) => (element ? element.getBoundingClientRect()[edge] - hostRect.left : null);
-    const undo = host.querySelector('[data-undo-redo-controls]');
+    const start = host.querySelector('[data-toolbar-start]')
+      || host.querySelector('[data-undo-redo-controls]');
     const exportButton = host.querySelector('[data-toolbar-export]');
     const cluster = host.querySelector('[data-tool-toolbar]');
-    const leftBlock = host.querySelector('[data-toolbar-left-block]');
-    const subtools = host.querySelector('[data-toolbar-subtools]');
     if (!cluster) return false;
     const clusterRect = cluster.getBoundingClientRect();
-    const leftBlockWidth = leftBlock ? leftBlock.getBoundingClientRect().width : 0;
 
-    // RULED 2026-09-26 owner: centre rows on canvas (w45). The canvas span is
-    // the column between the two rails (the host the lower rows live in),
-    // less any side panel open over it — worked out even while the formatting
-    // row is hidden, since the tool bar centres on it too.
+    // RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
+    // The group icons centre on the canvas span: the column between the two
+    // rails (the host the lower rows live in), less any side panel open over
+    // it — worked out even while the formatting row is hidden, since the tool
+    // bar centres on it too. Nothing read here depends on the tool, the pick
+    // or the loadout showing, so the icons never move with them.
     const formatRow = formatRowRef?.current;
     const column = formatRow?.parentElement || null;
     const columnRect = column?.getBoundingClientRect();
@@ -225,11 +229,9 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     const drawnShift = -(parseFloat(cluster.style.left) || 0);
     const top = planTopBar({
       barWidth: hostRect.width,
-      undoRight: rel(undo, 'right') ?? 0,
+      startRight: rel(start, 'right') ?? 0,
       exportLeft: rel(exportButton, 'left') ?? hostRect.width - 10,
       clusterWidth: clusterRect.width,
-      leftBlockWidth,
-      subtoolsWidth: subtools ? subtools.getBoundingClientRect().width : 0,
       spanLeft: canvasLeft,
       spanRight: canvasRight,
       clusterNaturalLeft: clusterRect.left - hostRect.left + drawnShift,
@@ -252,7 +254,9 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     if (holder && rowRect && rowRect.width > 0) {
       const row = rowFromDom(holder, cacheRef.current, overflowSlotsRef?.current || []);
       const span = usableRowSpan(rowRect);
-      const input = { usableLeft: span.left, usableRight: span.right, row };
+      // w47: the settings start level with the group icons' left edge.
+      const anchorLeft = hostRect.left + top.clusterLeft - rowRect.left;
+      const input = { usableLeft: span.left, usableRight: span.right, anchorLeft, row };
       let next = planFormatRow(input);
       // Centred on the width the row is DRAWN at once this plan is on screen:
       // when the plan keeps what is drawn now, that is the measured width
@@ -271,7 +275,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         fits: next.fits,
       };
     }
-    // The text bar (row 3, the Aa bar): centred on the same span, planned
+    // The text bar (row 3, the Aa bar): at row 2's fixed start (w47), planned
     // only while it is on screen, from its controls' drawn width (the caption
     // hangs out of the flow and does not count).
     const textBar = column?.querySelector('[data-chrome-text-format-row] [data-rich-text-toolbar]');
@@ -289,6 +293,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         format.textRowLeft = planTextRow({
           usableLeft: span.left,
           usableRight: span.right,
+          anchorLeft: hostRect.left + top.clusterLeft - textBarRect.left,
           width: Math.max(...boxes.map((b) => b.right)) - Math.min(...boxes.map((b) => b.left)),
         });
       }
@@ -351,18 +356,8 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       if (changed) measureAndPlan();
     });
     if (formatRow) contentObserver.observe(formatRow);
-    // w45: the group's tools are drawn into the tool bar by the viewer, a
-    // render that may land a frame before ours. The row re-centres on their
-    // new width before that frame paints.
-    const subtools = host.querySelector('[data-toolbar-subtools]');
-    let subtoolsWidth = -1;
-    const subtoolsObserver = new ResizeObserver((records) => {
-      const width = records[records.length - 1]?.contentRect?.width ?? -1;
-      if (Math.abs(width - subtoolsWidth) < 0.5) return;
-      subtoolsWidth = width;
-      flushSync(() => { measureAndPlan(); });
-    });
-    if (subtools) subtoolsObserver.observe(subtools);
+    // w47: the loadout (the group's tools the viewer draws into the tool
+    // bar) no longer moves anything, so its width changing is not watched.
     const holder = formatRow?.querySelector('[data-chrome-settings-holder]') || null;
     if (holder) contentObserver.observe(holder);
     contentWatchRef.current = { observer: contentObserver, holder };
@@ -401,7 +396,6 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     document.addEventListener('transitionend', onTransitionEnd, true);
     return () => {
       observer.disconnect();
-      subtoolsObserver.disconnect();
       contentObserver.disconnect();
       contentWatchRef.current = { observer: null, holder: null };
       panelObserver.disconnect();

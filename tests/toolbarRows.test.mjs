@@ -14,6 +14,7 @@ import {
   resolveToolBarGroup,
   showsFormatRow,
 } from '../src/utils/toolbarRows.js';
+import { WIDEST_SUBTOOLS_WIDTH } from '../src/utils/responsiveToolbar.js';
 
 const appShell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const pdfViewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -64,7 +65,9 @@ test('the formatting row shows for an armed tool, a picked mark, the eraser, an 
   assert.equal(showsFormatRow({ activeTool: 'eraser', contextTool: 'eraser' }), true);
   assert.equal(showsFormatRow({ activeTool: 'text-select', contextTool: 'text-select' }), true);
   assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'select', richTextEditor: {} }), true);
-  // Every tool whose settings the row draws is listed.
+  // w47: an armed drawing tool keeps the row up even for the one render its
+  // settings context still names the tool before it (Eraser → Pen).
+  assert.equal(showsFormatRow({ activeTool: 'pen', contextTool: 'eraser' }), true);  // Every tool whose settings the row draws is listed.
   for (const tool of ['pen', 'highlighter', 'arrow', 'line', 'rect', 'ellipse', 'polygon', 'polyline', 'text', 'callout', 'counter']) {
     assert.ok(FORMAT_ROW_TOOLS.includes(tool), tool);
   }
@@ -104,7 +107,11 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   // Row 2: the settings are portalled into the formatting row, which shows only
   // when it has something to show and is one fixed bar tall.
   assert.match(appShell, /\{formatRowEl && createPortal\(/);
-  assert.match(appShell, /display: formatRowShown \? 'block' : 'none'/);
+  // DELIBERATE ASSERTION CHANGE — RULED 2026-09-26 owner: fixed centred
+  // groups + animated loadouts (w47). Row 2 now also stays drawn for its
+  // 140ms fade-out after it has nothing to show (formatRowLeaving), instead
+  // of vanishing in one frame; it is still hidden the rest of the time.
+  assert.match(appShell, /display: formatRowShown \|\| formatRowLeaving \? 'block' : 'none'/);
   const slots = appShell.slice(appShell.indexOf('id="chrome-sub-toolbar-host"'), appShell.indexOf('<Dashboard'));
   assert.ok(slots.indexOf('data-chrome-format-row="true"') > 0);
   assert.ok(slots.indexOf('data-chrome-format-row="true"') < slots.indexOf('data-chrome-text-format-row="true"'),
@@ -173,4 +180,64 @@ test('a popover opened from row 2 closes when the row goes away, and never flies
 
 test('the Survey row and the tool-bar tools are keyed portals, so one never remounts the other', () => {
   assert.match(pdfViewer, /inToolBar \? 'tool-bar-tools' : 'sub-row'\s*\);/);
+});
+
+test('w47: Pan / Select pin left after Undo/Redo; the group icons and loadout never read the loadout', () => {
+  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts. "I want
+  // the annotation tool groups of Draw, Shape, and Text to be centered, and
+  // the Pan and Select tool can be off to the left."
+  const start = appShell.slice(appShell.indexOf('data-toolbar-start="true"'), appShell.indexOf('data-tool-toolbar="true"'));
+  assert.ok(start.length > 0, 'the pinned-left block exists before the icons');
+  assert.ok(start.indexOf('data-undo-redo-controls="true"') > 0, 'Undo / Redo first');
+  assert.ok(start.indexOf('<div className="chrome-divider" />') > start.indexOf('data-undo-redo-controls="true"'), 'then a rule');
+  assert.ok(start.indexOf('data-toolbar-left-block="true"') > start.indexOf('<div className="chrome-divider" />'), 'then Pan / Select');
+  // The icon cluster no longer carries Pan / Select.
+  const cluster = appShell.slice(appShell.indexOf('data-tool-toolbar="true"'), appShell.indexOf('data-toolbar-subtools="true"'));
+  assert.doesNotMatch(cluster, /data-toolbar-left-block/);
+  // The plan reads the pinned block and Export, never the loadout's width.
+  const hook = readFileSync(new URL('../src/hooks/useResponsiveToolbar.js', import.meta.url), 'utf8');
+  assert.match(hook, /querySelector\('\[data-toolbar-start\]'\)/);
+  assert.doesNotMatch(hook, /subtoolsWidth/);
+  assert.doesNotMatch(hook, /querySelector\('\[data-toolbar-subtools\]'\)/);
+  // Rows 2 and 3 start level with the icons.
+  assert.match(hook, /const anchorLeft = hostRect\.left \+ top\.clusterLeft - rowRect\.left;/);
+  assert.match(hook, /anchorLeft: hostRect\.left \+ top\.clusterLeft - textBarRect\.left,/);
+});
+
+test('w47: the loadout and row 2 crossfade through ghost layers; row 2 fades out as it goes', () => {
+  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts.
+  assert.match(appShell, /useLoadoutTransition\(loadoutSlotEl, loadoutGhostLayerEl, chromeMotion\);/);
+  assert.match(appShell, /useLoadoutTransition\(formatHolderEl, formatGhostLayerEl, chromeMotion\);/);
+  assert.match(appShell, /const chromeMotion = Boolean\(isViewerVisible && !isMobileViewer\);/);
+  assert.match(appShell, /ref=\{setLoadoutSlotEl\}\s*data-toolbar-subtools="true"/);
+  assert.match(appShell, /ref=\{setFormatHolderEl\}\s*data-chrome-settings-holder="true"/);
+  assert.equal((appShell.match(/data-loadout-ghost-layer="true"/g) || []).length, 2);
+  // Leaving (useLeavingRow): the row stays drawn and takes no clicks while it
+  // fades; its live settings hide so only their held copy shows; the ghost
+  // layer comes AFTER the live settings.
+  assert.match(appShell, /useLeavingRow\(formatRowEl, formatRowShown, chromeMotion\)/);
+  assert.match(appShell, /data-leaving=\{formatRowLeaving \? 'true' : undefined\}/);
+  assert.match(appShell, /visibility: formatRowFading \? 'hidden' : undefined,/);
+  const holderAt = appShell.indexOf('data-chrome-settings-holder="true"');
+  const layerAt = appShell.indexOf('ref={setFormatGhostLayerEl}');
+  assert.ok(layerAt > holderAt, 'row 2 ghost layer after the live settings');
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\[data-chrome-format-row\]\[data-leaving="true"\] \{\s*pointer-events: none;/);
+  const hook = readFileSync(new URL('../src/hooks/useLoadoutTransition.js', import.meta.url), 'utf8');
+  // Skipped with reduced motion; confirmed a frame later (no blink on a
+  // one-render gap); run backwards when wanted again mid-fade.
+  assert.match(hook, /setLeaving\(!shown && enabled && !prefersReducedMotion\(\)\);/);
+  assert.match(hook, /requestAnimationFrame\(\(\) => \{\s*setFading\(true\);/);
+  assert.match(hook, /running\.reverse\(\);/);
+});
+
+test('w47: the room kept for the widest loadout matches the Shapes group\'s seven tools', () => {
+  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts. The
+  // icons keep WIDEST_SUBTOOLS_WIDTH clear on their right for the loadout; a
+  // new tool in the widest group must raise it, or that loadout would run
+  // into Export in a narrow window.
+  const shapes = pdfViewer.slice(pdfViewer.indexOf("{subRowCategory === 'shape' && "), pdfViewer.indexOf("{subRowCategory === 'review' && "));
+  const listed = shapes.slice(0, shapes.indexOf('].map(')).match(/\{ id: '[a-z-]+', label: /g) || [];
+  assert.equal(listed.length, 7);
+  assert.equal(WIDEST_SUBTOOLS_WIDTH, listed.length * 28 + (listed.length - 1) * 6 + 17);
 });
