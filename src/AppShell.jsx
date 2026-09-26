@@ -69,6 +69,7 @@ import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
+import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -368,61 +369,6 @@ const BLEND_MODE_SAMPLES = Object.freeze({
   layered: BLEND_SAMPLE_SEE_THROUGH,
   uniform: BLEND_SAMPLE_SOLID,
 });
-
-/**
- * Whether the tool-properties row is showing a colour control at all, i.e.
- * whether the quick colour dots have a swatch to stand beside. The three arms
- * are the three swatch variants rendered below — stroke-only, counter,
- * fill+border — so a dot can never appear beside a row with no colour to
- * change. Rich-text edit mode is the one deliberate exception: the swatch
- * there paints the text box's own fill and border while the sub-row owns the
- * font colour, and four dots that look like font colours but are not would be
- * a trap.
- */
-const showsColorSwatch = (api) => {
-  if (!api || api.activeTool === 'eraser' || api.richTextEditor) return false;
-  const tool = api.contextTool;
-  if (['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(tool)) return true;
-  if (tool === 'counter') return !!api.handleFillColorChange;
-  return ['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(tool) && !!api.handleFillColorChange;
-};
-
-/**
- * PASS 7 (boards 8-12, owner ruling): which tools show the QUICK COLOUR DISCS.
- *
- * A SINGLE-COLOUR tool — pen, highlighter, line, arrow, polyline, a text mark —
- * has one colour, so three ready colours and a way out to the picker are the
- * whole control. A MULTI-COLOUR tool — rectangle, ellipse, polygon, counter,
- * text box, callout — has a fill AND a border, and a disc cannot say which of
- * the two it would change: those tools show ONE combined swatch instead (the
- * fill with the border as a ring, or the pin with its number), which opens the
- * picker on its Border / Fill tabs. Boards 9, 11 and 12 draw exactly that.
- */
-const showsQuickColourDots = (api) => (
-  showsColorSwatch(api)
-  && ['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(api.contextTool)
-);
-
-/**
- * PASS 7 (boards 9, 11, 12): which tools show the ONE COMBINED SWATCH.
- *
- * The other half of the ruling above: a tool that has both a fill and a border
- * shows the swatch and no preset discs. A polyline is deliberately NOT in here —
- * it is a stroke with no fill in this app (see resolveAnnotationPaint), so a
- * "fill centre with a border ring" would preview a colour the mark never paints
- * and the picker's Fill tab would write somewhere nothing reads.
- *
- * Rich-text edit mode keeps the swatch (`api.richTextEditor`) even though
- * showsColorSwatch hides the discs there: the swatch paints the text BOX — its
- * fill and its border — while the third bar owns the font colour, so the two
- * never compete for the same control.
- */
-const showsPaintSwatch = (api) => {
-  if (!api || api.activeTool === 'eraser') return false;
-  if (api.contextTool === 'counter') return !!api.handleFillColorChange;
-  return (['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(api.contextTool) || !!api.richTextEditor)
-    && !!api.handleFillColorChange;
-};
 
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
@@ -938,8 +884,12 @@ export default function App({ devPreviewReturnTab = null }) {
   const textColorParts = splitTextColor(textFormatSource?.state?.fontColor || '#1e293b');
   // The bar is the live editor's whenever there is one; armed, it is the tool's
   // defaults and the "Aa" button decides whether it is on screen.
-  const showTextFormatting = !!textFormatSource
-    && (!!bottomToolbarApi?.richTextEditor || showTextFormatBar);
+  // w43 (2026-09-26, owner report): the "Aa" button is the ONLY switch for
+  // this bar, in every state - armed, selected AND while a box is open for
+  // typing. It used to be forced on during an edit (the Aa went gold and
+  // inert), and clicking it then closed the editor instead. Now the bar shows
+  // exactly when the user last asked for it; the editor keeps the caret.
+  const showTextFormatting = !!textFormatSource && showTextFormatBar;
   // PASS 7: the cluster's own chosen mark is the shared one now — a preset disc
   // rings in its OWN colour, and when the colour is not one of the three the
   // rainbow disc wears the mark instead (QuickColourDots works that out for
@@ -2706,7 +2656,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* PASS 7 (boards 8-12): the rule between the COLOUR group and
                     the value pills. The bar reads colour | rule | numbers, so a
                     glance separates "what it looks like" from "how big it is". */}
-                {showsColorSwatch(bottomToolbarApi) && <div className="chrome-divider" />}
+                {/* w43: the rule stands whenever EITHER colour control shows
+                    (see showsColourRule), so it never comes and goes as a text
+                    box opens and closes for typing. */}
+                {showsColourRule(bottomToolbarApi, !!annotationPaint) && <div className="chrome-divider" />}
 
                 {!bottomToolbarApi.richTextEditor
                   && bottomToolbarApi.contextTool === 'counter'
@@ -3442,15 +3395,34 @@ export default function App({ devPreviewReturnTab = null }) {
                       || bottomToolbarApi.contextTool === 'callout'
                       || !!bottomToolbarApi.richTextEditor) && toolbarSlot('aa', () => (
                   <button
+                    // w43 (2026-09-26, owner report): Aa does ONE thing to
+                    // the chrome - it shows or hides the formatting bar - and
+                    // then puts the caret in the text. While a box is open the
+                    // editor keeps focus (mousedown never moves it and
+                    // data-rich-text-toolbar tells the editor this is not a
+                    // click-away); with a text box or callout picked, showing
+                    // the bar drops into its text, like a double-click. The
+                    // button never changes size or label, and the main bar
+                    // lays out the same whether a box is open or only picked,
+                    // so nothing in it moves (tests/textFormatToggleNoShift).
                     onClick={() => {
-                      if (bottomToolbarApi.richTextEditor) return;
-                      if (showTextFormatting && bottomToolbarApi.canEnterTextEdit) {
-                        bottomToolbarApi.onEnterTextEdit();
+                      const nextShown = !showTextFormatBar;
+                      setShowTextFormatBar(nextShown);
+                      const editor = bottomToolbarApi.richTextEditor;
+                      if (editor) {
+                        editor.api?.focus?.();
                         return;
                       }
-                      setShowTextFormatBar((shown) => !shown);
+                      if (nextShown && bottomToolbarApi.canEnterTextEdit) {
+                        bottomToolbarApi.onEnterTextEdit();
+                      }
                     }}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      // Keep the caret where it is when a box is open.
+                      if (bottomToolbarApi.richTextEditor) e.preventDefault();
+                    }}
+                    data-rich-text-toolbar="true"
                     className="chrome-text-toggle"
                     style={{
                       // PASS 7 (board 12): the "Aa" is a 20px-tall label on no
@@ -3464,11 +3436,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       letterSpacing: '-0.02em',
                       cursor: 'pointer',
                     }}
-                    {...chromeTip(bottomToolbarApi.richTextEditor
-                      ? 'Text formatting'
-                      : showTextFormatting
-                        ? (bottomToolbarApi.canEnterTextEdit ? 'Edit text' : 'Hide text formatting')
-                        : 'Text formatting', 'below')}
+                    {...chromeTip(showTextFormatting ? 'Hide text formatting' : 'Text formatting', 'below')}
                     aria-label="Edit text"
                     aria-pressed={showTextFormatting}
                   >

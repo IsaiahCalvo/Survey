@@ -494,6 +494,9 @@ export default function TextEditOverlay({
       // #rrggbb, or rgba() when the text colour carries an opacity
       // (utils/textColorOpacity, UX 2026-09-23).
       setFontColor: (c, meta) => applyStyle('fill', isTextColorValue(c) ? c : '#000000', meta),
+      // w43: the tool bar's "Aa" hands the caret back to the text after it
+      // shows or hides the formatting bar (it never closes the editor).
+      focus: () => editableRef.current?.focus({ preventScroll: true }),
     };
     onRichTextEditorChange({
       api,
