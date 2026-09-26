@@ -2010,7 +2010,11 @@ export function filledOutlineCommandsToPolygonSet(commands, {
   // for bit), so it keeps its Martinez booleans rather than the eraser's
   // Clipper2 ones: a different engine changes the vertex order of every
   // multi-ring result, which would make existing erase lanes on imported
-  // filled ink go dormant. Moving it needs a v2 marker.
+  // filled ink go dormant. Moving it needs a v2 marker. (The vendored copy
+  // differs from npm Martinez only where its exact isBelow changes a
+  // near-degenerate order: ~8 of 3,200 random multi-ring fills, 0 of the
+  // 2,549 marker-stored marks on the owner's Package 2; npm hung on 5 of
+  // those 8.)
   const { diff, intersection, union, xor } = martinezBooleans;
   try {
     if (fillRule === 'evenodd') {
