@@ -1,4 +1,5 @@
-import { diff, intersection, resolveFillRule, union, xor } from './polygonBooleans.js';
+import { diff, intersection, union, xor } from './polygonBooleans.js';
+import * as martinezBooleans from '../vendor/martinezPolygonClipping.js';
 import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
@@ -1617,8 +1618,13 @@ export function commandsToPolygonSet(commands, {
         // needs. Compaction may only merge near-duplicates, never cut a tight
         // tip (see compactCenterlineWithinTolerance). A quarter of the curve
         // tolerance keeps the total outline error (flattening + compaction
-        // + round-arc facets) within two curve tolerances.
-        compactionTolerance: outlineCurveTolerance / 4,
+        // + round-arc facets) within two curve tolerances. Floor: 1e-4 of the
+        // stroke radius. A caller's curve tolerance can be absurdly fine in
+        // local units (0.05 page units divided by a 1e160 object scale); the
+        // flattening then emits ~800,000 points and, kept, a single bite took
+        // over 100 s (w39 review). A ten-thousandth of the radius is far
+        // below anything visible and collapses that to hundreds.
+        compactionTolerance: Math.max(outlineCurveTolerance / 4, (strokeWidth / 2) * 1e-4),
       },
     );
     if (!outlined.length) continue;
@@ -1996,20 +2002,16 @@ export function filledOutlineCommandsToPolygonSet(commands, {
     ))
     .filter((ring) => ring.length >= 4 && ringArea(ring) > 0);
   if (rings.length === 0) return [];
-
-  // w39 (2026-09-25): resolve the source's own fill rule exactly on the
-  // Clipper2 grid, self-crossing rings included, into simple polygons that
-  // the eraser's even-odd booleans and the even-odd renderers read the same
-  // way. (Kept a single ring raw and emulated nonzero winding with Martinez
-  // booleans per ring, which carved a nonzero star's centre and, once the
-  // booleans were exact, let a bite on an evenodd star fill its centre.)
-  try {
-    return normalizeMultiPolygon(resolveFillRule(rings, fillRule));
-  } catch {
-    // Fall through to the per-ring composition below.
-  }
   if (rings.length === 1) return [[rings[0]]];
 
+  // w39 (2026-09-25): this function's output is stored by reference (the
+  // "~polygons-from-path:v1" marker in annotationMarkCodec.js is rebuilt
+  // from the path on every read, and eraser lanes key on those polygons bit
+  // for bit), so it keeps its Martinez booleans rather than the eraser's
+  // Clipper2 ones: a different engine changes the vertex order of every
+  // multi-ring result, which would make existing erase lanes on imported
+  // filled ink go dormant. Moving it needs a v2 marker.
+  const { diff, intersection, union, xor } = martinezBooleans;
   try {
     if (fillRule === 'evenodd') {
       let geometry = null;

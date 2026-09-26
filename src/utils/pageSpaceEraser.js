@@ -385,7 +385,43 @@ const styledStrokeCommandsToPolygonSet = (commands, {
   return mergePolygonGeometries(shapes);
 };
 
+// The source outline is the same for every bite on a mark, but was rebuilt
+// on each one (the cut mask is outline minus survivor): about half of each
+// bite's time on imported curve ink (w39 review). A few recent outlines are
+// kept, keyed by everything that shapes them. Callers treat the result as
+// read-only.
+const SOURCE_OUTLINE_CACHE_SIZE = 16;
+const sourceOutlineCache = new Map();
+
 const paperSourceStrokeOutlinePolygons = (source) => {
+  let key = null;
+  try {
+    key = JSON.stringify([
+      source?.path, source?.operationalPath, source?.matrix, source?.paintMode,
+      source?.fillRule, source?.strokeWidth, source?.strokeLineCap, source?.strokeLineJoin,
+      source?.strokeMiterLimit, source?.strokeDashArray, source?.strokeDashOffset,
+      source?.curveTolerance,
+    ]);
+  } catch {
+    key = null;
+  }
+  if (key !== null && sourceOutlineCache.has(key)) {
+    const cached = sourceOutlineCache.get(key);
+    sourceOutlineCache.delete(key);
+    sourceOutlineCache.set(key, cached);
+    return cached;
+  }
+  const outline = buildPaperSourceStrokeOutlinePolygons(source);
+  if (key !== null) {
+    sourceOutlineCache.set(key, outline);
+    if (sourceOutlineCache.size > SOURCE_OUTLINE_CACHE_SIZE) {
+      sourceOutlineCache.delete(sourceOutlineCache.keys().next().value);
+    }
+  }
+  return outline;
+};
+
+const buildPaperSourceStrokeOutlinePolygons = (source) => {
   if (
     !source
     || !Array.isArray(source.path)

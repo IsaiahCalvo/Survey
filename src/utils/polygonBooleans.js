@@ -17,16 +17,15 @@
  * grid and computes on that grid exactly, so those cases are ordinary.
  *
  * Fill rule: each operand is read even-odd over all of its rings, exactly as
- * Martinez read it and as the renderers paint stored polygons. A filled
- * source outline with its own fill rule is resolved once, on import, by
- * resolveFillRule().
+ * Martinez read it and as the renderers paint stored polygons.
  *
  * Grid: a call maps a box onto integers around the box centre, about 2^48
  * steps across its larger side (coordinates stay inside +-2^47, well within
  * Clipper2's 2^53 limit). The step is a power-of-two fraction of the box, so
  * it is scale-relative (microscopic and huge page geometry behave alike).
  * For a difference or an intersection the answer lies inside the SUBJECT, so
- * the box is the subject's own bounds (plus a margin) and the other operand
+ * the box is the bounds of the subject polygons it can touch (plus a margin;
+ * the others pass straight through) and the other operand
  * is first cut to that box in plain floating point: a long eraser drag over
  * a small mark must not coarsen the grid the mark is cut on (w39 review: a
  * joint box made the step exceed the subtraction containment proof's
@@ -87,7 +86,14 @@ function gridFor(bounds) {
   if (!bounds) return null;
   const extent = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
   if (!(extent > 0) || !Number.isFinite(extent)) return null;
-  const scale = 2 ** (GRID_BITS - Math.ceil(Math.log2(extent)));
+  // The smallest power of two >= extent, settled with exact power-of-two
+  // comparisons: Math.log2 may round differently between JavaScript engines
+  // (V8 on desktop, JavaScriptCore on iOS), and two screens must pick the
+  // same grid to reach byte-identical results.
+  let exponent = Math.ceil(Math.log2(extent));
+  while (2 ** exponent < extent) exponent += 1;
+  while (2 ** (exponent - 1) >= extent) exponent -= 1;
+  const scale = 2 ** (GRID_BITS - exponent);
   if (!Number.isFinite(scale) || scale <= 0) {
     throw new RangeError(`polygon boolean box extent ${extent} is outside the representable range`);
   }
@@ -95,9 +101,22 @@ function gridFor(bounds) {
     originX: bounds.minX / 2 + bounds.maxX / 2,
     originY: bounds.minY / 2 + bounds.maxY / 2,
     scale,
+    // grid x -> (grid y -> original [x, y]); nested maps, not string keys,
+    // which cost about a third of each call (w39 review).
     originals: new Map(),
   };
 }
+
+function rememberOriginal(grid, x, y, point) {
+  let column = grid.originals.get(x);
+  if (!column) {
+    column = new Map();
+    grid.originals.set(x, column);
+  }
+  if (!column.has(y)) column.set(y, point);
+}
+
+const originalAt = (grid, x, y) => grid.originals.get(x)?.get(y);
 
 // Sutherland-Hodgman against an axis-aligned box. A ring that leaves and
 // re-enters the box gains zero-width runs along the box edge; they sit
@@ -167,8 +186,7 @@ function toPaths(multiPolygon, grid) {
         const y = Math.round((point[1] - grid.originY) * grid.scale);
         // Remember the exact input coordinates of every grid point, so an
         // input vertex that survives comes back bit for bit (see fromPath).
-        const key = `${x},${y}`;
-        if (!grid.originals.has(key)) grid.originals.set(key, [point[0], point[1]]);
+        rememberOriginal(grid, x, y, point);
         if (last && last.x === x && last.y === y) continue;
         last = { x, y };
         path.push(last);
@@ -186,7 +204,7 @@ function fromPath(path, grid, wantPositive) {
   // proof and the proportional-geometry guarantees rely on it). Only new
   // crossing points carry the grid snap.
   const ring = path.map((point) => {
-    const original = grid.originals.get(`${point.x},${point.y}`);
+    const original = originalAt(grid, point.x, point.y);
     return original
       ? [original[0], original[1]]
       : [point.x / grid.scale + grid.originX, point.y / grid.scale + grid.originY];
@@ -223,17 +241,53 @@ function execute(clipType, fillRule, subject, clip, grid) {
   return treeToMultiPolygon(tree, grid);
 }
 
+const boxesMeet = (a, b) => (
+  a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
+);
+
+// A subject polygon returned untouched: closed rings, outer counter-
+// clockwise and holes clockwise like every computed result, coordinates
+// exactly as given.
+function passThrough(polygon) {
+  return polygon
+    .map((ring) => ring.filter((point) => Number.isFinite(point?.[0]) && Number.isFinite(point?.[1])))
+    .filter((ring) => ring.length >= 3)
+    .map((ring, ringIndex) => {
+      const closed = ring[0][0] === ring.at(-1)[0] && ring[0][1] === ring.at(-1)[1]
+        ? ring.map((point) => [point[0], point[1]])
+        : [...ring.map((point) => [point[0], point[1]]), [ring[0][0], ring[0][1]]];
+      let twice = 0;
+      for (let index = 1; index < closed.length; index += 1) {
+        twice += closed[index - 1][0] * closed[index][1] - closed[index][0] * closed[index - 1][1];
+      }
+      return ((twice > 0) !== (ringIndex === 0)) ? closed.reverse() : closed;
+    });
+}
+
 function run(clipType, subjectValue, clipValue) {
   const subject = asMultiPolygon(subjectValue);
   let clip = asMultiPolygon(clipValue);
-  const subjectBounds = boundsOf([subject]);
   if (clipType === ClipType.Difference || clipType === ClipType.Intersection) {
-    if (!subjectBounds) return [];
-    const box = widen(subjectBounds, BOX_MARGIN);
+    // Subject polygons nowhere near the other operand come through untouched
+    // (difference) or drop out (intersection) without entering the engine:
+    // a stroke already cut into hundreds of pieces otherwise re-processes
+    // every piece on every bite (w39 review: 1.4-1.6x slower than Martinez
+    // on 500 crossing cuts). The rest is gridded on its own box.
+    const clipBoxes = clip.map((polygon) => boundsOf([[polygon]])).filter(Boolean);
+    const touched = [];
+    const untouched = [];
+    for (const polygon of subject) {
+      const bounds = boundsOf([[polygon]]);
+      if (!bounds) continue;
+      (clipBoxes.some((box) => boxesMeet(bounds, box)) ? touched : untouched).push(polygon);
+    }
+    const kept = clipType === ClipType.Difference ? untouched.map(passThrough).filter((polygon) => polygon.length) : [];
+    if (!touched.length) return kept;
+    const box = widen(boundsOf([touched]), BOX_MARGIN);
     clip = clipToBox(clip, box);
     const grid = gridFor(box);
-    if (!grid) return clipType === ClipType.Difference ? subject : [];
-    return execute(clipType, FillRule.EvenOdd, subject, clip, grid);
+    if (!grid) return clipType === ClipType.Difference ? [...touched.map(passThrough), ...kept] : kept;
+    return [...execute(clipType, FillRule.EvenOdd, touched, clip, grid), ...kept];
   }
   const grid = gridFor(boundsOf([subject, clip]));
   if (!grid) return [...subject, ...clip];
@@ -244,23 +298,3 @@ export const union = (subject, clip) => run(ClipType.Union, subject, clip);
 export const diff = (subject, clip) => run(ClipType.Difference, subject, clip);
 export const intersection = (subject, clip) => run(ClipType.Intersection, subject, clip);
 export const xor = (subject, clip) => run(ClipType.Xor, subject, clip);
-
-/**
- * Resolve a set of closed rings under a PDF/SVG fill rule ('nonzero' or
- * 'evenodd') into simple, non-overlapping polygons with holes — the form
- * every other boolean here reads even-odd. Handles self-crossing rings and
- * overlapping subpaths exactly (a nonzero star keeps its centre; an evenodd
- * star does not).
- */
-export function resolveFillRule(rings, fillRule = 'nonzero') {
-  const polygons = (rings || []).filter((ring) => Array.isArray(ring) && ring.length >= 3).map((ring) => [ring]);
-  const grid = gridFor(boundsOf([polygons]));
-  if (!grid) return [];
-  return execute(
-    ClipType.Union,
-    fillRule === 'evenodd' ? FillRule.EvenOdd : FillRule.NonZero,
-    polygons,
-    [],
-    grid,
-  );
-}
