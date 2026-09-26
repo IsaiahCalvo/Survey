@@ -28,7 +28,7 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
-import { placeUnderOpenerAvoiding, slotDefinition, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
@@ -1593,13 +1593,12 @@ export default function App({ devPreviewReturnTab = null }) {
   // it carries that mark's settings. A picked mark that belongs to no drawing
   // group — a text highlight, or marks of several kinds picked together —
   // shows the modes up in the tool bar instead, where a group's tools go.
-  // Row 3 (the Aa bar) starts where row 2's settings start, keeping room for
-  // the "Text" caption that hangs off its left inside the uncovered span.
-  const TEXT_ROW_CAPTION_ROOM = 34;
-  const textFormatRowLeft = Math.max(
-    toolbarPlan.formatLeft ?? 10,
-    (toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM,
-  );
+  // RULED 2026-09-26 owner: centre rows on canvas (w45). Row 3 (the Aa bar)
+  // is centred on the same uncovered span as rows 1 and 2 (planTextRow via
+  // useResponsiveToolbar), keeping room for the "Text" caption that hangs off
+  // its left. Until it has been measured it starts at that caption room.
+  const textFormatRowLeft = toolbarPlan.textRowLeft
+    ?? ((toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInFormatRow = selectArmed
     && isSelectFamilyTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool);
@@ -2040,10 +2039,12 @@ export default function App({ devPreviewReturnTab = null }) {
               data-tool-toolbar="true"
               style={{
                 position: 'relative',
-                // w42: below 1200px the icons sit just right of Undo / Redo
-                // (the plan's `shift`, the same for every tool at a given
-                // width, so switching tools never moves an icon). 0 at normal
-                // widths — the centred bar exactly as before.
+                // RULED 2026-09-26 owner: centre rows on canvas (w45). The
+                // plan's `shift` moves the icons so the whole tools row —
+                // Pan / Select, these icons and the group's tools — is
+                // centred on the canvas between the rails (or between an open
+                // side panel and the far rail), clear of Undo/Redo and Export
+                // (useResponsiveToolbar). Negative = right of the bar centre.
                 left: toolbarPlan.shift ? `${-toolbarPlan.shift}px` : undefined,
                 display: 'flex',
                 alignItems: 'center',
@@ -2305,7 +2306,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   spot the window alone decides (useResponsiveToolbar), so the
                   colours never jump sideways when you switch tools, and the row
                   has its whole width for them before anything collapses or
-                  moves into More. */}
+                  moves into More.
+                  RULED 2026-09-26 owner: centre rows on canvas (w45). The
+                  settings are now CENTRED on the uncovered canvas span rather
+                  than starting under Pan (formatLeft is worked out from the
+                  row's drawn width), so another tool's row re-centres, but a
+                  row whose content is unchanged never moves. */}
               {formatRowEl && createPortal(
               <div
                 data-chrome-settings-holder="true"
@@ -2359,12 +2365,12 @@ export default function App({ devPreviewReturnTab = null }) {
                      handler so clicks don't commit-and-close the editor.
                      PASS 7 (board 12): the third bar is 36px like the two above
                      it, and its controls sit on the settings gutter.
-                     w44 (review ruling): it is LEFT-ALIGNED with row 2 — its
-                     colours start where row 2's settings start, inside the
-                     same span no side panel covers — so the two lower bars
-                     read as one block instead of a ragged pair (it used to be
-                     centred across the whole host). The "Text" caption hangs
-                     off its left, so the start keeps room for it. It shows while the text box or callout tool is
+                     RULED 2026-09-26 owner: centre rows on canvas (w45). It is
+                     CENTRED on the same span no side panel covers as rows 1
+                     and 2 (w44 had it left-aligned with row 2); a bar too wide
+                     for the span keeps its start and runs off the right. The
+                     "Text" caption hangs off its left, so the start keeps
+                     room for it. It shows while the text box or callout tool is
                      ARMED as well as while a box is open — see
                      resolveTextFormatting, which hands this one bar either the
                      live editor or the tool's own defaults. Armed, it sits UNDER

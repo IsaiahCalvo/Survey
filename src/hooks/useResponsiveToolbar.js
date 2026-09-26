@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import {
   TOOLBAR_SLOTS,
   planFormatRow,
+  planTextRow,
   planTopBar,
   slotDefinition,
 } from '../utils/responsiveToolbar.js';
@@ -32,6 +33,9 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
  *     [data-toolbar-export]          Export (optional)
  *     [data-tool-toolbar]            the Draw / Shapes / Text icons
  *     [data-toolbar-left-block]      the Pan / Select block
+ *     [data-toolbar-subtools]        the chosen group's tools (w45: the row
+ *                                    these three make is centred on the
+ *                                    canvas span, the formatting row's host)
  *   inside the formatting row (`formatRowRef`, display:none while hidden):
  *     [data-chrome-settings-holder]  the settings; its in-flow children, and
  *                                    those of [data-toolbar-settings-row], are
@@ -52,19 +56,33 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
  */
 
 export const DEFAULT_TOOLBAR_PLAN = Object.freeze({
-  anchor: 'center', shift: 0, formatLeft: null, formatUsableLeft: 0, tight: false, compact: [], overflow: [], fits: true,
+  anchor: 'center',
+  shift: 0,
+  formatLeft: null,
+  formatUsableLeft: 0,
+  textRowLeft: null,
+  tight: false,
+  compact: [],
+  overflow: [],
+  fits: true,
 });
+
+const near = (a, b) => (a === b || (a !== null && b !== null && Math.abs(a - b) < 0.5));
 
 const samePlan = (a, b) => (
   a.anchor === b.anchor
-  && Math.abs(a.shift - b.shift) < 0.5
-  && (a.formatLeft === b.formatLeft
-    || (a.formatLeft !== null && b.formatLeft !== null && Math.abs(a.formatLeft - b.formatLeft) < 0.5))
-  && Math.abs((a.formatUsableLeft ?? 0) - (b.formatUsableLeft ?? 0)) < 0.5
+  && near(a.shift, b.shift)
+  && near(a.formatLeft, b.formatLeft)
+  && near(a.formatUsableLeft ?? 0, b.formatUsableLeft ?? 0)
+  && near(a.textRowLeft, b.textRowLeft)
   && a.tight === b.tight
   && a.compact.join('|') === b.compact.join('|')
   && a.overflow.join('|') === b.overflow.join('|')
 );
+
+/** The rows' height (--chrome-bar-h): the band a side panel must overlap to
+ * count as covering the canvas under the tool bar. */
+const BAR_HEIGHT = 36;
 
 const CANONICAL = TOOLBAR_SLOTS.map((slot) => slot.id);
 
@@ -131,9 +149,10 @@ function rowFromDom(holder, cache, overflowSlots) {
 }
 
 /**
- * The part of the formatting row no side panel covers, in row coordinates.
- * A panel counts when it overlaps the row's height and touches the row's left
- * or right edge (the Pages panel on the left, the Survey panel on the right).
+ * The part of a rect no side panel covers, in that rect's coordinates. A
+ * panel counts when it overlaps the rect's height and touches its left or
+ * right edge (the Pages panel on the left, the Survey panel on the right).
+ * `rowRect` is { left, top, bottom, width } in window coordinates.
  */
 function usableRowSpan(rowRect) {
   let left = 0;
@@ -178,50 +197,101 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     const exportButton = host.querySelector('[data-toolbar-export]');
     const cluster = host.querySelector('[data-tool-toolbar]');
     const leftBlock = host.querySelector('[data-toolbar-left-block]');
+    const subtools = host.querySelector('[data-toolbar-subtools]');
     if (!cluster) return false;
     const clusterRect = cluster.getBoundingClientRect();
     const leftBlockWidth = leftBlock ? leftBlock.getBoundingClientRect().width : 0;
+
+    // RULED 2026-09-26 owner: centre rows on canvas (w45). The canvas span is
+    // the column between the two rails (the host the lower rows live in),
+    // less any side panel open over it — worked out even while the formatting
+    // row is hidden, since the tool bar centres on it too.
+    const formatRow = formatRowRef?.current;
+    const column = formatRow?.parentElement || null;
+    const columnRect = column?.getBoundingClientRect();
+    let canvasLeft = 0;
+    let canvasRight = hostRect.width;
+    if (columnRect && columnRect.width > 0) {
+      const span = usableRowSpan({
+        left: columnRect.left,
+        width: columnRect.width,
+        top: columnRect.top,
+        bottom: columnRect.top + Math.max(columnRect.height, BAR_HEIGHT),
+      });
+      canvasLeft = columnRect.left + span.left - hostRect.left;
+      canvasRight = columnRect.left + span.right - hostRect.left;
+    }
+    // Where the icons sit with no shift: their box less the shift drawn now.
+    const drawnShift = -(parseFloat(cluster.style.left) || 0);
     const top = planTopBar({
       barWidth: hostRect.width,
       undoRight: rel(undo, 'right') ?? 0,
       exportLeft: rel(exportButton, 'left') ?? hostRect.width - 10,
       clusterWidth: clusterRect.width,
       leftBlockWidth,
+      subtoolsWidth: subtools ? subtools.getBoundingClientRect().width : 0,
+      spanLeft: canvasLeft,
+      spanRight: canvasRight,
+      clusterNaturalLeft: clusterRect.left - hostRect.left + drawnShift,
     });
 
     // The formatting row: planned only while it is on screen. A hidden row
     // keeps its last plan, and is re-planned before the frame that shows it.
+    const current = planRef.current;
     let format = {
-      formatLeft: planRef.current.formatLeft,
-      formatUsableLeft: planRef.current.formatUsableLeft,
-      tight: planRef.current.tight,
-      compact: planRef.current.compact,
-      overflow: planRef.current.overflow,
-      fits: planRef.current.fits,
+      formatLeft: current.formatLeft,
+      formatUsableLeft: current.formatUsableLeft,
+      textRowLeft: current.textRowLeft,
+      tight: current.tight,
+      compact: current.compact,
+      overflow: current.overflow,
+      fits: current.fits,
     };
-    const formatRow = formatRowRef?.current;
     const holder = formatRow?.querySelector('[data-chrome-settings-holder]');
     const rowRect = formatRow?.getBoundingClientRect();
     if (holder && rowRect && rowRect.width > 0) {
       const row = rowFromDom(holder, cacheRef.current, overflowSlotsRef?.current || []);
-      // Where Pan will sit once the tool bar's plan is applied: the cluster
-      // moves by the change in shift, and Pan hangs off its left.
-      const clusterLeftNext = clusterRect.left + (planRef.current.shift - top.shift);
       const span = usableRowSpan(rowRect);
-      const next = planFormatRow({
-        usableLeft: span.left,
-        usableRight: span.right,
-        preferredLeft: clusterLeftNext - leftBlockWidth - rowRect.left,
-        row,
-      });
+      const input = { usableLeft: span.left, usableRight: span.right, row };
+      let next = planFormatRow(input);
+      // Centred on the width the row is DRAWN at once this plan is on screen:
+      // when the plan keeps what is drawn now, that is the measured width
+      // (exact); otherwise the worked-out one, corrected on the next pass.
+      const keepsDrawn = next.tight === current.tight
+        && next.compact.join('|') === current.compact.join('|')
+        && next.overflow.join('|') === current.overflow.join('|');
+      if (keepsDrawn) next = planFormatRow({ ...input, width: holder.getBoundingClientRect().width });
       format = {
         formatLeft: next.left,
         formatUsableLeft: Math.round(span.left),
+        textRowLeft: current.textRowLeft,
         tight: next.tight,
         compact: next.compact,
         overflow: next.overflow,
         fits: next.fits,
       };
+    }
+    // The text bar (row 3, the Aa bar): centred on the same span, planned
+    // only while it is on screen, from its controls' drawn width (the caption
+    // hangs out of the flow and does not count).
+    const textBar = column?.querySelector('[data-chrome-text-format-row] [data-rich-text-toolbar]');
+    const textBarRect = textBar?.getBoundingClientRect();
+    if (textBar && textBarRect.width > 0) {
+      const boxes = [...textBar.children]
+        .filter((child) => {
+          const style = window.getComputedStyle(child);
+          return style.display !== 'none' && style.position !== 'absolute' && style.position !== 'fixed';
+        })
+        .map((child) => child.getBoundingClientRect())
+        .filter((box) => box.width > 0);
+      if (boxes.length) {
+        const span = usableRowSpan(textBarRect);
+        format.textRowLeft = planTextRow({
+          usableLeft: span.left,
+          usableRight: span.right,
+          width: Math.max(...boxes.map((b) => b.right)) - Math.min(...boxes.map((b) => b.left)),
+        });
+      }
     }
     const next = { ...top, ...format };
     if (samePlan(next, planRef.current)) return false;
@@ -281,6 +351,18 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       if (changed) measureAndPlan();
     });
     if (formatRow) contentObserver.observe(formatRow);
+    // w45: the group's tools are drawn into the tool bar by the viewer, a
+    // render that may land a frame before ours. The row re-centres on their
+    // new width before that frame paints.
+    const subtools = host.querySelector('[data-toolbar-subtools]');
+    let subtoolsWidth = -1;
+    const subtoolsObserver = new ResizeObserver((records) => {
+      const width = records[records.length - 1]?.contentRect?.width ?? -1;
+      if (Math.abs(width - subtoolsWidth) < 0.5) return;
+      subtoolsWidth = width;
+      flushSync(() => { measureAndPlan(); });
+    });
+    if (subtools) subtoolsObserver.observe(subtools);
     const holder = formatRow?.querySelector('[data-chrome-settings-holder]') || null;
     if (holder) contentObserver.observe(holder);
     contentWatchRef.current = { observer: contentObserver, holder };
@@ -319,6 +401,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     document.addEventListener('transitionend', onTransitionEnd, true);
     return () => {
       observer.disconnect();
+      subtoolsObserver.disconnect();
       contentObserver.disconnect();
       contentWatchRef.current = { observer: null, holder: null };
       panelObserver.disconnect();

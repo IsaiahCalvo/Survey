@@ -17,20 +17,19 @@
  *   row 3:                  the text-formatting bar Aa drops (unchanged).
  * So there are two plans:
  *
- *   TOOL BAR (planTopBar). The tool icons stay centred with Undo/Redo pinned
- *   left and Export pinned right — the look the bar has always had at normal
- *   widths. A group's tools hang off the right of the icons and are at most
- *   seven buttons (Shapes), so the centred look now fits at every desktop
- *   width; only if it ever did not would the icons sit just right of Undo /
- *   Redo. Chosen by WIDTH alone (the widest group's tools, never the armed
- *   group's), so switching tools never moves an icon.
+ *   TOOL BAR (planTopBar). Undo/Redo stay pinned left and Export pinned
+ *   right. RULED 2026-09-26 owner: centre rows on canvas (w45) — the whole
+ *   row of tools (Pan / Select, the group icons and the chosen group's own
+ *   tools) is centred on the canvas: the span between the two side rails, or
+ *   between an open side panel and the far rail. Only when that would run into
+ *   Undo/Redo or Export does it slide just far enough to clear them. Picking
+ *   a group with more or fewer tools re-centres the row (the owner accepted
+ *   that); a row whose content has not changed never moves.
  *
- *   FORMATTING ROW (planFormatRow). The settings start under the Pan button,
- *   at a spot chosen by the window (and any open side panel) alone — never by
- *   the armed tool — so the colours never jump sideways when you switch tools.
- *   Where the widest settings row (the Arrow's) would not fit from there, the
- *   start moves left, down to the row's own inset. Then the row gives ground
- *   in the w42 order, with the whole row to itself:
+ *   FORMATTING ROW (planFormatRow). RULED 2026-09-26 owner: centre rows on
+ *   canvas (w45) — the settings are centred on the same canvas span (they
+ *   used to start under the Pan button). The row has the whole uncovered span
+ *   to itself and gives ground in the w42 order:
  *     1. the gutters between the setting pills and the rules tighten;
  *     2. secondary labels collapse, one pill at a time, least useful first
  *        ("Solid" becomes just the line it draws, "2 pt" becomes "2");
@@ -38,30 +37,31 @@
  *        "More" menu (the ⋯ button at the end of the settings). Same controls
  *        inside, same behaviour. Colours are never moved.
  *
+ *   TEXT BAR (planTextRow). Row 3 centres on the same span too.
+ *
  * Below the phone breakpoint (720px) the phone layout takes over, as before.
  * The hook that measures the DOM and applies both plans is useResponsiveToolbar.
  */
 
 /** The widest a group's tools get in the tool bar: Shapes' seven 28px buttons
  * on the 6px tool gutter, plus the rule (1px + 8px each side) that fences them
- * off from the group icons. 7 * 28 + 6 * 6 + 17 = 249. */
+ * off from the group icons. 7 * 28 + 6 * 6 + 17 = 249. planTopBar's default
+ * when the live width is not given. */
 export const WIDEST_SUBTOOLS_WIDTH = 249;
-
-/** The widest formatting row: the Arrow tool's colours, rule, width, line
- * style, arrowhead and ends — 485px on the loose gutters (w42 measured 502
- * with the rule that used to lead the settings in the tool bar, which the
- * formatting row does not draw). The row's start is picked so this row fits,
- * so no other tool's row ever moves the colours. */
-export const WIDEST_FORMAT_ROW = 485;
 
 /** Clear space kept at either end of the formatting row. */
 export const ROW_INSET = 10;
+
+/** Room the text bar (row 3) keeps left of its controls for the "Text"
+ * caption that hangs off them. */
+export const TEXT_ROW_CAPTION_ROOM = 34;
 
 /** Clear space kept between the group's tools and Export, and between
  * Undo/Redo and the Pan / Select block. */
 export const EDGE_CLEARANCE = 8;
 
-/** Space between Redo and Pan once the icons sit left. */
+/** Space between Redo and Pan once the row is pushed off centre to the left
+ * edge. */
 export const START_GAP = 12;
 
 /** Gutters: the normal settings row, and the tightened one (stage 1). */
@@ -142,7 +142,8 @@ export function rowWidth(items, { gap, inset }) {
  * setting (a divider with a slot goes with it). Slot entries carry
  * `widths: { full, compact }` (measured or guessed) and `canCompact` (false
  * while it shows "Mixed").
- * @returns {{ tight: boolean, compact: string[], overflow: string[], fits: boolean }}
+ * @returns {{ tight: boolean, compact: string[], overflow: string[], fits: boolean,
+ *   width: number }} `width` is the chosen row's width.
  */
 export function fitSettingsRow(row, available) {
   const slotsPresent = [...new Set(row.filter((entry) => entry.slot).map((entry) => entry.slot))];
@@ -163,7 +164,11 @@ export function fitSettingsRow(row, available) {
     return rowWidth(items, spacing);
   };
   const result = (tight, compact, overflow, fits) => ({
-    tight, compact: [...compact], overflow: [...overflow], fits,
+    tight,
+    compact: [...compact],
+    overflow: [...overflow],
+    fits,
+    width: widthOf(new Set(compact), new Set(overflow), tight ? TIGHT_SPACING : LOOSE_SPACING),
   });
   const empty = new Set();
 
@@ -201,7 +206,9 @@ export function fitSettingsRow(row, available) {
 }
 
 /**
- * Pick the tool bar's layout (row 1).
+ * Pick the tool bar's layout (row 1). RULED 2026-09-26 owner: centre rows on
+ * canvas — the tools row (Pan / Select block + group icons + the group's tools)
+ * is centred on the canvas span, clear of Undo/Redo and Export.
  *
  * @param {object} input
  * @param {number} input.barWidth       the tool bar's width
@@ -209,10 +216,15 @@ export function fitSettingsRow(row, available) {
  * @param {number} input.exportLeft     Export's left edge (bar coordinates)
  * @param {number} input.clusterWidth   Draw / Shapes / Text icons
  * @param {number} input.leftBlockWidth Pan / Select block (and its rule)
- * @param {number} [input.subtoolsWidth] the widest group's tools — a constant,
- *   so the answer depends on the window alone
+ * @param {number} [input.subtoolsWidth] the chosen group's tools (and rule)
+ * @param {number} [input.spanLeft]     the canvas span, bar coordinates
+ * @param {number} [input.spanRight]
+ * @param {number} [input.clusterNaturalLeft] where the icons sit with no
+ *   shift (the bar centres them); defaults to the bar's centre
  * @returns {{ anchor: 'center'|'start', shift: number }}
- *   `shift` is how far the icon cluster moves LEFT of centre.
+ *   `shift` is how far the icon cluster moves LEFT of its natural spot
+ *   (negative = right). `anchor` is 'start' when Undo/Redo or Export pushed
+ *   the row off the canvas centre.
  */
 export function planTopBar({
   barWidth,
@@ -221,47 +233,68 @@ export function planTopBar({
   clusterWidth,
   leftBlockWidth,
   subtoolsWidth = WIDEST_SUBTOOLS_WIDTH,
+  spanLeft = 0,
+  spanRight = barWidth,
+  clusterNaturalLeft = (barWidth - clusterWidth) / 2,
 }) {
-  const rightLimit = exportLeft - EDGE_CLEARANCE;
-  const center = barWidth / 2;
-  const centredLeftEdge = center - clusterWidth / 2 - leftBlockWidth;
-  const centredRightEdge = center + clusterWidth / 2 + subtoolsWidth;
-  if (centredLeftEdge >= undoRight + EDGE_CLEARANCE && centredRightEdge <= rightLimit) {
-    return { anchor: 'center', shift: 0 };
-  }
-  // The icons sit just right of Undo / Redo.
-  const clusterLeft = undoRight + START_GAP + leftBlockWidth;
-  const shift = Math.max(0, (center - clusterWidth / 2) - clusterLeft);
-  return { anchor: 'start', shift };
+  const groupWidth = leftBlockWidth + clusterWidth + subtoolsWidth;
+  const minLeft = undoRight + START_GAP;
+  const maxRight = exportLeft - EDGE_CLEARANCE;
+  let groupLeft = (spanLeft + spanRight) / 2 - groupWidth / 2;
+  let anchor = 'center';
+  if (groupLeft + groupWidth > maxRight) { groupLeft = maxRight - groupWidth; anchor = 'start'; }
+  if (groupLeft < minLeft) { groupLeft = minLeft; anchor = 'start'; }
+  const shift = clusterNaturalLeft - Math.round(groupLeft + leftBlockWidth);
+  return { anchor, shift: Math.abs(shift) < 0.01 ? 0 : shift };
 }
 
 /**
- * Pick the formatting row's layout (row 2).
+ * Pick the formatting row's layout (row 2). RULED 2026-09-26 owner: centre
+ * rows on canvas — the settings are centred on the uncovered span.
  *
  * @param {object} input
  * @param {number} input.usableLeft   left edge of the row not under a side
  *   panel (row coordinates)
  * @param {number} input.usableRight  right edge of the row not under a panel
- * @param {number} [input.preferredLeft] where the settings would like to
- *   start: under the Pan button (row coordinates)
  * @param {Array}  input.row  the settings row in order (see fitSettingsRow)
- * @param {number} [input.widestRow] the widest row any tool draws — a
- *   constant, so the start depends on the window (and panels) alone
- * @returns {{ left: number, tight: boolean, compact: string[],
+ * @param {number} [input.width] the row's drawn width, when the caller knows
+ *   it (measured with this very plan applied); otherwise it is worked out
+ * @returns {{ left: number, width: number, tight: boolean, compact: string[],
  *   overflow: string[], fits: boolean }}
  */
 export function planFormatRow({
   usableLeft,
   usableRight,
-  preferredLeft,
   row,
-  widestRow = WIDEST_FORMAT_ROW,
+  width,
 }) {
   const minLeft = usableLeft + ROW_INSET;
   const rightLimit = usableRight - ROW_INSET;
-  const wanted = Number.isFinite(preferredLeft) ? preferredLeft : minLeft;
-  const left = Math.round(Math.max(minLeft, Math.min(wanted, rightLimit - widestRow)));
-  return { left, ...fitSettingsRow(row, rightLimit - left) };
+  const fit = fitSettingsRow(row, rightLimit - minLeft);
+  const drawn = Number.isFinite(width) ? width : fit.width;
+  const centred = (usableLeft + usableRight) / 2 - drawn / 2;
+  const left = Math.round(Math.max(minLeft, Math.min(centred, rightLimit - drawn)));
+  return { left, ...fit, width: drawn };
+}
+
+/**
+ * Where the text bar's controls (row 3) start. RULED 2026-09-26 owner: centre
+ * rows on canvas — centred on the uncovered span like rows 1 and 2. Where
+ * centring would leave no room for the "Text" caption left of them, or would
+ * run past the row's inset on the right, it slides just enough; a bar too
+ * wide for the span keeps its start (caption room) and runs off the right,
+ * as before.
+ *
+ * @param {object} input
+ * @param {number} input.usableLeft  row coordinates, as planFormatRow
+ * @param {number} input.usableRight
+ * @param {number} input.width       the controls' drawn width
+ * @returns {number} the controls' left edge (row coordinates)
+ */
+export function planTextRow({ usableLeft, usableRight, width }) {
+  const minLeft = usableLeft + ROW_INSET + TEXT_ROW_CAPTION_ROOM;
+  const centred = (usableLeft + usableRight) / 2 - width / 2;
+  return Math.round(Math.max(minLeft, Math.min(centred, usableRight - ROW_INSET - width)));
 }
 
 /**
