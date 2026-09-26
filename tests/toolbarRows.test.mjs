@@ -49,12 +49,13 @@ test('an armed tool shows its group\'s tools; Pan and Survey Marker placement sh
   assert.deepEqual([...TOOL_BAR_GROUPS], ['draw', 'shape', 'review', 'forms']);
 });
 
-test('the formatting row shows for an armed tool, a picked mark, the eraser, an open text box — and all through Select', () => {
+test('the formatting row shows for an armed tool, a picked mark, the eraser, an open text box, and Text Select', () => {
   assert.equal(showsFormatRow({ activeTool: 'pan', contextTool: 'pan' }), false);
-  // Coordinator ruling on the w44 review: row 2 stays up the whole time Select
-  // is armed (it carries the Box / Lasso / Text modes with nothing picked), so
-  // picking or dropping a mark never adds or removes a strip over the page.
-  assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'select' }), true);
+  // DELIBERATE ASSERTION CHANGE — RULED 2026-09-26 owner: select modes in top
+  // bar (w46). The Box / Lasso / Text modes left row 2 for the tool bar, so
+  // Box or Lasso Select with nothing picked has nothing for row 2: it is
+  // hidden (w44's review kept it up to carry the modes).
+  assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'select' }), false);
   assert.equal(showsFormatRow({ activeTool: 'survey-marker', contextTool: 'survey-marker' }), false);
   assert.equal(showsFormatRow(null), false);
   assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'pen' }), true, 'a picked pen stroke');
@@ -120,13 +121,38 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   assert.match(slots, /data-chrome-format-row="true"\s*role="toolbar"\s*aria-label="Formatting"/);
 });
 
-test('Select mode: the modes sit in row 2 with nothing picked, and in the tool bar only for a mark no group makes', () => {
-  assert.match(appShell, /const selectModesInFormatRow = selectArmed\s*&& isSelectFamilyTool\(bottomToolbarApi\.contextTool \|\| bottomToolbarApi\.activeTool\)/);
-  assert.match(appShell, /const selectModesInToolBar = selectArmed && !selectModesInFormatRow && toolBarGroup === 'select'/);
+test('Select mode: the modes sit in the tool bar with nothing picked, or for a mark no group makes; never in row 2', () => {
+  // DELIBERATE ASSERTION CHANGE — RULED 2026-09-26 owner: select modes in top
+  // bar (w46): "Those need to be to the very right, just like every other
+  // annotation type of tool, like pen, highlighter, and eraser." w44 put them
+  // in row 2 with nothing picked; now the tool bar holds them whenever Select
+  // shows its own tools (resolveToolBarGroup → 'select').
+  assert.doesNotMatch(appShell, /selectModesInFormatRow/);
+  assert.match(appShell, /const selectModesInToolBar = selectArmed && toolBarGroup === 'select';/);
   const row2 = appShell.slice(appShell.indexOf('data-chrome-settings-holder="true"'), appShell.indexOf('data-eraser-mode-toggle="true"'));
-  assert.match(row2, /\{selectModesInFormatRow && renderSelectModeToggle\(\)\}/);
+  assert.doesNotMatch(row2, /renderSelectModeToggle\(\)/);
   const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
   assert.match(toolBar, /\{selectModesInToolBar && renderSelectModeToggle\(\)\}/);
+  // The same rule before them as before a group's tools.
+  assert.match(toolBar, /\(\(toolBarGroup && toolBarGroup !== 'select'\) \|\| selectModesInToolBar\) && \(\s*<div className="chrome-divider" \/>/);
+  // They answer the pointer exactly as the group tools beside them do.
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /#chrome-subtools-host \.btn:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:hover:not\(:disabled\)/);
+  assert.match(css, /#chrome-subtools-host \.btn-active:hover:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn-active:hover:not\(:disabled\)/);
+  assert.match(css, /#chrome-subtools-host \.btn:active:not\(:disabled\),\s*\[data-select-mode-toggle\] \.btn:active:not\(:disabled\)/);
+});
+
+test('row 2 coming and going in Select mode moves neither the Survey row nor the storage banner', () => {
+  // w46: the Survey row has its own slot above row 2...
+  const slots = appShell.slice(appShell.indexOf('id="chrome-sub-toolbar-host"'), appShell.indexOf('<Dashboard'));
+  assert.ok(slots.indexOf('id="chrome-survey-row-slot"') > 0);
+  assert.ok(slots.indexOf('id="chrome-survey-row-slot"') < slots.indexOf('data-chrome-format-row="true"'));
+  assert.match(pdfViewer, /const subRowHost = document\.getElementById\('chrome-survey-row-slot'\)\s*\|\| document\.getElementById\('chrome-sub-toolbar-host'\);/);
+  // ...and the banner anchors as if row 2 were up the whole time Select is armed.
+  assert.match(appShell, /const reserveFormatRowForBanner = selectArmed && !isMobileViewer;/);
+  assert.match(appShell, /setProperty\('--app-banner-top'/);
+  const banner = readFileSync(new URL('../src/components/collab/StorageFailureBanner.css', import.meta.url), 'utf8');
+  assert.match(banner, /top: var\(--app-banner-top, var\(--app-chrome-top, 96px\)\);/);
 });
 
 test('marks of several kinds picked together borrow no group: the tool bar shows the Select modes', () => {

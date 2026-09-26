@@ -150,7 +150,7 @@ test('desktop Select arms the family and its modes are a segmented toggle', () =
   // The trigger draws the live mode's glyph at the cluster's one glyph size.
   assert.match(selectToolbar, /getSelectFamilyIconName\(bottomToolbarApi\.activeTool, bottomToolbarApi\.selectionMode\)[\s\S]{0,80}size=\{CHROME_GLYPH\}/);
 
-  // The three modes, as a segmented toggle on the settings side of the bar.
+  // The three modes, as a group of tool buttons.
   const toggle = APP_SHELL_SOURCE.slice(
     APP_SHELL_SOURCE.indexOf('data-select-mode-toggle="true"'),
     APP_SHELL_SOURCE.indexOf('data-eraser-mode-toggle="true"'),
@@ -158,8 +158,15 @@ test('desktop Select arms the family and its modes are a segmented toggle', () =
   assert.match(toggle, /SELECT_MODE_OPTIONS\.map/);
   assert.match(toggle, /isSelectModeActive\(opt, bottomToolbarApi\.selectionMode\)/);
   assert.match(toggle, /aria-pressed=\{selected\}/);
-  assert.match(toggle, /getSelectModeIconName\(opt\.mode\)\} size=\{12\}/);
-  assert.match(toggle, /SELECT_MODE_SHORT_LABELS\[opt\.mode\]/);
+  // DELIBERATE ASSERTION CHANGE — RULED 2026-09-26 owner: select modes in top
+  // bar (w46). Box / Lasso / Text are tools beside the group icons now, drawn
+  // exactly like pen / highlighter / eraser: the shared tool button, the shared
+  // glyph size, the gold glyph for the live one — no segmented well and no
+  // words (board 14's 12px glyph + short label). The full name stays the
+  // tooltip and accessible name (asserted below).
+  assert.match(toggle, /className=\{`btn chrome-subcontrol \$\{selected \? 'btn-active' : 'btn-ghost'\}`\}/);
+  assert.match(toggle, /getSelectModeIconName\(opt\.mode\)\} size=\{CHROME_GLYPH\}/);
+  assert.doesNotMatch(toggle.slice(0, toggle.indexOf('const toolbarOverflowItems')), /chrome-segmented/);
   // B1: desktop uses the canonical label as the accessible name, as the phone does.
   assert.match(toggle, /aria-label=\{opt\.label\}/);
   assert.equal(SELECT_MODE_OPTIONS.find(option => option.mode === 'rectangle').label, 'Rectangle Select');

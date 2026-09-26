@@ -11,10 +11,12 @@
 // group's tools and row 2 shows that mark's formatting, so a picked pen stroke
 // reads pen / highlighter / eraser up top and its colour and width below.
 // Pressing one of those tools arms it and leaves Select (owner answered yes).
-// With nothing picked, Select's own tools — the Box / Lasso / Text modes —
-// sit in row 2, which stays up the whole time Select is armed; a picked mark
-// that no drawing group makes (a text highlight, or marks of several kinds
-// picked together) shows them in the tool bar instead.
+// RULED 2026-09-26 owner: select modes in top bar (w46). With nothing picked,
+// Select's own tools — the Box / Lasso / Text modes — sit in the tool bar right
+// of the group icons, exactly where pen / highlighter / eraser sit for Draw; so
+// does a picked mark that no drawing group makes (a text highlight, or marks
+// of several kinds picked together). Row 2 then shows only settings that
+// really apply (Text mode's highlight colours), and is hidden when none do.
 //
 // Shared by AppShell (which draws Select's modes and the rule before the
 // tools) and PDFViewer (which draws the group tools themselves), so the two
@@ -65,17 +67,19 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
 ]);
 
 /**
- * Whether the formatting row (row 2) is on screen: a drawing tool is armed,
- * the eraser is armed (its kind and size), a text box is open for typing — or
- * Select is armed at all. Coordinator ruling on the w44 review: in Select mode
- * the row stays up whether or not a mark is picked (with nothing picked it
- * carries Select's Box / Lasso / Text modes), so picking or dropping a mark
- * never adds or removes a strip over the page and nothing below it moves.
+ * Whether the formatting row (row 2) is on screen: exactly when it has
+ * settings to show — a drawing tool is armed, a mark with settings is picked,
+ * the eraser is armed (its kind and size), a text box is open for typing, or
+ * Select's Text mode is armed (the text-highlight colours and blend).
+ * RULED 2026-09-26 owner: select modes in top bar (w46). The Box / Lasso /
+ * Text modes left row 2 for the tool bar, so Box or Lasso Select with nothing
+ * picked has nothing for row 2 and it is hidden; picking a mark brings it
+ * back. The row lies over the page (utils/viewerTopOverlay.js), so the page
+ * does not move when it comes and goes.
  * Pan and Survey Marker placement have no settings: no row.
  */
 export function showsFormatRow(api) {
   if (!api) return false;
   if (api.activeTool === 'eraser' || api.richTextEditor) return true;
-  if (isSelectFamilyTool(api.activeTool)) return true;
   return FORMAT_ROW_TOOLS.includes(api.contextTool);
 }

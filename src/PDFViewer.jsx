@@ -35452,7 +35452,12 @@ ${pageBlocks}
             wrapper differ. */}
         {isActive && pdfFile && typeof document !== 'undefined' && (() => {
           const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool });
-          const subRowHost = document.getElementById('chrome-sub-toolbar-host');
+          // w46 (owner 2026-09-26: select modes in top bar): the Survey row
+          // has its own slot ABOVE row 2 (AppShell #chrome-survey-row-slot).
+          // In Select mode row 2 now comes and goes as a mark is picked and
+          // dropped; under it, the Survey row would jump by a bar's height.
+          const subRowHost = document.getElementById('chrome-survey-row-slot')
+            || document.getElementById('chrome-sub-toolbar-host');
           const renderSubRow = (subRowCategory, host, inToolBar) => createPortal(
           <div
             key={inToolBar ? 'tool-bar-tools' : 'sub-row'}

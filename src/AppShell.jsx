@@ -52,7 +52,7 @@ import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS, SELECT_MODE_SHORT_LABELS } from './utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
@@ -1586,13 +1586,14 @@ export default function App({ devPreviewReturnTab = null }) {
     ? resolveToolBarGroup({ ...bottomToolbarApi, contextTool: bottomToolbarApi.toolBarContextTool ?? bottomToolbarApi.contextTool })
     : null;
   const formatRowShown = !isMobileViewer && !!isViewerVisible && showsFormatRow(bottomToolbarApi);
-  // w44 (coordinator ruling on the review): row 2 stays on screen for as long
-  // as Select is armed, so picking or dropping a mark never adds or removes a
-  // strip over the page. With nothing picked it carries Select's Box / Lasso /
-  // Text modes (and, in Text mode, the text-mark colours); with a mark picked
-  // it carries that mark's settings. A picked mark that belongs to no drawing
-  // group — a text highlight, or marks of several kinds picked together —
-  // shows the modes up in the tool bar instead, where a group's tools go.
+  // RULED 2026-09-26 owner: select modes in top bar (w46). With Select armed
+  // and nothing picked, Select's Box / Lasso / Text modes sit in the TOOL BAR
+  // right of the group icons, where a group's tools go (as pen / highlighter /
+  // eraser do for Draw) — and so they do for a picked mark that belongs to no
+  // drawing group (a text highlight, or marks of several kinds picked
+  // together). Row 2 carries only settings that apply (the text-mark colours
+  // in Text mode, a picked mark's settings) and is hidden when none do; it lies
+  // over the page, so the page does not move as it comes and goes.
   // RULED 2026-09-26 owner: centre rows on canvas (w45). Row 3 (the Aa bar)
   // is centred on the same uncovered span as rows 1 and 2 (planTextRow via
   // useResponsiveToolbar), keeping room for the "Text" caption that hangs off
@@ -1600,9 +1601,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const textFormatRowLeft = toolbarPlan.textRowLeft
     ?? ((toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
-  const selectModesInFormatRow = selectArmed
-    && isSelectFamilyTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool);
-  const selectModesInToolBar = selectArmed && !selectModesInFormatRow && toolBarGroup === 'select';
+  const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
   // A popover whose opener sits in row 2 closes when the row goes away (Pan,
   // Survey Marker placement, closing the document): its anchor has no box left
   // to open under. Desktop only — the phone draws its own pickers.
@@ -1691,6 +1690,7 @@ export default function App({ devPreviewReturnTab = null }) {
     if (typeof document === 'undefined') return undefined;
 
     let rafId = 0;
+    const reserveFormatRowForBanner = selectArmed && !isMobileViewer;
     const updateChromeTop = () => {
       rafId = 0;
       const topHost = document.getElementById('chrome-top-host');
@@ -1707,6 +1707,19 @@ export default function App({ devPreviewReturnTab = null }) {
       }
 
       document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(chromeBottom)}px`);
+
+      // RULED 2026-09-26 owner: select modes in top bar (w46). In Select mode
+      // row 2 now comes and goes as a mark is picked and dropped (it has
+      // nothing to show for Box / Lasso with nothing picked). The storage
+      // banner hangs below the chrome, so it anchors as if row 2 were always
+      // up while Select is armed: picking or dropping a mark never moves it.
+      let bannerTop = chromeBottom;
+      const formatRow = subHost?.querySelector?.('[data-chrome-format-row="true"]');
+      if (reserveFormatRowForBanner && formatRow && formatRow.style.display === 'none') {
+        const barH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-bar-h')) || 36;
+        bannerTop = chromeBottom + barH;
+      }
+      document.documentElement.style.setProperty('--app-banner-top', `${Math.round(bannerTop)}px`);
     };
 
     const scheduleUpdate = () => {
@@ -1738,6 +1751,8 @@ export default function App({ devPreviewReturnTab = null }) {
     bottomToolbarApi?.activeCategoryDropdown,
     bottomToolbarApi?.activeTool,
     bottomToolbarApi?.richTextEditor,
+    selectArmed,
+    isMobileViewer,
   ]);
 
   if (isLoading) {
@@ -1780,19 +1795,23 @@ export default function App({ devPreviewReturnTab = null }) {
   // well, with the chosen word and glyph in gold. Three modes are few enough to
   // show, and showing them means the user can see which one is live without
   // opening anything.
-  // RULED 2026-09-26 owner: flip rows (w44), with the coordinator's review
-  // ruling: while Select is armed and nothing is picked the modes sit in row 2
-  // (which stays up the whole time Select is armed); a picked mark's own group
-  // tools take the tool bar and its settings take row 2; a picked mark with no
-  // drawing group (a text highlight, or marks of several kinds) shows the modes
-  // up in the tool bar. See selectModesInToolBar / selectModesInFormatRow.
+  // RULED 2026-09-26 owner: select modes in top bar (w46). "The selection
+  // tool options, like box, lasso, or text, shouldn't be in a sub-tool group.
+  // Those need to be to the very right, just like every other annotation type
+  // of tool, like pen, highlighter, and eraser." So they are drawn exactly as
+  // a group's tools are (PDFViewer's tool-bar tools): the same 28px
+  // .chrome-subcontrol buttons on the same gutter, the same glyph size, the
+  // same neutral hover (styles.css [data-select-mode-toggle]) and the gold
+  // glyph for the live mode (btn-active) — no segmented well, no words. The
+  // full name ("Rectangle Select" …) is the tooltip and the accessible name.
+  // Shown only while Select is armed with nothing picked, or with a pick no
+  // drawing group makes (selectModesInToolBar).
   const renderSelectModeToggle = () => (
                   <div
-                    className="chrome-segmented"
                     data-select-mode-toggle="true"
                     role="group"
                     aria-label="Selection mode"
-                    style={{ width: '150px' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
                   >
                     {SELECT_MODE_OPTIONS.map((opt) => {
                       const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
@@ -1800,6 +1819,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         <button
                           key={opt.mode}
                           type="button"
+                          className={`btn chrome-subcontrol ${selected ? 'btn-active' : 'btn-ghost'}`}
                           aria-pressed={selected}
                           onClick={() => {
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
@@ -1808,10 +1828,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           {...chromeTip(opt.label, 'below')}
                           aria-label={opt.label}
                         >
-                          {/* Board 14: the app's own selection glyphs at 12px —
-                              a segment is 16px of usable height. */}
-                          <Icon name={getSelectModeIconName(opt.mode)} size={12} color="currentColor" />
-                          {SELECT_MODE_SHORT_LABELS[opt.mode]}
+                          <Icon name={getSelectModeIconName(opt.mode)} size={CHROME_GLYPH} />
                         </button>
                       );
                     })}
@@ -2285,9 +2302,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar) && (
                   <div className="chrome-divider" />
                 )}
-                {/* RULED 2026-09-26 owner: flip rows. Select's Box / Lasso / Text
-                    modes stand where a group's tools go when the picked mark
-                    belongs to no drawing group (see selectModesInToolBar). */}
+                {/* RULED 2026-09-26 owner: select modes in top bar (w46).
+                    Select's Box / Lasso / Text modes stand where a group's
+                    tools go — with nothing picked, or a pick no drawing group
+                    makes (see selectModesInToolBar). */}
                 {selectModesInToolBar && renderSelectModeToggle()}
                 <div
                   id="chrome-subtools-host"
@@ -2635,9 +2653,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   textFormatRowEl
                 )}
                 <>
-                {/* w44: with Select armed and nothing picked, row 2 carries
-                    Select's own modes (it stays up while Select is armed). */}
-                {selectModesInFormatRow && renderSelectModeToggle()}
                 {/* PASS 7 (board 13, owner ruling): the ERASER's two kinds are a
                     segmented toggle, not a dropdown — there are only two, and
                     which one is live changes what a drag does, so it is worth
@@ -3645,6 +3660,14 @@ export default function App({ devPreviewReturnTab = null }) {
                   hidden and row 3 empty, 0px tall), so they are never re-added
                   after the Survey row or the text-selection bar that drop into
                   this host too — the rows always stack in this order. */}
+              {/* w46 (owner 2026-09-26: select modes in top bar): the Survey
+                  row's slot comes FIRST, right under the tool bar. In Select
+                  mode row 2 now comes and goes as a mark is picked and dropped
+                  (it has nothing to show for Box / Lasso with nothing picked);
+                  drawn above it, the Survey row never moves when it does. The
+                  two only share the screen in Select mode — any drawing tool
+                  closes the Survey row. */}
+              <div id="chrome-survey-row-slot" data-chrome-survey-row-slot="true" />
               <div
                   ref={attachFormatRow}
                   data-chrome-format-row="true"

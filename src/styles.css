@@ -253,7 +253,8 @@
    the visible "glow" — past that clip line, so it looked sliced flat.
    Inside the strip the lift is cancelled; the hover colors/ring stay. */
 #chrome-sub-toolbar-host .btn:not(:disabled):hover,
-#chrome-subtools-host .btn:not(:disabled):hover {
+#chrome-subtools-host .btn:not(:disabled):hover,
+[data-select-mode-toggle] .btn:not(:disabled):hover {
   transform: none;
 }
 
@@ -2647,9 +2648,12 @@ textarea:focus-visible,
    the same neutral chip and fixed baseline as the sub-toolbar. */
 /* w44 (rows flipped): a group's tools now sit in the tool bar beside the group
    icons, so they answer the pointer exactly as those icons do — one hover look
-   across the whole bar. */
+   across the whole bar.
+   w46 (owner 2026-09-26: select modes in top bar): Select's Box / Lasso / Text
+   modes are tools in that same spot, so they share every rule here. */
 .btn[data-tool-group]:hover:not(:disabled),
-#chrome-subtools-host .btn:hover:not(:disabled) {
+#chrome-subtools-host .btn:hover:not(:disabled),
+[data-select-mode-toggle] .btn:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -2661,7 +2665,8 @@ textarea:focus-visible,
    top row, so every button in a row answers the pointer the same way. Gold
    stays the active cue; the border stays 1px so the box never jiggles. */
 #chrome-sub-toolbar-host .btn-active:hover:not(:disabled),
-#chrome-subtools-host .btn-active:hover:not(:disabled) {
+#chrome-subtools-host .btn-active:hover:not(:disabled),
+[data-select-mode-toggle] .btn-active:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
 }
@@ -2672,7 +2677,8 @@ textarea:focus-visible,
    --pressed. Verified live at 1440x900 after the move. */
 .btn[data-tool-group]:active:not(:disabled),
 #chrome-sub-toolbar-host .btn-active:active:not(:disabled),
-#chrome-subtools-host .btn:active:not(:disabled) {
+#chrome-subtools-host .btn:active:not(:disabled),
+[data-select-mode-toggle] .btn:active:not(:disabled) {
   background: var(--pressed);
   border-color: var(--border);
 }

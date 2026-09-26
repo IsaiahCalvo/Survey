@@ -19,8 +19,11 @@
   /* UX 2026-04-29 v3: confine to the PDF viewport — left edge anchored at
      sidebar width so the banner doesn't run over the Pages / Search /
      Bookmarks / Spaces tool rail. Width is auto (left + right both set). */
+  /* w46 (owner 2026-09-26: select modes in top bar): --app-banner-top is the
+     chrome's bottom with row 2's slot kept while Select is armed (AppShell),
+     so picking or dropping a mark never moves the banner. */
   position: fixed;
-  top: var(--app-chrome-top, 96px);
+  top: var(--app-banner-top, var(--app-chrome-top, 96px));
   left: var(--app-sidebar-width, 48px);
   right: 0;
   z-index: 100020;
