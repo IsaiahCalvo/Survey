@@ -1631,9 +1631,14 @@ export function MobileToolProperties({ api }) {
   if (api.activeTool === 'pan') return null;
 
   const isEraser = tool === 'eraser';
-  const showWidth = isEraser || WIDTH_TOOLS.has(tool);
+  // w41: the picked mark(s) decide what can change - a partly erased or
+  // imported pen stroke has no width to set, and a mixed pick offers only what
+  // at least one picked mark has (PDFViewer selectionCapabilities).
+  const selectionCaps = api.selectionCapabilities || null;
+  const showWidth = isEraser || (WIDTH_TOOLS.has(tool) && selectionCaps?.width !== false);
   const showFill = FILL_TOOLS.has(tool) && typeof api.handleFillColorChange === 'function';
-  const showBorderStyle = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function';
+  const showBorderStyle = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function'
+    && selectionCaps?.lineStyle !== false;
   const showArrowhead = (tool === 'arrow' || tool === 'callout') && typeof api.setArrowheadStyle === 'function';
   const showStroke = !isEraser && (WIDTH_TOOLS.has(tool) || FILL_TOOLS.has(tool));
   const sizeLabel = isEraser || tool === 'counter' ? 'Size' : 'Width';
@@ -1728,7 +1733,10 @@ export function MobileToolProperties({ api }) {
   // exception and takes the fill, because a pin's colour IS its fill and its
   // stroke is only the number printed on it. Opacity is untouched: it belongs
   // to the sheet's slider, not to a dot.
-  const quickColourValue = tool === 'counter'
+  // w41: picked marks in different colours ring no disc.
+  const quickColourValue = api.selectionMixed?.strokeColor
+    ? null
+    : tool === 'counter'
     ? toHexColor(api.fillColor, '#ef4444')
     : toHexColor(api.strokeColor, '#ff0000');
   const applyQuickColour = (hex) => {
@@ -1762,7 +1770,13 @@ export function MobileToolProperties({ api }) {
     preview: <span style={{ display: 'block', width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />,
     menuPreview: <span style={{ display: 'block', width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />,
   }));
-  const lineStyleValue = api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle
+  // w41: picked marks with different line styles read "Mixed" (no row
+  // chosen) until one style is picked for all of them.
+  const lineStyleMixed = !!api.selectionMixed?.lineStyle;
+  const lineStylePlaceholder = lineStyleMixed ? 'Mixed' : undefined;
+  const lineStyleValue = lineStyleMixed
+    ? ''
+    : api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle
     ? 'solid'
     : (api.lineBorderStyle || 'solid');
   const lineStyleOptions = [
@@ -2024,7 +2038,9 @@ export function MobileToolProperties({ api }) {
         <MobileStyledSelect
           ariaLabel="Line width"
           width="var(--mobile-strip-dropdown-w)"
-          value={String(sizeValue ?? '')}
+          // w41: picked marks with different widths read "Mixed".
+          value={api.selectionMixed?.width ? '' : String(sizeValue ?? '')}
+          placeholder={api.selectionMixed?.width ? 'Mixed' : undefined}
           options={widthOptions}
           onChange={(width) => { handleSizeDraft(width); handleSizeCommit(width); }}
         />
@@ -2058,6 +2074,7 @@ export function MobileToolProperties({ api }) {
           ariaLabel="Line style"
           width="var(--mobile-strip-linestyle-w)"
           value={lineStyleValue}
+          placeholder={lineStylePlaceholder}
           options={lineStyleOptions}
           onChange={(value) => api.setLineBorderStyle(value)}
         />
@@ -2375,6 +2392,7 @@ export function MobileToolProperties({ api }) {
                           <MobileStyledSelect
                             ariaLabel="Stroke style"
                             value={lineStyleValue}
+                            placeholder={lineStylePlaceholder}
                             options={lineStyleOptions}
                             onChange={(value) => api.setLineBorderStyle?.(value)}
                           />

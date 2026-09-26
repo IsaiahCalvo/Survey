@@ -50,6 +50,10 @@ export default function AnnotationSizeControl({
   unit = '',
   width,
   preview,
+  // w41: several picked marks with different widths. The pill reads "Mixed"
+  // and no preset is ticked until one is chosen (then every picked mark takes
+  // it). Reference: Bluebeam / Acrobat show a blank or "Mixed" field.
+  mixed = false,
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
@@ -76,7 +80,9 @@ export default function AnnotationSizeControl({
   ), [max, min, presets]);
   const previewScaleMin = availablePresets[0] ?? min;
   const previewScaleMax = availablePresets[availablePresets.length - 1] ?? max;
-  const selectedPresetIndex = availablePresets.findIndex((preset) => Number(valueText) === preset);
+  const selectedPresetIndex = mixed
+    ? -1
+    : availablePresets.findIndex((preset) => Number(valueText) === preset);
 
   const handleOpenChange = (nextOpen) => {
     if (nextOpen) {
@@ -147,7 +153,7 @@ export default function AnnotationSizeControl({
   };
 
   const isPill = variant === 'pill';
-  const valueLabel = `${valueText}${unit ? ` ${unit}` : ''}`;
+  const valueLabel = mixed ? 'Mixed' : `${valueText}${unit ? ` ${unit}` : ''}`;
 
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
@@ -163,7 +169,8 @@ export default function AnnotationSizeControl({
               disabled={disabled}
               style={width ? { '--chrome-pill-w': width } : undefined}
             >
-              {preview ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
+              {/* A mixed width has no one stroke to preview. */}
+              {preview && !mixed ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
               <span className="chrome-pill__label">{valueLabel}</span>
               <span className="chrome-pill__chevron" aria-hidden="true">
                 <Icon name="chevronDown" size={9} color="currentColor" />
@@ -211,7 +218,7 @@ export default function AnnotationSizeControl({
               in a 36px chrome. */}
           <div className="annotation-size-control__presets" role="listbox" aria-label={`${label} presets`}>
             {availablePresets.map((preset, index) => {
-              const active = Number(valueText) === preset;
+              const active = !mixed && Number(valueText) === preset;
               return (
                 <button
                   key={preset}

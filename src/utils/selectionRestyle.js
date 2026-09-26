@@ -1,0 +1,613 @@
+/**
+ * Restyling marks that are already drawn (w41, 2026-09-25).
+ *
+ * UX (owner report 2026-09-25: "I'm not able to change the color of a pen
+ * stroke ... once it's drawn, it's drawn"): with one or more marks selected,
+ * the formatting controls - line colour, fill colour, opacity, line width,
+ * line style, arrow ends - show the SELECTION's values and a change lands on
+ * the selected marks. Reference: Drawboard PDF, Bluebeam Revu and Acrobat all
+ * restyle the whole selection from the same bar that sets the next mark's
+ * style. A mixed selection shows a mixed state and each mark takes only the
+ * properties it has (a pen stroke has no fill, a rectangle has no arrow end).
+ *
+ * WHY THE PEN BROKE (regression, a3380bbf9 2026-07-10): since the capsule
+ * eraser landed, a pen or highlighter stroke is stored as a FILLED OUTLINE
+ * ("paper ink": fill = the ink colour, stroke 'transparent', strokeWidth 0,
+ * the width baked into the outline and kept as `sourceWidth`). The toolbar
+ * still wrote `stroke` / `strokeWidth`, which the renderer ignores for that
+ * shape, so every colour and width change on a pen stroke did nothing.
+ * Imported pressure ink (Drawboard / Adobe filled outlines) has the same shape.
+ *
+ * Everything here is pure (no DOM, no React) so the rules are unit tested.
+ */
+
+import { composeColorForPatch } from './annotationData.js';
+import { renderPathToSvgAttrs } from './svgPathAttrs.js';
+import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
+import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
+import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
+import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
+
+const NONE_ARROWHEAD = 'none';
+const DEFAULT_ARROWHEAD = 'solidTriangle';
+
+const lower = (value) => String(value || '').toLowerCase();
+
+const clampPct = (value, fallback = 100) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(number)));
+};
+
+const isVisiblePaint = (value) => {
+  if (value == null) return false;
+  const text = String(value).trim().toLowerCase();
+  return text !== '' && text !== 'none' && text !== 'transparent'
+    && text !== 'rgba(0,0,0,0)' && text !== 'rgba(0, 0, 0, 0)';
+};
+
+/** '#rrggbb' from a hex or rgb(a) colour, or null. */
+export function colorToHex(color) {
+  if (typeof color !== 'string') return null;
+  const text = color.trim();
+  const rgb = text.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
+  if (rgb) {
+    return `#${[rgb[1], rgb[2], rgb[3]]
+      .map((part) => Math.max(0, Math.min(255, Math.round(Number(part)))).toString(16).padStart(2, '0'))
+      .join('')}`;
+  }
+  if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(text)) {
+    return `#${text.slice(1).split('').map((c) => c + c).join('')}`.toLowerCase();
+  }
+  if (/^#[0-9a-f]{8}$/i.test(text)) return text.slice(0, 7).toLowerCase();
+  return null;
+}
+
+/** 0-100 alpha of a colour (hex / named = 100). */
+export function colorToOpacity(color) {
+  if (typeof color !== 'string') return 100;
+  const rgba = color.trim().match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/i);
+  if (rgba) return clampPct(Number(rgba[1]) * 100);
+  const hex8 = color.trim().match(/^#[0-9a-f]{6}([0-9a-f]{2})$/i);
+  if (hex8) return clampPct((parseInt(hex8[1], 16) / 255) * 100);
+  return 100;
+}
+
+const isCounter = (annotation) => lower(annotation?.type) === 'circle'
+  && annotation?.data?.type === 'counter';
+
+const isArrowLine = (annotation) => lower(annotation?.type) === 'line' && (
+  annotation?.tool === 'arrow'
+  || annotation?.data?.tool === 'arrow'
+  || annotation?.data?.arrowheadStyle != null
+);
+
+/**
+ * True for a path whose visible body is its FILL (native paper ink,
+ * eraser-carved ink, imported pressure-ink outlines). Its colour lives in
+ * `fill`; its `stroke` is never painted.
+ */
+export function isFilledInkPath(annotation) {
+  if (lower(annotation?.type) !== 'path' || !Array.isArray(annotation?.path)) return false;
+  try {
+    return renderPathToSvgAttrs(annotation).filledOutline === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The page-unit scale a path is drawn at (resizing a stroke scales its
+ * outline). Width is shown and set in drawn units, so a stroke that was
+ * shrunk to half size and says "4" really looks 4 wide.
+ */
+const inkDrawScale = (annotation) => {
+  const sx = Math.abs(Number(annotation?.scaleX) || 1);
+  const sy = Math.abs(Number(annotation?.scaleY) || 1);
+  const scale = Math.sqrt(sx * sy);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+};
+
+/**
+ * A native pen / highlighter outline can be rebuilt at a new width from its
+ * stored centreline. Not when it was partly erased (the survivor is a cut
+ * polygon, and rebuilding would paint erased ink back) and not for imported
+ * outlines (no centreline). Only on the two coordinate contracts where the
+ * rebuilt outline lands exactly where the old one was (page space, or
+ * centre-origin ink after a move/resize: its pathOffset is the outline's
+ * centre, which a symmetric width change does not move).
+ */
+export function canRebuildInkWidth(annotation) {
+  if (!isFilledInkPath(annotation)) return false;
+  if (annotation.paperInkGeometry !== 'v1') return false;
+  if (!Array.isArray(annotation.paperCenterline) || annotation.paperCenterline.length === 0) return false;
+  if (annotation.paperEraserGeometry || annotation.paperSourceStroke
+    || (Array.isArray(annotation.paperEraserCuts) && annotation.paperEraserCuts.length > 0)
+    || (Array.isArray(annotation.paperCenterlineRuns) && annotation.paperCenterlineRuns.length > 0)) {
+    return false;
+  }
+  const space = annotation.inkGeometrySpace || annotation.data?.inkGeometrySpace;
+  const origin = annotation.inkGeometryOrigin || annotation.data?.inkGeometryOrigin;
+  if (space === 'page') return true;
+  if (origin && annotation.pathOffset
+    && Number.isFinite(Number(annotation.pathOffset.x))
+    && Number.isFinite(Number(annotation.pathOffset.y))) return true;
+  return isAbsoluteInkGeometry(annotation);
+}
+
+/**
+ * What the formatting bar can change on this mark. Counters (their paint
+ * belongs to the whole series), text-mark highlights (their own grouped
+ * transaction), stamps and images, Survey Markers and callouts are not
+ * restyled through this module; callouts go through calloutRestylePatch.
+ */
+export function restyleCapabilities(annotation) {
+  const none = {
+    stroke: false, fill: false, width: false, lineStyle: false, cloud: false, arrowheads: false,
+  };
+  if (!annotation || typeof annotation !== 'object') return none;
+  if (annotation.data?.type === 'callout' || annotation.data?.type === 'text-markup') return none;
+  if (isCounter(annotation)) return none;
+  const type = lower(annotation.type);
+  if (type === 'path') {
+    if (isFilledInkPath(annotation)) {
+      return { ...none, stroke: true, width: canRebuildInkWidth(annotation) };
+    }
+    return { ...none, stroke: true, width: true };
+  }
+  if (type === 'rect' || type === 'ellipse' || type === 'polygon' || type === 'circle') {
+    return {
+      ...none, stroke: true, fill: true, width: true, lineStyle: true,
+      cloud: toolSupportsCloudBorderStyle(type),
+    };
+  }
+  if (type === 'polyline') {
+    return {
+      ...none, stroke: true, width: true, lineStyle: true, cloud: toolSupportsCloudBorderStyle(type),
+    };
+  }
+  if (type === 'line') {
+    return { ...none, stroke: true, width: true, lineStyle: true, arrowheads: isArrowLine(annotation) };
+  }
+  if (type === 'textbox') {
+    return { ...none, stroke: true, fill: true, width: true, lineStyle: true };
+  }
+  return none;
+}
+
+const lineStyleOf = (annotation) => {
+  if (annotation?.data?.pdfCloudIntensity != null && toolSupportsCloudBorderStyle(lower(annotation.type))) {
+    return 'cloud';
+  }
+  const dash = Array.isArray(annotation?.strokeDashArray) ? annotation.strokeDashArray : null;
+  if (dash && dash.length >= 2) {
+    if (Number(dash[0]) === 6) return 'dashed';
+    if (Number(dash[0]) === 2) return 'dotted';
+  }
+  return 'solid';
+};
+
+/**
+ * The mark's current style as the bar shows it:
+ * { strokeColor '#rrggbb', strokeOpacity 0-100, fillColor, fillOpacity,
+ *   width, lineStyle, cloudIntensity, arrowheadStyle }. Fields the mark does
+ * not have are null.
+ */
+export function readRestyleStyle(annotation) {
+  const caps = restyleCapabilities(annotation);
+  const style = {
+    strokeColor: null,
+    strokeOpacity: null,
+    fillColor: null,
+    fillOpacity: null,
+    width: null,
+    lineStyle: null,
+    cloudIntensity: null,
+    arrowheadStyle: null,
+  };
+  if (!caps.stroke) return style;
+  const inkBody = isFilledInkPath(annotation);
+  const strokeSource = inkBody ? annotation.fill : annotation.stroke;
+  style.strokeColor = colorToHex(strokeSource);
+  style.strokeOpacity = isVisiblePaint(strokeSource) ? colorToOpacity(strokeSource) : 0;
+  if (caps.fill) {
+    const fillSource = lower(annotation.type) === 'textbox' ? annotation.backgroundColor : annotation.fill;
+    style.fillColor = colorToHex(fillSource);
+    style.fillOpacity = isVisiblePaint(fillSource) ? colorToOpacity(fillSource) : 0;
+  }
+  if (inkBody) {
+    const source = Number(annotation.sourceWidth);
+    style.width = Number.isFinite(source) && source > 0
+      ? Math.round(source * inkDrawScale(annotation) * 10) / 10
+      : null;
+  } else {
+    const width = Number(annotation.strokeWidth);
+    style.width = Number.isFinite(width) ? width : null;
+  }
+  if (caps.lineStyle) {
+    style.lineStyle = lineStyleOf(annotation);
+    if (style.lineStyle === 'cloud') style.cloudIntensity = Number(annotation.data.pdfCloudIntensity) || 2;
+  }
+  if (caps.arrowheads) {
+    style.arrowheadStyle = annotation.data?.arrowheadStyle || DEFAULT_ARROWHEAD;
+  }
+  return style;
+}
+
+/** A callout's style in the same shape (callout.style fields). */
+export function readCalloutRestyleStyle(callout) {
+  const style = callout?.style || {};
+  const border = style.borderColor || style.lineColor || '#1e293b';
+  const fill = style.fillColor;
+  const borderOpacity = Number(style.borderOpacity);
+  const fillOpacity = Number(style.fillOpacity);
+  return {
+    strokeColor: colorToHex(border),
+    strokeOpacity: Number.isFinite(borderOpacity) ? clampPct(borderOpacity * 100) : 100,
+    fillColor: isVisiblePaint(fill) ? colorToHex(fill) : null,
+    fillOpacity: isVisiblePaint(fill)
+      ? (Number.isFinite(fillOpacity) ? clampPct(fillOpacity * 100) : 100)
+      : 0,
+    width: Number.isFinite(Number(style.lineThickness)) ? Number(style.lineThickness) : null,
+    lineStyle: style.lineStyle === 'dashed' || style.lineStyle === 'dotted' ? style.lineStyle : 'solid',
+    cloudIntensity: null,
+    arrowheadStyle: style.arrowheadStyle || null,
+  };
+}
+
+const CALLOUT_CAPABILITIES = Object.freeze({
+  stroke: true, fill: true, width: true, lineStyle: true, cloud: false, arrowheads: true,
+});
+
+/**
+ * Rebuilds a native ink outline at `width` (drawn units). Returns the patched
+ * object, or null when the mark cannot be rebuilt (see canRebuildInkWidth).
+ */
+export function rebuildInkAtWidth(annotation, width) {
+  if (!canRebuildInkWidth(annotation)) return null;
+  const drawn = Number(width);
+  if (!Number.isFinite(drawn) || drawn <= 0) return null;
+  const isHighlighter = annotation.tool === 'highlighter' || annotation.data?.tool === 'highlighter';
+  // The highlighter tool never draws thinner than 8 (buildFreehandCommitJSON).
+  const drawnWidth = isHighlighter ? Math.max(8, drawn) : drawn;
+  const localWidth = drawnWidth / inkDrawScale(annotation);
+  // Already that wide (a highlighter asked for less than 8): nothing to write.
+  if (Math.abs(localWidth - Number(annotation.sourceWidth)) < 1e-9) return null;
+  const ink = createInkAnnotation(annotation.paperCenterline, {
+    id: annotation.id,
+    color: annotation.fill,
+    width: localWidth,
+  });
+  if (!Array.isArray(ink?.cmds) || ink.cmds.length === 0) return null;
+  const bounds = boundsOfCommands(ink.cmds);
+  return {
+    ...annotation,
+    path: ink.cmds,
+    polygons: ink.polygons,
+    sourceWidth: ink.sourceWidth,
+    width: bounds.w,
+    height: bounds.h,
+  };
+}
+
+const DASH_FOR_STYLE = {
+  dashed: [6, 4],
+  dotted: [2, 4],
+};
+
+const mergeData = (annotation, dataPatch) => ({
+  ...annotation,
+  data: { ...(annotation.data || {}), ...dataPatch },
+});
+
+/**
+ * One bar change applied to one mark. Returns the new object, or null when
+ * the mark does not have that property or it already has that value
+ * (callers skip nulls, so a no-op never becomes an undo step).
+ *
+ * change:
+ *   { kind: 'strokeColor', color: '#rrggbb' }    keeps the mark's own opacity
+ *   { kind: 'strokeOpacity', opacity: 0-100 }    keeps the mark's own colour
+ *   { kind: 'fillColor', color } / { kind: 'fillOpacity', opacity }
+ *   { kind: 'width', width }
+ *   { kind: 'lineStyle', style: 'solid'|'dashed'|'dotted'|'cloud', cloudIntensity }
+ *   { kind: 'cloudIntensity', cloudIntensity }
+ *   { kind: 'arrowhead', style, bothEnds }
+ *   { kind: 'arrowBothEnds', on }
+ */
+export function applyRestyleChange(annotation, change) {
+  if (!annotation || !change) return null;
+  const caps = restyleCapabilities(annotation);
+  const current = readRestyleStyle(annotation);
+  const inkBody = isFilledInkPath(annotation);
+  const type = lower(annotation.type);
+  switch (change.kind) {
+    case 'strokeColor':
+    case 'strokeOpacity': {
+      if (!caps.stroke) return null;
+      const color = change.kind === 'strokeColor' ? colorToHex(change.color) : current.strokeColor;
+      if (!color) return null;
+      const opacity = change.kind === 'strokeOpacity'
+        ? clampPct(change.opacity)
+        // A colour picked for a mark whose line is switched off (0%) turns
+        // it back on, or picking a colour would look like it did nothing.
+        : (current.strokeOpacity > 0 ? current.strokeOpacity : 100);
+      if (color === current.strokeColor && opacity === current.strokeOpacity) return null;
+      const paint = composeColorForPatch(color, opacity);
+      return inkBody ? { ...annotation, fill: paint } : { ...annotation, stroke: paint };
+    }
+    case 'fillColor':
+    case 'fillOpacity': {
+      if (!caps.fill) return null;
+      const color = change.kind === 'fillColor' ? colorToHex(change.color) : (current.fillColor || '#ffffff');
+      if (!color) return null;
+      const opacity = change.kind === 'fillOpacity'
+        ? clampPct(change.opacity)
+        : (current.fillOpacity > 0 ? current.fillOpacity : 100);
+      if (color === current.fillColor && opacity === current.fillOpacity) return null;
+      const paint = composeColorForPatch(color, opacity);
+      return type === 'textbox' ? { ...annotation, backgroundColor: paint } : { ...annotation, fill: paint };
+    }
+    case 'width': {
+      if (!caps.width) return null;
+      const width = Number(change.width);
+      if (!Number.isFinite(width) || width <= 0) return null;
+      if (current.width != null && Math.abs(current.width - width) < 1e-9) return null;
+      if (inkBody) return rebuildInkAtWidth(annotation, width);
+      return { ...annotation, strokeWidth: width };
+    }
+    case 'lineStyle': {
+      if (!caps.lineStyle) return null;
+      const style = change.style;
+      if (style === 'cloud') {
+        if (!caps.cloud) return null;
+        const intensity = Math.max(1, Number(change.cloudIntensity) || 2);
+        if (current.lineStyle === 'cloud' && current.cloudIntensity === intensity) return null;
+        return mergeData({ ...annotation, strokeDashArray: null }, { pdfCloudIntensity: intensity });
+      }
+      if (style !== 'solid' && style !== 'dashed' && style !== 'dotted') return null;
+      if (current.lineStyle === style) return null;
+      return mergeData(
+        { ...annotation, strokeDashArray: DASH_FOR_STYLE[style] || null },
+        { pdfCloudIntensity: null },
+      );
+    }
+    case 'cloudIntensity': {
+      if (current.lineStyle !== 'cloud') return null;
+      const intensity = Math.max(1, Number(change.cloudIntensity) || 2);
+      if (current.cloudIntensity === intensity) return null;
+      return mergeData(annotation, { pdfCloudIntensity: intensity });
+    }
+    case 'arrowhead': {
+      if (!caps.arrowheads || !change.style) return null;
+      const dataPatch = { arrowheadStyle: change.style };
+      if (change.bothEnds) dataPatch.startArrowheadStyle = change.style;
+      const unchanged = annotation.data?.arrowheadStyle === change.style
+        && (!change.bothEnds || annotation.data?.startArrowheadStyle === change.style);
+      return unchanged ? null : mergeData(annotation, dataPatch);
+    }
+    case 'arrowBothEnds': {
+      if (!caps.arrowheads) return null;
+      const endStyle = annotation.data?.arrowheadStyle || DEFAULT_ARROWHEAD;
+      const start = change.on ? endStyle : NONE_ARROWHEAD;
+      if ((annotation.data?.startArrowheadStyle ?? NONE_ARROWHEAD) === start) return null;
+      return mergeData(annotation, { startArrowheadStyle: start });
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The same change as a callout.style patch, or null (no such property / no
+ * change). Callouts keep hex colours plus separate 0-1 opacities.
+ */
+export function calloutRestylePatch(callout, change) {
+  if (!callout || !change) return null;
+  const style = callout.style || {};
+  const current = readCalloutRestyleStyle(callout);
+  switch (change.kind) {
+    case 'strokeColor': {
+      const color = colorToHex(change.color);
+      if (!color || color === current.strokeColor) return null;
+      return { borderColor: color };
+    }
+    case 'strokeOpacity': {
+      const opacity = clampPct(change.opacity);
+      if (opacity === current.strokeOpacity) return null;
+      return { borderOpacity: opacity / 100 };
+    }
+    case 'fillColor': {
+      const color = colorToHex(change.color);
+      if (!color || (color === current.fillColor && current.fillOpacity > 0)) return null;
+      return current.fillOpacity > 0 ? { fillColor: color } : { fillColor: color, fillOpacity: 1 };
+    }
+    case 'fillOpacity': {
+      const opacity = clampPct(change.opacity);
+      if (opacity === current.fillOpacity) return null;
+      return current.fillColor || opacity === 0
+        ? { fillOpacity: opacity / 100 }
+        : { fillColor: '#ffffff', fillOpacity: opacity / 100 };
+    }
+    case 'width': {
+      const width = Math.max(1, Number(change.width) || 0);
+      if (!Number.isFinite(width) || width === Number(style.lineThickness)) return null;
+      return { lineThickness: width };
+    }
+    case 'lineStyle': {
+      const next = change.style;
+      if (next !== 'solid' && next !== 'dashed' && next !== 'dotted') return null;
+      if (next === current.lineStyle) return null;
+      return { lineStyle: next };
+    }
+    case 'arrowhead': {
+      if (!change.style || change.style === style.arrowheadStyle) return null;
+      return { arrowheadStyle: change.style };
+    }
+    default:
+      return null;
+  }
+}
+
+/** The bar's tool for one selected mark (same mapping the single pick uses). */
+export function selectionToolForAnnotation(annotation) {
+  if (!annotation) return null;
+  const type = lower(annotation.type);
+  if (annotation.data?.type === 'text-markup') return 'text-markup';
+  if (type === 'rect') return 'rect';
+  if (type === 'ellipse' || (type === 'circle' && !isCounter(annotation))) return 'ellipse';
+  if (type === 'path') return 'pen';
+  if (type === 'textbox' || type === 'i-text' || type === 'text') return 'text';
+  if (type === 'polygon') return 'rect';
+  if (type === 'polyline') return 'line';
+  if (isCounter(annotation)) return 'counter';
+  if (type === 'line') return isArrowLine(annotation) ? 'arrow' : 'line';
+  return null;
+}
+
+const SAME = Symbol('same');
+
+const agree = (values) => {
+  const present = values.filter((value) => value != null);
+  if (present.length === 0) return { value: null, mixed: false };
+  const first = present[0];
+  const mixed = present.some((value) => value !== first) || present.length !== values.length;
+  return { value: first, mixed, [SAME]: true };
+};
+
+/**
+ * What the bar shows for a selection of several marks.
+ *
+ * members: [{ kind: 'annotation', annotation } | { kind: 'callout', callout }]
+ *
+ * Returns null for fewer than two restylable members. Otherwise:
+ *  - contextTool: the bar layout to show. Every member the same tool -> that
+ *    tool; any member with a fill (rectangle, ellipse, polygon, text box,
+ *    callout) -> 'rect' (the swatch with Fill / Border tabs); else 'line'
+ *    when any member has a line style, else 'pen'.
+ *  - capabilities: the union - a control is shown when at least one member
+ *    has it, and a change skips members that do not.
+ *  - values: the first member (in selection order) that has each property.
+ *  - mixed: per property, true when the members that have it disagree.
+ */
+export function summarizeSelectionRestyle(members) {
+  const entries = (members || []).map((member) => {
+    if (member?.kind === 'callout' && member.callout) {
+      return {
+        tool: 'callout',
+        caps: CALLOUT_CAPABILITIES,
+        style: readCalloutRestyleStyle(member.callout),
+      };
+    }
+    const annotation = member?.annotation;
+    const caps = restyleCapabilities(annotation);
+    if (!caps.stroke && !caps.fill) return null;
+    return {
+      tool: selectionToolForAnnotation(annotation),
+      caps,
+      style: readRestyleStyle(annotation),
+    };
+  }).filter(Boolean);
+  // Two or more marks picked, at least one of them restylable (a counter or
+  // a stamp picked with a pen stroke still lets the stroke be restyled).
+  if (entries.length < 1 || (members || []).length < 2) return null;
+  const capabilities = {
+    stroke: false, fill: false, width: false, lineStyle: false, cloud: false, arrowheads: false,
+  };
+  entries.forEach(({ caps }) => {
+    Object.keys(capabilities).forEach((key) => { if (caps[key]) capabilities[key] = true; });
+  });
+  const tools = new Set(entries.map((entry) => entry.tool));
+  let contextTool;
+  if (tools.size === 1) contextTool = entries[0].tool;
+  else if (capabilities.fill) contextTool = 'rect';
+  else if (capabilities.lineStyle) contextTool = 'line';
+  else contextTool = 'pen';
+  const pick = (key, capKey) => agree(entries
+    .filter((entry) => entry.caps[capKey])
+    .map((entry) => entry.style[key]));
+  const strokeColor = pick('strokeColor', 'stroke');
+  const strokeOpacity = pick('strokeOpacity', 'stroke');
+  const fillColor = pick('fillColor', 'fill');
+  const fillOpacity = pick('fillOpacity', 'fill');
+  const width = pick('width', 'width');
+  const lineStyle = pick('lineStyle', 'lineStyle');
+  const arrowheadStyle = pick('arrowheadStyle', 'arrowheads');
+  const cloudIntensity = agree(entries
+    .filter((entry) => entry.style.lineStyle === 'cloud')
+    .map((entry) => entry.style.cloudIntensity));
+  return {
+    count: entries.length,
+    contextTool,
+    capabilities,
+    values: {
+      strokeColor: strokeColor.value,
+      strokeOpacity: strokeOpacity.value,
+      fillColor: fillColor.value,
+      fillOpacity: fillOpacity.value,
+      width: width.value,
+      lineStyle: lineStyle.value,
+      cloudIntensity: cloudIntensity.value,
+      arrowheadStyle: arrowheadStyle.value,
+    },
+    mixed: {
+      strokeColor: strokeColor.mixed,
+      strokeOpacity: strokeOpacity.mixed,
+      fillColor: fillColor.mixed,
+      fillOpacity: fillOpacity.mixed,
+      width: width.mixed,
+      lineStyle: lineStyle.mixed,
+      arrowheadStyle: arrowheadStyle.mixed,
+    },
+  };
+}
+
+/**
+ * The picked marks as they are NOW: [{ index, annotation }]. A mark picked
+ * with an id is found by that id wherever it sits (a collaborator's insert or
+ * delete may have moved it); an id-less mark only at its picked index, and
+ * only while the object there is still id-less. Marks that are gone drop out,
+ * so a change can never land on a mark that was not picked.
+ */
+export function resolvePickedMembers(objects, indices, ids) {
+  if (!Array.isArray(objects) || !Array.isArray(indices)) return [];
+  const byId = new Map();
+  objects.forEach((object, index) => {
+    const id = getAnnotationRenderIdentity(object).annotationId;
+    if (id && !byId.has(id)) byId.set(id, index);
+  });
+  const seen = new Set();
+  const members = [];
+  indices.forEach((pickedIndex, position) => {
+    const id = Array.isArray(ids) ? ids[position] : '';
+    let index = -1;
+    if (id) {
+      index = byId.has(id) ? byId.get(id) : -1;
+    } else if (Number.isInteger(pickedIndex) && pickedIndex >= 0 && pickedIndex < objects.length
+      && !getAnnotationRenderIdentity(objects[pickedIndex]).annotationId) {
+      index = pickedIndex;
+    }
+    if (index < 0 || seen.has(index) || !objects[index]) return;
+    seen.add(index);
+    members.push({ index, annotation: objects[index] });
+  });
+  return members;
+}
+
+/**
+ * Applies one change to every picked mark on a page. Returns the new page
+ * (same shape, new objects array) or null when no mark changed.
+ */
+export function applyRestyleChangeToPage(pageJSON, members, change) {
+  if (!pageJSON || !Array.isArray(pageJSON.objects) || !Array.isArray(members)) return null;
+  let objects = null;
+  members.forEach(({ index }) => {
+    const current = (objects || pageJSON.objects)[index];
+    const next = applyRestyleChange(current, change);
+    if (!next) return;
+    if (!objects) objects = pageJSON.objects.slice();
+    objects[index] = next;
+  });
+  return objects ? { ...pageJSON, objects } : null;
+}

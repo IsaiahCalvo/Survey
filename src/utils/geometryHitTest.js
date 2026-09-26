@@ -2952,6 +2952,40 @@ export const getObjectGeometryBounds = (obj) => {
         const y2 = obj.y2 || 0;
         const strokeWidth = (obj.strokeWidth || 1) / 2;
 
+        if (!isLiveFabricObject(obj)) {
+          // w41 (2026-09-25): plain page-JSON line endpoints are offsets from
+          // the BBOX CENTER (getLineEndpoints / renderLine), the same fix
+          // isPointOnLine got on 2026-07-19. The (left, top) matrix below
+          // shifted a line by half its size, so a window (left-to-right)
+          // marquee drawn snugly around a line never picked it. A rotated
+          // line turns about its visual centre; a curved one also counts
+          // its drawn midpoint.
+          const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+          const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+          const points = [
+            { x: cx + x1, y: cy + y1 },
+            { x: cx + x2, y: cy + y2 },
+          ];
+          const mid = obj.data?.midpoint;
+          if (mid && Number.isFinite(Number(mid.x)) && Number.isFinite(Number(mid.y))) {
+            points.push({ x: Number(mid.x), y: Number(mid.y) });
+          }
+          const angleRad = ((Number(obj.angle) || 0) * Math.PI) / 180;
+          const pivotX = (points[0].x + points[1].x) / 2;
+          const pivotY = (points[0].y + points[1].y) / 2;
+          const cos = Math.cos(angleRad);
+          const sin = Math.sin(angleRad);
+          points.forEach((point) => {
+            const dx = point.x - pivotX;
+            const dy = point.y - pivotY;
+            const px = pivotX + dx * cos - dy * sin;
+            const py = pivotY + dx * sin + dy * cos;
+            updateBounds(px - strokeWidth, py - strokeWidth);
+            updateBounds(px + strokeWidth, py + strokeWidth);
+          });
+          break;
+        }
+
         const p1 = transformPoint(x1, y1);
         const p2 = transformPoint(x2, y2);
         updateBounds(p1.x - strokeWidth, p1.y - strokeWidth);

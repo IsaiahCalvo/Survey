@@ -136,12 +136,23 @@ import {
   buildSelectedTextStylePatch,
   isFormattableTextObject,
   measureTextLayoutHeight,
+  patchCanReflowText,
   readCalloutTextStyle,
   readTextboxTextStyle,
   refitCalloutToText,
   refitTextboxToText,
   resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
+import {
+  applyRestyleChange,
+  applyRestyleChangeToPage,
+  calloutRestylePatch,
+  isFilledInkPath,
+  readRestyleStyle,
+  resolvePickedMembers,
+  restyleCapabilities,
+  summarizeSelectionRestyle,
+} from './utils/selectionRestyle.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
@@ -3286,12 +3297,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [ocrStateByPage, setOcrStateByPage] = useState({});
   const ocrCacheRef = useRef(new Map());
   const ocrAbortByPageRef = useRef(new Map());
+  // w41: every selected mark on the owning page (indices into its objects),
+  // so the formatting bar can restyle a multi-pick (utils/selectionRestyle).
+  // Kept apart from selectedToolbarAnnotation, which stays the single pick.
+  const [selectedToolbarIndices, setSelectedToolbarIndices] = useState(null);
   const handleSelectionForToolbar = useCallback((payload) => {
     if (!payload) {
       setSelectedToolbarAnnotation(null);
+      setSelectedToolbarIndices(null);
       return;
     }
     const { pageNumber, annotationIndex, annotation } = payload;
+    const indices = Array.isArray(payload.annotationIndices) ? payload.annotationIndices : [];
+    setSelectedToolbarIndices((prev) => {
+      if (indices.length === 0) {
+        return prev && prev.pageNumber === pageNumber ? null : prev;
+      }
+      // The ids picked, read now: a later write resolves each mark by id, so
+      // a collaborator's delete that shifts the indices can never retarget
+      // the change onto a mark that was not picked.
+      const objects = annotationsByPageRef.current?.[pageNumber]?.objects || [];
+      const ids = indices.map((index) => getAnnotationRenderIdentity(objects[index]).annotationId || '');
+      const key = `${indices.join(',')}|${ids.join(',')}`;
+      if (prev && prev.pageNumber === pageNumber && prev.key === key) return prev;
+      return { pageNumber, indices, ids, key };
+    });
     setSelectedToolbarAnnotation((prev) => {
       if (annotationIndex == null) {
         if (prev && prev.pageNumber === pageNumber) return null;
@@ -4335,6 +4365,49 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
   useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
 
+  // w41 (owner 2026-09-25: "I should be able to select things and then change
+  // their color, their width, their line type"): two or more marks picked -
+  // any mix of shapes, strokes, text boxes and callouts - make ONE restyle
+  // group. The bar shows the group's values (a property the marks disagree on
+  // shows as mixed) and a change lands on every member that has that property,
+  // as one save per page = one undo step (applyRestyleToGroup). Reference:
+  // Drawboard / Bluebeam / Acrobat multi-selection formatting.
+  const restyleGroup = useMemo(() => {
+    const annotationMembers = [];
+    let annotationSelection = null;
+    if (selectedToolbarIndices && selectedToolbarIndices.indices.length > 0) {
+      const objects = annotationsByPage?.[selectedToolbarIndices.pageNumber]?.objects || [];
+      resolvePickedMembers(objects, selectedToolbarIndices.indices, selectedToolbarIndices.ids)
+        // A callout's page object is picked through selectedCalloutIds.
+        .filter(({ annotation }) => annotation?.data?.type !== 'callout')
+        .forEach((member) => annotationMembers.push(member));
+      annotationSelection = selectedToolbarIndices;
+    }
+    const calloutMembers = (selectedCalloutIds instanceof Set && selectedCalloutIds.size > 0)
+      ? (callouts || []).filter((callout) => callout && selectedCalloutIds.has(callout.id))
+      : [];
+    const summary = summarizeSelectionRestyle([
+      ...annotationMembers.map(({ annotation }) => ({ kind: 'annotation', annotation })),
+      ...calloutMembers.map((callout) => ({ kind: 'callout', callout })),
+    ]);
+    if (!summary) return null;
+    // The text bar shows the first picked box's text style (the text-only
+    // groups the bar offers it for: all text boxes, or all callouts).
+    const firstTextBox = annotationMembers.find(({ annotation }) => isFormattableTextObject(annotation));
+    const firstTextStyle = firstTextBox
+      ? readTextboxTextStyle(firstTextBox.annotation)
+      : (calloutMembers[0] ? readCalloutTextStyle(calloutMembers[0]) : null);
+    return {
+      summary,
+      firstTextStyle,
+      annotationSelection,
+      calloutIds: calloutMembers.map((callout) => callout.id),
+      key: `${annotationSelection?.key || ''}#${calloutMembers.map((callout) => callout.id).join(',')}`,
+    };
+  }, [selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
+  const restyleGroupRef = useRef(restyleGroup);
+  restyleGroupRef.current = restyleGroup;
+
   // `refit` (optional): runs on the patched callout in the same write - the
   // text bar uses it to grow the box to fit a bigger font (one undo step).
   const handlePatchSelectedCallout = useCallback((stylePatch, refit = null) => {
@@ -4367,6 +4440,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       && type !== 'line' && type !== 'textbox'
       && type !== 'polygon' && type !== 'polyline'
       && !isCounter) return;
+    // w41: a pen / highlighter stroke (and imported pressure ink) is a filled
+    // outline - its colour is its FILL and its width is sourceWidth, so the
+    // bar reads those (utils/selectionRestyle).
+    if (isFilledInkPath(annot)) {
+      const inkStyle = readRestyleStyle(annot);
+      if (inkStyle.strokeColor) {
+        setStrokeColor(inkStyle.strokeColor);
+        setStrokeOpacity(inkStyle.strokeOpacity ?? 100);
+      }
+      if (Number.isFinite(inkStyle.width) && inkStyle.width > 0) {
+        const nextWidthInputValue = String(Number.isInteger(inkStyle.width)
+          ? inkStyle.width
+          : Math.round(inkStyle.width * 10) / 10);
+        setStrokeWidth(inkStyle.width);
+        strokeWidthInputValueRef.current = nextWidthInputValue;
+        setStrokeWidthInputValue(nextWidthInputValue);
+      }
+      return;
+    }
     const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
       || type === 'polygon' || isCounter;
     const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
@@ -4466,6 +4558,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : 'solid',
     );
   }, [selectedToolbarCallout]);
+
+  // w41: a restyle group loads ITS values into the bar (the first member that
+  // has each property; mixed properties are flagged in the published API).
+  // Runs after the single-pick loaders above, so a group always wins. Under
+  // Select these states are only what the bar shows - the tool defaults are
+  // reloaded from the saved preferences when a drawing tool is armed.
+  useEffect(() => {
+    const values = restyleGroup?.summary?.values;
+    if (!values) return;
+    if (values.strokeColor) {
+      strokeColorStateRef.current = values.strokeColor;
+      setStrokeColor(values.strokeColor);
+    }
+    if (values.strokeOpacity != null) {
+      strokeOpacityStateRef.current = values.strokeOpacity;
+      setStrokeOpacity(values.strokeOpacity);
+    }
+    if (values.fillColor) {
+      fillColorStateRef.current = values.fillColor;
+      setFillColor(values.fillColor);
+    }
+    if (values.fillOpacity != null) {
+      fillOpacityStateRef.current = values.fillOpacity;
+      setFillOpacity(values.fillOpacity);
+    }
+    if (Number.isFinite(Number(values.width)) && Number(values.width) > 0) {
+      const width = Number(values.width);
+      const nextWidthInputValue = String(Number.isInteger(width) ? width : Math.round(width * 10) / 10);
+      setStrokeWidth(width);
+      if (!isStrokeWidthFocusedRef.current) {
+        strokeWidthInputValueRef.current = nextWidthInputValue;
+        setStrokeWidthInputValue(nextWidthInputValue);
+      }
+    }
+    if (values.lineStyle) setLineBorderStyle(values.lineStyle);
+    if (values.cloudIntensity != null) setCloudIntensity(values.cloudIntensity);
+    if (values.arrowheadStyle) setArrowheadStyle(values.arrowheadStyle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restyleGroup]);
 
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
@@ -8089,9 +8220,105 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else if (annotation?.data?.type === 'text-markup') {
       const color = getHexFromColor(rgba) || rgba;
       handlePatchSelectedAnnotation({ fill: color, stroke: color });
+    } else if (isFilledInkPath(annotation)) {
+      // w41 (regression since a3380bbf9, 2026-07-10): a pen / highlighter
+      // stroke is a filled outline, so its colour is its FILL - writing
+      // `stroke` (as below) changed nothing on screen.
+      handlePatchSelectedAnnotation({ fill: rgba });
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
+  };
+
+  // w41: one bar change applied to the restyle group (see restyleGroup).
+  // Returns false when no group is picked, so the single-pick paths run.
+  // Every member that has the property takes it; one save per page (one undo
+  // step). A slider drag's release always reaches the save path, even when
+  // its last frame already showed the released value, or the drag would
+  // leave no undo step (runWithPaintPhase / previewBaselineByPageRef).
+  const applyRestyleToGroup = (change) => applyGroupUpdate({
+    annotationPage: (pageJSON, members) => applyRestyleChangeToPage(pageJSON, members, change),
+    calloutStyle: (callout) => calloutRestylePatch(callout, change),
+  });
+  // The shared core: `annotationPage(pageJSON, members)` returns the page with
+  // its picked marks updated (or null), `calloutStyle(callout, page)` a style
+  // patch for one picked callout (or null) - optionally with a `refit`
+  // (callout, page) => callout, the text bar's grow-to-fit.
+  const applyGroupUpdate = ({ annotationPage, calloutStyle, calloutRefit = null }) => {
+    const group = restyleGroupRef.current;
+    if (!group) return false;
+    const save = handleSaveAnnotationsRef.current;
+    if (typeof save !== 'function') return true;
+    const byPage = annotationsByPageRef.current || {};
+    const nextPages = new Map();
+    const touchedPages = new Set();
+    const selection = group.annotationSelection;
+    if (selection) {
+      const pageKey = selection.pageNumber;
+      const pageJSON = byPage[pageKey] || byPage[String(pageKey)];
+      if (pageJSON && Array.isArray(pageJSON.objects)) {
+        touchedPages.add(Number(pageKey));
+        const members = resolvePickedMembers(pageJSON.objects, selection.indices, selection.ids)
+          .filter(({ annotation }) => annotation?.data?.type !== 'callout');
+        const nextPage = annotationPage(pageJSON, members);
+        if (nextPage) nextPages.set(Number(pageKey), nextPage);
+      }
+    }
+    if (group.calloutIds.length > 0) {
+      const ids = new Set(group.calloutIds);
+      const pagesWithCallouts = new Set((calloutsRef.current || [])
+        .filter((callout) => callout && ids.has(callout.id))
+        .map((callout) => Number(callout.pageNumber))
+        .filter(Number.isFinite));
+      pagesWithCallouts.forEach((page) => {
+        touchedPages.add(page);
+        const basePage = nextPages.get(page) || byPage[page] || byPage[String(page)];
+        if (!basePage) return;
+        const singlePageMap = { [page]: basePage };
+        let changed = false;
+        const nextList = deriveCalloutsFromByPage(singlePageMap).map((callout) => {
+          if (!callout || !ids.has(callout.id)) return callout;
+          const stylePatch = calloutStyle(callout, page);
+          if (!stylePatch) return callout;
+          changed = true;
+          const patched = { ...callout, style: { ...(callout.style || {}), ...stylePatch } };
+          return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch) || patched) : patched;
+        });
+        if (!changed) return;
+        const nextByPage = applyCalloutListToByPage(singlePageMap, nextList, pageSizesRef.current || {});
+        const nextPage = nextByPage[page] ?? nextByPage[String(page)];
+        if (nextPage) nextPages.set(page, nextPage);
+      });
+    }
+    if (paintPhaseRef.current === 'commit') {
+      touchedPages.forEach((page) => {
+        if (nextPages.has(page)) return;
+        const current = byPage[page] || byPage[String(page)];
+        if (current) nextPages.set(page, { ...current });
+      });
+    }
+    nextPages.forEach((pageJSON, page) => {
+      save(page, pageJSON, { source: 'toolbar:selected-group-edit', tool: 'select' });
+    });
+    return true;
+  };
+  // One paint write for the group. The picker always sends colour AND opacity
+  // together, so the one the user did not touch arrives unchanged: an opacity
+  // drag re-sends the shown colour and a colour click re-sends the shown
+  // opacity. Re-applying those would flatten a mixed group onto its first
+  // member, so an unchanged value is skipped - except a CLICKED colour (picking
+  // the colour already shown makes a mixed group that one colour) and a drag's
+  // release, which must reach the save path to record the drag's undo step.
+  const writeGroupPaint = (kind, value, previous) => {
+    if (!restyleGroupRef.current) return false;
+    const phase = paintPhaseRef.current;
+    const unchanged = String(previous ?? '') === String(value ?? '');
+    const isOpacity = kind === 'strokeOpacity' || kind === 'fillOpacity';
+    if (unchanged) {
+      if (phase === 'commit') return applyRestyleToGroup({ kind: 'noop' });
+      if (isOpacity || phase) return true;
+    }
+    return applyRestyleToGroup(isOpacity ? { kind, opacity: value } : { kind, color: value });
   };
 
   const handleTextMarkupOverlapModeChange = useCallback((mode) => {
@@ -8133,6 +8360,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleStrokeColorChange = useCallback((color) => {
+    const previousStrokeColor = strokeColorStateRef.current;
     strokeColorStateRef.current = color;
     setStrokeColor(color);
     const nextNumberColor = composeColorForPatch(color, strokeOpacityStateRef.current);
@@ -8152,6 +8380,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeColor: color });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
+    if (writeGroupPaint('strokeColor', color, previousStrokeColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderColor: color });
     } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
@@ -8195,6 +8424,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
+    const previousStrokeOpacity = strokeOpacityStateRef.current;
     strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
     const nextNumberColor = composeColorForPatch(strokeColorStateRef.current, opacity);
@@ -8212,6 +8442,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(paintPreferenceKey(activeTool), { strokeOpacity: opacity });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
+    if (writeGroupPaint('strokeOpacity', opacity, previousStrokeOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
@@ -8229,6 +8460,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
+    const previousFillColor = fillColorStateRef.current;
     fillColorStateRef.current = color;
     setFillColor(color);
     const nextFillColor = composeColorForPatch(color, fillOpacityStateRef.current);
@@ -8246,6 +8478,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillColor: color });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
+    if (writeGroupPaint('fillColor', color, previousFillColor)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillColor: color });
     } else if (isFillableShapeSelected()) {
@@ -8254,6 +8487,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
+    const previousFillOpacity = fillOpacityStateRef.current;
     fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
     const nextFillColor = composeColorForPatch(fillColorStateRef.current, opacity);
@@ -8271,6 +8505,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (pdfId && activeTool !== 'select' && paintPhaseRef.current !== 'preview') updateToolPreference(activeTool, { fillOpacity: opacity });
     if (activeTool === 'counter') return;
     if (activeTool !== 'select') return;
+    if (writeGroupPaint('fillOpacity', opacity, previousFillOpacity)) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (isFillableShapeSelected()) {
@@ -8368,6 +8603,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleTextStyleSourceChange = useCallback((next, options, changed) => {
     runWithPaintPhase(options, () => {
       const target = selectedTextTargetRef.current;
+      if (target?.kind === 'group') {
+        // w41: several text boxes / callouts picked - each takes only the
+        // field(s) the user touched, patched against its OWN style (a size
+        // change leaves each box's colour alone), all in one save per page.
+        // A drag re-sends its colour every frame (forceColor), as for one box.
+        const fields = changed && typeof changed === 'object' ? changed : next;
+        const phase = options?.phase;
+        const inDrag = phase === 'preview' || phase === 'settle' || phase === 'commit';
+        applyGroupUpdate({
+          annotationPage: (pageJSON, members) => {
+            let objects = null;
+            members.forEach(({ index, annotation }) => {
+              if (!isFormattableTextObject(annotation)) return;
+              const patch = buildSelectedTextStylePatch(
+                'textbox', readTextboxTextStyle(annotation), fields, { forceColor: inDrag },
+              );
+              if (!patch) return;
+              let nextObj = { ...annotation, ...patch };
+              if (patchCanReflowText('textbox', patch)) {
+                nextObj = refitTextboxToText(nextObj, measureTextLayoutHeight) || nextObj;
+              }
+              if (!objects) objects = pageJSON.objects.slice();
+              objects[index] = nextObj;
+            });
+            return objects ? { ...pageJSON, objects } : null;
+          },
+          calloutStyle: (callout) => buildSelectedTextStylePatch(
+            'callout', readCalloutTextStyle(callout), fields, { forceColor: inDrag },
+          ),
+          calloutRefit: (callout, pageNumber, stylePatch) => (patchCanReflowText('callout', stylePatch)
+            ? refitCalloutToText(
+              callout,
+              pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)],
+              measureTextLayoutHeight,
+            )
+            : callout),
+        });
+        return;
+      }
       const write = resolveTextStyleWrite({
         next,
         changed,
@@ -8401,12 +8675,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
     if (pdfId && activeTool !== 'select') updateToolPreference(paintPreferenceKey(activeTool), { strokeWidth: width });
+    if (activeTool === 'select' && applyRestyleToGroup({ kind: 'width', width })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
       return;
     }
     if (!isEditableShapeSelected()) return;
     const { isCounter, annotation } = getSelectedShapeMeta();
+    // w41: a pen / highlighter stroke's width is baked into its outline, so it
+    // is rebuilt from its centreline at the new width (utils/selectionRestyle
+    // rebuildInkAtWidth). A partly erased or imported outline cannot be, and
+    // the bar hides Width for it (selectionCapabilities).
+    if (isFilledInkPath(annotation)) {
+      const rebuilt = applyRestyleChange(annotation, { kind: 'width', width });
+      if (rebuilt) {
+        handlePatchSelectedAnnotation({
+          path: rebuilt.path,
+          polygons: rebuilt.polygons,
+          sourceWidth: rebuilt.sourceWidth,
+          width: rebuilt.width,
+          height: rebuilt.height,
+        });
+      }
+      return;
+    }
     if (isCounter && annotation) {
       const newRadius = Math.max(4, Number(width) || 14);
       const oldRadius = Number(annotation.radius) || newRadius;
@@ -8427,6 +8719,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // picker too — patch style.lineStyle through the undoable callout patch
     // path (same route as the arrowhead picker). 'cloud' is never offered for
     // the callout context (rect-only option), but guard anyway.
+    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+      kind: 'lineStyle',
+      style: next,
+      cloudIntensity: Math.max(1, Number(cloudIntensity) || 2),
+    })) return;
     if (isCalloutSelected()) {
       if (next === 'solid' || next === 'dashed' || next === 'dotted') {
         handlePatchSelectedCallout({ lineStyle: next });
@@ -8450,12 +8747,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
+    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+      kind: 'cloudIntensity',
+      cloudIntensity: Math.max(1, Number(next) || 2),
+    })) return;
     if (!isEditableShapeSelected()) return;
     handlePatchSelectedAnnotation({ data: { pdfCloudIntensity: Math.max(1, Number(next) || 2) } });
   }, [handlePatchSelectedAnnotation]);
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
+    if (activeToolRef.current === 'select' && applyRestyleToGroup({
+      kind: 'arrowhead',
+      style: next,
+      bothEnds: arrowBothEnds,
+    })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ arrowheadStyle: next });
       return;
@@ -8477,6 +8783,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const on = Boolean(next);
     setArrowBothEnds(on);
     try { localStorage.setItem('arrowBothEnds', on ? '1' : '0'); } catch {}
+    if (activeToolRef.current === 'select' && applyRestyleToGroup({ kind: 'arrowBothEnds', on })) return;
     const sel = selectedToolbarAnnotationRef.current;
     const type = String(sel?.annotation?.type || '').toLowerCase();
     const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
@@ -24721,9 +25028,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ) {
       selectionMappedTool = 'arrow';
     }
+    // w41: two or more marks picked -> the bar shows the group's layout
+    // (utils/selectionRestyle summarizeSelectionRestyle), not the Select
+    // mode toggle, so the picked marks can be restyled together.
+    const groupSummary = activeTool === 'select' ? (restyleGroup?.summary || null) : null;
+    if (groupSummary) selectionMappedTool = groupSummary.contextTool;
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    // What the picked mark(s) can change: a partly erased or imported pen
+    // stroke has no rebuildable width, a group only offers what at least one
+    // member has. Null while nothing is picked (the tool's own controls).
+    const selectionCapabilities = groupSummary
+      ? groupSummary.capabilities
+      : (activeTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
+        ? restyleCapabilities(selectedAnnot)
+        : null);
     const textMarkupSelectionRect = (() => {
       if (contextTool === 'text-select' && liveTextSelection?.anchor) return liveTextSelection.anchor;
       if (selectedAnnot?.data?.type !== 'text-markup') return null;
@@ -24774,6 +25094,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // that state the toolbar must preview the drawing tool defaults, not the
       // stale selected object's paint.
       if (activeTool !== 'select') return { fill: null, stroke: null };
+      // w41: a group previews the values the bar loaded for it (the states).
+      if (groupSummary) return { fill: null, stroke: null };
       if (selectedToolbarCallout?.callout) {
         const style = selectedToolbarCallout.callout.style || {};
         const border = style.borderColor || style.lineColor || '#1e293b';
@@ -24849,7 +25171,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // editor, whose own bridge wins), the text bar reads and writes THAT
     // object's text style, not the tool's defaults (handleTextStyleSourceChange).
     const selectedTextboxPlaceKey = `textbox:@${selectedToolbarAnnotation?.pageNumber}:${selectedToolbarAnnotation?.annotationIndex}`;
-    const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
+    const groupTextTarget = (groupSummary && !richTextEditor && restyleGroup?.firstTextStyle
+      && (groupSummary.contextTool === 'text' || groupSummary.contextTool === 'callout'))
+      ? { kind: 'group', key: `group:${restyleGroup.key}`, style: restyleGroup.firstTextStyle }
+      : null;
+    const selectedTextTarget = groupTextTarget || ((activeTool === 'select' && !richTextEditor && !groupSummary)
       ? (selectedToolbarCallout?.callout
         ? {
           kind: 'callout',
@@ -24870,7 +25196,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             style: readTextboxTextStyle(selectedAnnot),
           }
           : null))
-      : null;
+      : null);
     selectedTextTargetRef.current = selectedTextTarget;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
@@ -24918,6 +25244,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       strokeColor: selectedTextMarkupPaint?.color || counterToolStrokeColor,
       strokeOpacity: selectedTextMarkupPaint?.opacity ?? counterToolStrokeOpacity,
       selectedStrokeColor: selectedPreviewColors.stroke,
+      // w41: what the picked mark(s) can change (null = nothing picked, the
+      // tool's own controls) and, for a group, which values the picked marks
+      // disagree on - the bar shows those as mixed (no colour ringed, a dash
+      // in Width, "Mixed" in the style menus) until the user sets them.
+      selectionCapabilities,
+      selectionMixed: groupSummary ? groupSummary.mixed : null,
+      selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
       eraserSizeInputValue: eraserSizeInputValueRef.current,
       eraserMode,
@@ -24927,11 +25260,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       arrowBothEnds,
       setArrowBothEnds: handleArrowBothEndsChange,
       onEnterTextEdit: handleEnterTextEditFromStrip,
-      canEnterTextEdit: !!(selectedToolbarCallout
+      canEnterTextEdit: !groupSummary && !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
           && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
       onEnterBBoxEdit: handleEnterBBoxEditFromStrip,
-      canEnterBBoxEdit: !!(selectedToolbarAnnotation && (() => {
+      canEnterBBoxEdit: !groupSummary && !!(selectedToolbarAnnotation && (() => {
         const annotation = selectedToolbarAnnotation.annotation;
         const type = String(annotation?.type || '').toLowerCase();
         return annotation?.data?.type === 'counter'
@@ -24950,7 +25283,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // picked, being typed in, or the armed tool's defaults.
       textVerticalAlignSupported: richTextEditor
         ? richTextEditor.state?.supportsVerticalAlign !== false
-        : !(selectedTextTarget ? selectedTextTarget.kind === 'callout' : contextTool === 'callout'),
+        : !(selectedTextTarget && selectedTextTarget.kind !== 'group'
+          ? selectedTextTarget.kind === 'callout'
+          : contextTool === 'callout'),
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
       // UX 2026-09-09: the Style picker offers "Cloud" (and, once picked, the
@@ -24961,7 +25296,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // from the SELECTED object's real type (not contextTool, which folds a
       // selected polygon onto 'rect' and a selected polyline onto 'line'), so
       // the menu matches what will actually render.
-      supportsCloudStyle: selectionMappedTool && activeTool === 'select'
+      supportsCloudStyle: groupSummary
+        ? groupSummary.capabilities.cloud
+        : selectionMappedTool && activeTool === 'select'
         ? (selectedAnnot?.data?.type !== 'counter' && toolSupportsCloudBorderStyle(selectedType))
         : toolSupportsCloudBorderStyle(activeTool),
       cloudIntensity,
@@ -25042,6 +25379,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
+    restyleGroup,
     activeCategoryDropdown,
     lastDrawTool,
     lastShapeTool,

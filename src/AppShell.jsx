@@ -2520,7 +2520,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
-                    value={annotationPaint.quick.color}
+                    // w41: picked marks in different colours ring no dot.
+                    value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
+                    customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
                     onPick={(hex) => annotationPaint.quick.apply(hex, annotationPaint.quick.opacity)}
                     onOpenPicker={() => {
                       setColorPickerTab(annotationPaint.quick.tab);
@@ -2915,8 +2917,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   || bottomToolbarApi.contextTool === 'text'
                   || bottomToolbarApi.contextTool === 'callout'
                   || bottomToolbarApi.contextTool === 'counter'
-                  || bottomToolbarApi.activeTool === 'eraser') && (
+                  || bottomToolbarApi.activeTool === 'eraser')
+                  // w41: hidden when the picked mark(s) have no width that can
+                  // change (a partly erased or imported pen stroke).
+                  && (bottomToolbarApi.activeTool === 'eraser'
+                    || bottomToolbarApi.selectionCapabilities?.width !== false) && (
                 <AnnotationSizeControl
+                  mixed={bottomToolbarApi.activeTool !== 'eraser' && !!bottomToolbarApi.selectionMixed?.width}
                   value={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.eraserSizeInputValue : bottomToolbarApi.strokeWidthInputValue}
                   label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
                   min={bottomToolbarApi.contextTool === 'counter' ? COUNTER_SIZE_MIN : 1}
@@ -3059,12 +3066,17 @@ export default function App({ devPreviewReturnTab = null }) {
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
                   (() => {
                   const styleValue = bottomToolbarApi.lineBorderStyle === 'cloud' && !bottomToolbarApi.supportsCloudStyle ? 'solid' : bottomToolbarApi.lineBorderStyle;
+                  // w41: picked marks with different line styles read "Mixed"
+                  // (no row ticked) until one is chosen for all of them.
+                  const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
+                  if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
                   return (
                   <AnnotationDropdown
                     open={showStyleMenu}
                     onOpenChange={setShowStyleMenu}
                     label="Style"
-                    value={styleValue}
+                    value={styleMixed ? '__mixed' : styleValue}
+                    triggerContent={styleMixed ? 'Mixed' : undefined}
                     options={LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle)}
                     onSelect={bottomToolbarApi.setLineBorderStyle}
                     dataMarker="data-style-menu"
@@ -3140,12 +3152,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? ARROWHEAD_MENU_OPTIONS
                     : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
                   const iconFor = (value) => options.find((option) => option.value === value)?.icon || 'arrowheadSolid';
+                  const headMixed = !!bottomToolbarApi.selectionMixed?.arrowheadStyle;
                   return (
                   <AnnotationDropdown
                     open={showArrowheadMenu}
                     onOpenChange={setShowArrowheadMenu}
                     label="Arrowhead"
-                    value={live}
+                    value={headMixed ? '__mixed' : live}
+                    triggerContent={headMixed ? 'Mixed' : undefined}
                     options={options}
                     onSelect={bottomToolbarApi.setArrowheadStyle}
                     dataMarker="data-arrowhead-menu"

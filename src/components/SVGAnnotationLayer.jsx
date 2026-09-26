@@ -2085,15 +2085,29 @@ const SVGAnnotationLayer = memo(({
   const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
     ? Array.from(selectedIds)[0]
     : null;
+  // w41 (restyle a selection): the WHOLE pick rides along as
+  // `annotationIndices` (sorted, stable string key below), so the formatting
+  // bar can show and change every selected mark, not only a single one.
+  const selectedIndicesKey = selectedIds && selectedIds.size > 1
+    ? Array.from(selectedIds).filter((index) => Number.isInteger(index)).sort((a, b) => a - b).join(',')
+    : '';
   useEffect(() => {
     if (typeof onSelectionChange !== 'function') return;
+    const annotationIndices = selectedIndicesKey
+      ? selectedIndicesKey.split(',').map(Number)
+      : [];
     if (selectedAnnotationIndex == null) {
-      onSelectionChange({ pageNumber, annotationIndex: null, annotation: null });
+      onSelectionChange({ pageNumber, annotationIndex: null, annotation: null, annotationIndices });
       return;
     }
     const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
-    onSelectionChange({ pageNumber, annotationIndex: selectedAnnotationIndex, annotation });
-  }, [selectedAnnotationIndex, annotations, pageNumber, onSelectionChange]);
+    onSelectionChange({
+      pageNumber,
+      annotationIndex: selectedAnnotationIndex,
+      annotation,
+      annotationIndices: [selectedAnnotationIndex],
+    });
+  }, [selectedAnnotationIndex, selectedIndicesKey, annotations, pageNumber, onSelectionChange]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.
