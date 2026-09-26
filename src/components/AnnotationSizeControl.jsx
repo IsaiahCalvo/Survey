@@ -66,11 +66,12 @@ export default function AnnotationSizeControl({
   const valueText = rawValueText === ''
     ? ''
     : String(normalizeAnnotationSize(rawValueText, min, max, decimals));
-  const [customValue, setCustomValue] = useState(valueText);
+  // A mixed width shows an empty field ("Mixed" placeholder) until typed in.
+  const [customValue, setCustomValue] = useState(mixed ? '' : valueText);
 
   useEffect(() => {
-    setCustomValue(valueText);
-  }, [valueText]);
+    setCustomValue(mixed ? '' : valueText);
+  }, [valueText, mixed]);
 
   const availablePresets = useMemo(() => (
     [...new Set(presets)]
@@ -140,8 +141,11 @@ export default function AnnotationSizeControl({
     value: customValue,
     onChange: (event) => updateDraft(event.target.value),
     onFocus: () => onFocusChange?.(true),
+    placeholder: mixed ? 'Mixed' : undefined,
+    // Leaving a mixed field untouched keeps every picked mark's own width.
     onBlur: (event) => {
       onFocusChange?.(false);
+      if (mixed && !event.currentTarget.value.trim()) return;
       commit(event.currentTarget.value);
     },
     onKeyDown: (event) => {

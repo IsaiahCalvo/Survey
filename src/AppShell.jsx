@@ -3191,12 +3191,16 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? 'none'
                     : (bottomToolbarApi.arrowBothEnds ? 'both' : 'end');
                   const iconFor = (value) => ARROW_ENDS_OPTIONS.find((option) => option.value === value)?.icon || 'moveRight';
+                  // w41: picked arrows with different ends read "Mixed".
+                  const endsMixed = !!(bottomToolbarApi.selectionMixed?.arrowBothEnds
+                    || bottomToolbarApi.selectionMixed?.arrowheadStyle);
                   return (
                   <AnnotationDropdown
                     open={showArrowEndsMenu}
                     onOpenChange={setShowArrowEndsMenu}
                     label="Arrow ends"
-                    value={endsValue}
+                    value={endsMixed ? '__mixed' : endsValue}
+                    triggerContent={endsMixed ? 'Mixed' : undefined}
                     options={ARROW_ENDS_OPTIONS}
                     onSelect={(next) => {
                       if (next === 'none') {

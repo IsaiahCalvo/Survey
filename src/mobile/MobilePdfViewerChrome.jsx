@@ -2426,6 +2426,7 @@ export function MobileToolProperties({ api }) {
                         pins). */}
                     <AnnotationSizeControl
                       label={tool === 'counter' ? 'Size' : 'Width'}
+                      mixed={!!api.selectionMixed?.width}
                       value={api.strokeWidthInputValue}
                       min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
                       max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}

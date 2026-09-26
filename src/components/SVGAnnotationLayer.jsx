@@ -2096,8 +2096,20 @@ const SVGAnnotationLayer = memo(({
     const annotationIndices = selectedIndicesKey
       ? selectedIndicesKey.split(',').map(Number)
       : [];
+    // The picked marks' ids, read from the SAME objects the indices point
+    // into (review 2026-09-25): the viewer later finds each mark by id, so a
+    // remote insert/delete cannot move a change onto an unpicked mark.
+    const idsFor = (indices) => indices.map((index) => (
+      getAnnotationRenderIdentity(annotations?.objects?.[index]).annotationId || ''
+    ));
     if (selectedAnnotationIndex == null) {
-      onSelectionChange({ pageNumber, annotationIndex: null, annotation: null, annotationIndices });
+      onSelectionChange({
+        pageNumber,
+        annotationIndex: null,
+        annotation: null,
+        annotationIndices,
+        annotationIds: idsFor(annotationIndices),
+      });
       return;
     }
     const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
@@ -2106,6 +2118,7 @@ const SVGAnnotationLayer = memo(({
       annotationIndex: selectedAnnotationIndex,
       annotation,
       annotationIndices: [selectedAnnotationIndex],
+      annotationIds: idsFor([selectedAnnotationIndex]),
     });
   }, [selectedAnnotationIndex, selectedIndicesKey, annotations, pageNumber, onSelectionChange]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°

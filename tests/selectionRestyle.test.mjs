@@ -41,6 +41,17 @@ import { applyPageAffineToInkObject } from '../src/utils/inkGeometryTransform.js
 import { resolveMarqueeHits } from '../src/utils/marqueeSelection.js';
 import { createCloud, openFor, until } from './helpers/liveSyncFakeCloud.mjs';
 import { createHistoryScreen } from './helpers/historyTimelineHarness.mjs';
+import {
+  planGroupUpdate,
+  resolveGroupPaintWrite,
+  resolveGroupWrite,
+} from '../src/utils/selectionRestyle.js';
+import {
+  applyCalloutListToByPage,
+  calloutToAnnotationObject,
+  deriveCalloutsFromByPage,
+} from '../src/utils/calloutAnnotationBridge.js';
+import { buildTextMarkupDocumentAction } from '../src/utils/textMarkupGroupTransactions.js';
 
 const WAVE = Array.from({ length: 24 }, (_, i) => ({ x: 100 + i * 8, y: 200 + Math.sin(i / 3) * 25 }));
 
@@ -375,8 +386,19 @@ test('PDFViewer: a picked pen stroke writes its FILL, and every bar handler trie
   }
   // The tool's defaults are only written when a drawing tool is armed.
   assert.match(source, /if \(pdfId && activeTool !== 'select' && paintPhaseRef\.current !== 'preview'\) updateToolPreference\(paintPreferenceKey\(activeTool\), \{ strokeColor: color \}\);/);
-  // A drag's release always reaches the save path (its one undo step).
-  assert.match(source, /if \(paintPhaseRef\.current === 'commit'\) \{\s*touchedPages\.forEach/);
+  // A drag's release always reaches the save path (its one undo step), and
+  // the viewer writes through the same pure planner the tests below drive.
+  assert.match(source, /release: phase === 'commit',/);
+  assert.match(source, /const write = resolveGroupWrite\(\{/);
+  assert.match(source, /resolveGroupPaintWrite\(kind, value, previous, paintPhaseRef\.current\)/);
+  // Review 2026-09-25: a pick only makes a group under Select, and the bar
+  // reloads the group's values only when the pick or its values change.
+  assert.match(source, /const restyleGroup = useMemo\(\(\) => \{[\s\S]{0,400}if \(activeTool !== 'select'\) return null;/);
+  assert.match(source, /\}, \[restyleGroupLoadKey\]\);/);
+  // An empty Width over a mixed pick changes nothing.
+  assert.match(source, /if \(rawValue === '' && activeTool === 'select' && restyleGroupRef\.current\?\.summary\?\.mixed\?\.width\) return;/);
+  // A group arrowhead change keeps each arrow's own ends.
+  assert.match(source, /kind: 'arrowhead',[\s\S]{0,200}bothEnds: 'keep',/);
   // The whole pick reaches the viewer.
   const layer = fs.readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(layer, /annotationIndices/);
@@ -390,4 +412,198 @@ test('the bar hides what the pick cannot change and shows mixed values (desktop 
   const phone = fs.readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
   assert.match(phone, /selectionCaps\?\.width !== false/);
   assert.match(phone, /value=\{quickColourShown\}/);
+  // A mixed width field shows empty and leaving it untouched changes nothing.
+  const size = fs.readFileSync(new URL('../src/components/AnnotationSizeControl.jsx', import.meta.url), 'utf8');
+  assert.match(size, /if \(mixed && !event\.currentTarget\.value\.trim\(\)\) return;/);
+});
+
+// ---- the viewer's real group write path (review 2026-09-25) --------------------
+// The viewer's applyGroupUpdate is planGroupUpdate -> resolveGroupWrite, then
+// page saves or ONE document transaction; its paint handlers go through
+// resolveGroupPaintWrite. This driver runs exactly those, against the history
+// harness (the same undo stacks the viewer keeps).
+
+const PAGE_SIZE = { width: 612, height: 792 };
+// Owned through data.authorId (the callout bridge rebuilds the page object on a
+// style change and keeps only what the callout model carries).
+const pageCallout = (id, pageNumber, style = {}) => (JSON.parse(JSON.stringify(calloutToAnnotationObject({
+  id, pageNumber, authorId: 'user-a',
+  arrowTip: { x: 0.5, y: 0.3 }, knee: { x: 0.55, y: 0.33 }, textBoxPosition: { x: 0.6, y: 0.35 },
+  textBoxWidth: 0.2, textBoxHeight: 0.04, text: 'Check',
+  style: { fontColor: '#000000', fontSize: 14, borderColor: '#1e293b', borderOpacity: 1, lineThickness: 2, ...style },
+}, PAGE_SIZE))));
+
+function groupViewer(screen, group) {
+  let baseline = new Map();
+  const write = (change, phase = null) => {
+    const byPage = screen.byPage;
+    const plan = planGroupUpdate({
+      byPage,
+      selection: group.selection || null,
+      calloutIds: group.calloutIds || [],
+      calloutPageOf: (id) => deriveCalloutsFromByPage(byPage).find((c) => c.id === id)?.pageNumber,
+      annotationPage: (pageJSON, members) => applyRestyleChangeToPage(pageJSON, members, change),
+      calloutStyle: (callout) => calloutRestylePatch(callout, change),
+      deriveCallouts: deriveCalloutsFromByPage,
+      applyCalloutList: applyCalloutListToByPage,
+      pageSizes: { 1: PAGE_SIZE, 2: PAGE_SIZE },
+      release: phase === 'commit',
+    });
+    const out = resolveGroupWrite({
+      byPage, plan, phase, baseline, buildDocumentAction: buildTextMarkupDocumentAction,
+    });
+    if (out.kind === 'saves') {
+      out.saves.forEach(([page, json]) => screen.save(page, () => json.objects));
+    } else if (out.kind === 'transaction') {
+      screen.transaction(() => ({ action: out.action, nextByPage: out.nextByPage, skipHistory: out.skipHistory }));
+    }
+    // runWithPaintPhase: a drag's baseline never outlives the drag.
+    if (phase !== 'preview' && phase !== 'settle') baseline = new Map();
+    return out;
+  };
+  const paint = (kind, value, previous, phase = null) => {
+    const decision = resolveGroupPaintWrite(kind, value, previous, phase);
+    if (decision.action === 'skip') return decision;
+    if (decision.action === 'release') return write({ kind: 'noop' }, phase);
+    return write(decision.change, phase);
+  };
+  return { write, paint };
+}
+
+const bothSignatures = (screen) => ({ 1: screen.signature(1), 2: screen.signature(2) });
+
+test('real path: a group spread over two pages is ONE undo step per change (it used to be one per page)', async () => {
+  const { screen, close } = await openScreen('w41-cross-page');
+  try {
+    screen.save(1, () => [pen('p1'), rect('r1')].map(mine));
+    screen.save(2, () => [pageCallout('c2', 2)]);
+    const start = bothSignatures(screen);
+    const depth = screen.depths().localUndo;
+    const viewer = groupViewer(screen, {
+      selection: { pageNumber: 1, indices: [0, 1], ids: ['p1', 'r1'] },
+      calloutIds: ['c2'],
+    });
+    viewer.write({ kind: 'strokeColor', color: '#0000ff' });
+    assert.equal(screen.depths().localUndo, depth + 1, 'two pages, one step');
+    assert.equal(screen.mark('p1', 1).fill, 'rgba(0, 0, 255, 1)');
+    assert.equal(deriveCalloutsFromByPage(screen.byPage).find((c) => c.id === 'c2').style.borderColor, '#0000ff');
+    assert.equal(screen.undo(), 'applied');
+    assert.deepEqual(bothSignatures(screen), start, 'one undo puts both pages back');
+    assert.equal(screen.redo(), 'applied');
+    assert.equal(screen.mark('p1', 1).fill, 'rgba(0, 0, 255, 1)');
+  } finally {
+    await close();
+  }
+});
+
+test('real path: a cross-page opacity drag is ONE step; a drag released where it began is none', async () => {
+  const { screen, close } = await openScreen('w41-cross-page-drag');
+  try {
+    // Stored the way the bar writes paint (rgba), so returning to it is no change.
+    screen.save(1, () => [{ ...pen('p1'), fill: 'rgba(255, 0, 0, 1)' }].map(mine));
+    screen.save(2, () => [pageCallout('c2', 2)]);
+    const start = bothSignatures(screen);
+    const depth = screen.depths().localUndo;
+    const viewer = groupViewer(screen, {
+      selection: { pageNumber: 1, indices: [0], ids: ['p1'] },
+      calloutIds: ['c2'],
+    });
+    let shown = 100;
+    for (const opacity of [80, 60, 40]) {
+      viewer.paint('strokeOpacity', opacity, shown, 'preview');
+      shown = opacity;
+    }
+    assert.equal(screen.depths().localUndo, depth, 'drag frames record nothing');
+    viewer.paint('strokeOpacity', 40, shown, 'commit');
+    assert.equal(screen.depths().localUndo, depth + 1, 'the release records one step');
+    assert.equal(screen.mark('p1', 1).fill, 'rgba(255, 0, 0, 0.4)');
+    assert.equal(screen.undo(), 'applied');
+    assert.deepEqual(bothSignatures(screen), start, 'undo goes back to where the drag began');
+    // A drag that comes back to where it started records nothing.
+    const again = screen.depths().localUndo;
+    viewer.paint('strokeOpacity', 50, 100, 'preview');
+    viewer.paint('strokeOpacity', 100, 50, 'commit');
+    assert.equal(screen.depths().localUndo, again, 'no change, no step');
+    assert.deepEqual(bothSignatures(screen), start);
+  } finally {
+    await close();
+  }
+});
+
+test('real path: an unchanged release on one page records no step; an unchanged opacity re-send is skipped', async () => {
+  const { screen, close } = await openScreen('w41-noop-commit');
+  try {
+    screen.save(1, () => [pen('p1'), rect('r1')].map(mine));
+    const depth = screen.depths().localUndo;
+    const viewer = groupViewer(screen, { selection: { pageNumber: 1, indices: [0, 1], ids: ['p1', 'r1'] } });
+    assert.deepEqual(viewer.paint('strokeOpacity', 100, 100, null), { action: 'skip' });
+    viewer.paint('strokeColor', '#ff0000', '#ff0000', 'commit');
+    assert.equal(screen.depths().localUndo, depth, 'a release that changed nothing is no step');
+    // A CLICKED colour equal to the one shown still unifies a mixed group.
+    assert.equal(resolveGroupPaintWrite('strokeColor', '#ff0000', '#ff0000', null).action, 'apply');
+  } finally {
+    await close();
+  }
+});
+
+test('real path: an opacity change keeps each mark\'s own colour (the re-sent shown colour is skipped)', async () => {
+  const { screen, close } = await openScreen('w41-mixed-opacity');
+  try {
+    screen.save(1, () => [pen('p1'), { ...rect('r1'), stroke: '#0000ff' }].map(mine));
+    const viewer = groupViewer(screen, { selection: { pageNumber: 1, indices: [0, 1], ids: ['p1', 'r1'] } });
+    // The picker sends the shown colour (the first member's) along with the opacity.
+    viewer.paint('strokeColor', '#ff0000', '#ff0000', 'settle');
+    viewer.paint('strokeOpacity', 50, 100, null);
+    assert.equal(screen.mark('p1', 1).fill, 'rgba(255, 0, 0, 0.5)');
+    assert.equal(screen.mark('r1', 1).stroke, 'rgba(0, 0, 255, 0.5)', 'the blue border stays blue');
+  } finally {
+    await close();
+  }
+});
+
+test('real path: a group arrowhead change keeps each arrow\'s own ends', async () => {
+  const { screen, close } = await openScreen('w41-arrow-ends');
+  try {
+    const both = mine({ ...line('a1', 'arrow'), data: { id: 'a1', tool: 'arrow', arrowheadStyle: 'solidTriangle', startArrowheadStyle: 'solidTriangle' } });
+    const endOnly = mine({ ...line('a2', 'arrow'), data: { id: 'a2', tool: 'arrow', arrowheadStyle: 'solidTriangle' } });
+    screen.save(1, () => [both, endOnly]);
+    const summary = summarizeSelectionRestyle(screen.objects(1).map((annotation) => ({ kind: 'annotation', annotation })));
+    assert.equal(summary.mixed.arrowBothEnds, true, 'the bar shows the ends as mixed');
+    const depth = screen.depths().localUndo;
+    const viewer = groupViewer(screen, { selection: { pageNumber: 1, indices: [0, 1], ids: ['a1', 'a2'] } });
+    viewer.write({ kind: 'arrowhead', style: 'openCircle', bothEnds: 'keep' });
+    assert.equal(screen.depths().localUndo, depth + 1);
+    assert.equal(screen.mark('a1').data.startArrowheadStyle, 'openCircle', 'a both-ends arrow keeps both');
+    assert.equal(screen.mark('a2').data.startArrowheadStyle, undefined, 'an end-only arrow gains no start head');
+    assert.equal(screen.mark('a2').data.arrowheadStyle, 'openCircle');
+  } finally {
+    await close();
+  }
+});
+
+test('ink width: a re-commit of the shown (rounded) width never rebuilds; only the centre-v1 origin is rebuilt in place', () => {
+  const ink = { ...pen('p-r'), sourceWidth: 3.04 };
+  assert.equal(readRestyleStyle(ink).width, 3);
+  assert.equal(applyRestyleChange(ink, { kind: 'width', width: 3 }), null, 'blur on the shown "3" is no change');
+  const leftTop = { ...pen('p-lt'), inkGeometryOrigin: 'left-top', pathOffset: { x: 10, y: 10 }, left: 50, top: 50 };
+  assert.equal(canRebuildInkWidth(leftTop), false);
+});
+
+test('marquee: a rotated line and a curved line are picked by their DRAWN geometry (window and crossing)', () => {
+  const hits = (objects, rect, direction) => resolveMarqueeHits({
+    marqueeRect: rect, direction, annotations: { objects }, callouts: [], pageWidth: 612, pageHeight: 792, pageNumber: 1,
+  }).annotationIndices;
+  // A horizontal line 100..200 at y=300 turned 90 degrees about its centre:
+  // drawn vertically at x=150 from y=250 to y=350.
+  const turned = { ...line('t'), left: 100, top: 300, width: 100, height: 0, x1: -50, y1: 0, x2: 50, y2: 0, angle: 90 };
+  assert.deepEqual(hits([turned], { left: 140, top: 240, right: 160, bottom: 360 }, 'window'), [0]);
+  assert.deepEqual(hits([turned], { left: 90, top: 290, right: 210, bottom: 310 }, 'window'), []);
+  assert.deepEqual(hits([turned], { left: 145, top: 330, right: 155, bottom: 340 }, 'crossing'), [0]);
+  assert.deepEqual(hits([turned], { left: 180, top: 295, right: 195, bottom: 305 }, 'crossing'), [], 'the unturned spot is empty');
+  // A curve bulging up to y=275 (a quadratic through its midpoint 150,250
+  // peaks at the midpoint's height).
+  const curved = { ...line('c'), left: 100, top: 300, width: 100, height: 0, x1: -50, y1: 0, x2: 50, y2: 0, data: { id: 'c', midpoint: { x: 150, y: 250 } } };
+  assert.deepEqual(hits([curved], { left: 95, top: 280, right: 205, bottom: 310 }, 'window'), [], 'the bulge pokes out');
+  assert.deepEqual(hits([curved], { left: 95, top: 245, right: 205, bottom: 310 }, 'window'), [0]);
+  assert.deepEqual(hits([curved], { left: 145, top: 245, right: 155, bottom: 255 }, 'crossing'), [0], 'the bulge itself crosses');
 });

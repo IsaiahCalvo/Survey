@@ -130,7 +130,10 @@ export function canRebuildInkWidth(annotation) {
   const space = annotation.inkGeometrySpace || annotation.data?.inkGeometrySpace;
   const origin = annotation.inkGeometryOrigin || annotation.data?.inkGeometryOrigin;
   if (space === 'page') return true;
-  if (origin && annotation.pathOffset
+  // Only Survey's own centre contract: its pathOffset is the outline centre.
+  // Any other stored origin (Fabric left/top, legacy) would move the stroke
+  // by the width change, so its width is left alone.
+  if (origin === 'center-v1' && annotation.pathOffset
     && Number.isFinite(Number(annotation.pathOffset.x))
     && Number.isFinite(Number(annotation.pathOffset.y))) return true;
   return isAbsoluteInkGeometry(annotation);
@@ -231,6 +234,8 @@ export function readRestyleStyle(annotation) {
   }
   if (caps.arrowheads) {
     style.arrowheadStyle = annotation.data?.arrowheadStyle || DEFAULT_ARROWHEAD;
+    const start = annotation.data?.startArrowheadStyle ?? null;
+    style.arrowBothEnds = Boolean(start && start !== NONE_ARROWHEAD && start === style.arrowheadStyle);
   }
   return style;
 }
@@ -274,10 +279,14 @@ export function rebuildInkAtWidth(annotation, width) {
   const localWidth = drawnWidth / inkDrawScale(annotation);
   // Already that wide (a highlighter asked for less than 8): nothing to write.
   if (Math.abs(localWidth - Number(annotation.sourceWidth)) < 1e-9) return null;
+  // The same pipeline and settings the stroke was drawn with (the pen commit
+  // passes no sloppiness, i.e. 0; a stored one is honoured).
+  const sloppiness = Number(annotation.sloppiness ?? annotation.data?.sloppiness) || 0;
   const ink = createInkAnnotation(annotation.paperCenterline, {
     id: annotation.id,
     color: annotation.fill,
     width: localWidth,
+    sloppiness,
   });
   if (!Array.isArray(ink?.cmds) || ink.cmds.length === 0) return null;
   const bounds = boundsOfCommands(ink.cmds);
@@ -354,6 +363,9 @@ export function applyRestyleChange(annotation, change) {
       const width = Number(change.width);
       if (!Number.isFinite(width) || width <= 0) return null;
       if (current.width != null && Math.abs(current.width - width) < 1e-9) return null;
+      // An ink width is shown rounded to 0.1: committing the shown value
+      // again (a blur with no edit) must not rebuild - and nudge - the stroke.
+      if (inkBody && current.width != null && Math.abs(current.width - width) < 0.05) return null;
       if (inkBody) return rebuildInkAtWidth(annotation, width);
       return { ...annotation, strokeWidth: width };
     }
@@ -382,9 +394,13 @@ export function applyRestyleChange(annotation, change) {
     case 'arrowhead': {
       if (!caps.arrowheads || !change.style) return null;
       const dataPatch = { arrowheadStyle: change.style };
-      if (change.bothEnds) dataPatch.startArrowheadStyle = change.style;
+      // bothEnds: true = put the head on the start too, false = end only
+      // (the start is left as it is), 'keep' (a group) = each arrow keeps its
+      // own ends - one that had the same head on both ends keeps both.
+      const mirror = change.bothEnds === 'keep' ? current.arrowBothEnds === true : change.bothEnds === true;
+      if (mirror) dataPatch.startArrowheadStyle = change.style;
       const unchanged = annotation.data?.arrowheadStyle === change.style
-        && (!change.bothEnds || annotation.data?.startArrowheadStyle === change.style);
+        && (!mirror || annotation.data?.startArrowheadStyle === change.style);
       return unchanged ? null : mergeData(annotation, dataPatch);
     }
     case 'arrowBothEnds': {
@@ -534,6 +550,7 @@ export function summarizeSelectionRestyle(members) {
   const width = pick('width', 'width');
   const lineStyle = pick('lineStyle', 'lineStyle');
   const arrowheadStyle = pick('arrowheadStyle', 'arrowheads');
+  const arrowBothEnds = pick('arrowBothEnds', 'arrowheads');
   const cloudIntensity = agree(entries
     .filter((entry) => entry.style.lineStyle === 'cloud')
     .map((entry) => entry.style.cloudIntensity));
@@ -550,6 +567,7 @@ export function summarizeSelectionRestyle(members) {
       lineStyle: lineStyle.value,
       cloudIntensity: cloudIntensity.value,
       arrowheadStyle: arrowheadStyle.value,
+      arrowBothEnds: arrowBothEnds.value,
     },
     mixed: {
       strokeColor: strokeColor.mixed,
@@ -559,6 +577,7 @@ export function summarizeSelectionRestyle(members) {
       width: width.mixed,
       lineStyle: lineStyle.mixed,
       arrowheadStyle: arrowheadStyle.mixed,
+      arrowBothEnds: arrowBothEnds.mixed,
     },
   };
 }
@@ -611,3 +630,192 @@ export function applyRestyleChangeToPage(pageJSON, members, change) {
   });
   return objects ? { ...pageJSON, objects } : null;
 }
+
+/**
+ * What one picker write does to a restyle group (the bar's colour / opacity
+ * handlers). The picker always sends colour AND opacity together, so the one
+ * the user did not touch arrives unchanged: an opacity drag re-sends the
+ * shown colour, a colour click re-sends the shown opacity. Re-applying those
+ * would flatten a mixed group onto its first member, so an unchanged value is
+ * skipped - except a CLICKED colour (picking the colour shown makes a mixed
+ * group that one colour) and a drag's release, which must still reach the
+ * save path so the drag records its one undo step (a release that changed
+ * nothing records none).
+ *
+ * @returns {{ action: 'skip' } | { action: 'release' } | { action: 'apply', change: object }}
+ */
+export function resolveGroupPaintWrite(kind, value, previous, phase) {
+  const unchanged = String(previous ?? '') === String(value ?? '');
+  const isOpacity = kind === 'strokeOpacity' || kind === 'fillOpacity';
+  if (unchanged) {
+    if (phase === 'commit') return { action: 'release' };
+    if (isOpacity || phase) return { action: 'skip' };
+  }
+  return {
+    action: 'apply',
+    change: isOpacity ? { kind, opacity: value } : { kind, color: value },
+  };
+}
+
+/**
+ * The pages a group change writes, before anything is saved (pure).
+ *
+ *  - selection: { pageNumber, indices, ids } - the picked marks (callouts
+ *    excluded; they come through calloutIds),
+ *  - calloutIds + calloutPageOf(id): the picked callouts and their pages,
+ *  - annotationPage(pageJSON, members) -> new page or null,
+ *  - calloutStyle(callout, page) -> style patch or null, calloutRefit
+ *    optional (callout, page, stylePatch) -> callout,
+ *  - deriveCallouts / applyCalloutList: the callout <-> page bridge,
+ *  - release: a drag's release - every page the group lives on is written
+ *    even if unchanged, so the drag's baseline resolves into its one step.
+ *
+ * @returns {{ nextPages: Map<number, object>, groupPages: number[] }}
+ */
+export function planGroupUpdate({
+  byPage,
+  selection = null,
+  calloutIds = [],
+  calloutPageOf = () => null,
+  annotationPage,
+  calloutStyle,
+  calloutRefit = null,
+  deriveCallouts,
+  applyCalloutList,
+  pageSizes = {},
+  release = false,
+}) {
+  const pageOf = (page) => byPage?.[page] || byPage?.[String(page)] || null;
+  const nextPages = new Map();
+  const groupPages = new Set();
+  if (selection && typeof annotationPage === 'function') {
+    const page = Number(selection.pageNumber);
+    const pageJSON = pageOf(page);
+    if (pageJSON && Array.isArray(pageJSON.objects)) {
+      groupPages.add(page);
+      const members = resolvePickedMembers(pageJSON.objects, selection.indices, selection.ids)
+        .filter(({ annotation }) => annotation?.data?.type !== 'callout');
+      const next = annotationPage(pageJSON, members);
+      if (next) nextPages.set(page, next);
+    }
+  }
+  if (calloutIds.length > 0 && typeof calloutStyle === 'function') {
+    const ids = new Set(calloutIds);
+    const pages = new Set(calloutIds.map((id) => Number(calloutPageOf(id))).filter(Number.isFinite));
+    pages.forEach((page) => {
+      groupPages.add(page);
+      const basePage = nextPages.get(page) || pageOf(page);
+      if (!basePage) return;
+      const single = { [page]: basePage };
+      let changed = false;
+      const list = deriveCallouts(single).map((callout) => {
+        if (!callout || !ids.has(callout.id)) return callout;
+        const stylePatch = calloutStyle(callout, page);
+        if (!stylePatch) return callout;
+        changed = true;
+        const patched = { ...callout, style: { ...(callout.style || {}), ...stylePatch } };
+        return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch) || patched) : patched;
+      });
+      if (!changed) return;
+      const nextByPage = applyCalloutList(single, list, pageSizes || {});
+      const next = nextByPage[page] ?? nextByPage[String(page)];
+      if (next) nextPages.set(page, next);
+    });
+  }
+  if (release) {
+    groupPages.forEach((page) => {
+      if (!nextPages.has(page) && pageOf(page)) nextPages.set(page, { ...pageOf(page) });
+    });
+  }
+  return { nextPages, groupPages: [...groupPages].sort((a, b) => a - b) };
+}
+
+/**
+ * How a planned group change is written - the ONE-undo-step rule (pure; the
+ * viewer's applyGroupUpdate runs exactly this):
+ *  - the group lives on one page: plain page saves ({ kind: 'saves' }); the
+ *    viewer's save path turns a slider drag into one step on that page,
+ *  - it spans pages: ONE document transaction. A drag frame records no step
+ *    (skipHistory) and grows the drag's baseline; the release records one
+ *    step from that baseline; a release that changed nothing records none.
+ *
+ * `buildDocumentAction(previousByPage, nextByPage)` builds the step
+ * (textMarkupGroupTransactions buildTextMarkupDocumentAction in the viewer).
+ * `baseline` is the drag's Map (mutated on frames).
+ */
+export function resolveGroupWrite({ byPage, plan, phase, baseline, buildDocumentAction }) {
+  const { nextPages, groupPages } = plan;
+  if (groupPages.length <= 1) {
+    return { kind: 'saves', saves: [...nextPages.entries()] };
+  }
+  if (nextPages.size === 0) return { kind: 'none' };
+  const nextByPage = { ...(byPage || {}) };
+  nextPages.forEach((pageJSON, page) => {
+    nextByPage[byPage?.[page] ? page : String(page)] = pageJSON;
+  });
+  const isPreview = phase === 'preview' || phase === 'settle';
+  if (isPreview) {
+    recordDragBaseline(baseline, byPage, nextPages);
+    const frameAction = buildDocumentAction(byPage, nextByPage);
+    return frameAction
+      ? { kind: 'transaction', action: frameAction, nextByPage, skipHistory: true }
+      : { kind: 'none' };
+  }
+  const previousByPage = phase === 'commit'
+    ? restoreDragBaseline(byPage, groupPages, baseline)
+    : byPage;
+  const action = buildDocumentAction(previousByPage, nextByPage);
+  if (action) return { kind: 'transaction', action, nextByPage, skipHistory: false };
+  // A release back on the starting paint: show it (the last frame may still
+  // be on screen), record nothing.
+  const showAction = buildDocumentAction(byPage, nextByPage);
+  return showAction
+    ? { kind: 'transaction', action: showAction, nextByPage, skipHistory: true }
+    : { kind: 'none' };
+}
+
+/**
+ * A group drag's baseline, one frame at a time: the first time a frame
+ * rewrites an object, its version from BEFORE that frame (= before the drag)
+ * is kept under `page:id`. Mutates and returns `baseline`.
+ */
+export function recordDragBaseline(baseline, byPage, nextPages) {
+  nextPages.forEach((next, page) => {
+    const current = byPage?.[page] || byPage?.[String(page)];
+    const currentById = new Map((current?.objects || [])
+      .map((object) => [getAnnotationRenderIdentity(object).annotationId, object]));
+    (next?.objects || []).forEach((object) => {
+      const id = getAnnotationRenderIdentity(object).annotationId;
+      if (!id || baseline.has(`${page}:${id}`)) return;
+      const before = currentById.get(id);
+      if (before && before !== object) baseline.set(`${page}:${id}`, before);
+    });
+  });
+  return baseline;
+}
+
+/**
+ * The document as it was before a group drag, for the drag's ONE undo step:
+ * the current pages with only the objects the drag touched put back to their
+ * pre-drag versions (a collaborator's edit to anything else, made mid-drag,
+ * stays out of this user's step).
+ */
+export function restoreDragBaseline(byPage, pages, baseline) {
+  const previous = { ...(byPage || {}) };
+  (pages || []).forEach((page) => {
+    const key = byPage?.[page] ? page : String(page);
+    const current = byPage?.[key];
+    if (!current || !Array.isArray(current.objects)) return;
+    let touched = false;
+    const objects = current.objects.map((object) => {
+      const id = getAnnotationRenderIdentity(object).annotationId;
+      const base = id ? baseline?.get(`${page}:${id}`) : null;
+      if (!base) return object;
+      touched = true;
+      return base;
+    });
+    if (touched) previous[key] = { ...current, objects };
+  });
+  return previous;
+}
+

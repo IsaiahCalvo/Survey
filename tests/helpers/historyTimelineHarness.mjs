@@ -236,6 +236,18 @@ export function createHistoryScreen(handle, userId, { documentOwnerId = null } =
       // useAnnotationDoc captures after every render, including a repaint.
       capture();
     },
+    /**
+     * w41: a document transaction, the way PDFViewer's
+     * commitTextMarkupDocumentTransaction commits one (a multi-page group
+     * restyle): `plan(byPage)` returns { action, nextByPage, skipHistory }.
+     * The action is pushed as ONE step unless skipHistory (a drag frame).
+     */
+    transaction(plan) {
+      const result = plan(clone(byPage));
+      if (!result?.nextByPage) return;
+      if (result.action && !result.skipHistory) pushLocal(result.action);
+      setScreen(result.nextByPage);
+    },
     /** One-save gesture on a page: create, recolour, text edit, delete, paste, nudge. */
     save(pageNumber, mutate) {
       const previousPage = clone(pageOf(byPage, pageNumber));

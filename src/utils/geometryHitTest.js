@@ -7,6 +7,7 @@
  */
 import { getCounterRenderGeometry } from './counterGeometry.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
+import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 import {
   commandsToPolylines,
@@ -89,6 +90,50 @@ const getTransformedPoints = (obj) => {
 // exactly: getLineEndpoints center-based endpoints, rotation about the shape's
 // visual center, and scaleX/scaleY folded into effective dimensions.
 const isLiveFabricObject = (obj) => typeof obj?.calcTransformMatrix === 'function';
+
+/**
+ * w41 (2026-09-25): a plain page-JSON line as the renderer draws it, in page
+ * space: getLineEndpoints (offsets from the bbox CENTER), a curved line's
+ * quadratic through data.midpoint sampled finely, and obj.angle turned about
+ * computeLineBboxCenter - the pivot renderLine rotates about. Used by the
+ * marquee (window containment and crossing), so selection matches what the
+ * user sees.
+ */
+const plainLineWorldPolyline = (lineObj) => {
+  const ep = getLineEndpoints(lineObj);
+  const rawMid = lineObj?.data?.midpoint;
+  const mid = rawMid && Number.isFinite(Number(rawMid.x)) && Number.isFinite(Number(rawMid.y))
+    ? { x: Number(rawMid.x), y: Number(rawMid.y) }
+    : null;
+  let points;
+  if (mid) {
+    const cx = 2 * mid.x - 0.5 * ep.x1 - 0.5 * ep.x2;
+    const cy = 2 * mid.y - 0.5 * ep.y1 - 0.5 * ep.y2;
+    points = [];
+    const steps = 32;
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      const o = 1 - t;
+      points.push({
+        x: o * o * ep.x1 + 2 * o * t * cx + t * t * ep.x2,
+        y: o * o * ep.y1 + 2 * o * t * cy + t * t * ep.y2,
+      });
+    }
+  } else {
+    points = [{ x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }];
+  }
+  const angle = Number(lineObj?.angle) || 0;
+  if (!angle) return points;
+  const pivot = computeLineBboxCenter(ep, mid);
+  const rad = (angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return points.map((point) => {
+    const dx = point.x - pivot.x;
+    const dy = point.y - pivot.y;
+    return { x: pivot.x + dx * cos - dy * sin, y: pivot.y + dx * sin + dy * cos };
+  });
+};
 
 // Plain persisted paths must use the same affine truth as SVG rendering,
 // page-space erasing, and PDF export. Live Fabric instances already expose
@@ -2340,8 +2385,17 @@ export const doesRectIntersectCounter = (selRect, counterObj) => {
 export const doesRectIntersectLine = (selRect, lineObj) => {
   if (!lineObj || hitTestType(lineObj) !== 'line') return false;
 
-  const matrix = getObjectTransformMatrix(lineObj);
   const strokeWidth = lineObj.strokeWidth || 1;
+  if (!isLiveFabricObject(lineObj)) {
+    // w41: plain page-JSON — the drawn line (curve and rotation included),
+    // not the half-size-shifted matrix path below.
+    const points = plainLineWorldPolyline(lineObj);
+    for (let i = 1; i < points.length; i += 1) {
+      if (doesRectIntersectLineSegment(selRect, points[i - 1], points[i], strokeWidth)) return true;
+    }
+    return false;
+  }
+  const matrix = getObjectTransformMatrix(lineObj);
 
   // Get line coordinates - Fabric.js Line objects store endpoints as x1, y1, x2, y2
   // These are relative to the line's origin (left, top)
@@ -2953,35 +3007,13 @@ export const getObjectGeometryBounds = (obj) => {
         const strokeWidth = (obj.strokeWidth || 1) / 2;
 
         if (!isLiveFabricObject(obj)) {
-          // w41 (2026-09-25): plain page-JSON line endpoints are offsets from
-          // the BBOX CENTER (getLineEndpoints / renderLine), the same fix
-          // isPointOnLine got on 2026-07-19. The (left, top) matrix below
-          // shifted a line by half its size, so a window (left-to-right)
-          // marquee drawn snugly around a line never picked it. A rotated
-          // line turns about its visual centre; a curved one also counts
-          // its drawn midpoint.
-          const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
-          const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
-          const points = [
-            { x: cx + x1, y: cy + y1 },
-            { x: cx + x2, y: cy + y2 },
-          ];
-          const mid = obj.data?.midpoint;
-          if (mid && Number.isFinite(Number(mid.x)) && Number.isFinite(Number(mid.y))) {
-            points.push({ x: Number(mid.x), y: Number(mid.y) });
-          }
-          const angleRad = ((Number(obj.angle) || 0) * Math.PI) / 180;
-          const pivotX = (points[0].x + points[1].x) / 2;
-          const pivotY = (points[0].y + points[1].y) / 2;
-          const cos = Math.cos(angleRad);
-          const sin = Math.sin(angleRad);
-          points.forEach((point) => {
-            const dx = point.x - pivotX;
-            const dy = point.y - pivotY;
-            const px = pivotX + dx * cos - dy * sin;
-            const py = pivotY + dx * sin + dy * cos;
-            updateBounds(px - strokeWidth, py - strokeWidth);
-            updateBounds(px + strokeWidth, py + strokeWidth);
+          // w41 (2026-09-25): plain page-JSON lines use the renderer's own
+          // world geometry (plainLineWorldPolyline). The (left, top) matrix
+          // below shifted a line by half its size, so a window marquee drawn
+          // snugly around a line never picked it.
+          plainLineWorldPolyline(obj).forEach((point) => {
+            updateBounds(point.x - strokeWidth, point.y - strokeWidth);
+            updateBounds(point.x + strokeWidth, point.y + strokeWidth);
           });
           break;
         }

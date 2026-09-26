@@ -148,7 +148,10 @@ import {
   applyRestyleChangeToPage,
   calloutRestylePatch,
   isFilledInkPath,
+  planGroupUpdate,
   readRestyleStyle,
+  resolveGroupWrite,
+  resolveGroupPaintWrite,
   resolvePickedMembers,
   restyleCapabilities,
   summarizeSelectionRestyle,
@@ -3313,11 +3316,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (indices.length === 0) {
         return prev && prev.pageNumber === pageNumber ? null : prev;
       }
-      // The ids picked, read now: a later write resolves each mark by id, so
-      // a collaborator's delete that shifts the indices can never retarget
-      // the change onto a mark that was not picked.
-      const objects = annotationsByPageRef.current?.[pageNumber]?.objects || [];
-      const ids = indices.map((index) => getAnnotationRenderIdentity(objects[index]).annotationId || '');
+      // The ids picked, as the layer read them from the same objects its
+      // indices point into: a later write resolves each mark by id, so a
+      // collaborator's delete that shifts the indices can never retarget the
+      // change onto a mark that was not picked.
+      const ids = Array.isArray(payload.annotationIds) && payload.annotationIds.length === indices.length
+        ? payload.annotationIds.map((id) => id || '')
+        : indices.map(() => '');
       const key = `${indices.join(',')}|${ids.join(',')}`;
       if (prev && prev.pageNumber === pageNumber && prev.key === key) return prev;
       return { pageNumber, indices, ids, key };
@@ -3325,6 +3330,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedToolbarAnnotation((prev) => {
       if (annotationIndex == null) {
         if (prev && prev.pageNumber === pageNumber) return null;
+        // A multi-pick on this page replaces a single pick on another page
+        // (its layer is then cleared through selectionOwnerPageNumber).
+        if (prev && indices.length > 0) return null;
         return prev;
       }
       if (prev
@@ -4373,6 +4381,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // as one save per page = one undo step (applyRestyleToGroup). Reference:
   // Drawboard / Bluebeam / Acrobat multi-selection formatting.
   const restyleGroup = useMemo(() => {
+    // Only under Select. With a drawing tool armed, the bar is that tool's
+    // defaults for the next mark, and a pick left behind must never load its
+    // values into them nor take the tool's changes (review 2026-09-25).
+    if (activeTool !== 'select') return null;
     const annotationMembers = [];
     let annotationSelection = null;
     if (selectedToolbarIndices && selectedToolbarIndices.indices.length > 0) {
@@ -4404,7 +4416,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       calloutIds: calloutMembers.map((callout) => callout.id),
       key: `${annotationSelection?.key || ''}#${calloutMembers.map((callout) => callout.id).join(',')}`,
     };
-  }, [selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
+  }, [activeTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
   const restyleGroupRef = useRef(restyleGroup);
   restyleGroupRef.current = restyleGroup;
 
@@ -4564,8 +4576,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Runs after the single-pick loaders above, so a group always wins. Under
   // Select these states are only what the bar shows - the tool defaults are
   // reloaded from the saved preferences when a drawing tool is armed.
+  // Keyed by the pick and its values, not the memo's identity: every save
+  // (any page) rebuilds the memo, and reloading then would stomp a value the
+  // user is part-way through setting.
+  const restyleGroupLoadKey = restyleGroup
+    ? `${restyleGroup.key}|${JSON.stringify(restyleGroup.summary.values)}`
+    : '';
   useEffect(() => {
-    const values = restyleGroup?.summary?.values;
+    const values = restyleGroupRef.current?.summary?.values;
     if (!values) return;
     if (values.strokeColor) {
       strokeColorStateRef.current = values.strokeColor;
@@ -4595,8 +4613,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (values.lineStyle) setLineBorderStyle(values.lineStyle);
     if (values.cloudIntensity != null) setCloudIntensity(values.cloudIntensity);
     if (values.arrowheadStyle) setArrowheadStyle(values.arrowheadStyle);
+    if (values.arrowBothEnds != null) setArrowBothEnds(Boolean(values.arrowBothEnds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restyleGroup]);
+  }, [restyleGroupLoadKey]);
 
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
@@ -8236,89 +8255,71 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // step). A slider drag's release always reaches the save path, even when
   // its last frame already showed the released value, or the drag would
   // leave no undo step (runWithPaintPhase / previewBaselineByPageRef).
-  const applyRestyleToGroup = (change) => applyGroupUpdate({
-    annotationPage: (pageJSON, members) => applyRestyleChangeToPage(pageJSON, members, change),
-    calloutStyle: (callout) => calloutRestylePatch(callout, change),
-  });
   // The shared core: `annotationPage(pageJSON, members)` returns the page with
   // its picked marks updated (or null), `calloutStyle(callout, page)` a style
-  // patch for one picked callout (or null) - optionally with a `refit`
-  // (callout, page) => callout, the text bar's grow-to-fit.
+  // patch for one picked callout (or null), `calloutRefit` optional
+  // (callout, page, stylePatch) => callout, the text bar's grow-to-fit. The
+  // pages to write are planned purely (utils/selectionRestyle planGroupUpdate).
+  //
+  // ONE undo step per change: a group on one page is one page save (and a
+  // slider drag resolves through handleSaveAnnotations' drag baseline, like a
+  // single mark). A group spread over several pages (callouts picked on other
+  // pages) is committed as ONE document transaction instead of a save per
+  // page; its drag frames record no step and its release records one, from
+  // the drag's starting paint (recordDragBaseline / restoreDragBaseline).
+  const groupDragBaselineRef = useRef(new Map());
   const applyGroupUpdate = ({ annotationPage, calloutStyle, calloutRefit = null }) => {
     const group = restyleGroupRef.current;
     if (!group) return false;
     const save = handleSaveAnnotationsRef.current;
     if (typeof save !== 'function') return true;
     const byPage = annotationsByPageRef.current || {};
-    const nextPages = new Map();
-    const touchedPages = new Set();
-    const selection = group.annotationSelection;
-    if (selection) {
-      const pageKey = selection.pageNumber;
-      const pageJSON = byPage[pageKey] || byPage[String(pageKey)];
-      if (pageJSON && Array.isArray(pageJSON.objects)) {
-        touchedPages.add(Number(pageKey));
-        const members = resolvePickedMembers(pageJSON.objects, selection.indices, selection.ids)
-          .filter(({ annotation }) => annotation?.data?.type !== 'callout');
-        const nextPage = annotationPage(pageJSON, members);
-        if (nextPage) nextPages.set(Number(pageKey), nextPage);
-      }
-    }
-    if (group.calloutIds.length > 0) {
-      const ids = new Set(group.calloutIds);
-      const pagesWithCallouts = new Set((calloutsRef.current || [])
-        .filter((callout) => callout && ids.has(callout.id))
-        .map((callout) => Number(callout.pageNumber))
-        .filter(Number.isFinite));
-      pagesWithCallouts.forEach((page) => {
-        touchedPages.add(page);
-        const basePage = nextPages.get(page) || byPage[page] || byPage[String(page)];
-        if (!basePage) return;
-        const singlePageMap = { [page]: basePage };
-        let changed = false;
-        const nextList = deriveCalloutsFromByPage(singlePageMap).map((callout) => {
-          if (!callout || !ids.has(callout.id)) return callout;
-          const stylePatch = calloutStyle(callout, page);
-          if (!stylePatch) return callout;
-          changed = true;
-          const patched = { ...callout, style: { ...(callout.style || {}), ...stylePatch } };
-          return typeof calloutRefit === 'function' ? (calloutRefit(patched, page, stylePatch) || patched) : patched;
-        });
-        if (!changed) return;
-        const nextByPage = applyCalloutListToByPage(singlePageMap, nextList, pageSizesRef.current || {});
-        const nextPage = nextByPage[page] ?? nextByPage[String(page)];
-        if (nextPage) nextPages.set(page, nextPage);
-      });
-    }
-    if (paintPhaseRef.current === 'commit') {
-      touchedPages.forEach((page) => {
-        if (nextPages.has(page)) return;
-        const current = byPage[page] || byPage[String(page)];
-        if (current) nextPages.set(page, { ...current });
-      });
-    }
-    nextPages.forEach((pageJSON, page) => {
-      save(page, pageJSON, { source: 'toolbar:selected-group-edit', tool: 'select' });
+    const phase = paintPhaseRef.current;
+    const { nextPages, groupPages } = planGroupUpdate({
+      byPage,
+      selection: group.annotationSelection,
+      calloutIds: group.calloutIds,
+      calloutPageOf: (id) => (calloutsRef.current || []).find((callout) => callout?.id === id)?.pageNumber
+        ?? resolveCalloutPageNumber(id),
+      annotationPage,
+      calloutStyle,
+      calloutRefit,
+      deriveCallouts: deriveCalloutsFromByPage,
+      applyCalloutList: applyCalloutListToByPage,
+      pageSizes: pageSizesRef.current || {},
+      release: phase === 'commit',
     });
+    const write = resolveGroupWrite({
+      byPage,
+      plan: { nextPages, groupPages },
+      phase,
+      baseline: groupDragBaselineRef.current,
+      buildDocumentAction: buildTextMarkupDocumentAction,
+    });
+    if (write.kind === 'saves') {
+      write.saves.forEach(([page, pageJSON]) => {
+        save(page, pageJSON, { source: 'toolbar:selected-group-edit', tool: 'select' });
+      });
+    } else if (write.kind === 'transaction') {
+      commitTextMarkupDocumentTransactionRef.current?.({ action: write.action, nextByPage: write.nextByPage }, {
+        source: 'toolbar:selected-group-edit',
+        action: 'group-restyle',
+        skipHistory: write.skipHistory,
+      });
+    }
     return true;
   };
-  // One paint write for the group. The picker always sends colour AND opacity
-  // together, so the one the user did not touch arrives unchanged: an opacity
-  // drag re-sends the shown colour and a colour click re-sends the shown
-  // opacity. Re-applying those would flatten a mixed group onto its first
-  // member, so an unchanged value is skipped - except a CLICKED colour (picking
-  // the colour already shown makes a mixed group that one colour) and a drag's
-  // release, which must reach the save path to record the drag's undo step.
+  const applyRestyleToGroup = (change) => applyGroupUpdate({
+    annotationPage: (pageJSON, members) => applyRestyleChangeToPage(pageJSON, members, change),
+    calloutStyle: (callout) => calloutRestylePatch(callout, change),
+  });
+  // One paint write for the group (utils/selectionRestyle resolveGroupPaintWrite).
   const writeGroupPaint = (kind, value, previous) => {
     if (!restyleGroupRef.current) return false;
-    const phase = paintPhaseRef.current;
-    const unchanged = String(previous ?? '') === String(value ?? '');
-    const isOpacity = kind === 'strokeOpacity' || kind === 'fillOpacity';
-    if (unchanged) {
-      if (phase === 'commit') return applyRestyleToGroup({ kind: 'noop' });
-      if (isOpacity || phase) return true;
-    }
-    return applyRestyleToGroup(isOpacity ? { kind, opacity: value } : { kind, color: value });
+    const write = resolveGroupPaintWrite(kind, value, previous, paintPhaseRef.current);
+    if (write.action === 'skip') return true;
+    if (write.action === 'release') return applyRestyleToGroup({ kind: 'noop' });
+    return applyRestyleToGroup(write.change);
   };
 
   const handleTextMarkupOverlapModeChange = useCallback((mode) => {
@@ -8544,6 +8545,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Whatever the write did, a drag is over: its text-markup starting
         // paint must never carry into a later, unrelated drag.
         textMarkupPaintBaselineRef.current = null;
+        // Nor a multi-page group drag's starting paint (applyGroupUpdate).
+        groupDragBaselineRef.current = new Map();
         // Nor may any page snapshot it left: a commit that never reached the
         // save path (the mark was deleted remotely, the selection changed,
         // a counter's other pages) would otherwise fold this drag into the
@@ -8760,7 +8763,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (activeToolRef.current === 'select' && applyRestyleToGroup({
       kind: 'arrowhead',
       style: next,
-      bothEnds: arrowBothEnds,
+      // Each picked arrow keeps its own ends (the bar's both-ends state may
+      // be a mix); only the Arrow ends menu changes which ends have heads.
+      bothEnds: 'keep',
     })) return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ arrowheadStyle: next });
@@ -8828,6 +8833,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
     const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
+    // w41: an empty Width over picked marks of different widths means "leave
+    // them" - never "set all of them to the minimum".
+    if (rawValue === '' && activeTool === 'select' && restyleGroupRef.current?.summary?.mixed?.width) return;
     const parsed = rawValue === ''
       ? NaN
       : normalizeAnnotationSize(rawValue, -Infinity, Infinity, isCounterSize ? 0 : ANNOTATION_WIDTH_DECIMALS);
@@ -34637,7 +34645,7 @@ ${pageBlocks}
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
-                                  selectionOwnerPageNumber={selectedToolbarAnnotation?.pageNumber ?? null}
+                                  selectionOwnerPageNumber={selectedToolbarIndices?.pageNumber ?? selectedToolbarAnnotation?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   onTextSelectManipulationChange={handleTextSelectManipulationChange}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
