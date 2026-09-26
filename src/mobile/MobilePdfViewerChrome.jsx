@@ -1733,12 +1733,11 @@ export function MobileToolProperties({ api }) {
   // exception and takes the fill, because a pin's colour IS its fill and its
   // stroke is only the number printed on it. Opacity is untouched: it belongs
   // to the sheet's slider, not to a dot.
-  // w41: picked marks in different colours ring no disc.
-  const quickColourValue = api.selectionMixed?.strokeColor
-    ? null
-    : tool === 'counter'
+  const quickColourValue = tool === 'counter'
     ? toHexColor(api.fillColor, '#ef4444')
     : toHexColor(api.strokeColor, '#ff0000');
+  // w41: picked marks in different colours ring no disc.
+  const quickColourShown = api.selectionMixed?.strokeColor ? null : quickColourValue;
   const applyQuickColour = (hex) => {
     if (tool === 'counter') api.handleFillColorChange?.(hex);
     else api.handleStrokeColorChange?.(hex);
@@ -1992,7 +1991,8 @@ export function MobileToolProperties({ api }) {
       {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
-          value={quickColourValue}
+          value={quickColourShown}
+          customActive={api.selectionMixed?.strokeColor ? false : undefined}
           onPick={applyQuickColour}
           /* Boards 17/18: the rainbow disc opens the Colour sheet. It used to
              carry a tooltip and no handler, so tapping it did nothing. */

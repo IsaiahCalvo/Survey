@@ -389,5 +389,5 @@ test('the bar hides what the pick cannot change and shows mixed values (desktop 
   assert.match(shell, /triggerContent=\{styleMixed \? 'Mixed' : undefined\}/);
   const phone = fs.readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
   assert.match(phone, /selectionCaps\?\.width !== false/);
-  assert.match(phone, /api\.selectionMixed\?\.strokeColor/);
+  assert.match(phone, /value=\{quickColourShown\}/);
 });
