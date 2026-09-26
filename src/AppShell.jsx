@@ -1582,8 +1582,37 @@ export default function App({ devPreviewReturnTab = null }) {
   });
   // Which group's tools the tool bar shows right of the group icons, and
   // whether the formatting row is on screen (utils/toolbarRows.js).
-  const toolBarGroup = bottomToolbarApi ? resolveToolBarGroup(bottomToolbarApi) : null;
-  const formatRowShown = !isMobileViewer && showsFormatRow(bottomToolbarApi);
+  const toolBarGroup = bottomToolbarApi
+    ? resolveToolBarGroup({ ...bottomToolbarApi, contextTool: bottomToolbarApi.toolBarContextTool ?? bottomToolbarApi.contextTool })
+    : null;
+  const formatRowShown = !isMobileViewer && !!isViewerVisible && showsFormatRow(bottomToolbarApi);
+  // w44 (coordinator ruling on the review): row 2 stays on screen for as long
+  // as Select is armed, so picking or dropping a mark never adds or removes a
+  // strip over the page. With nothing picked it carries Select's Box / Lasso /
+  // Text modes (and, in Text mode, the text-mark colours); with a mark picked
+  // it carries that mark's settings. A picked mark that belongs to no drawing
+  // group — a text highlight, or marks of several kinds picked together —
+  // shows the modes up in the tool bar instead, where a group's tools go.
+  // Row 3 (the Aa bar) starts where row 2's settings start, keeping room for
+  // the "Text" caption that hangs off its left inside the uncovered span.
+  const TEXT_ROW_CAPTION_ROOM = 34;
+  const textFormatRowLeft = Math.max(
+    toolbarPlan.formatLeft ?? 10,
+    (toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM,
+  );
+  const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
+  const selectModesInFormatRow = selectArmed
+    && isSelectFamilyTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool);
+  const selectModesInToolBar = selectArmed && !selectModesInFormatRow && toolBarGroup === 'select';
+  // A popover whose opener sits in row 2 closes when the row goes away (Pan,
+  // Survey Marker placement, closing the document): its anchor has no box left
+  // to open under. Desktop only — the phone draws its own pickers.
+  useEffect(() => {
+    if (isMobileViewer || formatRowShown) return;
+    setOpenAnnotationDropdown(null);
+    setShowFontColorPicker(false);
+    if (bottomToolbarApi?.showAnnotationColorPicker) bottomToolbarApi.setShowAnnotationColorPicker?.(false);
+  }, [formatRowShown, isMobileViewer, bottomToolbarApi]);
   const mobileViewerPanelOpen = Boolean(
     mobileDocumentPanelState.isOpen
     || mobileSurveyPanelOpen
@@ -1747,6 +1776,49 @@ export default function App({ devPreviewReturnTab = null }) {
   // false while a pill says "Mixed" — its drawing would show one value for
   // marks that differ. The JSX below runs top to bottom, so every slot has
   // been seen by the time the More menu at the end of the row is built.
+  // PASS 7 (board 14, owner ruling): SELECT's setting is the Box / Lasso / Text
+  // segmented toggle — the same three modes the phone shows, on the same quiet
+  // well, with the chosen word and glyph in gold. Three modes are few enough to
+  // show, and showing them means the user can see which one is live without
+  // opening anything.
+  // RULED 2026-09-26 owner: flip rows (w44), with the coordinator's review
+  // ruling: while Select is armed and nothing is picked the modes sit in row 2
+  // (which stays up the whole time Select is armed); a picked mark's own group
+  // tools take the tool bar and its settings take row 2; a picked mark with no
+  // drawing group (a text highlight, or marks of several kinds) shows the modes
+  // up in the tool bar. See selectModesInToolBar / selectModesInFormatRow.
+  const renderSelectModeToggle = () => (
+                  <div
+                    className="chrome-segmented"
+                    data-select-mode-toggle="true"
+                    role="group"
+                    aria-label="Selection mode"
+                    style={{ width: '150px' }}
+                  >
+                    {SELECT_MODE_OPTIONS.map((opt) => {
+                      const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
+                      return (
+                        <button
+                          key={opt.mode}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            bottomToolbarApi.setSelectionMode?.(opt.mode);
+                            bottomToolbarApi.setActiveTool(opt.tool);
+                          }}
+                          {...chromeTip(opt.label, 'below')}
+                          aria-label={opt.label}
+                        >
+                          {/* Board 14: the app's own selection glyphs at 12px —
+                              a segment is 16px of usable height. */}
+                          <Icon name={getSelectModeIconName(opt.mode)} size={12} color="currentColor" />
+                          {SELECT_MODE_SHORT_LABELS[opt.mode]}
+                        </button>
+                      );
+                    })}
+                  </div>
+  );
+
   const toolbarOverflowItems = [];
   toolbarOverflowSlotsRef.current = [];
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
@@ -1818,7 +1890,6 @@ export default function App({ devPreviewReturnTab = null }) {
           id="chrome-top-host"
           ref={topToolbarHostRef}
           data-toolbar-anchor={toolbarPlan.anchor}
-          data-toolbar-tight={toolbarPlan.tight ? 'true' : undefined}
           style={{
             display: isViewerVisible ? 'flex' : 'none',
             flexShrink: 0,
@@ -2210,61 +2281,13 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* The rule between the group icons and the group's tools —
                     the same shared rule, same 8px inset, as the one on the
                     cluster's other edge. Only there when tools follow it. */}
-                {toolBarGroup && (toolBarGroup !== 'select' || isSelectFamilyTool(bottomToolbarApi.activeTool)) && (
+                {((toolBarGroup && toolBarGroup !== 'select') || selectModesInToolBar) && (
                   <div className="chrome-divider" />
                 )}
-                {/* PASS 7 (board 14, owner ruling): SELECT's setting is the
-                    Box / Lasso / Text segmented toggle — the same three modes
-                    the phone shows, on the same quiet well, with the chosen
-                    word and glyph in gold. It replaced a caret and a popover
-                    menu hanging off the Select button: three modes are few
-                    enough to show, and showing them means the user can see
-                    which one is live without opening anything.
-                    2026-09-22 (owner ruling): the toggle is what Select shows
-                    while NOTHING is selected. Click a mark with Select armed and
-                    contextTool names that mark's own tool, the settings that
-                    follow become that mark's (colour, width, line style, ends,
-                    series, text formatting), and the toggle steps aside — the
-                    mode is still armed, it just is not what the bar is talking
-                    about. Deselecting brings it straight back. */}
-                {/* RULED 2026-09-26 owner: flip rows. The Box / Lasso / Text
-                    modes are Select's own tools, so they moved up with every
-                    other group's tools into the tool bar, right of the group
-                    icons. They show while Select is armed and nothing is
-                    picked (or the picked mark belongs to no drawing group,
-                    such as a text highlight); pick a pen stroke and the bar
-                    shows the Draw tools instead (utils/toolbarRows.js). */}
-                {toolBarGroup === 'select' && isSelectFamilyTool(bottomToolbarApi.activeTool) && (
-                  <div
-                    className="chrome-segmented"
-                    data-select-mode-toggle="true"
-                    role="group"
-                    aria-label="Selection mode"
-                    style={{ width: '150px' }}
-                  >
-                    {SELECT_MODE_OPTIONS.map((opt) => {
-                      const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
-                      return (
-                        <button
-                          key={opt.mode}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => {
-                            bottomToolbarApi.setSelectionMode?.(opt.mode);
-                            bottomToolbarApi.setActiveTool(opt.tool);
-                          }}
-                          {...chromeTip(opt.label, 'below')}
-                          aria-label={opt.label}
-                        >
-                          {/* Board 14: the app's own selection glyphs at 12px —
-                              a segment is 16px of usable height. */}
-                          <Icon name={getSelectModeIconName(opt.mode)} size={12} color="currentColor" />
-                          {SELECT_MODE_SHORT_LABELS[opt.mode]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* RULED 2026-09-26 owner: flip rows. Select's Box / Lasso / Text
+                    modes stand where a group's tools go when the picked mark
+                    belongs to no drawing group (see selectModesInToolBar). */}
+                {selectModesInToolBar && renderSelectModeToggle()}
                 <div
                   id="chrome-subtools-host"
                   data-chrome-subtools-host="true"
@@ -2335,14 +2358,19 @@ export default function App({ devPreviewReturnTab = null }) {
                      buttons out of the edit canvas's document-level click-outside
                      handler so clicks don't commit-and-close the editor.
                      PASS 7 (board 12): the third bar is 36px like the two above
-                     it, its controls sit on the settings gutter, and it is
-                     CENTRED. It shows while the text box or callout tool is
+                     it, and its controls sit on the settings gutter.
+                     w44 (review ruling): it is LEFT-ALIGNED with row 2 — its
+                     colours start where row 2's settings start, inside the
+                     same span no side panel covers — so the two lower bars
+                     read as one block instead of a ragged pair (it used to be
+                     centred across the whole host). The "Text" caption hangs
+                     off its left, so the start keeps room for it. It shows while the text box or callout tool is
                      ARMED as well as while a box is open — see
                      resolveTextFormatting, which hands this one bar either the
                      live editor or the tool's own defaults. Armed, it sits UNDER
                      the Text category row, which is board 12's third bar; in
                      edit mode that category row is closed, so there are two. */
-                  <div data-rich-text-toolbar style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
+                  <div data-rich-text-toolbar style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
                     {/* PASS 7 (board 12): the order is colour, then font and
                         size, then B / I / U / S, then the two alignments —
                         appearance, then shape, then position, each pair behind
@@ -2601,6 +2629,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   textFormatRowEl
                 )}
                 <>
+                {/* w44: with Select armed and nothing picked, row 2 carries
+                    Select's own modes (it stays up while Select is armed). */}
+                {selectModesInFormatRow && renderSelectModeToggle()}
                 {/* PASS 7 (board 13, owner ruling): the ERASER's two kinds are a
                     segmented toggle, not a dropdown — there are only two, and
                     which one is live changes what a drag does, so it is worth
@@ -3604,10 +3635,16 @@ export default function App({ devPreviewReturnTab = null }) {
                   never changes height as the tool changes, and it drops in with
                   the same 140ms fade the tool row used to. The phone draws
                   neither slot, so its layout is untouched. */}
-              {!isMobileViewer && (
-                <div
+              {/* w44 review: both slots are always drawn (the phone keeps row 2
+                  hidden and row 3 empty, 0px tall), so they are never re-added
+                  after the Survey row or the text-selection bar that drop into
+                  this host too — the rows always stack in this order. */}
+              <div
                   ref={attachFormatRow}
                   data-chrome-format-row="true"
+                  role="toolbar"
+                  aria-label="Formatting"
+                  data-toolbar-tight={toolbarPlan.tight ? 'true' : undefined}
                   className="survey-surface-in"
                   style={{
                     display: formatRowShown ? 'block' : 'none',
@@ -3619,8 +3656,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     boxSizing: 'border-box',
                   }}
                 />
-              )}
-              {!isMobileViewer && <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />}
+              <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             <Dashboard

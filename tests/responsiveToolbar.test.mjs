@@ -220,6 +220,7 @@ test('nothing ever overlaps: at every desktop width both rows stay inside their 
     // Row 2: the settings end inside the row's inset and clear of any panel.
     for (const panels of [{}, { rightPanel: 272 }, { leftPanel: 224, rightPanel: 272 }]) {
       const span = rowSpan(width, panels);
+      // Narrower than the widest row can shrink to: pinned separately below.
       if (span.usableRight - span.usableLeft < 300) continue;
       for (const row of [arrowRow(), penRow()]) {
         const plan = planFormatRow({ ...span, row });
@@ -283,4 +284,25 @@ test('with no room below it flips above the opener; with room nowhere it pins to
     popoverWidth: 210, popoverHeight: 900, viewportWidth: 840, viewportHeight: 600,
   });
   assert.equal(pinned.top, 8);
+});
+
+test('a narrow window with both side panels open: every setting but the colours moves into More, clear of the panels', () => {
+  // w44 review: at 721px with the Pages (224) and Survey (272) panels open,
+  // about 129px of the row is uncovered. The settings must not run under a
+  // panel: they start inside the gap and everything but the colours waits in
+  // More. The colours themselves never move into More, so the row may still
+  // not fit a 100px colour group plus More in so small a gap; it starts at the
+  // gap's inset either way and never under the left panel.
+  const span = rowSpan(721, { leftPanel: 224, rightPanel: 272 });
+  assert.equal(span.usableRight - span.usableLeft, 721 - 96 - 224 - 272);
+  const plan = planFormatRow({ ...span, row: arrowRow() });
+  assert.equal(plan.left, 224 + ROW_INSET);
+  assert.deepEqual([...plan.overflow].sort(), ['arrowhead', 'ends', 'style', 'width']);
+  // A lighter row (the pen's) in the same gap: only the width goes to More,
+  // and the colours plus More end inside the gap.
+  const pen = planFormatRow({ ...span, row: [{ kind: 'item', width: 48 }, divider, slot('width', 72, 56)] });
+  assert.deepEqual(pen.overflow, ['width']);
+  assert.equal(pen.fits, true);
+  assert.ok(pen.left + rowWidth([{ kind: 'item', width: 48 }, divider, { kind: 'item', width: MORE_BUTTON_WIDTH }], TIGHT_SPACING)
+    <= span.usableRight - ROW_INSET);
 });

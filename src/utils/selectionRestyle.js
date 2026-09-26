@@ -598,6 +598,9 @@ export function summarizeSelectionRestyle(members) {
   return {
     count: entries.length,
     contextTool,
+    // w44: the picked marks are of more than one kind (e.g. a pen stroke and
+    // a rectangle). The tool bar then borrows no drawing group's tools.
+    mixedKinds: tools.size > 1,
     capabilities,
     values: {
       strokeColor: strokeColor.value,

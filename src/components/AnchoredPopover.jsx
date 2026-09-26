@@ -35,6 +35,12 @@ export default function AnchoredPopover({ getAnchor, gap = 10, margin = 8, zInde
     const card = node?.firstElementChild;
     const anchor = getAnchor?.();
     if (!node || !card || !anchor || typeof window === 'undefined') return;
+    // w44 review: an opener with no box (its row was hidden) has nowhere to
+    // open under — hide the card instead of flying it to the window corner.
+    if (!anchor.isConnected || anchor.getClientRects().length === 0) {
+      setPoint((current) => (current === null ? current : null));
+      return;
+    }
     const anchorRect = anchor.getBoundingClientRect();
     const width = card.offsetWidth;
     const height = card.offsetHeight;

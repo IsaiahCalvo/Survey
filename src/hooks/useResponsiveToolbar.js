@@ -52,7 +52,7 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
  */
 
 export const DEFAULT_TOOLBAR_PLAN = Object.freeze({
-  anchor: 'center', shift: 0, formatLeft: null, tight: false, compact: [], overflow: [], fits: true,
+  anchor: 'center', shift: 0, formatLeft: null, formatUsableLeft: 0, tight: false, compact: [], overflow: [], fits: true,
 });
 
 const samePlan = (a, b) => (
@@ -60,6 +60,7 @@ const samePlan = (a, b) => (
   && Math.abs(a.shift - b.shift) < 0.5
   && (a.formatLeft === b.formatLeft
     || (a.formatLeft !== null && b.formatLeft !== null && Math.abs(a.formatLeft - b.formatLeft) < 0.5))
+  && Math.abs((a.formatUsableLeft ?? 0) - (b.formatUsableLeft ?? 0)) < 0.5
   && a.tight === b.tight
   && a.compact.join('|') === b.compact.join('|')
   && a.overflow.join('|') === b.overflow.join('|')
@@ -147,7 +148,11 @@ function usableRowSpan(rowRect) {
     if (pl <= 1) left = Math.max(left, pr);
     else if (pr >= rowRect.width - 1) right = Math.min(right, pl);
   }
-  if (right - left < 120) return { left: 0, right: rowRect.width };
+  // Panels that together cover the whole row leave nothing to plan in: fall
+  // back to the whole row rather than a negative span. Any real gap, however
+  // narrow, is honoured — the settings then move into More instead of
+  // running under a panel (tests/responsiveToolbar.test.mjs pins it).
+  if (right - left <= 0) return { left: 0, right: rowRect.width };
   return { left, right };
 }
 
@@ -188,6 +193,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     // keeps its last plan, and is re-planned before the frame that shows it.
     let format = {
       formatLeft: planRef.current.formatLeft,
+      formatUsableLeft: planRef.current.formatUsableLeft,
       tight: planRef.current.tight,
       compact: planRef.current.compact,
       overflow: planRef.current.overflow,
@@ -210,6 +216,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       });
       format = {
         formatLeft: next.left,
+        formatUsableLeft: Math.round(span.left),
         tight: next.tight,
         compact: next.compact,
         overflow: next.overflow,
@@ -280,8 +287,19 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     // A side panel opening, closing or being resized over the row: re-plan so
     // the settings never sit under it.
     const panelObserver = new ResizeObserver(() => measureAndPlan());
+    // A panel's attributes flip as it STARTS to slide: planning against its
+    // mid-slide box would step the colours twice. While it is animating, wait
+    // for its transitionend (below) and plan once against where it settles.
+    const isAnimating = (element) => {
+      try {
+        return (element.getAnimations?.() || []).some((a) => a.playState === 'running');
+      } catch { return false; }
+    };
     const attributeObserver = typeof MutationObserver !== 'undefined'
-      ? new MutationObserver(() => measureAndPlan())
+      ? new MutationObserver((records) => {
+        if (records.every((record) => isAnimating(record.target))) return;
+        measureAndPlan();
+      })
       : null;
     const watchPanels = () => {
       panelObserver.disconnect();

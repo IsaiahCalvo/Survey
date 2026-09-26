@@ -25110,7 +25110,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ? selectionMappedTool
       : activeTool;
     // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
-    setSubToolContextTool((prev) => (prev === contextTool ? prev : contextTool));
+    // Marks of more than one kind picked together borrow no group: the bar
+    // shows Select's own modes and row 2 the settings they share.
+    const subToolTool = groupSummary?.mixedKinds ? 'select' : contextTool;
+    setSubToolContextTool((prev) => (prev === subToolTool ? prev : subToolTool));
     // What the picked mark(s) can change: a partly erased or imported pen
     // stroke has no rebuildable width, a group only offers what at least one
     // member has. Null while nothing is picked (the tool's own controls).
@@ -25297,6 +25300,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lassoTouchMode,
       cycleLassoTouchMode,
       contextTool,
+      // w44: the tool whose group's tools the tool bar shows ('select' when
+      // marks of several kinds are picked together) — utils/toolbarRows.js.
+      toolBarContextTool: subToolTool,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
       textMarkupSelectionRect,
       activeCategoryDropdown,
@@ -36451,7 +36457,10 @@ ${pageBlocks}
               </>
             )}
           </div>,
-          host
+          host,
+          // w44 review: keyed, so the Survey row never remounts (and replays
+          // its fade) when the tool-bar tools come and go beside it.
+          inToolBar ? 'tool-bar-tools' : 'sub-row'
           );
           const rows = [];
           if (TOOL_BAR_GROUPS.includes(toolBarGroup) && subToolsHostEl) {

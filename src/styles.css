@@ -2645,7 +2645,11 @@ textarea:focus-visible,
    the active/focus cue rather than making an idle hover look selected. */
 /* UX: include Pan/Select icon buttons and active tools; every hover keeps
    the same neutral chip and fixed baseline as the sub-toolbar. */
-.btn[data-tool-group]:hover:not(:disabled) {
+/* w44 (rows flipped): a group's tools now sit in the tool bar beside the group
+   icons, so they answer the pointer exactly as those icons do — one hover look
+   across the whole bar. */
+.btn[data-tool-group]:hover:not(:disabled),
+#chrome-subtools-host .btn:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -2668,7 +2672,7 @@ textarea:focus-visible,
    --pressed. Verified live at 1440x900 after the move. */
 .btn[data-tool-group]:active:not(:disabled),
 #chrome-sub-toolbar-host .btn-active:active:not(:disabled),
-#chrome-subtools-host .btn-active:active:not(:disabled) {
+#chrome-subtools-host .btn:active:not(:disabled) {
   background: var(--pressed);
   border-color: var(--border);
 }

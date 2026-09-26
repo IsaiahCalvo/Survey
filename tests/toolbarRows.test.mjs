@@ -49,9 +49,12 @@ test('an armed tool shows its group\'s tools; Pan and Survey Marker placement sh
   assert.deepEqual([...TOOL_BAR_GROUPS], ['draw', 'shape', 'review', 'forms']);
 });
 
-test('the formatting row shows exactly when there are settings: armed tool, picked mark, eraser, open text box', () => {
+test('the formatting row shows for an armed tool, a picked mark, the eraser, an open text box — and all through Select', () => {
   assert.equal(showsFormatRow({ activeTool: 'pan', contextTool: 'pan' }), false);
-  assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'select' }), false);
+  // Coordinator ruling on the w44 review: row 2 stays up the whole time Select
+  // is armed (it carries the Box / Lasso / Text modes with nothing picked), so
+  // picking or dropping a mark never adds or removes a strip over the page.
+  assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'select' }), true);
   assert.equal(showsFormatRow({ activeTool: 'survey-marker', contextTool: 'survey-marker' }), false);
   assert.equal(showsFormatRow(null), false);
   assert.equal(showsFormatRow({ activeTool: 'select', contextTool: 'pen' }), true, 'a picked pen stroke');
@@ -68,7 +71,7 @@ test('the formatting row shows exactly when there are settings: armed tool, pick
 
 test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked mark in Select mode', () => {
   assert.match(pdfViewer, /resolveToolBarGroup\(\{ activeTool, activeCategoryDropdown, contextTool: subToolContextTool \}\)/);
-  assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === contextTool \? prev : contextTool\)\)/);
+  assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === subToolTool \? prev : subToolTool\)\)/);
   assert.match(pdfViewer, /document\.getElementById\('chrome-subtools-host'\)/);
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);
   // The Survey row keeps its own bar under the tool bar.
@@ -95,8 +98,7 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   // Row 1: Select's modes and the group tools host hang off the icon cluster.
   const subtools = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
   assert.ok(subtools.length > 0, 'the tools block exists');
-  assert.match(subtools, /data-select-mode-toggle="true"/);
-  assert.match(subtools, /toolBarGroup === 'select' && isSelectFamilyTool\(bottomToolbarApi\.activeTool\)/);
+  assert.match(subtools, /\{selectModesInToolBar && renderSelectModeToggle\(\)\}/);
   assert.ok(appShell.indexOf('id="chrome-subtools-host"') < appShell.indexOf('data-chrome-settings-holder="true"'));
   // Row 2: the settings are portalled into the formatting row, which shows only
   // when it has something to show and is one fixed bar tall.
@@ -109,7 +111,40 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   assert.match(slots, /height: 'var\(--chrome-bar-h\)'/);
   // Row 3: the Aa bar drops into its own slot under row 2.
   assert.match(appShell, /\{showTextFormatting && textFormatRowEl && createPortal\(/);
-  // The phone draws neither slot.
-  assert.match(slots, /\{!isMobileViewer && \(\s*<div\s*ref=\{attachFormatRow\}/);
-  assert.match(slots, /\{!isMobileViewer && <div ref=\{setTextFormatRowEl\}/);
+  // Both slots are always drawn (never re-added after the Survey row or the
+  // text-selection bar); the phone keeps row 2 hidden (formatRowShown is false
+  // there) and row 3 empty.
+  assert.doesNotMatch(slots, /\{!isMobileViewer && \(\s*<div\s*ref=\{attachFormatRow\}/);
+  assert.match(appShell, /const formatRowShown = !isMobileViewer && /);
+  // Row 2 is a labelled toolbar.
+  assert.match(slots, /data-chrome-format-row="true"\s*role="toolbar"\s*aria-label="Formatting"/);
+});
+
+test('Select mode: the modes sit in row 2 with nothing picked, and in the tool bar only for a mark no group makes', () => {
+  assert.match(appShell, /const selectModesInFormatRow = selectArmed\s*&& isSelectFamilyTool\(bottomToolbarApi\.contextTool \|\| bottomToolbarApi\.activeTool\)/);
+  assert.match(appShell, /const selectModesInToolBar = selectArmed && !selectModesInFormatRow && toolBarGroup === 'select'/);
+  const row2 = appShell.slice(appShell.indexOf('data-chrome-settings-holder="true"'), appShell.indexOf('data-eraser-mode-toggle="true"'));
+  assert.match(row2, /\{selectModesInFormatRow && renderSelectModeToggle\(\)\}/);
+  const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
+  assert.match(toolBar, /\{selectModesInToolBar && renderSelectModeToggle\(\)\}/);
+});
+
+test('marks of several kinds picked together borrow no group: the tool bar shows the Select modes', () => {
+  const restyle = readFileSync(new URL('../src/utils/selectionRestyle.js', import.meta.url), 'utf8');
+  assert.match(restyle, /mixedKinds: tools\.size > 1/);
+  assert.match(pdfViewer, /const subToolTool = groupSummary\?\.mixedKinds \? 'select' : contextTool;/);
+  assert.equal(resolveToolBarGroup({ activeTool: 'select', contextTool: 'select' }), 'select');
+  // PDFViewer publishes that choice, and AppShell reads it for the rule and the modes.
+  assert.match(pdfViewer, /toolBarContextTool: subToolTool,/);
+  assert.match(appShell, /contextTool: bottomToolbarApi\.toolBarContextTool \?\? bottomToolbarApi\.contextTool/);
+});
+
+test('a popover opened from row 2 closes when the row goes away, and never flies to the corner', () => {
+  assert.match(appShell, /if \(isMobileViewer \|\| formatRowShown\) return;\s*setOpenAnnotationDropdown\(null\);\s*setShowFontColorPicker\(false\);/);
+  const anchored = readFileSync(new URL('../src/components/AnchoredPopover.jsx', import.meta.url), 'utf8');
+  assert.match(anchored, /anchor\.getClientRects\(\)\.length === 0/);
+});
+
+test('the Survey row and the tool-bar tools are keyed portals, so one never remounts the other', () => {
+  assert.match(pdfViewer, /inToolBar \? 'tool-bar-tools' : 'sub-row'\s*\);/);
 });
