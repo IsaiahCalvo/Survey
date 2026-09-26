@@ -448,6 +448,7 @@ const SVGAnnotationLayer = memo(({
   // without saving or deleting any annotation data.
   selectionClearToken = 0,
   selectionOwnerPageNumber = null,
+  pickOwnerPageNumber = null,
   onSelectionChange,
   onTextSelectManipulationChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
@@ -742,6 +743,13 @@ const SVGAnnotationLayer = memo(({
       surveyMarkerDragRef.current = null;
     }
   }, [selectionOwnerPageNumber, pageNumber, deselectAll]);
+
+  // w41: a pick (one mark or several) made on another page replaces this
+  // page's marks pick, so the formatting bar never restyles marks on two
+  // pages that the user no longer sees as one selection.
+  useLayoutEffect(() => {
+    if (pickOwnerPageNumber != null && pickOwnerPageNumber !== pageNumber) deselectAll();
+  }, [pickOwnerPageNumber, pageNumber, deselectAll]);
 
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
   // OR targets a different page, clear this layer's hoveredId (a previously

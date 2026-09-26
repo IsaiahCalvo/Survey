@@ -4054,6 +4054,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (hit.kind === 'callout' && hit.calloutId) {
         panQuickClickAutoSelectAtRef.current = Date.now();
         activateSelectFamilyMode('rectangle');
+        // w41: the callout REPLACES any mark still picked, or the two would
+        // form a restyle group the user never made (review 2026-09-25).
+        setAnnotationSelectionClearToken((token) => token + 1);
         setSelectedCalloutIds(new Set([hit.calloutId]));
         return;
       }
@@ -4173,6 +4176,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setLiveTextSelection(null);
         if (hit.kind === 'callout' && hit.calloutId) {
           // UX: all select modes use Shift to add and Alt to subtract callouts.
+          // w41: a plain click replaces any picked mark too (no stray group).
+          if (!event.shiftKey && !event.altKey) setAnnotationSelectionClearToken((token) => token + 1);
           setSelectedCalloutIds((previous) => {
             const next = new Set(event.shiftKey || event.altKey ? previous : []);
             if (event.altKey) next.delete(hit.calloutId);
@@ -4380,6 +4385,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // shows as mixed) and a change lands on every member that has that property,
   // as one save per page = one undo step (applyRestyleToGroup). Reference:
   // Drawboard / Bluebeam / Acrobat multi-selection formatting.
+  const restyleGroupCacheRef = useRef(null);
   const restyleGroup = useMemo(() => {
     // Only under Select. With a drawing tool armed, the bar is that tool's
     // defaults for the next mark, and a pick left behind must never load its
@@ -4398,24 +4404,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const calloutMembers = (selectedCalloutIds instanceof Set && selectedCalloutIds.size > 0)
       ? (callouts || []).filter((callout) => callout && selectedCalloutIds.has(callout.id))
       : [];
+    // Every save anywhere re-runs this memo; when the picked marks are the
+    // very same objects, the previous group is reused as is (no re-summary,
+    // no toolbar republish) - review 2026-09-25, big picks on busy pages.
+    const memberObjects = [
+      ...annotationMembers.map(({ annotation }) => annotation),
+      ...calloutMembers.map((callout) => callout.style),
+    ];
+    const cached = restyleGroupCacheRef.current;
+    if (cached
+      && cached.selection === annotationSelection
+      && cached.objects.length === memberObjects.length
+      && cached.objects.every((object, index) => object === memberObjects[index])
+      && cached.calloutIds.join(',') === calloutMembers.map((callout) => callout.id).join(',')) {
+      return cached.result;
+    }
     const summary = summarizeSelectionRestyle([
       ...annotationMembers.map(({ annotation }) => ({ kind: 'annotation', annotation })),
       ...calloutMembers.map((callout) => ({ kind: 'callout', callout })),
     ]);
-    if (!summary) return null;
     // The text bar shows the first picked box's text style (the text-only
     // groups the bar offers it for: all text boxes, or all callouts).
     const firstTextBox = annotationMembers.find(({ annotation }) => isFormattableTextObject(annotation));
     const firstTextStyle = firstTextBox
       ? readTextboxTextStyle(firstTextBox.annotation)
       : (calloutMembers[0] ? readCalloutTextStyle(calloutMembers[0]) : null);
-    return {
+    const result = summary ? {
       summary,
       firstTextStyle,
       annotationSelection,
       calloutIds: calloutMembers.map((callout) => callout.id),
       key: `${annotationSelection?.key || ''}#${calloutMembers.map((callout) => callout.id).join(',')}`,
+    } : null;
+    restyleGroupCacheRef.current = {
+      selection: annotationSelection,
+      objects: memberObjects,
+      calloutIds: calloutMembers.map((callout) => callout.id),
+      result,
     };
+    return result;
   }, [activeTool, selectedToolbarIndices, annotationsByPage, selectedCalloutIds, callouts]);
   const restyleGroupRef = useRef(restyleGroup);
   restyleGroupRef.current = restyleGroup;
@@ -8304,6 +8331,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       commitTextMarkupDocumentTransactionRef.current?.({ action: write.action, nextByPage: write.nextByPage }, {
         source: 'toolbar:selected-group-edit',
         action: 'group-restyle',
+        applyWithoutOwnedStep: true,
         skipHistory: write.skipHistory,
       });
     }
@@ -8603,16 +8631,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // a picked mark is patched with those alone, never the bar's whole state,
   // so a frame that beats the bar's re-render cannot write back a size / bold
   // / font a collaborator just changed (hardening 2026-09-23).
-  const handleTextStyleSourceChange = useCallback((next, options, changed) => {
-    runWithPaintPhase(options, () => {
-      const target = selectedTextTargetRef.current;
-      if (target?.kind === 'group') {
-        // w41: several text boxes / callouts picked - each takes only the
-        // field(s) the user touched, patched against its OWN style (a size
-        // change leaves each box's colour alone), all in one save per page.
-        // A drag re-sends its colour every frame (forceColor), as for one box.
+  // w41: several text boxes / callouts picked - each takes only the field(s)
+  // the user touched, patched against its OWN style (a size change leaves each
+  // box's colour alone), in one write (applyGroupUpdate: one undo step). A
+  // drag re-sends its colour every frame (forceColor), as for one box.
+  const writeTextStyleToGroup = (next, changed, phase) => {
         const fields = changed && typeof changed === 'object' ? changed : next;
-        const phase = options?.phase;
         const inDrag = phase === 'preview' || phase === 'settle' || phase === 'commit';
         applyGroupUpdate({
           annotationPage: (pageJSON, members) => {
@@ -8643,8 +8667,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             )
             : callout),
         });
-        return;
-      }
+  };
+  const handleTextStyleSourceChange = useCallback((next, options, changed) => {
+    runWithPaintPhase(options, () => {
+      const target = selectedTextTargetRef.current;
+      if (target?.group) { writeTextStyleToGroup(next, changed, options?.phase); return; }
       const write = resolveTextStyleWrite({
         next,
         changed,
@@ -8784,6 +8811,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout, arrowBothEnds]);
 
+  const handleGroupArrowEndsChange = useCallback((ends) => {
+    if (activeToolRef.current !== 'select') return;
+    applyRestyleToGroup({ kind: 'arrowEnds', ends });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleArrowBothEndsChange = useCallback((next) => {
     const on = Boolean(next);
     setArrowBothEnds(on);
@@ -25181,10 +25213,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selectedTextboxPlaceKey = `textbox:@${selectedToolbarAnnotation?.pageNumber}:${selectedToolbarAnnotation?.annotationIndex}`;
     const groupTextTarget = (groupSummary && !richTextEditor && restyleGroup?.firstTextStyle
       && (groupSummary.contextTool === 'text' || groupSummary.contextTool === 'callout'))
-      ? { kind: 'group', key: `group:${restyleGroup.key}`, style: restyleGroup.firstTextStyle }
+      ? {
+        // kind: what the boxes are (all callouts or all text boxes); group:
+        // the change goes to every picked box (handleTextStyleSourceChange).
+        kind: groupSummary.contextTool === 'callout' ? 'callout' : 'textbox',
+        group: true,
+        key: `group:${restyleGroup.key}`,
+        style: restyleGroup.firstTextStyle,
+      }
       : null;
-    const selectedTextTarget = groupTextTarget || ((activeTool === 'select' && !richTextEditor && !groupSummary)
-      ? (selectedToolbarCallout?.callout
+    const selectedTextTarget = (activeTool === 'select' && !richTextEditor)
+      ? (groupTextTarget || (groupSummary ? null : selectedToolbarCallout?.callout
         ? {
           kind: 'callout',
           key: `callout:${selectedToolbarCallout.id}`,
@@ -25203,8 +25242,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             aliasKey: selectedAnnotationId ? null : selectedTextboxPlaceKey,
             style: readTextboxTextStyle(selectedAnnot),
           }
-          : null))
-      : null);
+          : null)))
+      : null;
     selectedTextTargetRef.current = selectedTextTarget;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
@@ -25267,6 +25306,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setArrowheadStyle: handleArrowheadStyleChange,
       arrowBothEnds,
       setArrowBothEnds: handleArrowBothEndsChange,
+      // w41: only while several marks are picked (the Arrow ends menu then
+      // writes every picked arrow at once; see applyRestyleChange arrowEnds).
+      setGroupArrowEnds: groupSummary ? handleGroupArrowEndsChange : null,
       onEnterTextEdit: handleEnterTextEditFromStrip,
       canEnterTextEdit: !groupSummary && !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
@@ -25291,9 +25333,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // picked, being typed in, or the armed tool's defaults.
       textVerticalAlignSupported: richTextEditor
         ? richTextEditor.state?.supportsVerticalAlign !== false
-        : !(selectedTextTarget && selectedTextTarget.kind !== 'group'
-          ? selectedTextTarget.kind === 'callout'
-          : contextTool === 'callout'),
+        : !(selectedTextTarget ? selectedTextTarget.kind === 'callout' : contextTool === 'callout'),
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
       // UX 2026-09-09: the Style picker offers "Cloud" (and, once picked, the
@@ -26723,10 +26763,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       viewerId,
       documentOwnerId,
     );
-    if (!scopedAction) return false;
+    // w41: a restyle group may hold a colleague's mark (contributors may edit
+    // everything - permissions model). Like handleSaveAnnotations, the edit is
+    // applied and only the undo step is left out when it is not all this
+    // user's (applyWithoutOwnedStep).
+    if (!scopedAction && !saveContext?.applyWithoutOwnedStep) return false;
     // A colour-slider preview frame (paintPhaseRef) repaints without an undo
     // step; its release commits the one step for the whole drag.
-    if (!saveContext?.skipHistory) pushLocalAnnotationHistoryAction(scopedAction);
+    if (scopedAction && !saveContext?.skipHistory) pushLocalAnnotationHistoryAction(scopedAction);
     setLocallyDeletedPdfAnnotations((previous) => {
       const keyFor = (entry) => `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`;
       const next = new Map(previous.map((entry) => [keyFor(entry), entry]));
@@ -26745,9 +26789,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     pushHistoryDebugEvent('text_markup_document_transaction_applied', {
       source: saveContext?.source || 'text-markup:document-transaction',
-      action: saveContext?.action || scopedAction.type,
+      action: saveContext?.action || scopedAction?.type,
       selectionGroupIds: transaction.selectionGroupIds || [],
-      pageNumbers: scopedAction.type === 'fabric:document-batch'
+      pageNumbers: !scopedAction
+        ? []
+        : scopedAction.type === 'fabric:document-batch'
         ? scopedAction.actions.map((action) => action.pageNumber)
         : [scopedAction.pageNumber],
     });
@@ -34645,7 +34691,11 @@ ${pageBlocks}
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
-                                  selectionOwnerPageNumber={selectedToolbarIndices?.pageNumber ?? selectedToolbarAnnotation?.pageNumber ?? null}
+                                  selectionOwnerPageNumber={selectedToolbarAnnotation?.pageNumber ?? null}
+                                  // w41: the page holding the latest pick (single or multi); a
+                                  // pick on one page clears picks left on the others, so a
+                                  // restyle group is always one page of marks (+ callouts).
+                                  pickOwnerPageNumber={selectedToolbarIndices?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   onTextSelectManipulationChange={handleTextSelectManipulationChange}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.

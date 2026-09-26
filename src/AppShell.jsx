@@ -3203,6 +3203,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     triggerContent={endsMixed ? 'Mixed' : undefined}
                     options={ARROW_ENDS_OPTIONS}
                     onSelect={(next) => {
+                      // w41: several picked arrows take the ends in one
+                      // write, each keeping its own head style.
+                      if (typeof bottomToolbarApi.setGroupArrowEnds === 'function') {
+                        bottomToolbarApi.setGroupArrowEnds(next);
+                        return;
+                      }
                       if (next === 'none') {
                         bottomToolbarApi.setArrowheadStyle?.('none');
                         return;

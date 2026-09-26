@@ -1817,6 +1817,12 @@ export function MobileToolProperties({ api }) {
   // already had, given the one control the board draws for them.
   const arrowEndsValue = arrowheadValue === 'none' ? 'none' : (api.arrowBothEnds ? 'both' : 'end');
   const applyArrowEnds = (next) => {
+    // w41: several picked arrows take the ends in one write (each keeps its
+    // own head style; see PDFViewer setGroupArrowEnds).
+    if (typeof api.setGroupArrowEnds === 'function') {
+      api.setGroupArrowEnds(next);
+      return;
+    }
     if (next === 'none') {
       api.setArrowBothEnds?.(false);
       api.setArrowheadStyle?.('none');

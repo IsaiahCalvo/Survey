@@ -607,3 +607,87 @@ test('marquee: a rotated line and a curved line are picked by their DRAWN geomet
   assert.deepEqual(hits([curved], { left: 95, top: 245, right: 205, bottom: 310 }, 'window'), [0]);
   assert.deepEqual(hits([curved], { left: 145, top: 245, right: 155, bottom: 255 }, 'crossing'), [0], 'the bulge itself crosses');
 });
+
+// ---- review pass 2 (2026-09-25) ----------------------------------------------
+
+test('real path: a cross-page group holding a colleague\'s mark is still restyled (only the undo step is left out)', async () => {
+  const { screen, close } = await openScreen('w41-foreign-cross-page');
+  try {
+    screen.save(1, () => [{ ...pen('p1'), meta: { authorId: 'user-b' }, data: { id: 'p1', authorId: 'user-b' } }]);
+    screen.save(2, () => [pageCallout('c2', 2)]);
+    const viewer = groupViewer(screen, {
+      selection: { pageNumber: 1, indices: [0], ids: ['p1'] },
+      calloutIds: ['c2'],
+    });
+    const out = viewer.write({ kind: 'strokeColor', color: '#0000ff' });
+    assert.equal(out.kind, 'transaction');
+    assert.equal(screen.mark('p1', 1).fill, 'rgba(0, 0, 255, 1)', 'the colleague\'s stroke changed too');
+    assert.equal(deriveCalloutsFromByPage(screen.byPage).find((c) => c.id === 'c2').style.borderColor, '#0000ff');
+    const viewerSource = fs.readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+    assert.match(viewerSource, /if \(!scopedAction && !saveContext\?\.applyWithoutOwnedStep\) return false;/);
+    assert.match(viewerSource, /action: 'group-restyle',\s*applyWithoutOwnedStep: true,/);
+  } finally {
+    await close();
+  }
+});
+
+test('real path: a colleague moving a picked mark mid-drag keeps the move when the drag is undone', async () => {
+  const { screen, close } = await openScreen('w41-drag-collab');
+  try {
+    screen.save(1, () => [{ ...pen('p1'), fill: 'rgba(255, 0, 0, 1)' }].map(mine));
+    screen.save(2, () => [pageCallout('c2', 2)]);
+    const viewer = groupViewer(screen, {
+      selection: { pageNumber: 1, indices: [0], ids: ['p1'] },
+      calloutIds: ['c2'],
+    });
+    viewer.paint('strokeOpacity', 60, 100, 'preview');
+    // A collaborator's move lands on screen mid-drag (not this user's step).
+    screen.transaction((byPage) => ({
+      nextByPage: { ...byPage, 1: { ...byPage[1], objects: byPage[1].objects.map((o) => ({ ...o, left: 77 })) } },
+      action: null,
+    }));
+    viewer.paint('strokeOpacity', 30, 60, 'commit');
+    assert.equal(screen.undo(), 'applied');
+    assert.equal(screen.mark('p1', 1).fill, 'rgba(255, 0, 0, 1)', 'undo restores the paint');
+    assert.equal(screen.mark('p1', 1).left, 77, 'and keeps the colleague\'s move');
+  } finally {
+    await close();
+  }
+});
+
+test('real path: the Arrow ends menu on picked arrows is ONE write and keeps each arrow\'s own head', async () => {
+  const { screen, close } = await openScreen('w41-arrow-ends-menu');
+  try {
+    const headless = mine({ ...line('a1', 'arrow'), data: { id: 'a1', tool: 'arrow', arrowheadStyle: 'none' } });
+    const circled = mine({ ...line('a2', 'arrow'), data: { id: 'a2', tool: 'arrow', arrowheadStyle: 'openCircle' } });
+    screen.save(1, () => [headless, circled]);
+    const depth = screen.depths().localUndo;
+    const viewer = groupViewer(screen, { selection: { pageNumber: 1, indices: [0, 1], ids: ['a1', 'a2'] } });
+    viewer.write({ kind: 'arrowEnds', ends: 'both' });
+    assert.equal(screen.depths().localUndo, depth + 1, 'one step');
+    assert.deepEqual(
+      [screen.mark('a1').data.arrowheadStyle, screen.mark('a1').data.startArrowheadStyle],
+      ['solidTriangle', 'solidTriangle'],
+      'a headless arrow gets the default head on both ends',
+    );
+    assert.deepEqual(
+      [screen.mark('a2').data.arrowheadStyle, screen.mark('a2').data.startArrowheadStyle],
+      ['openCircle', 'openCircle'],
+      'an arrow keeps its own head style',
+    );
+    viewer.write({ kind: 'arrowEnds', ends: 'none' });
+    assert.equal(screen.mark('a2').data.arrowheadStyle, 'none');
+    assert.equal(screen.mark('a2').data.startArrowheadStyle, 'none');
+    const shell = fs.readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+    assert.match(shell, /bottomToolbarApi\.setGroupArrowEnds\(next\);/);
+    const phone = fs.readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
+    assert.match(phone, /api\.setGroupArrowEnds\(next\);/);
+  } finally {
+    await close();
+  }
+});
+
+test('a mixed Width field keeps what the user types (the draft is not reset mid-typing)', () => {
+  const size = fs.readFileSync(new URL('../src/components/AnnotationSizeControl.jsx', import.meta.url), 'utf8');
+  assert.match(size, /if \(mixed && fieldFocusedRef\.current\) return;/);
+});

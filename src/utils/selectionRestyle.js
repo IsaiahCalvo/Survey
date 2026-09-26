@@ -88,13 +88,20 @@ const isArrowLine = (annotation) => lower(annotation?.type) === 'line' && (
  * eraser-carved ink, imported pressure-ink outlines). Its colour lives in
  * `fill`; its `stroke` is never painted.
  */
+// Saved marks are replaced, never mutated, so the answer per object is fixed:
+// cached, because a group of hundreds of strokes asks on every drag frame.
+const filledInkCache = new WeakMap();
 export function isFilledInkPath(annotation) {
   if (lower(annotation?.type) !== 'path' || !Array.isArray(annotation?.path)) return false;
+  if (filledInkCache.has(annotation)) return filledInkCache.get(annotation);
+  let filled = false;
   try {
-    return renderPathToSvgAttrs(annotation).filledOutline === true;
+    filled = renderPathToSvgAttrs(annotation).filledOutline === true;
   } catch {
-    return false;
+    filled = false;
   }
+  filledInkCache.set(annotation, filled);
+  return filled;
 }
 
 /**
@@ -402,6 +409,22 @@ export function applyRestyleChange(annotation, change) {
       const unchanged = annotation.data?.arrowheadStyle === change.style
         && (!mirror || annotation.data?.startArrowheadStyle === change.style);
       return unchanged ? null : mergeData(annotation, dataPatch);
+    }
+    case 'arrowEnds': {
+      // The Arrow ends menu on a group (End / Both / None) in ONE write: an
+      // arrow that has no head gets the default one back for End / Both,
+      // every other arrow keeps its own head style.
+      if (!caps.arrowheads) return null;
+      const ends = change.ends;
+      if (ends !== 'none' && ends !== 'end' && ends !== 'both') return null;
+      const ownHead = annotation.data?.arrowheadStyle || DEFAULT_ARROWHEAD;
+      const head = ends === 'none'
+        ? NONE_ARROWHEAD
+        : (ownHead === NONE_ARROWHEAD ? DEFAULT_ARROWHEAD : ownHead);
+      const start = ends === 'both' ? head : NONE_ARROWHEAD;
+      if (annotation.data?.arrowheadStyle === head
+        && (annotation.data?.startArrowheadStyle ?? NONE_ARROWHEAD) === start) return null;
+      return mergeData(annotation, { arrowheadStyle: head, startArrowheadStyle: start });
     }
     case 'arrowBothEnds': {
       if (!caps.arrowheads) return null;
@@ -753,10 +776,21 @@ export function resolveGroupWrite({ byPage, plan, phase, baseline, buildDocument
   nextPages.forEach((pageJSON, page) => {
     nextByPage[byPage?.[page] ? page : String(page)] = pageJSON;
   });
+  // The step is built from the group's pages only: comparing every page of a
+  // big document on each drag frame would stall the slider.
+  const onGroupPages = (source) => {
+    const out = {};
+    groupPages.forEach((page) => {
+      const key = source?.[page] ? page : String(page);
+      if (source?.[key]) out[key] = source[key];
+    });
+    return out;
+  };
+  const actionOn = (previous, next) => buildDocumentAction(onGroupPages(previous), onGroupPages(next));
   const isPreview = phase === 'preview' || phase === 'settle';
   if (isPreview) {
     recordDragBaseline(baseline, byPage, nextPages);
-    const frameAction = buildDocumentAction(byPage, nextByPage);
+    const frameAction = actionOn(byPage, nextByPage);
     return frameAction
       ? { kind: 'transaction', action: frameAction, nextByPage, skipHistory: true }
       : { kind: 'none' };
@@ -764,20 +798,21 @@ export function resolveGroupWrite({ byPage, plan, phase, baseline, buildDocument
   const previousByPage = phase === 'commit'
     ? restoreDragBaseline(byPage, groupPages, baseline)
     : byPage;
-  const action = buildDocumentAction(previousByPage, nextByPage);
+  const action = actionOn(previousByPage, nextByPage);
   if (action) return { kind: 'transaction', action, nextByPage, skipHistory: false };
   // A release back on the starting paint: show it (the last frame may still
   // be on screen), record nothing.
-  const showAction = buildDocumentAction(byPage, nextByPage);
+  const showAction = actionOn(byPage, nextByPage);
   return showAction
     ? { kind: 'transaction', action: showAction, nextByPage, skipHistory: true }
     : { kind: 'none' };
 }
 
 /**
- * A group drag's baseline, one frame at a time: the first time a frame
- * rewrites an object, its version from BEFORE that frame (= before the drag)
- * is kept under `page:id`. Mutates and returns `baseline`.
+ * A group drag's baseline, one frame at a time, per object (`page:id`) and
+ * per top-level FIELD: the first time a frame changes a field of an object,
+ * that field's value from before the frame (= before the drag) is kept.
+ * Mutates and returns `baseline`.
  */
 export function recordDragBaseline(baseline, byPage, nextPages) {
   nextPages.forEach((next, page) => {
@@ -786,9 +821,17 @@ export function recordDragBaseline(baseline, byPage, nextPages) {
       .map((object) => [getAnnotationRenderIdentity(object).annotationId, object]));
     (next?.objects || []).forEach((object) => {
       const id = getAnnotationRenderIdentity(object).annotationId;
-      if (!id || baseline.has(`${page}:${id}`)) return;
-      const before = currentById.get(id);
-      if (before && before !== object) baseline.set(`${page}:${id}`, before);
+      const before = id ? currentById.get(id) : null;
+      if (!before || before === object) return;
+      const key = `${page}:${id}`;
+      const fields = baseline.get(key) || {};
+      new Set([...Object.keys(before), ...Object.keys(object)]).forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(fields, field)) return;
+        if (before[field] === object[field]) return;
+        if (JSON.stringify(before[field]) === JSON.stringify(object[field])) return;
+        fields[field] = { value: before[field], present: Object.prototype.hasOwnProperty.call(before, field) };
+      });
+      baseline.set(key, fields);
     });
   });
   return baseline;
@@ -796,9 +839,10 @@ export function recordDragBaseline(baseline, byPage, nextPages) {
 
 /**
  * The document as it was before a group drag, for the drag's ONE undo step:
- * the current pages with only the objects the drag touched put back to their
- * pre-drag versions (a collaborator's edit to anything else, made mid-drag,
- * stays out of this user's step).
+ * the current pages with only the FIELDS the drag changed put back to their
+ * pre-drag values - a collaborator's mid-drag edit to anything else (another
+ * mark, or another field of a picked mark, e.g. moving it) stays out of this
+ * user's step.
  */
 export function restoreDragBaseline(byPage, pages, baseline) {
   const previous = { ...(byPage || {}) };
@@ -809,13 +853,17 @@ export function restoreDragBaseline(byPage, pages, baseline) {
     let touched = false;
     const objects = current.objects.map((object) => {
       const id = getAnnotationRenderIdentity(object).annotationId;
-      const base = id ? baseline?.get(`${page}:${id}`) : null;
-      if (!base) return object;
+      const fields = id ? baseline?.get(`${page}:${id}`) : null;
+      if (!fields) return object;
       touched = true;
-      return base;
+      const restored = { ...object };
+      Object.entries(fields).forEach(([field, { value, present }]) => {
+        if (present) restored[field] = value;
+        else delete restored[field];
+      });
+      return restored;
     });
     if (touched) previous[key] = { ...current, objects };
   });
   return previous;
 }
-

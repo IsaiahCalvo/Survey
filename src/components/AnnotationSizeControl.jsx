@@ -68,8 +68,13 @@ export default function AnnotationSizeControl({
     : String(normalizeAnnotationSize(rawValueText, min, max, decimals));
   // A mixed width shows an empty field ("Mixed" placeholder) until typed in.
   const [customValue, setCustomValue] = useState(mixed ? '' : valueText);
+  // While a mixed field is being typed in, the draft is the user's: the
+  // parent's value moves with each keystroke, and resetting to empty then
+  // would throw the typing away (review 2026-09-25).
+  const fieldFocusedRef = useRef(false);
 
   useEffect(() => {
+    if (mixed && fieldFocusedRef.current) return;
     setCustomValue(mixed ? '' : valueText);
   }, [valueText, mixed]);
 
@@ -140,11 +145,11 @@ export default function AnnotationSizeControl({
     disabled,
     value: customValue,
     onChange: (event) => updateDraft(event.target.value),
-    onFocus: () => onFocusChange?.(true),
+    onFocus: () => { fieldFocusedRef.current = true; onFocusChange?.(true); },
     placeholder: mixed ? 'Mixed' : undefined,
     // Leaving a mixed field untouched keeps every picked mark's own width.
     onBlur: (event) => {
-      onFocusChange?.(false);
+      onFocusChange?.(false); fieldFocusedRef.current = false;
       if (mixed && !event.currentTarget.value.trim()) return;
       commit(event.currentTarget.value);
     },
