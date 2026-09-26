@@ -390,7 +390,7 @@ const styledStrokeCommandsToPolygonSet = (commands, {
 // bite's time on imported curve ink (w39 review). A few recent outlines are
 // kept, keyed by everything that shapes them. Callers treat the result as
 // read-only.
-const SOURCE_OUTLINE_CACHE_SIZE = 16;
+const SOURCE_OUTLINE_CACHE_SIZE = 4;
 const sourceOutlineCache = new Map();
 
 const paperSourceStrokeOutlinePolygons = (source) => {

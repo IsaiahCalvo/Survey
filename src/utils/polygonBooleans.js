@@ -256,9 +256,16 @@ function passThrough(polygon) {
       const closed = ring[0][0] === ring.at(-1)[0] && ring[0][1] === ring.at(-1)[1]
         ? ring.map((point) => [point[0], point[1]])
         : [...ring.map((point) => [point[0], point[1]]), [ring[0][0], ring[0][1]]];
+      // Shoelace relative to the first point: on absolute coordinates a
+      // small piece far from the origin loses its sign to rounding.
+      const [x0, y0] = closed[0];
       let twice = 0;
       for (let index = 1; index < closed.length; index += 1) {
-        twice += closed[index - 1][0] * closed[index][1] - closed[index][0] * closed[index - 1][1];
+        const ax = closed[index - 1][0] - x0;
+        const ay = closed[index - 1][1] - y0;
+        const bx = closed[index][0] - x0;
+        const by = closed[index][1] - y0;
+        twice += ax * by - bx * ay;
       }
       return ((twice > 0) !== (ringIndex === 0)) ? closed.reverse() : closed;
     });

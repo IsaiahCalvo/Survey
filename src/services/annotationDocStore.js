@@ -450,7 +450,7 @@ export function deriveWriterEraserLane({
     if (mutation) {
       laneDeleted = mutation.deleted === true;
       laneSurvivor = laneDeleted ? null : mutation.survivor;
-    } else if (previousSurvivor && !rebased.failedStages?.length) {
+    } else if (previousSurvivor && !rebased.failedStages?.some((failure) => !failure?.recovered)) {
       // The gesture removes nothing from this writer's own survivor (w38
       // review: the same spot erased again while another session's lane is
       // on the stroke). The lane is unchanged; only the gesture is recorded.
