@@ -1,4 +1,4 @@
-import { diff, intersection, union, xor } from './polygonBooleans.js';
+import { diff, intersection, resolveFillRule, union, xor } from './polygonBooleans.js';
 import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
@@ -70,40 +70,50 @@ function nudgeApart(fixed, movable, factor) {
   return moved;
 }
 
+// Absolute cap (page units^2) on how far a nudged attempt's areas may drift
+// from the exact identities. A relative-only tolerance (1e-4 of the area) let
+// a 4-unit^2 painted-back blob pass on a page-length stroke (w38 review).
+const SHARED_OUTLINE_AREA_CAP = 0.05;
+
+/**
+ * Returns the intersection, or null when every attempt threw (the caller
+ * must not read that as "fully erased": w38 review, an all-throw returned []
+ * and hid the whole mark on every screen).
+ *
+ * w39 (2026-09-25): the booleans are exact now (Clipper2 grid), so the plain
+ * intersection comes first with a tight check; w38's nudged attempts remain
+ * as the fallback. The old lower bound |A∩B| >= |A|+|B|-|O| is gone: the
+ * caller's outline O was rebuilt at a different curve tolerance than the
+ * lanes (an eraser radius under 1 makes lane outlines finer), so the bound
+ * sat too high, rejected every correct answer, and the least-wrong fallback
+ * preferred MORE ink. `outlineArea` is accepted and ignored.
+ */
 export function intersectSharedOutlinePolygonSets(left, right, { outlineArea = null } = {}) {
+  void outlineArea;
   const a = normalizeMultiPolygon(left);
   const b = normalizeMultiPolygon(right);
   if (!a.length || !b.length) return [];
-  // Even nudged, Martinez occasionally mis-cuts near-coincident edges. Check
-  // the answer against what must hold for two subsets of one outline —
-  // |A∩B| <= min(|A|, |B|) and, with the outline's area, |A∩B| >= |A|+|B|-|O|
-  // — and try the other operand order / a larger nudge before settling for
-  // the least-wrong attempt.
+  // What must hold for two subsets of one outline: |A∩B| <= min(|A|, |B|),
+  // and |A∩B| + |A∪B| = |A| + |B| (which a mis-cut breaks even when
+  // painted-back and dropped ink happen to fit the first bound).
   const areaA = polygonSetArea(a);
   const areaB = polygonSetArea(b);
-  const scaleArea = Math.max(areaA, areaB, Number(outlineArea) || 0, Number.MIN_VALUE);
-  // Outlines are rebuilt at <= 0.05-unit curve tolerance; real mis-cuts
-  // measured 1e-3..5e-2 of the area.
-  const tolerance = scaleArea * 1e-4;
-  const upper = Math.min(areaA, areaB) + tolerance;
-  const lower = Number.isFinite(Number(outlineArea)) && Number(outlineArea) > 0
-    ? areaA + areaB - Number(outlineArea) - tolerance
-    : -Infinity;
-  // Each attempt also takes the union with the same operands: a correct pair
-  // satisfies |A∩B| + |A∪B| = |A| + |B|, which a mis-cut breaks even when
-  // painted-back and dropped ink happen to fit the bounds above.
+  const scaleArea = Math.max(areaA, areaB, Number.MIN_VALUE);
+  const exactTolerance = scaleArea * 1e-9;
+  const nudgedTolerance = Math.min(scaleArea * 1e-4, SHARED_OUTLINE_AREA_CAP);
   // The nudge is checked against the operand it must avoid: lanes of one
   // mark share one box, so with a fixed factor the third lane landed exactly
   // on the second lane's nudged edges already in the running result, and
   // Martinez ran out of memory (w38 review D, 3+ lanes).
   const attempts = [
-    [a, () => nudgeApart(a, b, 1e-9)],
-    [b, () => nudgeApart(b, a, 1e-9)],
-    [a, () => nudgeApart(a, b, 1e-7)],
-    [b, () => nudgeApart(b, a, 1e-7)],
+    [a, () => b, exactTolerance],
+    [a, () => nudgeApart(a, b, 1e-9), nudgedTolerance],
+    [b, () => nudgeApart(b, a, 1e-9), nudgedTolerance],
+    [a, () => nudgeApart(a, b, 1e-7), nudgedTolerance],
+    [b, () => nudgeApart(b, a, 1e-7), nudgedTolerance],
   ];
   let best = null;
-  for (const [fixed, moved] of attempts) {
+  for (const [fixed, moved, tolerance] of attempts) {
     let result;
     let unionArea;
     try {
@@ -116,14 +126,19 @@ export function intersectSharedOutlinePolygonSets(left, right, { outlineArea = n
     const area = polygonSetArea(result);
     const violation = Math.max(
       0,
-      area - upper,
-      lower - area,
+      area - (Math.min(areaA, areaB) + tolerance),
       Math.abs(area + unionArea - areaA - areaB) - tolerance,
     );
     if (violation === 0) return result;
-    if (!best || violation < best.violation) best = { result, violation };
+    // Least wrong first; between equally wrong answers keep less ink (a
+    // painted-back dab is the visible failure).
+    if (
+      !best
+      || violation < best.violation
+      || (violation === best.violation && area < best.area)
+    ) best = { result, violation, area };
   }
-  return best ? best.result : [];
+  return best ? best.result : null;
 }
 
 export function subtractPolygonSets(left, right) {
@@ -1981,6 +1996,18 @@ export function filledOutlineCommandsToPolygonSet(commands, {
     ))
     .filter((ring) => ring.length >= 4 && ringArea(ring) > 0);
   if (rings.length === 0) return [];
+
+  // w39 (2026-09-25): resolve the source's own fill rule exactly on the
+  // Clipper2 grid, self-crossing rings included, into simple polygons that
+  // the eraser's even-odd booleans and the even-odd renderers read the same
+  // way. (Kept a single ring raw and emulated nonzero winding with Martinez
+  // booleans per ring, which carved a nonzero star's centre and, once the
+  // booleans were exact, let a bite on an evenodd star fill its centre.)
+  try {
+    return normalizeMultiPolygon(resolveFillRule(rings, fillRule));
+  } catch {
+    // Fall through to the per-ring composition below.
+  }
   if (rings.length === 1) return [[rings[0]]];
 
   try {

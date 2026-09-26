@@ -235,10 +235,23 @@ function pathBounds(commands) {
   return { minX, minY, maxX, maxY };
 }
 
+// A ring counts only with at least three points besides a repeated closing
+// point — exactly the SVG layer's rule (svgAnnotationRenderers
+// paperCutsToSvgD). A closed 3-point ring [a, b, a] is a line: the SVG layer
+// dropped it and the canvas traced it, so a survivor made only of such rings
+// rendered differently on the two (w38 review).
+function isClipRing(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return false;
+  const closed = ring.length > 1
+    && ring[0]?.[0] === ring.at(-1)?.[0]
+    && ring[0]?.[1] === ring.at(-1)?.[1];
+  return (closed ? ring.length - 1 : ring.length) >= 3;
+}
+
 function tracePolygonSetInto(context, polygons) {
   for (const polygon of polygons || []) {
     for (const ring of polygon || []) {
-      if (!Array.isArray(ring) || ring.length < 3) continue;
+      if (!isClipRing(ring)) continue;
       context.moveTo(toNumber(ring[0]?.[0]), toNumber(ring[0]?.[1]));
       for (let index = 1; index < ring.length; index += 1) {
         context.lineTo(toNumber(ring[index]?.[0]), toNumber(ring[index]?.[1]));
@@ -434,9 +447,7 @@ function drawPath(context, object, displayScale) {
     && paperSource.matrix.length === 6
     && Array.isArray(paperSurvivors)
     // Same test as the SVG layer's clip path: at least one real ring.
-    && paperSurvivors.some((polygon) => Array.isArray(polygon) && polygon.some((ring) => (
-      Array.isArray(ring) && ring.length >= 3
-    )))
+    && paperSurvivors.some((polygon) => Array.isArray(polygon) && polygon.some(isClipRing))
     && typeof context.clip === 'function'
     && typeof context.transform === 'function'
   ) {

@@ -25,10 +25,8 @@ import * as Y from 'yjs';
 import {
   erasePageAnnotations,
   intersectErasedPathSurvivors,
-  pathObjectToPagePolygons,
   rebaseErasedPathSurvivor,
 } from '../utils/pageSpaceEraser.js';
-import { polygonSetArea } from '../utils/paperAnnotationGeometry.js';
 import {
   applyInkGeometryMatrix,
   createInkPathAffine,
@@ -449,11 +447,17 @@ export function deriveWriterEraserLane({
       mode: 'partial',
     });
     const mutation = rebased.objectMutations?.find((item) => item?.index === 0);
-    if (!mutation) {
+    if (mutation) {
+      laneDeleted = mutation.deleted === true;
+      laneSurvivor = laneDeleted ? null : mutation.survivor;
+    } else if (previousSurvivor && !rebased.failedStages?.length) {
+      // The gesture removes nothing from this writer's own survivor (w38
+      // review: the same spot erased again while another session's lane is
+      // on the stroke). The lane is unchanged; only the gesture is recorded.
+      laneSurvivor = previousSurvivor;
+    } else {
       throw new Error(`partial eraser lane could not be replayed for ${String(storageKey)}`);
     }
-    laneDeleted = mutation.deleted === true;
-    laneSurvivor = laneDeleted ? null : mutation.survivor;
   }
 
   return {
@@ -842,14 +846,11 @@ function applyEraserLanesToObject(baseObject, lanes, storageKey) {
   )) {
     intersected = survivors[0];
   } else {
-    // w38: the base outline's area lets the intersection check its answer.
-    let outlineArea = null;
-    try {
-      outlineArea = polygonSetArea(pathObjectToPagePolygons(baseObject));
-    } catch {
-      outlineArea = null;
-    }
-    intersected = intersectErasedPathSurvivors(survivors, { outlineArea });
+    // w39: no base-outline area any more. It was rebuilt at a different
+    // curve tolerance than the lanes (w38 review: an eraser radius under 1
+    // gives lanes a finer outline), which made the intersection's area check
+    // reject correct answers; the check now uses only the lanes themselves.
+    intersected = intersectErasedPathSurvivors(survivors);
   }
   const survivor = intersected
     ? projectEraserGeometryOntoCurrentBase(baseObject, intersected)

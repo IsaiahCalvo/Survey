@@ -217,6 +217,84 @@ test('property: random straight and retraced drags at small and large page coord
   assert.ok(result.slowest < 10_000, `slowest erase took ${result.slowest.toFixed(0)} ms`);
 });
 
+test('a long drag over a small mark still cuts it (the grid follows the mark, not the drag)', () => {
+  // w39 review: a grid sized to the joint box of mark + drag made the snap
+  // larger than the containment proof's allowance, so long drags were
+  // rejected and the ink came back at release (4 of 10 at 700 units, ~50% of
+  // 800-unit swipes over a 60-unit stroke, every 800-unit swipe over a
+  // 1-unit mark).
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const pen = (cx, cy) => ({
+      type: 'path', tool: 'pen', data: { id: 'p', tool: 'pen' },
+      path: [['M', cx - 40, cy], ['Q', cx - 20, cy - 25, cx, cy], ['Q', cx + 20, cy + 25, cx + 40, cy]],
+      left: 0, top: 0, stroke: '#d11b2d', strokeWidth: 3, fill: null, strokeLineCap: 'round', strokeLineJoin: 'round',
+    });
+    for (const [cx, cy] of [[300, 400], [80, 80]]) {
+      for (const length of [400, 700, 1500]) {
+        for (let j = 0; j < 10; j += 1) {
+          const x = cx - 20 + j * 4.1;
+          const points = Array.from({ length: 51 }, (_, i) => ({
+            x: x + 0.3 * Math.sin(i * 0.7 + j),
+            y: cy - length / 2 + (length * i) / 50,
+          }));
+          const result = erasePageAnnotations({
+            pageAnnotations: { objects: [pen(cx, cy)] }, eraserPoints: points, eraserRadius: 5, mode: 'partial',
+          });
+          assert.equal(result.didChange, true, `(${cx},${cy}) ${length}-unit drag #${j}`);
+          assert.deepEqual(result.failedStages, [], `(${cx},${cy}) ${length}-unit drag #${j}`);
+        }
+      }
+    }
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test('filled imported ink keeps its own fill rule through a bite (evenodd star stays hollow, nonzero star stays solid)', () => {
+  const star = Array.from({ length: 5 }, (_, k) => {
+    const a = Math.PI / 2 + (k * 4 * Math.PI) / 5;
+    return [200 + 50 * Math.cos(a), 300 + 50 * Math.sin(a)];
+  });
+  const path = [['M', ...star[0]], ...star.slice(1).map((point) => ['L', ...point]), ['Z']];
+  const evenOdd = (polygons, x, y) => {
+    let inside = false;
+    for (const polygon of polygons) for (const ring of polygon) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+        const [xi, yi] = ring[i]; const [xj, yj] = ring[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+    }
+    return inside;
+  };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    for (const [fillRule, centreFilled] of [['evenodd', false], ['nonzero', true]]) {
+      const object = {
+        type: 'path', id: 's', annotationId: 's', path, left: 0, top: 0,
+        fill: '#123456', stroke: null, strokeWidth: 0, fillRule, pdfAnnotationType: 'Ink',
+      };
+      // A bite at the top tip, 46 units from the centre.
+      const result = erasePageAnnotations({
+        pageAnnotations: { objects: [object] },
+        eraserPoints: [{ x: 200, y: 346 }, { x: 200.5, y: 347 }],
+        eraserRadius: 3,
+        mode: 'partial',
+      });
+      const survivor = result.pageAnnotations.objects[0];
+      assert.equal(result.didChange, true, fillRule);
+      // Stored polygons are painted even-odd.
+      assert.equal(evenOdd(survivor.polygons, 200, 300), centreFilled, `${fillRule}: centre`);
+      assert.equal(evenOdd(survivor.polygons, 200, 346), false, `${fillRule}: bite`);
+      assert.equal(evenOdd(survivor.polygons, 233.3, 310.8), true, `${fillRule}: a far arm keeps its ink`);
+    }
+  } finally {
+    console.warn = warn;
+  }
+});
+
 test('a mark whose geometry throws is left as it was; the other marks still erase', () => {
   const base = {
     type: 'path', tool: 'pen', stroke: '#f00', fill: null, strokeWidth: 4,

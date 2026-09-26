@@ -6,6 +6,7 @@ import {
   filledOutlineCommandsToPolygonSet,
   intersectSharedOutlinePolygonSets,
   normalizeMultiPolygon,
+  polygonSetArea,
   polygonSetToCommands,
   roundCircleStepCount,
 } from './paperAnnotationGeometry.js';
@@ -855,9 +856,14 @@ function bakePagePathResult(object, result) {
       paperEraserGeometry: 'v1',
       polygons: normalizeMultiPolygon(result.polygons),
       sourceWidth: result.sourceWidth,
-      ...(paperEraserCuts.length > 0 ? {
+      // The renderers and the exporter clip the exact source to the survivor
+      // polygons (w38), so the source rides along whenever a survivor
+      // exists. It used to depend on the cut mask being non-empty, so a
+      // failed cut boolean silently switched the mark to polygon rendering
+      // (w38 review). The cuts are kept only as stored data for old readers.
+      ...(paperSourceStroke && normalizeMultiPolygon(result.polygons).length > 0 ? {
         paperSourceStroke,
-        paperEraserCuts,
+        ...(paperEraserCuts.length > 0 ? { paperEraserCuts } : {}),
       } : {}),
     } : {}),
   };
@@ -908,7 +914,15 @@ export function intersectErasedPathSurvivors(survivors, { outlineArea = null } =
 
   let polygons = normalizeMultiPolygon(values[0].polygons);
   for (let index = 1; index < values.length; index += 1) {
-    polygons = intersectSharedOutlinePolygonSets(polygons, values[index].polygons, { outlineArea });
+    const next = intersectSharedOutlinePolygonSets(polygons, values[index].polygons, { outlineArea });
+    if (next === null) {
+      // Every attempt threw (w38 review): that is not "fully erased". Show
+      // the lane with the least ink left, never hide the whole mark.
+      return values.reduce((smallest, value) => (
+        polygonSetArea(value.polygons) < polygonSetArea(smallest.polygons) ? value : smallest
+      ));
+    }
+    polygons = next;
     if (!polygons.length) return null;
   }
   const cmds = polygonSetToCommands(polygons);

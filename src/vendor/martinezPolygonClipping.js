@@ -10,8 +10,10 @@
 /*
  * Survey vendored copy (w39, 2026-09-25) of martinez-polygon-clipping 0.7.4
  * dist/martinez.umd.js (MIT, Copyright (c) 2018 Alexander Milevski), as an
- * ES module. Every polygon boolean in the app imports THIS file, never the
- * npm package (tests/martinezGuardedVendor.test.mjs enforces it).
+ * ES module. App code that uses Martinez imports THIS file, never the npm
+ * package (tests/martinezGuardedVendor.test.mjs enforces it). The paper
+ * eraser's own booleans moved on to Clipper2 (src/utils/polygonBooleans.js);
+ * regions, clouds, hit testing and the legacy eraser still use this copy.
  *
  * Why: one partial-erase tap on a self-crossing stroked curve froze the app
  * forever. Cause, measured: SweepEvent#isBelow used a plain floating-point
