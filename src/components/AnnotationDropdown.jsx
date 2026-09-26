@@ -49,6 +49,10 @@ export default function AnnotationDropdown({
   // still gets the old single-slot trigger.
   preview,
   width,
+  // w42 (2026-09-26): the narrow-window look — the pill keeps its drawing and
+  // chevron and drops the word ("Solid" becomes just the line). Only a pill
+  // with a preview can collapse; its aria-label and tooltip still name it.
+  compact = false,
 }) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const optionRefs = useRef([]);
@@ -85,9 +89,14 @@ export default function AnnotationDropdown({
     preserveFocus
     && !document.activeElement?.closest?.('.annotation-dropdown, .annotation-dropdown__popover')
   );
-  const renderContent = (content) => (
-    preserveFocus ? content : <Popover.Portal>{content}</Popover.Portal>
-  );
+  // w42 (2026-09-26, owner: popovers must never go under the rails): every
+  // menu is portalled into the page's top layer. The text bar's font menus
+  // (preserveFocus) used to stay inside the sub-bar so the text editor would
+  // treat a press in them as a press on the formatting bar; they now carry the
+  // bar's own opt-out marker (data-rich-text-toolbar) instead, so they keep
+  // that behaviour and still open above the right rail.
+  const renderContent = (content) => <Popover.Portal>{content}</Popover.Portal>;
+  const isCompact = compact && !!preview;
 
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
@@ -96,7 +105,7 @@ export default function AnnotationDropdown({
           <button
             ref={triggerRef}
             type="button"
-            className="chrome-pill annotation-dropdown__trigger"
+            className={`chrome-pill annotation-dropdown__trigger${isCompact ? ' chrome-pill--compact' : ''}`}
             aria-label={label}
             title={label}
             disabled={disabled}
@@ -129,6 +138,7 @@ export default function AnnotationDropdown({
           className={`annotation-dropdown__popover ${contentClassName}`.trim()}
           data-annotation-dropdown-popover="true"
           {...markerProps}
+          {...(preserveFocus ? { 'data-rich-text-toolbar': 'true' } : {})}
           align={align}
           sideOffset={6}
           collisionPadding={8}

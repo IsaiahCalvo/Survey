@@ -96,6 +96,7 @@ for the first).
 |---|---|---|
 | Desktop colour picker (border/fill, font colour), Templates entity colour panels | light | R1 (the old first-tap swallow is gone), R2, R5 |
 | Desktop toolbar dropdowns: width, style, arrowheads, arrow ends, font, font size, blend, counter series (+ its right-click menu) | light | R1, R2, R5, R6. Fixed: a second dropdown opened from the first no longer shuts itself (focus was handed back to the first trigger) |
+| Desktop tool bar More (⋯) menu (narrow windows only, w42 2026-09-26) — a pill opened from inside it stacks on top of it | light | R1, R2, R5 (Escape closes the pill's menu first, then More), R6 |
 | Zoom/fit menu, Survey export menus, Survey module/template/marker dropdowns, page right-click menu, Spaces export menu, annotation right-click menu | light | R1, R2, R5 via `watchLightPopover` |
 | Phone strip dropdowns, header page/zoom, More menu, sync details | light | R1 (the old first-tap swallow is gone), R2, R5 |
 | Home: document/project/template "…" menus, sort/filter menus, title switcher, Bookmarks add menu, sync details, print page list, Manage Team menus | light | R1 (the old first-tap swallow is gone), toggles on their own opener |

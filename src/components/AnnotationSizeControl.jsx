@@ -54,6 +54,10 @@ export default function AnnotationSizeControl({
   // and no preset is ticked until one is chosen (then every picked mark takes
   // it). Reference: Bluebeam / Acrobat show a blank or "Mixed" field.
   mixed = false,
+  // w42 (2026-09-26): the narrow-window look — "2 pt" reads "2" and the pill
+  // hugs it. The stroke drawn beside it and the accessible name ("Width: 2 pt")
+  // still say what the number is; the menu's rows keep the unit.
+  compact = false,
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
@@ -163,6 +167,8 @@ export default function AnnotationSizeControl({
 
   const isPill = variant === 'pill';
   const valueLabel = mixed ? 'Mixed' : `${valueText}${unit ? ` ${unit}` : ''}`;
+  const isCompact = compact && !mixed;
+  const shownLabel = isCompact ? valueText : valueLabel;
 
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
@@ -171,7 +177,7 @@ export default function AnnotationSizeControl({
           <Popover.Trigger asChild>
             <button
               type="button"
-              className="chrome-pill annotation-size-control__pill"
+              className={`chrome-pill annotation-size-control__pill${isCompact ? ' chrome-pill--compact' : ''}`}
               aria-label={`${label}: ${valueLabel}`}
               title={label}
               aria-haspopup="listbox"
@@ -180,7 +186,7 @@ export default function AnnotationSizeControl({
             >
               {/* A mixed width has no one stroke to preview. */}
               {preview && !mixed ? <span className="chrome-pill__preview" aria-hidden="true">{preview}</span> : null}
-              <span className="chrome-pill__label">{valueLabel}</span>
+              <span className="chrome-pill__label">{shownLabel}</span>
               <span className="chrome-pill__chevron" aria-hidden="true">
                 <Icon name="chevronDown" size={9} color="currentColor" />
               </span>

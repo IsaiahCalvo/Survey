@@ -133,3 +133,47 @@
 @media (prefers-reduced-motion: reduce) {
   .annotation-dropdown__popover { animation: none; }
 }
+
+/* w42 (2026-09-26): the desktop tool bar's More (⋯) card. Same surface, radius
+   and padding as every setting menu; each row is a setting's name on the left
+   and the very same control on the right. The name is the muted chrome label
+   (11px/600, --text-3) the bar already uses for "Start" and "Bump". */
+.toolbar-overflow-menu {
+  min-width: 0;
+  max-width: min(320px, calc(100vw - 24px));
+  gap: 2px;
+}
+
+.toolbar-overflow-menu__row {
+  min-height: var(--chrome-menu-row-h, 26px);
+  padding: 0 1px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.toolbar-overflow-menu__label {
+  color: var(--text-3);
+  font: 600 11px/1 Helvetica, Arial, sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.toolbar-overflow-menu__control {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+/* A setting pill collapsed to its drawing alone (w42, stage 3 of the narrow
+   bar): the word goes, the preview and chevron stay, and the pill hugs them.
+   Its accessible name and tooltip still say what it is. */
+.chrome-pill.chrome-pill--compact {
+  width: auto;
+  min-width: 0;
+}
+
+.chrome-pill.chrome-pill--compact .annotation-dropdown__trigger-content {
+  display: none;
+}

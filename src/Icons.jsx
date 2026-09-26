@@ -728,6 +728,16 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // w42 (2026-09-26): the desktop tool bar's More (⋯) button — the same
+    // three level dots the phone strip's "..." draws, as a shared icon.
+    moreHorizontal: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <circle cx="5" cy="12" r="1.6" fill={color} />
+        <circle cx="12" cy="12" r="1.6" fill={color} />
+        <circle cx="19" cy="12" r="1.6" fill={color} />
+      </svg>
+    ),
+
     // Grip/Drag handle icon
     grip: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>

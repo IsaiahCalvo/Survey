@@ -25,7 +25,11 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/Ann
 import AnnotationDropdown from './components/AnnotationDropdown';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
 import BodyPortal from './components/BodyPortal.js';
-import { registerLightPopover } from './components/dismissRules.js';
+import AnchoredPopover from './components/AnchoredPopover';
+import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
+import { placeUnderOpenerAvoiding, slotDefinition, TIGHT_SPACING } from './utils/responsiveToolbar.js';
+import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
@@ -52,7 +56,7 @@ import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, i
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -867,6 +871,54 @@ export default function App({ devPreviewReturnTab = null }) {
   // the tab showed white at 0% opacity, i.e. nothing at all.
   const [colorPickerTab, setColorPickerTab] = useState('border');
   const annotationColorPickerRef = useRef(null);
+  // w42 (2026-09-26): the controls the two desktop colour pickers open UNDER —
+  // the rainbow "custom colour" disc of the quick colours, or the combined
+  // swatch of a two-colour tool. Looked up when the picker is placed, so a
+  // re-rendered swatch keeps its picker.
+  const fontColorGroupRef = useRef(null);
+  // The shape/stroke picker can be opened from the tool bar's colours or from
+  // a paint button on the text-selection bar below it, so the control whose
+  // press opened it is remembered for as long as it stays open (the same
+  // "opener" the dismiss rules use to make a second press a toggle).
+  const colourPickerOpenerRef = useRef(null);
+  const getAnnotationColourAnchor = useCallback(() => {
+    if (!colourPickerOpenerRef.current?.isConnected) {
+      const pressed = recentPressedControl();
+      colourPickerOpenerRef.current = pressed?.closest?.('#chrome-top-host, #chrome-sub-toolbar-host') ? pressed : null;
+    }
+    if (colourPickerOpenerRef.current?.isConnected) return colourPickerOpenerRef.current;
+    const bar = document.getElementById('chrome-top-host');
+    return bar?.querySelector('[data-quick-colour-custom], [data-quick-paint-swatch]')
+      || bar?.querySelector('[data-quick-colours]')
+      || bar?.querySelector('[data-chrome-settings-holder]')
+      || null;
+  }, []);
+  useEffect(() => {
+    if (!bottomToolbarApi?.showAnnotationColorPicker) colourPickerOpenerRef.current = null;
+  }, [bottomToolbarApi?.showAnnotationColorPicker]);
+  // The text-mark palette's measured size, for placing it under its opener.
+  const [textMarkupPickerSize, setTextMarkupPickerSize] = useState(null);
+  const textMarkupPaletteOpen = !!bottomToolbarApi?.showAnnotationColorPicker
+    && ['text-markup', 'text-select'].includes(bottomToolbarApi?.contextTool);
+  useLayoutEffect(() => {
+    const node = annotationColorPickerRef.current;
+    if (!textMarkupPaletteOpen || !node) return undefined;
+    const measure = () => setTextMarkupPickerSize((current) => (
+      current && current.width === node.offsetWidth && current.height === node.offsetHeight
+        ? current
+        : { width: node.offsetWidth, height: node.offsetHeight }
+    ));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [textMarkupPaletteOpen]);
+  const getFontColourAnchor = useCallback(() => (
+    fontColorGroupRef.current?.querySelector('[data-quick-colour-custom]')
+      || fontColorGroupRef.current
+      || null
+  ), []);
   // The one resolved paint the colour controls in the tool-properties row all
   // read and write: the quick colour dots, the swatch's ring, and the picker
   // itself. See resolveAnnotationPaint above.
@@ -1548,6 +1600,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+
+  // w42 (2026-09-26, owner report from an 840px split view): the desktop tool
+  // bar adapts to narrow windows instead of letting its settings run into
+  // Export. Order and reasons: src/utils/responsiveToolbar.js. At 1200px and up
+  // (so every normal window) the plan is the bar exactly as it always was.
+  const topToolbarHostRef = useRef(null);
+  // The settings this render put in More, for the hook to weigh bringing back.
+  const toolbarOverflowSlotsRef = useRef([]);
+  const toolbarPlan = useResponsiveToolbar({
+    hostRef: topToolbarHostRef,
+    enabled: Boolean(isViewerVisible && !isMobileViewer && bottomToolbarApi),
+    overflowSlotsRef: toolbarOverflowSlotsRef,
+  });
   const mobileViewerPanelOpen = Boolean(
     mobileDocumentPanelState.isOpen
     || mobileSurveyPanelOpen
@@ -1704,6 +1769,39 @@ export default function App({ devPreviewReturnTab = null }) {
   const viewerTabId = pdfTab ? pdfTab.id : activeTabId;
   const viewerViewState = pdfTab ? pdfTab.viewState : null;
 
+  // w42 (2026-09-26): each setting in the tool bar's settings row that may
+  // collapse or move goes through toolbarSlot. `render(compact)` draws the
+  // control; the plan says whether it sits in the bar (full or compact) or in
+  // the More menu (always full there, on a row with its name). `canCompact` is
+  // false while a pill says "Mixed" — its drawing would show one value for
+  // marks that differ. The JSX below runs top to bottom, so every slot has
+  // been seen by the time the More menu at the end of the row is built.
+  const toolbarOverflowItems = [];
+  toolbarOverflowSlotsRef.current = [];
+  const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
+    if (toolbarPlan.overflow.includes(id)) {
+      const definition = slotDefinition(id);
+      toolbarOverflowSlotsRef.current.push({ id, divider: id === 'aa', canCompact });
+      toolbarOverflowItems.push({
+        id,
+        label: definition?.selfLabelled ? null : (label || definition?.label),
+        node: render(false),
+      });
+      return null;
+    }
+    const compact = canCompact && toolbarPlan.compact.includes(id);
+    return (
+      <div
+        data-toolbar-slot={id}
+        data-toolbar-compact={compact ? 'true' : 'false'}
+        data-toolbar-can-compact={canCompact ? 'true' : 'false'}
+        style={{ display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}
+      >
+        {render(compact)}
+      </div>
+    );
+  };
+
   return (
     // KAL-65: one tooltip surface for the whole viewer. Rails and sidebar
     // panels call useTooltip() to opt a control in; the chip itself is
@@ -1747,6 +1845,9 @@ export default function App({ devPreviewReturnTab = null }) {
         ) : (
         <div
           id="chrome-top-host"
+          ref={topToolbarHostRef}
+          data-toolbar-anchor={toolbarPlan.anchor}
+          data-toolbar-tight={toolbarPlan.tight ? 'true' : undefined}
           style={{
             display: isViewerVisible ? 'flex' : 'none',
             flexShrink: 0,
@@ -1801,6 +1902,7 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
+                data-toolbar-export="true"
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"
@@ -1892,13 +1994,26 @@ export default function App({ devPreviewReturnTab = null }) {
               tool cluster sits centered while Undo/Redo float on the
               left edge. */}
           {bottomToolbarApi && (
-            <div data-tool-toolbar="true" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}>
+            <div
+              data-tool-toolbar="true"
+              style={{
+                position: 'relative',
+                // w42: below 1200px the icons sit just right of Undo / Redo
+                // (the plan's `shift`, the same for every tool at a given
+                // width, so switching tools never moves an icon). 0 at normal
+                // widths — the centred bar exactly as before.
+                left: toolbarPlan.shift ? `${-toolbarPlan.shift}px` : undefined,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--chrome-tool-gap)',
+              }}
+            >
               {/* 2026-05-26: Pan + Select sit in their own absolute block to
                   the LEFT of the centered annotation cluster. This mirrors
                   the right-side tool properties block so the annotation
                   icons stay centered on the screen — only the side blocks
                   shift as their contents change. */}
-              <div style={{
+              <div data-toolbar-left-block="true" style={{
                 // Narrow shells: flow inline before the annotation icons.
                 ...(isNarrowShell
                   ? { position: 'static' }
@@ -2125,7 +2240,16 @@ export default function App({ devPreviewReturnTab = null }) {
                       }),
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 'var(--chrome-gap)',
+                  // w42: stage 2 of the narrow bar tightens the gutters between
+                  // the settings and the space around their rules. The rules'
+                  // own margins read --chrome-row-gap / --chrome-divider-inset
+                  // (see .chrome-divider), so all three move together.
+                  ...(toolbarPlan.tight ? {
+                    '--chrome-settings-gap': `${TIGHT_SPACING.gap}px`,
+                    '--chrome-row-gap': `${TIGHT_SPACING.gap}px`,
+                    '--chrome-divider-inset': `${TIGHT_SPACING.inset}px`,
+                  } : {}),
+                  gap: 'var(--chrome-settings-gap, var(--chrome-gap))',
                   whiteSpace: 'nowrap'
                 }}
               >
@@ -2143,7 +2267,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   context-aware strip contract — visual reference is
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)', position: 'relative' }}>
+              <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
                 {showTextFormatting && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
                   /* 2026-05-26: the formatting controls drop into the sub-row
                      beneath the top strip (mirrors the Draw / Shape category
@@ -2193,7 +2317,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         off the left edge of the group it names: the bar then
                         centres the CONTROLS, which is what the eye reads and
                         what bars 1 and 2 centre. */}
-                    <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <div ref={fontColorGroupRef} data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                       <span
                         data-text-colour-label
                         style={{
@@ -2218,8 +2342,21 @@ export default function App({ devPreviewReturnTab = null }) {
                       />
                       {showFontColorPicker && (
                         /* UX 2026-09-16: same 140ms fade-and-slide as every
-                           other popover (Drawboard's 100ms fade+grow in). */
-                        <div className="survey-surface-in" style={{
+                           other popover (Drawboard's 100ms fade+grow in).
+                           w42 (2026-09-26): drawn in the top layer under the
+                           rainbow disc that opened it and kept inside the
+                           window (AnchoredPopover), so the rails can never
+                           cover it. Out there it is no longer inside the text
+                           bar's element, so it carries the bar's two markers
+                           itself: a press in it still counts as a press on the
+                           text bar (the editor stays open) and inside this
+                           picker. */
+                        <AnchoredPopover getAnchor={getFontColourAnchor}>
+                        <div
+                          className="survey-surface-in"
+                          data-font-color-picker="true"
+                          data-rich-text-toolbar="true"
+                          style={{
                           position: 'absolute',
                           top: '100%',
                           left: '50%',
@@ -2248,6 +2385,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             />
                           </Suspense>
                         </div>
+                        </AnchoredPopover>
                       )}
                     </div>
                     {/* Board 12: the rule between the colour group and the
@@ -2590,7 +2728,7 @@ export default function App({ devPreviewReturnTab = null }) {
                        no entry to read. The next count's number is the one the
                        next pin will carry: one past however many exist. */
                     const seriesLabel = activeSeries?.label || `Count ${seriesList.length + 1}`;
-                    return (
+                    return toolbarSlot('series', () => (
                       <AnnotationDropdown
                         open={showCounterSeriesMenu}
                         onOpenChange={setShowCounterSeriesMenu}
@@ -2782,7 +2920,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           </div>
                         ), document.body)}
                       </AnnotationDropdown>
-                    );
+                    ), { canCompact: false });
                   })()}
 
                 {bottomToolbarApi.showAnnotationColorPicker && (() => {
@@ -2799,12 +2937,28 @@ export default function App({ devPreviewReturnTab = null }) {
                   const textMarkupPaletteHostRect = isTextMarkupPalette
                     ? document.getElementById('chrome-sub-toolbar-host')?.getBoundingClientRect?.()
                     : null;
+                  // w42 (2026-09-26): the palette opens under the control that
+                  // opened it (the tool bar's colours, or a paint button on the
+                  // text-selection bar) like every other popover, unless there
+                  // it would cover the selected text — then it keeps its own
+                  // placement clear of the selection, as before.
+                  const textMarkupOpener = isTextMarkupPalette ? getAnnotationColourAnchor() : null;
+                  const textMarkupUnderOpener = textMarkupOpener
+                    ? placeUnderOpenerAvoiding({
+                        anchorRect: textMarkupOpener.getBoundingClientRect(),
+                        popoverWidth: textMarkupPickerSize?.width || 210,
+                        popoverHeight: textMarkupPickerSize?.height || 258,
+                        viewportWidth: window.innerWidth,
+                        viewportHeight: window.innerHeight,
+                        avoidRect: bottomToolbarApi.textMarkupSelectionRect,
+                      })
+                    : null;
                   const textMarkupPickerPosition = isTextMarkupPalette
-                    ? computeTextMarkupPickerPosition(bottomToolbarApi.textMarkupSelectionRect, {
+                    ? (textMarkupUnderOpener || computeTextMarkupPickerPosition(bottomToolbarApi.textMarkupSelectionRect, {
                         viewportWidth: window.innerWidth,
                         viewportHeight: window.innerHeight,
                         hostBottom: textMarkupPaletteHostRect?.bottom || 35,
-                      })
+                      }))
                     : null;
                   const picker = (
                     /* UX 2026-09-16: the colour popover fades and slides down
@@ -2855,7 +3009,16 @@ export default function App({ devPreviewReturnTab = null }) {
                       </Suspense>
                     </div>
                   );
-                  return isTextMarkupPalette ? <BodyPortal>{picker}</BodyPortal> : picker;
+                  // w42 (2026-09-26, owner report): the tool bar's picker opens
+                  // UNDER the swatch or rainbow disc that opened it, slides
+                  // only as far as it must to stay inside the window, and sits
+                  // in the top layer above both rails. It used to hang from the
+                  // middle of the whole settings row, inside the bar's own
+                  // layer — off to the right of the swatch, and under the
+                  // right rail on a narrow window.
+                  return isTextMarkupPalette
+                    ? <BodyPortal>{picker}</BodyPortal>
+                    : <AnchoredPopover getAnchor={getAnnotationColourAnchor}>{picker}</AnchoredPopover>;
                 })()}
                 {/* PASS 7 (2026-09-22, owner ruling): BLEND. This was a bare
                     native <select> — a grey 62x28 browser widget wearing the
@@ -2871,8 +3034,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     rather than hovered at rest. */}
                 {['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool) && bottomToolbarApi.setTextMarkupOverlapMode && (() => {
                   const blendValue = bottomToolbarApi.textMarkupOverlapMode === 'uniform' ? 'uniform' : 'layered';
-                  return (
+                  return toolbarSlot('blend', (compact) => (
                     <AnnotationDropdown
+                      compact={compact}
                       open={showBlendMenu}
                       onOpenChange={setShowBlendMenu}
                       label="Blend"
@@ -2892,7 +3056,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       width="var(--chrome-field-w-blend)"
                       contentWidth="var(--chrome-field-w-blend)"
                     />
-                  );
+                  ));
                 })()}
                   </>
                 )}
@@ -2921,8 +3085,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   // w41: hidden when the picked mark(s) have no width that can
                   // change (a partly erased or imported pen stroke).
                   && (bottomToolbarApi.activeTool === 'eraser'
-                    || bottomToolbarApi.selectionCapabilities?.width !== false) && (
+                    || bottomToolbarApi.selectionCapabilities?.width !== false) && toolbarSlot('width', (compact) => (
                 <AnnotationSizeControl
+                  compact={compact}
                   mixed={bottomToolbarApi.activeTool !== 'eraser' && !!bottomToolbarApi.selectionMixed?.width}
                   value={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.eraserSizeInputValue : bottomToolbarApi.strokeWidthInputValue}
                   label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
@@ -2991,7 +3156,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     />
                   )}
                 />
-                )}
+                ), {
+                  canCompact: !(bottomToolbarApi.activeTool !== 'eraser' && bottomToolbarApi.selectionMixed?.width),
+                  label: bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width',
+                })}
                 {bottomToolbarApi.contextTool === 'counter'
                   && bottomToolbarApi.selectedCounterSeriesId
                   && bottomToolbarApi.onSelectedCounterSeriesStartChange && (() => {
@@ -2999,7 +3167,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     const startTitle = startLocked
                       ? 'Start number is set after a second counter is added'
                       : 'Start number';
-                    return (
+                    return toolbarSlot('start', () => (
                       <label
                         style={{
                           display: 'inline-flex',
@@ -3047,7 +3215,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           }}
                         />
                       </label>
-                    );
+                    ), { canCompact: false });
                   })()}
                 {/* 2026-05-25: Style picker — solid/dashed/dotted for line + arrow.
                     UX 2026-09-09: "Cloud" is also offered on every shape a
@@ -3070,8 +3238,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   // (no row ticked) until one is chosen for all of them.
                   const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
                   if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
-                  return (
+                  return toolbarSlot('style', (compact) => (
                   <AnnotationDropdown
+                    compact={compact}
                     open={showStyleMenu}
                     onOpenChange={setShowStyleMenu}
                     label="Style"
@@ -3095,14 +3264,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     width="var(--chrome-field-w-style)"
                     contentWidth="var(--chrome-field-w-style)"
                   />
-                  );
+                  ), { canCompact: !styleMixed });
                   })()
                 )}
                 {/* 2026-05-25: Bump number input — shows only when the border
                     style is Cloud, on the same shapes that offer Cloud at all
                     (see supportsCloudStyle above). Drives how big the cloud's
                     wave bumps render. Mirrors the width input visual. */}
-                {bottomToolbarApi.supportsCloudStyle && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
+                {bottomToolbarApi.supportsCloudStyle && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && toolbarSlot('bump', () => (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-3)', fontSize: '11px', fontFamily: FONT_FAMILY }}>
                     Bump
                     <input
@@ -3140,7 +3309,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       data-draft-yields-keys="true"
                     />
                   </label>
-                )}
+                ), { canCompact: false })}
                 {/* 2026-05-25: Arrow tool (or selected callout) — custom
                     arrowhead menu that always opens downward and shows every
                     option at once (native select scrolls / picks its own
@@ -3153,8 +3322,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
                   const iconFor = (value) => options.find((option) => option.value === value)?.icon || 'arrowheadSolid';
                   const headMixed = !!bottomToolbarApi.selectionMixed?.arrowheadStyle;
-                  return (
+                  return toolbarSlot('arrowhead', (compact) => (
                   <AnnotationDropdown
+                    compact={compact}
                     open={showArrowheadMenu}
                     onOpenChange={setShowArrowheadMenu}
                     label="Arrowhead"
@@ -3177,7 +3347,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     width="var(--chrome-field-w-arrowhead)"
                     contentWidth="var(--chrome-field-w-arrowhead)"
                   />
-                  );
+                  ), { canCompact: !headMixed });
                 })()}
                 {/* PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is a
                     dropdown of three — End, Both, None — replacing the "both
@@ -3194,8 +3364,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   // w41: picked arrows with different ends read "Mixed".
                   const endsMixed = !!(bottomToolbarApi.selectionMixed?.arrowBothEnds
                     || bottomToolbarApi.selectionMixed?.arrowheadStyle);
-                  return (
+                  return toolbarSlot('ends', (compact) => (
                   <AnnotationDropdown
+                    compact={compact}
                     open={showArrowEndsMenu}
                     onOpenChange={setShowArrowEndsMenu}
                     label="Arrow ends"
@@ -3234,7 +3405,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     width="var(--chrome-field-w-ends)"
                     contentWidth="var(--chrome-field-w-ends)"
                   />
-                  );
+                  ), { canCompact: !endsMixed });
                 })()}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value
                     group before "Aa". Every other group in bars 1-3 is fenced
@@ -3245,8 +3416,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 {(bottomToolbarApi.onEnterTextEdit || textFormatSource)
                   && (bottomToolbarApi.contextTool === 'text'
                       || bottomToolbarApi.contextTool === 'callout'
-                      || !!bottomToolbarApi.richTextEditor) && (
-                  <div className="chrome-divider" data-chrome-divider-before-aa="true" />
+                      || !!bottomToolbarApi.richTextEditor)
+                  // w42: the rule goes wherever the Aa goes (into More with it).
+                  && !toolbarPlan.overflow.includes('aa') && (
+                  <div className="chrome-divider" data-chrome-divider-before-aa="true" data-toolbar-slot-divider="aa" />
                 )}
                 {/* 2026-05-25 / PASS 7 (board 12): the "Aa" that owns the
                     formatting bar. It renders on the text box and callout tools
@@ -3267,7 +3440,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {(bottomToolbarApi.onEnterTextEdit || textFormatSource)
                   && (bottomToolbarApi.contextTool === 'text'
                       || bottomToolbarApi.contextTool === 'callout'
-                      || !!bottomToolbarApi.richTextEditor) && (
+                      || !!bottomToolbarApi.richTextEditor) && toolbarSlot('aa', () => (
                   <button
                     onClick={() => {
                       if (bottomToolbarApi.richTextEditor) return;
@@ -3301,7 +3474,14 @@ export default function App({ devPreviewReturnTab = null }) {
                   >
                     Aa
                   </button>
-                )}
+                ), { canCompact: false })}
+                {/* w42 (2026-09-26): the More (⋯) button — only there while a
+                    narrow window has moved settings into it. See
+                    ToolbarOverflowMenu and src/utils/responsiveToolbar.js. */}
+                <ToolbarOverflowMenu
+                  items={toolbarOverflowItems}
+                  tooltip={chromeTip('More settings', 'below')}
+                />
                 </>
               </div>
               </div>
