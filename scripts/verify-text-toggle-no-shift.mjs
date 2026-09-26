@@ -24,7 +24,9 @@ import { chromium } from '@playwright/test';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.VERIFY_PORT || 5244);
 const baseUrl = `http://127.0.0.1:${port}`;
-const AA = '#chrome-top-host button.chrome-text-toggle[aria-label="Edit text"]';
+// RULED 2026-09-26 owner: flip rows (w44) — the Aa sits in the formatting row
+// (row 2) now, and both the tool bar and that row must stay still.
+const AA = '[data-chrome-format-row] button.chrome-text-toggle[aria-label="Edit text"]';
 
 const server = spawn(process.execPath, [
   resolve(repoRoot, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(port), '--strictPort',
@@ -40,12 +42,13 @@ const waitForServer = async () => {
 };
 
 const measure = (page) => page.evaluate(() => {
-  const top = document.getElementById('chrome-top-host');
   const out = [];
-  for (const n of top.querySelectorAll('button, input, label, .chrome-divider, [data-toolbar-slot]')) {
-    if (!n.getClientRects().length) continue;
-    const b = n.getBoundingClientRect();
-    out.push(`${n.getAttribute('aria-label') || n.getAttribute('data-toolbar-slot') || n.className}@${b.left.toFixed(1)},${b.top.toFixed(1)},${b.width.toFixed(1)}`);
+  for (const root of [document.getElementById('chrome-top-host'), document.querySelector('[data-chrome-format-row]')]) {
+    for (const n of root.querySelectorAll('button, input, label, .chrome-divider, [data-toolbar-slot]')) {
+      if (!n.getClientRects().length) continue;
+      const b = n.getBoundingClientRect();
+      out.push(`${n.getAttribute('aria-label') || n.getAttribute('data-toolbar-slot') || n.className}@${b.left.toFixed(1)},${b.top.toFixed(1)},${b.width.toFixed(1)}`);
+    }
   }
   const pageEl = document.querySelector('.page, [data-page-number]');
   const pb = pageEl?.getBoundingClientRect();

@@ -37,6 +37,9 @@ body[data-readonly="true"] .toolbar-button,
  * names above no longer match anything. Zoom/page-nav/back chrome live
  * OUTSIDE both containers and stay live (Phase-28 matrix). */
 body[data-readonly="true"] [data-tool-toolbar="true"],
+/* w44 (rows flipped): the settings moved out of the tool bar into the
+ * formatting row below it; they stay gated exactly as they were. */
+body[data-readonly="true"] [data-chrome-format-row="true"] > [data-chrome-settings-holder="true"],
 body[data-readonly="true"] [data-undo-redo-controls="true"] {
   opacity: 0.5;
   pointer-events: none;

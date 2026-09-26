@@ -293,6 +293,7 @@ import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { resolveToolBarGroup, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
@@ -5056,6 +5057,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Survey/Template state
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState(null); // 'draw' | 'shape' | 'review' | 'survey'
+  // RULED 2026-09-26 owner: flip rows (w44). A group's tools sit in the tool
+  // bar (AppShell's #chrome-subtools-host), and in Select mode a picked mark
+  // brings its own group's tools there (utils/toolbarRows.js). The picked
+  // mark's tool is worked out where the toolbar API is published; it is kept
+  // here so the tools render from it. The host is looked up after every
+  // commit, because AppShell creates it in the same commit it first renders us.
+  const [subToolContextTool, setSubToolContextTool] = useState(null);
+  const [subToolsHostEl, setSubToolsHostEl] = useState(null);
+  useLayoutEffect(() => {
+    const el = typeof document !== 'undefined' ? document.getElementById('chrome-subtools-host') : null;
+    setSubToolsHostEl((prev) => (prev === el ? prev : el));
+  });
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(true);
   const [rightRailExpandRequestKey, setRightRailExpandRequestKey] = useState(0);
@@ -25096,6 +25109,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
+    setSubToolContextTool((prev) => (prev === contextTool ? prev : contextTool));
     // What the picked mark(s) can change: a partly erased or imported pen
     // stroke has no rebuildable width, a group only offers what at least one
     // member has. Null while nothing is picked (the tool's own controls).
@@ -35421,16 +35436,37 @@ ${pageBlocks}
             The host element sits between the rails and above the actual
             viewer body so the strip aligns exactly between the two rails
             with no extra positioning math. */}
-        {isActive && pdfFile && activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+        {/* RULED 2026-09-26 owner: flip rows (w44). A tool group's tools
+            (Draw / Shapes / Text, and the hidden Forms) now render into the
+            TOOL BAR, right of the group icons (AppShell's
+            #chrome-subtools-host) — and in Select mode the picked mark's own
+            group's tools do too (utils/toolbarRows.js resolveToolBarGroup).
+            The Survey row keeps its own bar under the tool bar, as before.
+            The same buttons and handlers draw both; only the host and the
+            wrapper differ. */}
+        {isActive && pdfFile && typeof document !== 'undefined' && (() => {
+          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool });
+          const subRowHost = document.getElementById('chrome-sub-toolbar-host');
+          const renderSubRow = (subRowCategory, host, inToolBar) => createPortal(
           <div
+            key={inToolBar ? 'tool-bar-tools' : 'sub-row'}
             data-chrome-strip="true"
+            data-chrome-subtools-row={inToolBar ? 'true' : undefined}
             /* UX 2026-09-16: the tool sub-row fades and slides down 5px as it
                opens (140ms), the same cue Drawboard gives its own second row.
                It used to appear in a single frame with no transition at all,
                which read as a flicker over the top of the page. Honours
-               prefers-reduced-motion via the shared class in styles.css. */
-            className="survey-surface-in"
-            style={{
+               prefers-reduced-motion via the shared class in styles.css.
+               w44: the tools in the tool bar sit still like the icons beside
+               them — no drop-in there. */
+            className={inToolBar ? undefined : 'survey-surface-in'}
+            style={inToolBar ? {
+              // w44: inline in the tool bar — the same 28px buttons on the
+              // same 6px tool gutter as the group icons beside them.
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--chrome-tool-gap)',
+            } : {
               width: '100%',
               // PASS 7 (boards 8-12): the sub-tool row is the SECOND of three
               // 36px bars, with the same 2px gutter between tool buttons as the
@@ -35449,7 +35485,7 @@ ${pageBlocks}
               boxSizing: 'border-box'
             }}
           >
-            {activeCategoryDropdown === 'draw' && (
+            {subRowCategory === 'draw' && (
               <>
                 {[
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
@@ -35660,7 +35696,7 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'shape' && (
+            {subRowCategory === 'shape' && (
               <>
                 {[
                   { id: 'rect', label: 'Rectangle', iconName: 'rect' },
@@ -36085,7 +36121,7 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'review' && (
+            {subRowCategory === 'review' && (
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
@@ -36283,7 +36319,7 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'survey' && (() => {
+            {subRowCategory === 'survey' && (() => {
               const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
               const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
               const categories = selectedModule?.categories || [];
@@ -36390,7 +36426,7 @@ ${pageBlocks}
                 (e.g. `form-textbox`), which triggers the useEffect that calls
                 Pdfjs's `setFormFieldMode`. Designer mode is toggled on
                 automatically and the next click on the PDF places the field. */}
-            {activeCategoryDropdown === 'forms' && (
+            {subRowCategory === 'forms' && (
               <>
                 {FORM_DESIGNER_TOOLS.map((t) => {
                   const isActive = activeTool === t.id;
@@ -36415,8 +36451,17 @@ ${pageBlocks}
               </>
             )}
           </div>,
-          document.getElementById('chrome-sub-toolbar-host')
-        )}
+          host
+          );
+          const rows = [];
+          if (TOOL_BAR_GROUPS.includes(toolBarGroup) && subToolsHostEl) {
+            rows.push(renderSubRow(toolBarGroup, subToolsHostEl, true));
+          }
+          if (activeCategoryDropdown && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) && subRowHost) {
+            rows.push(renderSubRow(activeCategoryDropdown, subRowHost, false));
+          }
+          return rows;
+        })()}
 
         {/* UX 2026-05-13: status bar (Scroll to navigate hint + N of M pages
             rendered counter) removed per user request — the row added noise

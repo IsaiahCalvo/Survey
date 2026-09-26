@@ -1,44 +1,70 @@
 /**
- * Responsive desktop tool bar (w42, 2026-09-26) — the pure maths.
+ * Responsive desktop tool bar (w42, 2026-09-26; rows flipped in w44) — the pure
+ * maths.
  *
- * Owner report: in a Chrome split view (~840px wide) the tool bar's settings
- * ran into the Export button, and the colour picker opened off to the right,
- * half under the right rail. Coordinator ruling: never overlap, never switch to
- * the phone layout on a desktop window, and never change the bar at normal
- * widths. As the window narrows the bar gives ground in a fixed order:
+ * Owner report (w42): in a Chrome split view (~840px wide) the tool bar's
+ * settings ran into the Export button, and the colour picker opened off to the
+ * right, half under the right rail. Coordinator ruling: never overlap, never
+ * switch to the phone layout on a desktop window, and never change the bar at
+ * normal widths.
  *
- *   0. Wide window (>= CENTERED_MIN_WIDTH) and everything fits: exactly the
- *      bar as it has always been — the tool icons centred, Undo/Redo pinned
- *      left, Export pinned right.
- *   1. The tool icons stop being centred and sit just right of Undo/Redo, so
- *      the settings get the whole rest of the bar. Chosen by WIDTH alone, never
- *      by the armed tool, so switching tools never moves an icon.
- *   2. The gutters between the setting pills and the rules tighten.
- *   3. Secondary labels collapse, one pill at a time, least useful first
- *      ("Solid" becomes just the line it draws, "2 pt" becomes "2").
- *   4. The least important settings move, one at a time, into a single "More"
- *      menu (the ⋯ button at the end of the settings). Same controls inside,
- *      same behaviour. Tools, colours and Export are never moved.
+ * RULED 2026-09-26 owner: flip rows. The desktop chrome is now
+ *   row 1, the tool bar:    Undo/Redo · Pan/Select | Draw/Shapes/Text | the
+ *                           chosen group's own tools (pen / highlighter /
+ *                           eraser …) · Export;
+ *   row 2, formatting:      the armed tool's — or the picked mark's — settings
+ *                           (colours, width, line style, ends, Aa, More);
+ *   row 3:                  the text-formatting bar Aa drops (unchanged).
+ * So there are two plans:
+ *
+ *   TOOL BAR (planTopBar). The tool icons stay centred with Undo/Redo pinned
+ *   left and Export pinned right — the look the bar has always had at normal
+ *   widths. A group's tools hang off the right of the icons and are at most
+ *   seven buttons (Shapes), so the centred look now fits at every desktop
+ *   width; only if it ever did not would the icons sit just right of Undo /
+ *   Redo. Chosen by WIDTH alone (the widest group's tools, never the armed
+ *   group's), so switching tools never moves an icon.
+ *
+ *   FORMATTING ROW (planFormatRow). The settings start under the Pan button,
+ *   at a spot chosen by the window (and any open side panel) alone — never by
+ *   the armed tool — so the colours never jump sideways when you switch tools.
+ *   Where the widest settings row (the Arrow's) would not fit from there, the
+ *   start moves left, down to the row's own inset. Then the row gives ground
+ *   in the w42 order, with the whole row to itself:
+ *     1. the gutters between the setting pills and the rules tighten;
+ *     2. secondary labels collapse, one pill at a time, least useful first
+ *        ("Solid" becomes just the line it draws, "2 pt" becomes "2");
+ *     3. the least important settings move, one at a time, into a single
+ *        "More" menu (the ⋯ button at the end of the settings). Same controls
+ *        inside, same behaviour. Colours are never moved.
  *
  * Below the phone breakpoint (720px) the phone layout takes over, as before.
- * The hook that measures the DOM and applies a plan is useResponsiveToolbar.
+ * The hook that measures the DOM and applies both plans is useResponsiveToolbar.
  */
 
-/** At or above this bar width the tool icons stay centred (the look the bar has
- * always had). The widest settings row — the Arrow tool's, 502px — fits beside
- * the centred icons from about 1192px, so every tool keeps the centred look at
- * 1200 and above, and 1280 / 1440 are untouched. Below it the icons sit
- * left for EVERY tool, so the icons never jump when you change tool. */
-export const CENTERED_MIN_WIDTH = 1200;
+/** The widest a group's tools get in the tool bar: Shapes' seven 28px buttons
+ * on the 6px tool gutter, plus the rule (1px + 8px each side) that fences them
+ * off from the group icons. 7 * 28 + 6 * 6 + 17 = 249. */
+export const WIDEST_SUBTOOLS_WIDTH = 249;
 
-/** Clear space kept between the last setting (or More) and Export, and between
+/** The widest formatting row: the Arrow tool's colours, rule, width, line
+ * style, arrowhead and ends — 485px on the loose gutters (w42 measured 502
+ * with the rule that used to lead the settings in the tool bar, which the
+ * formatting row does not draw). The row's start is picked so this row fits,
+ * so no other tool's row ever moves the colours. */
+export const WIDEST_FORMAT_ROW = 485;
+
+/** Clear space kept at either end of the formatting row. */
+export const ROW_INSET = 10;
+
+/** Clear space kept between the group's tools and Export, and between
  * Undo/Redo and the Pan / Select block. */
 export const EDGE_CLEARANCE = 8;
 
 /** Space between Redo and Pan once the icons sit left. */
 export const START_GAP = 12;
 
-/** Gutters: the normal settings row, and the tightened one (stage 2). */
+/** Gutters: the normal settings row, and the tightened one (stage 1). */
 export const LOOSE_SPACING = { gap: 6, inset: 8 };
 export const TIGHT_SPACING = { gap: 4, inset: 4 };
 
@@ -47,7 +73,7 @@ export const MORE_BUTTON_WIDTH = 28;
 
 /**
  * Every setting that may collapse or move, in the order the row draws them.
- * `keep` is its priority: the HIGHER, the longer it stays in the bar. `label`
+ * `keep` is its priority: the HIGHER, the longer it stays in the row. `label`
  * names its row inside the More menu. `compactWidth` is only a first guess
  * for the glyph-only look; the real width is measured once it has been drawn.
  *
@@ -107,32 +133,18 @@ export function rowWidth(items, { gap, inset }) {
 }
 
 /**
- * Pick the bar's layout.
+ * Fit one settings row into `available` px: loose gutters, then tight ones,
+ * then labels collapse (least useful first), then settings move into More
+ * (least important first).
  *
- * @param {object} input
- * @param {number} input.barWidth       the tool bar's width
- * @param {number} input.undoRight      Redo's right edge (bar coordinates)
- * @param {number} input.exportLeft     Export's left edge (bar coordinates)
- * @param {number} input.clusterWidth   Draw / Shapes / Text icons
- * @param {number} input.leftBlockWidth Pan / Select block (and its rule)
- * @param {Array}  input.row  the settings row in order. Each entry is
- *   `{ kind: 'divider', slot? }` or `{ kind: 'item', width, slot? }`. An entry
- *   with `slot` belongs to that setting (a divider with a slot goes with it).
- *   Slot entries carry `widths: { full, compact }` (measured or guessed) and
- *   `canCompact` (false while it shows "Mixed").
- * @returns {{ anchor: 'center'|'start', shift: number, tight: boolean,
- *   compact: string[], overflow: string[], fits: boolean }}
- *   `shift` is how far the icon cluster moves LEFT of centre.
+ * `row` is the settings row in order. Each entry is `{ kind: 'divider', slot? }`
+ * or `{ kind: 'item', width, slot? }`. An entry with `slot` belongs to that
+ * setting (a divider with a slot goes with it). Slot entries carry
+ * `widths: { full, compact }` (measured or guessed) and `canCompact` (false
+ * while it shows "Mixed").
+ * @returns {{ tight: boolean, compact: string[], overflow: string[], fits: boolean }}
  */
-export function planToolbarLayout({
-  barWidth,
-  undoRight,
-  exportLeft,
-  clusterWidth,
-  leftBlockWidth,
-  row,
-}) {
-  const rightLimit = exportLeft - EDGE_CLEARANCE;
+export function fitSettingsRow(row, available) {
   const slotsPresent = [...new Set(row.filter((entry) => entry.slot).map((entry) => entry.slot))];
 
   const widthOf = (compactSet, overflowSet, spacing) => {
@@ -150,31 +162,15 @@ export function planToolbarLayout({
     if (overflowSet.size > 0) items.push({ kind: 'item', width: MORE_BUTTON_WIDTH });
     return rowWidth(items, spacing);
   };
-
-  const center = barWidth / 2;
-  const centredLeftEdge = center - clusterWidth / 2 - leftBlockWidth;
-  const centredSettingsLeft = center + clusterWidth / 2;
+  const result = (tight, compact, overflow, fits) => ({
+    tight, compact: [...compact], overflow: [...overflow], fits,
+  });
   const empty = new Set();
 
-  if (barWidth >= CENTERED_MIN_WIDTH
-    && centredLeftEdge >= undoRight + EDGE_CLEARANCE
-    && centredSettingsLeft + widthOf(empty, empty, LOOSE_SPACING) <= rightLimit) {
-    return { anchor: 'center', shift: 0, tight: false, compact: [], overflow: [], fits: true };
-  }
-
-  // Stage 1: the icons sit just right of Undo / Redo.
-  const clusterLeft = undoRight + START_GAP + leftBlockWidth;
-  const shift = Math.max(0, (center - clusterWidth / 2) - clusterLeft);
-  const settingsLeft = center - clusterWidth / 2 - shift + clusterWidth;
-  const available = rightLimit - settingsLeft;
-  const result = (tight, compact, overflow, fits) => ({
-    anchor: 'start', shift, tight, compact: [...compact], overflow: [...overflow], fits,
-  });
-
   if (widthOf(empty, empty, LOOSE_SPACING) <= available) return result(false, empty, empty, true);
-  // Stage 2: tighter gutters.
+  // Stage 1: tighter gutters.
   if (widthOf(empty, empty, TIGHT_SPACING) <= available) return result(true, empty, empty, true);
-  // Stage 3: collapse labels one pill at a time.
+  // Stage 2: collapse labels one pill at a time.
   const compact = new Set();
   const compactCandidates = COMPACT_ORDER.filter((id) => {
     if (!slotsPresent.includes(id)) return false;
@@ -184,7 +180,7 @@ export function planToolbarLayout({
     compact.add(id);
     if (widthOf(compact, empty, TIGHT_SPACING) <= available) return result(true, compact, empty, true);
   }
-  // Stage 4: move settings into More, least important first.
+  // Stage 3: move settings into More, least important first.
   const overflow = new Set();
   for (const id of OVERFLOW_ORDER) {
     if (!slotsPresent.includes(id)) continue;
@@ -202,6 +198,70 @@ export function planToolbarLayout({
     }
   }
   return result(true, [...compact].filter((c) => !overflow.has(c)), overflow, false);
+}
+
+/**
+ * Pick the tool bar's layout (row 1).
+ *
+ * @param {object} input
+ * @param {number} input.barWidth       the tool bar's width
+ * @param {number} input.undoRight      Redo's right edge (bar coordinates)
+ * @param {number} input.exportLeft     Export's left edge (bar coordinates)
+ * @param {number} input.clusterWidth   Draw / Shapes / Text icons
+ * @param {number} input.leftBlockWidth Pan / Select block (and its rule)
+ * @param {number} [input.subtoolsWidth] the widest group's tools — a constant,
+ *   so the answer depends on the window alone
+ * @returns {{ anchor: 'center'|'start', shift: number }}
+ *   `shift` is how far the icon cluster moves LEFT of centre.
+ */
+export function planTopBar({
+  barWidth,
+  undoRight,
+  exportLeft,
+  clusterWidth,
+  leftBlockWidth,
+  subtoolsWidth = WIDEST_SUBTOOLS_WIDTH,
+}) {
+  const rightLimit = exportLeft - EDGE_CLEARANCE;
+  const center = barWidth / 2;
+  const centredLeftEdge = center - clusterWidth / 2 - leftBlockWidth;
+  const centredRightEdge = center + clusterWidth / 2 + subtoolsWidth;
+  if (centredLeftEdge >= undoRight + EDGE_CLEARANCE && centredRightEdge <= rightLimit) {
+    return { anchor: 'center', shift: 0 };
+  }
+  // The icons sit just right of Undo / Redo.
+  const clusterLeft = undoRight + START_GAP + leftBlockWidth;
+  const shift = Math.max(0, (center - clusterWidth / 2) - clusterLeft);
+  return { anchor: 'start', shift };
+}
+
+/**
+ * Pick the formatting row's layout (row 2).
+ *
+ * @param {object} input
+ * @param {number} input.usableLeft   left edge of the row not under a side
+ *   panel (row coordinates)
+ * @param {number} input.usableRight  right edge of the row not under a panel
+ * @param {number} [input.preferredLeft] where the settings would like to
+ *   start: under the Pan button (row coordinates)
+ * @param {Array}  input.row  the settings row in order (see fitSettingsRow)
+ * @param {number} [input.widestRow] the widest row any tool draws — a
+ *   constant, so the start depends on the window (and panels) alone
+ * @returns {{ left: number, tight: boolean, compact: string[],
+ *   overflow: string[], fits: boolean }}
+ */
+export function planFormatRow({
+  usableLeft,
+  usableRight,
+  preferredLeft,
+  row,
+  widestRow = WIDEST_FORMAT_ROW,
+}) {
+  const minLeft = usableLeft + ROW_INSET;
+  const rightLimit = usableRight - ROW_INSET;
+  const wanted = Number.isFinite(preferredLeft) ? preferredLeft : minLeft;
+  const left = Math.round(Math.max(minLeft, Math.min(wanted, rightLimit - widestRow)));
+  return { left, ...fitSettingsRow(row, rightLimit - left) };
 }
 
 /**
