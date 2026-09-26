@@ -296,6 +296,33 @@ test('print: a clouded callout clouds the box only; its leader prints as straigh
   assert.equal(plain.forms.length, 0);
 });
 
+test('print: the callout box cloud is the one the SCREEN draws (same box, width, fill and bump)', async () => {
+  const callout = makeCallout({ lineStyle: 'cloud', cloudIntensity: 3, fillColor: '#fde68a', fillOpacity: 0.5 });
+  const W = 600; const H = 800;
+  // renderCallout's box: the stored box plus fontSize*0.35 descender room,
+  // border max(1, 0.7 x thickness), fill at its own opacity.
+  const screenBox = {
+    x: callout.textBoxPosition.x * W,
+    y: callout.textBoxPosition.y * H,
+    width: callout.textBoxWidth * W,
+    height: callout.textBoxHeight * H + callout.style.fontSize * 0.35,
+  };
+  const screen = calloutBoxCloudStandIn(callout, screenBox, {
+    stroke: callout.style.borderColor,
+    strokeWidth: Math.max(1, callout.style.lineThickness * 0.7),
+    fill: colorWithAlpha(callout.style.fillColor, callout.style.fillOpacity),
+    opacity: 1,
+  });
+  const printed = await printedCloudForms(await savePDFWithFlattenedRegularAnnotationsForPrint(
+    await pdfFile(), {}, PAGE_SIZES, { returnBytes: true, callouts: [callout] },
+  ));
+  const twin = await printedCloudForms(await savePDFWithFlattenedRegularAnnotationsForPrint(
+    await pdfFile(), { 1: { objects: [screen] } }, PAGE_SIZES, { returnBytes: true },
+  ));
+  assert.equal(printed.forms.length, 1);
+  assert.equal(printed.forms[0], twin.forms[0], 'print clouds the same box the screen clouds');
+});
+
 async function exportedDicts(annotationsByPage, options = {}) {
   const bytes = await savePDFWithAnnotationsPdfLib(await pdfFile(), annotationsByPage, PAGE_SIZES, null, {
     returnBytes: true, ...options,

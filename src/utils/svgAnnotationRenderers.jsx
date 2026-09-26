@@ -1896,15 +1896,19 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
         return (
         <>
           {boxCloudGeometry && (
-            <CloudOutline
-              shapeId={callout.id || key}
-              shapeKind="cloud-callout-box"
-              geometryKind="rectangle"
-              geometry={boxCloudGeometry}
-              fill={boxCloud.fill}
-              stroke={boxCloud.stroke}
-              opacity={1}
-            />
+            // The crowns stand past the box; a press on one acts on the text
+            // box part (drag the box), the same as a press inside it.
+            <g data-callout-part="textBox">
+              <CloudOutline
+                shapeId={callout.id || key}
+                shapeKind="cloud-callout-box"
+                geometryKind="rectangle"
+                geometry={boxCloudGeometry}
+                fill={boxCloud.fill}
+                stroke={boxCloud.stroke}
+                opacity={1}
+              />
+            </g>
           )}
           <rect
             // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17

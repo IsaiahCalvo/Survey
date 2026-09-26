@@ -123,7 +123,13 @@ import {
 } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: printed clouds come from the same resolver the screen uses.
 import { cloudOutlineBounds, cloudStrokeBandRings, resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
-import { calloutCloudIntensity, textboxCloudIntensity, textboxCloudStandIn } from './textCloudBorder.js';
+import {
+  calloutBoxCloudStandIn,
+  calloutCloudIntensity,
+  colorWithAlpha,
+  textboxCloudIntensity,
+  textboxCloudStandIn,
+} from './textCloudBorder.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
@@ -6453,10 +6459,6 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
   // it is a separate defect, and the /AP below reproduces the PRINT so export
   // and print cannot disagree about a callout.)
   const line2Object = { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps };
-  // w43: line style Cloud clouds ONLY the text box (the leaders above get no
-  // dash for 'cloud' and stay straight) - the box prints through the rect
-  // branch's shared cloud path with the callout's bump size.
-  const boxCloudIntensity = calloutCloudIntensity(calloutObj);
   const boxObject = {
     type: 'rect',
     left: textBox.left,
@@ -6467,8 +6469,29 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
     strokeWidth,
     ...leaderDashProps,
     fill: style.backgroundColor || '#ffffff',
-    ...(boxCloudIntensity != null ? { data: { pdfCloudIntensity: boxCloudIntensity } } : {}),
   };
+  // w43: line style Cloud clouds ONLY the text box (the leaders above get no
+  // dash for 'cloud' and stay straight). The cloud is built from exactly the
+  // box the SCREEN clouds - renderCallout / drawCallout: the visible box with
+  // its fontSize*0.35 descender room, a 0.7x border, the fill at its own
+  // opacity and the callout's border opacity - so print and export fit the
+  // same crowns the page shows (the plain box keeps its historical print
+  // look). null when the callout is not clouded.
+  const screenFontSize = Number(style.fontSize || 12) || 12;
+  const boxCloud = calloutCloudIntensity(calloutObj) == null ? null : calloutBoxCloudStandIn(calloutObj, {
+    x: textBox.left,
+    y: textBox.top,
+    width: textBox.width,
+    height: textBox.height + screenFontSize * 0.35,
+  }, {
+    stroke,
+    strokeWidth: Math.max(1, strokeWidth * 0.7),
+    fill: colorWithAlpha(
+      style.fillColor || 'transparent',
+      Math.max(0.08, Math.min(1, Number(style.fillOpacity ?? 0.4))),
+    ),
+    opacity: Math.max(0.2, Math.min(1, Number(style.borderOpacity ?? 1))),
+  });
   const fontSize = style.fontSize || 14;
   const textObject = {
     type: 'textbox',
@@ -6544,9 +6567,11 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
         ),
         textObject,
         fonts,
-      ), cloudStandInAppBounds(boxObject.data ? boxObject : null)),
+      ), cloudStandInAppBounds(boxCloud)),
       draw: (page, pageHeight, fonts) => {
-        const drawn = drawFlattenedObject(page, boxObject, pageHeight, fonts);
+        const drawn = boxCloud && drawFlattenedCloud(page, boxCloud, pageHeight)
+          ? 1
+          : drawFlattenedObject(page, boxObject, pageHeight, fonts);
         drawFlattenedText(page, textObject, pageHeight, fonts);
         return drawn || 1;
       },
