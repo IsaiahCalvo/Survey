@@ -24,6 +24,14 @@
 // controls change, gliding over ~190ms, and never moves while they do not:
 // opening a picker or menu from it moves nothing); instant with reduced motion.
 //
+// w49 (2026-09-27): RULED 2026-09-27 owner: morphing icons + one motion
+// language — a group switch MORPHS each tool icon that has a slot in both
+// loadouts (pen → rectangle → text box → Box …), grows in / shrinks out the
+// rest from their centres, and nothing slides sideways except a row gliding
+// to its new centre; every one takes the same ~200ms ease-in-out. The frame
+// samples below record every overlay's path, every control's scale /
+// opacity / translate, and row 2's centre, and assert exactly that.
+//
 //   node scripts/verify-stable-toolbar.mjs
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -137,8 +145,26 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
     const styles = controls.map((b) => getComputedStyle(b));
     const faintest = styles.reduce((min, s) => (Number(s.opacity) < Number(min?.opacity ?? 2) ? s : min), null);
     const liveColours = live?.querySelector('[data-quick-colours]');
+    // w49: morph overlays (their path and spot) and every control's own
+    // motion — live and in the outgoing copy.
+    const morphs = [...document.querySelectorAll('[data-loadout-morph]')].map((m) => ({
+      icon: m.getAttribute('data-loadout-morph'),
+      d: [...m.querySelectorAll('path')].map((p) => p.getAttribute('d')).join(''),
+      x: Math.round(m.getBoundingClientRect().left * 10) / 10,
+    }));
+    const motionOf = (el) => { const s = getComputedStyle(el); return { o: Number(s.opacity), s: s.scale === 'none' ? 1 : Number(s.scale), tr: s.translate }; };
+    const unitsOf = (root) => (root ? [...root.querySelectorAll('button, input, .chrome-divider, [data-toolbar-slot], [data-quick-colours], [data-toolbar-subtools] div[style*="relative"]')] : []);
+    const liveMotion = [...unitsOf(q('[data-toolbar-subtools]')), ...unitsOf(q('[data-chrome-settings-holder]'))].map(motionOf);
+    const ghostMotion = [...document.querySelectorAll('[data-loadout-ghost] *')].filter((e) => getComputedStyle(e).visibility !== 'hidden' && e.getAnimations().length).map(motionOf);
     frames.push({
       t: Math.round(performance.now() - start),
+      morphs,
+      liveMotion,
+      ghostMotion,
+      holderCentre: (() => { const h = q('[data-chrome-settings-holder]'); if (!h) return null; const b = h.getBoundingClientRect(); return Math.round((b.left + b.width / 2) * 10) / 10; })(),
+      holderLeft: (() => { const h = q('[data-chrome-settings-holder]'); return h ? Math.round(h.getBoundingClientRect().left * 10) / 10 : null; })(),
+      holderWidth: (() => { const h = q('[data-chrome-settings-holder]'); return h ? Math.round(h.getBoundingClientRect().width * 10) / 10 : null; })(),
+      holderTranslate: q('[data-chrome-settings-holder]') ? getComputedStyle(q('[data-chrome-settings-holder]')).translate : null,
       ghost: ghost ? Number(getComputedStyle(ghost).opacity).toFixed(2) : null,
       // Controls in the ghost that are actually drawn (not place-holders).
       ghostShown: ghost ? [...ghost.querySelectorAll('button, input')].filter((b) => getComputedStyle(b).visibility !== 'hidden').length : 0,
@@ -167,24 +193,72 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
   requestAnimationFrame(sample);
 }), { selector, slot, ms });
 
-const assertCrossfade = (frames, label) => {
-  if (process.env.DEBUG_FRAMES) console.log(label, frames.map((f) => `${f.t}:g${f.ghost}/l${f.live}/${f.translate}`).join(' '));
-  const withGhost = frames.filter((f) => f.ghost !== null);
-  assert.ok(withGhost.length >= 2, `${label}: the outgoing set faded out over several frames (${JSON.stringify(frames.slice(0, 4))})`);
-  const ghostEnd = withGhost[withGhost.length - 1].t;
-  assert.ok(ghostEnd <= 220, `${label}: the ghost was gone by ~200ms (last seen ${ghostEnd}ms)`);
-  assert.ok(Number(withGhost[0].ghost) > Number(withGhost[withGhost.length - 1].ghost), `${label}: ghost opacity falls`);
-  const early = frames.find((f) => Number(f.live) < 0.9);
-  assert.ok(early, `${label}: the new set started faded`);
-  const last = frames[frames.length - 1];
-  assert.equal(last.live, '1.00', `${label}: the new set ends fully shown`);
-  const settledAt = frames.find((f) => f.t > 60 && f.live === '1.00' && (f.translate === 'none' || f.translate === '0px'));
-  assert.ok(settledAt && settledAt.t <= 230, `${label}: the new set settled within ~200ms (${settledAt?.t})`);
+// w49 (RULED 2026-09-27 owner: morphing icons + one motion language): a
+// group switch morphs `morphs` slots in place — each overlay's path changes
+// over several frames, sits still, and is gone (the real icon back) by
+// ~240ms; any control that grows or shrinks does it about its own centre
+// (scale + opacity), never with a sideways translate; nothing around the
+// loadout moves.
+const assertMorph = (frames, label, { morphs }) => {
+  if (process.env.DEBUG_FRAMES) console.log(label, frames.map((f) => `${f.t}:${f.morphs.map((m) => m.icon).join('+')}`).join(' '));
+  const withMorph = frames.filter((f) => f.morphs.length);
+  assert.ok(withMorph.length >= 4, `${label}: morphs drawn over several frames (${withMorph.length})`);
+  assert.equal(Math.max(...frames.map((f) => f.morphs.length)), morphs, `${label}: ${morphs} slots morphed`);
+  for (let k = 0; k < morphs; k += 1) {
+    const ds = withMorph.map((f) => f.morphs[k]?.d).filter(Boolean);
+    assert.ok(new Set(ds).size >= 4, `${label}: slot ${k + 1}'s icon changed shape frame by frame (${new Set(ds).size} shapes)`);
+    const xs = new Set(withMorph.map((f) => f.morphs[k]?.x).filter((v) => v != null));
+    assert.equal(xs.size, 1, `${label}: slot ${k + 1} morphed in place (${[...xs]})`);
+  }
+  const lastMorph = withMorph[withMorph.length - 1].t;
+  assert.ok(lastMorph <= 240, `${label}: morphs done by ~200ms (last ${lastMorph}ms)`);
+  assert.equal(frames[frames.length - 1].morphs.length, 0, `${label}: the real icons are back at rest`);
+  for (const f of frames) {
+    for (const m of [...f.liveMotion, ...f.ghostMotion]) {
+      assert.ok(m.tr === 'none' || m.tr === '0px', `${label} @${f.t}ms: a control slid sideways (${m.tr})`);
+      if (m.s !== 1) assert.ok(m.s >= 0.59 && m.s < 1, `${label} @${f.t}ms: grows / shrinks between 0.6 and 1 (${m.s})`);
+    }
+  }
   // Nothing around the swap moved on any frame.
   for (const key of ['draw', 'pan', 'anchor']) {
     assert.equal(new Set(frames.map((f) => f[key])).size, 1, `${label}: ${key} moved during the swap`);
   }
-  return { frames: frames.length, ghostMs: ghostEnd, settledMs: settledAt.t };
+  const grew = frames.some((f) => f.liveMotion.some((m) => m.s < 1)) || frames.some((f) => f.ghostMotion.some((m) => m.s < 1));
+  return { frames: frames.length, morphMs: lastMorph, grew };
+};
+
+// w49: row 2 in every group switch — its controls never slide on their own
+// (only grow / shrink), and the one sideways motion is the row re-centring
+// under the group icons: it keeps its left edge for the first frame and
+// glides from there, straight to its new spot with no overshoot. So every
+// switch obeys the same rule: a row that gets WIDER glides left (half the
+// extra width), one that gets NARROWER glides right, and one whose width is
+// unchanged does not move. (w47's 6px left→right slide on the changed
+// controls used to swamp the small Draw ↔ Shapes glide, which is why Text
+// read as the odd one out.)
+const assertRowLanguage = (frames, label, iconsCentre, widthBefore) => {
+  for (const f of frames) {
+    for (const m of f.liveMotion) assert.ok(m.tr === 'none' || m.tr === '0px', `${label} @${f.t}ms: a row-2 control slid (${m.tr})`);
+  }
+  // Row 2 arriving (drops in where it belongs) or leaving (fades up and
+  // away) is not a re-centre.
+  if (frames[frames.length - 1].rowDisplay !== 'block') return 'leaves';
+  if (widthBefore == null) return 'arrives';
+  const shown = frames.filter((f) => f.holderLeft != null && f.rowDisplay === 'block');
+  if (shown.length < 2) return null;
+  const settled = shown[shown.length - 1];
+  assert.ok(Math.abs(settled.holderCentre - iconsCentre) <= 1.5, `${label}: row 2 ends centred (${settled.holderCentre} vs ${iconsCentre})`);
+  const lefts = shown.map((f) => f.holderLeft);
+  const widthChange = settled.holderWidth - (widthBefore ?? shown[0].holderWidth);
+  const travel = lefts[lefts.length - 1] - lefts[0];
+  if (Math.abs(widthChange) < 2) {
+    assert.ok(Math.abs(travel) < 2, `${label}: same width, row 2 stays put (${lefts})`);
+    return 'still';
+  }
+  assert.ok(Math.sign(travel) === -Math.sign(widthChange), `${label}: wider glides left, narrower glides right (width ${widthChange}, travel ${travel})`);
+  const steps = lefts.slice(1).map((v, i) => v - lefts[i]);
+  assert.ok(steps.every((d) => d * travel >= -0.6), `${label}: row 2 glides one way, no overshoot (${lefts})`);
+  return travel < 0 ? 'left' : 'right';
 };
 
 const runAt = async (width, { reducedMotion = false } = {}) => {
@@ -204,9 +278,15 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       await page.click(GROUP.draw); await settle(page);
       const frames = await sampleSwap(page, GROUP.shapes, { ms: 120 });
       assert.ok(frames.every((f) => f.ghost === null), `${width}px reduced motion: no ghost`);
+      assert.ok(frames.every((f) => f.morphs.length === 0), `${width}px reduced motion: no morph`);
       assert.ok(frames.every((f) => f.live === '1.00'), `${width}px reduced motion: the new set is shown at once`);
       const leave = await sampleSwap(page, PAN, { slot: '[data-chrome-settings-holder]', ms: 120 });
-      assert.ok(leave.every((f) => f.rowDisplay === 'none'), `${width}px reduced motion: row 2 goes at once`);
+      // w49: the click's render can land a frame after the first sample; from
+      // the frame it goes, it is gone at once (no fade frames at full-ish
+      // opacity in between).
+      const goneAt = leave.findIndex((f) => f.rowDisplay === 'none');
+      assert.ok(goneAt >= 0 && goneAt <= 2 && leave.slice(goneAt).every((f) => f.rowDisplay === 'none'),
+        `${width}px reduced motion: row 2 goes at once (${leave.map((f) => `${f.t}:${f.rowDisplay}`).join(' ')})`);
       // w48: a re-centre is instant too.
       await page.click(GROUP.shapes); await settle(page);
       await page.click('#chrome-subtools-host button[aria-label="Line"]'); await settle(page);
@@ -279,14 +359,80 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
 
     // Frame-sampled swaps.
     await page.click(GROUP.draw); await settle(page);
-    const drawToShapes = assertCrossfade(await sampleSwap(page, GROUP.shapes), `${width}px Draw→Shapes`);
+    // RULED 2026-09-27 owner: morphing icons + one motion language — cycle
+    // Draw → Shapes → Text → Draw → Select → Draw twice: every switch morphs
+    // the shared slots and moves row 2 by the same rules.
+    const cycle = [['draw', 'shapes', 3], ['shapes', 'text', 2], ['text', 'draw', 2], ['draw', 'select', 3], ['select', 'draw', 3], ['draw', 'text', 2], ['text', 'select', 2], ['select', 'shapes', 3], ['shapes', 'draw', 3]];
+    const cycleReport = [];
+    for (let round = 0; round < 2; round += 1) {
+      for (const [from, to, morphs] of cycle) {
+        const fromSel = from === 'select' ? SELECT : GROUP[from];
+        const toSel = to === 'select' ? SELECT : GROUP[to];
+        await page.click(fromSel); await settle(page);
+        const { iconsCentre, row2, row2Right } = await fixedPoints(page);
+        const frames = await sampleSwap(page, toSel);
+        const r = assertMorph(frames, `${width}px ${from}→${to}`, { morphs });
+        const way = assertRowLanguage(frames, `${width}px ${from}→${to}`, iconsCentre, row2 === 'hidden' ? null : row2Right - row2);
+        if (round === 0) cycleReport.push(`${from}→${to} ${morphs} morphs/${r.morphMs}ms row 2 ${way}`);
+        await settle(page);
+      }
+    }
+    // w49: switches faster than the motion (every 70ms): each slot carries on
+    // from what is on screen — per slot, the drawn ink never jumps between
+    // frames, and nothing is left over once it settles.
+    await page.click(GROUP.draw); await settle(page);
+    const rapid = await page.evaluate(({ order }) => new Promise((done) => {
+      const frames = [];
+      const start = performance.now();
+      let next = 0;
+      const tick = () => {
+        const t = performance.now() - start;
+        if (next < order.length && t >= next * 70) { document.querySelector(order[next]).click(); next += 1; }
+        // Per slot (by its button's x): the ink of whatever is drawn there —
+        // a morph overlay, else the live glyph (if shown) — as a bounding box
+        // in 24-unit glyph space, and how much of it shows.
+        const slotEls = [...document.querySelectorAll('[data-toolbar-subtools] [data-morph-icon]')];
+        const perSlot = {};
+        for (const m of document.querySelectorAll('[data-loadout-morph]')) {
+          const r = m.getBoundingClientRect();
+          const pts = [...m.querySelectorAll('path')].flatMap((p) => (p.getAttribute('d') || '').slice(1).split('L').map((xy) => xy.split(' ').map(Number)));
+          const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+          const o = Number(getComputedStyle(m).opacity);
+          perSlot[Math.round(r.left + r.width / 2)] = { box: [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], o };
+        }
+        frames.push({ t: Math.round(t), perSlot, slots: slotEls.length, morphs: document.querySelectorAll('[data-loadout-morph]').length, ghosts: document.querySelectorAll('[data-loadout-ghost]').length });
+        if (t < order.length * 70 + 400) requestAnimationFrame(tick); else done(frames);
+      };
+      requestAnimationFrame(tick);
+    }), { order: [GROUP.shapes, GROUP.text, GROUP.draw, SELECT, GROUP.shapes, GROUP.draw].map((sel) => sel) });
+    let worst = 0;
+    let compared = 0;
+    for (let k = 1; k < rapid.length; k += 1) {
+      for (const [x, cur] of Object.entries(rapid[k].perSlot)) {
+        const prev = rapid[k - 1].perSlot[x];
+        if (!prev || cur.o < 0.99 || prev.o < 0.99) continue;
+        const jump = Math.max(...cur.box.map((v, i) => Math.abs(v - prev.box[i])));
+        worst = Math.max(worst, jump);
+        compared += 1;
+      }
+    }
+    // A 200ms morph moves at most ~18 units over its whole run; an ease-in-out
+    // frame near its middle moves ~2.5 units. A snap would be most of the box.
+    assert.ok(compared >= 20, `${width}px rapid switching: morphs were caught mid-way and compared (${compared})`);
+    assert.ok(worst <= 5, `${width}px rapid switching: no slot's icon jumped between frames (worst ${worst.toFixed(2)} units)`);
+    const end = rapid[rapid.length - 1];
+    assert.equal(end.morphs, 0, `${width}px rapid switching: every morph landed`);
+    assert.equal(end.ghosts, 0, `${width}px rapid switching: no copy left behind`);
+    assert.equal(end.slots, 3, `${width}px rapid switching: ends on Draw's three tools`);
     await settle(page);
-    const shapesToSelect = assertCrossfade(await sampleSwap(page, SELECT), `${width}px Shapes→Select`);
-    await settle(page);
+    const drawToShapes = { morphMs: cycleReport[0] };
+    const shapesToSelect = { morphMs: cycleReport[7] };
     // Pan → Draw: nothing leaves, the Draw tools arrive.
     await page.click(PAN); await settle(page);
     const arrive = await sampleSwap(page, GROUP.draw);
     assert.ok(arrive.some((f) => Number(f.live) < 0.9), `${width}px Pan→Draw: the Draw tools faded in`);
+    assert.ok(arrive.some((f) => f.liveMotion.some((m) => m.s < 0.9 && m.s >= 0.59)), `${width}px Pan→Draw: the Draw tools grew in from their centres`);
+    assert.ok(arrive.every((f) => f.morphs.length === 0), `${width}px Pan→Draw: nothing to morph from`);
     await settle(page);
     // Draw → Pan: the Draw tools fade out, row 2 fades up and away.
     const leave = await sampleSwap(page, PAN, { slot: '[data-chrome-settings-holder]', ms: 320 });
@@ -294,12 +440,12 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     assert.ok(lingering.length >= 2, `${width}px Draw→Pan: row 2 stayed for its fade-out`);
     assert.ok(Number(lingering[lingering.length - 1].rowOpacity) < Number(lingering[0].rowOpacity), `${width}px: row 2 faded`);
     assert.equal(leave[leave.length - 1].rowDisplay, 'none', `${width}px: row 2 gone after the fade`);
-    assert.ok(leave.some((f) => f.ghost !== null), `${width}px Draw→Pan: the outgoing set faded out`);
+    assert.ok(leave.some((f) => f.ghostMotion.some((m) => m.s < 0.95)), `${width}px Draw→Pan: the outgoing tools shrank out`);
     assert.equal(new Set(leave.map((f) => f.draw)).size, 1, `${width}px Draw→Pan: the icons stayed put`);
     // Same set, different tool lit: no animation.
     await page.click(GROUP.shapes); await settle(page);
     const sameSet = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Ellipse"]', { ms: 120 });
-    assert.ok(sameSet.every((f) => f.ghost === null), `${width}px: picking another shape does not animate the loadout`);
+    assert.ok(sameSet.every((f) => f.ghost === null && f.morphs.length === 0), `${width}px: picking another shape does not animate the loadout`);
     // w47 review 3: Line → Arrow keeps the colours and width in place — they
     // neither slide nor show twice; only the added settings arrive.
     await page.click('#chrome-subtools-host button[aria-label="Line"]'); await settle(page);
@@ -403,7 +549,7 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     console.log(`  ${width}px panels: ${panelReport.join('; ')}`);
     console.log(`ok ${width}px: icons at ${seen[0].draw} (centre ${seen[0].iconsCentre}), Pan at ${seen[0].pan}, Select ends ${seen[0].selectRight}, Redo ends ${seen[0].redoRight}, loadout at ${seen[0].loadout} across ${seen.length} states; `
       + `row 2 starts ${[...rowStarts].sort((a, b) => a - b).join('/')} (centred); Line→Arrow glide ${glide.total}px over ${glide.frames} frames; `
-      + `Draw→Shapes ghost ${drawToShapes.ghostMs}ms / in ${drawToShapes.settledMs}ms, Shapes→Select ghost ${shapesToSelect.ghostMs}ms / in ${shapesToSelect.settledMs}ms`);
+      + `morphs: ${cycleReport.join(', ')}; rapid switching worst frame step ${worst.toFixed(2)} units over ${compared} steps`);
   } finally {
     await ctx.close();
     rmSync(profile, { recursive: true, force: true });
@@ -412,7 +558,7 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
 
 try {
   await waitForServer();
-  for (const width of widths) await runAt(width);
+  if (!process.env.REDUCED_ONLY) for (const width of widths) await runAt(width);
   await runAt(widths[0], { reducedMotion: true });
 } finally {
   server?.kill();

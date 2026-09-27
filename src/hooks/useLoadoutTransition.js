@@ -30,7 +30,9 @@ export function useRowSlide(element, left, { row = null, enabled = true, targets
 
 /**
  * RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
- * Crossfades a tool-bar slot's contents whenever the set of controls in it
+ * RULED 2026-09-27 owner: morphing icons + one motion language (w49): shared
+ * slots morph their icons / stay, extra ones grow in or shrink out.
+ * Animates a tool-bar slot's contents whenever the set of controls in it
  * changes (see utils/loadoutTransition.js for the motion and why). Takes the
  * slot and its ghost layer as ELEMENTS (from callback refs kept in state), so
  * it re-attaches if either is rebuilt. Desktop only: pass enabled=false on

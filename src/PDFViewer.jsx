@@ -35525,6 +35525,8 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
+                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
+                      data-morph-icon={t.iconName}
                       onClick={(e) => {
                         if (isHighlighter) {
                           e.stopPropagation();
@@ -35743,6 +35745,8 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       data-counter-caret-button={isCounter ? 'true' : undefined}
+                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
+                      data-morph-icon={t.iconName}
                       onClick={(e) => {
                         setActiveTool(t.id);
                         // UX 2026-09-09: Polygon and Polyline are click-to-place
@@ -36179,6 +36183,8 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
+                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
+                      data-morph-icon={t.iconName}
                       onClick={onMainClick}
                       {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
                       // UX 2026-09-16 (desktop sizing pass): shared

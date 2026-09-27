@@ -1595,6 +1595,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // goes (it stays drawn, data-leaving, for its 140ms fade).
   // Desktop only; instant with prefers-reduced-motion. See
   // utils/loadoutTransition.js for the motion and why.
+  // RULED 2026-09-27 owner: morphing icons + one motion language (w49). The
+  // crossfade is now: a tool icon in a slot both sets share MORPHS into the
+  // new one in place (pen → rectangle → text box), other shared slots stay,
+  // extra slots grow in / shrink out from their centres, and nothing slides
+  // sideways but a row gliding to its new centre — 200ms ease-in-out for all.
   const [loadoutSlotEl, setLoadoutSlotEl] = useState(null);
   const [loadoutGhostLayerEl, setLoadoutGhostLayerEl] = useState(null);
   const [formatHolderEl, setFormatHolderEl] = useState(null);
@@ -1850,6 +1855,8 @@ export default function App({ devPreviewReturnTab = null }) {
                           type="button"
                           className={`btn chrome-subcontrol ${selected ? 'btn-active' : 'btn-ghost'}`}
                           aria-pressed={selected}
+                          // w49: the glyph, so a group switch can morph it.
+                          data-morph-icon={getSelectModeIconName(opt.mode)}
                           onClick={() => {
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
@@ -2321,7 +2328,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   in it changes the old set fades out and the new one fades in
                   with a 6px slide out of the icons (useLoadoutTransition; the
                   outgoing copy is drawn in the ghost layer just below, laid
-                  over the same box, so nothing around it moves). */}
+                  over the same box, so nothing around it moves).
+                  RULED 2026-09-27 owner: morphing icons + one motion language
+                  (w49). No slide any more: a slot both sets share keeps its
+                  place and its icon MORPHS into the new tool's (the morph is
+                  drawn in the ghost layer over the live button), a slot only
+                  one set has grows in / shrinks out from its centre. */}
               <div
                 ref={setLoadoutSlotEl}
                 data-toolbar-subtools="true"
@@ -2401,7 +2413,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   settings are CENTRED under the group icons again (w47's
                   crossfade and leave are kept); a row whose controls change
                   re-centres by GLIDING there (useRowSlide), never a snap, and
-                  a row whose controls are unchanged never moves. */}
+                  a row whose controls are unchanged never moves.
+                  RULED 2026-09-27 owner: morphing icons + one motion language
+                  (w49). A changed setting shrinks out and its replacement
+                  grows in at the same spot (no sideways slide), so the only
+                  sideways motion is the re-centring glide — wider rows spread
+                  left, narrower ones draw right, the same for every group. */}
               {formatRowEl && createPortal(
               <>
               <div

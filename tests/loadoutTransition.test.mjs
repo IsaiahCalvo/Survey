@@ -2,9 +2,16 @@
 // "As I switch between the annotation tools and the Select tool, the loadouts
 // on the right, I want those to get animated in and out... a quick
 // animation." This pins src/utils/loadoutTransition.js on a tiny stand-in DOM:
-// what counts as a change of loadout, the crossfade it runs, and the
+// what counts as a change of loadout, the motion it runs, and the
 // reduced-motion path (instant). The live frame-by-frame check is
 // scripts/verify-stable-toolbar.mjs.
+//
+// RULED 2026-09-27 owner: morphing icons + one motion language (w49). The
+// w47 crossfade (fade + 6px sideways slide, 120ms out / 150ms in) is gone:
+// a slot in both sets stays or MORPHS its icon in place, a slot only in the
+// new set grows in from its centre, one only in the old set shrinks out, and
+// every one takes the same 200ms ease-in-out as the row glide. The tests
+// below that pinned the crossfade were rewritten for that ruling.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -17,6 +24,7 @@ import {
   loadoutKeyframes,
   loadoutSignature,
   makeGhost,
+  planLoadoutSwap,
 } from '../src/utils/loadoutTransition.js';
 
 const CONTROL_TAGS = new Set(['button', 'input', 'select', 'textarea']);
@@ -76,15 +84,42 @@ class FakeElement {
 
   getClientRects() { return this.hidden ? [] : [{}]; }
 
+  getBoundingClientRect() { return { left: 0, top: 0, width: this.tag === 'button' ? 28 : 16, height: this.tag === 'button' ? 28 : 16 }; }
+
+  matches(selector) {
+    if (selector === 'button') return this.tag === 'button';
+    return CONTROL_TAGS.has(this.tag) || this.getAttribute('data-toolbar-slot') !== null
+      || String(this.getAttribute('class') || '').split(' ').includes('chrome-divider');
+  }
+
+  // Enough of querySelector for the loadout code: 'button', a data-morph-icon
+  // holder, and a glyph ('svg, span[aria-hidden="true"]').
+  querySelector(selector) {
+    const all = this.descendants();
+    if (selector === 'button') return all.find((n) => n.tag === 'button') || null;
+    if (selector === '[data-morph-icon]') return all.find((n) => n.getAttribute('data-morph-icon') !== null) || null;
+    if (selector.startsWith('svg')) return all.find((n) => n.tag === 'svg' || n.tag === 'span') || null;
+    return null;
+  }
+
   animate(keyframes, options) {
-    const animation = { keyframes, options, onfinish: null, oncancel: null, cancelled: false, cancel() { this.cancelled = true; this.oncancel?.(); } };
+    const animation = {
+      keyframes, options, onfinish: null, oncancel: null, cancelled: false, progress: 0,
+      effect: { getComputedTiming: () => ({ progress: animation.progress }) },
+      cancel() { this.cancelled = true; this.oncancel?.(); },
+    };
     this.animations.push(animation);
     return animation;
   }
 }
 
 const el = (tag, attrs, children) => new FakeElement(tag, attrs, children);
-const tools = (...labels) => labels.map((label, i) => el('button', { 'aria-label': label, id: `t${i}`, 'data-testid': `tool-${label}`, class: i === 0 ? 'btn btn-active' : 'btn' }));
+// A tool button: its glyph inside, and (w49) the glyph's name for morphing.
+const ICONS = { Pen: 'pen', Highlighter: 'highlighter', Eraser: 'eraser', Rectangle: 'rect', Ellipse: 'ellipse', Polygon: 'polygon', Text: 'textBox', Callout: 'callout', Box: 'selectCursor', Lasso: 'lassoSelect', 'Text select': 'textSelect', Line: 'line', Counter: 'counter' };
+const tools = (...labels) => labels.map((label, i) => el('button', {
+  'aria-label': label, id: `t${i}`, 'data-testid': `tool-${label}`, class: i === 0 ? 'btn btn-active' : 'btn',
+  ...(ICONS[label] ? { 'data-morph-icon': ICONS[label] } : {}),
+}, [el('svg', { 'data-colour': i === 0 ? 'rgb(216, 168, 78)' : 'rgb(183, 190, 201)' })]));
 
 // A stand-in window: a MutationObserver we fire by hand, a switchable
 // reduced-motion preference, and computed visibility from a flag.
@@ -93,7 +128,20 @@ const fakeWindow = ({ reduced = false } = {}) => {
     reduced,
     observers: [],
     matchMedia: (query) => ({ matches: query.includes('reduce') && win.reduced }),
-    getComputedStyle: (element) => ({ visibility: element.style.visibility === 'hidden' ? 'hidden' : 'visible' }),
+    getComputedStyle: (element) => ({ visibility: element.style.visibility === 'hidden' ? 'hidden' : 'visible', color: element.getAttribute?.('data-colour') || 'rgb(100, 100, 100)' }),
+    time: 0,
+    frames: [],
+    performance: { now: () => win.time },
+    requestAnimationFrame: (callback) => { win.frames.push(callback); return win.frames.length; },
+    cancelAnimationFrame: () => {},
+    // Run animation frames until `ms` has passed.
+    advance: (ms, step = 16) => {
+      for (let t = 0; t < ms; t += step) {
+        win.time += step;
+        const due = win.frames.splice(0);
+        due.forEach((callback) => callback(win.time));
+      }
+    },
     MutationObserver: class {
       constructor(callback) { this.callback = callback; win.observers.push(this); }
 
@@ -110,6 +158,7 @@ const setup = (options) => {
   const win = fakeWindow(options);
   const slot = el('div', { 'data-toolbar-subtools': 'true', style: 'left: 100%' }, [el('div', { class: 'chrome-divider' }), el('div', { id: 'chrome-subtools-host', 'data-chrome-subtools-host': 'true' }, tools('Pen', 'Highlighter', 'Eraser'))]);
   const layer = el('div', { 'data-loadout-ghost-layer': 'true' });
+  layer.ownerDocument = { createElementNS: (_ns, tag) => el(tag) };
   const detach = attachLoadoutTransition(slot, layer, { win });
   const replace = (...children) => { slot.children = []; children.flat().forEach((c) => slot.appendChild(c)); win.flush(); };
   return { win, slot, layer, detach, replace };
@@ -134,46 +183,72 @@ const divider = () => el('div', { class: 'chrome-divider' });
 // box holding a group's tools.
 const host = (...labels) => el('div', { id: 'chrome-subtools-host', 'data-chrome-subtools-host': 'true' }, tools(...labels));
 const buttonsIn = (node) => node.descendants().filter((c) => c.tag === 'button');
+const glyphOf = (button) => button.children[0];
+const overlays = (layer) => layer.children.filter((c) => c.getAttribute('data-loadout-morph') !== null);
+const ghostsIn = (layer) => layer.children.filter((c) => c.getAttribute('data-loadout-ghost') !== null);
+const GROW = [{ opacity: 0, scale: '0.6' }, { opacity: 1, scale: '1' }];
+const SHRINK = [{ opacity: 1, scale: '1' }, { opacity: 0, scale: '0.6' }];
 
-test('a new set crossfades: the changed tools fade out as a lifeless copy and their replacements fade in; the rule stays', () => {
-  const { slot, layer, replace } = setup();
-  replace(divider(), host('Rectangle', 'Ellipse', 'Arrow'));
-  assert.equal(layer.children.length, 1, 'the outgoing tools are drawn in the ghost layer');
-  const ghost = layer.children[0];
-  assert.equal(ghost.getAttribute('aria-hidden'), 'true');
-  assert.equal(ghost.getAttribute('inert'), '');
-  assert.equal(ghost.style.pointerEvents, 'none');
-  assert.equal(ghost.getAttribute('data-toolbar-subtools'), null, 'no planner hooks on the copy');
-  assert.equal(ghost.getAttribute('style'), 'left: 100%', 'it keeps the slot\'s own placement');
-  // The rule is the same control in the same place: its copy only holds its
-  // place, and the live rule does not animate.
-  assert.equal(ghost.children[0].style.visibility, 'hidden');
+test('RULED w49: Draw → Shapes — slots 1-3 morph pen → rectangle, highlighter → ellipse, eraser → polygon in place; slot 4 grows in; the rule stays', () => {
+  const { slot, layer, win, replace } = setup();
+  replace(divider(), host('Rectangle', 'Ellipse', 'Polygon', 'Line'));
+  const morphs = overlays(layer);
+  assert.deepEqual(morphs.map((m) => m.getAttribute('data-loadout-morph')), ['rect', 'ellipse', 'polygon'], 'one morph per shared slot, drawing towards the new icon');
+  for (const m of morphs) {
+    assert.equal(m.getAttribute('aria-hidden'), 'true');
+    assert.equal(m.style.pointerEvents, 'none');
+    assert.match(m.children[0].getAttribute('d'), /^M[\d.-]+ [\d.-]+L/, 'drawn as a path');
+  }
+  // The live glyphs under the morphs are hidden until it lands (an
+  // animation, not a DOM change).
+  const live = buttonsIn(slot);
+  for (const button of live.slice(0, 3)) assert.deepEqual(glyphOf(button).animations[0].keyframes, [{ opacity: 0 }, { opacity: 0 }]);
+  // Slot 4 is only in Shapes: it grows in from its centre.
+  const grow = live[3].animations[0];
+  assert.deepEqual(grow.keyframes, GROW);
+  assert.equal(grow.options.duration, LOADOUT_MOTION.durationMs);
+  assert.equal(grow.options.easing, LOADOUT_MOTION.easing);
+  // Morphing tools do not also grow; the rule does not animate; nothing
+  // shrinks, so no copy of the old set is drawn.
+  for (const button of live.slice(0, 3)) assert.equal(button.animations.length, 0);
   assert.equal(slot.children[0].animations.length, 0);
-  for (const button of buttonsIn(ghost)) {
-    assert.equal(button.getAttribute('id'), null);
-    assert.equal(button.getAttribute('data-testid'), null);
-    assert.equal(button.getAttribute('aria-label'), null);
-  }
-  const [out] = ghost.animations;
-  assert.deepEqual(out.keyframes, loadoutKeyframes('out'));
-  assert.equal(out.options.duration, LOADOUT_MOTION.outMs);
-  // Each new tool fades in on its own, after the old ones have thinned out.
-  const arrivals = buttonsIn(slot).map((b) => b.animations[0]);
-  assert.equal(arrivals.length, 3);
-  for (const arrive of arrivals) {
-    assert.deepEqual(arrive.keyframes, loadoutKeyframes('in'));
-    assert.equal(arrive.options.duration, LOADOUT_MOTION.inMs);
-    assert.equal(arrive.options.delay, LOADOUT_MOTION.inDelayMs);
-    assert.equal(arrive.options.fill, 'backwards', 'hidden while it waits');
-  }
-  // When the old tools' fade ends, their copy is gone.
-  out.onfinish();
-  assert.equal(layer.children.length, 0);
+  assert.equal(ghostsIn(layer).length, 0);
+  // The morph's colour runs from the old glyph's to the new one's.
+  assert.equal(morphs[0].style.color, 'rgba(216, 168, 78, 1)');
+  // Frames run it to the end; at rest the overlays are gone and the real
+  // (crisp) icons are shown again.
+  const first = morphs[0].children[0].getAttribute('d');
+  win.advance(96);
+  assert.notEqual(morphs[0].children[0].getAttribute('d'), first, 'the shape changes frame by frame');
+  win.advance(128);
+  assert.equal(overlays(layer).length, 0);
+  for (const button of live.slice(0, 3)) assert.equal(glyphOf(button).animations[0].cancelled, true);
 });
 
-test('row 2: controls that stay the same at the front do not animate; only the new ones arrive', () => {
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts —
-  // switching Line → Arrow must not slide or double the colours and width.
+test('RULED w49: Shapes → Draw — slots 1-3 morph back; slots only Shapes had shrink out to their centres in a lifeless copy', () => {
+  const { slot, layer, win, replace } = setup();
+  replace(divider(), host('Rectangle', 'Ellipse', 'Polygon', 'Line'));
+  buttonsIn(slot)[3].animations[0].onfinish();
+  win.advance(240);
+  replace(divider(), host('Pen', 'Highlighter', 'Eraser'));
+  assert.equal(overlays(layer).length, 3);
+  const [ghost] = ghostsIn(layer);
+  assert.ok(ghost, 'the leaving slot is drawn in a copy');
+  assert.equal(ghost.getAttribute('aria-hidden'), 'true');
+  assert.equal(ghost.getAttribute('inert'), '');
+  const units = [ghost.children[0], ...buttonsIn(ghost)];
+  // Only the Line slot shows (and shrinks); the rule and the morphing slots
+  // are held hidden in the copy.
+  assert.deepEqual(units.map((u) => u.style.visibility === 'hidden'), [true, true, true, true, false]);
+  const out = units[4].animations[0];
+  assert.deepEqual(out.keyframes, SHRINK);
+  assert.equal(out.options.duration, LOADOUT_MOTION.durationMs);
+  assert.ok(buttonsIn(slot).every((b) => b.animations.length === 0), 'nothing grows: every Draw slot morphs');
+  out.onfinish();
+  assert.equal(ghostsIn(layer).length, 0, 'the copy goes when its last slot has shrunk');
+});
+
+test('RULED w49: a changed setting in row 2 (no tool icon) shrinks out and the new one grows in at the same spot; the same controls do not animate', () => {
   const win = fakeWindow();
   const settings = (...extra) => [
     el('div', { 'data-quick-colours': 'true' }, [el('button', { 'aria-label': 'Red' }), el('button', { 'aria-label': 'Custom colour #ff0000' })]),
@@ -185,23 +260,85 @@ test('row 2: controls that stay the same at the front do not animate; only the n
   const layer = el('div');
   attachLoadoutTransition(holder, layer, { win });
   holder.children = [];
-  settings(el('div', { 'data-toolbar-slot': 'style' }), el('div', { 'data-toolbar-slot': 'arrowhead' })).forEach((c) => holder.appendChild(c));
+  settings(el('div', { 'data-toolbar-slot': 'fill' }), el('div', { 'data-toolbar-slot': 'arrowhead' })).forEach((c) => holder.appendChild(c));
   win.flush();
-  assert.equal(layer.children.length, 0, 'nothing left: every old control is still there');
-  assert.deepEqual(holder.children.map((c) => c.animations.length), [0, 0, 0, 0, 1]);
-  assert.equal(holder.children[4].animations[0].options.delay, 0, 'no wait when nothing leaves');
+  assert.deepEqual(holder.children.map((c) => c.animations.map((a) => a.keyframes)), [[], [], [], [GROW], [GROW]]);
+  const [ghost] = ghostsIn(layer);
+  assert.deepEqual(ghost.children.map((c) => (c.style.visibility === 'hidden' ? 'held' : c.animations[0]?.keyframes)), ['held', 'held', 'held', SHRINK]);
 });
 
-test('the motion is quick and subtle: ~140-180ms, a 6px slide, done within 200ms', () => {
-  assert.ok(LOADOUT_MOTION.outMs >= 100 && LOADOUT_MOTION.outMs <= 180);
-  assert.ok(LOADOUT_MOTION.inMs >= 140 && LOADOUT_MOTION.inMs <= 180);
-  assert.ok(LOADOUT_MOTION.inDelayMs + LOADOUT_MOTION.inMs <= 200);
-  assert.equal(LOADOUT_MOTION.slidePx, 6);
-  assert.match(LOADOUT_MOTION.arriveEasing, /cubic-bezier\(0\.33, 1,/, 'arrivals settle (ease-out)');
-  assert.match(LOADOUT_MOTION.leaveEasing, /cubic-bezier\(0\.4, 0, 1, 1\)/, 'departures speed away (ease-in)');
-  assert.deepEqual(loadoutKeyframes('in'), [{ opacity: 0, translate: '-6px 0' }, { opacity: 1, translate: '0 0' }]);
-  assert.deepEqual(loadoutKeyframes('out'), [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '-6px 0' }]);
+test('RULED w49: one motion language — the same 200ms ease-in-out for every morph, grow, shrink and row glide, and nothing slides sideways', () => {
+  assert.equal(LOADOUT_MOTION.durationMs, 200);
+  assert.ok(LOADOUT_MOTION.durationMs >= 180 && LOADOUT_MOTION.durationMs <= 220, 'quick: 180-220ms');
+  assert.match(LOADOUT_MOTION.easing, /^cubic-bezier\(0\.45, 0, 0\.55, 1\)$/, 'ease-in-out');
+  assert.equal(ROW_SLIDE_MS, LOADOUT_MOTION.durationMs, 'the row glide keeps the same time');
+  assert.equal(LOADOUT_MOTION.growFrom, 0.6);
+  assert.deepEqual(loadoutKeyframes('in'), GROW);
+  assert.deepEqual(loadoutKeyframes('out'), SHRINK);
+  for (const frame of [...loadoutKeyframes('in'), ...loadoutKeyframes('out')]) {
+    assert.equal(frame.translate, undefined, 'no sideways slide');
+  }
+  assert.deepEqual(loadoutKeyframes('in', { from: { opacity: 0.4, scale: 0.76 } })[0], { opacity: 0.4, scale: '0.76' }, 'a change caught mid-way starts where it was');
 });
+
+// The loadouts as the planner sees them: the rule, then each tool's slot.
+const LOADOUTS = {
+  Pan: [],
+  Draw: ['rule', 'pen', 'highlighter', 'eraser'],
+  Shapes: ['rule', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'],
+  Text: ['rule', 'textBox', 'callout'],
+  Select: ['rule', 'selectCursor', 'lassoSelect', 'textSelect'],
+};
+const slots = (names) => names.map((name) => ({ sig: name, icon: name === 'rule' ? null : name }));
+
+test('RULED w49: every group switch plans the same way — shared tool slots morph, the rule stays, extra slots grow or shrink, in every direction', () => {
+  const MORPHABLE = new Set(['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'polygon', 'textBox', 'callout', 'selectCursor', 'lassoSelect', 'textSelect']);
+  for (const [fromName, from] of Object.entries(LOADOUTS)) {
+    for (const [toName, to] of Object.entries(LOADOUTS)) {
+      if (fromName === toName) continue;
+      const kinds = planLoadoutSwap(slots(from), slots(to));
+      const label = `${fromName} → ${toName}`;
+      kinds.forEach((kind, i) => {
+        const [a, b] = [from[i], to[i]];
+        let expected;
+        if (a && b) expected = a === b ? 'stay' : (MORPHABLE.has(a) && MORPHABLE.has(b) ? 'morph' : 'swap');
+        else expected = b ? 'grow' : 'shrink';
+        assert.equal(kind, expected, `${label} slot ${i}`);
+      });
+      // The reverse switch is the mirror image: morphs stay morphs, grows
+      // become shrinks — one language whichever way you go.
+      const back = planLoadoutSwap(slots(to), slots(from));
+      assert.deepEqual(back, kinds.map((k) => ({ grow: 'shrink', shrink: 'grow' }[k] || k)), `${label} mirrors its reverse`);
+    }
+  }
+  // The owner's slots: 1 = pen / rectangle / text box / Box, 2 = highlighter
+  // / ellipse / callout / Lasso, 3 = eraser / polygon / Text select.
+  assert.deepEqual(planLoadoutSwap(slots(LOADOUTS.Draw), slots(LOADOUTS.Text)), ['stay', 'morph', 'morph', 'shrink']);
+  assert.deepEqual(planLoadoutSwap(slots(LOADOUTS.Text), slots(LOADOUTS.Select)), ['stay', 'morph', 'morph', 'grow']);
+});
+
+test('RULED w49: a morph caught mid-way (Draw → Shapes → Text quickly) carries on from the shape on screen, never snapping back', () => {
+  const { layer, win, replace } = setup();
+  replace(divider(), host('Rectangle', 'Ellipse', 'Polygon'));
+  win.advance(96);
+  const midway = overlays(layer)[0].children.map((p) => p.getAttribute('d'));
+  replace(divider(), host('Text', 'Callout'));
+  const next = overlays(layer).filter((m) => !m.animations.length);
+  assert.deepEqual(next.map((m) => m.getAttribute('data-loadout-morph')), ['textBox', 'callout'], 'slots 1-2 morph on to the Text tools');
+  // The new morph's first frame is the old one's last: the same ink.
+  const pts = (d) => d.slice(1).split('L').map((xy) => xy.split(' ').map(Number));
+  const inkOf = (ds) => ds.flatMap(pts);
+  const box = (points) => [Math.min(...points.map((p) => p[0])), Math.max(...points.map((p) => p[0])), Math.min(...points.map((p) => p[1])), Math.max(...points.map((p) => p[1]))];
+  const before = box(inkOf(midway));
+  const after = box(inkOf(next[0].children.map((p) => p.getAttribute('d'))));
+  before.forEach((v, i) => assert.ok(Math.abs(v - after[i]) < 0.05, `starts where it was (${before} vs ${after})`));
+  // Slot 3 (polygon, mid-morph) has no Text slot: its overlay shrinks out
+  // as drawn.
+  const shrinking = layer.children.find((c) => c.getAttribute('data-loadout-morph') === 'polygon');
+  assert.deepEqual(shrinking?.animations[0]?.keyframes, SHRINK);
+});
+
+
 
 test('the same set with another tool lit, or a new value, does not animate', () => {
   const { slot, layer, replace } = setup();
@@ -213,43 +350,49 @@ test('the same set with another tool lit, or a new value, does not animate', () 
   assert.ok(slot.descendants().every((n) => n.animations.length === 0));
 });
 
-test('reduced motion: the swap is instant — no copy, no animation', () => {
+test('reduced motion: the swap is instant — no copy, no morph, no animation', () => {
   const { slot, layer, replace } = setup({ reduced: true });
   replace(divider(), host('Rectangle', 'Ellipse'));
   assert.equal(layer.children.length, 0);
   assert.ok(slot.descendants().every((n) => n.animations.length === 0));
 });
 
-test('nothing leaving (Pan → Draw): the rule and tools fade in at once, with no wait', () => {
+test('nothing leaving (Pan → Draw): the rule and tools grow in at once, with no wait', () => {
   const { slot, layer, replace } = setup();
   replace();
-  layer.children[0]?.animations[0]?.onfinish();
+  for (const ghost of ghostsIn(layer)) for (const unit of ghost.descendants()) unit.animations[0]?.onfinish();
+  assert.equal(layer.children.length, 0);
   replace(divider(), host('Pen', 'Highlighter', 'Eraser'));
   assert.equal(layer.children.length, 0);
   const arrivals = [slot.children[0], ...buttonsIn(slot)].map((n) => n.animations[0]);
   assert.equal(arrivals.length, 4);
-  assert.ok(arrivals.every((a) => a && a.options.delay === 0));
+  assert.ok(arrivals.every((a) => a && !a.options.delay && JSON.stringify(a.keyframes) === JSON.stringify(GROW)));
 });
 
-test('a burst of changes (Draw → Select: tools out, then the modes in) keeps the Draw tools as the ones leaving', () => {
+test('a burst of changes (Draw → Select: tools out, then the modes in): the Draw tools shrink out, the modes grow in', () => {
   const { slot, layer, replace } = setup();
   replace(divider(), host());
-  replace(divider(), el('div', { 'data-select-mode-toggle': 'true' }, tools('Box', 'Lasso', 'Text')), host());
-  assert.equal(layer.children.length, 1, 'one ghost, of the Draw tools');
-  assert.deepEqual(buttonsIn(layer.children[0]).length, 3);
+  replace(divider(), el('div', { 'data-select-mode-toggle': 'true' }, tools('Box', 'Lasso', 'Text select')), host());
+  const [ghost] = ghostsIn(layer);
+  assert.equal(buttonsIn(ghost).filter((b) => b.animations[0]).length, 3, 'the Draw tools are the ones leaving');
   const arrivals = buttonsIn(slot).map((b) => b.animations[0]);
   assert.equal(arrivals.length, 3);
-  assert.ok(arrivals.every((a) => a.options.delay === LOADOUT_MOTION.inDelayMs), 'the modes wait for the Draw tools to thin out');
+  assert.ok(arrivals.every((a) => JSON.stringify(a.keyframes) === JSON.stringify(GROW)));
 });
 
-test('the set that is leaving comes straight back (Shapes → Pan → Shapes): no copy of itself fades out', () => {
+test('the set that is leaving comes straight back (Shapes → Pan → Shapes): it grows back from where it had shrunk to, and no copy of it stays', () => {
   const { slot, layer, replace } = setup();
   replace();
-  assert.equal(layer.children.length, 1, 'the Draw tools start to leave');
+  const [ghost] = ghostsIn(layer);
+  const shrinking = [ghost.children[0], ...buttonsIn(ghost)];
+  shrinking.forEach((u) => { u.animations[0].progress = 0.5; });
   replace(divider(), host('Pen', 'Highlighter', 'Eraser'));
-  assert.equal(layer.children.length, 0, 'their copy is dropped at once');
+  assert.equal(ghostsIn(layer).length, 0, 'their copy is dropped at once');
   const arrivals = [slot.children[0], ...buttonsIn(slot)].map((n) => n.animations[0]);
-  assert.ok(arrivals.every((a) => a && a.options.delay === 0), 'and they ease straight back in');
+  for (const a of arrivals) {
+    assert.deepEqual(a.keyframes[0], { opacity: 0.5, scale: '0.8' }, 'from half shrunk');
+    assert.ok(a.options.duration < LOADOUT_MOTION.durationMs, 'and only the rest of the way');
+  }
 });
 
 test('a slot hidden (row 2 leaving) holds its last set while the row fades; shown again, it just stays', () => {
@@ -268,10 +411,10 @@ test('a slot hidden (row 2 leaving) holds its last set while the row fades; show
   assert.ok(slot.descendants().every((n) => n.animations.length === 0));
 });
 
-test('detaching stops watching and clears any copy', () => {
+test('detaching stops watching and clears any copy or morph', () => {
   const { layer, win, detach, replace } = setup();
   replace(host('Rectangle'));
-  assert.equal(layer.children.length, 1);
+  assert.ok(layer.children.length >= 1);
   detach();
   assert.equal(layer.children.length, 0);
   assert.ok(win.observers.every((o) => o.disconnected));
@@ -314,7 +457,7 @@ test('w48: a re-centred row glides from its old spot, and carries on from mid-gl
   const [first] = slideRow([target], -40, { win });
   assert.deepEqual(first.frames, [{ translate: '-40px 0' }, { translate: '0 0' }]);
   assert.equal(first.options.duration, ROW_SLIDE_MS);
-  assert.equal(first.options.easing, LOADOUT_MOTION.arriveEasing);
+  assert.equal(first.options.easing, LOADOUT_MOTION.easing, 'w49: the same ease-in-out as every other motion');
   // Half way through, another move 20px further right: it starts from the
   // drawn spot (-20 carried + -20 new), never jumping.
   target.offset = -20;
