@@ -15,6 +15,12 @@
 // the loadout grows rightward from the icons; rows 2 and 3 start at one fixed
 // spot under the icons (rowStart). Assertions that changed for it carry that
 // line.
+//
+// RULED 2026-09-27 owner: Pan/Select beside the groups (w48). Pan / Select
+// hang off the icons' left edge again (Undo/Redo alone pinned left); the plan
+// keeps them clear of Undo/Redo. RULED 2026-09-27 owner: rows 2/3 centred,
+// animated — rows 2 and 3 centre under the icons (rowStart is gone). The
+// "same spot in every state" tests stay.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -33,17 +39,19 @@ import {
   planFormatRow,
   planTextRow,
   planTopBar,
-  rowStart,
+  centredRowLeft,
   rowWidth,
 } from '../src/utils/responsiveToolbar.js';
 
-// The bar as measured in the live app (2026-09-26, w47): Undo/Redo, a rule,
-// then Pan / Select pinned left — Select ends at 151; Export is 28px wide and
-// 10px from the right edge; Draw/Shapes/Text are 96px. The canvas runs between
+// The bar as measured in the live app. RULED 2026-09-27 owner: Pan/Select
+// beside the groups — Redo ends at 72 and the Pan / Select block (with its
+// rule) is 79px, hung off the icons' left edge; Export is 28px wide and 10px
+// from the right edge; Draw/Shapes/Text are 96px. The canvas runs between
 // the two 48px rails; an open Pages (224) or Survey (272) panel narrows it.
 const bar = (barWidth, { leftPanel = 0, rightPanel = 0 } = {}) => ({
   barWidth,
-  startRight: 151,
+  startRight: 72,
+  leftBlockWidth: 79,
   exportLeft: barWidth - 38,
   clusterWidth: 96,
   spanLeft: 48 + leftPanel,
@@ -102,8 +110,9 @@ test('the group icons sit at the same x whatever tool, pick or loadout is showin
   // is the same.
   assert.equal(WIDEST_SUBTOOLS_WIDTH, 7 * 28 + 6 * 6 + 17);
   // It reads no measure of the loadout at all — only the room kept for the
-  // widest one...
-  assert.doesNotMatch(String(planTopBar), /subtools|leftBlockWidth|undoRight/);
+  // widest one... RULED 2026-09-27 owner: Pan/Select beside the groups — it
+  // reads the Pan / Select block again (the same width in every state).
+  assert.doesNotMatch(String(planTopBar), /subtools/);
   // ...so the room kept is the only loadout number that can move the icons.
   const tight = bar(1024, { leftPanel: 560 });
   assert.notDeepEqual(planTopBar({ ...tight, loadoutReserve: 100 }), planTopBar(tight));
@@ -112,7 +121,7 @@ test('the group icons sit at the same x whatever tool, pick or loadout is showin
       const input = bar(width, panels);
       const plan = planTopBar(input);
       for (const loadout of [0, 79, 113, 119, WIDEST_SUBTOOLS_WIDTH]) {
-        assert.deepEqual(planTopBar({ ...input, subtoolsWidth: loadout, leftBlockWidth: 79, undoRight: 72 }), plan,
+        assert.deepEqual(planTopBar({ ...input, subtoolsWidth: loadout }), plan,
           `@${width} ${JSON.stringify(panels)} loadout ${loadout}`);
       }
     }
@@ -143,7 +152,7 @@ test('with a side panel open the icons centre on the canvas that is left, room p
   }
 });
 
-test('the icons leave room for the WIDEST loadout before Export, and never run into Pan / Select', () => {
+test('the icons leave room for the WIDEST loadout before Export, and Pan / Select never run into Undo/Redo', () => {
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts — the
   // room kept is the widest loadout's, whatever is showing, so the icons slide
   // off centre by the same amount for every tool.
@@ -153,79 +162,87 @@ test('the icons leave room for the WIDEST loadout before Export, and never run i
   assert.equal(pushed.clusterLeft + 96 + WIDEST_SUBTOOLS_WIDTH, 1024 - 38 - EDGE_CLEARANCE);
   // Same input, same answer: nothing in the plan depends on the last one.
   assert.deepEqual(planTopBar(nearExport), pushed);
-  // A panel so wide the canvas centre sits left of Select: the icons stop
-  // START_GAP clear of Select.
+  // A panel so wide the canvas centre sits left of Undo/Redo: the icons stop
+  // where Pan (hung off their left) is START_GAP clear of Redo. RULED
+  // 2026-09-27 owner: Pan/Select beside the groups (w47 stopped them clear
+  // of a pinned Select).
   const crowded = planTopBar(bar(900, { rightPanel: 600 }));
   assert.equal(crowded.anchor, 'start');
-  assert.equal(crowded.clusterLeft, 151 + START_GAP);
+  assert.equal(crowded.clusterLeft - 79, 72 + START_GAP);
 });
 
-test('rows 2 and 3 start level with the group icons, the same spot for every tool', () => {
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts. w45
-  // centred each tool's settings, so a tool with more settings re-centred;
-  // now the pen's row and the arrow's row (the widest) start at one spot.
+test('rows 2 and 3 are centred under the group icons', () => {
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated (w47 started every
+  // row level with the icons' left edge). Owner: "the subtool bar items are
+  // not centered." Each row centres on the icons' centre wherever it fits.
   for (let width = 721; width <= 2000; width += 13) {
     for (const panels of PANELS) {
       const span = rowSpan(width, panels);
       if (span.usableRight - span.usableLeft < WIDEST_FORMAT_ROW_WIDTH + 2 * ROW_INSET) continue;
-      const anchorLeft = planTopBar(bar(width, panels)).clusterLeft - RAIL;
-      const start = rowStart({ ...span, anchorLeft });
+      const centre = planTopBar(bar(width, panels)).clusterLeft + 48 - RAIL;
       for (const row of [arrowRow(), penRow()]) {
-        const plan = planFormatRow({ ...span, anchorLeft, row });
+        const plan = planFormatRow({ ...span, centre, row });
         assert.equal(plan.fits, true);
         assert.equal(plan.width, keptWidth(row, plan), 'the worked-out width is the drawn row');
-        assert.equal(plan.left, start, `@${width} ${JSON.stringify(panels)}`);
+        assert.ok(plan.left >= span.usableLeft + ROW_INSET, 'starts inside the inset');
         assert.ok(plan.left + plan.width <= span.usableRight - ROW_INSET, 'ends inside the inset');
-      }
-      // Level with the icons wherever the widest row fits from there.
-      if (anchorLeft + WIDEST_FORMAT_ROW_WIDTH <= span.usableRight - ROW_INSET && anchorLeft >= span.usableLeft + ROW_INSET) {
-        assert.equal(start, Math.round(anchorLeft), `@${width} ${JSON.stringify(panels)} level with the icons`);
+        const room = centre - plan.width / 2 >= span.usableLeft + ROW_INSET
+          && centre + plan.width / 2 <= span.usableRight - ROW_INSET;
+        if (room) {
+          assert.ok(Math.abs(plan.left + plan.width / 2 - centre) <= 0.5, `@${width} ${JSON.stringify(panels)} centred`);
+        }
       }
     }
   }
-  // The live 840px window: the icons start at 372 (row 324); the Arrow row
-  // could not end inside the row from there, so every row starts at 297 - 48.
-  assert.equal(rowStart({ ...rowSpan(840), anchorLeft: 324 }), 840 - 2 * RAIL - ROW_INSET - WIDEST_FORMAT_ROW_WIDTH);
+  // With no panel open the icons sit on the canvas centre, and so do rows 2
+  // and 3.
+  const span = rowSpan(1440);
+  const centre = planTopBar(bar(1440)).clusterLeft + 48 - RAIL;
+  assert.equal(centre, (span.usableLeft + span.usableRight) / 2);
+  assert.equal(planFormatRow({ ...span, centre, row: penRow(), width: 189.4 }).left, Math.round(centre - 189.4 / 2));
+  assert.equal(planTextRow({ ...span, centre, width: 602 }), Math.round(centre - 301));
 });
 
-test('a row wider than the widest known one slides left just enough; a measured width wins', () => {
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts.
+test('a measured width wins; a row too wide to centre slides just far enough', () => {
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated.
   const span = rowSpan(1440);
-  const anchorLeft = 672 - RAIL;
-  const plan = planFormatRow({ ...span, anchorLeft, row: penRow(), width: 189.4 });
+  const plan = planFormatRow({ ...span, centre: 624, row: penRow(), width: 189.4 });
   assert.equal(plan.width, 189.4);
-  assert.equal(plan.left, 624);
-  const wide = planFormatRow({ ...span, anchorLeft, row: penRow(), width: 760 });
-  assert.equal(wide.left, span.usableRight - ROW_INSET - 760);
+  assert.equal(plan.left, Math.round(624 - 189.4 / 2));
+  // Centred on a spot near the right end: slides left to end at the inset.
+  const nearRight = planFormatRow({ ...span, centre: span.usableRight - 100, row: penRow(), width: 485 });
+  assert.equal(nearRight.left, span.usableRight - ROW_INSET - 485);
+  // Wider than the span: keeps the inset and runs off the right.
+  const wide = planFormatRow({ ...span, centre: 624, row: penRow(), width: 2000 });
+  assert.equal(wide.left, span.usableLeft + ROW_INSET);
 });
 
 test('a row wider than its gap starts at the gap\'s inset, never under the left panel', () => {
   // RULED 2026-09-26 owner: centre rows on canvas — centring never pushes the
-  // start past the row's inset or under a panel.
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts — the
-  // same holds from the icons' spot.
+  // start past the row's inset or under a panel. RULED 2026-09-27 owner:
+  // rows 2/3 centred, animated — the same holds centred under the icons.
   const span = rowSpan(1024, { leftPanel: 224, rightPanel: 272 });
-  const withPanel = planFormatRow({ ...span, anchorLeft: 440 - RAIL, row: arrowRow() });
+  const withPanel = planFormatRow({ ...span, centre: 488 - RAIL, row: arrowRow() });
   assert.ok(withPanel.left >= 224 + ROW_INSET);
   assert.ok(withPanel.left + withPanel.width <= span.usableRight - ROW_INSET);
-  // No anchor measured yet: the row's inset.
-  assert.equal(rowStart({ ...span }), 224 + ROW_INSET);
+  // No centre measured yet: the middle of the uncovered span.
+  assert.equal(centredRowLeft({ ...span, width: 100 }), Math.round((span.usableLeft + span.usableRight) / 2 - 50));
 });
 
-test('the text bar (row 3) starts at row 2\'s spot, keeping room for its "Text" caption', () => {
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w45 had
-  // it centred; w44 left-aligned with row 2's settings).
+test('the text bar (row 3) centres like row 2, keeping room for its "Text" caption', () => {
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated (w47 started it at
+  // row 2's fixed spot; w45 had it centred on the span; w44 left-aligned).
   const span = rowSpan(1440);
-  const anchorLeft = 672 - RAIL;
-  assert.equal(planTextRow({ ...span, anchorLeft, width: 602 }), rowStart({ ...span, anchorLeft }));
-  // Wider than the room right of that spot: it slides left just enough.
+  const centre = 672 - RAIL + 48;
+  assert.equal(planTextRow({ ...span, centre, width: 602 }), Math.round(centre - 301));
+  // Wider than the room right of centre: it slides left just enough.
   const narrow = rowSpan(1024);
-  assert.equal(planTextRow({ ...narrow, anchorLeft: 464 - RAIL, width: 602 }), narrow.usableRight - ROW_INSET - 602);
+  assert.equal(planTextRow({ ...narrow, centre: narrow.usableRight - 200, width: 602 }), narrow.usableRight - ROW_INSET - 602);
   // Too little room left of it for the caption: it slides right just enough.
-  assert.equal(planTextRow({ ...span, anchorLeft: 0, width: 602 }), span.usableLeft + ROW_INSET + TEXT_ROW_CAPTION_ROOM);
+  assert.equal(planTextRow({ ...span, centre: 0, width: 602 }), span.usableLeft + ROW_INSET + TEXT_ROW_CAPTION_ROOM);
   // Wider than the gap: it keeps its start (caption room) and runs off the right.
   const both = rowSpan(840, { leftPanel: 224, rightPanel: 272 });
-  assert.equal(planTextRow({ ...both, anchorLeft: 348 - RAIL, width: 602 }), 224 + ROW_INSET + TEXT_ROW_CAPTION_ROOM);
+  assert.equal(planTextRow({ ...both, centre: 396 - RAIL, width: 602 }), 224 + ROW_INSET + TEXT_ROW_CAPTION_ROOM);
 });
 
 test('the row gives ground in order: gutters, then labels (least useful first), then More', () => {
@@ -293,12 +310,13 @@ test('nothing ever overlaps: at every desktop width both rows stay inside their 
     // Row 1: the icons clear of Pan / Select, the widest loadout clear of
     // Export. RULED 2026-09-26 owner: centre rows on canvas — with any panel
     // open too. RULED 2026-09-26 owner: fixed centred groups + animated
-    // loadouts — Pan / Select are pinned left now, and the room checked is
-    // the widest loadout's, hanging off the icons.
+    // loadouts — the room checked is the widest loadout's, hanging off the
+    // icons. RULED 2026-09-27 owner: Pan/Select beside the groups — Pan /
+    // Select hang off the icons' left and stay clear of Undo/Redo.
     for (const panels of [{}, { rightPanel: 272 }, { leftPanel: 224, rightPanel: 272 }]) {
       const input = bar(width, panels);
       const { clusterLeft } = planTopBar(input);
-      assert.ok(clusterLeft >= input.startRight + START_GAP - 0.5, `icons clear of Select @${width}`);
+      assert.ok(clusterLeft - input.leftBlockWidth >= input.startRight + START_GAP - 0.5, `Pan clear of Redo @${width}`);
       assert.ok(clusterLeft + input.clusterWidth + WIDEST_SUBTOOLS_WIDTH <= width - 38 - EDGE_CLEARANCE + 0.5, `loadout @${width}`);
     }
     // Row 2: the settings end inside the row's inset and clear of any panel.

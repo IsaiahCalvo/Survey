@@ -29,13 +29,13 @@ import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/v
  *
  * DOM contract:
  *   inside the tool bar (`hostRef`):
- *     [data-toolbar-start]           the block pinned left: Undo / Redo
- *                                    ([data-undo-redo-controls]), a rule, and
- *                                    Pan / Select ([data-toolbar-left-block])
+ *     [data-undo-redo-controls]      Undo / Redo, pinned left
  *     [data-toolbar-export]          Export (optional)
  *     [data-tool-toolbar]            the Draw / Shapes / Text icons (w47:
  *                                    centred on the canvas span — the
  *                                    formatting row's host — and fixed there)
+ *     [data-toolbar-left-block]      Pan / Select and their rule, hung off
+ *                                    the icons' left edge (w48)
  *     [data-toolbar-subtools]        the loadout, hanging off the icons'
  *                                    right edge; NOT read by the plan, so it
  *                                    never moves anything
@@ -197,8 +197,11 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     const hostRect = host.getBoundingClientRect();
     if (hostRect.width <= 0) return false;
     const rel = (element, edge) => (element ? element.getBoundingClientRect()[edge] - hostRect.left : null);
-    const start = host.querySelector('[data-toolbar-start]')
-      || host.querySelector('[data-undo-redo-controls]');
+    const undo = host.querySelector('[data-undo-redo-controls]');
+    // RULED 2026-09-27 owner: Pan/Select beside the groups (w48). Pan /
+    // Select hang off the icons' left edge; the plan keeps them clear of
+    // Undo/Redo. Their block is the same width in every state.
+    const leftBlock = host.querySelector('[data-toolbar-left-block]');
     const exportButton = host.querySelector('[data-toolbar-export]');
     const cluster = host.querySelector('[data-tool-toolbar]');
     if (!cluster) return false;
@@ -229,7 +232,8 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     const drawnShift = -(parseFloat(cluster.style.left) || 0);
     const top = planTopBar({
       barWidth: hostRect.width,
-      startRight: rel(start, 'right') ?? 0,
+      startRight: rel(undo, 'right') ?? 0,
+      leftBlockWidth: leftBlock ? leftBlock.getBoundingClientRect().width : 0,
       exportLeft: rel(exportButton, 'left') ?? hostRect.width - 10,
       clusterWidth: clusterRect.width,
       spanLeft: canvasLeft,
@@ -254,9 +258,10 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
     if (holder && rowRect && rowRect.width > 0) {
       const row = rowFromDom(holder, cacheRef.current, overflowSlotsRef?.current || []);
       const span = usableRowSpan(rowRect);
-      // w47: the settings start level with the group icons' left edge.
-      const anchorLeft = hostRect.left + top.clusterLeft - rowRect.left;
-      const input = { usableLeft: span.left, usableRight: span.right, anchorLeft, row };
+      // RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). The
+      // settings centre under the group icons (useRowSlide animates a move).
+      const centre = hostRect.left + top.clusterLeft + clusterRect.width / 2 - rowRect.left;
+      const input = { usableLeft: span.left, usableRight: span.right, centre, row };
       let next = planFormatRow(input);
       // Centred on the width the row is DRAWN at once this plan is on screen:
       // when the plan keeps what is drawn now, that is the measured width
@@ -265,8 +270,13 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         && next.compact.join('|') === current.compact.join('|')
         && next.overflow.join('|') === current.overflow.join('|');
       if (keepsDrawn) next = planFormatRow({ ...input, width: holder.getBoundingClientRect().width });
+      // A row whose controls have not changed never moves: a pixel of
+      // sub-pixel measuring noise is not a reason to re-centre.
+      const formatLeft = Number.isFinite(current.formatLeft) && Math.abs(next.left - current.formatLeft) <= 1
+        ? current.formatLeft
+        : next.left;
       format = {
-        formatLeft: next.left,
+        formatLeft,
         formatUsableLeft: Math.round(span.left),
         textRowLeft: current.textRowLeft,
         tight: next.tight,
@@ -275,7 +285,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         fits: next.fits,
       };
     }
-    // The text bar (row 3, the Aa bar): at row 2's fixed start (w47), planned
+    // The text bar (row 3, the Aa bar): centred like row 2 (w48), planned
     // only while it is on screen, from its controls' drawn width (the caption
     // hangs out of the flow and does not count).
     const textBar = column?.querySelector('[data-chrome-text-format-row] [data-rich-text-toolbar]');
@@ -290,12 +300,15 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
         .filter((box) => box.width > 0);
       if (boxes.length) {
         const span = usableRowSpan(textBarRect);
-        format.textRowLeft = planTextRow({
+        const textRowLeft = planTextRow({
           usableLeft: span.left,
           usableRight: span.right,
-          anchorLeft: hostRect.left + top.clusterLeft - textBarRect.left,
+          centre: hostRect.left + top.clusterLeft + clusterRect.width / 2 - textBarRect.left,
           width: Math.max(...boxes.map((b) => b.right)) - Math.min(...boxes.map((b) => b.left)),
         });
+        format.textRowLeft = Number.isFinite(current.textRowLeft) && Math.abs(textRowLeft - current.textRowLeft) <= 1
+          ? current.textRowLeft
+          : textRowLeft;
       }
     }
     const next = { ...top, ...format };

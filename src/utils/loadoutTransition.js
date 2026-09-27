@@ -278,3 +278,89 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     dropGhost();
   };
 }
+
+/**
+ * RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). Rows 2 and 3 are
+ * centred under the group icons again, so a row whose controls change (a
+ * tool switch, Cloud adding Bump) re-centres. The owner dislikes snapping, so
+ * that move GLIDES: the row is laid out at its new spot at once (nothing else
+ * is laid out again) and a Web Animation on the `translate` property carries
+ * it there from where the eye last saw it, over ROW_SLIDE_MS with the
+ * loadout's ease-out. `translate` composes with the row's own
+ * `transform: translateY(-50%)` and lays nothing out. A move that lands
+ * mid-glide starts from where the glide had got to, so a quick run of tool
+ * switches never jumps.
+ *
+ * The move is instant (no glide) with prefers-reduced-motion, while the row
+ * itself is dropping in or fading out (it arrives in place, never sliding
+ * sideways as it appears), and while a popover or menu is open from it (the
+ * popover is placed under its opener after each render, so it never trails a
+ * gliding opener). A row whose controls have not changed never moves at all
+ * (useResponsiveToolbar ignores a pixel of measuring noise).
+ */
+export const ROW_SLIDE_MS = 190;
+
+const rowSlides = new WeakMap();
+
+/** How far `element` is drawn from its laid-out spot by a running glide. */
+function carriedOffset(element, win) {
+  try {
+    const x = parseFloat(win?.getComputedStyle?.(element)?.translate);
+    return Number.isFinite(x) ? x : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Stop any glide on `targets`, leaving them at their laid-out spot. */
+export function cancelRowSlide(targets) {
+  for (const target of targets) {
+    rowSlides.get(target)?.cancel?.();
+    rowSlides.delete(target);
+  }
+}
+
+/**
+ * Glide `targets` (moved together) from `deltaPx` right of their new spot
+ * (negative = left of it) to it. Returns the animations started.
+ */
+export function slideRow(targets, deltaPx, { win = typeof window === 'undefined' ? undefined : window, motion = LOADOUT_MOTION } = {}) {
+  const started = [];
+  for (const target of targets) {
+    const running = rowSlides.get(target);
+    const carried = running ? carriedOffset(target, win) : 0;
+    running?.cancel?.();
+    rowSlides.delete(target);
+    const from = deltaPx + carried;
+    if (Math.abs(from) < 0.5) continue;
+    const animation = target.animate?.(
+      [{ translate: `${from}px 0` }, { translate: '0 0' }],
+      { duration: ROW_SLIDE_MS, easing: motion.arriveEasing },
+    );
+    if (!animation) continue;
+    rowSlides.set(target, animation);
+    animation.onfinish = () => { if (rowSlides.get(target) === animation) rowSlides.delete(target); };
+    started.push(animation);
+  }
+  return started;
+}
+
+// An open popover or menu: Radix triggers carry aria-expanded, the colour
+// pickers sit in an AnchoredPopover.
+const OPEN_FROM_ROW = '[aria-expanded="true"]';
+const ANCHORED_POPOVER = '[data-anchored-popover]';
+
+/**
+ * True when a move of `row` (the whole bar) should be instant rather than
+ * glide: reduced motion, the bar dropping in or fading out, or a popover
+ * open from it (or any anchored picker up).
+ */
+export function rowMoveIsInstant(row, win = typeof window === 'undefined' ? undefined : window) {
+  if (prefersReducedMotion(win)) return true;
+  try {
+    if (row?.getAnimations?.().some((animation) => animation.playState === 'running')) return true;
+  } catch { /* no animation API: glide */ }
+  if (row?.querySelector?.(OPEN_FROM_ROW)) return true;
+  if (row?.ownerDocument?.querySelector?.(ANCHORED_POPOVER)) return true;
+  return false;
+}

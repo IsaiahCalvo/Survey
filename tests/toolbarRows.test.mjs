@@ -182,26 +182,42 @@ test('the Survey row and the tool-bar tools are keyed portals, so one never remo
   assert.match(pdfViewer, /inToolBar \? 'tool-bar-tools' : 'sub-row'\s*\);/);
 });
 
-test('w47: Pan / Select pin left after Undo/Redo; the group icons and loadout never read the loadout', () => {
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts. "I want
-  // the annotation tool groups of Draw, Shape, and Text to be centered, and
-  // the Pan and Select tool can be off to the left."
-  const start = appShell.slice(appShell.indexOf('data-toolbar-start="true"'), appShell.indexOf('data-tool-toolbar="true"'));
-  assert.ok(start.length > 0, 'the pinned-left block exists before the icons');
-  assert.ok(start.indexOf('data-undo-redo-controls="true"') > 0, 'Undo / Redo first');
-  assert.ok(start.indexOf('<div className="chrome-divider" />') > start.indexOf('data-undo-redo-controls="true"'), 'then a rule');
-  assert.ok(start.indexOf('data-toolbar-left-block="true"') > start.indexOf('<div className="chrome-divider" />'), 'then Pan / Select');
-  // The icon cluster no longer carries Pan / Select.
+test('w48: Pan / Select hang beside the group icons; Undo/Redo pinned left; nothing reads the loadout', () => {
+  // RULED 2026-09-27 owner: Pan/Select beside the groups (supersedes w47's
+  // pin beside Undo/Redo). "No, the Pan and Select are supposed to stay next
+  // to the other tool groups; I was just saying to keep it on the left."
+  assert.doesNotMatch(appShell, /data-toolbar-start/);
+  // Undo / Redo pinned at the far left on their own, as before w47.
+  assert.match(appShell, /data-undo-redo-controls="true"\s*style=\{\{\s*\/\/ Narrow shells: flow inline with the tool cluster \(no pinning\)\.\s*\.\.\.\(isNarrowShell\s*\? \{ position: 'static' \}\s*: \{ position: 'absolute', left: '10px', top: 0, bottom: 0 \}\),/);
+  // Pan / Select sit INSIDE the icon cluster, hung off its left edge, with
+  // the rule between Select and Draw.
   const cluster = appShell.slice(appShell.indexOf('data-tool-toolbar="true"'), appShell.indexOf('data-toolbar-subtools="true"'));
-  assert.doesNotMatch(cluster, /data-toolbar-left-block/);
-  // The plan reads the pinned block and Export, never the loadout's width.
+  const left = cluster.indexOf('data-toolbar-left-block="true"');
+  assert.ok(left > 0, 'Pan / Select inside the cluster');
+  assert.match(cluster, /position: 'absolute', right: '100%', top: '50%', transform: 'translateY\(-50%\)'/);
+  const rule = cluster.indexOf('<div className="chrome-divider" />', left);
+  assert.ok(rule > left && rule < cluster.indexOf('{/* Draw category */}'), 'rule after Select, before Draw');
+  // The plan keeps Pan / Select clear of Undo/Redo, and never reads the
+  // loadout's width.
   const hook = readFileSync(new URL('../src/hooks/useResponsiveToolbar.js', import.meta.url), 'utf8');
-  assert.match(hook, /querySelector\('\[data-toolbar-start\]'\)/);
+  assert.match(hook, /startRight: rel\(undo, 'right'\) \?\? 0,\s*leftBlockWidth: leftBlock \? leftBlock\.getBoundingClientRect\(\)\.width : 0,/);
   assert.doesNotMatch(hook, /subtoolsWidth/);
   assert.doesNotMatch(hook, /querySelector\('\[data-toolbar-subtools\]'\)/);
-  // Rows 2 and 3 start level with the icons.
-  assert.match(hook, /const anchorLeft = hostRect\.left \+ top\.clusterLeft - rowRect\.left;/);
-  assert.match(hook, /anchorLeft: hostRect\.left \+ top\.clusterLeft - textBarRect\.left,/);
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated. Rows 2 and 3 centre
+  // under the icons (w47 started them level with the icons' left edge).
+  assert.match(hook, /const centre = hostRect\.left \+ top\.clusterLeft \+ clusterRect\.width \/ 2 - rowRect\.left;/);
+  assert.match(hook, /centre: hostRect\.left \+ top\.clusterLeft \+ clusterRect\.width \/ 2 - textBarRect\.left,/);
+});
+
+test('w48: rows 2 and 3 glide when they re-centre, never on unchanged content', () => {
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated.
+  assert.match(appShell, /useRowSlide\(formatHolderEl, toolbarPlan\.formatLeft, \{ row: formatRowEl, enabled: chromeMotion && formatRowShown \}\);/);
+  assert.match(appShell, /useRowSlide\(textBarEl, textFormatRowLeft, \{ row: textFormatRowEl, enabled: chromeMotion, targets: childrenOf \}\);/);
+  assert.match(appShell, /<div data-rich-text-toolbar ref=\{setTextBarEl\}/);
+  // A pixel of measuring noise never moves a row.
+  const hook = readFileSync(new URL('../src/hooks/useResponsiveToolbar.js', import.meta.url), 'utf8');
+  assert.match(hook, /Math\.abs\(next\.left - current\.formatLeft\) <= 1\s*\? current\.formatLeft/);
+  assert.match(hook, /Math\.abs\(textRowLeft - current\.textRowLeft\) <= 1\s*\? current\.textRowLeft/);
 });
 
 test('w47: the loadout and row 2 crossfade through ghost layers; row 2 fades out as it goes', () => {

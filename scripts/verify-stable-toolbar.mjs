@@ -17,6 +17,13 @@
 //     in, both within ~200ms) with nothing around it moving;
 //   - repeats a swap with prefers-reduced-motion and asserts it is instant.
 //
+// w48 (2026-09-27): RULED 2026-09-27 owner: Pan/Select beside the groups —
+// Pan / Select sit just left of Draw (the rule between), never over Undo /
+// Redo. RULED 2026-09-27 owner: rows 2/3 centred, animated — row 2 is centred
+// under the Draw / Shapes / Text icons in every state (it re-centres when its
+// controls change, gliding over ~190ms, and never moves while they do not:
+// opening a picker or menu from it moves nothing); instant with reduced motion.
+//
 //   node scripts/verify-stable-toolbar.mjs
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -63,12 +70,55 @@ const fixedPoints = (page) => page.evaluate(() => {
     text: x(q('#chrome-top-host [aria-label="Text"]')),
     loadout: x(q('[data-toolbar-subtools]')),
     row2: row2 && row2.style.display !== 'none' ? x(q('[data-chrome-settings-holder]')) : 'hidden',
+    row2Centre: (() => {
+      const b = q('[data-chrome-settings-holder]')?.getBoundingClientRect();
+      return row2 && row2.style.display !== 'none' && b ? Math.round((b.left + b.width / 2) * 10) / 10 : null;
+    })(),
+    row2Right: (() => { const b = q('[data-chrome-settings-holder]')?.getBoundingClientRect(); return b ? Math.round(b.right) : null; })(),
+    rowSpan: (() => { const b = row2?.getBoundingClientRect(); return b ? [Math.round(b.left), Math.round(b.right)] : null; })(),
+    // Whether a side panel covers the row just past each end of the settings
+    // (the row stops at a panel's inset rather than centring).
+    panelBeside: (() => {
+      const h = q('[data-chrome-settings-holder]')?.getBoundingClientRect();
+      if (!row2 || row2.style.display === 'none' || !h) return null;
+      const y = h.top + h.height / 2;
+      const covered = (px) => { const el = document.elementFromPoint(px, y); return !!el && !row2.contains(el); };
+      return { left: covered(h.left - 10.5), right: covered(h.right + 10.5) };
+    })(),
+    iconsCentre: (() => { const b = q('#chrome-top-host [data-tool-toolbar]')?.getBoundingClientRect(); return b ? Math.round((b.left + b.width / 2) * 10) / 10 : null; })(),
+    selectRight: (() => { const b = q('#chrome-top-host [data-select-tool]')?.getBoundingClientRect(); return b ? Math.round(b.right * 10) / 10 : null; })(),
+    redoRight: (() => { const b = q('#chrome-top-host [aria-label="Redo"]')?.getBoundingClientRect(); return b ? Math.round(b.right * 10) / 10 : null; })(),
     loadoutRight: (() => { const b = q('[data-toolbar-subtools]')?.getBoundingClientRect(); return b ? Math.round(b.right) : null; })(),
     exportLeft: x(q('[data-toolbar-export]')),
   };
 });
 
 const settle = (page) => page.waitForTimeout(260);
+
+// w48: row 2 is centred under the group icons, unless it would cross the
+// row's 10px inset (or a panel), where it slides just far enough.
+const assertRow2Centred = (states, label) => {
+  for (const s of states) {
+    if (s.row2 === 'hidden' || s.row2Centre === null) continue;
+    const clamped = s.row2 <= (s.rowSpan?.[0] ?? 0) + 10 + 1 || s.row2Right >= (s.rowSpan?.[1] ?? 1e9) - 10 - 1
+      || s.panelBeside?.left || s.panelBeside?.right;
+    if (clamped && Math.abs(s.row2Centre - s.iconsCentre) > 1) continue;
+    assert.ok(Math.abs(s.row2Centre - s.iconsCentre) <= 1, `${label} ${s.label || ''}: row 2 centred ${s.row2Centre} under the icons ${s.iconsCentre} ${JSON.stringify(s)}`);
+  }
+};
+
+// w48: a re-centre glides: several frames between the two spots, no one
+// frame jumping most of the way.
+const assertGlide = (frames, label) => {
+  const xs = frames.map((f) => f.holder).filter((v) => v !== null);
+  const total = Math.abs(xs[xs.length - 1] - xs[0]);
+  if (total < 4) return { total, frames: 0 };
+  const steps = xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
+  const moving = steps.filter((d) => d > 0.05).length;
+  assert.ok(moving >= 4, `${label}: row 2 glided over several frames (${JSON.stringify(xs)})`);
+  assert.ok(Math.max(...steps) <= total * 0.6, `${label}: no frame jumped most of the way (${JSON.stringify(xs)})`);
+  return { total, frames: moving };
+};
 
 // Click `selector` from inside the page and sample every frame for `ms`:
 // the ghost's opacity, the live slot's opacity / translate, and the fixed
@@ -157,6 +207,12 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       assert.ok(frames.every((f) => f.live === '1.00'), `${width}px reduced motion: the new set is shown at once`);
       const leave = await sampleSwap(page, PAN, { slot: '[data-chrome-settings-holder]', ms: 120 });
       assert.ok(leave.every((f) => f.rowDisplay === 'none'), `${width}px reduced motion: row 2 goes at once`);
+      // w48: a re-centre is instant too.
+      await page.click(GROUP.shapes); await settle(page);
+      await page.click('#chrome-subtools-host button[aria-label="Line"]'); await settle(page);
+      const jump = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Arrow"]', { slot: '[data-chrome-settings-holder]', ms: 160 });
+      const spots = [...new Set(jump.map((f) => f.holder))];
+      assert.ok(spots.length <= 2, `${width}px reduced motion: row 2 re-centres at once (${JSON.stringify(spots)})`);
       console.log(`ok ${width}px reduced motion: swaps are instant`);
       return;
     }
@@ -209,11 +265,17 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       const values = new Set(seen.map((s) => s[key]));
       assert.equal(values.size, 1, `${width}px: ${key} moved: ${JSON.stringify(seen.map((s) => [s.label, s[key]]))}`);
     }
+    // RULED 2026-09-27 owner: rows 2/3 centred, animated (w47 held row 2 at
+    // one start for every tool).
+    assertRow2Centred(seen, `${width}px`);
     const rowStarts = new Set(seen.map((s) => s.row2).filter((v) => v !== 'hidden'));
-    assert.equal(rowStarts.size, 1, `${width}px: row 2 moved: ${JSON.stringify(seen.map((s) => [s.label, s.row2]))}`);
     const maxLoadoutRight = Math.max(...seen.map((s) => s.loadoutRight));
     assert.ok(maxLoadoutRight <= seen[0].exportLeft - 8, `${width}px: the widest loadout ends clear of Export`);
-    assert.ok(seen[0].draw > seen[0].select + 28, `${width}px: the group icons stay clear of Pan / Select`);
+    // RULED 2026-09-27 owner: Pan/Select beside the groups: Select ends just
+    // left of Draw (the rule and its air between), Pan clear of Redo.
+    const besideGap = seen[0].draw - seen[0].selectRight;
+    assert.ok(besideGap >= 10 && besideGap <= 24, `${width}px: Pan / Select sit beside the groups (gap ${besideGap})`);
+    assert.ok(seen[0].pan >= seen[0].redoRight + 12 - 0.5, `${width}px: Pan clear of Undo / Redo (${seen[0].pan} vs ${seen[0].redoRight})`);
 
     // Frame-sampled swaps.
     await page.click(GROUP.draw); await settle(page);
@@ -241,9 +303,12 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     // w47 review 3: Line → Arrow keeps the colours and width in place — they
     // neither slide nor show twice; only the added settings arrive.
     await page.click('#chrome-subtools-host button[aria-label="Line"]'); await settle(page);
-    const lineToArrow = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Arrow"]', { slot: '[data-chrome-settings-holder]', ms: 240 });
-    assert.ok(lineToArrow.every((f) => f.coloursAnimating === 0), `${width}px Line→Arrow: the colours did not animate`);
-    assert.equal(new Set(lineToArrow.map((f) => f.holder)).size, 1, `${width}px Line→Arrow: row 2 did not move`);
+    const lineToArrow = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Arrow"]', { slot: '[data-chrome-settings-holder]', ms: 320 });
+    assert.ok(lineToArrow.every((f) => f.coloursAnimating === 0), `${width}px Line→Arrow: the colours did not animate on their own`);
+    // RULED 2026-09-27 owner: rows 2/3 centred, animated — the wider Arrow
+    // row re-centres, gliding (w47 held it still).
+    const glide = assertGlide(lineToArrow, `${width}px Line→Arrow`);
+    assertRow2Centred([{ label: 'arrow', ...(await fixedPoints(page)) }], `${width}px`);
     // w47 review 1: Eraser → Pen never blinks row 2.
     await page.click(GROUP.draw); await settle(page);
     await page.click('#chrome-subtools-host button[aria-label="Eraser"]'); await settle(page);
@@ -286,14 +351,21 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       const selector = `[data-chrome-settings-holder] ${opener}`;
       if (!(await page.$(selector))) continue;
       openers += 1;
-      const ghosts = await page.evaluate((sel) => new Promise((done) => {
+      const { ghosts, xs } = await page.evaluate((sel) => new Promise((done) => {
         document.querySelector(sel).click();
         const seenGhost = [];
+        const holderX = [];
         const start = performance.now();
-        const tick = () => { seenGhost.push(!!document.querySelector('[data-loadout-ghost]')); if (performance.now() - start < 200) requestAnimationFrame(tick); else done(seenGhost); };
+        const tick = () => {
+          seenGhost.push(!!document.querySelector('[data-loadout-ghost]'));
+          holderX.push(Math.round(document.querySelector('[data-chrome-settings-holder]').getBoundingClientRect().left * 10) / 10);
+          if (performance.now() - start < 260) requestAnimationFrame(tick); else done({ ghosts: seenGhost, xs: holderX });
+        };
         requestAnimationFrame(tick);
       }), selector);
       assert.ok(ghosts.every((g) => !g), `${width}px: opening ${opener} from row 2 does not crossfade the row`);
+      // w48: nor move it — its controls have not changed.
+      assert.equal(new Set(xs).size, 1, `${width}px: opening ${opener} did not move row 2 (${JSON.stringify(xs)})`);
       await page.keyboard.press('Escape'); await settle(page);
       await page.mouse.click(pageBox.x + pageBox.width - 20, pageBox.y + 20); await settle(page);
       if (!(await page.$('#chrome-subtools-host button[aria-label="Line"]'))) {
@@ -319,17 +391,18 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       for (const key of ['pan', 'select', 'draw', 'loadout']) {
         assert.equal(new Set(inPanel.map((s) => s[key])).size, 1, `${width}px ${panel}: ${key} moved: ${JSON.stringify(inPanel.map((s) => s[key]))}`);
       }
+      assertRow2Centred(inPanel, `${width}px ${panel}`);
       const rows = new Set(inPanel.map((s) => s.row2).filter((v) => v !== 'hidden'));
       panelReport.push(`${panel.includes('Pages') ? 'Pages' : 'Survey'}: icons ${inPanel[0].draw}, row 2 ${[...rows].join('/')}`);
       assert.ok(Math.max(...inPanel.map((s) => s.loadoutRight)) <= inPanel[0].exportLeft - 8,
         `${width}px ${panel}: the widest loadout ends clear of Export`);
-      assert.equal(rows.size, 1, `${width}px ${panel}: row 2 moved: ${[...rows]}`);
-      assert.ok(inPanel[0].draw >= inPanel[0].select + 28 + 12 - 0.5, `${width}px ${panel}: icons clear of Select`);
+      assert.ok(inPanel[0].pan >= inPanel[0].redoRight + 12 - 0.5, `${width}px ${panel}: Pan clear of Redo`);
       await toggle.evaluate((b) => b.click()); await page.waitForTimeout(700);
     }
 
     console.log(`  ${width}px panels: ${panelReport.join('; ')}`);
-    console.log(`ok ${width}px: icons at ${seen[0].draw}, loadout at ${seen[0].loadout}, row 2 at ${[...rowStarts][0]}, Pan at ${seen[0].pan} across ${seen.length} states; `
+    console.log(`ok ${width}px: icons at ${seen[0].draw} (centre ${seen[0].iconsCentre}), Pan at ${seen[0].pan}, Select ends ${seen[0].selectRight}, Redo ends ${seen[0].redoRight}, loadout at ${seen[0].loadout} across ${seen.length} states; `
+      + `row 2 starts ${[...rowStarts].sort((a, b) => a - b).join('/')} (centred); Line→Arrow glide ${glide.total}px over ${glide.frames} frames; `
       + `Draw→Shapes ghost ${drawToShapes.ghostMs}ms / in ${drawToShapes.settledMs}ms, Shapes→Select ghost ${shapesToSelect.ghostMs}ms / in ${shapesToSelect.settledMs}ms`);
   } finally {
     await ctx.close();

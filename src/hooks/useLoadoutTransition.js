@@ -1,5 +1,32 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { LOADOUT_MOTION, attachLoadoutTransition, prefersReducedMotion } from '../utils/loadoutTransition.js';
+import {
+  LOADOUT_MOTION, attachLoadoutTransition, cancelRowSlide, prefersReducedMotion, rowMoveIsInstant, slideRow,
+} from '../utils/loadoutTransition.js';
+
+/**
+ * RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). When `left` (the
+ * row's planned start) changes while the row is on screen, the row GLIDES to
+ * it (slideRow; see utils/loadoutTransition.js for the motion and why)
+ * instead of snapping. `element` is what the plan positions (row 2's settings
+ * holder, row 3's text bar); `row` is the bar itself, checked for arriving /
+ * leaving and open popovers (rowMoveIsInstant); `targets(element)` lists what
+ * to move (default: the element). The first spot a (new) element gets is
+ * never animated. Desktop only: pass enabled=false on the phone.
+ */
+export function useRowSlide(element, left, { row = null, enabled = true, targets = null } = {}) {
+  const lastRef = useRef({ element: null, left: null });
+  useLayoutEffect(() => {
+    const last = lastRef.current;
+    lastRef.current = { element, left };
+    if (!element || !Number.isFinite(left)) return;
+    if (last.element !== element || !Number.isFinite(last.left)) return;
+    const delta = last.left - left;
+    if (Math.abs(delta) < 0.5) return;
+    const list = targets ? targets(element) : [element];
+    if (!enabled || rowMoveIsInstant(row || element)) { cancelRowSlide(list); return; }
+    slideRow(list, delta);
+  }, [element, left, enabled, row, targets]);
+}
 
 /**
  * RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).

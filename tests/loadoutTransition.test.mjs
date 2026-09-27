@@ -9,7 +9,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LOADOUT_MOTION,
+  ROW_SLIDE_MS,
   attachLoadoutTransition,
+  cancelRowSlide,
+  rowMoveIsInstant,
+  slideRow,
   loadoutKeyframes,
   loadoutSignature,
   makeGhost,
@@ -284,4 +288,57 @@ test('makeGhost strips every hook a selector — the app\'s or a test\'s — cou
     const names = Object.keys(node.attrs).filter((n) => !['aria-hidden', 'inert', 'data-loadout-ghost', 'class'].includes(n));
     assert.deepEqual(names, [], `${node.tag} kept ${names}`);
   }
+});
+
+// RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). A re-centred row
+// glides from where it was (translate only), a move mid-glide carries on from
+// where the glide got to, and the move is instant with reduced motion, while
+// the row arrives or leaves, or while a popover is open from it.
+const slideTarget = () => {
+  const target = { offset: 0, animations: [] };
+  target.animate = (frames, options) => {
+    const animation = { frames, options, cancelled: false, cancel() { this.cancelled = true; } };
+    target.animations.push(animation);
+    return animation;
+  };
+  return target;
+};
+const slideWin = (target, reduced = false) => ({
+  matchMedia: () => ({ matches: reduced }),
+  getComputedStyle: () => ({ translate: `${target.offset}px` }),
+});
+
+test('w48: a re-centred row glides from its old spot, and carries on from mid-glide', () => {
+  const target = slideTarget();
+  const win = slideWin(target);
+  const [first] = slideRow([target], -40, { win });
+  assert.deepEqual(first.frames, [{ translate: '-40px 0' }, { translate: '0 0' }]);
+  assert.equal(first.options.duration, ROW_SLIDE_MS);
+  assert.equal(first.options.easing, LOADOUT_MOTION.arriveEasing);
+  // Half way through, another move 20px further right: it starts from the
+  // drawn spot (-20 carried + -20 new), never jumping.
+  target.offset = -20;
+  const [second] = slideRow([target], -20, { win });
+  assert.equal(first.cancelled, true);
+  assert.deepEqual(second.frames[0], { translate: '-40px 0' });
+  // A move that cancels out a running glide exactly just stops it.
+  target.offset = 10;
+  assert.deepEqual(slideRow([target], -10, { win }), []);
+  cancelRowSlide([target]);
+});
+
+test('w48: a row moves instantly with reduced motion, while arriving / leaving, or with a popover open', () => {
+  const row = (extra = {}) => ({
+    getAnimations: () => [],
+    querySelector: () => null,
+    ownerDocument: { querySelector: () => null },
+    ...extra,
+  });
+  const motion = { matchMedia: () => ({ matches: false }) };
+  assert.equal(rowMoveIsInstant(row(), motion), false);
+  assert.equal(rowMoveIsInstant(row(), { matchMedia: () => ({ matches: true }) }), true);
+  assert.equal(rowMoveIsInstant(row({ getAnimations: () => [{ playState: 'running' }] }), motion), true);
+  assert.equal(rowMoveIsInstant(row({ getAnimations: () => [{ playState: 'finished' }] }), motion), false);
+  assert.equal(rowMoveIsInstant(row({ querySelector: (s) => (s === '[aria-expanded="true"]' ? {} : null) }), motion), true);
+  assert.equal(rowMoveIsInstant(row({ ownerDocument: { querySelector: () => ({}) } }), motion), true);
 });

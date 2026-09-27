@@ -28,7 +28,7 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
-import useLoadoutTransition, { useLeavingRow } from './hooks/useLoadoutTransition.js';
+import useLoadoutTransition, { useLeavingRow, useRowSlide } from './hooks/useLoadoutTransition.js';
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
@@ -66,6 +66,8 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
+// w48: row 3's controls (and its caption) glide together (useRowSlide).
+const childrenOf = (element) => [...element.children];
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -1603,6 +1605,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // Row 2 leaves the way it arrives (useLeavingRow): it stays drawn while it
   // fades, never blinks on a one-render gap, and runs back if wanted again.
   const { leaving: formatRowLeaving, fading: formatRowFading } = useLeavingRow(formatRowEl, formatRowShown, chromeMotion);
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). Rows 2 and 3
+  // are centred under the group icons; when a row's controls change (a tool
+  // switch, Cloud adding Bump) and it re-centres, it GLIDES there over ~190ms
+  // (useRowSlide) instead of snapping. It never moves while its controls are
+  // unchanged, is instant with prefers-reduced-motion, and does not glide
+  // while the row is dropping in / fading out or a popover is open from it.
+  const [textBarEl, setTextBarEl] = useState(null);
+  useRowSlide(formatHolderEl, toolbarPlan.formatLeft, { row: formatRowEl, enabled: chromeMotion && formatRowShown });
   // RULED 2026-09-26 owner: select modes in top bar (w46). With Select armed
   // and nothing picked, Select's Box / Lasso / Text modes sit in the TOOL BAR
   // right of the group icons, where a group's tools go (as pen / highlighter /
@@ -1611,13 +1621,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // together). Row 2 carries only settings that apply (the text-mark colours
   // in Text mode, a picked mark's settings) and is hidden when none do; it lies
   // over the page, so the page does not move as it comes and goes.
-  // RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47,
-  // was w45's centring). Row 3 (the Aa bar) starts at row 2's fixed spot,
-  // under the group icons (planTextRow via useResponsiveToolbar), keeping
-  // room for the "Text" caption that hangs off its left. Until it has been
-  // measured it starts at that caption room.
+  // RULED 2026-09-27 owner: rows 2/3 centred, animated (w48, was w47's fixed
+  // spot under the icons). Row 3 (the Aa bar) is centred under the group icons
+  // like row 2 (planTextRow via useResponsiveToolbar), keeping room for the
+  // "Text" caption that hangs off its left, and glides when it re-centres.
+  // Until it has been measured it starts at that caption room.
   const textFormatRowLeft = toolbarPlan.textRowLeft
     ?? ((toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM);
+  useRowSlide(textBarEl, textFormatRowLeft, { row: textFormatRowEl, enabled: chromeMotion, targets: childrenOf });
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
   // A popover whose opener sits in row 2 closes when the row goes away (Pan,
@@ -1993,32 +2004,12 @@ export default function App({ devPreviewReturnTab = null }) {
             </div>
           )}
 
-          {/* RULED 2026-09-26 owner: fixed centred groups + animated loadouts
-              (w47). The pinned-left block: Undo / Redo, a rule, then Pan and
-              Select. Owner: "the Pan and Select tool can be off to the left."
-              They used to hang off the left of the centred group icons and
-              ride along whenever the row re-centred; pinned here they never
-              move, and the Draw / Shapes / Text icons centre on the canvas on
-              their own (useResponsiveToolbar never lets them run into this
-              block). */}
-          <div
-            data-toolbar-start="true"
-            style={{
-              // Narrow shells: the pieces flow inline with the tool cluster.
-              ...(isNarrowShell
-                ? { display: 'contents' }
-                : { position: 'absolute', left: '10px', top: 0, bottom: 0, display: 'flex' }),
-              alignItems: 'center',
-              gap: 'var(--chrome-tool-gap)',
-              // This row states its own gutter so the rule inside it subtracts
-              // the right number (see .chrome-divider in styles.css).
-              '--chrome-row-gap': 'var(--chrome-tool-gap)',
-              whiteSpace: 'nowrap'
-            }}
-          >
-          {/* UX 2026-05-14: Undo + Redo sit at the far LEFT (w47: first in the
-              pinned-left block above) so the rest of the toolbar can center
-              cleanly with justifyContent: 'center'. */}
+          {/* UX 2026-05-14: Undo + Redo pinned to the LEFT via absolute
+              positioning so the rest of the toolbar can center cleanly
+              with justifyContent: 'center'. This mirrors the old bottom
+              toolbar where tools sat centered and adjacent helpers
+              flanked them. Padding inside the strip leaves 12 px for the
+              Undo/Redo cluster. */}
           <div
             // KAL-301 follow-up: marks the Undo/Redo cluster so
             // RegionSelectionTool's outside-mousedown handler doesn't cancel
@@ -2026,7 +2017,11 @@ export default function App({ devPreviewReturnTab = null }) {
             // drive the region history while region editing is active).
             data-undo-redo-controls="true"
             style={{
-            display: isNarrowShell ? 'contents' : 'flex',
+            // Narrow shells: flow inline with the tool cluster (no pinning).
+            ...(isNarrowShell
+              ? { position: 'static' }
+              : { position: 'absolute', left: '10px', top: 0, bottom: 0 }),
+            display: 'flex',
             alignItems: 'center',
             gap: 'var(--chrome-tool-gap)'
           }}>
@@ -2075,17 +2070,65 @@ export default function App({ devPreviewReturnTab = null }) {
               </button>
             </span>
           </div>
+
+          {/* UX 2026-05-14: Tools section — Pan / Select / Draw / Shapes /
+              Text / Color / Width. Inlined from the old
+              bottom toolbar. Consumes bottomToolbarApi which is still
+              published from PDFViewer; if no PDF is open we skip the
+              section entirely. Tooltip placement is "below" so labels
+              fall under the buttons (above would clip the OS chrome).
+              These flow inside the centered flex container so the whole
+              tool cluster sits centered while Undo/Redo float on the
+              left edge. */}
           {bottomToolbarApi && (
-            <>
-              {/* PASS 7 (boards 8-14): the rule between two tool GROUPS — here
-                  between Undo / Redo and Pan / Select (w47). 16px tall with 8px
-                  of clear space either side, from the shared .chrome-divider
-                  class, so no bar can write its own. */}
-              <div className="chrome-divider" />
-              <div data-toolbar-left-block="true" style={{
-                display: isNarrowShell ? 'contents' : 'flex',
+            <div
+              data-tool-toolbar="true"
+              style={{
+                position: 'relative',
+                // RULED 2026-09-26 owner: fixed centred groups + animated
+                // loadouts (w47). The plan's `shift` centres THESE icons
+                // (Draw / Shapes / Text) on the canvas between the rails (or
+                // between an open side panel and the far rail), keeping room
+                // on their right for the widest loadout and on their left for
+                // Pan / Select, clear of Undo/Redo (useResponsiveToolbar). It
+                // depends on the window and panels only — never on the tool,
+                // the pick or the loadout — so the icons never move as you
+                // work. Negative = right of the bar centre.
+                left: toolbarPlan.shift ? `${-toolbarPlan.shift}px` : undefined,
+                display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--chrome-tool-gap)',
+              }}
+            >
+              {/* 2026-05-26: Pan + Select sit in their own absolute block to
+                  the LEFT of the centered annotation cluster. This mirrors
+                  the right-side tool properties block so the annotation
+                  icons stay centered on the screen — only the side blocks
+                  shift as their contents change.
+                  RULED 2026-09-27 owner: Pan/Select beside the groups (w48,
+                  undoes w47's pin at the far left). Owner: "the Pan and
+                  Select are supposed to stay next to the other tool groups;
+                  I was just saying to keep it on the left." They hang off
+                  the icons' left edge at a fixed offset, so they never move
+                  with the tool either; the plan keeps them clear of
+                  Undo/Redo at narrow widths. */}
+              <div data-toolbar-left-block="true" style={{
+                // Narrow shells: flow inline before the annotation icons.
+                ...(isNarrowShell
+                  ? { position: 'static' }
+                  : { position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)' }),
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--chrome-tool-gap)',
+                // This row states its own gutter so the rule inside it subtracts
+                // the right number (see .chrome-divider in styles.css). Without
+                // this the rule sat 10px from Select and 8px from Draw.
+                // 2026-09-22: the tool gutter is now the same 6px as the
+                // settings row, so the two agree, but the declaration stays —
+                // it is what keeps the divider's 8px inset honest if either
+                // gutter ever moves again.
+                '--chrome-row-gap': 'var(--chrome-tool-gap)',
+                whiteSpace: 'nowrap'
               }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
@@ -2151,40 +2194,16 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
                 );
               })}
-              </div>
-            </>
-          )}
-          </div>
 
-          {/* UX 2026-05-14: Tools section — Pan / Select / Draw / Shapes /
-              Text / Color / Width. Inlined from the old
-              bottom toolbar. Consumes bottomToolbarApi which is still
-              published from PDFViewer; if no PDF is open we skip the
-              section entirely. Tooltip placement is "below" so labels
-              fall under the buttons (above would clip the OS chrome).
-              These flow inside the centered flex container so the whole
-              tool cluster sits centered while Undo/Redo float on the
-              left edge. */}
-          {bottomToolbarApi && (
-            <div
-              data-tool-toolbar="true"
-              style={{
-                position: 'relative',
-                // RULED 2026-09-26 owner: fixed centred groups + animated
-                // loadouts (w47). The plan's `shift` centres THESE icons
-                // (Draw / Shapes / Text) on the canvas between the rails (or
-                // between an open side panel and the far rail), keeping room
-                // on their right for the widest loadout and clear of Pan /
-                // Select (useResponsiveToolbar). It depends on the window and
-                // panels only — never on the tool, the pick or the loadout —
-                // so the icons never move as you work. Negative = right of
-                // the bar centre.
-                left: toolbarPlan.shift ? `${-toolbarPlan.shift}px` : undefined,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--chrome-tool-gap)',
-              }}
-            >
+              {/* PASS 7 (boards 8-14): the rule between two tool GROUPS. It is
+                  16px tall with 8px of clear space either side, against the 6px
+                  gutter between two chips inside one group — the rule plus that
+                  wider air is what tells the eye where a group ends. Both
+                  numbers come from the shared .chrome-divider class, so no bar
+                  can write its own. */}
+              <div className="chrome-divider" />
+              </div>
+
               {/* Draw category */}
               <button
                 onClick={() => {
@@ -2376,7 +2395,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   colours stay put as you switch tools. A changed set of
                   settings crossfades like the loadout above (the ghost layer
                   sits in row 2 itself), and while row 2 is leaving the live
-                  settings are hidden so only the fading copy shows. */}
+                  settings are hidden so only the fading copy shows.
+                  RULED 2026-09-27 owner: rows 2/3 centred, animated (w48).
+                  Owner: "the subtool bar items are not centered." The
+                  settings are CENTRED under the group icons again (w47's
+                  crossfade and leave are kept); a row whose controls change
+                  re-centres by GLIDING there (useRowSlide), never a snap, and
+                  a row whose controls are unchanged never moves. */}
               {formatRowEl && createPortal(
               <>
               <div
@@ -2433,6 +2458,9 @@ export default function App({ devPreviewReturnTab = null }) {
                      handler so clicks don't commit-and-close the editor.
                      PASS 7 (board 12): the third bar is 36px like the two above
                      it, and its controls sit on the settings gutter.
+                     RULED 2026-09-27 owner: rows 2/3 centred, animated (w48):
+                     centred under the group icons like row 2, gliding when it
+                     re-centres (useRowSlide moves its children together).
                      RULED 2026-09-26 owner: centre rows on canvas (w45). It is
                      CENTRED on the same span no side panel covers as rows 1
                      and 2 (w44 had it left-aligned with row 2); a bar too wide
@@ -2444,7 +2472,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      live editor or the tool's own defaults. Armed, it sits UNDER
                      the Text category row, which is board 12's third bar; in
                      edit mode that category row is closed, so there are two. */
-                  <div data-rich-text-toolbar style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
+                  <div data-rich-text-toolbar ref={setTextBarEl} style={{ width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-gap)', zIndex: 10, boxSizing: 'border-box' }}>
                     {/* PASS 7 (board 12): the order is colour, then font and
                         size, then B / I / U / S, then the two alignments —
                         appearance, then shape, then position, each pair behind
