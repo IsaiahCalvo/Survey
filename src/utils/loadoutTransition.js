@@ -55,7 +55,7 @@
  * was on screen.
  */
 import {
-  cubicBezier, frameAsPolylines, isMorphableIcon, mixColour, morphFrame, planMorph,
+  cubicBezier, frameAsPolylines, isMorphableIcon, mixColour, morphFrame, morphPairsToWarm, planMorph,
 } from './iconMorph.js';
 
 const EASE_IN_OUT = [0.45, 0, 0.55, 1];
@@ -228,12 +228,12 @@ const buttonOf = (unit) => (unit?.matches?.('button') ? unit : unit?.querySelect
 const glyphOf = (button) => button?.querySelector?.('svg, span[aria-hidden="true"]') || null;
 
 /**
- * The colour a button's glyph settles on. A button whose lit state just
- * changed is still easing its colour (.btn's 100ms colour transition), so
- * the computed colour is where it starts; the transition's last keyframe is
- * where it ends.
+ * A button glyph's colour, as a track: { from, to, start, ms }. A button
+ * whose lit state just changed is still easing its colour (.btn's 100ms
+ * colour transition): `from` is where that started, `to` where it settles,
+ * `start` when (document timeline). With no transition running, from = to.
  */
-function settledColour(button, win) {
+function colourTrack(button, win, at = 0) {
   const glyph = glyphOf(button);
   if (!glyph) return null;
   for (const element of [button, glyph]) {
@@ -241,12 +241,63 @@ function settledColour(button, win) {
       for (const animation of element.getAnimations?.() || []) {
         if (animation.transitionProperty !== 'color') continue;
         const frames = animation.effect?.getKeyframes?.();
-        const colour = frames?.[frames.length - 1]?.color;
-        if (colour) return colour;
+        const to = frames?.[frames.length - 1]?.color;
+        if (!to) continue;
+        const ms = Number(animation.effect?.getTiming?.().duration) || 100;
+        // A transition that has only just been created has no start time yet
+        // (it starts on the next frame): count it from now.
+        const started = animation.startTime == null ? at : Number(animation.startTime);
+        return { from: frames[0]?.color || to, to, start: Number.isFinite(started) ? started : at, ms };
       }
     } catch { /* read it as drawn */ }
   }
-  try { return win.getComputedStyle?.(glyph)?.color || null; } catch { return null; }
+  let drawn = null;
+  try { drawn = win.getComputedStyle?.(glyph)?.color || null; } catch { /* none */ }
+  return drawn ? { from: drawn, to: drawn, start: 0, ms: 1 } : null;
+}
+
+/** The colour a track shows at document-timeline time `at`. */
+function colourAt(track, at) {
+  if (!track) return null;
+  if (track.from === track.to) return track.to;
+  return mixColour(track.from, track.to, Math.min(1, Math.max(0, (at - track.start) / track.ms)));
+}
+
+/** The colour a button's glyph settles on. */
+const settledColour = (button, win) => colourTrack(button, win)?.to || null;
+
+// Plans for every morph a switch can ask for, worked out while the page is
+// idle so the first switch does not pay for them (once per page).
+let warmed = false;
+function warmMorphPlans(win) {
+  if (warmed) return;
+  warmed = true;
+  const queue = morphPairsToWarm();
+  const later = (fn) => (win.requestIdleCallback ? win.requestIdleCallback(fn, { timeout: 2000 }) : win.setTimeout?.(fn, 50));
+  const step = () => {
+    const pair = queue.shift();
+    if (!pair) return;
+    try { planMorph(pair[0], pair[1]); } catch { /* planned on demand instead */ }
+    later(step);
+  };
+  later(step);
+}
+
+// The last swap of each slot: when, and whether any control (other than a
+// rule) is in both the old and the new set. A row whose whole set changed
+// has nothing to carry across, so it does not glide (see useRowSlide).
+const lastSwaps = new WeakMap();
+const DIVIDER_SIG = /^DIV::>$/; // a rule: no slot id, no label, nothing inside
+
+/**
+ * True when `element`'s controls were all replaced just now (within
+ * `withinMs`): a re-centre then lands at once instead of gliding, so brand
+ * new controls never slide in from the side — they grow in where they
+ * belong while the old ones shrink out where they were.
+ */
+export function swapSharedNothing(element, { withinMs = 250, at = (typeof performance !== 'undefined' ? performance.now() : Date.now()) } = {}) {
+  const swap = element ? lastSwaps.get(element) : null;
+  return Boolean(swap && !swap.shared && at - swap.at <= withinMs);
 }
 
 /** How far through an animation is (eased), 1 when it is over or missing. */
@@ -292,7 +343,12 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
   let snapshot = null;
   let previous = []; // the live slots at the last snapshot: { element, sig, icon, colour }
 
-  const colourOf = (unit) => settledColour(buttonOf(unit), win);
+  const timelineNow = () => {
+    const t = win.document?.timeline?.currentTime;
+    return t != null && Number.isFinite(Number(t)) ? Number(t) : now();
+  };
+  const colourOf = (unit) => colourTrack(buttonOf(unit), win, timelineNow());
+  if (win.requestIdleCallback || win.setTimeout) warmMorphPlans(win);
   const takeSnapshot = () => {
     snapshot = slot.cloneNode(true);
     previous = loadoutUnits(slot).map((element) => ({
@@ -358,6 +414,19 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       run.svg.style.top = `${b.top + b.height / 2 - run.size / 2 - box.top}px`;
     } catch { /* keep the last spot */ }
   };
+  // The overlay's colour runs on its own clock: the lit state can change
+  // while the shape is still morphing (a tool clicked mid-morph).
+  const currentColour = (run) => mixColour(run.colourFrom, run.colourTo, easeInOut(Math.min(1, Math.max(0, (now() - run.colourStart) / run.colourMs))));
+  const refreshColours = () => {
+    for (const run of morphs.values()) {
+      const to = settledColour(run.button, win);
+      if (!to || to === run.colourTo) continue;
+      run.colourFrom = currentColour(run);
+      run.colourTo = to;
+      run.colourStart = now();
+      run.colourMs = 100; // the buttons' own colour transition
+    }
+  };
   const draw = (run, e) => {
     run.e = e;
     const pieces = morphFrame(run.pairs, e);
@@ -366,8 +435,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       if (piece.dash) run.paths[k].setAttribute('stroke-dasharray', piece.dash);
       else run.paths[k].removeAttribute('stroke-dasharray');
     });
-    run.svg.style.color = mixColour(run.fromColour, run.toColour, e);
-    place(run);
+    run.svg.style.color = currentColour(run);
   };
   const endMorph = (run, { keepOverlay = false } = {}) => {
     run.glyphHide?.cancel?.();
@@ -386,7 +454,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
   };
   const morphNow = (run) => ({
     geometry: frameAsPolylines(morphFrame(run.pairs, run.e), run.pairs, run.e),
-    colour: mixColour(run.fromColour, run.toColour, run.e),
+    colour: currentColour(run),
   });
   /** Shrink a morph's overlay out from the shape it had reached. */
   const shrinkMorph = (run) => {
@@ -396,7 +464,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     animation.onfinish = () => run.svg.remove?.();
     animation.oncancel = () => run.svg.remove?.();
   };
-  const startMorph = (index, unit, from, fromColour) => {
+  const startMorph = (index, unit, from, fromColour, startedAt = now()) => {
     const button = buttonOf(unit);
     const glyph = glyphOf(button);
     const icon = morphIconOf(unit);
@@ -422,12 +490,13 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     const paths = pairs.map(() => svg.appendChild(layer.ownerDocument.createElementNS(svgNS, 'path')));
     layer.appendChild(svg);
     const run = {
-      svg, paths, pairs, button, size, e: 0, start: now(),
-      fromColour: fromColour || toColour, toColour: toColour || fromColour,
+      svg, paths, pairs, button, size, e: 0, start: startedAt,
+      colourFrom: fromColour || toColour, colourTo: toColour || fromColour, colourStart: startedAt, colourMs: motion.durationMs,
       glyphHide: glyph.animate?.([{ opacity: 0 }, { opacity: 0 }], { duration: motion.durationMs * 10, fill: 'forwards' }),
     };
     morphs.get(index)?.svg?.remove?.();
     morphs.set(index, run);
+    place(run); // row 1's buttons never move while a morph runs
     draw(run, 0);
     if (frame == null) frame = win.requestAnimationFrame(tick);
     return true;
@@ -443,6 +512,9 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
   };
 
   const swap = () => {
+    // Every morph of one switch runs on one clock (planning one can take a
+    // few ms the first time; the slots must still land together).
+    const at = now();
     const beforeUnits = loadoutUnits(snapshot);
     const afterUnits = loadoutUnits(slot);
     const after = afterUnits.map((element) => ({ element, sig: unitSignature(element), icon: morphIconOf(element) }));
@@ -457,7 +529,21 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       ghost = { element: makeGhost(snapshot), live: 0 };
       ghosts.add(ghost);
       layer.appendChild(ghost.element);
+      // The copy lands where the eye last saw the set: row 2 may be part-way
+      // through a glide (a Web Animation the copy does not carry), and a
+      // glide always starts from where the row was drawn, so line the copy's
+      // left edge up with the live row's.
+      try {
+        const drift = slot.getBoundingClientRect().left - ghost.element.getBoundingClientRect().left;
+        if (Math.abs(drift) > 0.5 && ghost.element.style) ghost.element.style.translate = `${drift}px 0`;
+      } catch { /* leave it at its laid-out spot */ }
     }
+    // A set with nothing in common with the last one does not glide: its
+    // controls are all new, so they grow in where they belong.
+    const oldSigs = new Set(previous.map((p) => p.sig).filter((sig) => !DIVIDER_SIG.test(sig)));
+    const shared = after.some((a) => oldSigs.has(a.sig));
+    lastSwaps.set(slot, { at: now(), shared });
+    if (!shared) cancelRowSlide([slot]);
     // Morphs caught mid-way whose slot no longer morphs shrink out as drawn.
     for (const [i, run] of [...morphs]) {
       if (kinds[i] === 'morph' || kinds[i] === 'stay') continue;
@@ -477,9 +563,9 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       if (!unit) return;
       if (kind === 'morph') {
         const running = morphs.get(i);
-        const from = running ? morphNow(running) : { geometry: previous[i].icon, colour: previous[i].colour };
+        const from = running ? morphNow(running) : { geometry: previous[i].icon, colour: colourAt(previous[i].colour, timelineNow()) };
         if (running) endMorph(running);
-        if (startMorph(i, unit, from.geometry, from.colour)) return;
+        if (startMorph(i, unit, from.geometry, from.colour, at)) return;
         grow(unit);
         return;
       }
@@ -522,6 +608,8 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       dropGhosts();
     } else if (shown && next !== signature) {
       swap();
+    } else if (morphs.size) {
+      refreshColours();
     }
     signature = next;
     wasShown = shown;

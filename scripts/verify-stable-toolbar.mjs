@@ -150,6 +150,7 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
     const morphs = [...document.querySelectorAll('[data-loadout-morph]')].map((m) => ({
       icon: m.getAttribute('data-loadout-morph'),
       d: [...m.querySelectorAll('path')].map((p) => p.getAttribute('d')).join(''),
+      colour: m.style.color,
       x: Math.round(m.getBoundingClientRect().left * 10) / 10,
     }));
     const motionOf = (el) => { const s = getComputedStyle(el); return { o: Number(s.opacity), s: s.scale === 'none' ? 1 : Number(s.scale), tr: s.translate }; };
@@ -187,11 +188,14 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
       rowDisplay: q('[data-chrome-format-row]')?.style.display,
       rowOpacity: Number(getComputedStyle(q('[data-chrome-format-row]')).opacity).toFixed(2),
     });
-    if (performance.now() - start < ms) requestAnimationFrame(sample); else done(frames);
+    if (performance.now() - start < ms) requestAnimationFrame(sample); else done({ frames, before });
   };
+  // w49: each loadout slot's glyph colour as drawn just before the click (a
+  // morph must start from it — no colour pop on its first frame).
+  const before = [...document.querySelectorAll('[data-toolbar-subtools] [data-morph-icon]')].map((b) => getComputedStyle(b.querySelector('svg, span[aria-hidden="true"]')).color);
   q(selector).click();
   requestAnimationFrame(sample);
-}), { selector, slot, ms });
+}), { selector, slot, ms }).then(({ frames, before }) => Object.assign(frames, { before }));
 
 // w49 (RULED 2026-09-27 owner: morphing icons + one motion language): a
 // group switch morphs `morphs` slots in place — each overlay's path changes
@@ -208,7 +212,7 @@ const assertMorph = (frames, label, { morphs }) => {
     const ds = withMorph.map((f) => f.morphs[k]?.d).filter(Boolean);
     assert.ok(new Set(ds).size >= 4, `${label}: slot ${k + 1}'s icon changed shape frame by frame (${new Set(ds).size} shapes)`);
     const xs = new Set(withMorph.map((f) => f.morphs[k]?.x).filter((v) => v != null));
-    assert.equal(xs.size, 1, `${label}: slot ${k + 1} morphed in place (${[...xs]})`);
+    assert.equal(xs.size, 1, `${label}: slot ${k + 1} morphed in place (${[...xs]}) ${withMorph.map((f) => `${f.t}:${f.morphs.map((m) => `${m.icon}@${m.x}`).join('+')}`).join(' ')}`);
   }
   const lastMorph = withMorph[withMorph.length - 1].t;
   assert.ok(lastMorph <= 240, `${label}: morphs done by ~200ms (last ${lastMorph}ms)`);
@@ -224,6 +228,18 @@ const assertMorph = (frames, label, { morphs }) => {
     assert.equal(new Set(frames.map((f) => f[key])).size, 1, `${label}: ${key} moved during the swap`);
   }
   const grew = frames.some((f) => f.liveMotion.some((m) => m.s < 1)) || frames.some((f) => f.ghostMotion.some((m) => m.s < 1));
+  // The first drawn frame of each morph wears the colour the glyph had on
+  // screen just before (the lit tool's gold, the others' grey).
+  const rgb = (c) => (String(c).match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+  const firstMorphs = withMorph[0].morphs;
+  for (let k = 0; k < firstMorphs.length && k < (frames.before || []).length; k += 1) {
+    const [a, b] = [rgb(firstMorphs[k].colour), rgb(frames.before[k])];
+    const off = Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+    // (A switch lands a frame or two after the click, by which time a tool
+    // losing its lit state has started its own 100ms fade; a pop between
+    // gold and grey is ~120 in blue, so 45 separates "carried on" from "popped".)
+    assert.ok(off <= 45, `${label}: slot ${k + 1}'s morph starts in the colour it had (${firstMorphs[k].colour} vs ${frames.before[k]})`);
+  }
   return { frames: frames.length, morphMs: lastMorph, grew };
 };
 
@@ -249,6 +265,9 @@ const assertRowLanguage = (frames, label, iconsCentre, widthBefore) => {
   const settled = shown[shown.length - 1];
   assert.ok(Math.abs(settled.holderCentre - iconsCentre) <= 1.5, `${label}: row 2 ends centred (${settled.holderCentre} vs ${iconsCentre})`);
   const lefts = shown.map((f) => f.holderLeft);
+  // A row whose controls were all replaced lands at its new centre at once
+  // (the new controls grow in there; nothing slides in from the side).
+  if (new Set(lefts).size <= 2) return 'lands';
   const widthChange = settled.holderWidth - (widthBefore ?? shown[0].holderWidth);
   const travel = lefts[lefts.length - 1] - lefts[0];
   if (Math.abs(widthChange) < 2) {

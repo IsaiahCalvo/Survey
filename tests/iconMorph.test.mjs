@@ -121,6 +121,22 @@ test('the lasso\'s dashes open from nothing and close to nothing — never pop',
   assert.equal(gaps[3], 2.1);
 });
 
+test('w49 review: the lasso\'s dashed arc is never cut or run backwards, so its dashes land exactly on the real icon\'s', () => {
+  const [arc] = iconPolylines('lassoSelect').filter((p) => p.dash);
+  for (const from of ['highlighter', 'ellipse', 'callout']) {
+    const pairs = planMorph(from, 'lassoSelect');
+    const dashed = pairs.filter((p) => p.dashB);
+    assert.equal(dashed.length, 1, `${from}→lasso: one dashed piece`);
+    const end = dashed[0].b;
+    assert.ok(Math.hypot(end[0][0] - arc.pts[0][0], end[0][1] - arc.pts[0][1]) < 1e-6, `${from}→lasso: the arc starts where the icon's does`);
+    const last = arc.pts[arc.pts.length - 1];
+    assert.ok(Math.hypot(end.at(-1)[0] - last[0], end.at(-1)[1] - last[1]) < 1e-6, `${from}→lasso: and ends where it does`);
+    const back = planMorph('lassoSelect', from).filter((p) => p.dashA);
+    assert.equal(back.length, 1);
+    assert.ok(Math.hypot(back[0].a[0][0] - arc.pts[0][0], back[0].a[0][1] - arc.pts[0][1]) < 1e-6, `lasso→${from}: starts on the icon's own dashes`);
+  }
+});
+
 test('path parsing and transforms: arcs, relative commands, rotate about a point', () => {
   const [square] = flattenPath('M0 0h10v10h-10z');
   assert.equal(square.closed, true);

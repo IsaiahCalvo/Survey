@@ -25,6 +25,7 @@ import {
   loadoutSignature,
   makeGhost,
   planLoadoutSwap,
+  swapSharedNothing,
 } from '../src/utils/loadoutTransition.js';
 
 const CONTROL_TAGS = new Set(['button', 'input', 'select', 'textarea']);
@@ -339,6 +340,45 @@ test('RULED w49: a morph caught mid-way (Draw → Shapes → Text quickly) carri
 });
 
 
+
+test('w49 review: a tool lit mid-morph turns its overlay the new colour at once (over the buttons\' 100ms), not when the morph lands', () => {
+  const { slot, layer, win, replace } = setup();
+  replace(divider(), host('Rectangle', 'Ellipse', 'Polygon'));
+  win.advance(48);
+  const [rect, ellipse] = overlays(layer);
+  // Ellipse is clicked: it lights, Rectangle dims — same set, so no swap.
+  const [rectButton, ellipseButton] = buttonsIn(slot);
+  glyphOf(rectButton).setAttribute('data-colour', 'rgb(183, 190, 201)');
+  glyphOf(ellipseButton).setAttribute('data-colour', 'rgb(216, 168, 78)');
+  win.flush();
+  win.advance(112);
+  assert.equal(rect.style.color, 'rgba(183, 190, 201, 1)', 'the dimmed tool is grey before its morph ends');
+  assert.equal(ellipse.style.color, 'rgba(216, 168, 78, 1)', 'the lit tool is gold before its morph ends');
+});
+
+test('w49 review: a row whose controls were all replaced lands at its new centre (no glide); one that keeps a control glides', () => {
+  const win = fakeWindow();
+  win.performance = { now: () => performance.now() };
+  const holder = el('div', { 'data-chrome-settings-holder': 'true' }, [el('button', { 'aria-label': 'Red' }), divider(), el('div', { 'data-toolbar-slot': 'width' })]);
+  const layer = el('div');
+  attachLoadoutTransition(holder, layer, { win });
+  holder.children = [];
+  [el('button', { 'aria-label': 'Border and fill' }), divider(), el('div', { 'data-toolbar-slot': 'style' })].forEach((c) => holder.appendChild(c));
+  win.flush();
+  assert.equal(swapSharedNothing(holder), true, 'only the rule is common: nothing to carry across');
+  holder.children = [];
+  [el('button', { 'aria-label': 'Border and fill' }), divider(), el('div', { 'data-toolbar-slot': 'style' }), el('div', { 'data-toolbar-slot': 'arrowhead' })].forEach((c) => holder.appendChild(c));
+  win.flush();
+  assert.equal(swapSharedNothing(holder), false, 'the colour and style stay: the row glides');
+});
+
+test('w49 review: the outgoing copy lands where the row was drawn (mid-glide), not where it is laid out', () => {
+  const { slot, layer, replace } = setup();
+  slot.getBoundingClientRect = () => ({ left: 29, top: 0, width: 100, height: 28 });
+  replace(divider(), host('Rectangle'));
+  const [ghost] = ghostsIn(layer);
+  assert.equal(ghost.style.translate, '29px 0');
+});
 
 test('the same set with another tool lit, or a new value, does not animate', () => {
   const { slot, layer, replace } = setup();

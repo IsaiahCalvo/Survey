@@ -341,11 +341,17 @@ function splitHalf(piece) {
   return [a, b].map((p) => ({ pts: p, closed: false, dash: piece.dash, length: piece.length / 2 }));
 }
 
+// A dashed piece (the lasso's arc) is never cut or run backwards: its dash
+// pattern starts where the real icon's does, so the last frame lines up with
+// the real icon's dashes and nothing pops when it takes over.
 function evenUp(pieces, count) {
   const list = pieces.slice();
   while (list.length < count) {
-    let longest = 0;
-    for (let k = 1; k < list.length; k += 1) if (list[k].length > list[longest].length) longest = k;
+    let longest = -1;
+    for (let k = 0; k < list.length; k += 1) {
+      if (list[k].dash && list.some((p) => !p.dash)) continue;
+      if (longest < 0 || list[k].length > list[longest].length) longest = k;
+    }
     list.splice(longest, 1, ...splitHalf(list[longest]));
   }
   return list;
@@ -364,6 +370,11 @@ function align(from, to) {
   const A = loop(from);
   const B = loop(to);
   if (!from.closed && !to.closed) {
+    if (to.dash) {
+      // Keep the dashed target's direction; run the other one either way.
+      const revA = A.slice().reverse();
+      return { a: travel(revA, B) < travel(A, B) ? revA : A, b: B };
+    }
     const rev = B.slice().reverse();
     return { a: A, b: travel(A, rev) < travel(A, B) ? rev : B };
   }
@@ -388,7 +399,7 @@ function align(from, to) {
     }
   } else {
     for (const cand of rotations(A, true)) {
-      for (const b of [B, B.slice().reverse()]) {
+      for (const b of (to.dash ? [B] : [B, B.slice().reverse()])) {
         const cost = travel(cand, b);
         if (!best || cost < best.cost) best = { cost, a: cand, b };
       }
@@ -436,6 +447,19 @@ export function planMorph(from, to, { glyphPx = 16 } = {}) {
   return pairs;
 }
 
+/**
+ * The loadouts' slots: which glyphs can share a slot (Draw, Shapes, Text,
+ * Select), so their morphs can be planned ahead of the first switch.
+ */
+export const MORPH_SLOT_GROUPS = Object.freeze([
+  ['pen', 'rect', 'textBox', 'selectCursor'],
+  ['highlighter', 'ellipse', 'callout', 'lassoSelect'],
+  ['eraser', 'polygon', 'textSelect'],
+]);
+
+/** Every morph a group switch can ask for, as [from, to] names. */
+export const morphPairsToWarm = () => MORPH_SLOT_GROUPS.flatMap((group) => group.flatMap((a) => group.filter((b) => b !== a).map((b) => [a, b])));
+
 const round = (v) => Math.round(v * 100) / 100;
 
 /**
@@ -459,12 +483,15 @@ export function morphFrame(pairs, t) {
 }
 
 /** A frame's points as polylines, to start a new morph from mid-way. */
-export function frameAsPolylines(frame, pairs, t) {
-  return frame.map((piece, k) => {
-    const { dashA, dashB } = pairs[k];
-    const dash = t < 0.5 ? (dashA || null) : (dashB || null);
-    return { pts: piece.pts, closed: false, dash, length: polyLength(piece.pts) };
-  });
+export function frameAsPolylines(frame) {
+  // The dash is carried as drawn (its gap part-way open), so a morph that
+  // starts from here opens or closes the gaps from where they were.
+  return frame.map((piece) => ({
+    pts: piece.pts,
+    closed: false,
+    dash: piece.dash ? piece.dash.split(' ').map(Number) : null,
+    length: polyLength(piece.pts),
+  }));
 }
 
 /** CSS cubic-bezier as a function (for the frame-driven morph). */

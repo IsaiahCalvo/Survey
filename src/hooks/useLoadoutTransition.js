@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  LOADOUT_MOTION, attachLoadoutTransition, cancelRowSlide, prefersReducedMotion, rowMoveIsInstant, slideRow,
+  LOADOUT_MOTION, attachLoadoutTransition, cancelRowSlide, prefersReducedMotion, rowMoveIsInstant, slideRow, swapSharedNothing,
 } from '../utils/loadoutTransition.js';
 
 /**
@@ -23,7 +23,13 @@ export function useRowSlide(element, left, { row = null, enabled = true, targets
     const delta = last.left - left;
     if (Math.abs(delta) < 0.5) return;
     const list = targets ? targets(element) : [element];
-    if (!enabled || rowMoveIsInstant(row || element)) { cancelRowSlide(list); return; }
+    // RULED 2026-09-27 owner: morphing icons + one motion language (w49): a
+    // row whose controls were ALL just replaced (Draw's colours → Shapes'
+    // border and fill) has nothing to carry across, so it lands at its new
+    // centre at once — the new controls grow in where they belong and the
+    // old ones shrink out where they were; nothing slides in from the side.
+    // A row that keeps some controls (Line → Arrow) still glides.
+    if (!enabled || rowMoveIsInstant(row || element) || swapSharedNothing(element)) { cancelRowSlide(list); return; }
     slideRow(list, delta);
   }, [element, left, enabled, row, targets]);
 }
