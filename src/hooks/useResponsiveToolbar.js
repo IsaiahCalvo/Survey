@@ -259,7 +259,8 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       const row = rowFromDom(holder, cacheRef.current, overflowSlotsRef?.current || []);
       const span = usableRowSpan(rowRect);
       // RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). The
-      // settings centre under the group icons (useRowSlide animates a move).
+      // settings centre under the group icons (RULED 2026-09-28: a move is
+      // not animated; row 2 crossfades in place — useRowCrossfade).
       const centre = hostRect.left + top.clusterLeft + clusterRect.width / 2 - rowRect.left;
       const input = { usableLeft: span.left, usableRight: span.right, centre, row };
       let next = planFormatRow(input);

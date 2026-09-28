@@ -46,8 +46,9 @@
  *   Owner: "also the subtool bar items are not centered." The settings are
  *   centred on the same centre as the Draw / Shapes / Text icons above them.
  *   A row whose controls change (a tool switch, Cloud adding Bump) re-centres,
- *   and that move is animated (useRowSlide, ~190ms, like the loadout), never
- *   a snap; a row whose controls have not changed never moves. Where the row
+ *   (RULED 2026-09-28 owner: one motion for row 2 — the row crossfades in
+ *   place at its new spot; w48's glide is gone); a row whose controls have
+ *   not changed never moves. Where the row
  *   would run past either inset it slides just far enough, and it gives
  *   ground in the w42 order:
  *     1. the gutters between the setting pills and the rules tighten;

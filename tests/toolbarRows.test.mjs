@@ -209,11 +209,14 @@ test('w48: Pan / Select hang beside the group icons; Undo/Redo pinned left; noth
   assert.match(hook, /centre: hostRect\.left \+ top\.clusterLeft \+ clusterRect\.width \/ 2 - textBarRect\.left,/);
 });
 
-test('w48: rows 2 and 3 glide when they re-centre, never on unchanged content', () => {
-  // RULED 2026-09-27 owner: rows 2/3 centred, animated.
-  assert.match(appShell, /useRowSlide\(formatHolderEl, toolbarPlan\.formatLeft, \{ row: formatRowEl, enabled: chromeMotion && formatRowShown \}\);/);
-  assert.match(appShell, /useRowSlide\(textBarEl, textFormatRowLeft, \{ row: textFormatRowEl, enabled: chromeMotion, targets: childrenOf \}\);/);
+test('RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3 drops down — no row glides; rows never move on unchanged content', () => {
+  // Was w48 (rows 2 and 3 glide when they re-centre); the glide is gone.
+  assert.doesNotMatch(appShell, /useRowSlide\(/);
+  assert.match(appShell, /useRowCrossfade\(formatHolderEl, formatGhostLayerEl, chromeMotion\);/);
+  assert.match(appShell, /useDropInRow\(textBarEl, textFormatRowEl, chromeMotion\);/);
   assert.match(appShell, /<div data-rich-text-toolbar ref=\{setTextBarEl\}/);
+  const motion = readFileSync(new URL('../src/utils/loadoutTransition.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(motion, /slideRow|swapSharedNothing|ROW_SLIDE_MS/);
   // A pixel of measuring noise never moves a row.
   const hook = readFileSync(new URL('../src/hooks/useResponsiveToolbar.js', import.meta.url), 'utf8');
   assert.match(hook, /Math\.abs\(next\.left - current\.formatLeft\) <= 1\s*\? current\.formatLeft/);
@@ -223,7 +226,10 @@ test('w48: rows 2 and 3 glide when they re-centre, never on unchanged content', 
 test('w47: the loadout and row 2 crossfade through ghost layers; row 2 fades out as it goes', () => {
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts.
   assert.match(appShell, /useLoadoutTransition\(loadoutSlotEl, loadoutGhostLayerEl, chromeMotion\);/);
-  assert.match(appShell, /useLoadoutTransition\(formatHolderEl, formatGhostLayerEl, chromeMotion\);/);
+  // RULED 2026-09-28 owner: one motion for row 2 — row 2 crossfades as a
+  // whole (useRowCrossfade); the tool bar keeps its morph / grow / shrink.
+  assert.doesNotMatch(appShell, /useLoadoutTransition\(formatHolderEl/);
+  assert.match(appShell, /useRowCrossfade\(formatHolderEl, formatGhostLayerEl, chromeMotion\);/);
   assert.match(appShell, /const chromeMotion = Boolean\(isViewerVisible && !isMobileViewer\);/);
   assert.match(appShell, /ref=\{setLoadoutSlotEl\}\s*data-toolbar-subtools="true"/);
   assert.match(appShell, /ref=\{setFormatHolderEl\}\s*data-chrome-settings-holder="true"/);

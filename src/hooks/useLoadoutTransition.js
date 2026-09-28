@@ -1,37 +1,48 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  LOADOUT_MOTION, attachLoadoutTransition, cancelRowSlide, prefersReducedMotion, rowMoveIsInstant, slideRow, swapSharedNothing,
+  ROW_MOTION, attachLoadoutTransition, attachRowCrossfade, playRowDrop, prefersReducedMotion,
 } from '../utils/loadoutTransition.js';
 
 /**
- * RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). When `left` (the
- * row's planned start) changes while the row is on screen, the row GLIDES to
- * it (slideRow; see utils/loadoutTransition.js for the motion and why)
- * instead of snapping. `element` is what the plan positions (row 2's settings
- * holder, row 3's text bar); `row` is the bar itself, checked for arriving /
- * leaving and open popovers (rowMoveIsInstant); `targets(element)` lists what
- * to move (default: the element). The first spot a (new) element gets is
- * never animated. Desktop only: pass enabled=false on the phone.
+ * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
+ * drops down. Owner: row 2 was inconsistent — "sometimes you get a pan-in
+ * animation, sometimes some type of morph". The w48 re-centre glide and the
+ * w49 per-control grow / shrink are gone from row 2: when its set of controls
+ * changes the whole row crossfades in place (attachRowCrossfade in
+ * utils/loadoutTransition.js), already at its new centred spot, and an
+ * unchanged set never animates. `holder` is row 2's settings holder, `layer`
+ * its ghost layer (elements, from callback refs kept in state). Desktop only:
+ * pass enabled=false on the phone.
  */
-export function useRowSlide(element, left, { row = null, enabled = true, targets = null } = {}) {
-  const lastRef = useRef({ element: null, left: null });
+export function useRowCrossfade(holder, layer, enabled = true) {
+  useEffect(() => {
+    if (!enabled || !holder || !layer) return undefined;
+    return attachRowCrossfade(holder, layer);
+  }, [holder, layer, enabled]);
+}
+
+/**
+ * RULED 2026-09-28 owner: row 3 "doesn't really need an animation, it just
+ * needs to appear, e.g. come down from underneath the second bar". When the
+ * Aa bar (`bar`, from a callback ref kept in state) appears it drops ~8px
+ * down into place as it fades in (~150ms, ease-out); when it goes, a lifeless
+ * copy of it goes back up the same way (~110ms) laid over the page where it
+ * was — the live bar is already gone, so nothing below or around it waits or
+ * moves (the w43 no-shift guarantee: row 3 lies over the page). A clip at its
+ * top edge keeps it from ever drawing over row 2. It never moves sideways; a
+ * re-centre just lands. Instant with prefers-reduced-motion; desktop only.
+ * `slot` is row 3's slot (the copy is placed in it).
+ */
+export function useDropInRow(bar, slot, enabled = true) {
+  const lastRef = useRef(null);
+  const leavingRef = useRef(null); // { copy, animation }
   useLayoutEffect(() => {
     const last = lastRef.current;
-    lastRef.current = { element, left };
-    if (!element || !Number.isFinite(left)) return;
-    if (last.element !== element || !Number.isFinite(last.left)) return;
-    const delta = last.left - left;
-    if (Math.abs(delta) < 0.5) return;
-    const list = targets ? targets(element) : [element];
-    // RULED 2026-09-27 owner: morphing icons + one motion language (w49): a
-    // row whose controls were ALL just replaced (Draw's colours → Shapes'
-    // border and fill) has nothing to carry across, so it lands at its new
-    // centre at once — the new controls grow in where they belong and the
-    // old ones shrink out where they were; nothing slides in from the side.
-    // A row that keeps some controls (Line → Arrow) still glides.
-    if (!enabled || rowMoveIsInstant(row || element) || swapSharedNothing(element)) { cancelRowSlide(list); return; }
-    slideRow(list, delta);
-  }, [element, left, enabled, row, targets]);
+    lastRef.current = bar;
+    if (bar === last) return;
+    leavingRef.current = playRowDrop(bar, last, slot, { enabled, previous: leavingRef.current });
+  }, [bar, slot, enabled]);
+  useEffect(() => () => { leavingRef.current?.copy?.remove?.(); }, []);
 }
 
 /**
@@ -51,16 +62,20 @@ export default function useLoadoutTransition(slot, layer, enabled = true) {
   }, [slot, layer, enabled]);
 }
 
-/** Row 2 fading up and away: the reverse of its 140ms drop-in. */
+/**
+ * Row 2 fading out in place: the reverse of its fade-in.
+ * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade) — it no
+ * longer drifts up as it goes (w47's 5px), it just fades where it is.
+ */
 export const ROW_LEAVE_KEYFRAMES = Object.freeze([
-  { opacity: 1, translate: '0 0' },
-  { opacity: 0, translate: '0 -5px' },
+  { opacity: 1 },
+  { opacity: 0 },
 ]);
 
 /**
  * RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
  * Row 2 LEAVES the way it arrives. When `shown` goes false the row stays
- * drawn (`leaving`) for LOADOUT_MOTION.rowOutMs while it fades up and out
+ * drawn (`leaving`) for ROW_MOTION.outMs while it fades out in place
  * (`fading`: the live settings hide and their copy fades with the row).
  *
  * Intended UX: never a blink. So
@@ -91,7 +106,7 @@ export function useLeavingRow(row, shown, enabled = true) {
     let timer = null;
     const frame = requestAnimationFrame(() => {
       setFading(true);
-      timer = setTimeout(() => setLeaving(false), LOADOUT_MOTION.rowOutMs);
+      timer = setTimeout(() => setLeaving(false), ROW_MOTION.outMs);
     });
     return () => { cancelAnimationFrame(frame); if (timer) clearTimeout(timer); };
   }, [leaving]);
@@ -105,7 +120,7 @@ export function useLeavingRow(row, shown, enabled = true) {
     const running = animationRef.current;
     if (active && !running) {
       animationRef.current = row.animate?.(ROW_LEAVE_KEYFRAMES, {
-        duration: LOADOUT_MOTION.rowOutMs, easing: LOADOUT_MOTION.leaveEasing, fill: 'forwards',
+        duration: ROW_MOTION.outMs, easing: ROW_MOTION.outEasing, fill: 'forwards',
       }) || null;
       return;
     }

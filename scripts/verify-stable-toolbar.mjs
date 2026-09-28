@@ -32,6 +32,17 @@
 // samples below record every overlay's path, every control's scale /
 // opacity / translate, and row 2's centre, and assert exactly that.
 //
+// w50 (2026-09-28): RULED 2026-09-28 owner: one motion for row 2 (in-place
+// crossfade), row 3 drops down. The tool bar (row 1) keeps the w49 morphs.
+// Row 2 no longer glides or grows / shrinks controls: when its SET of
+// controls changes the whole row crossfades in place (a copy of the old row
+// fades out ~90ms, the live row fades in ~140ms (opacity only), already at its
+// final centred spot); an unchanged set never animates. The frame samples
+// assert no translate on row 2 on any frame, that its spot changes at most
+// once (a jump while it is still faint, never a glide), and the crossfade
+// itself. Row 3 (Aa) drops down from under row 2 (translateY -8 → 0 + fade,
+// ~150ms) and goes back up (~110ms) without moving row 2.
+//
 //   node scripts/verify-stable-toolbar.mjs
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -115,17 +126,49 @@ const assertRow2Centred = (states, label) => {
   }
 };
 
-// w48: a re-centre glides: several frames between the two spots, no one
-// frame jumping most of the way.
-const assertGlide = (frames, label) => {
-  const xs = frames.map((f) => f.holder).filter((v) => v !== null);
-  const total = Math.abs(xs[xs.length - 1] - xs[0]);
-  if (total < 4) return { total, frames: 0 };
-  const steps = xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
-  const moving = steps.filter((d) => d > 0.05).length;
-  assert.ok(moving >= 4, `${label}: row 2 glided over several frames (${JSON.stringify(xs)})`);
-  assert.ok(Math.max(...steps) <= total * 0.6, `${label}: no frame jumped most of the way (${JSON.stringify(xs)})`);
-  return { total, frames: moving };
+// RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade). On
+// every frame: no translate on the live row or the copy of the old one. The
+// row's spot changes at most once, and only while it is still faint (it is
+// drawn at its new centre as it fades in — never a glide). A changed set
+// crossfades: the old row's copy fades out and goes within ~150ms while the
+// live row fades in (opacity only) and is whole by ~220ms. The same set:
+// nothing animates at all.
+const assertRowCrossfade = (frames, label) => {
+  const shown = frames.filter((f) => f.rowDisplay === 'block' && f.holderLeft != null);
+  for (const f of frames) {
+    assert.ok(f.holderTranslate === 'none' || f.holderTranslate === '0px', `${label} @${f.t}ms: row 2 slid (${f.holderTranslate})`);
+    for (const g of f.rowGhosts) assert.ok(g.tr === 'none' || g.tr === '0px', `${label} @${f.t}ms: the old row's copy slid (${g.tr})`);
+    if (f.holderScale != null) assert.ok(f.holderScale === 1, `${label} @${f.t}ms: row 2 scale ${f.holderScale}`);
+  }
+  const lefts = shown.map((f) => f.holderLeft);
+  const jumps = [];
+  for (let k = 1; k < shown.length; k += 1) {
+    if (Math.abs(shown[k].holderLeft - shown[k - 1].holderLeft) > 0.5) jumps.push({ t: shown[k].t, by: Math.round((shown[k].holderLeft - shown[k - 1].holderLeft) * 10) / 10, o: Math.round(shown[k].holderOpacity * Number(shown[k].rowOpacity) * 100) / 100, prevO: Math.round(shown[k - 1].holderOpacity * Number(shown[k - 1].rowOpacity) * 100) / 100 });
+  }
+  const real = jumps;
+  assert.ok(real.length <= 1, `${label}: row 2 moved on more than one frame — a glide (${JSON.stringify(jumps)} lefts ${lefts})`);
+  for (const j of real) assert.ok(Math.min(j.o, j.prevO) <= 0.6, `${label}: row 2 jumped while clearly visible (${JSON.stringify(j)})`);
+  const changed = frames.sigBefore != null && shown.length && shown[shown.length - 1].rowSig !== frames.sigBefore;
+  const ghostFrames = frames.filter((f) => f.rowGhosts.length);
+  if (!changed) {
+    // Arriving (the row's own fade) or the same set: no crossfade.
+    if (frames.sigBefore != null) {
+      assert.equal(ghostFrames.length, 0, `${label}: same set, but row 2 crossfaded`);
+      assert.ok(shown.every((f) => f.holderOpacity === 1), `${label}: same set, but row 2 faded (${shown.map((f) => f.holderOpacity)})`);
+    }
+    return { kind: frames.sigBefore == null ? 'arrives' : 'same', jumps: real.length };
+  }
+  assert.ok(ghostFrames.length >= 1, `${label}: the old row faded out (no copy seen)`);
+  const lastGhost = ghostFrames[ghostFrames.length - 1].t;
+  assert.ok(lastGhost <= 170, `${label}: the old row's copy was gone by ~150ms (last ${lastGhost}ms)`);
+  assert.ok(shown.some((f) => f.holderOpacity < 0.9), `${label}: the new row faded in (${shown.map((f) => f.holderOpacity)})`);
+  const whole = shown.find((f) => f.holderOpacity === 1 && f.t > 0 && shown.slice(shown.indexOf(f)).every((g) => g.holderOpacity === 1));
+  assert.ok(whole && whole.t <= 230, `${label}: the new row whole by ~140ms (${shown.map((f) => `${f.t}:${f.holderOpacity}`).join(' ')})`);
+  // The copy stays where the old row was drawn.
+  for (const f of ghostFrames) assert.ok(new Set(f.rowGhosts.map((g) => g.x)).size <= 2, `${label}: copies in place`);
+  const copyXs = new Set(frames.flatMap((f) => f.rowGhosts.map((g) => g.x)));
+  assert.ok(copyXs.size <= 2, `${label}: the old row's copy never moved (${[...copyXs]}) ${JSON.stringify(frames.map((f) => [f.t, f.rowDisplay, f.rowOpacity, f.holderLeft, f.holderOpacity, f.rowGhosts]))}`);
+  return { kind: 'crossfade', jumps: real.length, ghostMs: lastGhost, wholeMs: whole.t };
 };
 
 // Click `selector` from inside the page and sample every frame for `ms`:
@@ -136,6 +179,16 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
   const x = (el) => (el && el.getClientRects().length ? Math.round(el.getBoundingClientRect().left * 10) / 10 : null);
   const frames = [];
   const start = performance.now();
+  // w50: row 2's set of controls (value-free), to tell a changed set from
+  // the same one.
+  const rowSig = () => {
+    const h = q('[data-chrome-settings-holder]');
+    const r = q('[data-chrome-format-row]');
+    if (!h || !r || r.style.display === 'none') return null;
+    return [...h.querySelectorAll('button, input, select, [data-toolbar-slot], .chrome-divider')]
+      .filter((e) => !e.closest('[role="dialog"], [role="menu"], [role="listbox"], [data-loadout-ignore]'))
+      .map((e) => `${e.tagName}:${e.getAttribute('data-toolbar-slot') || ''}:${String(e.getAttribute('aria-label') || '').replace(/[#\d].*$/, '').trim()}`).join('|');
+  };
   const sample = () => {
     const live = q(slot);
     const ghost = document.querySelector('[data-loadout-ghost]');
@@ -166,6 +219,13 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
       holderLeft: (() => { const h = q('[data-chrome-settings-holder]'); return h ? Math.round(h.getBoundingClientRect().left * 10) / 10 : null; })(),
       holderWidth: (() => { const h = q('[data-chrome-settings-holder]'); return h ? Math.round(h.getBoundingClientRect().width * 10) / 10 : null; })(),
       holderTranslate: q('[data-chrome-settings-holder]') ? getComputedStyle(q('[data-chrome-settings-holder]')).translate : null,
+      // w50: row 2's crossfade — the live row's own opacity / scale, and the
+      // copy of the old row in row 2's ghost layer.
+      holderOpacity: q('[data-chrome-settings-holder]') ? Number(Number(getComputedStyle(q('[data-chrome-settings-holder]')).opacity).toFixed(2)) : null,
+      holderScale: (() => { const h = q('[data-chrome-settings-holder]'); if (!h) return null; const sc = getComputedStyle(h).scale; return sc === 'none' ? 1 : Number(sc); })(),
+      rowGhosts: [...document.querySelectorAll('[data-chrome-format-row] [data-loadout-ghost-layer] > [data-loadout-ghost]')].map((g) => ({ o: Number(Number(getComputedStyle(g).opacity).toFixed(2)), tr: getComputedStyle(g).translate, x: Math.round(g.getBoundingClientRect().left * 10) / 10 })),
+      rowSig: rowSig(),
+      rowRect: (() => { const r = q('[data-chrome-format-row]'); if (!r || r.style.display === 'none') return null; const b = r.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)].join(','); })(),
       ghost: ghost ? Number(getComputedStyle(ghost).opacity).toFixed(2) : null,
       // Controls in the ghost that are actually drawn (not place-holders).
       ghostShown: ghost ? [...ghost.querySelectorAll('button, input')].filter((b) => getComputedStyle(b).visibility !== 'hidden').length : 0,
@@ -188,14 +248,15 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
       rowDisplay: q('[data-chrome-format-row]')?.style.display,
       rowOpacity: Number(getComputedStyle(q('[data-chrome-format-row]')).opacity).toFixed(2),
     });
-    if (performance.now() - start < ms) requestAnimationFrame(sample); else done({ frames, before });
+    if (performance.now() - start < ms) requestAnimationFrame(sample); else done({ frames, before, sigBefore });
   };
   // w49: each loadout slot's glyph colour as drawn just before the click (a
   // morph must start from it — no colour pop on its first frame).
   const before = [...document.querySelectorAll('[data-toolbar-subtools] [data-morph-icon]')].map((b) => getComputedStyle(b.querySelector('svg, span[aria-hidden="true"]')).color);
-  q(selector).click();
+  const sigBefore = rowSig();
+  if (selector) q(selector).click();
   requestAnimationFrame(sample);
-}), { selector, slot, ms }).then(({ frames, before }) => Object.assign(frames, { before }));
+}), { selector, slot, ms }).then(({ frames, before, sigBefore }) => Object.assign(frames, { before, sigBefore }));
 
 // w49 (RULED 2026-09-27 owner: morphing icons + one motion language): a
 // group switch morphs `morphs` slots in place — each overlay's path changes
@@ -243,43 +304,6 @@ const assertMorph = (frames, label, { morphs }) => {
   return { frames: frames.length, morphMs: lastMorph, grew };
 };
 
-// w49: row 2 in every group switch — its controls never slide on their own
-// (only grow / shrink), and the one sideways motion is the row re-centring
-// under the group icons: it keeps its left edge for the first frame and
-// glides from there, straight to its new spot with no overshoot. So every
-// switch obeys the same rule: a row that gets WIDER glides left (half the
-// extra width), one that gets NARROWER glides right, and one whose width is
-// unchanged does not move. (w47's 6px left→right slide on the changed
-// controls used to swamp the small Draw ↔ Shapes glide, which is why Text
-// read as the odd one out.)
-const assertRowLanguage = (frames, label, iconsCentre, widthBefore) => {
-  for (const f of frames) {
-    for (const m of f.liveMotion) assert.ok(m.tr === 'none' || m.tr === '0px', `${label} @${f.t}ms: a row-2 control slid (${m.tr})`);
-  }
-  // Row 2 arriving (drops in where it belongs) or leaving (fades up and
-  // away) is not a re-centre.
-  if (frames[frames.length - 1].rowDisplay !== 'block') return 'leaves';
-  if (widthBefore == null) return 'arrives';
-  const shown = frames.filter((f) => f.holderLeft != null && f.rowDisplay === 'block');
-  if (shown.length < 2) return null;
-  const settled = shown[shown.length - 1];
-  assert.ok(Math.abs(settled.holderCentre - iconsCentre) <= 1.5, `${label}: row 2 ends centred (${settled.holderCentre} vs ${iconsCentre})`);
-  const lefts = shown.map((f) => f.holderLeft);
-  // A row whose controls were all replaced lands at its new centre at once
-  // (the new controls grow in there; nothing slides in from the side).
-  if (new Set(lefts).size <= 2) return 'lands';
-  const widthChange = settled.holderWidth - (widthBefore ?? shown[0].holderWidth);
-  const travel = lefts[lefts.length - 1] - lefts[0];
-  if (Math.abs(widthChange) < 2) {
-    assert.ok(Math.abs(travel) < 2, `${label}: same width, row 2 stays put (${lefts})`);
-    return 'still';
-  }
-  assert.ok(Math.sign(travel) === -Math.sign(widthChange), `${label}: wider glides left, narrower glides right (width ${widthChange}, travel ${travel})`);
-  const steps = lefts.slice(1).map((v, i) => v - lefts[i]);
-  assert.ok(steps.every((d) => d * travel >= -0.6), `${label}: row 2 glides one way, no overshoot (${lefts})`);
-  return travel < 0 ? 'left' : 'right';
-};
-
 const runAt = async (width, { reducedMotion = false } = {}) => {
   const profile = mkdtempSync(join(tmpdir(), 'w47-toolbar-'));
   const ctx = await chromium.launchPersistentContext(profile, {
@@ -312,6 +336,24 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       const jump = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Arrow"]', { slot: '[data-chrome-settings-holder]', ms: 160 });
       const spots = [...new Set(jump.map((f) => f.holder))];
       assert.ok(spots.length <= 2, `${width}px reduced motion: row 2 re-centres at once (${JSON.stringify(spots)})`);
+      // w50: row 2's set changing, and row 3 coming and going, are instant.
+      assert.ok(jump.every((f) => f.rowGhosts.length === 0 && (f.holderOpacity === 1 || f.holderOpacity === null)), `${width}px reduced motion: row 2 crossfaded`);
+      await page.click(GROUP.text); await settle(page);
+      if (!(await page.$('[data-chrome-text-format-row] [data-rich-text-toolbar]'))) {
+        await page.click('[data-chrome-settings-holder] [aria-label="Edit text"]'); await settle(page);
+      }
+      const row3 = await page.evaluate(() => new Promise((done) => {
+        const frames = [];
+        const start = performance.now();
+        document.querySelector('[data-chrome-settings-holder] [aria-label="Edit text"]').click();
+        const tick = () => {
+          const slotEl = document.querySelector('[data-chrome-text-format-row]');
+          frames.push({ copies: slotEl.querySelectorAll('[data-loadout-ghost]').length, anims: [...slotEl.querySelectorAll('*')].reduce((n, e) => n + e.getAnimations().filter((a) => !(a instanceof CSSTransition)).length, 0) });
+          if (performance.now() - start < 150) requestAnimationFrame(tick); else done(frames);
+        };
+        requestAnimationFrame(tick);
+      }));
+      assert.ok(row3.every((f) => f.copies === 0 && f.anims === 0), `${width}px reduced motion: row 3 went at once ${JSON.stringify(row3)}`);
       console.log(`ok ${width}px reduced motion: swaps are instant`);
       return;
     }
@@ -388,11 +430,11 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
         const fromSel = from === 'select' ? SELECT : GROUP[from];
         const toSel = to === 'select' ? SELECT : GROUP[to];
         await page.click(fromSel); await settle(page);
-        const { iconsCentre, row2, row2Right } = await fixedPoints(page);
         const frames = await sampleSwap(page, toSel);
         const r = assertMorph(frames, `${width}px ${from}→${to}`, { morphs });
-        const way = assertRowLanguage(frames, `${width}px ${from}→${to}`, iconsCentre, row2 === 'hidden' ? null : row2Right - row2);
-        if (round === 0) cycleReport.push(`${from}→${to} ${morphs} morphs/${r.morphMs}ms row 2 ${way}`);
+        const way = assertRowCrossfade(frames, `${width}px ${from}→${to}`);
+        assertRow2Centred([{ label: to, ...(await fixedPoints(page)) }], `${width}px ${from}→${to}`);
+        if (round === 0) cycleReport.push(`${from}→${to} ${morphs} morphs/${r.morphMs}ms row 2 ${way.kind}${way.ghostMs != null ? ` (old out by ${way.ghostMs}ms, new whole ${way.wholeMs}ms)` : ''}`);
         await settle(page);
       }
     }
@@ -470,9 +512,14 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     await page.click('#chrome-subtools-host button[aria-label="Line"]'); await settle(page);
     const lineToArrow = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Arrow"]', { slot: '[data-chrome-settings-holder]', ms: 320 });
     assert.ok(lineToArrow.every((f) => f.coloursAnimating === 0), `${width}px Line→Arrow: the colours did not animate on their own`);
-    // RULED 2026-09-27 owner: rows 2/3 centred, animated — the wider Arrow
-    // row re-centres, gliding (w47 held it still).
-    const glide = assertGlide(lineToArrow, `${width}px Line→Arrow`);
+    // RULED 2026-09-28 owner: one motion for row 2 — the wider Arrow row is
+    // drawn at its new centre and crossfades there; no glide (w48 glided).
+    const glide = assertRowCrossfade(lineToArrow, `${width}px Line→Arrow`);
+    assert.equal(glide.kind, 'crossfade', `${width}px Line→Arrow: the set changed, so row 2 crossfaded`);
+    // And back: Arrow → Line.
+    const arrowToLine = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Line"]', { slot: '[data-chrome-settings-holder]', ms: 320 });
+    assertRowCrossfade(arrowToLine, `${width}px Arrow→Line`);
+    await page.click('#chrome-subtools-host button[aria-label="Arrow"]'); await settle(page);
     assertRow2Centred([{ label: 'arrow', ...(await fixedPoints(page)) }], `${width}px`);
     // w47 review 1: Eraser → Pen never blinks row 2.
     await page.click(GROUP.draw); await settle(page);
@@ -495,6 +542,7 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
           t: Math.round(t),
           after: clickedBack,
           ghosts: document.querySelectorAll('[data-loadout-ghost]').length,
+          where: [...document.querySelectorAll('[data-loadout-ghost]')].map((g) => (g.closest('[data-chrome-format-row]') ? 'row2' : 'row1') + ':' + Number(getComputedStyle(g).opacity).toFixed(2) + ':' + g.querySelectorAll('button,input').length).join(' '),
           row: row.style.display === 'none' ? 0 : Number(getComputedStyle(row).opacity),
         });
         if (t < 360) requestAnimationFrame(tick); else done(frames);
@@ -503,12 +551,165 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       requestAnimationFrame(tick);
     }), { pan: PAN, shapes: GROUP.shapes });
     const afterBack = back.filter((f) => f.after);
-    assert.ok(afterBack.slice(1).every((f) => f.ghosts === 0), `${width}px Shapes→Pan→Shapes: no copy left fading over the returning tools ${JSON.stringify(afterBack.map((f) => f.ghosts))}`);
+    assert.ok(afterBack.slice(1).every((f) => f.ghosts === 0), `${width}px Shapes→Pan→Shapes: no copy left fading over the returning tools ${JSON.stringify(back.map((f) => [f.t, f.after, f.row.toFixed(2), f.where]))}`);
     const lowest = Math.min(...afterBack.map((f) => f.row));
     const atReturn = afterBack[0].row;
     assert.ok(lowest >= Math.min(atReturn, back.filter((f) => !f.after).slice(-1)[0].row) - 0.05, `${width}px Shapes→Pan→Shapes: row 2 ran back instead of replaying ${JSON.stringify(back.map((f) => f.row.toFixed(2)))}`);
     assert.equal(afterBack[afterBack.length - 1].row, 1, `${width}px: row 2 fully back`);
     await settle(page);
+    // w50: more row-2 changes, each one crossfade or nothing.
+    const extraReport = [];
+    // Pen → Highlighter: report whether the set is the same (then nothing
+    // may animate) or not (then one crossfade).
+    await page.click(GROUP.draw); await settle(page);
+    await page.click('#chrome-subtools-host button[aria-label="Pen"]'); await settle(page);
+    const penToHl = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Highlighter"]', { slot: '[data-chrome-settings-holder]', ms: 300 });
+    extraReport.push(`Pen→Highlighter ${assertRowCrossfade(penToHl, `${width}px Pen→Highlighter`).kind}`);
+    const hlToPen = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Pen"]', { slot: '[data-chrome-settings-holder]', ms: 300 });
+    extraReport.push(`Highlighter→Pen ${assertRowCrossfade(hlToPen, `${width}px Highlighter→Pen`).kind}`);
+    // A value change inside a control (a preset colour) never animates row 2.
+    const presets = await page.$$('[data-chrome-settings-holder] [data-quick-colours] button');
+    if (presets.length >= 2) {
+      const idx = presets.length - 2;
+      const colourFrames = await page.evaluate((i) => new Promise((done) => {
+        const h = document.querySelector('[data-chrome-settings-holder]');
+        const frames = [];
+        const start = performance.now();
+        h.querySelectorAll('[data-quick-colours] button')[i].click();
+        const tick = () => {
+          frames.push({ o: Number(getComputedStyle(h).opacity), ghosts: document.querySelectorAll('[data-chrome-format-row] [data-loadout-ghost]').length, x: h.getBoundingClientRect().left });
+          if (performance.now() - start < 250) requestAnimationFrame(tick); else done(frames);
+        };
+        requestAnimationFrame(tick);
+      }), idx);
+      assert.ok(colourFrames.every((f) => f.o === 1 && f.ghosts === 0), `${width}px: picking a colour animated row 2 ${JSON.stringify(colourFrames)}`);
+      assert.equal(new Set(colourFrames.map((f) => f.x)).size, 1, `${width}px: picking a colour moved row 2`);
+      extraReport.push('colour pick still');
+    }
+    // Cloud on / off (Rectangle's line style): Cloud adds its bump size.
+    await page.click(GROUP.shapes); await settle(page);
+    await page.click('#chrome-subtools-host button[aria-label="Rectangle"]'); await settle(page);
+    const styleTrigger = '[data-chrome-settings-holder] [data-toolbar-slot="style"] button';
+    const pickStyle = async (name) => {
+      await page.click(styleTrigger); await page.waitForTimeout(200);
+      const option = page.locator('[role="listbox"] [role="option"]', { hasText: name }).first();
+      if (!(await option.count())) { await page.keyboard.press('Escape'); await settle(page); return null; }
+      // Sample from the option's press: the menu closes and the set changes.
+      const box = await option.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      const sampled = sampleSwap(page, null,{ slot: '[data-chrome-settings-holder]', ms: 320 });
+      await page.mouse.down(); await page.mouse.up();
+      return sampled;
+    };
+    if (await page.$(styleTrigger)) {
+      const cloudOn = await pickStyle('Cloud');
+      if (cloudOn) {
+        const r = assertRowCrossfade(cloudOn, `${width}px Cloud on`);
+        await settle(page);
+        const bump = await page.$('[data-chrome-settings-holder] [aria-label="Cloud bump size"]');
+        extraReport.push(`Cloud on ${r.kind}${bump ? ' (bump size shown)' : ''}`);
+        const cloudOff = await pickStyle('Solid');
+        extraReport.push(`Cloud off ${assertRowCrossfade(cloudOff, `${width}px Cloud off`).kind}`);
+        await settle(page);
+      }
+    }
+    // Picking marks with Select: row 2 comes (fade in place), changes
+    // (crossfade) and goes (fade out in place) — never a glide.
+    await page.click(SELECT); await settle(page);
+    const pickFrames = await page.evaluate(({ x, y }) => new Promise((done) => {
+      const frames = [];
+      const start = performance.now();
+      const target = document.elementFromPoint(x, y);
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+        target.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1, isPrimary: true }));
+      }
+      const tick = () => {
+        const r = document.querySelector('[data-chrome-format-row]');
+        const h = document.querySelector('[data-chrome-settings-holder]');
+        frames.push({ display: r.style.display, o: Number(getComputedStyle(r).opacity), tr: getComputedStyle(r).translate, htr: h ? getComputedStyle(h).translate : 'none' });
+        if (performance.now() - start < 260) requestAnimationFrame(tick); else done(frames);
+      };
+      requestAnimationFrame(tick);
+    }), { x: pageBox.x + 155, y: pageBox.y + 315 });
+    assert.ok(pickFrames.every((f) => (f.tr === 'none' || f.tr === '0px') && (f.htr === 'none' || f.htr === '0px')), `${width}px pick: row 2 moved as it came ${JSON.stringify(pickFrames)}`);
+    extraReport.push(`pick: row 2 ${pickFrames.some((f) => f.display === 'block' && f.o < 1) ? 'faded in place' : 'already there'}`);
+    await page.keyboard.press('Escape'); await settle(page);
+
+    // RULED 2026-09-28 owner: row 3 drops down. Text → row 3 (Aa) arrives;
+    // Aa hides and shows it; Draw sends it away.
+    const sampleRow3 = (selector) => page.evaluate((sel) => new Promise((done) => {
+      const frames = [];
+      const start = performance.now();
+      const row2 = () => { const r = document.querySelector('[data-chrome-format-row]'); if (!r || r.style.display === 'none') return null; const b = r.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom].map(Math.round).join(','); };
+      const slotEl = document.querySelector('[data-chrome-text-format-row]');
+      const beforeRow2 = row2();
+      const pageTop = () => { const p = document.querySelector('.page, [data-page-number]'); return p ? Math.round(p.getBoundingClientRect().top * 10) / 10 : null; };
+      const beforePage = pageTop();
+      document.querySelector(sel).click();
+      const tick = () => {
+        const bar = document.querySelector('[data-chrome-text-format-row] > [data-rich-text-toolbar]');
+        const copy = slotEl.querySelector(':scope > [data-loadout-ghost]');
+        const read = (el) => {
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          const b = el.getBoundingClientRect();
+          const [tx, ty] = cs.translate === 'none' ? [0, 0] : cs.translate.split(' ').map(parseFloat).concat([0]).slice(0, 2);
+          const clipTop = cs.clipPath && cs.clipPath !== 'none' ? parseFloat(cs.clipPath.slice(6)) : 0;
+          return { o: Number(Number(cs.opacity).toFixed(2)), tx, ty: Math.round(ty * 100) / 100, clipTop: Math.round(clipTop * 100) / 100, drawnTop: Math.round((b.top + clipTop) * 10) / 10, left: Math.round(b.left) };
+        };
+        frames.push({ t: Math.round(performance.now() - start), bar: read(bar), copy: read(copy), slotTop: Math.round(slotEl.getBoundingClientRect().top * 10) / 10, row2: row2(), pageTop: pageTop() });
+        if (performance.now() - start < 300) requestAnimationFrame(tick); else done({ frames, beforeRow2, beforePage });
+      };
+      requestAnimationFrame(tick);
+    }), selector);
+    const assertRow3 = ({ frames, beforeRow2, beforePage }, label, kind) => {
+      const key = kind === 'in' ? 'bar' : 'copy';
+      const moving = frames.filter((f) => f[key]);
+      assert.ok(moving.length >= 3, `${label}: row 3 drawn over several frames (${moving.length})`);
+      for (const f of moving) {
+        const m = f[key];
+        assert.equal(m.tx, 0, `${label} @${f.t}ms: row 3 moved sideways`);
+        assert.ok(m.ty <= 0.01 && m.ty >= -8.01, `${label} @${f.t}ms: row 3 within its 8px drop (${m.ty})`);
+        assert.ok(m.drawnTop >= f.slotTop - 0.6, `${label} @${f.t}ms: row 3 drawn above its slot, over row 2 (${m.drawnTop} vs ${f.slotTop})`);
+      }
+      const tys = moving.map((f) => f[key].ty);
+      if (kind === 'in') {
+        assert.ok(tys[0] < -1, `${label}: row 3 started above its spot (${tys})`);
+        assert.ok(tys.every((v, i) => i === 0 || v >= tys[i - 1] - 0.01), `${label}: row 3 came straight down (${tys})`);
+        assert.equal(tys[tys.length - 1], 0, `${label}: row 3 landed`);
+        const landed = moving.find((f) => f.bar.ty === 0 && f.bar.o === 1);
+        assert.ok(landed && landed.t <= 200, `${label}: row 3 in place by ~150ms (${moving.map((f) => `${f.t}:${f.bar.ty}/${f.bar.o}`).join(' ')})`);
+      } else {
+        assert.ok(tys.every((v, i) => i === 0 || v <= tys[i - 1] + 0.01), `${label}: row 3 went straight back up (${tys})`);
+        const last = moving[moving.length - 1].t;
+        assert.ok(last <= 160, `${label}: row 3 gone by ~110ms (last ${last}ms)`);
+        assert.ok(!frames[frames.length - 1].copy, `${label}: no copy left`);
+      }
+      // Row 2 and the page never moved.
+      for (const f of frames) {
+        if (beforeRow2 && f.row2) assert.equal(f.row2, beforeRow2, `${label} @${f.t}ms: row 2 moved`);
+        assert.equal(f.pageTop, beforePage, `${label} @${f.t}ms: the page moved`);
+      }
+      return kind === 'in' ? moving.find((f) => f.bar.ty === 0 && f.bar.o === 1)?.t : moving[moving.length - 1].t;
+    };
+    await page.click(GROUP.draw); await settle(page);
+    // Make sure the Aa bar is on for the text tools.
+    await page.click(GROUP.text); await settle(page);
+    if (!(await page.$('[data-chrome-text-format-row] [data-rich-text-toolbar]'))) {
+      await page.click('[data-chrome-settings-holder] [aria-label="Edit text"]'); await settle(page);
+    }
+    await page.click(GROUP.draw); await settle(page);
+    const row3In = assertRow3(await sampleRow3(GROUP.text), `${width}px Draw→Text`, 'in');
+    await settle(page);
+    const row3Off = assertRow3(await sampleRow3('[data-chrome-settings-holder] [aria-label="Edit text"]'), `${width}px Aa off`, 'out');
+    await settle(page);
+    const row3On = assertRow3(await sampleRow3('[data-chrome-settings-holder] [aria-label="Edit text"]'), `${width}px Aa on`, 'in');
+    await settle(page);
+    const row3Leave = assertRow3(await sampleRow3(GROUP.draw), `${width}px Text→Draw`, 'out');
+    await settle(page);
+    extraReport.push(`row 3 drops in by ${row3In}/${row3On}ms, leaves by ${row3Off}/${row3Leave}ms`);
+    await page.click(GROUP.shapes); await settle(page);
+
     // Opening a picker or menu from row 2 is not a loadout change.
     await page.click('#chrome-subtools-host button[aria-label="Line"]'); await settle(page);
     let openers = 0;
@@ -567,7 +768,7 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
 
     console.log(`  ${width}px panels: ${panelReport.join('; ')}`);
     console.log(`ok ${width}px: icons at ${seen[0].draw} (centre ${seen[0].iconsCentre}), Pan at ${seen[0].pan}, Select ends ${seen[0].selectRight}, Redo ends ${seen[0].redoRight}, loadout at ${seen[0].loadout} across ${seen.length} states; `
-      + `row 2 starts ${[...rowStarts].sort((a, b) => a - b).join('/')} (centred); Line→Arrow glide ${glide.total}px over ${glide.frames} frames; `
+      + `row 2 starts ${[...rowStarts].sort((a, b) => a - b).join('/')} (centred); Line→Arrow ${glide.kind} (old out by ${glide.ghostMs}ms, new whole ${glide.wholeMs}ms, ${glide.jumps} jump); ${extraReport.join('; ')}; `
       + `morphs: ${cycleReport.join(', ')}; rapid switching worst frame step ${worst.toFixed(2)} units over ${compared} steps`);
   } finally {
     await ctx.close();

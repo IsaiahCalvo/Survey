@@ -48,6 +48,17 @@
  * interpolate between shapes, sharp at rest) and the contextual bars in Figma
  * and Goodnotes, which change a set in place rather than sliding the bar.
  *
+ * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
+ * drops down. Owner: row 2 was inconsistent — "sometimes you get a pan-in
+ * animation, sometimes some type of morph" (the w48 re-centre glide, and the
+ * w49 per-control grow / shrink, picked differently switch to switch). So
+ * everything above is now the TOOL BAR's (row 1's) alone. Row 2 has one rule,
+ * every time (attachRowCrossfade below): when its set of controls changes the
+ * whole row crossfades in place — the old row fades out (90ms) while the new
+ * one fades in (140ms) already at its final centred spot; nothing
+ * moves sideways, and an unchanged set never animates. Row 3 (the Aa bar)
+ * just drops down from under row 2 (useDropInRow).
+ *
  * Who fills the slot does not matter (the viewer draws a group's tools into
  * the tool bar through a portal, in a render of its own): a MutationObserver
  * watches the slot and compares a signature of its controls, and a copy of
@@ -66,9 +77,39 @@ export const LOADOUT_MOTION = Object.freeze({
   easing: `cubic-bezier(${EASE_IN_OUT.join(', ')})`,
   // Grow in from / shrink out to this size, about the control's own centre.
   growFrom: 0.6,
-  // Row 2's own fade out (useLeavingRow) — how long a leaving row stays drawn.
-  rowOutMs: 140,
-  leaveEasing: 'cubic-bezier(0.4, 0, 1, 1)', // row 2's fade: ease-in, speeds away
+});
+
+/**
+ * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
+ * drops down. Row 2's one motion: the old row fades out quickly while the new
+ * one fades in (opacity only, no travel) where it will stay. The same
+ * fade-in when the row appears and fade-out when it goes (useLeavingRow).
+ * Reference behaviour matched: the contextual bars in Figma and Goodnotes,
+ * which swap their contents in place rather than sliding the bar.
+ * No scale: the row is centred by measuring its drawn width
+ * (useResponsiveToolbar), and a row measured mid-scale (0.98) landed ~2px
+ * off centre and stayed there — a plain fade keeps its box true throughout.
+ */
+export const ROW_MOTION = Object.freeze({
+  outMs: 90,
+  inMs: 140,
+  outEasing: 'cubic-bezier(0.4, 0, 1, 1)', // ease-in: speeds away
+  inEasing: 'cubic-bezier(0.33, 1, 0.68, 1)', // ease-out: settles
+});
+
+/**
+ * RULED 2026-09-28 owner: row 3 "doesn't really need an animation, it just
+ * needs to appear, e.g. come down from underneath the second bar". It drops
+ * 8px down into place while it fades in, and goes back up the same way,
+ * quicker. Clipped at its own top edge the whole way, so it never draws over
+ * row 2 (or the tool bar) — it comes out from under it.
+ */
+export const DROP_ROW_MOTION = Object.freeze({
+  inMs: 150,
+  outMs: 110,
+  travelPx: 8,
+  inEasing: 'cubic-bezier(0.33, 1, 0.68, 1)', // ease-out
+  outEasing: 'cubic-bezier(0.32, 0, 0.67, 0)', // ease-in
 });
 
 const easeInOut = cubicBezier(...EASE_IN_OUT);
@@ -281,23 +322,6 @@ function warmMorphPlans(win) {
     later(step);
   };
   later(step);
-}
-
-// The last swap of each slot: when, and whether any control (other than a
-// rule) is in both the old and the new set. A row whose whole set changed
-// has nothing to carry across, so it does not glide (see useRowSlide).
-const lastSwaps = new WeakMap();
-const DIVIDER_SIG = /^DIV::>$/; // a rule: no slot id, no label, nothing inside
-
-/**
- * True when `element`'s controls were all replaced just now (within
- * `withinMs`): a re-centre then lands at once instead of gliding, so brand
- * new controls never slide in from the side — they grow in where they
- * belong while the old ones shrink out where they were.
- */
-export function swapSharedNothing(element, { withinMs = 250, at = (typeof performance !== 'undefined' ? performance.now() : Date.now()) } = {}) {
-  const swap = element ? lastSwaps.get(element) : null;
-  return Boolean(swap && !swap.shared && at - swap.at <= withinMs);
 }
 
 /** How far through an animation is (eased), 1 when it is over or missing. */
@@ -529,21 +553,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       ghost = { element: makeGhost(snapshot), live: 0 };
       ghosts.add(ghost);
       layer.appendChild(ghost.element);
-      // The copy lands where the eye last saw the set: row 2 may be part-way
-      // through a glide (a Web Animation the copy does not carry), and a
-      // glide always starts from where the row was drawn, so line the copy's
-      // left edge up with the live row's.
-      try {
-        const drift = slot.getBoundingClientRect().left - ghost.element.getBoundingClientRect().left;
-        if (Math.abs(drift) > 0.5 && ghost.element.style) ghost.element.style.translate = `${drift}px 0`;
-      } catch { /* leave it at its laid-out spot */ }
     }
-    // A set with nothing in common with the last one does not glide: its
-    // controls are all new, so they grow in where they belong.
-    const oldSigs = new Set(previous.map((p) => p.sig).filter((sig) => !DIVIDER_SIG.test(sig)));
-    const shared = after.some((a) => oldSigs.has(a.sig));
-    lastSwaps.set(slot, { at: now(), shared });
-    if (!shared) cancelRowSlide([slot]);
     // Morphs caught mid-way whose slot no longer morphs shrink out as drawn.
     for (const [i, run] of [...morphs]) {
       if (kinds[i] === 'morph' || kinds[i] === 'stay') continue;
@@ -590,7 +600,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     const ghost = { element, live: 1 };
     ghosts.add(ghost);
     layer.appendChild(element);
-    const animation = element.animate?.([{ opacity: 1 }, { opacity: 1 }], { duration: motion.rowOutMs, easing: motion.leaveEasing, fill: 'forwards' });
+    const animation = element.animate?.([{ opacity: 1 }, { opacity: 1 }], { duration: ROW_MOTION.outMs, fill: 'forwards' });
     let released = false;
     const done = () => { if (!released) { released = true; releaseGhost(ghost); } };
     if (animation) { animation.onfinish = done; animation.oncancel = done; } else done();
@@ -623,94 +633,181 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
   };
 }
 
-/**
- * RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). Rows 2 and 3 are
- * centred under the group icons again, so a row whose controls change (a
- * tool switch, Cloud adding Bump) re-centres. The owner dislikes snapping, so
- * that move GLIDES: the row is laid out at its new spot at once (nothing else
- * is laid out again) and a Web Animation on the `translate` property carries
- * it there from where the eye last saw it, over ROW_SLIDE_MS with the
- * loadout's ease-out. `translate` composes with the row's own
- * `transform: translateY(-50%)` and lays nothing out. A move that lands
- * mid-glide starts from where the glide had got to, so a quick run of tool
- * switches never jumps.
- *
- * The move is instant (no glide) with prefers-reduced-motion, while the row
- * itself is dropping in or fading out (it arrives in place, never sliding
- * sideways as it appears), and while a popover or menu is open from it (the
- * popover is placed under its opener after each render, so it never trails a
- * gliding opener). A row whose controls have not changed never moves at all
- * (useResponsiveToolbar ignores a pixel of measuring noise).
- *
- * RULED 2026-09-27 owner: morphing icons + one motion language (w49). The
- * glide is the one sideways motion in the bars, and it now keeps the same
- * time and ease-in-out as every morph, grow and shrink (200ms; it was 190ms
- * ease-out). A centred row that gets wider spreads out from the centre and
- * one that gets narrower draws in — the same for every group.
- */
-export const ROW_SLIDE_MS = LOADOUT_MOTION.durationMs;
-
-const rowSlides = new WeakMap();
-
-/** How far `element` is drawn from its laid-out spot by a running glide. */
-function carriedOffset(element, win) {
-  try {
-    const x = parseFloat(win?.getComputedStyle?.(element)?.translate);
-    return Number.isFinite(x) ? x : 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** Stop any glide on `targets`, leaving them at their laid-out spot. */
-export function cancelRowSlide(targets) {
-  for (const target of targets) {
-    rowSlides.get(target)?.cancel?.();
-    rowSlides.delete(target);
-  }
-}
-
-/**
- * Glide `targets` (moved together) from `deltaPx` right of their new spot
- * (negative = left of it) to it. Returns the animations started.
- */
-export function slideRow(targets, deltaPx, { win = typeof window === 'undefined' ? undefined : window, motion = LOADOUT_MOTION } = {}) {
-  const started = [];
-  for (const target of targets) {
-    const running = rowSlides.get(target);
-    const carried = running ? carriedOffset(target, win) : 0;
-    running?.cancel?.();
-    rowSlides.delete(target);
-    const from = deltaPx + carried;
-    if (Math.abs(from) < 0.5) continue;
-    const animation = target.animate?.(
-      [{ translate: `${from}px 0` }, { translate: '0 0' }],
-      { duration: ROW_SLIDE_MS, easing: motion.easing },
-    );
-    if (!animation) continue;
-    rowSlides.set(target, animation);
-    animation.onfinish = () => { if (rowSlides.get(target) === animation) rowSlides.delete(target); };
-    started.push(animation);
-  }
-  return started;
-}
-
 // An open popover or menu: Radix triggers carry aria-expanded, the colour
 // pickers sit in an AnchoredPopover.
 const OPEN_FROM_ROW = '[aria-expanded="true"]';
 const ANCHORED_POPOVER = '[data-anchored-popover]';
 
-/**
- * True when a move of `row` (the whole bar) should be instant rather than
- * glide: reduced motion, the bar dropping in or fading out, or a popover
- * open from it (or any anchored picker up).
- */
-export function rowMoveIsInstant(row, win = typeof window === 'undefined' ? undefined : window) {
-  if (prefersReducedMotion(win)) return true;
-  try {
-    if (row?.getAnimations?.().some((animation) => animation.playState === 'running')) return true;
-  } catch { /* no animation API: glide */ }
+/** True when a popover or menu is open from `row` (or any anchored picker is up). */
+export function popoverOpenFrom(row) {
   if (row?.querySelector?.(OPEN_FROM_ROW)) return true;
   if (row?.ownerDocument?.querySelector?.(ANCHORED_POPOVER)) return true;
   return false;
 }
+
+/**
+ * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade). Keyframes
+ * for the whole row fading in (`in`: opacity 0 → 1) or out (`out`: 1 → 0).
+ * `from` (an opacity) starts it where a change caught mid-way had got to.
+ * Opacity only — never a `translate` (or scale): row 2 does not move
+ * sideways, or at all, as it changes.
+ */
+export function rowCrossfadeKeyframes(kind, { from = null } = {}) {
+  return kind === 'out' ? [{ opacity: from ?? 1 }, { opacity: 0 }] : [{ opacity: from ?? 0 }, { opacity: 1 }];
+}
+
+/**
+ * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
+ * drops down. Watch row 2's settings holder and, each time its SET of
+ * controls changes (loadoutSignature: a value — a colour, a width — never
+ * counts), crossfade the whole row in place: a lifeless copy of the old row,
+ * laid in `layer` exactly where it was drawn, fades out over ROW_MOTION.outMs
+ * while the live row fades in over ROW_MOTION.inMs at its final
+ * centred spot. One rule every time — no gliding, no per-control grow or
+ * shrink, nothing moving sideways.
+ *
+ *   - the same set (another tool lit, pen → highlighter with the same
+ *     controls, a new colour): nothing animates;
+ *   - a change caught mid-way: the half-shown row fades out from where it got
+ *     to (the copy of the older row keeps fading) and the new one fades in;
+ *   - a popover or menu open from the row: the swap is instant, so the
+ *     popover stays anchored to its opener (nothing scales or fades under it);
+ *   - the holder hidden (row 2 leaving): its last set is held in the copy
+ *     while the row itself fades (useLeavingRow); shown again: the copy goes
+ *     and the row's own fade-in covers it;
+ *   - prefers-reduced-motion: instant.
+ *
+ * Returns a disconnect function. `options.win` (tests) stands in for window.
+ */
+export function attachRowCrossfade(holder, layer, { win = typeof window === 'undefined' ? undefined : window, motion = ROW_MOTION } = {}) {
+  if (!holder || !layer || !win?.MutationObserver) return () => {};
+  let signature = loadoutSignature(holder);
+  let wasShown = isShown(holder, win);
+  let snapshot = holder.cloneNode(true);
+  let mostlySeen = snapshot;
+  let incoming = null;
+  const copies = new Set();
+
+  const removeCopy = (copy) => {
+    if (copy.remove) copy.remove(); else copy.parentNode?.removeChild(copy);
+    copies.delete(copy);
+  };
+  const clear = () => {
+    incoming?.cancel?.();
+    incoming = null;
+    for (const copy of [...copies]) removeCopy(copy);
+  };
+  /** Lay a lifeless copy of the row as it was over the live one and fade it. */
+  const fadeCopy = (source, keyframes, duration) => {
+    const copy = makeGhost(source);
+    layer.appendChild(copy);
+    copies.add(copy);
+    const animation = copy.animate?.(keyframes, { duration, easing: motion.outEasing, fill: 'forwards' });
+    if (!animation) { removeCopy(copy); return; }
+    let done = false;
+    const finish = () => { if (!done) { done = true; removeCopy(copy); } };
+    animation.onfinish = finish;
+    animation.oncancel = finish;
+  };
+
+  const crossfade = () => {
+    if (popoverOpenFrom(holder)) { clear(); return; }
+    // How much of the row on screen is showing: all of it, or as far as a
+    // fade-in caught mid-way had got.
+    const shown = incoming ? progressOf(incoming) : 1;
+    // The row the eye mostly sees: the old one, unless a fade-in caught
+    // mid-way was already more than half shown.
+    if (shown >= 0.5) mostlySeen = snapshot;
+    incoming?.cancel?.();
+    incoming = null;
+    if (shown > 0.02) fadeCopy(snapshot, rowCrossfadeKeyframes('out', { from: shown }), motion.outMs * shown);
+    const animation = holder.animate?.(rowCrossfadeKeyframes('in'), {
+      duration: motion.inMs, easing: motion.inEasing, fill: 'backwards',
+    });
+    if (!animation) return;
+    incoming = animation;
+    animation.onfinish = () => { if (incoming === animation) incoming = null; };
+  };
+
+  const observer = new win.MutationObserver(() => {
+    const next = loadoutSignature(holder);
+    const shown = isShown(holder, win);
+    if (prefersReducedMotion(win)) {
+      clear();
+    } else if (wasShown && !shown) {
+      // Row 2 leaving: hold its last set while the row fades itself — the set
+      // the eye was seeing, not one a crossfade had only just begun to show
+      // (a tool switch can change the set a render before the row goes).
+      const held = incoming && progressOf(incoming) < 0.5 ? mostlySeen : snapshot;
+      clear();
+      fadeCopy(held, [{ opacity: 1 }, { opacity: 1 }], motion.outMs);
+    } else if (!wasShown && shown) {
+      clear();
+    } else if (shown && next !== signature) {
+      // From an empty set (the row coming back, filled a render after it is
+      // shown) there is nothing to fade out: the row's own fade brings the
+      // settings in.
+      if (signature) crossfade(); else clear();
+    }
+    signature = next;
+    wasShown = shown;
+    snapshot = holder.cloneNode(true);
+  });
+  observer.observe(holder, { childList: true, subtree: true, attributes: true, characterData: true });
+
+  return () => {
+    observer.disconnect();
+    clear();
+  };
+}
+
+/**
+ * RULED 2026-09-28 owner: row 3 drops down. Keyframes for the Aa bar coming
+ * down from under row 2 (`in`) or going back up (`out`): it travels
+ * DROP_ROW_MOTION.travelPx and fades, and a clip at its own top edge moves
+ * with it the other way, so nothing of it ever shows above its slot — it
+ * never covers row 2, the tool bar or anything else. Straight down: no
+ * sideways part.
+ */
+export function dropRowKeyframes(kind, { motion = DROP_ROW_MOTION } = {}) {
+  const t = motion.travelPx;
+  const up = { opacity: 0, translate: `0px ${-t}px`, clipPath: `inset(${t}px 0px 0px 0px)` };
+  const down = { opacity: 1, translate: '0px 0px', clipPath: 'inset(0px 0px 0px 0px)' };
+  return kind === 'in' ? [up, down] : [down, up];
+}
+
+/**
+ * RULED 2026-09-28 owner: row 3 drops down. The Aa bar just changed from
+ * `last` to `bar` (either may be null). Arriving (`bar`, no `last`): it drops
+ * in. Leaving (`last`, no `bar`): React has already taken it out — it still
+ * holds its last contents — so a lifeless copy of it goes back up in its
+ * `slot`, out of the flow (absolutely placed across the row where the bar
+ * was), and nothing below it waits or moves. `previous` (a copy still going
+ * up) is dropped at once. Instant (nothing) when disabled or with reduced
+ * motion. Returns the leaving copy { copy, animation } or null.
+ */
+export function playRowDrop(bar, last, slot, {
+  enabled = true, previous = null, win = typeof window === 'undefined' ? undefined : window, motion = DROP_ROW_MOTION,
+} = {}) {
+  previous?.animation?.cancel?.();
+  previous?.copy?.remove?.();
+  if (!enabled || prefersReducedMotion(win)) return null;
+  if (bar && !last) {
+    bar.animate?.(dropRowKeyframes('in', { motion }), { duration: motion.inMs, easing: motion.inEasing });
+    return null;
+  }
+  if (bar || !last || !slot?.isConnected || !last.children?.length) return null;
+  const copy = makeGhost(last.cloneNode(true));
+  Object.assign(copy.style, { position: 'absolute', left: '0px', right: '0px', width: 'auto' });
+  slot.appendChild(copy);
+  const animation = copy.animate?.(dropRowKeyframes('out', { motion }), {
+    duration: motion.outMs, easing: motion.outEasing, fill: 'forwards',
+  });
+  if (!animation) { copy.remove(); return null; }
+  let done = false;
+  const finish = () => { if (!done) { done = true; copy.remove(); } };
+  animation.onfinish = finish;
+  animation.oncancel = finish;
+  return { copy, animation };
+}
+

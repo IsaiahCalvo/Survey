@@ -28,7 +28,7 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
-import useLoadoutTransition, { useLeavingRow, useRowSlide } from './hooks/useLoadoutTransition.js';
+import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
@@ -66,8 +66,6 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-// w48: row 3's controls (and its caption) glide together (useRowSlide).
-const childrenOf = (element) => [...element.children];
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -1600,24 +1598,28 @@ export default function App({ devPreviewReturnTab = null }) {
   // new one in place (pen → rectangle → text box), other shared slots stay,
   // extra slots grow in / shrink out from their centres, and nothing slides
   // sideways but a row gliding to its new centre — 200ms ease-in-out for all.
+  // (RULED 2026-09-28: row 2 now crossfades as a whole instead — below.)
   const [loadoutSlotEl, setLoadoutSlotEl] = useState(null);
   const [loadoutGhostLayerEl, setLoadoutGhostLayerEl] = useState(null);
   const [formatHolderEl, setFormatHolderEl] = useState(null);
   const [formatGhostLayerEl, setFormatGhostLayerEl] = useState(null);
   const chromeMotion = Boolean(isViewerVisible && !isMobileViewer);
   useLoadoutTransition(loadoutSlotEl, loadoutGhostLayerEl, chromeMotion);
-  useLoadoutTransition(formatHolderEl, formatGhostLayerEl, chromeMotion);
+  // RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
+  // drops down. Row 2 no longer shares the tool bar's morph / grow / shrink:
+  // when its set of controls changes the WHOLE row crossfades in place (old
+  // out ~90ms, new in ~140ms at its final centred spot, no sideways
+  // motion); an unchanged set never animates. See useRowCrossfade.
+  useRowCrossfade(formatHolderEl, formatGhostLayerEl, chromeMotion);
   // Row 2 leaves the way it arrives (useLeavingRow): it stays drawn while it
   // fades, never blinks on a one-render gap, and runs back if wanted again.
   const { leaving: formatRowLeaving, fading: formatRowFading } = useLeavingRow(formatRowEl, formatRowShown, chromeMotion);
-  // RULED 2026-09-27 owner: rows 2/3 centred, animated (w48). Rows 2 and 3
-  // are centred under the group icons; when a row's controls change (a tool
-  // switch, Cloud adding Bump) and it re-centres, it GLIDES there over ~190ms
-  // (useRowSlide) instead of snapping. It never moves while its controls are
-  // unchanged, is instant with prefers-reduced-motion, and does not glide
-  // while the row is dropping in / fading out or a popover is open from it.
+  // RULED 2026-09-27 owner: rows 2/3 centred (w48). Rows 2 and 3 are centred
+  // under the group icons and never move while their controls are unchanged.
+  // RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
+  // drops down — w48's re-centre GLIDE is gone: a row whose controls change
+  // is simply drawn at its new centre (row 2 crossfades there).
   const [textBarEl, setTextBarEl] = useState(null);
-  useRowSlide(formatHolderEl, toolbarPlan.formatLeft, { row: formatRowEl, enabled: chromeMotion && formatRowShown });
   // RULED 2026-09-26 owner: select modes in top bar (w46). With Select armed
   // and nothing picked, Select's Box / Lasso / Text modes sit in the TOOL BAR
   // right of the group icons, where a group's tools go (as pen / highlighter /
@@ -1629,11 +1631,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // RULED 2026-09-27 owner: rows 2/3 centred, animated (w48, was w47's fixed
   // spot under the icons). Row 3 (the Aa bar) is centred under the group icons
   // like row 2 (planTextRow via useResponsiveToolbar), keeping room for the
-  // "Text" caption that hangs off its left, and glides when it re-centres.
-  // Until it has been measured it starts at that caption room.
+  // "Text" caption that hangs off its left. Until it has been measured it
+  // starts at that caption room.
+  // RULED 2026-09-28 owner: row 3 drops down — it appears by coming down from
+  // under row 2 (~150ms) and leaves back up (~110ms), never covering row 2 or
+  // moving anything; it no longer glides sideways (useDropInRow).
   const textFormatRowLeft = toolbarPlan.textRowLeft
     ?? ((toolbarPlan.formatUsableLeft ?? 0) + 10 + TEXT_ROW_CAPTION_ROOM);
-  useRowSlide(textBarEl, textFormatRowLeft, { row: textFormatRowEl, enabled: chromeMotion, targets: childrenOf });
+  useDropInRow(textBarEl, textFormatRowEl, chromeMotion);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
   // A popover whose opener sits in row 2 closes when the row goes away (Pan,
@@ -2418,7 +2423,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   (w49). A changed setting shrinks out and its replacement
                   grows in at the same spot (no sideways slide), so the only
                   sideways motion is the re-centring glide — wider rows spread
-                  left, narrower ones draw right, the same for every group. */}
+                  left, narrower ones draw right, the same for every group.
+                  RULED 2026-09-28 owner: one motion for row 2 (in-place
+                  crossfade), row 3 drops down. The glide and the per-setting
+                  grow / shrink are gone: when the set of settings changes the
+                  whole row crossfades in place, already at its new centre
+                  (useRowCrossfade); an unchanged set never animates. */}
               {formatRowEl && createPortal(
               <>
               <div
@@ -2476,8 +2486,10 @@ export default function App({ devPreviewReturnTab = null }) {
                      PASS 7 (board 12): the third bar is 36px like the two above
                      it, and its controls sit on the settings gutter.
                      RULED 2026-09-27 owner: rows 2/3 centred, animated (w48):
-                     centred under the group icons like row 2, gliding when it
-                     re-centres (useRowSlide moves its children together).
+                     centred under the group icons like row 2.
+                     RULED 2026-09-28 owner: row 3 drops down — it comes down
+                     from under row 2 as it appears and goes back up as it
+                     leaves (useDropInRow); no sideways glide.
                      RULED 2026-09-26 owner: centre rows on canvas (w45). It is
                      CENTRED on the same span no side panel covers as rows 1
                      and 2 (w44 had it left-aligned with row 2); a bar too wide
@@ -3780,7 +3792,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   clicks) and fades up and out (useLeavingRow), its old
                   settings held in the ghost layer inside it. It never blinks
                   on a one-render gap, runs back if wanted again mid-fade, and
-                  goes at once with prefers-reduced-motion. */}
+                  goes at once with prefers-reduced-motion.
+                  RULED 2026-09-28 owner: one motion for row 2 (in-place
+                  crossfade): it now fades in and out IN PLACE (140ms in,
+                  90ms out) — no drop, no drift up. */}
               <div
                   ref={attachFormatRow}
                   data-chrome-format-row="true"
@@ -3788,7 +3803,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-label="Formatting"
                   data-toolbar-tight={toolbarPlan.tight ? 'true' : undefined}
                   data-leaving={formatRowLeaving ? 'true' : undefined}
-                  className="survey-surface-in"
+                  className="chrome-row-fade-in"
                   style={{
                     display: formatRowShown || formatRowLeaving ? 'block' : 'none',
                     position: 'relative',
