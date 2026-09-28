@@ -5555,11 +5555,114 @@ export function useSVGInteraction({
     return true;
   }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, svgRef]);
 
+  // w58 (owner 2026-09-28): Cmd (Mac) / Ctrl (Windows) + press inside the
+  // selection box moves the selection, wherever in the box the press lands —
+  // see src/utils/moveModifier.js for the full rule. Each case arms the SAME
+  // drag the plain body drag arms, so the move previews, clamps, syncs and
+  // undoes exactly like one:
+  //   - several members          -> the group move (locked members stay put)
+  //   - one mark                 -> the single-mark 'move'
+  //   - one callout              -> the whole-callout move
+  //   - one Survey Marker        -> not handled here; the layer runs its own
+  //                                 marker drag (returns 'survey-marker').
+  // Pointer capture goes on the page <svg> itself, so the drag survives the
+  // move zone unmounting when the key is let go mid-drag.
+  // Returns true when a move was armed, 'survey-marker' for the layer's case,
+  // false when nothing may move.
+  const startModifierMove = useCallback((e) => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return false;
+    const calIds = (selectedCalloutIds instanceof Set)
+      ? Array.from(selectedCalloutIds)
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    const total = selectedIds.size + calIds.length + selectedMarkerCount;
+    if (total === 0) return false;
+    if (total > 1) return startFamilyGroupMove(e);
+    if (selectedMarkerCount === 1) return 'survey-marker';
+
+    const ctm = svgEl.getScreenCTM?.();
+    const ctmInverse = ctm ? ctm.inverse() : null;
+    const svgPoint = screenToSVG(svgEl, e.clientX, e.clientY);
+
+    if (selectedIds.size === 1) {
+      const index = selectedIds.values().next().value;
+      const obj = annotations?.objects?.[index];
+      // Same stop as the body drag: text markup, movement-locked imports and
+      // user-locked marks never move.
+      if (!canMoveAnnotation(obj)) return false;
+      const imported = isImportedPath(obj);
+      const bbox = imported ? getAnnotationBBox(obj) : null;
+      dragStateRef.current = {
+        active: true,
+        mode: 'move',
+        handleId: null,
+        startSVGPoint: svgPoint,
+        originalProps: {
+          left: imported ? bbox.left : (obj.left ?? 0),
+          top: imported ? bbox.top : (obj.top ?? 0),
+          scaleX: imported ? 1 : (obj.scaleX ?? 1),
+          scaleY: imported ? 1 : (obj.scaleY ?? 1),
+          angle: obj.angle ?? 0,
+          width: imported ? bbox.width : (obj.width ?? 0),
+          height: imported ? bbox.height : (obj.height ?? 0),
+        },
+        annotationIndex: index,
+        ctmInverse,
+        anchorX: null,
+        anchorY: null,
+        centerX: null,
+        centerY: null,
+        currentResize: null,
+        currentAngle: undefined,
+        groupOriginals: null,
+      };
+      try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      return true;
+    }
+
+    if (calIds.length === 1) {
+      const calloutId = calIds[0];
+      const callout = (callouts || []).find((c) => c && c.id === calloutId);
+      if (!callout || isUserLocked(callout)) return false;
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(calloutId)) return false;
+      dragStateRef.current = {
+        ...dragStateRef.current,
+        active: true,
+        mode: 'callout-part',
+        partType: 'whole',
+        textBoxCorner: null,
+        calloutId,
+        currentCalloutPatch: null,
+        startSVGPoint: svgPoint,
+        ctmInverse,
+        originalCalloutPositions: {
+          arrowTip: { ...callout.arrowTip },
+          knee: { ...callout.knee },
+          textBoxPosition: { ...callout.textBoxPosition },
+          textBoxWidth: callout.textBoxWidth,
+          textBoxHeight: callout.textBoxHeight,
+          fontSize: callout.style?.fontSize,
+        },
+        lastSafeCalloutPositions: {
+          arrowTip: { ...callout.arrowTip },
+          knee: { ...callout.knee },
+          textBoxPosition: { ...callout.textBoxPosition },
+        },
+      };
+      try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      setInteractionState('dragging');
+      setActiveCalloutDrag({ id: calloutId, partType: 'whole' });
+      return true;
+    }
+    return false;
+  }, [annotations, callouts, isCalloutSelectable, selectedCalloutIds, selectedIds, selectedMarkerCount, startFamilyGroupMove, svgRef]);
+
   // ---------------------------------------------------------------------------
   // Return API
   // ---------------------------------------------------------------------------
   return {
     startFamilyGroupMove,
+    startModifierMove,
     // Selection state
     selectedIds,
     hoveredId,

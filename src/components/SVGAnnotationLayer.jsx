@@ -148,7 +148,10 @@ import {
   isTypingTarget,
   clampNudgeDelta,
   NUDGE_IDLE_COMMIT_MS,
+  canMoveAnnotation,
 } from '../utils/annotationFamilyRules.js';
+// w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
+import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
@@ -661,6 +664,7 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const {
     selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
+    dragState,
     hoveredCalloutId, handleCalloutPointerEnter, handleCalloutPointerLeave,
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
@@ -700,6 +704,8 @@ const SVGAnnotationLayer = memo(({
     shouldIgnoreLassoPointer,
     // w53: a drag started on a selected Survey Marker moves the family.
     startFamilyGroupMove,
+    // w58: Cmd / Ctrl + press inside the selection box moves the selection.
+    startModifierMove,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -1082,6 +1088,48 @@ const SVGAnnotationLayer = memo(({
   const selectedSurveyMarkerId = surveyMarkerSelectionSize === 1 && familySelectionSize === 1
     ? selectedSurveyMarkerIds.values().next().value
     : null;
+
+  // UX w58 (owner 2026-09-28): while Cmd (Mac) / Ctrl (Windows) is held with
+  // something selected, the resize grabbers (line ends, bend, corners, callout
+  // knee / tip / text-box corners, polyline corners) hide at once, the rotate
+  // grabber stays, and the whole selection box becomes a move handle (the
+  // move zone at the end of the page svg). Why: on a small mark seen
+  // zoomed out the grabbers cover the whole mark, so every press resized it.
+  // Drawboard PDF adds a drag grip for this; we use the modifier so no chrome
+  // is added. Rectangle / Lasso Select only (Text Select keeps the page for
+  // native text drags), never while a text box or callout is being typed in,
+  // and only when at least one selected member may move (a selection that is
+  // all locked or all text markup keeps its normal chrome). Full rule:
+  // src/utils/moveModifier.js.
+  const moveModifierHeld = useMoveModifierHeld();
+  const modifierMoveActive = (() => {
+    if (!moveModifierHeld || activeTool !== 'select' || !isSelectTool) return false;
+    if (familySelectionSize === 0) return false;
+    if (editingCalloutId || (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox')) return false;
+    // Never pull a grabber out from under a resize / rotate / bend already in
+    // progress (it holds the pointer); a move in progress is fine.
+    const ds = dragState?.current;
+    if (ds?.active && ds.mode !== 'move' && ds.mode !== 'group-move'
+      && !(ds.mode === 'callout-part' && ds.partType === 'whole')) return false;
+    if (surveyMarkerDragRef.current && surveyMarkerDragRef.current.mode !== 'move') return false;
+    if (counterRotateDragRef.current) return false;
+    for (const idx of selectedIds || []) {
+      if (canMoveAnnotation(annotations?.objects?.[idx])) return true;
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      for (const callout of callouts) {
+        if (!callout || callout.pageNumber !== pageNumber) continue;
+        if (!effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        if (!isUserLocked(callout)) return true;
+      }
+    }
+    if (surveyMarkerSelectionSize > 0) {
+      for (const member of surveyMarkerMembersRef.current || []) {
+        if (member && !member.locked && selectedSurveyMarkerIds.has(String(member.id))) return true;
+      }
+    }
+    return false;
+  })();
 
   // Text Select must leave blank page pixels with PDF.js so native text drag
   // keeps working. Once an annotation is selected, though, its body and edit
@@ -3951,6 +3999,8 @@ const SVGAnnotationLayer = memo(({
             isGroupSelection={false}
             hideBoundingBox={false}
             padding={0}
+            // w58: Cmd / Ctrl held hides the resize grabbers (rotate stays).
+            hideResizeHandles={modifierMoveActive}
             locked={Boolean(entry.surveyMarker.lockedBy)}
           />
         )}
@@ -3968,6 +4018,7 @@ const SVGAnnotationLayer = memo(({
     visualTransform,
     surveyMarkerLiveMove,
     selectedSurveyMarkerIds,
+    modifierMoveActive,
   ]);
 
   const selectedSurveyMarkerEntry = useMemo(() => {
@@ -4589,7 +4640,10 @@ const SVGAnnotationLayer = memo(({
       // commit because editingCalloutId clears.
       const isEditingThisCallout = editingCalloutId === displayCallout.id;
       const calloutLocked = isUserLocked(displayCallout);
-      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout && !calloutLocked;
+      // w58: Cmd / Ctrl held -> the knee, tip and text-box corner grabbers
+      // hide; the callout moves from anywhere in its box instead.
+      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout && !calloutLocked
+        && !modifierMoveActive;
       const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered)
         || (isSelected && calloutLocked);
       // UX: 2026-05-18 — while THIS callout is being dragged, the live
@@ -4711,7 +4765,7 @@ const SVGAnnotationLayer = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion]);
+  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion, modifierMoveActive]);
 
   // w52: publish which callouts this page lets the user pick, for the
   // interaction hook's click / marquee / lasso gates (isCalloutSelectable).
@@ -6035,6 +6089,134 @@ const SVGAnnotationLayer = memo(({
     }
     return out;
   })();
+
+  // UX w58 (owner 2026-09-28): the move zone — while Cmd (Mac) / Ctrl
+  // (Windows) is held, the selection's whole box (grown to a comfortable
+  // minimum on a tiny mark) is one transparent move handle with the move
+  // cursor, drawn above everything on the page. A press ON the selected
+  // marks themselves always moves; a press on a rotate grabber where it lies
+  // outside the marks is handed to that grabber, so rotating with the key
+  // held still rotates (a tiny counter's nub grabber covers the counter at
+  // 25 % zoom, which is why the mark itself wins). Hidden while a drag /
+  // rotate / resize is running (the drag owns the pointer then).
+  const modifierMoveZone = (() => {
+    if (!modifierMoveActive || interactionState !== 'idle') return null;
+    const boxes = [];
+    for (const idx of selectedIds || []) {
+      const obj = annotations?.objects?.[idx];
+      if (obj) boxes.push(getAnnotationBBox(obj));
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      for (const callout of callouts) {
+        if (!callout || callout.pageNumber !== pageNumber) continue;
+        if (!effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        const at = callout.arrowTip;
+        const kn = callout.knee;
+        const tp = callout.textBoxPosition;
+        if (!at || !kn || !tp) continue;
+        const tbW = Number.isFinite(callout.textBoxWidth) ? callout.textBoxWidth : 0;
+        const tbH = Number.isFinite(callout.textBoxHeight) ? callout.textBoxHeight : 0;
+        const xs = [at.x, kn.x, tp.x, tp.x + tbW].map((n) => n * width);
+        const ys = [at.y, kn.y, tp.y, tp.y + tbH].map((n) => n * height);
+        boxes.push({
+          left: Math.min(...xs),
+          top: Math.min(...ys),
+          width: Math.max(...xs) - Math.min(...xs),
+          height: Math.max(...ys) - Math.min(...ys),
+        });
+      }
+    }
+    if (surveyMarkerSelectionSize > 0) {
+      for (const entry of surveyMarkerElements) {
+        const markerId = entry?.surveyMarker?.annotationId;
+        if (!markerId || !selectedSurveyMarkerIds.has(markerId) || !entry.bbox) continue;
+        boxes.push({
+          left: entry.bbox.left,
+          top: entry.bbox.top,
+          width: entry.bbox.width,
+          height: entry.bbox.height,
+          angle: entry.bbox.angle || 0,
+        });
+      }
+    }
+    const zone = resolveModifierMoveZone(boxes, { inverseScale });
+    return zone ? { ...zone, markBoxes: boxes } : null;
+  })();
+
+  // The rotate grabber under a point of the zone, unless the point is on
+  // the selected marks themselves (then the press is a move).
+  const rotateGrabberUnderZonePoint = (zoneEl, clientX, clientY) => {
+    if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return null;
+    const pagePoint = screenToSVG(svgRef.current, clientX, clientY);
+    if (isPointInBoxes(pagePoint, modifierMoveZone?.markBoxes)) return null;
+    return document.elementsFromPoint(clientX, clientY).find((el) => (
+      el !== zoneEl
+      && svgRef.current?.contains?.(el)
+      && el.closest?.('[data-rotation-handle="mtr"], [data-handle-hit-pad="counter-rotate"]')
+    )) || null;
+  };
+
+  const handleModifierMoveZonePointerMove = (e) => {
+    // Cursor: the rotate grabber's own cursor where a press would rotate.
+    const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
+    const next = rotateEl ? (getComputedStyle(rotateEl).cursor || 'crosshair') : 'move';
+    if (e.currentTarget.style.cursor !== next) e.currentTarget.style.cursor = next;
+  };
+
+  const handleModifierMoveZonePointerDown = (e) => {
+    // Only the primary button moves; any other press falls through untouched.
+    if (e.button != null && e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    {
+      const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
+      if (rotateEl && typeof PointerEvent === 'function') {
+        const n = e.nativeEvent || e;
+        rotateEl.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX: n.clientX,
+          clientY: n.clientY,
+          screenX: n.screenX,
+          screenY: n.screenY,
+          pointerId: n.pointerId,
+          pointerType: n.pointerType,
+          isPrimary: n.isPrimary,
+          button: n.button,
+          buttons: n.buttons,
+          metaKey: n.metaKey,
+          ctrlKey: n.ctrlKey,
+          shiftKey: n.shiftKey,
+          altKey: n.altKey,
+        }));
+        return;
+      }
+    }
+    const started = startModifierMove?.(e);
+    if (started !== 'survey-marker') return;
+    // One Survey Marker selected: its own move drag (the same one a press on
+    // the marker body starts), captured on the page <svg>.
+    const entry = surveyMarkerElements.find((candidate) => (
+      candidate?.surveyMarker?.annotationId === selectedSurveyMarkerId
+    ));
+    if (!entry?.bbox || entry.surveyMarker.lockedBy || entry.surveyMarker.liveOverlay) return;
+    surveyMarkerDragRef.current = {
+      mode: 'move',
+      annotationId: entry.surveyMarker.annotationId,
+      startPoint: screenToSVG(svgRef.current, e.clientX, e.clientY),
+      originalBounds: normalizeSurveyMarkerBounds({
+        x: entry.bbox.left,
+        y: entry.bbox.top,
+        width: entry.bbox.width,
+        height: entry.bbox.height,
+        angle: entry.bbox.angle,
+      }),
+    };
+    setSurveyMarkerPreviewBounds(null);
+    try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+  };
+
   const stackedMarks = (() => {
     if (filteredCallouts.length === 0 && !markerElementsByGap) return wrappedAnnotations;
     const slotted = [];
@@ -7140,6 +7322,9 @@ const SVGAnnotationLayer = memo(({
         // resize + rotate chrome appears instead of the endpoint handles.
         const isLineType = String(selectionObj.type || '').toLowerCase() === 'line';
         const lineInBboxMode = isLineType && isBeingEditedNow && editingAnnotationEditType === 'bbox';
+        // w58: Cmd / Ctrl held -> no end or bend grabbers (a line has no
+        // rotate grabber here); the line moves from anywhere in its box.
+        if (isLineType && !lineInBboxMode && modifierMoveActive) return null;
         if (isLineType && !lineInBboxMode) {
           const ep = getLineEndpoints(selectionObj);
           const dx = overlayTransform ? (visualTransform?.dx || 0) : 0;
@@ -7382,7 +7567,8 @@ const SVGAnnotationLayer = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {worldPoints.map((wp, i) => (
+              {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
+              {!modifierMoveActive && worldPoints.map((wp, i) => (
                 <g key={`vertex-${i}`}>
                   {vTouchHitR > 0 && (
                     <circle
@@ -7561,7 +7747,8 @@ const SVGAnnotationLayer = memo(({
               rotationCenter={overlayRotationCenter}
               // Legacy marks have no safe character-offset model for range
               // handles, so their standard box supplies visible selection feedback.
-              hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles}
+              // w58: Cmd / Ctrl held hides the resize grabbers (rotate stays).
+              hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles || modifierMoveActive}
               horizontalResizeOnly={selectionObj?.data?.type === 'text-markup'}
               horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
                 ? getTextMarkupRangeHandlePositions(selectionObj)
@@ -7851,6 +8038,25 @@ const SVGAnnotationLayer = memo(({
             );
           })()}
         </>
+      )}
+      {/* w58: Cmd / Ctrl move zone — on top of everything on the page; a
+          press on a rotate grabber outside the marks is handed to it. */}
+      {modifierMoveZone && (
+        <rect
+          data-modifier-move-zone="true"
+          x={modifierMoveZone.left}
+          y={modifierMoveZone.top}
+          width={modifierMoveZone.width}
+          height={modifierMoveZone.height}
+          transform={modifierMoveZone.angle
+            ? `rotate(${modifierMoveZone.angle}, ${modifierMoveZone.cx}, ${modifierMoveZone.cy})`
+            : undefined}
+          fill="transparent"
+          stroke="none"
+          style={{ cursor: 'move', pointerEvents: 'all', touchAction: 'none' }}
+          onPointerDown={handleModifierMoveZonePointerDown}
+          onPointerMove={handleModifierMoveZonePointerMove}
+        />
       )}
     </svg>
     {/* EDIT-12 (Phase 12 Plan 02): RotationInputField portals into the
