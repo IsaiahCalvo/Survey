@@ -225,7 +225,8 @@ BEGIN
          'callout_deleted',
          'region_deleted',
          'annotations_bulk_deleted',
-         'space_deleted'
+         'space_deleted',
+         'survey_marker_deleted'  -- w55: Survey Marker trash rows are trash too
        )
      LIMIT p_max_rows
   )

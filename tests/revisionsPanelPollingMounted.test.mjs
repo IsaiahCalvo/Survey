@@ -22,7 +22,7 @@ async function loadPanel() {
     .replace("import { supabase } from '../../supabaseClient';", 'const supabase = null;')
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')
-    .replace("import { listDocumentHistoryEvents } from '../../services/documentHistoryService';", 'const { listDocumentHistoryEvents } = globalThis.__historyPollingService;')
+    .replace("import { listDocumentHistoryEvents, findDeletedSpaceHistoryEvent, isTrashHistoryEvent } from '../../services/documentHistoryService';", 'const { listDocumentHistoryEvents } = globalThis.__historyPollingService; const findDeletedSpaceHistoryEvent = async () => null; const isTrashHistoryEvent = () => false;')
     .replace("import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';", 'const resolveRegionRestoreCascade = () => null; const describeHistoryEventSubject = () => null;')
     .replace("from '../../utils/readOnlyBodyReasons.js'", `from ${JSON.stringify(readOnlyUrl)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(sourceUrl), { lang: 'jsx' });
@@ -95,8 +95,11 @@ test('hidden embedded history does not fetch, listen, or poll; reopen fetches fr
   assert.equal(timeouts.size, 0, 'no event listener while hidden');
 
   await render({ isActive: true });
-  assert.deepEqual(calls.revisions, ['doc-a']);
-  assert.deepEqual(calls.history, [{ id: 'doc-a', options: { limit: 200 } }]);
+  // w55 (ruled change): named versions are hidden until rebuilt, so the panel
+  // no longer reads revisions; History reads a first page of 50 and pages
+  // older rows on demand ("Load older") instead of one fixed 200-row read.
+  assert.deepEqual(calls.revisions, []);
+  assert.deepEqual(calls.history, [{ id: 'doc-a', options: { limit: 50 } }]);
   assert.equal(intervals.size, 1);
   assert.equal([...intervals.values()][0].delay, 10000);
   await flush(intervals);

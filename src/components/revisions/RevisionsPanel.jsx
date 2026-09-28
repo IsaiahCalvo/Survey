@@ -32,12 +32,27 @@ import {
   getRevision,
   restoreRevision,
 } from '../../services/documentRevisionService';
-import { listDocumentHistoryEvents } from '../../services/documentHistoryService';
+import { listDocumentHistoryEvents, findDeletedSpaceHistoryEvent, isTrashHistoryEvent } from '../../services/documentHistoryService';
 import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';
 import { claimBodyReadOnly } from '../../utils/readOnlyBodyReasons.js';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_SPOTLIGHT_STYLE_ID = 'document-history-spotlight-style';
+// w55: named versions ("Save version" / "Open read-only" / "Restore vN") are
+// hidden until they are rebuilt on the live mark store: today they save and
+// restore a table the viewer no longer reads, so Save records 0 marks,
+// Restore changes nothing on the page, and Open shows today's marks.
+const NAMED_VERSIONS_ENABLED = false;
+// w55: History loads a page of rows at a time ("Load older" fetches the next),
+// and refreshes by asking only for rows at or after the newest one it shows
+// (minus a small overlap for rows that reach the server a little late).
+const HISTORY_PAGE_SIZE = 50;
+const HISTORY_REFRESH_OVERLAP_MS = 2 * 60 * 1000;
+// w55: the on-page highlight is the selection blue (the same as selection
+// handles, owner ruling 2026-09-17), never the gold accent. It draws, pulses
+// twice, then fades and is removed — it never pulses forever.
+const HISTORY_HIGHLIGHT_COLOR = '#4a90e2';
+const HISTORY_HIGHLIGHT_LIFETIME_MS = 2800;
 
 function ensureSpotlightStyle() {
   if (typeof document === 'undefined' || document.getElementById(HISTORY_SPOTLIGHT_STYLE_ID)) return;
@@ -45,11 +60,47 @@ function ensureSpotlightStyle() {
   style.id = HISTORY_SPOTLIGHT_STYLE_ID;
   style.textContent = `
     @keyframes document-history-pulse-glow {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
+      0%, 100% { stroke-opacity: 0.9; }
+      50% { stroke-opacity: 0.35; }
+    }
+    @keyframes document-history-fade-out {
+      to { opacity: 0; }
+    }
+    .document-history-row:focus-visible { background: var(--surface-2); }
+    .document-history-row:focus-visible .document-history-row-title {
+      text-decoration: underline;
+      text-decoration-color: var(--border-strong);
+      text-underline-offset: 3px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #document-history-spotlight-svg * { animation: none !important; }
     }
   `;
   document.head.appendChild(style);
+}
+
+function historyRowKey(row) {
+  return row?.client_event_id || row?.id || null;
+}
+
+function historyRowTimeMs(row) {
+  return Date.parse(row?.occurred_at || row?.created_at || 0) || 0;
+}
+
+// Merge freshly read rows into the rows already shown (dedupe by client id,
+// newest first). Rows already shown stay; a re-read row replaces its copy.
+function mergeHistoryRowLists(current, incoming) {
+  const byKey = new Map();
+  for (const row of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    const key = historyRowKey(row);
+    if (key) byKey.set(key, row);
+  }
+  return Array.from(byKey.values()).sort((a, b) => historyRowTimeMs(b) - historyRowTimeMs(a));
+}
+
+// w55: rows written before the wording fix said "a ellipse" / "a annotation".
+function displayHistorySummary(summary) {
+  return String(summary || '').replace(/\ba (?=(ellipse|annotation|arrow|image|outline|oval)\b)/gi, 'an ');
 }
 
 function historyPathToD(path) {
@@ -92,13 +143,11 @@ function getHistoryPathBounds(path) {
   return { minX, minY, maxX, maxY };
 }
 
+// w55: a row is a deleted item only when it is a trash row (its type), never
+// because some text on it says "delete" — undo/redo rows of a delete carry
+// rawActionType 'fabric:delete' and were shown as restorable deletes.
 function isDeleteHistoryEvent(event) {
-  const text = [
-    event?.summary,
-    event?.payload?.actionType,
-    event?.payload?.rawActionType,
-  ].filter(Boolean).join(' ').toLowerCase();
-  return text.includes('delete') || text.includes('deleted') || text.includes('fabric:delete');
+  return isTrashHistoryEvent(event);
 }
 
 function originBadge(origin) {
@@ -147,6 +196,8 @@ export default function RevisionsPanel({
   // Decision 10 (KAL-90): before jumping to the entry's page, restore the full
   // context the mark belongs to (survey/region mode + selected category).
   onRestoreHistoryContext = null,
+  // w55: false for viewers and locked documents — Restore is never shown.
+  canRestore = false,
 }) {
   const [open, setOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -162,7 +213,15 @@ export default function RevisionsPanel({
   // KAL-313 CONFIRM-CASCADE: pending cascade restore { regionEvent, spaceEvent }
   // Set when Restore is clicked for an orphaned region whose space has a restorable record.
   const [cascadePending, setCascadePending] = useState(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const hasLoadedRef = useRef(false);
+  const historyEventsRef = useRef([]);
+  historyEventsRef.current = historyEvents;
+  // w55: each row click gets a number; retries and timers from an older click
+  // check it and stop, so they can never replace the newer click's highlight.
+  const activityClickSeqRef = useRef(0);
+  const spotlightTimeoutRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
   const spotlightFrameRef = useRef(null);
   const activeSpotlightRef = useRef(null);
@@ -195,24 +254,38 @@ export default function RevisionsPanel({
   }, [documentId, user?.id]);
 
   // Load list when drawer opens, when embedded in the left rail, or after a mutation.
+  // w55: `full` reads the newest page from scratch (open / reopen); otherwise
+  // only rows at or after the newest shown one are read and merged in, so the
+  // 10 s refresh downloads what is new, not the whole list again.
   const refresh = useCallback(async (options = {}) => {
     if (!shouldLoadHistory) return;
+    const full = options?.full === true || !hasLoadedRef.current;
     const silent = options?.silent === true || hasLoadedRef.current;
     if (!documentId) {
       setRevisions([]);
       setHistoryEvents([]);
+      setHasOlder(false);
       hasLoadedRef.current = false;
       return;
     }
     if (!silent) setLoading(true);
     setErr(null);
     try {
+      const newestShown = full ? null : historyEventsRef.current.find((row) => !row?.__local) || historyEventsRef.current[0];
+      const since = newestShown
+        ? new Date(Math.max(0, historyRowTimeMs(newestShown) - HISTORY_REFRESH_OVERLAP_MS)).toISOString()
+        : null;
       const [rows, events] = await Promise.all([
-        listRevisions(documentId),
-        listDocumentHistoryEvents(documentId, { limit: 200 }),
+        NAMED_VERSIONS_ENABLED ? listRevisions(documentId) : Promise.resolve([]),
+        listDocumentHistoryEvents(documentId, since ? { limit: 200, since } : { limit: HISTORY_PAGE_SIZE }),
       ]);
       setRevisions(rows);
-      setHistoryEvents(events);
+      if (since) {
+        setHistoryEvents((prev) => mergeHistoryRowLists(prev, events));
+      } else {
+        setHistoryEvents(events);
+        setHasOlder(Array.isArray(events) && events.length >= HISTORY_PAGE_SIZE);
+      }
       hasLoadedRef.current = true;
     } catch (e) {
       setErr(e.message);
@@ -221,8 +294,39 @@ export default function RevisionsPanel({
     }
   }, [documentId, shouldLoadHistory]);
 
+  // w55: "Load older" — the next page below the oldest row shown. Deleted
+  // items older than the first page stay reachable (and restorable).
+  const loadOlder = useCallback(async () => {
+    if (!documentId || loadingOlder) return;
+    const oldest = historyEventsRef.current[historyEventsRef.current.length - 1];
+    if (!oldest) return;
+    setLoadingOlder(true);
+    try {
+      const older = await listDocumentHistoryEvents(documentId, {
+        limit: HISTORY_PAGE_SIZE,
+        before: oldest.occurred_at || oldest.created_at,
+      });
+      setHistoryEvents((prev) => mergeHistoryRowLists(prev, older));
+      setHasOlder(Array.isArray(older) && older.length >= HISTORY_PAGE_SIZE);
+    } catch (e) {
+      setStatusMsg(`Could not load older history: ${e.message}`);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [documentId, loadingOlder]);
+
+  // A new document starts from an empty list and a fresh first page.
   useEffect(() => {
-    if (shouldLoadHistory) refresh({ silent: hasLoadedRef.current });
+    hasLoadedRef.current = false;
+    setHistoryEvents([]);
+    setHasOlder(false);
+    setSelectedEventId(null);
+    setSelectedEventDetail(null);
+  }, [documentId]);
+
+  useEffect(() => {
+    // Opening (or reopening) the panel reads the newest page from scratch.
+    if (shouldLoadHistory) refresh({ full: true, silent: hasLoadedRef.current });
   }, [shouldLoadHistory, refresh]);
 
   useEffect(() => {
@@ -397,6 +501,10 @@ export default function RevisionsPanel({
       window.cancelAnimationFrame(spotlightFrameRef.current);
       spotlightFrameRef.current = null;
     }
+    if (typeof window !== 'undefined' && spotlightTimeoutRef.current) {
+      window.clearTimeout(spotlightTimeoutRef.current);
+      spotlightTimeoutRef.current = null;
+    }
     if (typeof document !== 'undefined') {
       document.getElementById('document-history-spotlight')?.remove();
       document.getElementById('document-history-spotlight-svg')?.remove();
@@ -411,6 +519,18 @@ export default function RevisionsPanel({
       spotlightFrameRef.current = null;
     }
     activeSpotlightRef.current = { svg, pageElement, pageNumber };
+    if (spotlightTimeoutRef.current) window.clearTimeout(spotlightTimeoutRef.current);
+    spotlightTimeoutRef.current = window.setTimeout(() => {
+      spotlightTimeoutRef.current = null;
+      if (activeSpotlightRef.current?.svg === svg) {
+        if (spotlightFrameRef.current) {
+          window.cancelAnimationFrame(spotlightFrameRef.current);
+          spotlightFrameRef.current = null;
+        }
+        svg.remove();
+        activeSpotlightRef.current = null;
+      }
+    }, HISTORY_HIGHLIGHT_LIFETIME_MS);
     const tick = () => {
       const active = activeSpotlightRef.current;
       if (!active || active.svg !== svg) return;
@@ -434,10 +554,30 @@ export default function RevisionsPanel({
   useEffect(() => {
     const hidden = embedded ? !isActive : !open;
     if (hidden) {
+      activityClickSeqRef.current += 1;
       stopSpotlightTracking();
       setViewingRevision(null);
     }
   }, [embedded, isActive, open, stopSpotlightTracking]);
+
+  // w55: switching documents clears the highlight (it used to follow the page
+  // NUMBER into the next document) and cancels any pending retries.
+  useEffect(() => () => {
+    activityClickSeqRef.current += 1;
+    stopSpotlightTracking();
+  }, [documentId, stopSpotlightTracking]);
+
+  // w55: Esc clears the highlight.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || !activeSpotlightRef.current) return;
+      activityClickSeqRef.current += 1;
+      stopSpotlightTracking();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [stopSpotlightTracking]);
 
   const createPageSpotlightSvg = useCallback((pageElement, pageNumber = null) => {
     if (typeof document === 'undefined' || !pageElement) return null;
@@ -480,14 +620,14 @@ export default function RevisionsPanel({
     const strokeWidth = Math.max(6, Number(annotation.strokeWidth || 2) + 4);
     const addGlowAttrs = (node) => {
       node.setAttribute('fill', 'none');
-      node.setAttribute('stroke', 'var(--accent)');
-      node.setAttribute('stroke-opacity', '0.4');
+      node.setAttribute('stroke', HISTORY_HIGHLIGHT_COLOR);
+      node.setAttribute('stroke-opacity', '0.9');
       node.setAttribute('stroke-width', `${strokeWidth}`);
       node.setAttribute('stroke-linecap', 'round');
       node.setAttribute('stroke-linejoin', 'round');
       node.setAttribute('vector-effect', annotation.strokeUniform ? 'non-scaling-stroke' : 'none');
       node.style.pointerEvents = 'none';
-      node.style.animation = 'document-history-pulse-glow 900ms ease-in-out infinite';
+      node.style.animation = 'document-history-pulse-glow 900ms ease-in-out 2, document-history-fade-out 600ms ease-in 2000ms forwards';
     };
     let node = null;
     if (annotation.path) {
@@ -594,13 +734,13 @@ export default function RevisionsPanel({
     if (!svg) return false;
     clone.removeAttribute('fill');
     clone.setAttribute('fill', 'none');
-    clone.setAttribute('stroke', 'var(--accent)');
-    clone.setAttribute('stroke-opacity', '0.4');
+    clone.setAttribute('stroke', HISTORY_HIGHLIGHT_COLOR);
+    clone.setAttribute('stroke-opacity', '0.9');
     clone.setAttribute('stroke-width', `${Math.max(6, Number(path.getAttribute('stroke-width') || 2) + 4)}`);
     clone.setAttribute('stroke-linecap', 'round');
     clone.setAttribute('stroke-linejoin', 'round');
     clone.style.pointerEvents = 'none';
-    clone.style.animation = 'document-history-pulse-glow 900ms ease-in-out infinite';
+    clone.style.animation = 'document-history-pulse-glow 900ms ease-in-out 2, document-history-fade-out 600ms ease-in 2000ms forwards';
     svg.appendChild(clone);
     return true;
   }, [createPageSpotlightSvg]);
@@ -673,6 +813,7 @@ export default function RevisionsPanel({
 
   const handleActivityClick = useCallback((event) => {
     if (!event) return;
+    const clickSeq = ++activityClickSeqRef.current;
     setSelectedEventId(event.client_event_id || event.id || null);
     setSelectedEventDetail(event);
     // Decision 10 (KAL-90): restore the exact context the mark belongs to —
@@ -693,9 +834,12 @@ export default function RevisionsPanel({
       // (space activation mounts the mark's overlay), so the mark may not be in
       // the DOM yet on the first attempt — retry the spotlight briefly instead
       // of giving up after one shot.
+      // w55: the mark as it is NOW comes first (it may have moved since this
+      // row); the stored copy is only for a mark that is gone (deleted).
       const trySpotlight = (attempt) => {
-        const didSpotlight = spotlightHistoryPreview(pageNumber, event)
-          || spotlightAnnotation(event.annotation_id || event.payload?.annotationId, pageNumber);
+        if (clickSeq !== activityClickSeqRef.current) return; // a newer click owns the highlight
+        const didSpotlight = spotlightAnnotation(event.annotation_id || event.payload?.annotationId, pageNumber)
+          || spotlightHistoryPreview(pageNumber, event);
         if (!didSpotlight && attempt < 6) {
           window.setTimeout(() => trySpotlight(attempt + 1), 250);
           return;
@@ -730,18 +874,24 @@ export default function RevisionsPanel({
         // KAL-313 CONFIRM-CASCADE: the region's parent space is gone.
         // Decide whether we can offer a cascade restore or must show blocked UI.
         const { spaceId } = result;
-        const cascade = resolveRegionRestoreCascade({
+        let cascade = resolveRegionRestoreCascade({
           spaceId,
           liveSpaces: [], // not available here — we use historyEvents to find the space record
           historyEvents,
         });
-        if (cascade === 'cascade') {
-          // Find the space_deleted event for the confirm dialog
-          const spaceEvent = historyEvents.find(
-            (ev) =>
-              ev.event_type === 'space_deleted' &&
-              ev.payload?.restoreAction?.spaceId === spaceId,
-          );
+        // Find the space_deleted event for the confirm dialog
+        let spaceEvent = historyEvents.find(
+          (ev) =>
+            ev.event_type === 'space_deleted' &&
+            ev.payload?.restoreAction?.spaceId === spaceId,
+        );
+        // w55: the space's delete row may be older than the rows loaded so far
+        // — ask the server before saying there is no restore record.
+        if (!spaceEvent) {
+          spaceEvent = await findDeletedSpaceHistoryEvent(documentId, spaceId);
+          if (spaceEvent) cascade = 'cascade';
+        }
+        if (cascade === 'cascade' && spaceEvent) {
           // Show the themed confirm modal instead of proceeding
           setCascadePending({ regionEvent: event, spaceEvent });
           setStatusMsg(null);
@@ -750,7 +900,9 @@ export default function RevisionsPanel({
           setStatusMsg("Cannot restore — its space was deleted and has no restore record.");
         }
       } else if (result?.reason === 'restore-noop') {
-        setStatusMsg('Item is already present — no restore needed.');
+        setStatusMsg('This item is already on the page, so nothing was changed.');
+      } else if (result?.reason === 'permission') {
+        setStatusMsg('You can view History here but not restore items.');
       } else {
         setStatusMsg('Restore unavailable for this history item.');
       }
@@ -759,7 +911,7 @@ export default function RevisionsPanel({
     } finally {
       setBusy(false);
     }
-  }, [busy, onRestoreHistoryActivity, refresh, historyEvents]);
+  }, [busy, documentId, onRestoreHistoryActivity, refresh, historyEvents]);
 
   // KAL-313: Execute the confirmed cascade restore (space first, then region).
   const handleCascadeConfirm = useCallback(async () => {
@@ -783,8 +935,6 @@ export default function RevisionsPanel({
     }
   }, [cascadePending, onCascadeRestoreRegion, refresh]);
 
-  if (!documentId) return null;
-
   const timelineItems = useMemo(() => {
     const items = [
       ...revisions.map((rev) => ({
@@ -805,6 +955,28 @@ export default function RevisionsPanel({
     items.sort((a, b) => b._ms - a._ms);
     return items;
   }, [revisions, historyEvents]);
+
+  // w55: this early return must stay BELOW every hook — the sidebar keeps the
+  // panel mounted, and a document id going null -> set used to change the
+  // hook count and crash the sidebar.
+  if (!documentId) return null;
+
+  // w55: Up/Down step through the rows (and show each one on the page).
+  const handleRowKeyDown = (e, activate) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      activate();
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const rows = Array.from(e.currentTarget.parentElement?.querySelectorAll('.document-history-row') || []);
+    const next = rows[rows.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (next) {
+      next.focus();
+      next.click();
+    }
+  };
 
   const panel = (
     <div
@@ -862,7 +1034,7 @@ export default function RevisionsPanel({
         {err && <div style={{ padding: 10, color: 'var(--danger-text)', fontSize: 12 }}>Error: {err}</div>}
         {!loading && !err && timelineItems.length === 0 && (
           <div style={{ padding: 10, color: 'var(--text-3)', fontSize: 12 }}>
-            No history yet. Edit the document or save a named version to start the timeline.
+            No history yet. Changes to this document will show up here.
           </div>
         )}
         {timelineItems.map((item) => {
@@ -875,7 +1047,7 @@ export default function RevisionsPanel({
             // payload.restoreAction — the viewer's restore dispatch already
             // handles them (isBulkAnnotationDeleteEvent branch). Offer Restore
             // for both shapes.
-            const canRestoreDeleted = Boolean(onRestoreHistoryActivity) && Boolean(
+            const canRestoreDeleted = canRestore && Boolean(onRestoreHistoryActivity) && Boolean(
               event.payload?.restoreAction
               || (event.event_type === 'annotations_bulk_deleted'
                 && Array.isArray(event.payload?.objects)
@@ -884,67 +1056,63 @@ export default function RevisionsPanel({
             return (
               <div
                 key={item.id}
+                className="document-history-row"
                 data-testid={`document-history-event-${event.id}`}
                 role="button"
                 tabIndex={0}
+                aria-current={isSelected ? 'true' : undefined}
                 onClick={() => handleActivityClick(event)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleActivityClick(event);
-                  }
-                }}
+                onKeyDown={(e) => handleRowKeyDown(e, () => handleActivityClick(event))}
                 style={{
-                  padding: 10,
-                  marginBottom: 6,
-                  borderRadius: 6,
-                  border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
-                  background: isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
+                  // w55 (owner: no gold boxes): hairline rows; the selected row
+                  // is the raised surface only (tokens.css: --surface-3 is "a
+                  // SELECTED row"), no border, no gold.
+                  padding: '9px 10px',
+                  borderTop: '1px solid var(--border)',
+                  background: isSelected ? 'var(--surface-3)' : 'transparent',
                   cursor: 'pointer',
                   outline: 'none',
                   contentVisibility: 'auto',
-                  containIntrinsicSize: '0 60px',
+                  containIntrinsicSize: '0 52px',
                 }}
-                title={event.page_number ? `Go to page ${event.page_number}` : 'History item'}
+                title={event.page_number ? `Show on page ${event.page_number}` : 'History item'}
               >
-                <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.35 }}>
-                  {event.summary}
+                <div className="document-history-row-title" style={{ fontSize: 12, color: isSelected ? 'var(--text-1)' : 'var(--text-2)', lineHeight: 1.35 }}>
+                  {displayHistorySummary(event.summary)}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                  {formatDate(event.occurred_at || event.created_at)}
-                  {event.is_undoable ? ' · undoable edit' : ''}
-                  {event.page_number ? ` · page ${event.page_number}` : ''}
-                  {isDeleted ? ' · deleted' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                  <span style={{ flex: 1 }}>
+                    {formatDate(event.occurred_at || event.created_at)}
+                    {event.page_number ? ` · page ${event.page_number}` : ''}
+                  </span>
+                  {canRestoreDeleted && (
+                    <button
+                      type="button"
+                      data-testid={`document-history-restore-${event.id}`}
+                      disabled={busy}
+                      aria-label="Restore this item"
+                      title="Restore this item where it was"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRestoreActivity(event);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 11,
+                        background: 'transparent',
+                        color: 'var(--text-2)',
+                        border: 0,
+                        padding: '2px 0',
+                        cursor: busy ? 'wait' : 'pointer',
+                      }}
+                    >
+                      <Icon name="rotateCcw" size={13} />
+                      Restore
+                    </button>
+                  )}
                 </div>
-                {isDeleted && (
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10, color: canRestoreDeleted ? 'var(--accent)' : 'var(--text-3)' }}>
-                      {canRestoreDeleted ? 'Restorable deleted item' : 'Restore unavailable'}
-                    </span>
-                    {canRestoreDeleted && (
-                      <button
-                        type="button"
-                        data-testid={`document-history-restore-${event.id}`}
-                        disabled={busy}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRestoreActivity(event);
-                        }}
-                        style={{
-                          fontSize: 11,
-                          background: 'var(--surface-3)',
-                          color: 'var(--accent-light)',
-                          border: '1px solid var(--accent-press)',
-                          borderRadius: 4,
-                          padding: '3px 8px',
-                          cursor: busy ? 'wait' : 'pointer',
-                        }}
-                      >
-                        Restore
-                      </button>
-                    )}
-                  </div>
-                )}
                 {isSelected && selectedEventDetail && (
                   <div
                     style={{
@@ -960,11 +1128,9 @@ export default function RevisionsPanel({
                       gap: 3,
                     }}
                   >
-                    <div>
-                      {isDeleted
-                        ? 'Clicking shows where the deleted item was; Restore brings back this item only.'
-                        : 'Clicking activity shows the current item or a stored visual preview, not a full-document snapshot.'}
-                    </div>
+                    {isDeleted && (
+                      <div>The outline shows where the deleted item was.</div>
+                    )}
                     {(() => {
                       // KAL-313 follow-up: label by event type — "Space: <name>" /
                       // "Region in <space>" — never "Annotation: <id>" for non-annotations.
@@ -1074,13 +1240,27 @@ export default function RevisionsPanel({
         })}
       </div>
 
-      <div style={{ borderTop: '1px solid var(--border)', padding: 10 }}>
+      {hasOlder && (
+        <div style={{ padding: '8px 10px' }}>
+          <button
+            type="button"
+            data-testid="document-history-load-older"
+            onClick={loadOlder}
+            disabled={loadingOlder}
+            style={{ background: 'transparent', border: 0, padding: 0, fontSize: 12, color: 'var(--text-2)', cursor: loadingOlder ? 'wait' : 'pointer' }}
+          >
+            {loadingOlder ? 'Loading…' : 'Load older'}
+          </button>
+        </div>
+      )}
+
+      <div style={{ borderTop: '1px solid var(--border)', padding: 10, display: (statusMsg || NAMED_VERSIONS_ENABLED) ? 'block' : 'none' }}>
         {statusMsg && (
           <div data-testid="kal48-status" style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>
             {statusMsg}
           </div>
         )}
-        {isOwner && (
+        {NAMED_VERSIONS_ENABLED && isOwner && (
           <button
             type="button"
             data-testid="kal48-save-revision"
@@ -1101,7 +1281,7 @@ export default function RevisionsPanel({
             Save version
           </button>
         )}
-        {!isOwner && (
+        {NAMED_VERSIONS_ENABLED && !isOwner && (
           <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
             Only the document owner can save or restore versions.
           </div>

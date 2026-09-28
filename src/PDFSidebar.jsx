@@ -172,6 +172,8 @@ const PDFSidebar = React.forwardRef(({
   onRestoreHistoryActivity = null,
   onCascadeRestoreRegion = null,
   onRestoreHistoryContext = null,
+  // w55: false for viewers / a locked document — History hides Restore.
+  canRestoreHistory = false,
   mobileMode = false,
   onPanelStateChange = null,
 }, ref) => {
@@ -702,6 +704,7 @@ const PDFSidebar = React.forwardRef(({
                 onRestoreHistoryActivity={onRestoreHistoryActivity}
                 onCascadeRestoreRegion={onCascadeRestoreRegion}
                 onRestoreHistoryContext={onRestoreHistoryContext}
+                canRestore={canRestoreHistory}
               />
             </div>
           </div>

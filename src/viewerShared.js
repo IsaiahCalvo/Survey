@@ -574,7 +574,9 @@ export const getHistoryObjectDiffType = (previousObject, nextObject) => {
   const rotated = previousObject.angle !== nextObject.angle;
 
   if (moved && !resized && !rotated) return 'move';
-  if (resized && !moved && !rotated) return 'resize';
+  // w55: dragging a left/top handle resizes AND shifts left/top — that is a
+  // resize to the person doing it, not a move.
+  if (resized && !rotated) return 'resize';
   if (rotated && !moved && !resized) return 'rotate';
   if (moved || resized || rotated) return 'transform';
   return 'update';
@@ -757,7 +759,9 @@ const inferHistoryUpdateType = (before, after) => {
   if (annotationType === 'callout') return 'callout edit';
   if (textChanged) return annotationType === 'textbox' || annotationType === 'text' ? 'text edit' : 'callout edit';
   if (rotated && !moved && !resized) return 'rotate';
-  if (resized && !moved && !rotated) return 'resize';
+  // w55: dragging a left/top handle resizes AND shifts left/top — that is a
+  // resize to the person doing it, not a move.
+  if (resized && !rotated) return 'resize';
   if (moved && !resized && !rotated) return 'move';
   if (moved || resized || rotated) return 'move';
   return 'text edit';

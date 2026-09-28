@@ -1144,3 +1144,49 @@ export function applyAnnotationHistoryAction(annotationsByPage, action, options 
     },
   };
 }
+
+/**
+ * w55: a History-panel Restore brings back marks that are GONE. Applied as-is,
+ * a restore action's `fabric:create` replaces a mark that is already there
+ * (undo brought it back, a teammate restored it, the Restore was pressed
+ * twice) with its delete-time copy, silently throwing away every edit made
+ * since. This strips the creates whose mark is already on the page:
+ *   - fabric:create            -> null when the mark exists
+ *   - fabric:batch             -> without the present creates; null when every
+ *                                 create was present (its deletes/updates were
+ *                                 the other half of that same erase, so they
+ *                                 must not run on their own either)
+ *   - fabric:document-batch    -> each child the same way; null when none left
+ * Anything else passes through unchanged.
+ */
+function isRestoreTargetPresent(objects, entry, snapshot) {
+  if (entry?.storageKey != null
+    && objects.some((object) => getCanonicalStorageKey(object) === String(entry.storageKey))) return true;
+  const targetId = entry?.annotationId || entry?.id || getAnnotationHistoryId(snapshot);
+  if (!targetId) return false;
+  return objects.some((object) => getAnnotationHistoryId(object) === targetId);
+}
+
+export function dropAlreadyPresentRestoreTargets(annotationsByPage, action) {
+  if (!action || typeof action !== 'object') return null;
+  const current = annotationsByPage || {};
+  const pageObjects = (pageNumber) => getObjects(current[String(pageNumber)] || current[pageNumber] || { objects: [] });
+  if (action.type === 'fabric:document-batch') {
+    const children = (action.actions || [])
+      .map((child) => dropAlreadyPresentRestoreTargets(current, child))
+      .filter(Boolean);
+    return children.length > 0 ? { ...action, actions: children } : null;
+  }
+  if (action.type === 'fabric:create') {
+    return isRestoreTargetPresent(pageObjects(action.pageNumber), action, action.annotation) ? null : action;
+  }
+  if (action.type === 'fabric:batch') {
+    const created = Array.isArray(action.created) ? action.created : [];
+    if (created.length === 0) return action;
+    const objects = pageObjects(action.pageNumber);
+    const missing = created.filter((entry) => !isRestoreTargetPresent(objects, entry, entry.annotation));
+    if (missing.length === 0) return null;
+    return missing.length === created.length ? action : { ...action, created: missing };
+  }
+  return action;
+}

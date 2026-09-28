@@ -50,11 +50,22 @@ function labelAnnotationType(value) {
   if (text === 'textbox' || text === 'text' || text === 'freetext') return 'text';
   if (text === 'rect' || text === 'square') return 'rectangle';
   if (text === 'circle') return 'circle';
+  if (text === 'ellipse') return 'ellipse';
   if (text === 'line') return 'line';
+  if (text === 'arrow') return 'arrow';
+  if (text === 'polygon') return 'polygon';
+  if (text === 'polyline') return 'polyline';
+  if (text === 'counter') return 'counter';
   if (text === 'callout') return 'callout';
   if (text.includes('survey')) return 'survey marker';
   if (text === 'fabric') return 'annotation';
   return text || 'annotation';
+}
+
+// w55: "an ellipse", "an arrow", "a rectangle" — never "a ellipse".
+function withArticle(label) {
+  if (label === 'annotation') return 'an annotation';
+  return `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
 }
 
 function buildSummary({ actorName, event }) {
@@ -85,15 +96,18 @@ function buildSummary({ actorName, event }) {
   if (action === 'ink' || (action === 'create' && annotationLabel === 'pen stroke')) {
     return `${actorName} drew a pen stroke${pageSuffix}`;
   }
-  if (action === 'create') return `${actorName} created ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'delete') return `${actorName} deleted ${count > 1 ? `${count} annotations` : annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'move') return `${actorName} moved ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'resize') return `${actorName} resized ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
-  if (action === 'rotate') return `${actorName} rotated ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
+  // w55: a History-panel Restore is logged as a restore, not as the
+  // create/move the re-save looks like.
+  if (event.restoredFromHistory === true) return `${actorName} restored ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'create') return `${actorName} created ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'delete') return `${actorName} deleted ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'move') return `${actorName} moved ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'resize') return `${actorName} resized ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'rotate') return `${actorName} rotated ${withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'text edit') return `${actorName} edited text${pageSuffix}`;
   if (action === 'callout edit') return `${actorName} edited a callout${pageSuffix}`;
 
-  return `${actorName} edited ${annotationLabel === 'annotation' ? 'an annotation' : `a ${annotationLabel}`}${pageSuffix}`;
+  return `${actorName} edited ${withArticle(annotationLabel)}${pageSuffix}`;
 }
 
 // History-audit P3: previewAnnotation drives the History panel's spotlight
@@ -191,6 +205,35 @@ function writeLocalHistoryStore(store) {
   }
 }
 
+// w55: the device copy is a fallback for rows the server has not taken yet,
+// not a second archive. It is capped so it can never fill localStorage (which
+// other features also write to): at most LOCAL_HISTORY_MAX_ROWS rows for each of
+// the LOCAL_HISTORY_MAX_DOCUMENTS most recently used documents, nothing older
+// than the server keeps (60 days, the prod prune window).
+const LOCAL_HISTORY_MAX_ROWS = 100;
+const LOCAL_HISTORY_MAX_DOCUMENTS = 10;
+const LOCAL_HISTORY_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+
+function rowTimeMs(row) {
+  return Date.parse(row?.occurred_at || row?.created_at || 0) || 0;
+}
+
+export function capLocalHistoryStore(store, { now = Date.now() } = {}) {
+  const cutoff = now - LOCAL_HISTORY_MAX_AGE_MS;
+  const entries = Object.entries(store || {})
+    .map(([documentId, rows]) => [
+      documentId,
+      (Array.isArray(rows) ? rows : [])
+        .filter((row) => row && rowTimeMs(row) >= cutoff)
+        .sort((a, b) => rowTimeMs(b) - rowTimeMs(a))
+        .slice(0, LOCAL_HISTORY_MAX_ROWS),
+    ])
+    .filter(([, rows]) => rows.length > 0)
+    .sort((a, b) => rowTimeMs(b[1][0]) - rowTimeMs(a[1][0]))
+    .slice(0, LOCAL_HISTORY_MAX_DOCUMENTS);
+  return Object.fromEntries(entries);
+}
+
 function cacheLocalHistoryRow(row) {
   if (!row?.document_id || !row?.client_event_id) return;
   const store = getLocalHistoryStore();
@@ -202,14 +245,11 @@ function cacheLocalHistoryRow(row) {
     created_at: row.created_at || row.occurred_at || new Date().toISOString(),
     __local: true,
   };
-  const deduped = [
+  store[row.document_id] = [
     nextRow,
     ...existing.filter((entry) => entry?.client_event_id !== row.client_event_id),
-  ]
-    .sort((a, b) => (Date.parse(b.occurred_at || b.created_at || 0) || 0) - (Date.parse(a.occurred_at || a.created_at || 0) || 0))
-    .slice(0, 500);
-  store[row.document_id] = deduped;
-  writeLocalHistoryStore(store);
+  ];
+  writeLocalHistoryStore(capLocalHistoryStore(store));
 }
 
 function listLocalHistoryRows(documentId) {
@@ -371,14 +411,50 @@ export async function recordAndNotifyDocumentHistoryEvent(row) {
   return recordDocumentHistoryEvent(row);
 }
 
-export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT } = {}) {
+// w55: History rows that hold a deleted item's restore data. These are the
+// trash: kept forever on the server (never pruned), and the only rows the
+// History panel offers Restore on. Undo/redo rows carry restore-like payloads
+// too, so the panel must key off the row type, never the summary text.
+export const TRASH_HISTORY_EVENT_TYPES = Object.freeze([
+  'annotation_deleted',
+  'callout_deleted',
+  'region_deleted',
+  'annotations_bulk_deleted',
+  'space_deleted',
+  'survey_marker_deleted',
+]);
+
+export function isTrashHistoryEvent(event) {
+  return TRASH_HISTORY_EVENT_TYPES.includes(event?.event_type);
+}
+
+const HISTORY_EVENT_COLUMNS = 'id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at';
+
+/**
+ * List a document's History rows, newest first.
+ *   limit   page size (1..500)
+ *   before  ISO time: only rows older than this ("Load older" paging)
+ *   since   ISO time: only rows at or after this (incremental refresh; the
+ *           caller merges them into what it already shows)
+ */
+export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT, before = null, since = null } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
-  const localRows = listLocalHistoryRows(documentId);
+  const beforeMs = before ? Date.parse(before) : NaN;
+  const sinceMs = since ? Date.parse(since) : NaN;
+  const localRows = listLocalHistoryRows(documentId).filter((row) => {
+    const at = rowTimeMs(row);
+    if (Number.isFinite(beforeMs) && !(at < beforeMs)) return false;
+    if (Number.isFinite(sinceMs) && !(at >= sinceMs)) return false;
+    return true;
+  });
   if (!supabase || !documentId) return mergeHistoryRows([], localRows, safeLimit);
-  const { data, error } = await supabase
+  let query = supabase
     .from('document_history_events')
-    .select('id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at')
-    .eq('document_id', documentId)
+    .select(HISTORY_EVENT_COLUMNS)
+    .eq('document_id', documentId);
+  if (Number.isFinite(beforeMs)) query = query.lt('occurred_at', new Date(beforeMs).toISOString());
+  if (Number.isFinite(sinceMs)) query = query.gte('occurred_at', new Date(sinceMs).toISOString());
+  const { data, error } = await query
     .order('occurred_at', { ascending: false })
     .limit(safeLimit);
   if (error) {
@@ -386,4 +462,22 @@ export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EV
     throw error;
   }
   return mergeHistoryRows(data || [], localRows, safeLimit);
+}
+
+/**
+ * w55: the newest space_deleted row for a space, looked up on the server when
+ * it is not among the rows the panel has loaded (region "Restore both?").
+ */
+export async function findDeletedSpaceHistoryEvent(documentId, spaceId) {
+  if (!supabase || !documentId || !spaceId) return null;
+  const { data, error } = await supabase
+    .from('document_history_events')
+    .select(HISTORY_EVENT_COLUMNS)
+    .eq('document_id', documentId)
+    .eq('event_type', 'space_deleted')
+    .eq('payload->restoreAction->>spaceId', String(spaceId))
+    .order('occurred_at', { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
