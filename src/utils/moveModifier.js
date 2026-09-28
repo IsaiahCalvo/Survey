@@ -49,10 +49,14 @@ export function isMacLikePlatform(nav = (typeof navigator !== 'undefined' ? navi
   return /mac|iphone|ipad|ipod/i.test(platform);
 }
 
-/** Does this keyboard / pointer event have the move modifier down? */
+/**
+ * Does this keyboard / pointer event have the move modifier down? Off a Mac,
+ * Ctrl together with Alt is AltGr (how German / Polish layouts type @ or {),
+ * which must not flash the grabbers away, so it does not count.
+ */
 export function isMoveModifierEvent(event, mac = isMacLikePlatform()) {
   if (!event) return false;
-  return mac ? event.metaKey === true : event.ctrlKey === true;
+  return mac ? event.metaKey === true : (event.ctrlKey === true && event.altKey !== true);
 }
 
 /**
@@ -262,8 +266,18 @@ export function getMoveModifierHeld() {
 }
 
 const getServerSnapshot = () => false;
+const alwaysFalse = () => false;
 
-/** React hook: is the move modifier (Cmd on Mac, Ctrl elsewhere) held now? */
-export function useMoveModifierHeld() {
-  return useSyncExternalStore(subscribeMoveModifier, getMoveModifierHeld, getServerSnapshot);
+/**
+ * React hook: is the move modifier (Cmd on Mac, Ctrl elsewhere) held now?
+ * Pass `enabled = false` (e.g. a page with nothing selected) and the hook
+ * reads a constant, so pressing Cmd+Z / Cmd+C or Ctrl+wheel never re-renders
+ * page layers that have no selection.
+ */
+export function useMoveModifierHeld(enabled = true) {
+  return useSyncExternalStore(
+    subscribeMoveModifier,
+    enabled ? getMoveModifierHeld : alwaysFalse,
+    getServerSnapshot,
+  );
 }

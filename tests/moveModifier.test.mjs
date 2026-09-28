@@ -30,6 +30,8 @@ test('Command is the key on a Mac (web and desktop app), Control elsewhere', () 
   // Windows / Linux: Control counts, the Windows key does not.
   assert.equal(isMoveModifierEvent({ metaKey: false, ctrlKey: true }, false), true);
   assert.equal(isMoveModifierEvent({ metaKey: true, ctrlKey: false }, false), false);
+  // AltGr (Ctrl + Alt) types @ / { on many Windows layouts: not the move key.
+  assert.equal(isMoveModifierEvent({ ctrlKey: true, altKey: true }, false), false);
   assert.equal(isMoveModifierEvent(null, true), false);
 });
 
@@ -174,7 +176,12 @@ const hookSrc = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import
 
 test('layer: grabbers hide while the key is held, rotate grabber stays, zone sits below the chrome', () => {
   assert.match(layerSrc, /hideResizeHandles=\{textMarkupSelectionChrome\.hideResizeHandles \|\| modifierMoveActive\}/);
-  assert.match(layerSrc, /if \(isLineType && !lineInBboxMode && modifierMoveActive\) return null;/);
+  // A line's end / bend grabbers give way to a plain dashed frame.
+  assert.match(layerSrc, /if \(isLineType && !lineInBboxMode && modifierMoveActive\) \{[\s\S]{0,400}moveOnly=\{true\}/);
+  // Read-only documents never get the move zone.
+  assert.match(layerSrc, /modifierMoveActive = \(\(\) => \{[\s\S]{0,600}data-readonly/);
+  // Pages with nothing selected do not re-render on every Cmd press.
+  assert.match(layerSrc, /useMoveModifierHeld\(familySelectionSize > 0 && activeTool === 'select'\)/);
   assert.match(layerSrc, /!modifierMoveActive && worldPoints\.map/);
   assert.match(layerSrc, /&& !modifierMoveActive;\n/, 'callout knee / tip / corner grabbers hide');
   assert.match(layerSrc, /hideResizeHandles=\{modifierMoveActive\}/, 'Survey Marker grabbers hide');

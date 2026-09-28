@@ -1101,10 +1101,13 @@ const SVGAnnotationLayer = memo(({
   // and only when at least one selected member may move (a selection that is
   // all locked or all text markup keeps its normal chrome). Full rule:
   // src/utils/moveModifier.js.
-  const moveModifierHeld = useMoveModifierHeld();
+  const moveModifierHeld = useMoveModifierHeld(familySelectionSize > 0 && activeTool === 'select');
   const modifierMoveActive = (() => {
     if (!moveModifierHeld || activeTool !== 'select' || !isSelectTool) return false;
     if (familySelectionSize === 0) return false;
+    // A read-only document never moves anything (and its page ignores the
+    // pointer; the zone must not bring it back).
+    if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return false;
     if (editingCalloutId || (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox')) return false;
     // Never pull a grabber out from under a resize / rotate / bend already in
     // progress (it holds the pointer); a move in progress is fine.
@@ -1120,6 +1123,9 @@ const SVGAnnotationLayer = memo(({
       for (const callout of callouts) {
         if (!callout || callout.pageNumber !== pageNumber) continue;
         if (!effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        // w52: a hidden / space-inert callout is never picked or moved.
+        const selectable = selectableCalloutIdsRef.current;
+        if (selectable instanceof Set && !selectable.has(callout.id)) continue;
         if (!isUserLocked(callout)) return true;
       }
     }
@@ -6145,14 +6151,17 @@ const SVGAnnotationLayer = memo(({
 
   // The rotate grabber under a point of the zone, unless the point is on
   // the selected marks themselves (then the press is a move).
+  const ROTATE_GRABBER_SELECTOR = '[data-rotation-handle="mtr"], [data-handle-hit-pad="counter-rotate"]';
   const rotateGrabberUnderZonePoint = (zoneEl, clientX, clientY) => {
     if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return null;
+    // Cheap bail-out: no rotate grabber on this page, nothing to hand off.
+    if (!svgRef.current?.querySelector?.(ROTATE_GRABBER_SELECTOR)) return null;
     const pagePoint = screenToSVG(svgRef.current, clientX, clientY);
     if (isPointInBoxes(pagePoint, modifierMoveZone?.markBoxes)) return null;
     return document.elementsFromPoint(clientX, clientY).find((el) => (
       el !== zoneEl
       && svgRef.current?.contains?.(el)
-      && el.closest?.('[data-rotation-handle="mtr"], [data-handle-hit-pad="counter-rotate"]')
+      && el.closest?.(ROTATE_GRABBER_SELECTOR)
     )) || null;
   };
 
@@ -6168,8 +6177,13 @@ const SVGAnnotationLayer = memo(({
     if (e.button != null && e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+    if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
     {
       const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
+      // The hand-off re-dispatches the press on the grabber. Window-level
+      // pointerdown listeners therefore see this press twice; they only read
+      // it (selection-dismiss ignores modifier presses, the key store reads
+      // the same modifier state), so that is harmless.
       if (rotateEl && typeof PointerEvent === 'function') {
         const n = e.nativeEvent || e;
         rotateEl.dispatchEvent(new PointerEvent('pointerdown', {
@@ -6201,6 +6215,9 @@ const SVGAnnotationLayer = memo(({
       candidate?.surveyMarker?.annotationId === selectedSurveyMarkerId
     ));
     if (!entry?.bbox || entry.surveyMarker.lockedBy || entry.surveyMarker.liveOverlay) return;
+    // Land a pending arrow-key nudge first so the drag starts from where the
+    // marker is shown (and the nudge is not lost under the drag's commit).
+    commitSurveyMarkerNudge();
     surveyMarkerDragRef.current = {
       mode: 'move',
       annotationId: entry.surveyMarker.annotationId,
@@ -7324,7 +7341,20 @@ const SVGAnnotationLayer = memo(({
         const lineInBboxMode = isLineType && isBeingEditedNow && editingAnnotationEditType === 'bbox';
         // w58: Cmd / Ctrl held -> no end or bend grabbers (a line has no
         // rotate grabber here); the line moves from anywhere in its box.
-        if (isLineType && !lineInBboxMode && modifierMoveActive) return null;
+        // A plain dashed frame keeps it visibly selected.
+        if (isLineType && !lineInBboxMode && modifierMoveActive) {
+          return (
+            <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+              <SVGSelectionOverlay
+                key={`selection-${selectedIndex}`}
+                bbox={bbox}
+                inverseScale={inverseScale}
+                isGroupSelection={false}
+                moveOnly={true}
+              />
+            </g>
+          );
+        }
         if (isLineType && !lineInBboxMode) {
           const ep = getLineEndpoints(selectionObj);
           const dx = overlayTransform ? (visualTransform?.dx || 0) : 0;
