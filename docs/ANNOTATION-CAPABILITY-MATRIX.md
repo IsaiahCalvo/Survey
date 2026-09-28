@@ -74,7 +74,7 @@ another user's mark is removed with Copy + Delete, which confirms.
 | Stamp | ✓ | D | ✓ | after commit | ★ edited stamps exported (were dropped) | ✓ | ★ now drawn |
 | Text markup | ✓ | D | ✓ ★ now gets the module/region tag | after commit | ✓ | ✓ | ★ now drawn |
 | Imported marks | ✓ | ink ✓ | ✓ | after commit | original kept / edited copy rewritten (D) | app copy replaces original (D) | ✓ |
-| Survey Marker | ✓ ★ now obeys the space rule | ✗ | ✓ | **B** never broadcast live (plan 4.3) | active module only (D, owner 2026-09-02) | ✓ | ✗ |
+| Survey Marker | ✓ ★ now obeys the space rule | ✗ | ✓ | ☆ after commit, before its row lands (~50 ms measured; look-only on the other screen until the row lands) | active module only (D, owner 2026-09-02) | ✓ | ✗ |
 
 **D — export vs print differ on purpose:** export = regular markup + the open
 module's Survey Markers (owner ruling 2026-09-02, `buildPdfExportAnnotationPlan`);
@@ -152,9 +152,15 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    (d) moving a Survey Marker makes a linked Excel read "not synced" (bounds
    are hashed — pre-w53 behaviour, geometry is not an Excel column);
    (e) the canvas painter / thumbnails still draw no Survey Markers.
-3. **Survey Marker and space changes are not live-broadcast** (other screens
-   see them only after the saved row lands). Plan: extend the live-edit bus
-   (`annotationLiveOverlay.js`) with a marker lane. Medium; sync — two reviews.
+3. ☆ **Survey Marker and space changes go live** — done in w53
+   (`src/services/annotationLiveMarkers.js`, message v4 on the same live
+   channel, one small message per edit, the same token bucket; display-only
+   overlay until the saved row lands, 12 s expiry; this screen's own newer
+   write always wins; usage budget test extended). Spaces: only the region
+   OUTLINES draw live — the spaces list and every space action keep reading
+   the saved spaces (so nothing is ever saved from another screen's
+   in-flight copy). A marker another screen is changing is look-only until
+   its row lands (~½ s).
 4. **Mixed clipboard and Duplicate.** One clipboard for shapes + callouts
    (today: one or the other), keyboard copy of a multi-selection, Cmd+D
    duplicate. Plan: a single clipboard shape `{objects, callouts}` used by

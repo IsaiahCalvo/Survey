@@ -3314,6 +3314,7 @@ const SVGAnnotationLayer = memo(({
   // may pick with marquee / lasso and move with the selection.
   surveyMarkerMembersRef.current = surveyMarkerElements
     .filter((entry) => entry?.surveyMarker?.annotationId
+      && !entry.surveyMarker.liveOverlay
       && (typeof isSurveyMarkerFamilyMember !== 'function'
         || isSurveyMarkerFamilyMember(entry.surveyMarker.annotationId)))
     .map((entry) => ({
@@ -3332,7 +3333,10 @@ const SVGAnnotationLayer = memo(({
   // deleted) leaves the selection.
   useEffect(() => {
     if (selectedSurveyMarkerIds.size === 0) return;
-    const visible = new Set(surveyMarkerElements.map((entry) => entry?.surveyMarker?.annotationId));
+    // (w53: one another screen is changing right now is look-only too.)
+    const visible = new Set(surveyMarkerElements
+      .filter((entry) => !entry?.surveyMarker?.liveOverlay)
+      .map((entry) => entry?.surveyMarker?.annotationId));
     const kept = [...selectedSurveyMarkerIds].filter((id) => visible.has(id));
     if (kept.length !== selectedSurveyMarkerIds.size) {
       setSelectedSurveyMarkerIds(kept.length ? new Set(kept) : EMPTY_SURVEY_MARKER_IDS);
@@ -3849,7 +3853,9 @@ const SVGAnnotationLayer = memo(({
           fill="rgba(0,0,0,0.001)"
           stroke="none"
           transform={rotationTransform}
-          pointerEvents={annotationHitTargetsInteractive ? 'all' : 'none'}
+          // w53: a marker drawn from another screen's in-flight change is
+          // look-only until its row lands (nothing is saved from it).
+          pointerEvents={annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay ? 'all' : 'none'}
           style={{ cursor: isSelectTool ? 'move' : undefined }}
           onPointerDown={(e) => handleSurveyMarkerPointerDown(e, entry)}
           onDoubleClick={(e) => handleSurveyMarkerDoubleClick(e, entry)}

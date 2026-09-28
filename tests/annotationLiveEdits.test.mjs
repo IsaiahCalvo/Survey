@@ -281,7 +281,12 @@ test('an erase planned on an overlay copy is cancelled, and an eraser page mutat
 
 test('nothing is broadcast for a local write that changes no drawn mark, and oversized edits ride the log only', async () => {
   const { cloud, a, b } = await twoScreens('live-edit-quiet');
-  a.setMeta('spaces', [{ id: 's1' }]);
+  // w53 (2026-09-28, deliberate): the spaces list IS drawn now (region
+  // outlines go live, tests/annotationLiveMarkers.test.mjs + the usage
+  // budget), so this "changes no drawn mark" case uses a meta value that is
+  // never drawn. The rule it pins is unchanged: a meta write that changes
+  // nothing on screen sends nothing live.
+  a.setMeta('excelSyncFrontier', { cursor: 1 });
   await a.drain();
   assert.equal(cloud.sent.length, 0, 'a meta write sends nothing live');
   const big = { ...rect('m1'), path: Array.from({ length: 20_000 }, (_, i) => ['L', i, i]) };

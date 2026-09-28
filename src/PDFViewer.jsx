@@ -186,6 +186,7 @@ import {
   surveyMarkerRenderEntry,
   translateSurveyMarkerRecord,
 } from './utils/surveyMarkerFamily.js';
+import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -20698,6 +20699,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
     hasStoredMarks: annotationDocHasStoredMarks,
+    // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
+    liveMarkerOverlay,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -31814,6 +31817,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [selectedModuleId, surveyMarkers]);
 
+  // UX: w53 (2026-09-28) — another screen's Survey Marker change (moved,
+  // restacked, new, deleted) shows here AS IT HAPPENS, before its saved row
+  // lands (the w32 live-overlay pattern: annotationLiveMarkers.js). DISPLAY
+  // ONLY: the overlay is laid over the canvas lists this screen draws; it is
+  // never written to surveyMarkers (so the capture never saves another
+  // screen's in-flight change) and it leaves when the row lands, 12 s pass,
+  // or the channel closes.
+  // A marker drawn from the overlay is look-only until its row lands (~½ s):
+  // it cannot be picked, dragged or deleted, so nothing is ever saved from
+  // another screen's in-flight copy. Survey Markers show only inside their
+  // open Survey module (clean slate), overlay ones too.
+  const displaySurveyMarkersByPage = useMemo(() => {
+    const overlayMarkers = liveMarkerOverlay?.markers;
+    if (!overlayMarkers || overlayMarkers.size === 0 || !selectedModuleId) return newSurveyMarkersByPage;
+    const patched = patchSurveyMarkerRenderPages(
+      newSurveyMarkersByPage,
+      overlayLiveSurveyMarkers(surveyMarkers, overlayMarkers),
+      [...overlayMarkers.keys()],
+      { selectedModuleId, normalizeColor: normalizeSurveyMarkerColor },
+    );
+    const out = {};
+    for (const [page, list] of Object.entries(patched)) {
+      out[page] = list.map((entry) => (overlayMarkers.has(String(entry?.annotationId))
+        ? { ...entry, liveOverlay: true }
+        : entry));
+    }
+    return out;
+  }, [liveMarkerOverlay, newSurveyMarkersByPage, surveyMarkers, selectedModuleId]);
+  // …and another screen's region change draws live in the region outlines
+  // (display only: region editing, the spaces list and every space action
+  // keep reading this screen's own saved spaces).
+  const displaySpaces = liveMarkerOverlay?.spaces || spaces;
+
   // Cleanup orphaned canvas surveyMarkers - ensures surveyMarkers can only exist if they have a corresponding survey panel item
   useEffect(() => {
     // Build a set of valid surveyMarker bounds from surveyMarkers
@@ -32299,6 +32335,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // The overlay component will process all of them to show the combined visible areas
     return allRegions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
+
+  // w53: the region outlines DRAWN for a page — another screen's in-flight
+  // region change shows live. Drawing only (never seeds region editing).
+  const getDisplayPageRegions = useCallback((pageNumber) => {
+    if (displaySpaces === spaces) return getPageRegions(pageNumber);
+    if (!activeSpaceId) return null;
+    const space = displaySpaces.find((s) => s.id === activeSpaceId);
+    const assignedPage = space?.assignedPages?.find((p) => p.pageId === pageNumber);
+    if (!assignedPage) return null;
+    const isEditingThisPage = showRegionSelection && regionSelectionPage === pageNumber;
+    if (assignedPage.wholePageIncluded !== false && !isEditingThisPage) return null;
+    const allRegions = normalizePageRegions(assignedPage.regions || []);
+    return allRegions.length === 0 ? null : allRegions;
+  }, [activeSpaceId, displaySpaces, spaces, getPageRegions, showRegionSelection, regionSelectionPage]);
 
   // Stable reference for the region-selection tool's initial regions.
   // Memoized so the array identity only changes when the underlying space data
@@ -34684,7 +34734,9 @@ ${pageBlocks}
                                 return null;
                               }
 
-                              const validRegions = pageRegions.filter(region => {
+                              // w53: drawn from getDisplayPageRegions (another screen's in-flight region
+                              // change shows live; drawing only).
+                              const validRegions = (getDisplayPageRegions(pageNumber) || []).filter(region => {
                                 if (!region || !Array.isArray(region.coordinates)) return false;
                                 const coords = region.coordinates;
                                 return (region.shapeType === 'rectangular' && coords.length >= 8) ||
@@ -34839,7 +34891,7 @@ ${pageBlocks}
                                   scale={layerScale}
                                   annotations={isEraserTool ? pageAnnotations : benchmarkPageAnnotations}
                                   callouts={callouts}
-                                  surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                  surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -34881,7 +34933,9 @@ ${pageBlocks}
                                   return null;
                                 }
 
-                                const validRegions = pageRegions.filter(region => {
+                                // w53: drawn from getDisplayPageRegions (another screen's in-flight region
+                              // change shows live; drawing only).
+                              const validRegions = (getDisplayPageRegions(pageNumber) || []).filter(region => {
                                   if (!region || !Array.isArray(region.coordinates)) return false;
                                   const coords = region.coordinates;
                                   return (region.shapeType === 'rectangular' && coords.length >= 8) ||
@@ -34991,7 +35045,7 @@ ${pageBlocks}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
-                                  surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                  surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
                                   onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
                                   onDeleteSurveyMarker={handleDeleteSurveyMarker}
                                   isSurveyMarkerFamilyMember={isSurveyMarkerFamilyMember}

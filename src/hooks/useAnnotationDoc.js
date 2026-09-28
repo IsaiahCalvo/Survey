@@ -60,6 +60,8 @@ function livePreviewPublicChannelInDev() {
 // w30: add other screens' in-flight new marks (handle.getLivePreviewByPage)
 // to a page list read from the document. A mark the document already holds
 // wins; the page list is returned unchanged when there is nothing to add.
+const EMPTY_LIVE_MARKER_OVERLAY = Object.freeze({ markers: new Map(), spaces: null });
+
 function withLivePreviews(byPage, handle) {
   // w32: the handle also applies other screens' in-flight EDITS (a move,
   // restyle, erase or delete shows before its WAL row) — display only, the
@@ -349,6 +351,10 @@ export function useAnnotationDoc({
   const openFailuresRef = useRef({ documentId: null, count: 0 });
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
+  // w53: other screens' in-flight Survey Marker / spaces changes, DRAWN only
+  // (never written to surveyMarkers / spaces, so the capture never saves
+  // them): { markers: Map<id, record|null>, spaces: Array|null }.
+  const [liveMarkerOverlay, setLiveMarkerOverlay] = useState(EMPTY_LIVE_MARKER_OVERLAY);
   const [syncQueueSize, setSyncQueueSize] = useState(0);
 
   byPageRef.current = annotationsByPage;
@@ -564,6 +570,12 @@ export function useAnnotationDoc({
       // and leaves when its row brings the real mark or it never comes.
       unsubscribeLivePreview = handle.onLivePreviewChange?.(() => {
         if (cancelled) return;
+        const markerOverlay = handle.getLiveMarkerOverlay?.();
+        setLiveMarkerOverlay((previous) => {
+          const empty = !markerOverlay || (markerOverlay.markers.size === 0 && !markerOverlay.spaces);
+          if (empty) return previous === EMPTY_LIVE_MARKER_OVERLAY ? previous : EMPTY_LIVE_MARKER_OVERLAY;
+          return markerOverlay; // the handle returns the same object while unchanged
+        });
         // Same read-only fallback upkeep as a remote change (above).
         const fallback = metaFallbackIdsRef.current.size > 0
           ? getUnmigratedMetaCallouts(handle.doc)
@@ -718,6 +730,7 @@ export function useAnnotationDoc({
       unsubscribeSync?.();
       unsubscribeHistoryQuarantine?.();
       unsubscribeLivePreview?.();
+      setLiveMarkerOverlay(EMPTY_LIVE_MARKER_OVERLAY);
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers, openRetryTick]);
@@ -1209,5 +1222,6 @@ export function useAnnotationDoc({
     hasStoredMarks,
     status: syncStatus,
     queueSize: syncQueueSize,
+    liveMarkerOverlay,
   };
 }

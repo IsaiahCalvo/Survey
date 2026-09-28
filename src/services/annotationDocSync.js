@@ -100,6 +100,12 @@ import {
   stripLiveEditObjects,
 } from './annotationLiveOverlay.js';
 import {
+  LIVE_MARKER_VERSION,
+  buildLiveMarkerPayload,
+  collectLiveMarkerOverlay,
+  parseLiveMarkerPayload,
+} from './annotationLiveMarkers.js';
+import {
   LIVE_STROKE_VERSION,
   applyRemoteLiveStroke,
   clearLiveStrokes,
@@ -478,6 +484,11 @@ export async function openAnnotationDoc({
     // w32 live edits (annotationLiveOverlay.js): writer + clientSeq ->
     // { writerId, clientSeq, receivedAt, entries: Map<key, {page, object}|null> }
     liveEdits: new Map(),
+    // w53 live Survey Markers / spaces (annotationLiveMarkers.js): writer +
+    // clientSeq -> { writerId, clientSeq, receivedAt, markers, spaces }
+    liveMarkerEdits: new Map(),
+    liveMarkerOverlayVersion: 0,
+    liveMarkerOverlayCache: null,
     liveEditExpireMs: Number(livePreviewTimings?.editExpireMs) || LIVE_EDIT_EXPIRE_MS,
     liveEditTokens: new Map(),       // token -> { key, object } handed to the screen (bounded)
     liveEditBases: new Map(),        // token -> this screen's own copy when the overlay arrived (kept longer)
@@ -1446,12 +1457,25 @@ function applyAuthoritativeCloudUpdate(state, update) {
 function applyToLiveDoc(state, update, origin) {
   let changed = false;
   state.lastAppliedTouched = null;
+  state.lastAppliedMarkerTouched = null;
   const onUpdate = (_update, _origin, _doc, transaction) => {
     changed = true;
     // w32: which marks this row changed (older edit overlays of the same
     // screen are dropped for those marks only, see confirmLivePreview), and
     // their arrival copies go stale (every path that applies a row or a
     // snapshot comes through here).
+    // w53: which Survey Markers / whether the spaces list this row changed
+    // (an overlay of an older message loses only those, see confirm).
+    if (state.liveMarkerEdits?.size > 0) {
+      try {
+        const touchedMarkers = liveTouchedMarks(state, transaction);
+        if (touchedMarkers) {
+          state.lastAppliedMarkerTouched ??= { keys: new Set(), spaces: false };
+          for (const key of touchedMarkers.surveyMarkerKeys) state.lastAppliedMarkerTouched.keys.add(key);
+          if (touchedMarkers.spacesChanged) state.lastAppliedMarkerTouched.spaces = true;
+        }
+      } catch { /* only narrows overlay removal */ }
+    }
     if (state.liveEdits?.size > 0 || state.liveEditBases?.size > 0) {
       try {
         const touched = liveTouchedMarks(state, transaction);
@@ -4782,10 +4806,21 @@ function liveTouchedMarks(state, transaction) {
   const changed = rootKeysChangedByTransaction(transaction, roots);
   const markKeys = new Set();
   const laneMarkKeys = new Set();
+  // w53: Survey Markers and the spaces list the transaction changed.
+  const surveyMarkersMap = getSurveyMarkersMap(state.doc);
+  const metaMap = state.doc.getMap(META_MAP);
+  const surveyMarkerKeys = new Set();
+  let spacesChanged = false;
   let otherRoots = false;
   for (const [root, keys] of changed) {
     if (keys.has(null)) return null; // unknown: skip the fast lane
-    if (root === marksMap) {
+    if (root === surveyMarkersMap) {
+      for (const key of keys) surveyMarkerKeys.add(String(key));
+      otherRoots = true;
+    } else if (root === metaMap) {
+      if (keys.has(LIVE_SPACES_META_KEY)) spacesChanged = true;
+      otherRoots = true;
+    } else if (root === marksMap) {
       for (const key of keys) markKeys.add(String(key));
     } else if (root === eraserMap) {
       for (const laneKey of keys) {
@@ -4802,7 +4837,47 @@ function liveTouchedMarks(state, transaction) {
     }
   }
   const rootLevel = transaction.changed.get(marksMap) || new Set();
-  return { markKeys, laneMarkKeys, otherRoots, rootLevel };
+  return { markKeys, laneMarkKeys, otherRoots, rootLevel, surveyMarkerKeys, spacesChanged };
+}
+
+// The document-level meta key the spaces list is stored under
+// (useAnnotationDoc SPACES_KEY).
+const LIVE_SPACES_META_KEY = 'spaces';
+
+// w53: Survey Markers and spaces changed by this edit, as the store now
+// holds them, to the same channel (display only on the receivers).
+function sendLiveMarkerUpdate(state, record, touched) {
+  const bus = state.liveBus;
+  if (!bus) return;
+  const markers = new Map();
+  if (touched.surveyMarkerKeys.size > 0) {
+    const map = getSurveyMarkersMap(state.doc);
+    for (const key of touched.surveyMarkerKeys) {
+      const value = map.get(key);
+      markers.set(key, value && typeof value === 'object' ? value : null);
+    }
+  }
+  let spaces;
+  if (touched.spacesChanged) {
+    const value = state.doc.getMap(META_MAP).get(LIVE_SPACES_META_KEY);
+    if (Array.isArray(value)) spaces = value;
+  }
+  const payload = buildLiveMarkerPayload({
+    writerId: state.writerId,
+    clientSeq: record.clientSeq,
+    markers,
+    spaces,
+  });
+  if (!payload) return;
+  if (!takeLiveToken(state)) return;
+  if (bus.send(payload)) {
+    syncTrace('live-marker-sent', {
+      writer: state.writerId,
+      clientSeq: record.clientSeq,
+      markers: markers.size,
+      spaces: Boolean(payload.sp),
+    });
+  }
 }
 
 function takeLiveToken(state) {
@@ -4834,6 +4909,10 @@ function sendLiveUpdate(state, record, transaction) {
   if (state.permissionRejectedCutoff > 0) return;
   const touched = liveTouchedMarks(state, transaction);
   if (!touched) return;
+  if (touched.surveyMarkerKeys.size > 0 || touched.spacesChanged) {
+    dropLiveMarkerOverlaysForLocalWrite(state, touched);
+    sendLiveMarkerUpdate(state, record, touched);
+  }
   if (touched.markKeys.size === 0 && touched.laneMarkKeys.size === 0) return; // nothing drawn changed
   let pureAddition = false;
   try {
@@ -5022,6 +5101,10 @@ function onLivePreviewMessage(state, payload) {
     onLiveEditMessage(state, payload);
     return;
   }
+  if (payload?.v === LIVE_MARKER_VERSION) {
+    onLiveMarkerMessage(state, payload);
+    return;
+  }
   if (payload?.v === LIVE_STROKE_VERSION) {
     // w32: another screen's stroke while it is being drawn (a ghost line).
     if (typeof payload.w !== 'string' || payload.w === state.writerId) return;
@@ -5105,6 +5188,23 @@ function onLiveEditMessage(state, payload) {
   if (shown.size === 0) return;
   syncTrace('live-edit-recv', { writer: writerId, clientSeq, marks: shown.size });
   state.liveEdits.set(key, { writerId, clientSeq, receivedAt: Date.now(), entries: shown });
+  scheduleLivePreviewSweep(state);
+  notifyLivePreviewListeners(state);
+}
+
+// w53 receiver: another screen's Survey Marker / spaces change, held as an
+// overlay until its row is applied. Never touches the doc.
+function onLiveMarkerMessage(state, payload) {
+  const parsed = parseLiveMarkerPayload(payload, { ownWriterId: state.writerId });
+  if (!parsed) return;
+  const { writerId, clientSeq } = parsed;
+  const key = livePreviewKey(writerId, clientSeq);
+  if (state.confirmedPreviewKeys.has(key) || state.liveMarkerEdits.has(key)) return;
+  if ((state.appliedSeqByWriter.get(writerId) || 0) >= clientSeq) return;
+  if (state.liveMarkerEdits.size >= LIVE_PREVIEW_MAX_ENTRIES) return;
+  if (!livePreviewReceiveAllowed(state, writerId)) return;
+  state.liveMarkerEdits.set(key, { ...parsed, receivedAt: Date.now() });
+  syncTrace('live-marker-recv', { writer: writerId, clientSeq, markers: parsed.markers.size, spaces: Boolean(parsed.spaces) });
   scheduleLivePreviewSweep(state);
   notifyLivePreviewListeners(state);
 }
@@ -5316,7 +5416,68 @@ function confirmLivePreview(state, writerId, clientSeq) {
       }
     }
   }
+  // w53: a Survey Marker / spaces overlay leaves when its own row is in (the
+  // document then holds the change); an OLDER overlay of the same screen
+  // loses only the markers / spaces this row changed (one writer's rows are
+  // not always applied in order). A row Yjs had to hold back keeps it.
+  if (Number.isSafeInteger(seq) && state.liveMarkerEdits.size > 0) {
+    const heldBackMarkers = Boolean(state.doc?.store?.pendingStructs || state.doc?.store?.pendingDs);
+    const touchedMarkers = state.lastAppliedMarkerTouched;
+    for (const [editKey, edit] of state.liveMarkerEdits) {
+      // A NEWER overlay of this screen stays; another screen's overlay loses
+      // what this row changed (the applied change is newer than what that
+      // screen had when it sent).
+      if (edit.writerId === writer && edit.clientSeq > seq) continue;
+      if (edit.writerId === writer && edit.clientSeq === seq) {
+        if (heldBackMarkers) {
+          edit.awaitingIntegration = true;
+          continue;
+        }
+        state.liveMarkerEdits.delete(editKey);
+        changed = true;
+        continue;
+      }
+      if (!heldBackMarkers && edit.awaitingIntegration) {
+        state.liveMarkerEdits.delete(editKey);
+        changed = true;
+        continue;
+      }
+      if (!touchedMarkers || heldBackMarkers) continue;
+      if (dropLiveMarkerKeys(edit, touchedMarkers.keys, touchedMarkers.spaces)) {
+        changed = true;
+        state.liveMarkerOverlayVersion += 1;
+        if (edit.markers.size === 0 && !edit.spaces) state.liveMarkerEdits.delete(editKey);
+      }
+    }
+  }
   if (changed) notifyLivePreviewListeners(state);
+}
+
+// Remove markers (and, with `spaces`, the spaces list) from one held overlay.
+function dropLiveMarkerKeys(edit, keys, spaces) {
+  let dropped = false;
+  for (const key of keys || []) if (edit.markers.delete(key)) dropped = true;
+  if (spaces && edit.spaces) { edit.spaces = null; dropped = true; }
+  return dropped;
+}
+
+// w53: this screen just wrote these markers / the spaces list itself: its
+// own newer change is what it must see, never another screen's older
+// in-flight one laid over it.
+function dropLiveMarkerOverlaysForLocalWrite(state, touched) {
+  if (state.liveMarkerEdits.size === 0) return;
+  if (touched.surveyMarkerKeys.size === 0 && !touched.spacesChanged) return;
+  let changed = false;
+  for (const [editKey, edit] of state.liveMarkerEdits) {
+    if (dropLiveMarkerKeys(edit, touched.surveyMarkerKeys, touched.spacesChanged)) {
+      changed = true;
+      if (edit.markers.size === 0 && !edit.spaces) state.liveMarkerEdits.delete(editKey);
+    }
+  }
+  if (changed) {
+    state.liveMarkerOverlayVersion += 1;
+    notifyLivePreviewListeners(state);
+  }
 }
 
 // The overlay to show: every preview mark whose key the doc does not hold yet.
@@ -5498,7 +5659,7 @@ function eraseIntentInvolvesLivePreview(state, intent) {
 
 function scheduleLivePreviewSweep(state) {
   if (state.livePreviewSweepTimer || state.destroyed || state.closePromise) return;
-  if (state.livePreviews.size === 0 && state.liveEdits.size === 0) return;
+  if (state.livePreviews.size === 0 && state.liveEdits.size === 0 && state.liveMarkerEdits.size === 0) return;
   state.livePreviewSweepTimer = setTimeout(() => {
     state.livePreviewSweepTimer = null;
     sweepLivePreviews(state);
@@ -5510,9 +5671,16 @@ function scheduleLivePreviewSweep(state) {
 // If the row comes later after all, it is applied like any row.
 function sweepLivePreviews(state) {
   if (state.destroyed || state.closePromise) return;
-  if (state.livePreviews.size === 0 && state.liveEdits.size === 0) return;
+  if (state.livePreviews.size === 0 && state.liveEdits.size === 0 && state.liveMarkerEdits.size === 0) return;
   const now = Date.now();
   let removed = 0;
+  // w53: a Survey Marker / spaces overlay whose row never came leaves too.
+  for (const [key, edit] of state.liveMarkerEdits) {
+    if (now - edit.receivedAt >= state.liveEditExpireMs) {
+      state.liveMarkerEdits.delete(key);
+      removed += 1;
+    }
+  }
   // w32: an edit overlay whose row has not come (refused, or never sent)
   // leaves the screen; the document's copy shows again.
   for (const [key, edit] of state.liveEdits) {
@@ -5548,9 +5716,10 @@ function closeLivePreviews(state) {
   state.unregisterLiveStrokeSink?.();
   state.unregisterLiveStrokeSink = null;
   clearLiveStrokes(state.documentId);
-  if (state.livePreviews.size > 0 || state.liveEdits.size > 0) {
+  if (state.livePreviews.size > 0 || state.liveEdits.size > 0 || state.liveMarkerEdits.size > 0) {
     state.livePreviews.clear();
     state.liveEdits.clear();
+    state.liveMarkerEdits.clear();
     notifyLivePreviewListeners(state);
   }
 }
@@ -5885,6 +6054,17 @@ function makeHandle(state) {
      * them back out.
      */
     withLiveOverlays(byPage) { return applyLiveOverlaysToByPage(state, byPage); },
+    // w53: other screens' in-flight Survey Marker / spaces changes, to DRAW
+    // only ({ markers: Map<id, record|null>, spaces: Array|null }).
+    getLiveMarkerOverlay() {
+      // Same object while nothing changed (the screen re-renders only when
+      // the overlay does, not on every other screen's pen preview).
+      const signature = `${state.liveMarkerOverlayVersion}:${[...state.liveMarkerEdits.keys()].join(',')}`;
+      if (state.liveMarkerOverlayCache?.signature !== signature) {
+        state.liveMarkerOverlayCache = { signature, overlay: collectLiveMarkerOverlay(state.liveMarkerEdits.values()) };
+      }
+      return state.liveMarkerOverlayCache.overlay;
+    },
 
     /** Subscribe to live-preview arrivals/removals. Returns an unsubscribe fn. */
     onLivePreviewChange(cb) {

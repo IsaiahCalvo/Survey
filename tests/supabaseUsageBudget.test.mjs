@@ -569,3 +569,85 @@ test('usage budget (w36): a month of opens downloads each PDF once per device; r
   assert.equal(storage.infoChecks, OPENS, 'every open still passed the Storage access check');
   assert.ok(storage.downloadBytes <= DISTINCT * devices.length * FILE_BYTES);
 });
+
+// w53 (2026-09-28): Survey Marker and space changes go live on other screens
+// (annotationLiveMarkers.js) on the SAME live channel — one small message
+// per edit, shown as an overlay (never written) until the row lands, then
+// gone. Budget: at most one message per edit, each within the per-message
+// bytes ceiling above, no extra channel, nothing left showing once the rows
+// are in.
+const MARKER_EDITS = 9; // 5 new markers, 2 moves, 1 delete, 1 spaces change
+test('usage budget: Survey Marker + space edits go live, one small message each', async () => {
+  const documentId = 'usage-budget-markers';
+  const cloud = createCountingCloud(documentId);
+  const [editor, watcher] = [cloud.makeClient('marker-editor'), cloud.makeClient('marker-watcher')];
+  const handles = [await openFor(editor, documentId), await openFor(watcher, documentId)];
+  assert.ok(await until(() => handles.every((h) => h.isRealtimeReady())), 'both screens joined realtime');
+  await settle(200);
+  // Rows reach the watcher ~60 ms after the live message, as on the real
+  // backend (the WAL round trip); the fake would otherwise deliver first.
+  const deliverRow = watcher.pgChannel.insert;
+  watcher.pgChannel.insert = (payload) => setTimeout(() => deliverRow(payload), 60);
+  const shown = new Set();
+  let movedShownEarly = false;
+  let deleteShownEarly = false;
+  let spacesShown = false;
+  handles[1].onLivePreviewChange(() => {
+    const overlay = handles[1].getLiveMarkerOverlay();
+    for (const key of overlay.markers.keys()) shown.add(key);
+    // the move drawn at its NEW place while the watcher's store still has
+    // the old one (its row not in yet)
+    if (overlay.markers.get('marker-0')?.bounds?.x === 90
+      && handles[1].getSurveyMarkers()['marker-0']?.bounds?.x !== 90) movedShownEarly = true;
+    if (overlay.markers.has('marker-4') && overlay.markers.get('marker-4') === null
+      && handles[1].getSurveyMarkers()['marker-4']) deleteShownEarly = true;
+    if (overlay.spaces) spacesShown = true;
+  });
+  const before = [editor, watcher].map((c) => snapshotOf(c.count));
+  const record = (i, x) => ({
+    pageNumber: 1,
+    bounds: { x, y: 40 + i * 30, width: 60, height: 20, angle: 0 },
+    moduleId: 'mod',
+    name: `Door ${i}`,
+    categoryId: 'cat',
+  });
+  let markers = {};
+  for (let i = 0; i < 5; i += 1) {
+    markers = { ...markers, [`marker-${i}`]: record(i, 30) };
+    handles[0].applySurveyMarkers(markers);
+    await handles[0].drain();
+    await settle(5);
+  }
+  for (const i of [0, 1]) {
+    const current = markers[`marker-${i}`];
+    markers = { ...markers, [`marker-${i}`]: { ...current, bounds: { ...current.bounds, x: 90 } } };
+    handles[0].applySurveyMarkers(markers);
+    await handles[0].drain();
+    await settle(5);
+  }
+  const afterDelete = { ...markers };
+  delete afterDelete['marker-4'];
+  handles[0].applySurveyMarkers(afterDelete);
+  await handles[0].drain();
+  handles[0].setMeta('spaces', [{ id: 'space-a', name: 'Space A', assignedPages: [] }]);
+  await handles[0].drain();
+  assert.ok(await until(() => {
+    const got = handles[1].getSurveyMarkers();
+    return Object.keys(got).length === 4 && got['marker-0']?.bounds?.x === 90
+      && Array.isArray(handles[1].getMeta('spaces'));
+  }, { timeoutMs: 10_000 }), 'the watcher holds the saved markers and spaces');
+  await settle(300);
+  const used = diff(editor.count, before[0]);
+  assert.equal(used.broadcastsSent, MARKER_EDITS, `${used.broadcastsSent} live messages for ${MARKER_EDITS} edits`);
+  assert.ok(used.broadcastBytes / used.broadcastsSent <= BUDGET.perScreen.broadcastBytesPerStroke,
+    `${Math.round(used.broadcastBytes / used.broadcastsSent)} bytes per live message`);
+  assert.equal(used.channels, 0, 'no extra channel');
+  assert.ok(shown.has('marker-0') && shown.has('marker-4'), 'the watcher showed the markers before their rows');
+  assert.ok(movedShownEarly, 'a move showed at its new place before its row');
+  assert.ok(deleteShownEarly, 'a delete showed (marker hidden) before its row');
+  assert.ok(spacesShown, 'the watcher showed the spaces change before its row');
+  const overlay = handles[1].getLiveMarkerOverlay();
+  assert.equal(overlay.markers.size, 0, 'nothing left showing once the rows are in');
+  assert.equal(overlay.spaces, null);
+  for (const handle of handles) await handle.destroy();
+});
