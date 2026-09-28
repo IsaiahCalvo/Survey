@@ -686,8 +686,10 @@ export function useSVGInteraction({
   //
   // Because the store holds the burst-start pose until the commit, any other
   // input first ends the burst: a pointerdown anywhere or any non-arrow key
-  // commits it synchronously (flushSync) BEFORE the app sees that input, so a
-  // click, drag, Delete, Copy or Undo always acts on the nudged positions.
+  // commits it synchronously (flushSync) before this layer's own handlers and
+  // every listener registered after it see that input, so a click, drag,
+  // Delete or Copy acts on the nudged positions. The viewer's Undo / Redo key
+  // handler runs earlier, so it calls flushPendingNudges() itself.
   //
   // Locked marks (text markup, imported highlights, movement-locked and
   // user-locked marks) stay put, exactly like a drag. Never hijacks keys when:
@@ -949,10 +951,11 @@ export function useSVGInteraction({
     const onPointerDown = () => {
       if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
     };
-    const onBlur = () => commitNudgeBurst({ sync: true });
+    // Deferred a microtask: a window blur can fire synchronously inside a
+    // React commit (focus moved by an effect), where flushSync must not run.
+    const onBlur = () => queueMicrotask(() => commitNudgeBurst({ sync: true }));
     // Undo / Redo (PDFViewer's key handler runs before this layer's
-    // listeners, and the native Edit menu sends no key to the page) saves a
-    // running burst first.
+    // listeners) saves a running burst first.
     const unregisterFlush = registerPendingNudgeFlush(() => {
       if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
     });

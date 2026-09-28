@@ -3862,7 +3862,8 @@ const SVGAnnotationLayer = memo(({
     const onPointerDown = () => {
       if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
     };
-    const onBlur = () => commitSurveyMarkerNudge({ sync: true });
+    // A microtask later: a window blur can fire inside a React commit.
+    const onBlur = () => queueMicrotask(() => commitSurveyMarkerNudge({ sync: true }));
     // Undo / Redo and the marker Delete key (their listeners run before this
     // one) save a running burst first.
     const unregisterFlush = registerPendingNudgeFlush(() => {

@@ -29,6 +29,7 @@ before(async () => {
     HTMLElement: dom.window.HTMLElement, Element: dom.window.Element,
     SVGElement: dom.window.SVGElement, Node: dom.window.Node,
     MouseEvent: dom.window.MouseEvent, KeyboardEvent: dom.window.KeyboardEvent,
+    Event: dom.window.Event, CustomEvent: dom.window.CustomEvent,
     MutationObserver: dom.window.MutationObserver,
     getComputedStyle: dom.window.getComputedStyle, IS_REACT_ACT_ENVIRONMENT: true,
     requestAnimationFrame: (callback) => setTimeout(() => callback(Date.now()), 0),
@@ -215,6 +216,7 @@ test('arrows are left alone while typing, with the right-click menu open, or wit
 test('a locked mark does not move and the key keeps its normal job', async () => {
   const m = await mountLayer([rect('a', 100, 100, { data: { id: 'a', lockedBy: 'owner' } })]);
   await m.select(0, 101, 120);
+  assert.ok(m.svg.querySelector('[data-selection-lock-badge]'), 'the locked mark is selected — its lock badge shows (else this test proves nothing)');
   let event;
   await act(async () => { event = key('ArrowRight', { shiftKey: true }); await sleep(NUDGE_IDLE_COMMIT_MS + 80); });
   assert.equal(event.defaultPrevented, false);
@@ -237,6 +239,40 @@ test('a group selection nudges every movable member by the same amount in one sa
   assert.equal(saved.length, 1);
   assert.equal(saved[0].next.objects[0].top, 89);
   assert.equal(saved[0].next.objects[1].top, 189);
+});
+
+test('Delete right after a nudge (same idle window): the nudge saves first, then the delete — no revert', async () => {
+  document.body.innerHTML = '<div id="root"></div>';
+  const root = createRoot(document.getElementById('root'));
+  mounted = root;
+  const log = [];
+  let page = { objects: [rect('a', 100, 100), rect('b', 250, 250)] };
+  const props = () => ({
+    pageNumber: 1, width: 400, height: 400, annotations: page,
+    callouts: [], surveyMarkers: [], activeTool: 'select', selectedCalloutIds: new Set(),
+    onSelectedCalloutIdsChange: () => {}, onSelectionChange: () => {},
+    selectedModuleId: null, showSurveyPanel: false, selectedSpaceId: null,
+    activeSpaceId: null, activeRegions: [], activeRegionId: null, spaces: [],
+    layerVisibility: {}, viewerId: 'owner', documentOwnerId: 'owner',
+    onSaveAnnotations: (next, context) => {
+      log.push({ action: context?.action, ids: next.objects.map((o) => `${o.id}@${o.left}`) });
+      page = next;
+      root.render(React.createElement(SVGAnnotationLayer, props()));
+    },
+  });
+  await act(async () => root.render(React.createElement(SVGAnnotationLayer, props())));
+  const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+  Object.defineProperty(svg, 'clientWidth', { configurable: true, value: 400 });
+  const hit = svg.querySelector('[data-annotation-index="1"] [data-shape-hit-target="rect"]');
+  await act(async () => { hit.dispatchEvent(pointer('pointerdown', 251, 270)); hit.dispatchEvent(pointer('pointerup', 251, 270)); });
+  await act(async () => { key('ArrowLeft'); key('ArrowLeft'); key('Delete'); });
+  await act(async () => { await sleep(NUDGE_IDLE_COMMIT_MS + 80); });
+  const nudgeAt = log.findIndex((entry) => entry.action === 'nudge');
+  assert.ok(nudgeAt >= 0, JSON.stringify(log));
+  assert.deepEqual(log[nudgeAt].ids, ['a@100', 'b@248']);
+  assert.deepEqual(page.objects.map((o) => o.id), ['a'], `b deleted: ${JSON.stringify(log)}`);
+  assert.equal(page.objects[0].left, 100, 'the other mark is untouched');
+  assert.equal(log.filter((entry) => entry.action === 'nudge').length, 1, 'no second nudge save after the delete');
 });
 
 test('the preview is gone once the saved page comes back (no double move)', async () => {
@@ -306,7 +342,10 @@ test('Undo (flushPendingNudges) saves a running burst first', async () => {
   assert.equal(saved[0].next.objects[0].top, 110);
 });
 
-test('a shape + callout burst writes the callout frames first, then ONE normal save', async () => {
+// The viewer turns this order into ONE undo step (the callout frames open the
+// page's gesture baseline, the normal save closes it) — verified in the live
+// app (w57 report); here we pin the order the hook must keep.
+test('a shape + callout burst: callout frames first, then the one normal save, then the no-op commit signal', async () => {
   const calls = [];
   const callout = {
     id: 'c1', pageNumber: 1,

@@ -257,9 +257,9 @@ export function isNudgeKeyStillHeld(burst, now) {
 }
 
 // Save-a-running-nudge-burst hooks. Each page layer registers one while it
-// can nudge; Undo / Redo call flushPendingNudges() first, because the
-// viewer's undo key handler runs before the layers' listeners (and the
-// desktop app's Edit menu sends no key to the page at all).
+// can nudge; the viewer's Undo / Redo key handler and the lone Survey Marker
+// Delete call flushPendingNudges() first, because their window listeners run
+// before the layers' nudge listeners.
 const pendingNudgeFlushes = new Set();
 
 export function registerPendingNudgeFlush(flush) {
