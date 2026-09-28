@@ -177,6 +177,15 @@ import {
   resolveDocumentOwnerId,
 } from './lib/collab/permissionScope.js';
 import { resolveEraserInterruptionPolicy } from './utils/eraserInterruptionPolicy.js';
+import {
+  applySurveyMarkerHistoryAction,
+  buildSurveyMarkerHistoryAction,
+  planFamilyReorder,
+  collectSurveyMarkerHistoryActions,
+  patchSurveyMarkerRenderPages,
+  surveyMarkerRenderEntry,
+  translateSurveyMarkerRecord,
+} from './utils/surveyMarkerFamily.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -11247,6 +11256,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
   const surveyMarkersRef = useRef(surveyMarkers);
+  // w53: the canvas lists of Survey Markers (with their stack) as last
+  // rendered — the family restack reads the page's markers from here.
+  const newSurveyMarkersByPageRef = useRef({});
+  newSurveyMarkersByPageRef.current = newSurveyMarkersByPage;
   const spacesRef = useRef(spaces);
   const undoHistoryRef = useRef(undoHistory);
   const redoHistoryRef = useRef(redoHistory);
@@ -12907,6 +12920,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // 'out-of-scope' (not this user's to undo) or 'no-viewer' (signed-in user
   // not known yet). w37: Undo / Redo skip a step that is 'unchanged' or
   // 'out-of-scope' within the same press (historyStacks.runHistoryPress).
+  // w53: the Survey Marker half of a family action (see handleSaveAnnotations
+  // and commitSurveyMarkerFamilyPatch). Set just before the page save, taken
+  // by the next pushLocalAnnotationHistoryAction.
+  const surveyMarkerFamilyCompanionRef = useRef(null);
+  const commitSurveyMarkerFamilyPatchRef = useRef(null);
+  const applySurveyMarkerFamilyActionRef = useRef(null);
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return 'unchanged';
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
@@ -12940,15 +12959,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         },
       ),
     });
-    // w37: a step that no longer changes what the pages show (its mark was
-    // deleted by someone else, or already changed back) is not a step: the
-    // press moves on to the next one instead of doing nothing visible.
-    if (!historyActionChangedPages(
+    // w53: the Survey Marker half of a family step (surveyMarkerFamily.js):
+    // field-level, onto each marker as it is now; a marker the step removes
+    // goes through the marker delete pipeline.
+    const changedSurveyMarkerIds = [];
+    for (const markerAction of collectSurveyMarkerHistoryActions(scopedAction)) {
+      changedSurveyMarkerIds.push(...(applySurveyMarkerFamilyActionRef.current?.(markerAction) || []));
+    }
+    const pagesChanged = historyActionChangedPages(
       annotationsByPageRef.current || {},
       nextAnnotationsByPage,
       scopedAction,
       jsonEqual,
-    )) {
+    );
+    if (changedSurveyMarkerIds.length > 0 && !pagesChanged) return 'applied';
+    // w37: a step that no longer changes what the pages show (its mark was
+    // deleted by someone else, or already changed back) is not a step: the
+    // press moves on to the next one instead of doing nothing visible.
+    if (!pagesChanged) {
       pushHistoryDebugEvent('local_annotation_history_unchanged', {
         ...summarizeHistoryActionForLog(scopedAction),
         pageNumber: scopedAction.pageNumber,
@@ -26036,13 +26064,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pushLocalAnnotationHistoryAction = useCallback((action) => {
     const foldIntoCreateOf = historyFoldIntoCreateRef.current;
     historyFoldIntoCreateRef.current = null;
+    // w53: Survey Marker changes made by the same family action (a group move
+    // or nudge, a mixed restack or paste) ride this step, so one Undo takes
+    // back the marks AND the markers (surveyMarkerFamily.js).
+    const familyCompanion = surveyMarkerFamilyCompanionRef.current;
+    surveyMarkerFamilyCompanionRef.current = null;
     if (!action || isUndoingRef.current) return;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
-    const scopedAction = filterAnnotationHistoryActionByOwner(
+    const ownerScopedAction = filterAnnotationHistoryActionByOwner(
       action,
       viewerId,
       documentOwnerId,
     );
+    const scopedAction = familyCompanion
+      ? (ownerScopedAction
+        ? { type: 'fabric:document-batch', actions: [ownerScopedAction, familyCompanion] }
+        : familyCompanion)
+      : ownerScopedAction;
     if (!scopedAction) {
       pushHistoryDebugEvent('local_annotation_history_skipped_owner_scope', {
         requestedAction: summarizeHistoryActionForLog(action),
@@ -26172,6 +26210,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    // w53: a family action that also moves / restacks / creates Survey
+    // Markers (saveContext.surveyMarkerFamily). The markers are written to
+    // their own store first; their undo half rides the page's step (or is the
+    // step, when the page did not change).
+    if (saveContext && typeof saveContext === 'object' && saveContext.surveyMarkerFamily) {
+      const { surveyMarkerFamily, ...pageSaveContext } = saveContext;
+      // Markers change only with a step that can be undone (never on a
+      // preview frame or while Undo / Redo is replaying).
+      const recordsStep = String(pageSaveContext.checkpointPolicy || '').toLowerCase() !== 'skip'
+        && !isUndoingRef.current;
+      const companion = recordsStep
+        ? (commitSurveyMarkerFamilyPatchRef.current?.(surveyMarkerFamily) || null)
+        : null;
+      surveyMarkerFamilyCompanionRef.current = companion;
+      try {
+        handleSaveAnnotations(pageNumber, json, pageSaveContext);
+      } finally {
+        const unclaimed = surveyMarkerFamilyCompanionRef.current;
+        surveyMarkerFamilyCompanionRef.current = null;
+        if (unclaimed) pushLocalAnnotationHistoryAction(unclaimed);
+      }
+      return;
+    }
     // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
     // arms calloutCoDeleteRef around the shape half's runDelete(); strip the
     // claimed callout groups from the incoming JSON here so shapes + callouts
@@ -28623,6 +28684,80 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the shape instead of sticking to whichever neighbor slid into the
   // original slot (matches Illustrator/Figma/Photoshop). toIndex is clamped
   // to [0, objects.length - 1]; same-index is a no-op.
+  // UX: w53 (2026-09-28) — restack a selection that may mix marks, callouts
+  // and Survey Markers in the page's ONE stacking order (planFamilyReorder):
+  // Bring to front / back move the whole selection to the top / bottom in its
+  // own order; Bring forward / Send backward step it past its neighbours (one
+  // item jumps to the nearest mark or marker it overlaps, Figma rule). The
+  // marks' new order and the markers' new `stack` save together: one save,
+  // one undo step. The shapes stay selected at their new slots; callouts and
+  // markers are selected by id and stay selected on their own.
+  const handleReorderFamily = useCallback((pageNumber, {
+    indices = [], calloutIds = [], markerIds = [], direction,
+  } = {}) => {
+    if (pageNumber == null || !direction) return false;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const objects = Array.isArray(page.objects) ? page.objects : [];
+    const calloutSet = new Set([...(calloutIds || [])].map(String));
+    const picked = [...(indices || [])].filter((index) => Number.isInteger(index)
+      && index >= 0 && index < objects.length && objects[index]?.data?.type !== 'callout');
+    if (calloutSet.size > 0) {
+      objects.forEach((object, index) => {
+        if (object?.data?.type === 'callout' && calloutSet.has(String(object?.data?.id))) picked.push(index);
+      });
+    }
+    const pageMarkers = (newSurveyMarkersByPageRef.current?.[pageNumber] || [])
+      .filter((entry) => entry?.annotationId)
+      .map((entry) => ({ id: String(entry.annotationId), stack: entry.stack || null }));
+    const svg = typeof document !== 'undefined'
+      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`)
+      : null;
+    const bboxOfEntry = (entry) => {
+      if (!svg) return null;
+      const node = entry.kind === 'mark'
+        ? (svg.querySelector(`[data-annotation-index="${entry.index}"]`)
+          || svg.querySelector(`[data-stack-index="${entry.index}"]`))
+        : svg.querySelector(`[data-survey-marker-id="${CSS.escape(String(entry.id))}"]`);
+      if (!node || typeof node.getBBox !== 'function') return null;
+      try { return node.getBBox(); } catch (_e) { return null; }
+    };
+    const overlaps = (a, b) => {
+      const boxA = bboxOfEntry(a);
+      if (!boxA) return true; // the moving item's own geometry unknown: plain one-slot step
+      const boxB = bboxOfEntry(b);
+      if (!boxB) return false; // a hidden / unrendered neighbour is never jumped over
+      return !(boxA.x + boxA.width < boxB.x || boxB.x + boxB.width < boxA.x
+        || boxA.y + boxA.height < boxB.y || boxB.y + boxB.height < boxA.y);
+    };
+    const plan = planFamilyReorder(objects, pageMarkers, {
+      selectedIndices: picked,
+      selectedMarkerIds: markerIds,
+      direction,
+      overlaps,
+    });
+    if (!plan.changed) return false;
+    const next = deepClone(page);
+    next.objects = plan.objects.map((object) => deepClone(object));
+    const stacks = plan.markerStacks.size > 0 ? Object.fromEntries(plan.markerStacks) : null;
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'reorder-group',
+      checkpointPolicy: 'normal',
+      ...(stacks ? { surveyMarkerFamily: { stacks } } : {}),
+    });
+    if (plan.objectsChanged) {
+      setPendingSvgSelection({
+        pageNumber,
+        annotationIndices: plan.selectedIndices.filter(
+          (index) => plan.objects[index]?.data?.type !== 'callout',
+        ),
+        keepSurveyMarkers: true,
+        tick: Date.now(),
+      });
+    }
+    return true;
+  }, [handleSaveAnnotations]);
+
   const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target) => {
     if (pageNumber == null || fromIndex == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
@@ -28669,6 +28804,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return fromIndex;
     };
+    // w53: on a page that shows Survey Markers, a mark's place is among the
+    // markers too — restack through the family planner (same Figma overlap
+    // rule for forward / backward, markers counted as neighbours).
+    if (typeof target === 'string' && (newSurveyMarkersByPageRef.current?.[pageNumber] || []).length > 0) {
+      const isCallout = page.objects[fromIndex]?.data?.type === 'callout';
+      handleReorderFamily(pageNumber, isCallout
+        ? { calloutIds: [page.objects[fromIndex]?.data?.id], direction: target }
+        : { indices: [fromIndex], direction: target });
+      return;
+    }
     const resolved = typeof target === 'string' ? resolveOverlapTarget(target) : target;
     const clamped = Math.max(0, Math.min(resolved, objectsLen - 1));
     if (clamped === fromIndex) return;
@@ -28689,7 +28834,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotationIndex: clamped,
       tick: Date.now(),
     });
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, handleReorderFamily]);
 
   // ---------------------------------------------------------------------------
   // Group / Ungroup — persistent grouping (2026-04-20)
@@ -29395,6 +29540,123 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [addHistoryCheckpoint, user?.id, documentOwnerId]);
 
+  // UX: w53 (2026-09-28, owner: "annotations are annotations") — Survey
+  // Markers take part in the family actions every other mark has: a group
+  // move or nudge together with shapes / callouts, a restack among them
+  // (Bring / Send, Cmd+] / Cmd+[), paste and duplicate. Their records stay
+  // in their OWN store (Excel two-way sync, Row ID identity) — this writes
+  // only geometry (`bounds`), the canvas-only `stack`, or whole NEW records
+  // (paste / duplicate: a new survey item with no Excel identity). Returns
+  // the undo half (a survey-marker:batch) for the caller's single step.
+  // Permission: the same gate as a marker drag (canModifySurveyMarker —
+  // owner any, others their own; pre-auth permissive); a new record is the
+  // viewer's own. Pending markers (placed, not yet named) are not family
+  // members and are skipped.
+  //
+  // Writes are field-level onto each marker AS IT IS NOW (a functional state
+  // update — never a whole-dict replace built from a copy that may be a
+  // frame old), so an Excel import or a collaborator's edit that landed a
+  // moment earlier is kept. A marker the step REMOVES (a family Delete, the
+  // Undo of a paste, the Redo of a delete) goes through the established
+  // marker delete — ownership gate, 30-day trash, History row, item cleanup,
+  // linked-Excel row removal — with its own legacy step folded into this one.
+  const handleSurveyMarkerDeletedRef = useRef(null);
+  const applySurveyMarkerFamilyAction = useCallback((action) => {
+    const changes = Array.isArray(action?.changes) ? action.changes : [];
+    if (changes.length === 0) return [];
+    const now = surveyMarkersRef.current || {};
+    const removals = changes.filter((change) => change.after == null && now[change.id]);
+    const rest = changes.filter((change) => change.after != null);
+    const changedIds = [];
+    if (rest.length > 0) {
+      const restAction = { ...action, changes: rest };
+      const preview = applySurveyMarkerHistoryAction(now, restAction);
+      if (preview.changedIds.length > 0) {
+        changedIds.push(...preview.changedIds);
+        surveyMarkersRef.current = preview.markers;
+        setSurveyMarkers((prev) => applySurveyMarkerHistoryAction(prev, restAction).markers);
+        setNewSurveyMarkersByPage((prev) => patchSurveyMarkerRenderPages(prev, preview.markers, preview.changedIds, {
+          selectedModuleId,
+          normalizeColor: normalizeSurveyMarkerColor,
+        }));
+      }
+    }
+    if (removals.length > 0 && typeof handleSurveyMarkerDeletedRef.current === 'function') {
+      const suppressedBefore = suppressBatchCheckpointsRef.current;
+      suppressBatchCheckpointsRef.current = suppressedBefore + removals.length;
+      try {
+        for (const change of removals) {
+          const record = now[change.id];
+          handleSurveyMarkerDeletedRef.current(record.pageNumber, record.bounds, change.id);
+          changedIds.push(change.id);
+        }
+      } finally {
+        suppressBatchCheckpointsRef.current = suppressedBefore;
+      }
+    }
+    return changedIds;
+  }, [selectedModuleId]);
+  applySurveyMarkerFamilyActionRef.current = applySurveyMarkerFamilyAction;
+
+  const commitSurveyMarkerFamilyPatch = useCallback((patch) => {
+    if (!patch || typeof patch !== 'object') return null;
+    const current = surveyMarkersRef.current || {};
+    const viewerId = user?.id ?? null;
+    const mayEdit = (record) => (
+      !viewerId || !documentOwnerId
+      || canModifySurveyMarker({ surveyMarker: record, viewerId, documentOwnerId })
+    );
+    const changes = [];
+    const next = { ...current };
+    if (patch.move && Array.isArray(patch.move.ids)) {
+      const dx = Number(patch.move.dx) || 0;
+      const dy = Number(patch.move.dy) || 0;
+      if (dx !== 0 || dy !== 0) {
+        for (const rawId of patch.move.ids) {
+          const id = String(rawId);
+          const record = current[id];
+          if (!record?.bounds || !mayEdit(record)) continue;
+          const moved = translateSurveyMarkerRecord(record, dx, dy);
+          next[id] = moved;
+          changes.push({ id, before: record, after: moved });
+        }
+      }
+    }
+    if (patch.stacks && typeof patch.stacks === 'object') {
+      for (const [id, stack] of Object.entries(patch.stacks)) {
+        const record = next[id];
+        if (!record || !mayEdit(record)) continue;
+        const restacked = { ...record, stack };
+        next[id] = restacked;
+        const existing = changes.find((change) => change.id === id);
+        if (existing) existing.after = restacked;
+        else changes.push({ id, before: current[id], after: restacked });
+      }
+    }
+    if (Array.isArray(patch.creates)) {
+      for (const record of patch.creates) {
+        if (!record?.id || current[record.id] || !record.bounds || !record.pageNumber) continue;
+        next[record.id] = record;
+        changes.push({ id: String(record.id), before: null, after: record });
+      }
+    }
+    if (Array.isArray(patch.deletes)) {
+      // Same gate as every marker delete (fails closed before sign-in).
+      for (const rawId of patch.deletes) {
+        const id = String(rawId);
+        const record = current[id];
+        if (!record || changes.some((change) => change.id === id)) continue;
+        if (!canCommitSurveyMarkerErase({ surveyMarker: record, viewerId, documentOwnerId })) continue;
+        changes.push({ id, before: record, after: null });
+      }
+    }
+    const action = buildSurveyMarkerHistoryAction(changes);
+    if (!action) return null;
+    applySurveyMarkerFamilyAction(action);
+    return action;
+  }, [applySurveyMarkerFamilyAction, documentOwnerId, user?.id]);
+  commitSurveyMarkerFamilyPatchRef.current = commitSurveyMarkerFamilyPatch;
+
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
   // deleted marker's row is removed there too (otherwise the next document
@@ -29666,6 +29928,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentOwnerId, documentSyncEnabled]);
 
+  handleSurveyMarkerDeletedRef.current = handleSurveyMarkerDeleted;
+
   // After a Survey Marker delete commits to surveyMarkers, re-export the
   // linked Excel so the deleted marker's row is removed there too. The
   // exporter rebuilds the whole workbook from the current surveyMarkers
@@ -29832,6 +30096,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
     setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
   }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
+
+  // UX: w53 — Delete with several Survey Markers selected (a family
+  // selection of markers only) deletes them as ONE undo step. Each marker
+  // goes through the established marker delete (ownership gate, 30-day
+  // trash, History row, item cleanup, linked-Excel row removal); only
+  // markers the viewer may delete are taken. With marks in the selection
+  // too, the marks' own Delete carries the markers (useSVGInteraction
+  // deleteSelected), so a cancelled cross-author confirm deletes nothing.
+  const handleDeleteSurveyMarkers = useCallback((annotationIds) => {
+    const ids = [...new Set((annotationIds || []).map(String))]
+      .filter((id) => surveyMarkersRef.current?.[id]);
+    if (ids.length === 0) return;
+    if (ids.length === 1) {
+      handleDeleteSurveyMarker(ids[0]);
+      return;
+    }
+    const pageNumber = surveyMarkersRef.current[ids[0]]?.pageNumber;
+    if (pageNumber == null) return;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    handleSaveAnnotations(pageNumber, page, {
+      source: 'object:modified',
+      action: 'delete',
+      checkpointPolicy: 'normal',
+      surveyMarkerFamily: { deletes: ids },
+    });
+  }, [handleDeleteSurveyMarker, handleSaveAnnotations]);
+
+  // w53: a saved marker is a family member; one still being placed is not.
+  const isSurveyMarkerFamilyMember = useCallback((annotationId) => (
+    Boolean(annotationId && surveyMarkersRef.current?.[annotationId])
+  ), []);
 
   const handleEraseIntent = useCallback(async (intent) => {
     if (!pdfFile?.id) {
@@ -31503,30 +31798,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             return; // Already added (either as pending or from a previous iteration)
           }
 
-          // Determine if survey marker needs entity (Entity) assignment
-          const needsEntity = !surveyMarker.entityColor && !surveyMarker.entityId;
-
-          // Determine survey marker color - use entityColor first (current entity state), then stored color
-          const storedColor = surveyMarker.entityColor || surveyMarker.color;
-          const highlightColor = storedColor
-            ? (normalizeSurveyMarkerColor(storedColor) || storedColor)
-            : null;
-
-          // Add survey marker to the page array
-          const surveyMarkerData = {
-            x: surveyMarker.bounds.x,
-            y: surveyMarker.bounds.y,
-            width: surveyMarker.bounds.width,
-            height: surveyMarker.bounds.height,
-            angle: Number.isFinite(Number(surveyMarker.bounds.angle))
-              ? ((Number(surveyMarker.bounds.angle) % 360) + 360) % 360
-              : 0,
-            annotationId: annotationId,
-            moduleId: surveyMarkerModuleId,
-            regionId: surveyMarker.regionId ?? null,
-            ...(needsEntity && { needsEntity: true }),
-            ...(highlightColor && (highlightColor ? { color: highlightColor } : { needsEntity: true }))
-          };
+          // w53: one entry builder shared with the family edits (move /
+          // restack / paste patch the list in the same update), so both paths
+          // draw a marker identically — including its place in the stack.
+          const surveyMarkerData = surveyMarkerRenderEntry(annotationId, surveyMarker, normalizeSurveyMarkerColor);
+          if (!surveyMarkerData) return;
           surveyMarkersByPage[pageNumber].push(surveyMarkerData);
         });
       }
@@ -33514,6 +33790,9 @@ ${pageBlocks}
         // keyboard Delete; ownership inputs drive the menu's own/foreign
         // partition (Cut stays own-only, foreign Delete requires the modal).
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
+        // w53: Survey Markers in the family menu.
+        handleReorderFamily,
+        deleteSurveyMarkers: handleDeleteSurveyMarkers,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
@@ -34715,6 +34994,9 @@ ${pageBlocks}
                                   surveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                   onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
                                   onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                  isSurveyMarkerFamilyMember={isSurveyMarkerFamilyMember}
+                                  onDeleteSurveyMarkers={handleDeleteSurveyMarkers}
+                                  onReorderFamily={handleReorderFamily}
                                   onSurveyMarkerDoubleClick={handleSurveyMarkerClicked}
                                   pendingSurveyMarkerSelection={pendingSurveyMarkerSelection}
                                   onPendingSurveyMarkerSelectionConsumed={handlePendingSurveyMarkerSelectionConsumed}

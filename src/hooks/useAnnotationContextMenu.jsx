@@ -57,7 +57,7 @@ export function useAnnotationContextMenu() {
   // resolves (pageNumber, annotationIndex) from the click target and invokes this
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
-    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event }) => {
+    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, surveyMarkerId, event }) => {
       // KAL-75 (G4): locked/read-only documents — this menu's items (Cut /
       // Paste / Delete / z-order) call the save path directly; suppress at
       // THIS entry too (the route from contextMenuDiagnostics lands here,
@@ -91,6 +91,10 @@ export function useAnnotationContextMenu() {
         // array of selected annotation indices so batch handlers (cut,
         // copy, delete, z-order) can iterate them in one go.
         groupIndices: Array.isArray(groupIndices) ? groupIndices.slice() : null,
+        // w53: Survey Markers — the one right-clicked ('surveyMarker' kind)
+        // or those in the right-clicked selection ('group' kind).
+        surveyMarkerId: surveyMarkerId || null,
+        groupMarkerIds: Array.isArray(groupMarkerIds) ? groupMarkerIds.slice() : [],
       });
     };
     return () => {
@@ -182,6 +186,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // w52: callouts selected together with shapes move with the group's
     // z-order items.
     selectedCalloutIds = null,
+    // w53: Survey Markers in the family — restack a mixed selection in the
+    // page's one stack (one save, one undo step) and delete markers.
+    handleReorderFamily = null,
+    deleteSurveyMarkers = null,
   } = actions;
 
   // Own-mark check (author or document owner; boot window is permissive to
@@ -485,7 +493,29 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // from the right-click menu. The feature is hidden app-wide
         // until the matrix-per-shape rewrite ships.
       ];
-    } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
+    } else if (ctx.kind === 'surveyMarker' && ctx.surveyMarkerId) {
+      // UX: w53 (2026-09-28, owner: "annotations are annotations") — the
+      // Survey Marker menu is the shape menu: Paste, Delete and the four
+      // z-order items (the marker takes its place in the page's one stack).
+      // Delete uses the marker's own delete (ownership gate, trash, History
+      // row, linked-Excel row removal).
+      const reorderMarker = (direction) => {
+        if (typeof handleReorderFamily !== 'function') return;
+        handleReorderFamily(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId], direction });
+      };
+      items = [
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        item('Delete', 'delete', () => {
+          if (typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers([ctx.surveyMarkerId]);
+        }),
+        sep(),
+        item('Bring to front', 'bringToFront', () => reorderMarker('front')),
+        item('Bring forward', 'bringForward', () => reorderMarker('forward')),
+        item('Send backward', 'sendBackward', () => reorderMarker('backward')),
+        item('Send to back', 'sendToBack', () => reorderMarker('back')),
+      ];
+    } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices)
+      && (ctx.groupIndices.length + (ctx.groupMarkerIds?.length || 0)) >= 2) {
       // UX: Phase 19 follow-up — right-click inside the outer dashed
       // box of a multi-selection. Cut/Copy/Paste/Delete and the four
       // z-order items each operate on every selected annotation at
@@ -528,6 +558,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // the live ref and can move a neighbor instead of the selected object.
       // Keep relative order within the selection and commit only once.
       const reorderAll = (direction) => {
+        // w53: family planner (same permutation; Survey Markers too).
+        if (typeof handleReorderFamily === 'function') {
+          handleReorderFamily(ctx.pageNumber, {
+            indices: sortedAsc,
+            calloutIds: Array.from(selectedCalloutIds || []),
+            markerIds: ctx.groupMarkerIds || [],
+            direction,
+          });
+          return;
+        }
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects?.length) return;
         // w52: the selection moves as ONE block through the shared stack
@@ -602,12 +642,19 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // Deletable set = own members + foreign members that can be planned
         // (planner present + stable id); anything else stays on the page.
         item('Delete', 'delete', () => {
+          // w53: the selection's Survey Markers are deleted with the marks
+          // in the same save (one undo step, nothing deleted if the
+          // cross-author confirm is cancelled); markers alone go through
+          // their own delete.
+          const markerIds = ctx.groupMarkerIds || [];
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
-          if (!page?.objects) return;
-          const deletable = sortedDesc
+          const deletable = page?.objects ? sortedDesc
             .map((idx) => ({ idx, obj: page.objects[idx] }))
-            .filter(({ obj }) => canModifyObj(obj) || canPlanForeignDelete(obj));
-          if (deletable.length === 0) return;
+            .filter(({ obj }) => canModifyObj(obj) || canPlanForeignDelete(obj)) : [];
+          if (deletable.length === 0) {
+            if (markerIds.length > 0 && typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers(markerIds);
+            return;
+          }
           const runDelete = () => {
             const next = deepClone(page);
             for (const { idx } of deletable) {
@@ -617,6 +664,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
               source: 'object:modified',
               action: 'delete',
               checkpointPolicy: 'normal',
+              ...(markerIds.length > 0 ? { surveyMarkerFamily: { deletes: markerIds } } : {}),
             });
             setPendingSvgSelection({
               pageNumber: ctx.pageNumber,
@@ -674,8 +722,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // demo per menu type: object menus (annotation / group / callout) = 176px,
     // paste/counter/text-markup = 154px (demo App.tsx:866/897 + styles.ts:861).
     const isMobileMenu = !!mobileMode;
-    const mobileWidth = (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout') ? 176 : 154;
+    const mobileWidth = (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout' || ctx.kind === 'surveyMarker') ? 176 : 154;
     const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
+      : ctx.kind === 'surveyMarker' ? 'Survey Marker'
       : ctx.kind === 'callout' ? 'Callout'
       : 'Page';
 

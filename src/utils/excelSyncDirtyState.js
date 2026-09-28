@@ -22,6 +22,10 @@ const stripAckFields = (surveyMarkers = {}) => {
     }
     const copy = { ...marker };
     for (const field of EXPORT_ACK_FIELDS) delete copy[field];
+    // w53: a marker's place in its page's stacking order (surveyMarkerFamily
+    // .js `stack`) is canvas-only — never an Excel column — so restacking a
+    // Survey Marker must not make the linked workbook read "not synced".
+    delete copy.stack;
     out[key] = copy;
   }
   return out;

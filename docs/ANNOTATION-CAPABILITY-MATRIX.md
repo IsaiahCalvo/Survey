@@ -1,4 +1,4 @@
-# Annotation Capability Matrix — 2026-09-28 (w52)
+# Annotation Capability Matrix — 2026-09-28 (w52, updated w53)
 
 Owner ask (2026-09-28): *"Annotations are annotations. There should be one
 annotation family, and then things fit underneath with their own formatting …
@@ -9,8 +9,10 @@ to source) plus live checks in the app (throwaway doc, own dev server). It
 records the state **after** branch `claude/w52-annotation-family`
 (commits `b97b20de7` z-order + the Part 2 commit that follows it).
 
+Updated for `claude/w53-family-wave2` (cells marked ☆).
+
 Key: ✓ works · ✗ missing · **D** different by design (reason given) ·
-**B** broken (still open, see plan) · ★ fixed on this branch.
+**B** broken (still open, see plan) · ★ fixed in w52 · ☆ fixed in w53.
 
 Owner rulings this audit respects: Survey-module clean slate (regular markup
 hidden while a module is active is the FEATURE); callout knee behaviour is
@@ -32,12 +34,15 @@ final; no dashed box around selected callouts; no new chrome.
 | Stamp (imported image) | ✓ | D: locked | D: locked | D: locked (import) | D | D | ★ | D: locked | ✓ |
 | Text highlight / strike / underline | ✓ | ✓ | ✓ | D: fixed to its text | D: range handles | D | D: "uniform" highlights paint as one merged layer beneath all marks, so their order is not visible; "layered" ones stack normally | D: locked | ✓ |
 | Imported PDF ink / shapes / text | ✓ | ✓ | ✓ | ✓ (movement-locked imports stay put) | ✓ | ✓ | ★ | ★ | ★ group move/rotate/resize now skip movement-locked marks |
-| Survey Marker | ✓ (own selection) | ✗ (plan 4.2) | ✗ (plan 4.2) | ✓ | ✓ | ✓ | ✗ always above marks (separate store, plan 4.2) | ★ | n/a |
+| Survey Marker | ✓ ☆ Shift-click adds / Alt-click removes, with marks and callouts | ☆ | ☆ | ✓ ☆ moves with the whole selection (drag any member) | ✓ alone; D in a group (the group frame is move-only for every type) | ✓ alone; D in a group | ☆ one stack with marks (menu + Cmd+]/[) | ★ ☆ with the selection | n/a |
 | Region / space shape | ✓ (region tool) | region tool | region tool | ✓ | ✓ per vertex | ✓ | D: regions are page structure, not marks | ✗ | n/a |
 
 Multi-selection: move ✓; resize/rotate handles hidden on purpose (group
 transform frame); z-order ★ moves the whole selection as one block, shapes and
-callouts mixed (menu and keyboard, one Undo step).
+callouts mixed (menu and keyboard, one Undo step). ☆ Survey Markers are
+members too: marquee / lasso / Shift-click pick them with marks, a drag or an
+arrow-key nudge moves marks and markers together, and a move, restack or
+Delete of the whole selection is ONE Undo step.
 
 ## 2. Edit actions
 
@@ -49,7 +54,7 @@ callouts mixed (menu and keyboard, one Undo step).
 | Stamp | none (image) | ★ a pasted stamp no longer vanishes | ✓ | ✓ | full menu |
 | Text markup (app) | ✓ own paint transaction | ✓ (exact duplicates refused) | ✓ | ✓ | full menu |
 | Imported PDF marks | as base type | ✓ (copy becomes a native mark) | ✓ | ✓ | full menu |
-| Survey Marker | ✗ | ✗ | own path; ★ a refused delete no longer leaves an empty Undo step; others' markers blocked instead of confirm (plan 4.2) | own lane | D: no menu this release (suppressed in `contextMenuDiagnostics.js`) |
+| Survey Marker | ✗ | see Copy / Paste row below (w53 part 4) | own path; ★ a refused delete no longer leaves an empty Undo step; ☆ several at once (or with marks) = one step, nothing deleted if the marks' cross-author confirm is cancelled; others' markers still blocked instead of confirmed (plan 6.2a) | ☆ family actions ride the shared step | ☆ the normal menu (Paste, Delete, Bring / Send); inside a selection, the group menu |
 
 Permissions: one rule — contributors and owners edit/delete everything,
 viewers look only, cross-author delete always confirms. ★ Cmd+X now runs the
@@ -101,7 +106,8 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    edits made no Undo step. Now one persisted stack per page
    (`src/services/annotationStackOrder.js`, `z` beside each mark).
 2. **Four selection systems** (shape indexes, callout ids, Survey Marker id,
-   region ids). Callout marquee/lasso ran a separate loop that missed the
+   region ids). ☆ w53: the Survey Marker id became a set that joins the
+   shared selection (marquee, lasso, Shift / Alt click, group move, nudge). Callout marquee/lasso ran a separate loop that missed the
    visibility filter. Partly unified ★ via `src/utils/annotationFamilyRules.js`
    (one movable rule, one space rule, one reorder helper, one nudge).
 3. **Callouts still have their own list** (`callouts[]` derived from the page)
@@ -109,7 +115,15 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    and drew them last. Now every renderer draws them in their stack slot ★.
 4. **Survey Markers live in a separate store** (Excel two-way sync needs its
    own columns) — own key handler, delete rule, undo lane, eraser, export and
-   no live broadcast.
+   no live broadcast. ☆ w53 keeps the store and adapts at the interaction
+   layer (`src/utils/surveyMarkerFamily.js`): a marker's place in its page's
+   stack is a canvas-only `stack` field naming the marks it sits between
+   (never an Excel column; stripped from the Excel "not synced"
+   fingerprint); family actions write geometry / `stack` field-by-field onto
+   each marker as it is now, never a whole stale copy; a family Delete runs
+   the established marker delete (trash, History row, Excel row removal);
+   the Undo half (`survey-marker:batch`) rides the marks' step in the local
+   history lane.
 5. **Menu kind came from the DOM, not the mark type** ("counter" meant
    "Counter tool on"); keyboard and menu were separate code for the same action
    (Cmd+X skipped the gate the menu had) — fixed ★ for the cases above.
@@ -128,12 +142,16 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    no-confirm action). Option: route a foreign Cut through the same confirm
    modal as Delete. Needs the owner's nod — it changes a locked ruling and two
    pinned tests. Small.
-2. **Survey Markers into the one family** (marquee/lasso/multi-select, z-order
-   among marks, right-click menu, cross-author delete confirm instead of a hard
-   block). Plan: keep the marker store (Excel sync needs it) but give markers a
-   `z` and a slot in the page stack, feed them into the shared selection rules
-   and the bulk-delete planner. Large; touches Excel sync — needs two
-   adversarial reviews.
+2. ☆ **Survey Markers into the one family** — done in w53 (selection, move,
+   nudge, stack, right-click menu, Delete, one Undo step). Still open:
+   (a) another user's Survey Marker is blocked from delete instead of
+   confirmed like marks (a marker permission rule — owner's nod);
+   (b) group resize / rotate stay hidden for every type;
+   (c) a selection of markers + callouts only (no marks) moves as two Undo
+   steps (callouts keep their own commit);
+   (d) moving a Survey Marker makes a linked Excel read "not synced" (bounds
+   are hashed — pre-w53 behaviour, geometry is not an Excel column);
+   (e) the canvas painter / thumbnails still draw no Survey Markers.
 3. **Survey Marker and space changes are not live-broadcast** (other screens
    see them only after the saved row lands). Plan: extend the live-edit bus
    (`annotationLiveOverlay.js`) with a marker lane. Medium; sync — two reviews.

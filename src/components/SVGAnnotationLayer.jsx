@@ -20,6 +20,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
+import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -326,6 +327,9 @@ const hasCoarsePointer = () => (
   && window.matchMedia('(pointer: coarse)').matches
 );
 
+// w53: shared empty selection (stable identity keeps memo deps quiet).
+const EMPTY_SURVEY_MARKER_IDS = new Set();
+
 const SVGAnnotationLayer = memo(({
   pageNumber,
   width,          // unscaled PDF page width (e.g., 612)
@@ -546,6 +550,15 @@ const SVGAnnotationLayer = memo(({
   zoomGeneration = 0,
   // Survey-marker drag-out routes through the marker store, not page objects.
   onSurveyMarkerCreated,
+  // w53 (2026-09-28) — Survey Markers in the one annotation family.
+  // isSurveyMarkerFamilyMember(id): true for a SAVED marker (one still being
+  // placed / named is not a family member and keeps its own single path).
+  // onDeleteSurveyMarkers(ids): delete several markers as one step.
+  // onReorderFamily(pageNumber, { indices, calloutIds, markerIds, direction }):
+  // restack a selection that may hold markers (one save, one undo step).
+  isSurveyMarkerFamilyMember = null,
+  onDeleteSurveyMarkers = null,
+  onReorderFamily = null,
 }) => {
 
   // ---------------------------------------------------------------------------
@@ -615,7 +628,23 @@ const SVGAnnotationLayer = memo(({
   }, []);
   useEffect(() => releaseFormWidgetSelectionGuard, [releaseFormWidgetSelectionGuard]);
   const surveyMarkerClickRef = useRef({ annotationId: null, time: 0 });
-  const [selectedSurveyMarkerId, setSelectedSurveyMarkerId] = useState(null);
+  // w53: the Survey Markers in this page's selection (a Set of ids). With one
+  // marker and nothing else selected it is the classic single-marker
+  // selection (handles, resize / rotate, touch Delete chip); otherwise the
+  // markers are members of a family selection with marks and callouts.
+  const [selectedSurveyMarkerIds, setSelectedSurveyMarkerIds] = useState(EMPTY_SURVEY_MARKER_IDS);
+  const setSelectedSurveyMarkerId = useCallback((annotationId) => {
+    setSelectedSurveyMarkerIds((prev) => {
+      if (!annotationId) return prev.size === 0 ? prev : EMPTY_SURVEY_MARKER_IDS;
+      if (prev.size === 1 && prev.has(annotationId)) return prev;
+      return new Set([annotationId]);
+    });
+  }, []);
+  const [surveyMarkerLiveMove, setSurveyMarkerLiveMove] = useState(null);
+  const surveyMarkerMembersRef = useRef([]);
+  const selectedSurveyMarkerIdsRef = useRef(selectedSurveyMarkerIds);
+  selectedSurveyMarkerIdsRef.current = selectedSurveyMarkerIds;
+  const getSurveyMarkerMembers = useCallback(() => surveyMarkerMembersRef.current, []);
   const [hoveredSurveyMarkerId, setHoveredSurveyMarkerId] = useState(null);
   const [surveyMarkerPreviewBounds, setSurveyMarkerPreviewBounds] = useState(null);
   useEffect(() => {
@@ -664,6 +693,8 @@ const SVGAnnotationLayer = memo(({
     cancelLasso,
     shouldHandoffLassoPointer,
     shouldIgnoreLassoPointer,
+    // w53: a drag started on a selected Survey Marker moves the family.
+    startFamilyGroupMove,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -703,6 +734,12 @@ const SVGAnnotationLayer = memo(({
     isCalloutSelectable,
     // w52: arrow-key nudge stays off while an inline editor owns the keys.
     keyboardNudgeEnabled: editingAnnotationIndex == null && !editingCalloutId,
+    // w53: saved Survey Markers join marquee / lasso / Shift-click / group
+    // move / nudge with the rest of the selection.
+    getSurveyMarkerMembers,
+    selectedSurveyMarkerIds,
+    onSelectedSurveyMarkerIdsChange: setSelectedSurveyMarkerIds,
+    onSurveyMarkerLiveMove: setSurveyMarkerLiveMove,
   });
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
@@ -736,7 +773,9 @@ const SVGAnnotationLayer = memo(({
     // default for the older single-shape consumers (right-click delete /
     // pan-mode click).
     if (Array.isArray(pendingSelection.annotationIndices)) {
-      setSelectedSurveyMarkerId(null);
+      // w53: a family restack re-broadcasts the shapes' new slots; the
+      // Survey Markers in the selection stay selected (they are keyed by id).
+      if (pendingSelection.keepSurveyMarkers !== true) setSelectedSurveyMarkerId(null);
       setSurveyMarkerPreviewBounds(null);
       surveyMarkerDragRef.current = null;
       selectAnnotations(pendingSelection.annotationIndices);
@@ -1023,6 +1062,14 @@ const SVGAnnotationLayer = memo(({
       : Array.isArray(effectiveSelectedCalloutIds)
         ? effectiveSelectedCalloutIds.length
         : 0;
+  // w53: the classic single-marker selection — exactly one Survey Marker and
+  // nothing else. Any bigger selection holding markers is a family selection
+  // (group frame, group move / nudge / restack / delete / copy).
+  const surveyMarkerSelectionSize = selectedSurveyMarkerIds.size;
+  const familySelectionSize = (selectedIds?.size || 0) + calloutSelectionSize + surveyMarkerSelectionSize;
+  const selectedSurveyMarkerId = surveyMarkerSelectionSize === 1 && familySelectionSize === 1
+    ? selectedSurveyMarkerIds.values().next().value
+    : null;
 
   // Text Select must leave blank page pixels with PDF.js so native text drag
   // keeps working. Once an annotation is selected, though, its body and edit
@@ -1077,10 +1124,10 @@ const SVGAnnotationLayer = memo(({
         }
       }
     }
-    if (selectedSurveyMarkerId) {
+    if (selectedSurveyMarkerIds.size > 0) {
       const markerNodes = root.querySelectorAll('[data-survey-marker-id]');
       for (const markerNode of markerNodes) {
-        if (markerNode.getAttribute('data-survey-marker-id') === selectedSurveyMarkerId) {
+        if (selectedSurveyMarkerIds.has(markerNode.getAttribute('data-survey-marker-id'))) {
           nodes.add(markerNode);
         }
       }
@@ -1092,7 +1139,7 @@ const SVGAnnotationLayer = memo(({
       }
     }
     return false;
-  }, [effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerId]);
+  }, [effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerIds]);
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
@@ -1321,6 +1368,8 @@ const SVGAnnotationLayer = memo(({
       // w52: one shape + a callout on this page is a MULTI-selection — the
       // whole-selection z-order handler below moves both together.
       if ((isBracketRight || isBracketLeft) && countPageSelectedCallouts() > 0) return;
+      // w53: …and so is one shape + a Survey Marker.
+      if ((isBracketRight || isBracketLeft) && selectedSurveyMarkerIdsRef.current.size > 0) return;
 
       // KAL-75 (G4): locked/read-only documents — Copy stays live (read
       // affordance), but Cut and z-order are mutations and must be inert.
@@ -1357,6 +1406,7 @@ const SVGAnnotationLayer = memo(({
   // every page's layer). Inert while the callout's text is being edited.
   useEffect(() => {
     if (selectedIds.size !== 0 || calloutSelectionSize !== 1) return;
+    if (selectedSurveyMarkerIds.size > 0) return; // w53: family handler (see the ref check below)
     if (editingCalloutId) return;
     if (typeof onReorderAnnotation !== 'function') return;
     const [calloutId] = effectiveSelectedCalloutIds instanceof Set
@@ -1368,6 +1418,9 @@ const SVGAnnotationLayer = memo(({
       if (!isMeta || e.altKey) return;
       const isBracketRight = e.code === 'BracketRight';
       const isBracketLeft = e.code === 'BracketLeft';
+      // w53: a Survey Marker added to the selection since this listener was
+      // armed makes it a family selection (the family handler restacks).
+      if ((isBracketRight || isBracketLeft) && selectedSurveyMarkerIdsRef.current.size > 0) return;
       // w52: Cmd+C / Cmd+X for ONE selected callout — the same handlers the
       // callout right-click Copy / Cut use (before, callouts had no copy/cut
       // shortcut at all). Cut stays own-marks-only inside onCutCallout.
@@ -1415,6 +1468,9 @@ const SVGAnnotationLayer = memo(({
   // Single-mark selections keep the handlers above (overlap-aware stepping).
   useEffect(() => {
     if ((selectedIds?.size || 0) + calloutSelectionSize < 2) return undefined;
+    // w53: a selection holding Survey Markers restacks through the family
+    // handler below (markers have their own place in the stack).
+    if (selectedSurveyMarkerIds.size > 0) return undefined;
     if (typeof onSaveAnnotations !== 'function') return undefined;
     if (editingCalloutId) return undefined;
     if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
@@ -1444,6 +1500,16 @@ const SVGAnnotationLayer = memo(({
       // the single-mark handlers above own it.
       if (picked.length < 2) return;
       e.preventDefault();
+      // w53: the family planner is the same permutation and also keeps the
+      // page's Survey Markers in their places (one save, one undo step).
+      if (typeof onReorderFamily === 'function') {
+        onReorderFamily(pageNumber, {
+          indices: Array.from(selectedIds || []),
+          calloutIds: Array.from(calloutIds),
+          direction,
+        });
+        return;
+      }
       const result = reorderSelectionInStack(objects, picked, direction);
       if (!result.changed) return;
       onSaveAnnotations(deepClone({ ...page, objects: result.objects }), {
@@ -1457,7 +1523,37 @@ const SVGAnnotationLayer = memo(({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onSaveAnnotations, selectAnnotations]);
+  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onSaveAnnotations, selectAnnotations, onReorderFamily, pageNumber, selectedSurveyMarkerIds]);
+
+  // UX: w53 (2026-09-28) — the four z-order hotkeys for any selection that
+  // holds Survey Markers (one marker alone, or markers with marks and
+  // callouts): Cmd+] / Cmd+[ step it, Shift sends it all the way. The
+  // markers take their place in the page's one stack (surveyMarkerFamily.js)
+  // — one save, one undo step, same permutation as the right-click menu.
+  useEffect(() => {
+    if (selectedSurveyMarkerIds.size === 0) return undefined;
+    if (typeof onReorderFamily !== 'function') return undefined;
+    if (editingCalloutId) return undefined;
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
+    const handleKeyDown = (e) => {
+      const direction = zOrderDirectionForKey(e);
+      if (!direction) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const calloutIds = (effectiveSelectedCalloutIds instanceof Set
+        ? Array.from(effectiveSelectedCalloutIds)
+        : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : []));
+      e.preventDefault();
+      onReorderFamily(pageNumber, {
+        indices: Array.from(selectedIds || []),
+        calloutIds,
+        markerIds: Array.from(selectedSurveyMarkerIds),
+        direction,
+      });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedSurveyMarkerIds, selectedIds, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onReorderFamily, pageNumber]);
 
   // UX: 2026-04-21 — Group / Ungroup feature is HIDDEN app-wide. The
   // Cmd+G and Cmd+Shift+G shortcuts are short-circuited below. Wiring
@@ -2144,7 +2240,7 @@ const SVGAnnotationLayer = memo(({
 
     // UX: only show input when exactly one shape is selected. Multi-select and
     // empty selection clear timers and hide the pill (visibility gate).
-    const hasSingleRegularSelection = selectedIds?.size === 1;
+    const hasSingleRegularSelection = selectedIds?.size === 1 && selectedSurveyMarkerIds.size === 0;
     const hasSurveyMarkerSelection = !!selectedSurveyMarkerId && (!selectedIds || selectedIds.size === 0);
     if (!hasSingleRegularSelection && !hasSurveyMarkerSelection) {
       setRotInputVisibleDbg(false, 'no single rotation target selected');
@@ -2239,7 +2335,7 @@ const SVGAnnotationLayer = memo(({
     // pointer events. The eslint-disable below is LOAD-BEARING. Do NOT add
     // annotations, visualTransform, or rotInputVisible to the dep array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, selectedSurveyMarkerId, setRotInputVisibleDbg, editingAnnotationIndex]);
+  }, [selectedIds, selectedSurveyMarkerId, selectedSurveyMarkerIds, setRotInputVisibleDbg, editingAnnotationIndex]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: Derived state for RotationInputField props
@@ -3214,17 +3310,36 @@ const SVGAnnotationLayer = memo(({
     getSpaceIdForRegion,
   ]);
 
+  // w53: the saved markers this page shows are the family members the hook
+  // may pick with marquee / lasso and move with the selection.
+  surveyMarkerMembersRef.current = surveyMarkerElements
+    .filter((entry) => entry?.surveyMarker?.annotationId
+      && (typeof isSurveyMarkerFamilyMember !== 'function'
+        || isSurveyMarkerFamilyMember(entry.surveyMarker.annotationId)))
+    .map((entry) => ({
+      id: String(entry.surveyMarker.annotationId),
+      box: {
+        left: entry.bbox.left,
+        top: entry.bbox.top,
+        width: entry.bbox.width,
+        height: entry.bbox.height,
+        angle: entry.bbox.angle || 0,
+      },
+      stack: entry.surveyMarker.stack || null,
+    }));
+
+  // A selected marker the page stops showing (module switch, space change,
+  // deleted) leaves the selection.
   useEffect(() => {
-    if (!selectedSurveyMarkerId) return;
-    const stillVisible = surveyMarkerElements.some((entry) =>
-      entry?.surveyMarker?.annotationId === selectedSurveyMarkerId
-    );
-    if (!stillVisible) {
-      setSelectedSurveyMarkerId(null);
+    if (selectedSurveyMarkerIds.size === 0) return;
+    const visible = new Set(surveyMarkerElements.map((entry) => entry?.surveyMarker?.annotationId));
+    const kept = [...selectedSurveyMarkerIds].filter((id) => visible.has(id));
+    if (kept.length !== selectedSurveyMarkerIds.size) {
+      setSelectedSurveyMarkerIds(kept.length ? new Set(kept) : EMPTY_SURVEY_MARKER_IDS);
       setSurveyMarkerPreviewBounds(null);
       surveyMarkerDragRef.current = null;
     }
-  }, [selectedSurveyMarkerId, surveyMarkerElements]);
+  }, [selectedSurveyMarkerIds, surveyMarkerElements]);
 
   useEffect(() => {
     if (isSelectTool) return;
@@ -3242,6 +3357,29 @@ const SVGAnnotationLayer = memo(({
     setSurveyMarkerPreviewBounds(null);
     surveyMarkerDragRef.current = null;
   }, [onDeleteSurveyMarker, selectedSurveyMarkerId]);
+
+  // UX: w53 — Delete / Backspace with Survey Markers in a family selection
+  // deletes those markers (one Undo step for the markers, the same ownership
+  // rule as a single marker delete) and lets the marks' own Delete handler
+  // run for the rest of the selection.
+  useEffect(() => {
+    if (!isSelectTool || selectedSurveyMarkerId || selectedSurveyMarkerIds.size === 0) return undefined;
+    if (typeof onDeleteSurveyMarkers !== 'function') return undefined;
+    // With marks selected too, the marks' Delete carries the markers (one
+    // step, and nothing is deleted if its cross-author confirm is cancelled).
+    if ((selectedIds?.size || 0) > 0) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const ids = [...selectedSurveyMarkerIds];
+      setSelectedSurveyMarkerIds(EMPTY_SURVEY_MARKER_IDS);
+      onDeleteSurveyMarkers(ids);
+      if ((selectedIds?.size || 0) + calloutSelectionSize === 0) e.preventDefault();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isSelectTool, selectedSurveyMarkerId, selectedSurveyMarkerIds, onDeleteSurveyMarkers, selectedIds, calloutSelectionSize]);
 
   useEffect(() => {
     if (!isSelectTool || !selectedSurveyMarkerId) return;
@@ -3398,6 +3536,34 @@ const SVGAnnotationLayer = memo(({
     }
     surveyMarkerClickRef.current = { annotationId, time: now };
 
+    // UX: w53 (2026-09-28) — a saved Survey Marker is picked like any mark:
+    // Shift-click adds it to the selection (marks and callouts stay), Alt /
+    // Option-click takes it out, and dragging a marker that is part of a
+    // bigger selection moves the whole selection (Figma / Bluebeam rule). A
+    // plain click still makes it the only selection. A marker still being
+    // placed (not saved) keeps the single path.
+    const isFamilyMember = typeof isSurveyMarkerFamilyMember !== 'function'
+      || isSurveyMarkerFamilyMember(annotationId);
+    if (isFamilyMember && e.altKey) {
+      if (selectedSurveyMarkerIds.has(annotationId)) {
+        const next = new Set(selectedSurveyMarkerIds);
+        next.delete(annotationId);
+        setSelectedSurveyMarkerIds(next.size ? next : EMPTY_SURVEY_MARKER_IDS);
+      }
+      return;
+    }
+    if (isFamilyMember && e.shiftKey) {
+      if (!selectedSurveyMarkerIds.has(annotationId)) {
+        setSelectedSurveyMarkerIds(new Set([...selectedSurveyMarkerIds, annotationId]));
+      }
+      return;
+    }
+    if (isFamilyMember && selectedSurveyMarkerIds.has(annotationId) && familySelectionSize > 1
+      && typeof startFamilyGroupMove === 'function') {
+      startFamilyGroupMove(e);
+      return;
+    }
+
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const originalBounds = normalizeSurveyMarkerBounds({
       x: entry.bbox.left,
@@ -3417,7 +3583,7 @@ const SVGAnnotationLayer = memo(({
     };
     setSurveyMarkerPreviewBounds(null);
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick]);
+  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId]);
 
   const handleSurveyMarkerDoubleClick = useCallback((e, entry) => {
     if (!entry?.surveyMarker?.annotationId) return;
@@ -3599,6 +3765,19 @@ const SVGAnnotationLayer = memo(({
   const renderSurveyMarkerEntry = useCallback((entry) => {
     if (!entry?.surveyMarker?.annotationId) return null;
     const annotationId = entry.surveyMarker.annotationId;
+    // w53: a marker in a family selection rides the selection's live move
+    // (group drag translate, or a nudge burst's preview) and glows like the
+    // other selected members.
+    let liveDx = 0;
+    let liveDy = 0;
+    if (visualTransform?.id === 'group' && visualTransform.affectedMarkerIds?.has?.(String(annotationId))) {
+      liveDx = visualTransform.markerDelta?.dx ?? visualTransform.dx ?? 0;
+      liveDy = visualTransform.markerDelta?.dy ?? visualTransform.dy ?? 0;
+    } else if (surveyMarkerLiveMove?.ids?.includes?.(String(annotationId))) {
+      liveDx = surveyMarkerLiveMove.dx || 0;
+      liveDy = surveyMarkerLiveMove.dy || 0;
+    }
+    const isFamilySelected = selectedSurveyMarkerIds.has(annotationId);
     const preview = surveyMarkerPreviewBounds?.annotationId === annotationId
       ? surveyMarkerPreviewBounds.bounds
       : null;
@@ -3613,7 +3792,7 @@ const SVGAnnotationLayer = memo(({
         }
       : entry.bbox;
     const isSelectedSurveyMarker = selectedSurveyMarkerId === annotationId;
-    const isHoveredSurveyMarker = hoveredSurveyMarkerId === annotationId;
+    const isHoveredSurveyMarker = hoveredSurveyMarkerId === annotationId || (isFamilySelected && !isSelectedSurveyMarker);
     const centerX = bbox.left + bbox.width / 2;
     const centerY = bbox.top + bbox.height / 2;
     const rotationTransform = bbox.angle
@@ -3621,7 +3800,12 @@ const SVGAnnotationLayer = memo(({
       : undefined;
 
     return (
-      <g key={entry.key} data-survey-marker-id={annotationId}>
+      <g
+        key={entry.key}
+        data-survey-marker-id={annotationId}
+        transform={liveDx || liveDy ? `translate(${liveDx} ${liveDy})` : undefined}
+        style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}
+      >
         <rect
           x={bbox.left}
           y={bbox.top}
@@ -3699,6 +3883,9 @@ const SVGAnnotationLayer = memo(({
     isSelectTool,
     selectedSurveyMarkerId,
     surveyMarkerPreviewBounds,
+    visualTransform,
+    surveyMarkerLiveMove,
+    selectedSurveyMarkerIds,
   ]);
 
   const selectedSurveyMarkerEntry = useMemo(() => {
@@ -5738,8 +5925,28 @@ const SVGAnnotationLayer = memo(({
   // w52 (2026-09-28): ONE stack per page. Callouts are drawn in their slot
   // among every other mark (filteredCallouts carries each slot as
   // data-stack-index), so Bring to front / Send to back work across types.
+  // w53 (2026-09-28): Survey Markers draw in their place in the same stack
+  // (their `stack` names the marks they sit between — surveyMarkerFamily.js).
+  // A marker with no place yet (every marker before w53) draws on top, as
+  // it always did.
+  const markerElementsByGap = (() => {
+    if (surveyMarkerElements.length === 0) return null;
+    const byId = new Map(surveyMarkerElements.map((entry) => [String(entry.surveyMarker.annotationId), entry]));
+    const gaps = markerIdsByGap(
+      annotations?.objects || [],
+      surveyMarkerElements.map((entry) => ({
+        id: String(entry.surveyMarker.annotationId),
+        stack: entry.surveyMarker.stack || null,
+      })),
+    );
+    const out = new Map();
+    for (const [gap, ids] of gaps) {
+      out.set(gap, ids.map((id) => renderSurveyMarkerEntry(byId.get(id))).filter(Boolean));
+    }
+    return out;
+  })();
   const stackedMarks = (() => {
-    if (filteredCallouts.length === 0) return wrappedAnnotations;
+    if (filteredCallouts.length === 0 && !markerElementsByGap) return wrappedAnnotations;
     const slotted = [];
     const unslotted = [];
     for (const element of filteredCallouts) {
@@ -5748,21 +5955,42 @@ const SVGAnnotationLayer = memo(({
       else unslotted.push(element);
     }
     slotted.sort((a, b) => a[0] - b[0]);
+    const markerGaps = markerElementsByGap
+      ? [...markerElementsByGap.keys()].sort((a, b) => a - b)
+      : [];
+    let nextGap = 0;
     const merged = [];
+    // Markers whose gap sits at or below `index` draw before the element in
+    // slot `index`.
+    const flushMarkersUpTo = (index) => {
+      while (nextGap < markerGaps.length && markerGaps[nextGap] <= index) {
+        merged.push(...markerElementsByGap.get(markerGaps[nextGap]));
+        nextGap += 1;
+      }
+    };
     let next = 0;
     wrappedAnnotations.forEach((element, position) => {
       const index = stagedAnnotations[position]?.index;
       while (next < slotted.length && Number.isInteger(index) && slotted[next][0] < index) {
+        flushMarkersUpTo(slotted[next][0]);
         merged.push(slotted[next][1]);
         next += 1;
       }
+      if (Number.isInteger(index)) flushMarkersUpTo(index);
       merged.push(element);
     });
     while (next < slotted.length) {
+      flushMarkersUpTo(slotted[next][0]);
       merged.push(slotted[next][1]);
       next += 1;
     }
-    return unslotted.length ? merged.concat(unslotted) : merged;
+    // Unslotted callouts, then markers with no place (on top), as before.
+    const out = unslotted.length ? merged.concat(unslotted) : merged;
+    while (nextGap < markerGaps.length) {
+      out.push(...markerElementsByGap.get(markerGaps[nextGap]));
+      nextGap += 1;
+    }
+    return out;
   })();
 
   const uniformTextMarkupElements = useMemo(() => {
@@ -5973,14 +6201,15 @@ const SVGAnnotationLayer = memo(({
           if (annotationWrapper && svgRef.current?.contains?.(annotationWrapper)) {
             const annotationIndex = Number(annotationWrapper.getAttribute('data-annotation-index'));
             if (Number.isInteger(annotationIndex)) {
-              setSelectedSurveyMarkerId(null);
+              // w53: the hook decides whether the Survey Markers in the
+              // selection stay (Shift / Alt click, dragging the selection)
+              // or go (a plain click on another mark).
               setSurveyMarkerPreviewBounds(null);
               surveyMarkerDragRef.current = null;
               handleAnnotationPointerDown(e, annotationIndex);
               return;
             }
           }
-          setSelectedSurveyMarkerId(null);
           setSurveyMarkerPreviewBounds(null);
           surveyMarkerDragRef.current = null;
           handleSvgPointerDown(e);
@@ -6037,14 +6266,10 @@ const SVGAnnotationLayer = memo(({
       onDoubleClick={(isSelectTool || panEditEntryEnabled) ? handleAnnotationDoubleClick : undefined}
     >
       {uniformTextMarkupElements}
+      {/* w53: Survey Markers draw inside stackedMarks, each in its place in
+          the page's one stack. They are stored outside annotations.objects,
+          so renderSurveyMarkerEntry owns their click, move and resize. */}
       {stackedMarks}
-      {/* Survey markers are stored outside annotations.objects, so this
-          path owns their click, move, and resize behavior. */}
-      {surveyMarkerElements.length > 0 && (
-        <g className="survey-markers" style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}>
-          {surveyMarkerElements.map(renderSurveyMarkerEntry)}
-        </g>
-      )}
       {isSelectTool && selectedSurveyMarkerDeleteBounds && typeof onDeleteSurveyMarker === 'function' && (
         <g
           className="survey-marker-touch-delete"
@@ -6496,7 +6721,7 @@ const SVGAnnotationLayer = memo(({
           selected. With one annotation + one callout the combined count
           is > 1, which means the outer group union bbox should be the
           only chrome — same as two annotations. */}
-      {selectedIds.size === 1 && (effectiveSelectedCalloutIds?.size || 0) === 0 && Array.from(selectedIds).map((selectedIndex) => {
+      {selectedIds.size === 1 && (effectiveSelectedCalloutIds?.size || 0) === 0 && selectedSurveyMarkerIds.size === 0 && Array.from(selectedIds).map((selectedIndex) => {
         const obj = visualTransform?.previewObjects?.[selectedIndex]
           || annotations?.objects?.[selectedIndex];
         if (!obj) return null;
@@ -7256,7 +7481,7 @@ const SVGAnnotationLayer = memo(({
         );
       })}
       {/* Multi-select: individual dashed boxes (no handles) + group union box with handles */}
-      {(selectedIds.size + (effectiveSelectedCalloutIds?.size || 0)) > 1 && (
+      {familySelectionSize > 1 && (
         <>
           {/* UX: Phase 19 follow-up — individual dashed boxes per member
               were removed. Each selected annotation now picks up the
@@ -7331,6 +7556,21 @@ const SVGAnnotationLayer = memo(({
                   height: Math.max(...ys) - Math.min(...ys),
                 });
               }
+            }
+            // w53: selected Survey Markers widen the frame like any member
+            // (a nudge preview moves their box with them).
+            for (const entry of surveyMarkerElements) {
+              const markerId = entry?.surveyMarker?.annotationId;
+              if (!markerId || !selectedSurveyMarkerIds.has(markerId)) continue;
+              const nudge = surveyMarkerLiveMove?.ids?.includes?.(String(markerId)) ? surveyMarkerLiveMove : null;
+              const bounds = boxWorldBounds({
+                left: entry.bbox.left + (nudge?.dx || 0),
+                top: entry.bbox.top + (nudge?.dy || 0),
+                width: entry.bbox.width,
+                height: entry.bbox.height,
+                angle: entry.bbox.angle || 0,
+              });
+              if (bounds) bboxes.push({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height });
             }
             if (bboxes.length === 0) return null;
             // UX: 2026-04-21 — three sources of bbox geometry, in priority:
@@ -7457,12 +7697,15 @@ const SVGAnnotationLayer = memo(({
             // Indices are serialized as CSV so the dispatcher can read
             // them without cross-boundary state sharing.
             const groupIndicesCsv = Array.from(selectedIds).join(',');
+            // w53: the Survey Markers in the selection, for the group menu.
+            const groupMarkerIdsCsv = Array.from(selectedSurveyMarkerIds).join(',');
             return (
               <g
                 key="group-selection-wrapper"
                 transform={groupDragTransform}
                 data-group-selection-bbox="true"
                 data-group-selection-indices={groupIndicesCsv}
+                data-group-selection-marker-ids={groupMarkerIdsCsv || undefined}
               >
                 <SVGSelectionOverlay
                   key="group-selection"

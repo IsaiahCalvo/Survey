@@ -38,6 +38,10 @@
  *     brings a deleted mark back through an update entry.
  */
 import { deepClone } from './deepClone.js';
+import {
+  SURVEY_MARKER_HISTORY_TYPE,
+  invertSurveyMarkerHistoryAction,
+} from './surveyMarkerFamily.js';
 
 export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
@@ -818,6 +822,9 @@ function applyStackOrder(objects, order) {
 
 export function invertAnnotationHistoryAction(action) {
   if (!action || typeof action !== 'object') return null;
+  // w53: a Survey Marker child of a family step (surveyMarkerFamily.js). The
+  // viewer applies it to the marker store; pages are untouched.
+  if (action.type === SURVEY_MARKER_HISTORY_TYPE) return invertSurveyMarkerHistoryAction(action);
   if (action.type === 'fabric:document-batch') {
     const actions = [...(action.actions || [])]
       .reverse()
@@ -1037,6 +1044,9 @@ function applyFieldUpdateAt(objects, index, entry, pageNumber, options) {
 
 export function applyAnnotationHistoryAction(annotationsByPage, action, options = {}) {
   if (!action || typeof action !== 'object') return annotationsByPage || {};
+  // w53: Survey Marker changes live in their own store (applied by the
+  // viewer, applySurveyMarkerHistoryAction); they never touch a page.
+  if (action.type === SURVEY_MARKER_HISTORY_TYPE) return annotationsByPage || {};
   if (action.type === 'fabric:document-batch') {
     return (action.actions || []).reduce(
       (current, child) => applyAnnotationHistoryAction(current, child, options),

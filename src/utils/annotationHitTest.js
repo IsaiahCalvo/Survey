@@ -47,6 +47,7 @@ export function resolveAnnotationAt(e) {
   // a 'group' kind so the right-click menu can batch cut/copy/delete/
   // z-order across every selected annotation at once.
   let groupIndices = null;
+  let groupMarkerIds = null;
   const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
 
   const readFrom = (el) => {
@@ -332,10 +333,16 @@ export function resolveAnnotationAt(e) {
         const csv = el.getAttribute('data-group-selection-indices') || '';
         groupIndices = csv
           .split(',')
+          .filter((s) => s !== '')
           .map((s) => Number(s))
           .filter((n) => Number.isFinite(n));
-        if (groupIndices.length >= 2) break;
+        // w53: Survey Markers in the selection count as members too.
+        groupMarkerIds = (el.getAttribute('data-group-selection-marker-ids') || '')
+          .split(',')
+          .filter(Boolean);
+        if (groupIndices.length + groupMarkerIds.length >= 2) break;
         groupIndices = null;
+        groupMarkerIds = null;
       }
     }
   }
@@ -344,7 +351,9 @@ export function resolveAnnotationAt(e) {
   if (calloutId) kind = 'callout';
   else if (isCounter) kind = 'counter';
   else if (annotationIndex != null) kind = 'annotation';
-  else if (groupIndices && groupIndices.length >= 2) kind = 'group';
+  else if (groupIndices && (groupIndices.length + (groupMarkerIds?.length || 0)) >= 2) kind = 'group';
 
+  // (w53: the group's Survey Marker ids ride its frame's
+  // data-group-selection-marker-ids; the menu dispatcher reads them there.)
   return { pageNumber, annotationIndex, calloutId, kind, groupIndices, editEntryKind };
 }

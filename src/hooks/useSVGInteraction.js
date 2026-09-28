@@ -117,6 +117,14 @@ import {
   getNudgeBoxes,
   NUDGE_IDLE_COMMIT_MS,
 } from '../utils/annotationFamilyRules.js';
+// w53 (2026-09-28) — Survey Markers join the family on the canvas: picked by
+// marquee / lasso / Shift-click with marks, moved and nudged with them.
+import {
+  applySelectionOp,
+  boxWorldBounds,
+  resolveSurveyMarkerLassoHits,
+  resolveSurveyMarkerMarqueeHits,
+} from '../utils/surveyMarkerFamily.js';
 import {
   finalizeTextMarkupHorizontalEdge,
   getTextMarkupRangeFixedOffset,
@@ -245,6 +253,20 @@ export function useSVGInteraction({
   // w52 — arrow-key nudge is live only while the layer says so (no inline
   // text editor open on this page). Default on.
   keyboardNudgeEnabled = true,
+  // w53 (2026-09-28) — Survey Markers as family members on this page.
+  // getSurveyMarkerMembers(): [{ id, box: { left, top, width, height, angle } }] —
+  // the saved markers this page shows and lets the user pick (the layer
+  // applies the same visibility / space rules it draws with).
+  // selectedSurveyMarkerIds: Set<string> (the layer owns it);
+  // onSelectedSurveyMarkerIdsChange(Set). onSurveyMarkerLiveMove({ ids, dx,
+  // dy } | null) paints a nudge preview. Moves commit through
+  // onSaveAnnotations(…, { surveyMarkerFamily: { move } }) so marks and
+  // markers are one save and ONE undo step. Absent → markers never join
+  // (legacy mounts unchanged).
+  getSurveyMarkerMembers = null,
+  selectedSurveyMarkerIds = null,
+  onSelectedSurveyMarkerIdsChange = null,
+  onSurveyMarkerLiveMove = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -575,6 +597,41 @@ export function useSVGInteraction({
     setHoveredId(null);
   }, []);
 
+  // w53: the Survey Markers of the family selection on this page.
+  const selectedMarkerCount = selectedSurveyMarkerIds instanceof Set ? selectedSurveyMarkerIds.size : 0;
+  const clearSelectedMarkers = useCallback(() => {
+    if (typeof onSelectedSurveyMarkerIdsChange !== 'function') return;
+    if (!(selectedSurveyMarkerIds instanceof Set) || selectedSurveyMarkerIds.size === 0) return;
+    onSelectedSurveyMarkerIdsChange(new Set());
+  }, [onSelectedSurveyMarkerIdsChange, selectedSurveyMarkerIds]);
+  const updateSelectedMarkers = useCallback((hits, op) => {
+    if (typeof onSelectedSurveyMarkerIdsChange !== 'function') return;
+    if (op !== 'replace' && hits.length === 0) return;
+    const next = applySelectionOp(selectedSurveyMarkerIds, hits, op);
+    const prev = selectedSurveyMarkerIds instanceof Set ? selectedSurveyMarkerIds : new Set();
+    if (next.size === prev.size && [...next].every((id) => prev.has(id))) return;
+    onSelectedSurveyMarkerIdsChange(next);
+  }, [onSelectedSurveyMarkerIdsChange, selectedSurveyMarkerIds]);
+  // A group move's delta for the markers: the same pointer delta, held so
+  // every moved marker stays on the page (marks clamp themselves one by one).
+  const clampMarkerGroupDelta = useCallback((markerIds, dx, dy) => {
+    if (!Array.isArray(markerIds) || markerIds.length === 0) return { dx, dy };
+    const ids = new Set(markerIds);
+    const boxes = (getSurveyMarkerMembers?.() || [])
+      .filter((member) => member && ids.has(String(member.id)))
+      .map((member) => boxWorldBounds(member.box))
+      .filter(Boolean);
+    return clampNudgeDelta(boxes, dx, dy, pageWidth, pageHeight);
+  }, [getSurveyMarkerMembers, pageWidth, pageHeight]);
+  // Ids of the selected markers this page shows (only those move).
+  const getGroupMarkerIds = useCallback(() => {
+    if (!(selectedSurveyMarkerIds instanceof Set) || selectedSurveyMarkerIds.size === 0) return [];
+    const members = getSurveyMarkerMembers?.() || [];
+    return members
+      .filter((member) => member && selectedSurveyMarkerIds.has(String(member.id)))
+      .map((member) => String(member.id));
+  }, [selectedSurveyMarkerIds, getSurveyMarkerMembers]);
+
   // UX: 2026-04-20 — multi-index selection setter. Used by App.jsx via the
   // pendingSvgSelection.annotationIndices broadcast after Ungroup so the
   // freed members stay selected as a multi-selection. Replaces the entire
@@ -647,6 +704,9 @@ export function useSVGInteraction({
     onUpdateCalloutLive,
     onUpdateCallout,
     isCalloutSelectable,
+    getSurveyMarkerMembers,
+    selectedSurveyMarkerIds,
+    onSurveyMarkerLiveMove,
   };
   const nudgeBurstRef = useRef(null);
 
@@ -658,8 +718,15 @@ export function useSVGInteraction({
     if (!burst.framed) return;
     const latest = nudgeLatestRef.current;
     const hasShapes = Object.keys(burst.startObjects).length > 0;
-    if (hasShapes && typeof latest.onSaveAnnotations === 'function') {
-      const merged = buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy);
+    // w53: selected Survey Markers ride the same step.
+    const markerIds = Object.keys(burst.markerBoxes || {});
+    const markerFamily = markerIds.length > 0 && (burst.dx !== 0 || burst.dy !== 0)
+      ? { surveyMarkerFamily: { move: { ids: markerIds, dx: burst.dx, dy: burst.dy } } }
+      : null;
+    if ((hasShapes || markerFamily) && typeof latest.onSaveAnnotations === 'function') {
+      const merged = hasShapes
+        ? buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy)
+        : null;
       // Commit the final pose; with nothing left to write (every nudged mark
       // deleted meanwhile) still close the preview gesture with the page as
       // it is, so its 'skip' baseline never leaks into the next edit.
@@ -667,8 +734,10 @@ export function useSVGInteraction({
         source: 'object:modified',
         action: 'nudge',
         checkpointPolicy: 'normal',
+        ...(markerFamily || {}),
       });
     }
+    if (markerIds.length > 0) latest.onSurveyMarkerLiveMove?.(null);
     // Callouts: the commit-only signal records the step against the burst's
     // preview baseline (a no-op when the shape commit above already did).
     if (typeof latest.onUpdateCallout === 'function') {
@@ -692,7 +761,7 @@ export function useSVGInteraction({
   // A selection change ends the burst (commits what already moved).
   useEffect(() => {
     commitNudgeBurst();
-  }, [selectedIds, selectedCalloutIds, commitNudgeBurst]);
+  }, [selectedIds, selectedCalloutIds, selectedSurveyMarkerIds, commitNudgeBurst]);
 
   useEffect(() => {
     if (!keyboardNudgeEnabled) return undefined;
@@ -732,12 +801,25 @@ export function useSVGInteraction({
           textBoxHeight: callout.textBoxHeight,
         };
       }
-      if (Object.keys(startObjects).length === 0 && Object.keys(calloutOriginals).length === 0) {
+      // w53: selected Survey Markers on this page nudge with the rest — but
+      // only as part of a family selection; a lone marker keeps the layer's
+      // own nudge (it also serves markers still being placed).
+      const markerBoxes = {};
+      const selectedMarkers = latest.selectedSurveyMarkerIds instanceof Set ? latest.selectedSurveyMarkerIds : null;
+      const familySize = (latest.selectedIds?.size || 0) + selectedCallouts.length + (selectedMarkers?.size || 0);
+      if (selectedMarkers && selectedMarkers.size > 0 && familySize > 1) {
+        for (const member of latest.getSurveyMarkerMembers?.() || []) {
+          if (member && selectedMarkers.has(String(member.id))) markerBoxes[String(member.id)] = member.box;
+        }
+      }
+      if (Object.keys(startObjects).length === 0 && Object.keys(calloutOriginals).length === 0
+        && Object.keys(markerBoxes).length === 0) {
         return null;
       }
       return {
         startObjects,
         calloutOriginals,
+        markerBoxes,
         dx: 0,
         dy: 0,
         timer: null,
@@ -778,6 +860,7 @@ export function useSVGInteraction({
       const boxes = [
         ...getNudgeBoxes(burst.startObjects),
         ...Object.values(burst.calloutOriginals).map((c) => getCalloutPageBox(c, W, H)),
+        ...Object.values(burst.markerBoxes || {}).map((box) => boxWorldBounds(box)).filter(Boolean),
       ];
       const next = clampNudgeDelta(boxes, burst.dx + delta.dx, burst.dy + delta.dy, W, H);
       if (next.dx === burst.dx && next.dy === burst.dy) return; // pinned at the page edge
@@ -800,6 +883,11 @@ export function useSVGInteraction({
           latest.onUpdateCalloutLive(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, W, H));
           burst.framed = true;
         }
+      }
+      const markerIds = Object.keys(burst.markerBoxes || {});
+      if (markerIds.length > 0 && typeof latest.onSurveyMarkerLiveMove === 'function') {
+        latest.onSurveyMarkerLiveMove({ ids: markerIds, dx: burst.dx, dy: burst.dy });
+        burst.framed = true;
       }
     };
 
@@ -967,6 +1055,7 @@ export function useSVGInteraction({
       };
       selectAnnotation(targetIndex, false);
       onSelectedCalloutIdsChange?.(new Set());
+      clearSelectedMarkers();
       dragStateRef.current = { ...dragStateRef.current, active: false };
       setVisualTransform(null);
       e.preventDefault();
@@ -1003,6 +1092,7 @@ export function useSVGInteraction({
         if (typeof onSelectedCalloutIdsChange === 'function') {
           onSelectedCalloutIdsChange(new Set(members.calloutIds));
         }
+        clearSelectedMarkers();
         return; // group selected — no drag, no further per-shape branches.
       }
     }
@@ -1023,6 +1113,8 @@ export function useSVGInteraction({
     if (!wasAlreadySelected && onSelectedCalloutIdsChange) {
       onSelectedCalloutIdsChange(new Set());
     }
+    // w53: the same for Survey Markers in the selection.
+    if (!wasAlreadySelected) clearSelectedMarkers();
 
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
@@ -1061,7 +1153,7 @@ export function useSVGInteraction({
       const calSize = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.size
         : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0);
-      const totalSel = selectedIds.size + calSize;
+      const totalSel = selectedIds.size + calSize + selectedMarkerCount;
       if (totalSel > 1 && selectedIds.has(index)) {
         const originals = {};
         for (const selIdx of selectedIds) {
@@ -1115,6 +1207,8 @@ export function useSVGInteraction({
           groupOriginals: originals,
           // UX: 2026-04-20 — callout originals for group-move ride-along.
           groupCalloutOriginals: calloutOriginals,
+          // w53: Survey Markers ride along too.
+          groupMarkerIds: getGroupMarkerIds(),
         };
       } else {
         // Single annotation drag
@@ -1147,7 +1241,7 @@ export function useSVGInteraction({
         };
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -1328,7 +1422,7 @@ export function useSVGInteraction({
       const _calAlreadyIn = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.has(calloutId)
         : (Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0);
-      if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount) > 1) {
+      if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount + selectedMarkerCount) > 1) {
         const ctmA = svgRef.current?.getScreenCTM();
         const ctmInverseA = ctmA ? ctmA.inverse() : null;
         const svgPointA = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -1371,6 +1465,7 @@ export function useSVGInteraction({
           currentResize: null, currentAngle: undefined,
           groupOriginals: annotationOriginalsCO,
           groupCalloutOriginals: calloutOriginalsCO,
+          groupMarkerIds: getGroupMarkerIds(),
         };
         try {
           diagLog('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
@@ -1426,6 +1521,7 @@ export function useSVGInteraction({
             if (onSelectedCalloutIdsChange) {
               onSelectedCalloutIdsChange(new Set(members.calloutIds));
             }
+            clearSelectedMarkers();
             // Skip the normal single-callout select path below; group is
             // already selected. Drag still arms because the rest of this
             // branch executes (callout-part dragstate, etc.).
@@ -1434,12 +1530,14 @@ export function useSVGInteraction({
             // Fall through to normal single-callout select.
             onSelectedCalloutIdsChange(new Set([calloutId]));
             deselectAll();
+            clearSelectedMarkers();
           }
         } else {
           if (onSelectedCalloutIdsChange) {
             onSelectedCalloutIdsChange(new Set([calloutId]));
           }
           deselectAll();
+          clearSelectedMarkers();
         }
       }
 
@@ -1504,17 +1602,24 @@ export function useSVGInteraction({
     // not only by clicking a specific member. Shift-click on empty space
     // keeps marquee semantics (union-adding a new region). Clicks outside
     // the union bbox fall through to the marquee branch below.
+    const groupMarkerIdsNow = getGroupMarkerIds();
     if (
       e.target === svgRef.current &&
       activeTool === 'select' &&
       !e.shiftKey &&
-      selectedIds.size > 1 &&
+      (selectedIds.size + groupMarkerIdsNow.length) > 1 &&
       annotations?.objects
     ) {
       const bboxes = [];
       for (const selIdx of selectedIds) {
         const selObj = annotations.objects[selIdx];
         if (selObj) bboxes.push(getAnnotationBBox(selObj));
+      }
+      // w53: selected Survey Markers widen the grab area like any member.
+      for (const member of getSurveyMarkerMembers?.() || []) {
+        if (!member || !groupMarkerIdsNow.includes(String(member.id))) continue;
+        const bounds = boxWorldBounds(member.box);
+        if (bounds) bboxes.push({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height });
       }
       if (bboxes.length > 0) {
         const groupBBox = getGroupBBox(bboxes);
@@ -1555,6 +1660,7 @@ export function useSVGInteraction({
             currentResize: null,
             currentAngle: undefined,
             groupOriginals: originals,
+            groupMarkerIds: groupMarkerIdsNow,
           };
           try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
           setInteractionState('dragging');
@@ -1627,8 +1733,9 @@ export function useSVGInteraction({
     // Not select tool (or tool didn't match) — existing deselect behavior.
     if (e.target === svgRef.current) {
       deselectAll();
+      clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -1832,6 +1939,14 @@ export function useSVGInteraction({
         dx, dy,
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
         affectedCalloutIds: affectedCalloutIdsSet,
+        // w53: Survey Markers in the selection ride the same translate
+        // (held on the page).
+        affectedMarkerIds: Array.isArray(ds.groupMarkerIds) && ds.groupMarkerIds.length
+          ? new Set(ds.groupMarkerIds)
+          : null,
+        markerDelta: Array.isArray(ds.groupMarkerIds) && ds.groupMarkerIds.length
+          ? clampMarkerGroupDelta(ds.groupMarkerIds, dx, dy)
+          : null,
       });
       // Throttled diag — same 120ms cadence as group rotate/resize.
       const nowMs3 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -3259,7 +3374,7 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -3291,9 +3406,13 @@ export function useSVGInteraction({
         if (!lasso.shiftHeld) {
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
+          clearSelectedMarkers();
         }
         return;
       }
+      // w53: Survey Markers the lasso caught (same window / crossing rule).
+      const lassoMarkerHits = resolveSurveyMarkerLassoHits(getSurveyMarkerMembers?.() || [], polygon, mode);
+      updateSelectedMarkers(lassoMarkerHits, lasso.altHeld ? 'subtract' : (lasso.shiftHeld ? 'add' : 'replace'));
       const rawHits = resolveLassoHits({
         lassoPolygon: polygon,
         mode,
@@ -3360,12 +3479,16 @@ export function useSVGInteraction({
         if (!mq.shiftHeld) {
           deselectAll();
           if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
+          clearSelectedMarkers();
         }
         return;
       }
 
       const marqueeRect = getMarqueeRect(mq);
       const direction = getMarqueeDirection(mq);
+      // w53: Survey Markers the marquee caught (same window / crossing rule).
+      const marqueeMarkerHits = resolveSurveyMarkerMarqueeHits(getSurveyMarkerMembers?.() || [], marqueeRect, direction);
+      updateSelectedMarkers(marqueeMarkerHits, mq.altHeld ? 'subtract' : (mq.shiftHeld ? 'add' : 'replace'));
       const rawHits = resolveMarqueeHits({
         marqueeRect,
         direction,
@@ -3816,10 +3939,17 @@ export function useSVGInteraction({
           updatedAnnotations,
           Object.keys(ds.groupOriginals).map(Number),
         );
+        // w53: the selected Survey Markers move by the same delta in the SAME
+        // save (one undo step for the whole selection).
+        const groupMarkerIds = Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [];
+        const markerDelta = clampMarkerGroupDelta(groupMarkerIds, dx, dy);
         onSaveAnnotations(updatedAnnotations, {
           source: 'object:modified',
           action: 'group-move',
           checkpointPolicy: 'normal',
+          ...(groupMarkerIds.length > 0
+            ? { surveyMarkerFamily: { move: { ids: groupMarkerIds, dx: markerDelta.dx, dy: markerDelta.dy } } }
+            : {}),
         });
 
         // UX: see move-branch comment — same spurious-dblclick guard.
@@ -4388,7 +4518,7 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta]);
 
   const handlePointerCancel = useCallback((e) => {
     const ds = dragStateRef.current;
@@ -5226,6 +5356,10 @@ export function useSVGInteraction({
       .sort((a, b) => b - a);
 
     if (indicesToDelete.length === 0) return;
+    // w53: selected Survey Markers go with the marks, in the same save (one
+    // undo step), and only if the delete goes ahead (a cancelled
+    // cross-author confirm deletes nothing).
+    const markerIdsToDelete = getGroupMarkerIds();
 
     // Capture snapshot at request time — closure over CURRENT state. The
     // bulk-delete planner reads from snapshotObjects (NOT from a ref in
@@ -5254,8 +5388,12 @@ export function useSVGInteraction({
         deletedSnapshot: snapshotObjects,
         deletedPageNumber: pageNumber,
         checkpointPolicy: 'normal',
+        ...(markerIdsToDelete.length > 0
+          ? { surveyMarkerFamily: { deletes: markerIdsToDelete } }
+          : {}),
       });
       deselectAll();
+      if (markerIdsToDelete.length > 0) clearSelectedMarkers();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('betasafe:clear-text-markup-selection'));
       }
@@ -5294,7 +5432,7 @@ export function useSVGInteraction({
       pageNumber,
       runDelete,
     });
-  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId]);
+  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId, getGroupMarkerIds, clearSelectedMarkers]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
@@ -5368,10 +5506,65 @@ export function useSVGInteraction({
     setVisualTransform(null);
   }, []);
 
+  // w53: a drag that starts ON a selected Survey Marker of a family selection
+  // moves the whole selection — marks, callouts and markers — exactly like a
+  // drag started on a selected mark (same originals, same commit, one step).
+  const startFamilyGroupMove = useCallback((e) => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return false;
+    const ctm = svgEl.getScreenCTM?.();
+    const ctmInverse = ctm ? ctm.inverse() : null;
+    const svgPoint = screenToSVG(svgEl, e.clientX, e.clientY);
+    const originals = {};
+    for (const selIdx of selectedIds) {
+      const selObj = annotations?.objects?.[selIdx];
+      if (!canMoveAnnotation(selObj)) continue;
+      if (isImportedPath(selObj)) {
+        const selBBox = getAnnotationBBox(selObj);
+        originals[selIdx] = { left: selBBox.left, top: selBBox.top };
+      } else {
+        originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+      }
+    }
+    const calloutOriginals = {};
+    const calIds = (selectedCalloutIds instanceof Set)
+      ? Array.from(selectedCalloutIds)
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    for (const cid of calIds) {
+      const c = (callouts || []).find((cc) => cc && cc.id === cid);
+      if (!c) continue;
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(c.id)) continue;
+      calloutOriginals[cid] = {
+        arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
+        knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
+        textBoxPosition: { x: c.textBoxPosition?.x ?? 0, y: c.textBoxPosition?.y ?? 0 },
+      };
+    }
+    dragStateRef.current = {
+      ...dragStateRef.current,
+      active: true,
+      mode: 'group-move',
+      handleId: null,
+      startSVGPoint: svgPoint,
+      originalProps: null,
+      annotationIndex: null,
+      ctmInverse,
+      anchorX: null, anchorY: null, centerX: null, centerY: null,
+      currentResize: null, currentAngle: undefined,
+      groupOriginals: originals,
+      groupCalloutOriginals: calloutOriginals,
+      groupMarkerIds: getGroupMarkerIds(),
+    };
+    try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    setInteractionState('dragging');
+    return true;
+  }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, svgRef]);
+
   // ---------------------------------------------------------------------------
   // Return API
   // ---------------------------------------------------------------------------
   return {
+    startFamilyGroupMove,
     // Selection state
     selectedIds,
     hoveredId,
