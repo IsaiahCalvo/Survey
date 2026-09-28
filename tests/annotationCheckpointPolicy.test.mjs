@@ -205,7 +205,10 @@ test('paced strokes on one screen: no checkpoint per stroke, one idle checkpoint
     strokeOn(handle, mine, `p${index}`);
     await handle.drain();
   }
-  await wait(150);
+  // RULED 2026-09-28 (flake fix, assertion unchanged): wait for the idle
+  // checkpoint to land instead of a fixed 150 ms, which full-suite CPU load
+  // sometimes outran. The cap only turns a missing checkpoint into a failure.
+  for (let waited = 0; (cloud.stats.snapshotCalls.length < 1 || cloud.snapshot?.at_seq !== 8) && waited < 5000; waited += 10) await wait(10);
   assert.equal(cloud.stats.snapshotCalls.length, 1, 'a tail of 8 rows: exactly one idle checkpoint');
   assert.equal(cloud.snapshot.at_seq, 8);
   await wait(150);
