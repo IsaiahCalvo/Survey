@@ -21,8 +21,15 @@
 // row 2 (playRowDrop). The w48 glide tests, the w49 row-2 grow / shrink test
 // and the w49 review tests of the glide (swapSharedNothing, the copy's drift
 // offset) were removed or rewritten deliberately for that ruling.
+//
+// RULED 2026-09-28 owner: row 2 downward swap (w51). The w50 row-2 crossfade
+// tests (opacity only, "never a translate") were rewritten deliberately for
+// that ruling: row 2's swap now moves both copies DOWN (old sinks and fades,
+// new comes down into place a beat later), clipped to row 2's band, still
+// with no sideways motion and landing exactly at its final spot.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   DROP_ROW_MOTION,
   LOADOUT_MOTION,
@@ -36,7 +43,7 @@ import {
   planLoadoutSwap,
   playRowDrop,
   popoverOpenFrom,
-  rowCrossfadeKeyframes,
+  rowSwapKeyframes,
 } from '../src/utils/loadoutTransition.js';
 
 const CONTROL_TAGS = new Set(['button', 'input', 'select', 'textarea']);
@@ -459,34 +466,99 @@ const setupRow = (options) => {
 };
 const everyFrame = (node) => [node, ...node.descendants()].flatMap((n) => n.animations.flatMap((a) => a.keyframes));
 
-test('RULED 2026-09-28 owner: one motion for row 2 — a changed set crossfades the WHOLE row in place: old out ~90ms, new in ~140ms (opacity only), no sideways motion, no per-control grow / shrink', () => {
+// Where a keyframe draws its element: [x, y] from its translate.
+const moveOf = (frame) => frame.translate.split(' ').map(parseFloat);
+// clip-path inset(top right bottom left) as numbers.
+const clipOf = (frame) => frame.clipPath.slice(6, -1).split(' ').map(parseFloat);
+
+test('RULED 2026-09-28 owner: row 2 downward swap — a changed set sinks the old row and brings the new one down into place, overlapping, no sideways motion, landing exactly', () => {
   const { holder, layer, replace } = setupRow();
   // Line → Cloud-style change: the settings after the colours change.
   replace(rowSettings(el('div', { 'data-toolbar-slot': 'fill' }), el('div', { 'data-toolbar-slot': 'arrowhead' })));
-  // The live row: one fade-in on the row itself, at its (new) spot.
+  // The live row: one animation on the row itself, coming DOWN to its spot.
   assert.equal(holder.animations.length, 1);
   const [incoming] = holder.animations;
-  assert.deepEqual(incoming.keyframes, [{ opacity: 0 }, { opacity: 1 }]);
+  assert.deepEqual(incoming.keyframes, rowSwapKeyframes('in', { room: { top: 0, bottom: 0 } }));
+  const [inFrom, inTo] = incoming.keyframes;
+  assert.equal(inFrom.opacity, 0);
+  assert.equal(inTo.opacity, 1);
   assert.equal(incoming.options.duration, ROW_MOTION.inMs);
-  assert.ok(ROW_MOTION.inMs >= 120 && ROW_MOTION.inMs <= 160, 'quick fade in (~140ms)');
-  // The old row: one lifeless copy over it, fading out as a whole.
+  assert.equal(incoming.options.delay, ROW_MOTION.inDelayMs);
+  assert.equal(incoming.options.easing, ROW_MOTION.inEasing);
+  assert.equal(incoming.options.fill, 'backwards', 'hidden above while it waits its beat; nothing left on it after');
+  // The old row: one lifeless copy over it, sinking as it fades.
   const [ghost] = ghostsIn(layer);
   assert.ok(ghost, 'the old row is drawn in a copy');
   assert.equal(ghost.getAttribute('aria-hidden'), 'true');
-  assert.deepEqual(ghost.animations[0].keyframes, [{ opacity: 1 }, { opacity: 0 }]);
-  assert.equal(ghost.animations[0].options.duration, ROW_MOTION.outMs);
-  assert.ok(ROW_MOTION.outMs >= 70 && ROW_MOTION.outMs <= 110, 'quicker fade out (~90ms)');
+  const outgoing = ghost.animations[0];
+  const [outFrom, outTo] = outgoing.keyframes;
+  assert.equal(outFrom.opacity, 1);
+  assert.equal(outTo.opacity, 0);
+  assert.equal(outgoing.options.duration, ROW_MOTION.outMs);
+  assert.equal(outgoing.options.easing, ROW_MOTION.outEasing);
+  // Both move the same way — DOWN — and never sideways.
+  const [, inY0] = moveOf(inFrom);
+  const [, inY1] = moveOf(inTo);
+  const [, outY0] = moveOf(outFrom);
+  const [, outY1] = moveOf(outTo);
+  assert.ok(inY1 > inY0, 'the new row travels down');
+  assert.ok(outY1 > outY0, 'the old row travels down');
+  assert.equal(inY0, -ROW_MOTION.inTravelPx);
+  assert.equal(outY1, ROW_MOTION.outTravelPx);
+  for (const frame of [...incoming.keyframes, ...outgoing.keyframes]) assert.equal(moveOf(frame)[0], 0, 'no x motion');
+  // It lands exactly where it belongs: no offset left at the end, and the
+  // row's own laid-out spot (its planned centre) is never touched.
+  assert.deepEqual(moveOf(inTo), [0, 0]);
+  assert.equal(holder.getAttribute('style'), 'left: 480px');
+  assert.equal(holder.style.translate, undefined);
   // The copy sits where the old row was drawn (its own laid-out spot).
   assert.equal(ghost.getAttribute('style'), 'left: 480px');
   assert.equal(ghost.style.translate, undefined, 'the copy is not shifted');
-  // Nothing inside either row animates on its own, and nothing moves.
+  // Nothing inside either row animates on its own; no scale anywhere.
   for (const node of [...holder.descendants(), ...ghost.descendants()]) assert.equal(node.animations.length, 0, `${node.tag} animated on its own`);
   for (const frame of [...everyFrame(holder), ...everyFrame(ghost)]) {
-    assert.equal(frame.translate, undefined, 'no translate: row 2 never moves sideways');
     assert.equal(frame.transform, undefined);
+    assert.equal(frame.scale, undefined);
   }
   ghost.animations[0].onfinish();
   assert.equal(ghostsIn(layer).length, 0, 'the copy goes when it has faded');
+});
+
+test('RULED 2026-09-28 owner: row 2 downward swap — quick enough to hide it: ~180-200ms end to end, the new row a beat (30-40ms) after the old', () => {
+  const total = Math.max(ROW_MOTION.outMs, ROW_MOTION.inDelayMs + ROW_MOTION.inMs);
+  assert.ok(total >= 175 && total <= 200, `total ${total}ms`);
+  assert.ok(ROW_MOTION.inDelayMs >= 30 && ROW_MOTION.inDelayMs <= 40);
+  assert.ok(ROW_MOTION.outTravelPx >= 6 && ROW_MOTION.outTravelPx <= 8);
+  assert.ok(ROW_MOTION.inTravelPx >= 6 && ROW_MOTION.inTravelPx <= 8);
+  assert.equal(ROW_MOTION.inEasing, 'cubic-bezier(0.33, 1, 0.68, 1)', 'ease-out: settles');
+  assert.equal(ROW_MOTION.outEasing, 'cubic-bezier(0.32, 0, 0.67, 0)', 'ease-in: speeds away');
+});
+
+test('RULED 2026-09-28 owner: row 2 downward swap — every frame is clipped to row 2\'s band, so nothing draws over the tool bar or the page', () => {
+  // Settings 28px tall centred in a 36px band: 4px of band above and below.
+  const room = { top: 4, bottom: 4 };
+  for (const frames of [rowSwapKeyframes('in', { room }), rowSwapKeyframes('out', { room }), rowSwapKeyframes('out', { room, from: 0.4, fromY: -3 }), rowSwapKeyframes('leave', { room })]) {
+    for (const frame of frames) {
+      const [, y] = moveOf(frame);
+      const [top, right, bottom, left] = clipOf(frame);
+      // The clip, in the element's own moved coordinates, sits exactly on
+      // the band: its top at the band's top, its bottom at the band's bottom.
+      assert.equal(top + y, -room.top, 'clip top on the band\'s top edge');
+      assert.equal(y - bottom, room.bottom, 'clip bottom on the band\'s bottom edge');
+      assert.ok(left < -1000 && right < -1000, 'never clipped sideways');
+    }
+  }
+  // Coming down 6px with 4px of room: 2px of it is still above the band and hidden.
+  assert.equal(clipOf(rowSwapKeyframes('in', { room })[0])[0], ROW_MOTION.inTravelPx - 4);
+  // The band is measured from the real row: settings box vs its bar.
+  const { holder, replace } = setupRow();
+  const bar = el('div', { 'data-chrome-format-row': 'true' });
+  bar.getBoundingClientRect = () => ({ top: 100, bottom: 136, left: 0, width: 800, height: 36 });
+  holder.parentNode = bar;
+  holder.getBoundingClientRect = () => ({ top: 104, bottom: 132, left: 480, width: 200, height: 28 });
+  replace(rowSettings(el('div', { 'data-toolbar-slot': 'fill' })));
+  const last = holder.animations.at(-1);
+  assert.deepEqual(last.keyframes, rowSwapKeyframes('in', { room: { top: 4, bottom: 4 } }));
 });
 
 test('RULED 2026-09-28 owner: row 2 with the same set (pen → highlighter, a new colour or width) does not animate at all', () => {
@@ -499,7 +571,7 @@ test('RULED 2026-09-28 owner: row 2 with the same set (pen → highlighter, a ne
   assert.equal(everyFrame(holder).length, 0);
 });
 
-test('RULED 2026-09-28 owner: a row 2 change caught mid-fade fades the half-shown row out from where it was; the new one fades in', () => {
+test('RULED 2026-09-28 owner: a row 2 change caught mid-swap carries the half-shown row on down from where it was; the new one comes down behind it', () => {
   const { holder, layer, replace } = setupRow();
   replace(rowSettings(el('div', { 'data-toolbar-slot': 'fill' })));
   const [first] = holder.animations;
@@ -507,10 +579,14 @@ test('RULED 2026-09-28 owner: a row 2 change caught mid-fade fades the half-show
   replace(rowSettings(el('div', { 'data-toolbar-slot': 'arrowhead' })));
   assert.equal(first.cancelled, true);
   const ghosts = ghostsIn(layer);
-  assert.equal(ghosts.length, 2, 'the older copy keeps fading, the half-shown row joins it');
-  assert.deepEqual(ghosts[1].animations[0].keyframes, [{ opacity: 0.5 }, { opacity: 0 }]);
+  assert.equal(ghosts.length, 2, 'the older copy keeps going, the half-shown row joins it');
+  const [from, to] = ghosts[1].animations[0].keyframes;
+  assert.equal(from.opacity, 0.5);
+  assert.deepEqual(moveOf(from), [0, -ROW_MOTION.inTravelPx * 0.5], 'from where it was drawn, half-way down');
+  assert.deepEqual(moveOf(to), [0, ROW_MOTION.outTravelPx]);
+  assert.equal(to.opacity, 0);
   assert.equal(ghosts[1].animations[0].options.duration, ROW_MOTION.outMs * 0.5);
-  assert.deepEqual(holder.animations[1].keyframes[0], { opacity: 0 });
+  assert.deepEqual(holder.animations[1].keyframes, rowSwapKeyframes('in', { room: { top: 0, bottom: 0 } }));
 });
 
 test('RULED 2026-09-28 owner: a row 2 change with a popover open is instant, so the popover stays on its opener', () => {
@@ -536,16 +612,19 @@ test('RULED 2026-09-28 owner: reduced motion — row 2 changes, row 3 comes and 
   assert.equal(slot.children.length, 0);
 });
 
-test('RULED 2026-09-28 owner: row 2 leaving holds its last set while the row fades itself, then the copy goes', () => {
+test('RULED 2026-09-28 owner: row 2 leaving holds its last set, sinking it while the row fades itself, then the copy goes', () => {
   const { holder, layer, win } = setupRow();
   holder.style.visibility = 'hidden';
   win.flush();
   const [ghost] = ghostsIn(layer);
-  assert.deepEqual(ghost.animations[0].keyframes, [{ opacity: 1 }, { opacity: 1 }]);
+  const [from, to] = ghost.animations[0].keyframes;
+  assert.deepEqual([from.opacity, to.opacity], [1, 1], 'no second fade on top of the row\'s own');
+  assert.deepEqual(moveOf(from), [0, 0]);
+  assert.deepEqual(moveOf(to), [0, ROW_MOTION.outTravelPx], 'it moves down as it goes');
   assert.equal(ghost.animations[0].options.duration, ROW_MOTION.outMs);
   holder.style.visibility = '';
   win.flush();
-  assert.equal(layer.children.length, 0, 'wanted again: the copy goes, the row\'s own fade covers it');
+  assert.equal(layer.children.length, 0, 'wanted again: the copy goes, the row\'s own drop-in covers it');
 });
 
 test('RULED 2026-09-28 owner: row 3 drops down from under row 2 (~150ms in, ~110ms out), straight down, clipped at its top', () => {
@@ -597,11 +676,17 @@ test('RULED 2026-09-28 owner: row 3 enter drops the bar in; exit sends a lifeles
   assert.equal(bar3.animations.length, 0);
 });
 
-test('RULED 2026-09-28 owner: row 2\'s crossfade keyframes are opacity only — never a translate or scale', () => {
-  for (const frames of [rowCrossfadeKeyframes('in'), rowCrossfadeKeyframes('out'), rowCrossfadeKeyframes('out', { from: 0.4 })]) {
-    for (const frame of frames) assert.deepEqual(Object.keys(frame), ['opacity']);
-  }
-  assert.deepEqual(rowCrossfadeKeyframes('in'), [{ opacity: 0 }, { opacity: 1 }]);
-  assert.deepEqual(rowCrossfadeKeyframes('out', { from: 0.4 }), [{ opacity: 0.4 }, { opacity: 0 }]);
+test('RULED 2026-09-28 owner: row 2 downward swap — row 2 appears the way row 3 does (down from under the bar above, same curve), never over the tool bar', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const t = DROP_ROW_MOTION.travelPx;
+  const block = css.slice(css.indexOf('@keyframes chromeRowDropIn'));
+  assert.ok(block.includes(`from { opacity: 0; translate: 0px -${t}px; clip-path: inset(${t}px 0px 0px 0px); }`));
+  assert.ok(block.includes('to { opacity: 1; translate: 0px 0px; clip-path: inset(0px 0px 0px 0px); }'));
+  const rule = css.match(/\.chrome-row-drop-in \{\s*animation: chromeRowDropIn (\d+)ms (cubic-bezier\([^)]*\));/);
+  assert.ok(rule);
+  assert.equal(Number(rule[1]), DROP_ROW_MOTION.inMs);
+  assert.equal(rule[2], DROP_ROW_MOTION.inEasing);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.chrome-row-drop-in \{\s*animation: none;/);
+  assert.doesNotMatch(css, /chrome-row-fade-in/);
 });
 

@@ -243,6 +243,11 @@ test('w47: the loadout and row 2 crossfade through ghost layers; row 2 fades out
   const holderAt = appShell.indexOf('data-chrome-settings-holder="true"');
   const layerAt = appShell.indexOf('ref={setFormatGhostLayerEl}');
   assert.ok(layerAt > holderAt, 'row 2 ghost layer after the live settings');
+  // RULED 2026-09-28 owner: row 2 downward swap (w51): the old settings sink
+  // inside row 2's ghost layer, which clips them to the band (never onto the
+  // page); row 2 itself drops in like row 3.
+  assert.match(appShell, /ref=\{setFormatGhostLayerEl\}[\s\S]{0,400}style=\{\{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'clip' \}\}/);
+  assert.match(appShell, /data-chrome-format-row="true"[\s\S]{0,300}className="chrome-row-drop-in"/);
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(css, /\[data-chrome-format-row\]\[data-leaving="true"\] \{\s*pointer-events: none;/);
   const hook = readFileSync(new URL('../src/hooks/useLoadoutTransition.js', import.meta.url), 'utf8');

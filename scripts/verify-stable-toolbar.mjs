@@ -43,6 +43,15 @@
 // itself. Row 3 (Aa) drops down from under row 2 (translateY -8 → 0 + fade,
 // ~150ms) and goes back up (~110ms) without moving row 2.
 //
+// w51 (2026-09-28): RULED 2026-09-28 owner: row 2 downward swap. Row 2's
+// swap now flows DOWN: the old row's copy sinks (~7px) as it fades out
+// (~120ms, ease-in) and the live row comes down from ~6px above into its
+// final centred spot (~150ms ease-out, ~35ms later). The frame samples
+// assert: straight down on every frame (no x), both copies moving the same
+// (downward) way, everything drawn inside row 2's band (never over the tool
+// bar or the page), the row landing at exactly its centred spot, an
+// unchanged set never animating, and row 2 arriving down from under the bar.
+//
 //   node scripts/verify-stable-toolbar.mjs
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -126,49 +135,68 @@ const assertRow2Centred = (states, label) => {
   }
 };
 
-// RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade). On
-// every frame: no translate on the live row or the copy of the old one. The
-// row's spot changes at most once, and only while it is still faint (it is
-// drawn at its new centre as it fades in — never a glide). A changed set
-// crossfades: the old row's copy fades out and goes within ~150ms while the
-// live row fades in (opacity only) and is whole by ~220ms. The same set:
-// nothing animates at all.
-const assertRowCrossfade = (frames, label) => {
+// RULED 2026-09-28 owner: row 2 downward swap (w51, was w50's in-place
+// crossfade). On every frame: row 2 and the copy of the old row move straight
+// down or not at all (x always 0), and what they draw stays inside row 2's
+// band. The row's spot changes at most once, and only while it is still
+// faint. A changed set: the old row's copy sinks and fades and is gone by
+// ~150ms, the live row comes down from above (its y only ever increasing)
+// and is whole and exactly in place by ~230ms. The same set: nothing moves or
+// fades at all.
+const ty = (tr) => (!tr || tr === 'none' ? [0, 0] : tr.split(' ').map(parseFloat).concat([0]).slice(0, 2));
+const assertRowSwap = (frames, label) => {
   const shown = frames.filter((f) => f.rowDisplay === 'block' && f.holderLeft != null);
   for (const f of frames) {
-    assert.ok(f.holderTranslate === 'none' || f.holderTranslate === '0px', `${label} @${f.t}ms: row 2 slid (${f.holderTranslate})`);
-    for (const g of f.rowGhosts) assert.ok(g.tr === 'none' || g.tr === '0px', `${label} @${f.t}ms: the old row's copy slid (${g.tr})`);
+    const [hx] = ty(f.holderTranslate);
+    assert.equal(hx, 0, `${label} @${f.t}ms: row 2 slid sideways (${f.holderTranslate})`);
+    for (const g of f.rowGhosts) assert.equal(ty(g.tr)[0], 0, `${label} @${f.t}ms: the old row's copy slid sideways (${g.tr})`);
     if (f.holderScale != null) assert.ok(f.holderScale === 1, `${label} @${f.t}ms: row 2 scale ${f.holderScale}`);
+    // Inside row 2's band: never over the tool bar, never onto the page.
+    if (f.band) {
+      for (const d of [f.holderDrawn, ...f.rowGhosts.map((g) => g.drawn)].filter(Boolean)) {
+        assert.ok(d[0] >= f.band[0] - 0.6 && d[1] <= f.band[1] + 0.6, `${label} @${f.t}ms: row 2 drew outside its band (${d} vs ${f.band})`);
+      }
+    }
   }
   const lefts = shown.map((f) => f.holderLeft);
   const jumps = [];
   for (let k = 1; k < shown.length; k += 1) {
     if (Math.abs(shown[k].holderLeft - shown[k - 1].holderLeft) > 0.5) jumps.push({ t: shown[k].t, by: Math.round((shown[k].holderLeft - shown[k - 1].holderLeft) * 10) / 10, o: Math.round(shown[k].holderOpacity * Number(shown[k].rowOpacity) * 100) / 100, prevO: Math.round(shown[k - 1].holderOpacity * Number(shown[k - 1].rowOpacity) * 100) / 100 });
   }
-  const real = jumps;
-  assert.ok(real.length <= 1, `${label}: row 2 moved on more than one frame — a glide (${JSON.stringify(jumps)} lefts ${lefts})`);
-  for (const j of real) assert.ok(Math.min(j.o, j.prevO) <= 0.6, `${label}: row 2 jumped while clearly visible (${JSON.stringify(j)})`);
+  assert.ok(jumps.length <= 1, `${label}: row 2 moved sideways on more than one frame — a glide (${JSON.stringify(jumps)} lefts ${lefts})`);
+  for (const j of jumps) assert.ok(Math.min(j.o, j.prevO) <= 0.6, `${label}: row 2 jumped while clearly visible (${JSON.stringify(j)})`);
   const changed = frames.sigBefore != null && shown.length && shown[shown.length - 1].rowSig !== frames.sigBefore;
   const ghostFrames = frames.filter((f) => f.rowGhosts.length);
   if (!changed) {
-    // Arriving (the row's own fade) or the same set: no crossfade.
+    // Arriving (the row's own drop-in) or the same set: no swap.
     if (frames.sigBefore != null) {
-      assert.equal(ghostFrames.length, 0, `${label}: same set, but row 2 crossfaded`);
-      assert.ok(shown.every((f) => f.holderOpacity === 1), `${label}: same set, but row 2 faded (${shown.map((f) => f.holderOpacity)})`);
+      assert.equal(ghostFrames.length, 0, `${label}: same set, but row 2 swapped`);
+      assert.ok(shown.every((f) => f.holderOpacity === 1 && ty(f.holderTranslate)[1] === 0), `${label}: same set, but row 2 moved or faded (${shown.map((f) => `${f.holderOpacity}/${f.holderTranslate}`)})`);
     }
-    return { kind: frames.sigBefore == null ? 'arrives' : 'same', jumps: real.length };
+    return { kind: frames.sigBefore == null ? 'arrives' : 'same', jumps: jumps.length };
   }
-  assert.ok(ghostFrames.length >= 1, `${label}: the old row faded out (no copy seen)`);
+  assert.ok(ghostFrames.length >= 1, `${label}: the old row went out (no copy seen)`);
   const lastGhost = ghostFrames[ghostFrames.length - 1].t;
   assert.ok(lastGhost <= 170, `${label}: the old row's copy was gone by ~150ms (last ${lastGhost}ms)`);
+  // The old row sinks: its y only increases, and is below where it started.
+  const ghostYs = ghostFrames.map((f) => ty(f.rowGhosts[f.rowGhosts.length - 1].tr)[1]);
+  assert.ok(ghostYs.every((v, k) => k === 0 || v >= ghostYs[k - 1] - 0.01), `${label}: the old row went down (${ghostYs})`);
+  assert.ok(Math.max(...ghostYs) > 1, `${label}: the old row moved down (${ghostYs})`);
+  // The new row comes down: y from above, only ever increasing, landing at 0.
+  const holderYs = shown.map((f) => ty(f.holderTranslate)[1]);
+  assert.ok(Math.min(...holderYs) < -1, `${label}: the new row came from above (${holderYs})`);
+  assert.ok(holderYs.every((v, k) => k === 0 || v >= holderYs[k - 1] - 0.01 || holderYs[k - 1] === 0), `${label}: the new row came straight down (${holderYs})`);
   assert.ok(shown.some((f) => f.holderOpacity < 0.9), `${label}: the new row faded in (${shown.map((f) => f.holderOpacity)})`);
-  const whole = shown.find((f) => f.holderOpacity === 1 && f.t > 0 && shown.slice(shown.indexOf(f)).every((g) => g.holderOpacity === 1));
-  assert.ok(whole && whole.t <= 230, `${label}: the new row whole by ~140ms (${shown.map((f) => `${f.t}:${f.holderOpacity}`).join(' ')})`);
-  // The copy stays where the old row was drawn.
-  for (const f of ghostFrames) assert.ok(new Set(f.rowGhosts.map((g) => g.x)).size <= 2, `${label}: copies in place`);
+  const whole = shown.find((f) => f.holderOpacity === 1 && ty(f.holderTranslate)[1] === 0 && f.t > 0
+    && shown.slice(shown.indexOf(f)).every((g) => g.holderOpacity === 1 && ty(g.holderTranslate)[1] === 0));
+  assert.ok(whole && whole.t <= 240, `${label}: the new row whole and in place by ~190ms (${shown.map((f) => `${f.t}:${f.holderOpacity}/${ty(f.holderTranslate)[1]}`).join(' ')})`);
+  // The copy stays where the old row was drawn, sideways.
   const copyXs = new Set(frames.flatMap((f) => f.rowGhosts.map((g) => g.x)));
-  assert.ok(copyXs.size <= 2, `${label}: the old row's copy never moved (${[...copyXs]}) ${JSON.stringify(frames.map((f) => [f.t, f.rowDisplay, f.rowOpacity, f.holderLeft, f.holderOpacity, f.rowGhosts]))}`);
-  return { kind: 'crossfade', jumps: real.length, ghostMs: lastGhost, wholeMs: whole.t };
+  assert.ok(copyXs.size <= 2, `${label}: the old row's copy never moved sideways (${[...copyXs]})`);
+  // It starts a beat after the old one: the first frame the new row shows,
+  // the old one is already on its way.
+  const firstIn = shown.find((f) => f.holderOpacity > 0.02 && f.holderOpacity < 1);
+  return { kind: 'swap', jumps: jumps.length, ghostMs: lastGhost, wholeMs: whole.t, firstInMs: firstIn?.t ?? null, downPx: Math.round(Math.max(...ghostYs) * 10) / 10, fromPx: Math.round(Math.min(...holderYs) * 10) / 10 };
 };
 
 // Click `selector` from inside the page and sample every frame for `ms`:
@@ -188,6 +216,19 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
     return [...h.querySelectorAll('button, input, select, [data-toolbar-slot], .chrome-divider')]
       .filter((e) => !e.closest('[role="dialog"], [role="menu"], [role="listbox"], [data-loadout-ignore]'))
       .map((e) => `${e.tagName}:${e.getAttribute('data-toolbar-slot') || ''}:${String(e.getAttribute('aria-label') || '').replace(/[#\d].*$/, '').trim()}`).join('|');
+  };
+  // w51: the vertical span an element actually draws: its box, cut by its
+  // own clip-path inset and (for a copy) by the clipping layer it sits in.
+  const drawnSpan = (el, clipper = null) => {
+    if (!el || !el.getClientRects().length) return null;
+    const cs = getComputedStyle(el);
+    if (Number(cs.opacity) < 0.02 || cs.visibility === 'hidden') return null;
+    const b = el.getBoundingClientRect();
+    let top = b.top; let bottom = b.bottom;
+    const m = cs.clipPath && cs.clipPath.startsWith('inset(') ? cs.clipPath.slice(6).split(/[ )]/).map(parseFloat) : null;
+    if (m) { top = Math.max(top, b.top + m[0]); bottom = Math.min(bottom, b.bottom - (Number.isFinite(m[2]) ? m[2] : m[0])); }
+    if (clipper) { const c = clipper.getBoundingClientRect(); top = Math.max(top, c.top); bottom = Math.min(bottom, c.bottom); }
+    return [Math.round(top * 10) / 10, Math.round(bottom * 10) / 10];
   };
   const sample = () => {
     const live = q(slot);
@@ -223,7 +264,10 @@ const sampleSwap = (page, selector, { slot = '[data-toolbar-subtools]', ms = 320
       // copy of the old row in row 2's ghost layer.
       holderOpacity: q('[data-chrome-settings-holder]') ? Number(Number(getComputedStyle(q('[data-chrome-settings-holder]')).opacity).toFixed(2)) : null,
       holderScale: (() => { const h = q('[data-chrome-settings-holder]'); if (!h) return null; const sc = getComputedStyle(h).scale; return sc === 'none' ? 1 : Number(sc); })(),
-      rowGhosts: [...document.querySelectorAll('[data-chrome-format-row] [data-loadout-ghost-layer] > [data-loadout-ghost]')].map((g) => ({ o: Number(Number(getComputedStyle(g).opacity).toFixed(2)), tr: getComputedStyle(g).translate, x: Math.round(g.getBoundingClientRect().left * 10) / 10 })),
+      rowGhosts: [...document.querySelectorAll('[data-chrome-format-row] [data-loadout-ghost-layer] > [data-loadout-ghost]')].map((g) => ({ o: Number(Number(getComputedStyle(g).opacity).toFixed(2)), tr: getComputedStyle(g).translate, x: Math.round(g.getBoundingClientRect().left * 10) / 10, drawn: drawnSpan(g, q('[data-chrome-format-row] [data-loadout-ghost-layer]')) })),
+      // w51: row 2's band (its bar) and the span the live row draws in it.
+      band: (() => { const r = q('[data-chrome-format-row]'); if (!r || r.style.display === 'none') return null; const b = r.getBoundingClientRect(); return [Math.round(b.top * 10) / 10, Math.round(b.bottom * 10) / 10]; })(),
+      holderDrawn: drawnSpan(q('[data-chrome-settings-holder]')),
       rowSig: rowSig(),
       rowRect: (() => { const r = q('[data-chrome-format-row]'); if (!r || r.style.display === 'none') return null; const b = r.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)].join(','); })(),
       ghost: ghost ? Number(getComputedStyle(ghost).opacity).toFixed(2) : null,
@@ -432,9 +476,9 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
         await page.click(fromSel); await settle(page);
         const frames = await sampleSwap(page, toSel);
         const r = assertMorph(frames, `${width}px ${from}→${to}`, { morphs });
-        const way = assertRowCrossfade(frames, `${width}px ${from}→${to}`);
+        const way = assertRowSwap(frames, `${width}px ${from}→${to}`);
         assertRow2Centred([{ label: to, ...(await fixedPoints(page)) }], `${width}px ${from}→${to}`);
-        if (round === 0) cycleReport.push(`${from}→${to} ${morphs} morphs/${r.morphMs}ms row 2 ${way.kind}${way.ghostMs != null ? ` (old out by ${way.ghostMs}ms, new whole ${way.wholeMs}ms)` : ''}`);
+        if (round === 0) cycleReport.push(`${from}→${to} ${morphs} morphs/${r.morphMs}ms row 2 ${way.kind}${way.ghostMs != null ? ` (old down ${way.downPx}px, out by ${way.ghostMs}ms; new from ${way.fromPx}px, first shown ${way.firstInMs}ms, whole ${way.wholeMs}ms)` : ''}`);
         await settle(page);
       }
     }
@@ -501,6 +545,12 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     assert.ok(lingering.length >= 2, `${width}px Draw→Pan: row 2 stayed for its fade-out`);
     assert.ok(Number(lingering[lingering.length - 1].rowOpacity) < Number(lingering[0].rowOpacity), `${width}px: row 2 faded`);
     assert.equal(leave[leave.length - 1].rowDisplay, 'none', `${width}px: row 2 gone after the fade`);
+    // RULED 2026-09-28 owner: row 2 downward swap (w51): leaving, its held
+    // settings sink as the row fades, straight down, inside its band.
+    const leaveYs = leave.filter((f) => f.rowGhosts.length).map((f) => ty(f.rowGhosts[0].tr));
+    assert.ok(leaveYs.length >= 2 && leaveYs.every(([x]) => x === 0) && Math.max(...leaveYs.map(([, y]) => y)) > 1
+      && leaveYs.every(([, y], k) => k === 0 || y >= leaveYs[k - 1][1] - 0.01), `${width}px Draw→Pan: row 2's settings sank as it went (${JSON.stringify(leaveYs)})`);
+    for (const f of leave) for (const g of f.rowGhosts) if (f.band && g.drawn) assert.ok(g.drawn[1] <= f.band[1] + 0.6, `${width}px Draw→Pan: row 2's settings drew onto the page (${g.drawn} vs ${f.band})`);
     assert.ok(leave.some((f) => f.ghostMotion.some((m) => m.s < 0.95)), `${width}px Draw→Pan: the outgoing tools shrank out`);
     assert.equal(new Set(leave.map((f) => f.draw)).size, 1, `${width}px Draw→Pan: the icons stayed put`);
     // Same set, different tool lit: no animation.
@@ -513,12 +563,13 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     const lineToArrow = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Arrow"]', { slot: '[data-chrome-settings-holder]', ms: 320 });
     assert.ok(lineToArrow.every((f) => f.coloursAnimating === 0), `${width}px Line→Arrow: the colours did not animate on their own`);
     // RULED 2026-09-28 owner: one motion for row 2 — the wider Arrow row is
-    // drawn at its new centre and crossfades there; no glide (w48 glided).
-    const glide = assertRowCrossfade(lineToArrow, `${width}px Line→Arrow`);
-    assert.equal(glide.kind, 'crossfade', `${width}px Line→Arrow: the set changed, so row 2 crossfaded`);
+    // drawn at its new centre and swaps there; no glide (w48 glided).
+    // RULED 2026-09-28 owner: row 2 downward swap (w51): the swap flows down.
+    const glide = assertRowSwap(lineToArrow, `${width}px Line→Arrow`);
+    assert.equal(glide.kind, 'swap', `${width}px Line→Arrow: the set changed, so row 2 swapped`);
     // And back: Arrow → Line.
     const arrowToLine = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Line"]', { slot: '[data-chrome-settings-holder]', ms: 320 });
-    assertRowCrossfade(arrowToLine, `${width}px Arrow→Line`);
+    assertRowSwap(arrowToLine, `${width}px Arrow→Line`);
     await page.click('#chrome-subtools-host button[aria-label="Arrow"]'); await settle(page);
     assertRow2Centred([{ label: 'arrow', ...(await fixedPoints(page)) }], `${width}px`);
     // w47 review 1: Eraser → Pen never blinks row 2.
@@ -564,9 +615,9 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     await page.click(GROUP.draw); await settle(page);
     await page.click('#chrome-subtools-host button[aria-label="Pen"]'); await settle(page);
     const penToHl = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Highlighter"]', { slot: '[data-chrome-settings-holder]', ms: 300 });
-    extraReport.push(`Pen→Highlighter ${assertRowCrossfade(penToHl, `${width}px Pen→Highlighter`).kind}`);
+    extraReport.push(`Pen→Highlighter ${assertRowSwap(penToHl, `${width}px Pen→Highlighter`).kind}`);
     const hlToPen = await sampleSwap(page, '#chrome-subtools-host button[aria-label="Pen"]', { slot: '[data-chrome-settings-holder]', ms: 300 });
-    extraReport.push(`Highlighter→Pen ${assertRowCrossfade(hlToPen, `${width}px Highlighter→Pen`).kind}`);
+    extraReport.push(`Highlighter→Pen ${assertRowSwap(hlToPen, `${width}px Highlighter→Pen`).kind}`);
     // A value change inside a control (a preset colour) never animates row 2.
     const presets = await page.$$('[data-chrome-settings-holder] [data-quick-colours] button');
     if (presets.length >= 2) {
@@ -604,17 +655,18 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
     if (await page.$(styleTrigger)) {
       const cloudOn = await pickStyle('Cloud');
       if (cloudOn) {
-        const r = assertRowCrossfade(cloudOn, `${width}px Cloud on`);
+        const r = assertRowSwap(cloudOn, `${width}px Cloud on`);
         await settle(page);
         const bump = await page.$('[data-chrome-settings-holder] [aria-label="Cloud bump size"]');
         extraReport.push(`Cloud on ${r.kind}${bump ? ' (bump size shown)' : ''}`);
         const cloudOff = await pickStyle('Solid');
-        extraReport.push(`Cloud off ${assertRowCrossfade(cloudOff, `${width}px Cloud off`).kind}`);
+        extraReport.push(`Cloud off ${assertRowSwap(cloudOff, `${width}px Cloud off`).kind}`);
         await settle(page);
       }
     }
-    // Picking marks with Select: row 2 comes (fade in place), changes
-    // (crossfade) and goes (fade out in place) — never a glide.
+    // Picking marks with Select: row 2 comes — RULED 2026-09-28 owner: row 2
+    // downward swap (w51): down from under the tool bar, like row 3 (8px,
+    // clipped at its top so it never draws over the tool bar), never sideways.
     await page.click(SELECT); await settle(page);
     const pickFrames = await page.evaluate(({ x, y }) => new Promise((done) => {
       const frames = [];
@@ -626,13 +678,21 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
       const tick = () => {
         const r = document.querySelector('[data-chrome-format-row]');
         const h = document.querySelector('[data-chrome-settings-holder]');
-        frames.push({ display: r.style.display, o: Number(getComputedStyle(r).opacity), tr: getComputedStyle(r).translate, htr: h ? getComputedStyle(h).translate : 'none' });
+        const cs = getComputedStyle(r);
+        const b = r.getBoundingClientRect();
+        const clipTop = cs.clipPath && cs.clipPath.startsWith('inset(') ? parseFloat(cs.clipPath.slice(6)) : 0;
+        frames.push({ t: Math.round(performance.now() - start), display: r.style.display, o: Number(Number(cs.opacity).toFixed(2)), tr: cs.translate, htr: h ? getComputedStyle(h).translate : 'none', drawnTop: Math.round((b.top + clipTop) * 10) / 10 });
         if (performance.now() - start < 260) requestAnimationFrame(tick); else done(frames);
       };
       requestAnimationFrame(tick);
     }), { x: pageBox.x + 155, y: pageBox.y + 315 });
-    assert.ok(pickFrames.every((f) => (f.tr === 'none' || f.tr === '0px') && (f.htr === 'none' || f.htr === '0px')), `${width}px pick: row 2 moved as it came ${JSON.stringify(pickFrames)}`);
-    extraReport.push(`pick: row 2 ${pickFrames.some((f) => f.display === 'block' && f.o < 1) ? 'faded in place' : 'already there'}`);
+    const pickShown = pickFrames.filter((f) => f.display === 'block');
+    const rowYs = pickShown.map((f) => ty(f.tr)[1]);
+    assert.ok(pickShown.every((f) => ty(f.tr)[0] === 0 && ty(f.htr)[0] === 0), `${width}px pick: row 2 moved sideways as it came ${JSON.stringify(pickFrames)}`);
+    assert.ok(rowYs.every((v, k) => v <= 0.01 && v >= -8.01 && (k === 0 || v >= rowYs[k - 1] - 0.01)), `${width}px pick: row 2 came straight down (${rowYs})`);
+    const restTop = pickShown.length ? pickShown[pickShown.length - 1].drawnTop : null;
+    assert.ok(pickShown.every((f) => f.drawnTop >= restTop - 0.6), `${width}px pick: row 2 drew above its spot, over the tool bar ${JSON.stringify(pickShown.map((f) => f.drawnTop))}`);
+    extraReport.push(`pick: row 2 ${pickShown.some((f) => ty(f.tr)[1] < -1) ? `dropped in (from ${Math.min(...rowYs)}px)` : 'already there'}`);
     await page.keyboard.press('Escape'); await settle(page);
 
     // RULED 2026-09-28 owner: row 3 drops down. Text → row 3 (Aa) arrives;
@@ -768,7 +828,7 @@ const runAt = async (width, { reducedMotion = false } = {}) => {
 
     console.log(`  ${width}px panels: ${panelReport.join('; ')}`);
     console.log(`ok ${width}px: icons at ${seen[0].draw} (centre ${seen[0].iconsCentre}), Pan at ${seen[0].pan}, Select ends ${seen[0].selectRight}, Redo ends ${seen[0].redoRight}, loadout at ${seen[0].loadout} across ${seen.length} states; `
-      + `row 2 starts ${[...rowStarts].sort((a, b) => a - b).join('/')} (centred); Line→Arrow ${glide.kind} (old out by ${glide.ghostMs}ms, new whole ${glide.wholeMs}ms, ${glide.jumps} jump); ${extraReport.join('; ')}; `
+      + `row 2 starts ${[...rowStarts].sort((a, b) => a - b).join('/')} (centred); Line→Arrow ${glide.kind} (old down ${glide.downPx}px out by ${glide.ghostMs}ms, new from ${glide.fromPx}px first shown ${glide.firstInMs}ms whole ${glide.wholeMs}ms, ${glide.jumps} jump); ${extraReport.join('; ')}; `
       + `morphs: ${cycleReport.join(', ')}; rapid switching worst frame step ${worst.toFixed(2)} units over ${compared} steps`);
   } finally {
     await ctx.close();

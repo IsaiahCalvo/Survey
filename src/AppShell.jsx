@@ -1610,6 +1610,9 @@ export default function App({ devPreviewReturnTab = null }) {
   // when its set of controls changes the WHOLE row crossfades in place (old
   // out ~90ms, new in ~140ms at its final centred spot, no sideways
   // motion); an unchanged set never animates. See useRowCrossfade.
+  // RULED 2026-09-28 owner: row 2 downward swap (w51): the swap is now one
+  // downward flow — old row sinks and fades, new row comes down into place a
+  // beat later (~185ms), clipped to row 2's band. Same hook, same rule.
   useRowCrossfade(formatHolderEl, formatGhostLayerEl, chromeMotion);
   // Row 2 leaves the way it arrives (useLeavingRow): it stays drawn while it
   // fades, never blinks on a one-render gap, and runs back if wanted again.
@@ -3681,7 +3684,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 ref={setFormatGhostLayerEl}
                 data-loadout-ghost-layer="true"
                 aria-hidden="true"
-                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+                /* RULED 2026-09-28 owner: row 2 downward swap (w51): the old
+                   settings sink as they fade — clipped to row 2's band so
+                   they never draw onto the page below. */
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'clip' }}
               />
               </>,
               formatRowEl
@@ -3795,7 +3801,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   goes at once with prefers-reduced-motion.
                   RULED 2026-09-28 owner: one motion for row 2 (in-place
                   crossfade): it now fades in and out IN PLACE (140ms in,
-                  90ms out) — no drop, no drift up. */}
+                  90ms out) — no drop, no drift up.
+                  RULED 2026-09-28 owner: row 2 downward swap (w51): it now
+                  drops in like row 3 (8px down from under the tool bar,
+                  150ms, clipped at its top) and, leaving, its settings sink
+                  while it fades — the same downward flow as its swap. */}
               <div
                   ref={attachFormatRow}
                   data-chrome-format-row="true"
@@ -3803,7 +3813,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-label="Formatting"
                   data-toolbar-tight={toolbarPlan.tight ? 'true' : undefined}
                   data-leaving={formatRowLeaving ? 'true' : undefined}
-                  className="chrome-row-fade-in"
+                  className="chrome-row-drop-in"
                   style={{
                     display: formatRowShown || formatRowLeaving ? 'block' : 'none',
                     position: 'relative',

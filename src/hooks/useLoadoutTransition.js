@@ -66,6 +66,9 @@ export default function useLoadoutTransition(slot, layer, enabled = true) {
  * Row 2 fading out in place: the reverse of its fade-in.
  * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade) — it no
  * longer drifts up as it goes (w47's 5px), it just fades where it is.
+ * RULED 2026-09-28 owner: row 2 downward swap (w51) — the bar fades in place
+ * while its held settings sink ROW_MOTION.outTravelPx inside it
+ * (attachRowCrossfade), so leaving reads as the same downward flow.
  */
 export const ROW_LEAVE_KEYFRAMES = Object.freeze([
   { opacity: 1 },

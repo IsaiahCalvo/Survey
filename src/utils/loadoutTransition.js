@@ -59,6 +59,12 @@
  * moves sideways, and an unchanged set never animates. Row 3 (the Aa bar)
  * just drops down from under row 2 (useDropInRow).
  *
+ * RULED 2026-09-28 owner: row 2 downward swap (w51). The plain fade read as
+ * too plain. Row 2 keeps one rule, but the swap now flows DOWN, the way the
+ * rows drop from under the bar above: the old row sinks a few px as it fades
+ * out, the new one comes down from a few px above into its final centred
+ * spot, starting a beat later so the two overlap as one motion (ROW_MOTION).
+ *
  * Who fills the slot does not matter (the viewer draws a group's tools into
  * the tool bar through a portal, in a render of its own): a MutationObserver
  * watches the slot and compares a signature of its controls, and a copy of
@@ -80,20 +86,30 @@ export const LOADOUT_MOTION = Object.freeze({
 });
 
 /**
- * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
- * drops down. Row 2's one motion: the old row fades out quickly while the new
- * one fades in (opacity only, no travel) where it will stay. The same
- * fade-in when the row appears and fade-out when it goes (useLeavingRow).
- * Reference behaviour matched: the contextual bars in Figma and Goodnotes,
- * which swap their contents in place rather than sliding the bar.
- * No scale: the row is centred by measuring its drawn width
- * (useResponsiveToolbar), and a row measured mid-scale (0.98) landed ~2px
- * off centre and stayed there — a plain fade keeps its box true throughout.
+ * RULED 2026-09-28 owner: row 2 downward swap (w51, was w50's in-place
+ * opacity crossfade). Row 2's one motion, every time its set of controls
+ * changes: the old row moves DOWN outTravelPx while it fades out (ease-in:
+ * it speeds away), and the new row comes DOWN from inTravelPx above to its
+ * final spot while it fades in (ease-out: it settles), starting inDelayMs
+ * after the old one — one continuous downward flow, ~185ms end to end, quick
+ * enough that the eye reads a change, not a transition. Both are clipped to
+ * row 2's own band (rowSwapKeyframes), so nothing draws over the tool bar or
+ * the page. No sideways motion and no scale: the row is centred by measuring
+ * its drawn width (useResponsiveToolbar) and a scaled row landed ~2px off
+ * (w50); a vertical move leaves the width true.
+ * Row 2 leaving moves its held set down by outTravelPx while the row fades
+ * (useLeavingRow, outMs/outEasing); appearing, it drops in like row 3
+ * (.chrome-row-drop-in in styles.css mirrors DROP_ROW_MOTION).
+ * Reference behaviour matched: iOS / Figma contextual bars, whose contents
+ * swap with a short vertical slide-and-fade rather than sliding sideways.
  */
 export const ROW_MOTION = Object.freeze({
-  outMs: 90,
-  inMs: 140,
-  outEasing: 'cubic-bezier(0.4, 0, 1, 1)', // ease-in: speeds away
+  outMs: 120,
+  inMs: 150,
+  inDelayMs: 35,
+  outTravelPx: 7,
+  inTravelPx: 6,
+  outEasing: 'cubic-bezier(0.32, 0, 0.67, 0)', // ease-in: speeds away
   inEasing: 'cubic-bezier(0.33, 1, 0.68, 1)', // ease-out: settles
 });
 
@@ -645,36 +661,78 @@ export function popoverOpenFrom(row) {
   return false;
 }
 
+// Wide enough to never clip sideways: row 2 is clipped only top and bottom.
+const NO_SIDE_CLIP = 4000;
+
 /**
- * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade). Keyframes
- * for the whole row fading in (`in`: opacity 0 → 1) or out (`out`: 1 → 0).
- * `from` (an opacity) starts it where a change caught mid-way had got to.
- * Opacity only — never a `translate` (or scale): row 2 does not move
- * sideways, or at all, as it changes.
+ * The clip that keeps a copy of row 2's settings (or the live settings)
+ * inside row 2's band while it is drawn `dy` px below its laid-out spot.
+ * `room` is how far the band reaches above / below the settings' own box.
+ * clip-path is in the element's own (moved) coordinates, so the clip moves
+ * the other way by `dy`.
  */
-export function rowCrossfadeKeyframes(kind, { from = null } = {}) {
-  return kind === 'out' ? [{ opacity: from ?? 1 }, { opacity: 0 }] : [{ opacity: from ?? 0 }, { opacity: 1 }];
+function bandClip(dy, room) {
+  const top = -room.top - dy;
+  const bottom = dy - room.bottom;
+  return `inset(${top}px ${-NO_SIDE_CLIP}px ${bottom}px ${-NO_SIDE_CLIP}px)`;
+}
+
+/**
+ * RULED 2026-09-28 owner: row 2 downward swap (w51). Keyframes for row 2's
+ * settings:
+ *   - `in`: from inTravelPx above, transparent, down to its spot;
+ *   - `out`: from where it is drawn (`fromY`, `from` opacity — a swap caught
+ *     mid-way starts where the eye saw it) down outTravelPx, fading out;
+ *   - `leave`: row 2 going away — its held set moves down outTravelPx at full
+ *     opacity while the row itself fades (useLeavingRow).
+ * Every frame moves straight down (x is always 0) and carries a clip to row
+ * 2's band (`room`: the band's reach above / below the settings' box).
+ */
+export function rowSwapKeyframes(kind, { from = null, fromY = 0, room = { top: 0, bottom: 0 }, motion = ROW_MOTION } = {}) {
+  const frame = (opacity, dy) => ({ opacity, translate: `0px ${dy}px`, clipPath: bandClip(dy, room) });
+  if (kind === 'in') return [frame(0, -motion.inTravelPx), frame(1, 0)];
+  if (kind === 'leave') return [frame(1, 0), frame(1, motion.outTravelPx)];
+  return [frame(from ?? 1, fromY), frame(0, motion.outTravelPx)];
+}
+
+/** How far row 2's band reaches above / below `holder`'s laid-out box. */
+function bandRoom(holder) {
+  try {
+    const row = holder.parentElement || holder.parentNode;
+    const box = holder.getBoundingClientRect?.();
+    const band = row?.getBoundingClientRect?.();
+    const top = band.top - box.top;
+    const bottom = box.bottom - band.bottom;
+    // Negative = the band reaches past the box (the usual case: the settings
+    // sit centred in a taller bar). Only a real measurement counts.
+    if (Number.isFinite(top) && Number.isFinite(bottom)) return { top: -top, bottom: -bottom };
+  } catch { /* no layout: clip at the settings' own box */ }
+  return { top: 0, bottom: 0 };
 }
 
 /**
  * RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
- * drops down. Watch row 2's settings holder and, each time its SET of
- * controls changes (loadoutSignature: a value — a colour, a width — never
- * counts), crossfade the whole row in place: a lifeless copy of the old row,
- * laid in `layer` exactly where it was drawn, fades out over ROW_MOTION.outMs
- * while the live row fades in over ROW_MOTION.inMs at its final
- * centred spot. One rule every time — no gliding, no per-control grow or
- * shrink, nothing moving sideways.
+ * drops down; RULED 2026-09-28 owner: row 2 downward swap (w51). Watch row
+ * 2's settings holder and, each time its SET of controls changes
+ * (loadoutSignature: a value — a colour, a width — never counts), swap the
+ * whole row with one downward motion: a lifeless copy of the old row, laid
+ * in `layer` exactly where it was drawn, moves down ROW_MOTION.outTravelPx
+ * and fades out over ROW_MOTION.outMs, while the live row — already at its
+ * final centred spot — comes down from ROW_MOTION.inTravelPx above and fades
+ * in over ROW_MOTION.inMs, starting ROW_MOTION.inDelayMs later. Both are
+ * clipped to row 2's band. One rule every time — no gliding, no per-control
+ * grow or shrink, nothing moving sideways.
  *
  *   - the same set (another tool lit, pen → highlighter with the same
  *     controls, a new colour): nothing animates;
- *   - a change caught mid-way: the half-shown row fades out from where it got
- *     to (the copy of the older row keeps fading) and the new one fades in;
+ *   - a change caught mid-way: the half-shown row carries on down from where
+ *     it had got to, fading out (the copy of the older row keeps going), and
+ *     the new one comes down behind it;
  *   - a popover or menu open from the row: the swap is instant, so the
- *     popover stays anchored to its opener (nothing scales or fades under it);
- *   - the holder hidden (row 2 leaving): its last set is held in the copy
- *     while the row itself fades (useLeavingRow); shown again: the copy goes
- *     and the row's own fade-in covers it;
+ *     popover stays anchored to its opener (nothing moves or fades under it);
+ *   - the holder hidden (row 2 leaving): its last set is held in the copy and
+ *     moves down while the row itself fades (useLeavingRow); shown again: the
+ *     copy goes and the row's own drop-in covers it;
  *   - prefers-reduced-motion: instant.
  *
  * Returns a disconnect function. `options.win` (tests) stands in for window.
@@ -713,16 +771,20 @@ export function attachRowCrossfade(holder, layer, { win = typeof window === 'und
   const crossfade = () => {
     if (popoverOpenFrom(holder)) { clear(); return; }
     // How much of the row on screen is showing: all of it, or as far as a
-    // fade-in caught mid-way had got.
+    // swap-in caught mid-way had got (0 while it waits its inDelayMs).
     const shown = incoming ? progressOf(incoming) : 1;
     // The row the eye mostly sees: the old one, unless a fade-in caught
     // mid-way was already more than half shown.
     if (shown >= 0.5) mostlySeen = snapshot;
     incoming?.cancel?.();
     incoming = null;
-    if (shown > 0.02) fadeCopy(snapshot, rowCrossfadeKeyframes('out', { from: shown }), motion.outMs * shown);
-    const animation = holder.animate?.(rowCrossfadeKeyframes('in'), {
-      duration: motion.inMs, easing: motion.inEasing, fill: 'backwards',
+    // Measured with nothing moving it (the running swap is cancelled above).
+    const room = bandRoom(holder);
+    // A row caught part-way down carries on from where it was drawn.
+    const fromY = -motion.inTravelPx * (1 - shown);
+    if (shown > 0.02) fadeCopy(snapshot, rowSwapKeyframes('out', { from: shown, fromY, room, motion }), motion.outMs * shown);
+    const animation = holder.animate?.(rowSwapKeyframes('in', { room, motion }), {
+      duration: motion.inMs, delay: motion.inDelayMs, easing: motion.inEasing, fill: 'backwards',
     });
     if (!animation) return;
     incoming = animation;
@@ -740,7 +802,7 @@ export function attachRowCrossfade(holder, layer, { win = typeof window === 'und
       // (a tool switch can change the set a render before the row goes).
       const held = incoming && progressOf(incoming) < 0.5 ? mostlySeen : snapshot;
       clear();
-      fadeCopy(held, [{ opacity: 1 }, { opacity: 1 }], motion.outMs);
+      fadeCopy(held, rowSwapKeyframes('leave', { room: bandRoom(holder), motion }), motion.outMs);
     } else if (!wasShown && shown) {
       clear();
     } else if (shown && next !== signature) {
