@@ -87,11 +87,16 @@ function pointer(type, x, y, pointerId = 1) {
   });
 }
 
+// A key press: keydown then keyup (a real press). `hold: true` sends the
+// keydown only — the key stays down (auto-repeat sends more keydowns).
 function key(k, init = {}, target = document.body) {
-  const event = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init });
+  const { hold = false, ...eventInit } = init;
+  const event = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...eventInit });
   target.dispatchEvent(event);
+  if (!hold) target.dispatchEvent(new window.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true, ...eventInit }));
   return event;
 }
+const release = (k) => window.dispatchEvent(new window.KeyboardEvent('keyup', { key: k, bubbles: true }));
 
 async function mountLayer(objects, overrides = {}) {
   document.body.innerHTML = '<div id="root"></div>';
@@ -148,7 +153,8 @@ test('a held key (60 auto-repeat presses) is still one save', async () => {
   await m.select(0, 101, 120);
   const before = m.saves.length;
   await act(async () => {
-    for (let i = 0; i < 60; i += 1) { key('ArrowLeft', { repeat: i > 0 }); await sleep(2); }
+    for (let i = 0; i < 60; i += 1) { key('ArrowLeft', { repeat: i > 0, hold: true }); await sleep(2); }
+    release('ArrowLeft');
   });
   assert.equal(m.saves.length, before, 'no per-press save');
   await act(async () => { await sleep(NUDGE_IDLE_COMMIT_MS + 80); });
@@ -231,4 +237,98 @@ test('a group selection nudges every movable member by the same amount in one sa
   assert.equal(saved.length, 1);
   assert.equal(saved[0].next.objects[0].top, 89);
   assert.equal(saved[0].next.objects[1].top, 189);
+});
+
+test('the preview is gone once the saved page comes back (no double move)', async () => {
+  // A stateful host, like the viewer: every save becomes the next props.
+  document.body.innerHTML = '<div id="root"></div>';
+  const root = createRoot(document.getElementById('root'));
+  mounted = root;
+  let page = { objects: [rect('a', 100, 100)] };
+  const props = () => ({
+    pageNumber: 1, width: 400, height: 400, annotations: page,
+    callouts: [], surveyMarkers: [], activeTool: 'select', selectedCalloutIds: new Set(),
+    onSelectedCalloutIdsChange: () => {}, onSelectionChange: () => {},
+    selectedModuleId: null, showSurveyPanel: false, selectedSpaceId: null,
+    activeSpaceId: null, activeRegions: [], activeRegionId: null, spaces: [],
+    layerVisibility: {}, viewerId: 'owner', documentOwnerId: 'owner',
+    onSaveAnnotations: (next) => { page = next; root.render(React.createElement(SVGAnnotationLayer, props())); },
+  });
+  await act(async () => root.render(React.createElement(SVGAnnotationLayer, props())));
+  const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+  Object.defineProperty(svg, 'clientWidth', { configurable: true, value: 400 });
+  const hit = svg.querySelector('[data-annotation-index="0"] [data-shape-hit-target="rect"]');
+  await act(async () => { hit.dispatchEvent(pointer('pointerdown', 101, 120)); hit.dispatchEvent(pointer('pointerup', 101, 120)); });
+  await act(async () => { key('ArrowRight'); key('ArrowRight'); key('ArrowRight'); });
+  const node = () => svg.querySelector('[data-annotation-index="0"]');
+  const nudgeTranslates = () => {
+    const found = [];
+    for (let el = node(); el && el !== svg; el = el.parentElement) {
+      const t = el.getAttribute('transform');
+      if (t && /translate\(3,? 0\)/.test(t)) found.push(t);
+    }
+    return found;
+  };
+  assert.equal(nudgeTranslates().length, 1, 'the burst previews as one translate');
+  await act(async () => { await sleep(NUDGE_IDLE_COMMIT_MS + 80); });
+  assert.equal(page.objects[0].left, 103);
+  assert.deepEqual(nudgeTranslates(), [], 'no leftover nudge translate on top of the saved move');
+});
+
+test('a slow key-repeat start (held key, no repeat for a while) is still one undo step', async () => {
+  const m = await mountLayer([rect('a', 100, 100)]);
+  await m.select(0, 101, 120);
+  const before = m.saves.length;
+  await act(async () => {
+    key('ArrowRight', { hold: true });
+    await sleep(NUDGE_IDLE_COMMIT_MS + 300); // the OS "delay until repeat"
+    for (let i = 0; i < 5; i += 1) key('ArrowRight', { repeat: true, hold: true });
+  });
+  assert.equal(nudgeSaves(m.saves.slice(before)).length, 0, 'nothing saved while the key is held');
+  await act(async () => {
+    release('ArrowRight');
+    await sleep(NUDGE_IDLE_COMMIT_MS + 80);
+  });
+  const saved = nudgeSaves(m.saves.slice(before));
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].next.objects[0].left, 106);
+});
+
+test('Undo (flushPendingNudges) saves a running burst first', async () => {
+  const { flushPendingNudges } = await vite.ssrLoadModule('/src/utils/annotationFamilyRules.js');
+  const m = await mountLayer([rect('a', 100, 100)]);
+  await m.select(0, 101, 120);
+  await act(async () => { key('ArrowDown', { shiftKey: true }); });
+  assert.equal(nudgeSaves(m.saves).length, 0);
+  await act(async () => { flushPendingNudges(); });
+  const saved = nudgeSaves(m.saves);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].next.objects[0].top, 110);
+});
+
+test('a shape + callout burst writes the callout frames first, then ONE normal save', async () => {
+  const calls = [];
+  const callout = {
+    id: 'c1', pageNumber: 1,
+    arrowTip: { x: 0.1, y: 0.6 }, knee: { x: 0.2, y: 0.6 },
+    textBoxPosition: { x: 0.3, y: 0.55 }, textBoxWidth: 0.2, textBoxHeight: 0.1,
+    text: 'c', style: {},
+  };
+  const m = await mountLayer([rect('a', 100, 100)], {
+    callouts: [callout],
+    // the host keeps the callout selected (this prop is the source of truth)
+    selectedCalloutIds: new Set(['c1']),
+    onUpdateCalloutLive: (id, patch) => calls.push(['live', id, patch.textBoxPosition.x]),
+    onUpdateCallout: (id) => calls.push(['commit', id]),
+    onSaveAnnotations: (next, context) => calls.push(['save', context?.action, context?.checkpointPolicy]),
+  });
+  await m.select(0, 101, 120);
+  calls.length = 0;
+  await act(async () => { key('ArrowRight'); key('ArrowRight'); });
+  assert.deepEqual(calls, [], 'nothing written during the burst');
+  await act(async () => { await sleep(NUDGE_IDLE_COMMIT_MS + 80); });
+  const kinds = calls.map((c) => c[0]);
+  assert.deepEqual(kinds, ['live', 'save', 'commit'], JSON.stringify(calls));
+  assert.equal(calls[0][2], 0.3 + 2 / 400);
+  assert.deepEqual(calls[1], ['save', 'nudge', 'normal']);
 });

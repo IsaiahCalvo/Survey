@@ -23,6 +23,10 @@ import {
   NUDGE_IDLE_COMMIT_MS,
   nudgePreviewTransform,
   isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  NUDGE_HELD_KEY_GRACE_MS,
+  registerPendingNudgeFlush,
+  flushPendingNudges,
 } from '../src/utils/annotationFamilyRules.js';
 
 const movementLocked = { type: 'rect', lockMovementX: true, lockMovementY: true };
@@ -295,4 +299,24 @@ test('w57: an open right-click menu owns the arrow keys', () => {
   assert.equal(isArrowOwningPopoverOpen(docWith(true)), true);
   assert.equal(isArrowOwningPopoverOpen(docWith(false)), false);
   assert.equal(isArrowOwningPopoverOpen(null), false);
+});
+
+test('w57: a held arrow key keeps the burst open; a lost release stops counting after the grace', () => {
+  const burst = { keysDown: new Set(['ArrowRight']), lastKeyDownAt: 1000 };
+  assert.equal(isNudgeKeyStillHeld(burst, 1000 + 1900), true, 'a slow OS repeat delay (~2 s) is still one hold');
+  assert.equal(isNudgeKeyStillHeld(burst, 1000 + NUDGE_HELD_KEY_GRACE_MS), false, 'a release the page never saw');
+  assert.equal(isNudgeKeyStillHeld({ keysDown: new Set(), lastKeyDownAt: 1000 }, 1001), false, 'released');
+  assert.equal(isNudgeKeyStillHeld(null, 0), false);
+});
+
+test('w57: flushPendingNudges runs every registered flush; unregister removes it; one failure never blocks', () => {
+  const ran = [];
+  const offA = registerPendingNudgeFlush(() => ran.push('a'));
+  const offB = registerPendingNudgeFlush(() => { throw new Error('boom'); });
+  const offC = registerPendingNudgeFlush(() => ran.push('c'));
+  flushPendingNudges();
+  assert.deepEqual(ran, ['a', 'c']);
+  offA(); offB(); offC();
+  flushPendingNudges();
+  assert.deepEqual(ran, ['a', 'c']);
 });

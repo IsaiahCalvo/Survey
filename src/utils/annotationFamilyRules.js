@@ -239,6 +239,41 @@ export function isTypingTarget(element) {
   return false;
 }
 
+// A held arrow key stops counting as held this long after its last keydown
+// (auto-repeat sends a keydown every ~30-80 ms once it starts; macOS's
+// slowest "Delay until repeat" is ~2 s). Covers a release the page never saw.
+export const NUDGE_HELD_KEY_GRACE_MS = 2500;
+
+/**
+ * Is an arrow key of this burst still held down? Then the idle commit waits
+ * (one hold = one undo step, however slow the OS repeat delay).
+ * @param {{ keysDown?: Set<string>, lastKeyDownAt?: number }} burst
+ */
+export function isNudgeKeyStillHeld(burst, now) {
+  if (!burst || !(burst.keysDown instanceof Set) || burst.keysDown.size === 0) return false;
+  const last = Number(burst.lastKeyDownAt);
+  if (!Number.isFinite(last)) return false;
+  return now - last < NUDGE_HELD_KEY_GRACE_MS;
+}
+
+// Save-a-running-nudge-burst hooks. Each page layer registers one while it
+// can nudge; Undo / Redo call flushPendingNudges() first, because the
+// viewer's undo key handler runs before the layers' listeners (and the
+// desktop app's Edit menu sends no key to the page at all).
+const pendingNudgeFlushes = new Set();
+
+export function registerPendingNudgeFlush(flush) {
+  if (typeof flush !== 'function') return () => {};
+  pendingNudgeFlushes.add(flush);
+  return () => pendingNudgeFlushes.delete(flush);
+}
+
+export function flushPendingNudges() {
+  for (const flush of Array.from(pendingNudgeFlushes)) {
+    try { flush(); } catch { /* a failed flush never blocks Undo */ }
+  }
+}
+
 /**
  * True while a popover that sits over the page is open — the right-click
  * menu. Arrow keys then belong to it: the mark behind it must not move where

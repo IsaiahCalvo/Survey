@@ -148,6 +148,9 @@ import {
   isArrowKey,
   isTypingTarget,
   isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  registerPendingNudgeFlush,
+  flushPendingNudges,
   clampNudgeDelta,
   NUDGE_IDLE_COMMIT_MS,
 } from '../utils/annotationFamilyRules.js';
@@ -3470,6 +3473,8 @@ const SVGAnnotationLayer = memo(({
 
       e.preventDefault();
       e.stopPropagation();
+      // w57: a nudge still waiting to save lands first (its own undo step).
+      flushPendingNudges();
       deleteSelectedSurveyMarker();
     };
 
@@ -3776,6 +3781,18 @@ const SVGAnnotationLayer = memo(({
   useEffect(() => {
     if (!isSelectTool || !selectedSurveyMarkerId) return undefined;
     if (selectedIds?.size > 0) return undefined;
+    // Same idle rule as the family nudge: never while an arrow is held.
+    const scheduleIdleCommit = (burst) => {
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(() => {
+        if (surveyMarkerNudgeRef.current !== burst) return;
+        if (isNudgeKeyStillHeld(burst, Date.now())) {
+          scheduleIdleCommit(burst);
+          return;
+        }
+        commitSurveyMarkerNudge({ sync: true });
+      }, NUDGE_IDLE_COMMIT_MS);
+    };
     const onKeyDown = (e) => {
       const delta = nudgeDeltaForKey(e);
       if (!delta) {
@@ -3816,10 +3833,8 @@ const SVGAnnotationLayer = memo(({
       e.preventDefault();
       e.stopPropagation();
       burst.keysDown.add(e.key);
-      if (burst.timer) clearTimeout(burst.timer);
-      burst.timer = setTimeout(() => {
-        if (surveyMarkerNudgeRef.current === burst) commitSurveyMarkerNudge();
-      }, NUDGE_IDLE_COMMIT_MS);
+      burst.lastKeyDownAt = Date.now();
+      scheduleIdleCommit(burst);
       const b = burst.originalBounds;
       const next = clampNudgeDelta(
         [{ left: b.x, top: b.y, width: b.width, height: b.height }],
@@ -3842,11 +3857,17 @@ const SVGAnnotationLayer = memo(({
       const burst = surveyMarkerNudgeRef.current;
       if (!burst || !isArrowKey(e.key)) return;
       burst.keysDown.delete(e.key);
+      if (burst.keysDown.size === 0) scheduleIdleCommit(burst);
     };
     const onPointerDown = () => {
       if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
     };
-    const onBlur = () => commitSurveyMarkerNudge();
+    const onBlur = () => commitSurveyMarkerNudge({ sync: true });
+    // Undo / Redo and the marker Delete key (their listeners run before this
+    // one) save a running burst first.
+    const unregisterFlush = registerPendingNudgeFlush(() => {
+      if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
+    });
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('pointerdown', onPointerDown, true);
@@ -3856,6 +3877,7 @@ const SVGAnnotationLayer = memo(({
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('blur', onBlur);
+      unregisterFlush();
       commitSurveyMarkerNudge();
     };
   }, [isSelectTool, selectedSurveyMarkerId, selectedIds, surveyMarkerElements, normalizeSurveyMarkerBounds, commitSurveyMarkerNudge, width, height]);

@@ -88,9 +88,17 @@ test('w57: any other input saves a running nudge burst first, synchronously', ()
   // family nudge (hook) and lone Survey Marker nudge (layer)
   assert.match(hook, /const onPointerDown = \(\) => \{\s*if \(nudgeBurstRef\.current\) commitNudgeBurst\(\{ sync: true \}\);/);
   assert.match(hook, /if \(nudgeBurstRef\.current && !isArrowKey\(e\.key\) && e\.key !== 'Shift'\) commitNudgeBurst\(\{ sync: true \}\);/);
-  assert.match(hook, /if \(sync\) flushSync\(run\);/);
+  // callouts' frames rendered first, then ONE normal save (one undo step)
+  assert.match(hook, /if \(calloutEntries\.length > 0\) flushSync\(writeCalloutPoses\);\s*flushSync\(\(\) => \{\s*clearPreview\(\);\s*saveShapesAndMarkers\(\);\s*closeCalloutSteps\(\);/);
+  assert.match(layer, /if \(sync\) flushSync\(run\);/);
   assert.match(layer, /if \(surveyMarkerNudgeRef\.current\) commitSurveyMarkerNudge\(\{ sync: true \}\);/);
   assert.match(layer, /commitSurveyMarkerNudge\(\{ sync: true \}\);\s*\}\s*return;/);
+  // Undo / Redo (the viewer's key handler runs before the layers') and the
+  // lone-marker Delete save a running burst first
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /flushPendingNudges\(\);\s*if \(isRedoCombo\) \{\s*handleRedoRef\.current\?\.\(\);/);
+  assert.match(layer, /flushPendingNudges\(\);\s*deleteSelectedSurveyMarker\(\);/);
+  assert.ok(count(hook, 'registerPendingNudgeFlush(') >= 1 && count(layer, 'registerPendingNudgeFlush(') >= 1);
   // the open right-click menu owns the arrows in both paths
   assert.match(hook, /if \(isArrowOwningPopoverOpen\(document\)\) return;/);
   assert.match(layer, /if \(isArrowOwningPopoverOpen\(document\)\) return;/);
