@@ -59,7 +59,9 @@ import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // callout-unification keystone flag. The flag governs only persistence/sync:
 // callout objects are projected into annotationsByPage for the shared Supabase
 // push, but the shared dispatch SKIPS them (no double-render) — they are never
-// rendered through the generic path.
+// rendered through the generic path. w52 (2026-09-28): the dedicated loop only
+// BUILDS each callout; it is drawn in its slot of the page's one stacking order
+// (stackedMarks), interleaved with every other mark.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
@@ -1294,6 +1296,48 @@ const SVGAnnotationLayer = memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation]);
+
+  // UX: w52 (2026-09-28) — the same four z-order hotkeys for ONE selected
+  // callout (Cmd+] / Cmd+Shift+] / Cmd+[ / Cmd+Shift+[), routed through the
+  // same onReorderAnnotation as shapes via the callout's slot in this page's
+  // stacking order. Copy/Cut for callouts keep their own existing handlers.
+  // Only the page that holds the callout acts (the selection set is shared by
+  // every page's layer). Inert while the callout's text is being edited.
+  useEffect(() => {
+    if (selectedIds.size !== 0 || calloutSelectionSize !== 1) return;
+    if (editingCalloutId) return;
+    if (typeof onReorderAnnotation !== 'function') return;
+    const [calloutId] = effectiveSelectedCalloutIds instanceof Set
+      ? Array.from(effectiveSelectedCalloutIds)
+      : effectiveSelectedCalloutIds;
+    if (calloutId == null) return;
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (!isMeta || e.altKey) return;
+      const isBracketRight = e.code === 'BracketRight';
+      const isBracketLeft = e.code === 'BracketLeft';
+      if (!isBracketRight && !isBracketLeft) return;
+      const el = document.activeElement;
+      if (el) {
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+        if (el.isContentEditable === true || el.contentEditable === 'true') return;
+      }
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const objects = annotationsRef.current?.objects;
+      if (!Array.isArray(objects)) return;
+      const index = objects.findIndex(
+        (o) => o?.data?.type === 'callout' && String(o?.data?.id) === String(calloutId)
+      );
+      if (index < 0) return;
+      e.preventDefault();
+      const direction = isBracketRight
+        ? (e.shiftKey ? 'front' : 'forward')
+        : (e.shiftKey ? 'back' : 'backward');
+      onReorderAnnotation(pageNumber, index, direction);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, pageNumber, onReorderAnnotation]);
 
   // UX: 2026-04-21 — Group / Ungroup feature is HIDDEN app-wide. The
   // Cmd+G and Cmd+Shift+G shortcuts are short-circuited below. Wiring
@@ -3913,7 +3957,21 @@ const SVGAnnotationLayer = memo(({
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
     const pageSize = { width, height };
     const elements = [];
+    const overlays = [];
     let count = 0;
+    // w52 (2026-09-28): each callout's slot in the page's ONE stacking order
+    // (annotations.objects, where its projected group lives). The render
+    // below interleaves callouts with every other mark by this slot, so a
+    // callout sits above or below any mark exactly as ordered — never forced
+    // above all of them. A callout with no slot (not projected yet) draws on
+    // top, as before.
+    const stackIndexById = new Map();
+    (Array.isArray(annotations?.objects) ? annotations.objects : []).forEach((object, index) => {
+      if (object?.data?.type === 'callout' && object?.data?.id != null) {
+        const key = String(object.data.id);
+        if (!stackIndexById.has(key)) stackIndexById.set(key, index);
+      }
+    });
 
     for (let i = 0; i < callouts.length; i++) {
       // 2026-05-03 — Callout render cap removed for parity with the per-page
@@ -4062,6 +4120,27 @@ const SVGAnnotationLayer = memo(({
         ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
         : undefined;
 
+      // w52: a SELECTED callout's handles + hit zone are drawn above every
+      // mark (like shape handles), not in its stack slot, so a mark stacked
+      // over the callout never hides or steals its handles. The callout body
+      // stays in its slot.
+      const liftHandles = isSelected;
+      if (liftHandles) {
+        overlays.push(
+          <g
+            key={`callout-handles-${displayCallout.id || i}`}
+            data-callout-handle-overlay="true"
+            transform={groupMoveTransform}
+            data-edit-entry-kind={editEntryTargetsMounted ? 'callout' : undefined}
+            data-pan-edit-entry={editEntryTargetsMounted ? 'true' : undefined}
+            onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
+            onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
+          >
+            {hitTargets}
+          </g>
+        );
+      }
+
       elements.push(
         // UX: wrap visible element + invisible hit targets in a shared
         // fragment via an outer <g> so the hit targets render AFTER the
@@ -4069,6 +4148,7 @@ const SVGAnnotationLayer = memo(({
         // eslint-disable-next-line react/jsx-key
         <g
           key={`callout-wrap-${displayCallout.id || i}`}
+          data-stack-index={stackIndexById.get(String(displayCallout.id))}
           transform={groupMoveTransform}
           // UX 2026-09-15 (Drawboard parity — Pan is a selection mode): the
           // callout's edit-entry label. Mounted in Pan AND in every Select
@@ -4083,12 +4163,13 @@ const SVGAnnotationLayer = memo(({
           onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
         >
           {element}
-          {hitTargets}
+          {liftHandles ? null : hitTargets}
         </g>
       );
       count++;
     }
 
+    elements.selectedOverlays = overlays;
     return elements;
     // NOTE: activeTool removed from deps (it doesn't affect rendering, only
     // interaction). renderCallout and calculateCalloutConnection are
@@ -4107,7 +4188,7 @@ const SVGAnnotationLayer = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted]);
+  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -5402,6 +5483,36 @@ const SVGAnnotationLayer = memo(({
     );
   });
 
+  // w52 (2026-09-28): ONE stack per page. Callouts are drawn in their slot
+  // among every other mark (filteredCallouts carries each slot as
+  // data-stack-index), so Bring to front / Send to back work across types.
+  const stackedMarks = (() => {
+    if (filteredCallouts.length === 0) return wrappedAnnotations;
+    const slotted = [];
+    const unslotted = [];
+    for (const element of filteredCallouts) {
+      const slot = element?.props?.['data-stack-index'];
+      if (Number.isInteger(slot)) slotted.push([slot, element]);
+      else unslotted.push(element);
+    }
+    slotted.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    let next = 0;
+    wrappedAnnotations.forEach((element, position) => {
+      const index = stagedAnnotations[position]?.index;
+      while (next < slotted.length && Number.isInteger(index) && slotted[next][0] < index) {
+        merged.push(slotted[next][1]);
+        next += 1;
+      }
+      merged.push(element);
+    });
+    while (next < slotted.length) {
+      merged.push(slotted[next][1]);
+      next += 1;
+    }
+    return unslotted.length ? merged.concat(unslotted) : merged;
+  })();
+
   const uniformTextMarkupElements = useMemo(() => {
     const groups = new Map();
     for (const entry of stagedAnnotations) {
@@ -5674,7 +5785,7 @@ const SVGAnnotationLayer = memo(({
       onDoubleClick={(isSelectTool || panEditEntryEnabled) ? handleAnnotationDoubleClick : undefined}
     >
       {uniformTextMarkupElements}
-      {wrappedAnnotations}
+      {stackedMarks}
       {/* Survey markers are stored outside annotations.objects, so this
           path owns their click, move, and resize behavior. */}
       {surveyMarkerElements.length > 0 && (
@@ -5732,7 +5843,9 @@ const SVGAnnotationLayer = memo(({
           </text>
         </g>
       )}
-      {filteredCallouts}
+      {/* w52: callouts are drawn inside stackedMarks above (one stack); a
+          selected callout's handles sit here, above every mark. */}
+      {filteredCallouts.selectedOverlays}
       {/* UX: Plan 15-04 Issue 2 — new-text creation preview. FabricEditCanvas
           paints the in-flight textbox transparent during create (same pattern
           as existing-text edit) and broadcasts live bounds with

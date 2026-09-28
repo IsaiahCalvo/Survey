@@ -678,10 +678,58 @@ export function buildPdfExportAnnotationPlan({
     });
   };
 
+  // w52 (2026-09-28): one stacking order per page. A callout is written into
+  // /Annots at the slot of its projected group in the page's objects (PDF
+  // viewers paint /Annots in array order, later on top), so the exported file
+  // stacks callouts among the other marks exactly like the screen. Callouts
+  // with no projected slot are written after, as before.
+  const considerCallout = (callout, index) => {
+    const pageNumber = Number(callout?.pageNumber || 1);
+    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber];
+    const obj = calloutToExportObject(callout, pageSize);
+    const scope = getObjectScope(callout);
+    const regionId = callout?.regionId ?? null;
+    const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
+    const item = {
+      source: 'callout',
+      pageNumber,
+      id: getObjectId(callout, `callout-${index}`),
+      type: 'callout',
+      fabricType: 'callout',
+      scope,
+      moduleId: callout?.moduleId ?? callout?.spaceId ?? null,
+      regionId,
+      spaceId: callout?.spaceId ?? derivedSpaceId ?? null,
+    };
+    if (!obj) {
+      recordConsidered(diagnostics, item);
+      recordSkip(diagnostics, item, 'invalid-callout-geometry');
+      return;
+    }
+    consider(item, obj);
+  };
+  const calloutList = Array.isArray(callouts) ? callouts : [];
+  const calloutSlots = new Map(); // `${page}:${id}` -> index in calloutList
+  calloutList.forEach((callout, index) => {
+    const id = callout?.id;
+    if (id == null) return;
+    const slotKey = `${Number(callout?.pageNumber || 1)}:${String(id)}`;
+    if (!calloutSlots.has(slotKey)) calloutSlots.set(slotKey, index);
+  });
+  const exportedCallouts = new Set();
+
   Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const pageNumber = Number.parseInt(pageKey, 10);
     const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
     objects.forEach((rawObj, index) => {
+      if (rawObj?.data?.type === 'callout' && rawObj?.data?.id != null) {
+        const calloutIndex = calloutSlots.get(`${pageNumber}:${String(rawObj.data.id)}`);
+        if (calloutIndex != null && !exportedCallouts.has(calloutIndex)) {
+          exportedCallouts.add(calloutIndex);
+          considerCallout(calloutList[calloutIndex], calloutIndex);
+          return;
+        }
+      }
       // UX 2026-07-17: legacy arrow groups export as their modern line form;
       // every other object passes through untouched (see legacyArrowGroupToLine).
       const obj = legacyArrowGroupToLine(rawObj) || rawObj;
@@ -728,30 +776,9 @@ export function buildPdfExportAnnotationPlan({
     consider(item, obj);
   });
 
-  (Array.isArray(callouts) ? callouts : []).forEach((callout, index) => {
-    const pageNumber = Number(callout?.pageNumber || 1);
-    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber];
-    const obj = calloutToExportObject(callout, pageSize);
-    const scope = getObjectScope(callout);
-    const regionId = callout?.regionId ?? null;
-    const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
-    const item = {
-      source: 'callout',
-      pageNumber,
-      id: getObjectId(callout, `callout-${index}`),
-      type: 'callout',
-      fabricType: 'callout',
-      scope,
-      moduleId: callout?.moduleId ?? callout?.spaceId ?? null,
-      regionId,
-      spaceId: callout?.spaceId ?? derivedSpaceId ?? null,
-    };
-    if (!obj) {
-      recordConsidered(diagnostics, item);
-      recordSkip(diagnostics, item, 'invalid-callout-geometry');
-      return;
-    }
-    consider(item, obj);
+  calloutList.forEach((callout, index) => {
+    if (exportedCallouts.has(index)) return;
+    considerCallout(callout, index);
   });
 
   return {
@@ -7089,6 +7116,68 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     if (drawnCount > 0) tracker.drawn += 1;
   };
 
+  // w52 (2026-09-28): one stacking order per page. The printable payload
+  // carries callouts in their own list; the screen's page (the caller's
+  // screenAnnotationsByPage) says where each sits among the other marks, so
+  // each callout is drawn in that slot — print stacks like the screen.
+  // Callouts with no slot are drawn after the page's marks, as before.
+  const drawnPrintCallouts = new Set();
+  const printCallouts = Array.isArray(printablePayload.callouts) ? printablePayload.callouts : [];
+  // insidePageTransform: called from inside the page loop's own
+  // withPrintPageTransform — draw directly (nesting would apply it twice).
+  const drawPrintCallout = (callout, { insidePageTransform = false } = {}) => {
+    if (drawnPrintCallouts.has(callout)) return;
+    drawnPrintCallouts.add(callout);
+    const pageNumber = Number(callout?.pageNumber || 1);
+    const pageIndex = pageNumber - 1;
+    if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
+    const page = pdfDoc.getPage(pageIndex);
+    const fallbackSize = page.getSize();
+    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
+    const pageHeight = Number(pageSize?.height) || fallbackSize.height;
+    const calloutObj = calloutToExportObject(callout, pageSize);
+    if (!calloutObj) return;
+    const draw = () => {
+      flattenedPrintAnnotationsAdded += drawFlattenedSafely('callout', calloutObj, () => (
+        drawFlattenedCallout(page, calloutObj, pageHeight, fonts)
+      ));
+    };
+    if (insidePageTransform) draw();
+    else withPrintPageTransform(page, pageHeight, draw);
+  };
+  // [ [rank, callout] ] per page, ranked by the screen's page order.
+  const printCalloutSlots = (pageNumber, printableObjects) => {
+    const screenObjects = screenAnnotationsByPage?.[pageNumber]?.objects
+      || screenAnnotationsByPage?.[String(pageNumber)]?.objects;
+    if (!Array.isArray(screenObjects) || screenObjects.length === 0) return null;
+    const pageCallouts = printCallouts.filter((callout) => (
+      Number(callout?.pageNumber || 1) === pageNumber && callout?.id != null
+    ));
+    if (pageCallouts.length === 0) return null;
+    const rankOf = new Map();
+    screenObjects.forEach((obj, rank) => {
+      const key = obj?.data?.type === 'callout'
+        ? (obj?.data?.id != null ? `callout:${String(obj.data.id)}` : null)
+        : getObjectId(obj);
+      if (key != null && !rankOf.has(String(key))) rankOf.set(String(key), rank);
+    });
+    const slots = [];
+    for (const callout of pageCallouts) {
+      const rank = rankOf.get(`callout:${String(callout.id)}`);
+      if (rank != null) slots.push([rank, callout]);
+    }
+    if (slots.length === 0) return null;
+    slots.sort((a, b) => a[0] - b[0]);
+    let lastRank = -1;
+    const objectRanks = printableObjects.map((obj) => {
+      const id = getObjectId(obj);
+      const rank = id != null ? rankOf.get(String(id)) : undefined;
+      if (rank != null) lastRank = rank;
+      return lastRank;
+    });
+    return { slots, objectRanks };
+  };
+
   Object.entries(printablePayload.annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const pageNumber = Number.parseInt(pageKey, 10);
     const pageIndex = pageNumber - 1;
@@ -7098,8 +7187,19 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     const uniformHighlightGroups = new Map();
+    const pageObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+    const calloutPlan = printCalloutSlots(pageNumber, pageObjects);
+    let nextSlot = 0;
+    const drawCalloutsBelowRank = (rank) => {
+      if (!calloutPlan) return;
+      while (nextSlot < calloutPlan.slots.length && calloutPlan.slots[nextSlot][0] < rank) {
+        drawPrintCallout(calloutPlan.slots[nextSlot][1], { insidePageTransform: true });
+        nextSlot += 1;
+      }
+    };
     withPrintPageTransform(page, pageHeight, () => {
-      (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+      pageObjects.forEach((obj, position) => {
+        if (calloutPlan) drawCalloutsBelowRank(calloutPlan.objectRanks[position]);
         if (!importedObjectAllowsPrint(pdfDoc, pageIndex, obj)) return;
         const isUniformHighlight = obj?.data?.type === 'text-markup'
           && obj?.data?.markupType === 'highlight'
@@ -7124,24 +7224,13 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
         flattenedPrintAnnotationsAdded += drawnCount;
         printableObjects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
       });
+      // w52: callouts after the uniform highlight masks — the screen draws
+      // those masks beneath every mark.
+      drawCalloutsBelowRank(Number.POSITIVE_INFINITY);
     });
   });
 
-  (Array.isArray(printablePayload.callouts) ? printablePayload.callouts : []).forEach((callout, index) => {
-    const pageNumber = Number(callout?.pageNumber || 1);
-    const pageIndex = pageNumber - 1;
-    if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
-    const page = pdfDoc.getPage(pageIndex);
-    const fallbackSize = page.getSize();
-    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
-    const pageHeight = Number(pageSize?.height) || fallbackSize.height;
-    const calloutObj = calloutToExportObject(callout, pageSize);
-    if (calloutObj) withPrintPageTransform(page, pageHeight, () => {
-      flattenedPrintAnnotationsAdded += drawFlattenedSafely('callout', calloutObj, () => (
-        drawFlattenedCallout(page, calloutObj, pageHeight, fonts)
-      ));
-    });
-  });
+  printCallouts.forEach((callout) => drawPrintCallout(callout));
 
   Object.values(printablePayload.surveyMarkers || {}).forEach((marker) => {
     const pageNumber = Number(marker?.pageNumber || marker?.page || 1);

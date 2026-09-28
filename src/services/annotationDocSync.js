@@ -6045,6 +6045,7 @@ function makeHandle(state) {
         origin: 'local',
         eraserWriterId: state.writerId,
         viewer,
+        stackOrderIgnoreKeys: liveEditStrip.appendedKeys,
         ...opts,
       });
       state.lastByPage = byPage;
@@ -6083,7 +6084,8 @@ function makeHandle(state) {
         { [pageNumber]: { ...(pageAnnotations || { objects: [] }), eraserMutation } },
       );
       // w32: nor on another screen's in-flight edit of a mark.
-      const liveEditFree = stripLiveEdits(state, previewFree, null, { translate: false }).byPage;
+      const liveEditResult = stripLiveEdits(state, previewFree, null, { translate: false });
+      const liveEditFree = liveEditResult.byPage;
       const preparedPage = stripLiveEditEraserMutation(liveEditFree[pageNumber]);
       const prepared = {
         ...current,
@@ -6094,6 +6096,7 @@ function makeHandle(state) {
         eraserWriterId: state.writerId,
         viewer: state.viewer,
         onlyPages: [String(pageNumber)],
+        stackOrderIgnoreKeys: liveEditResult.appendedKeys,
       });
       const materialized = docToByPage(state.doc);
       state.lastByPage = materialized;

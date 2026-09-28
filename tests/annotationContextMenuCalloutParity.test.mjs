@@ -6,11 +6,10 @@
 // must be DELIBERATE and DOCUMENTED, never accidental:
 //
 //   - The four z-order items (bringToFront / bringForward / sendBackward /
-//     sendToBack) are excluded from the callout menu BY DESIGN: callouts
-//     render in their own SVG loop above all shapes (cross-type order is
-//     meaningless) and deriveCalloutsFromByPage sorts per-page callouts by id
-//     (callout-vs-callout order is not user-controllable without a persisted
-//     z-field / render-loop unification). A menu item would be a dead no-op.
+//     sendToBack) are ON the callout menu (w52, 2026-09-28 owner ruling:
+//     "annotations are annotations"). They used to be excluded because
+//     callouts drew in their own loop above every shape; callouts now sit in
+//     the page's one stacking order, so the items are live, not dead.
 //   - Group / Ungroup are hidden app-wide (2026-04-21) on BOTH menus.
 //
 // Source-assertion tests (the repo's pattern for guarding contracts inside
@@ -78,22 +77,27 @@ test('callout Delete still routes through the gated window bridge (handleDeleteS
   assert.match(branch, /window\.__onDeleteSelectedCallouts\(\[ctx\.calloutId\]\)/);
 });
 
-test('z-order items are excluded from the callout menu DELIBERATELY (documented), not merely missing', () => {
+// w52 ruling (2026-09-28): this test used to pin the z-order items as
+// DELIBERATELY EXCLUDED from the callout menu. The owner overruled that
+// design ("I can't change the Z-order of different things and put some above
+// callouts ... annotations are annotations"), and its premise (callouts drawn
+// in their own loop above every shape) no longer holds — see
+// src/services/annotationStackOrder.js. It now pins the opposite: the four
+// items are present and use the SAME reorder handler as the shape menu.
+test('callout menu carries the four z-order items through the shared reorder handler', () => {
   const branch = calloutBranch();
-  // No dead items: none of the four z-order keys may render in the callout menu.
   for (const key of ['bringToFront', 'bringForward', 'sendBackward', 'sendToBack']) {
-    assert.ok(!branch.includes(`'${key}'`), `callout menu must not render dead z-order item '${key}'`);
+    assert.ok(branch.includes(`'${key}'`), `callout menu carries z-order item '${key}'`);
   }
-  // The exclusion must be documented in-place so a future parity pass reads
-  // it as a decision, not a gap.
-  assert.match(branch, /DELIBERATELY EXCLUDED/);
-  assert.match(branch, /deriveCalloutsFromByPage/);
+  // Resolved to the callout's slot in the page's objects, then the shared handler.
+  assert.match(branch, /findIndex\(\s*\(o\) => o\?\.data\?\.type === 'callout' && o\?\.data\?\.id === ctx\.calloutId/);
+  assert.match(branch, /handleReorderAnnotation\(ctx\.pageNumber, index, direction\)/);
 });
 
-test('callout render order really is id-sorted (the premise of the z-order exclusion)', () => {
-  // Guard the exclusion's factual basis: if someone makes callout order
-  // user-controllable (drops the per-page id sort), this test fails and the
-  // z-order exclusion above must be revisited.
+test('the derived callout LIST stays id-sorted (fingerprint determinism)', () => {
+  // w52: the derived list's id sort is for deterministic sync fingerprints
+  // only; what a callout is drawn above or below comes from its slot in the
+  // page's objects, never from this list's order.
   const bridgeSource = readFileSync(
     new URL('../src/utils/calloutAnnotationBridge.js', import.meta.url),
     'utf8',

@@ -59,6 +59,15 @@ export const ANNOTATION_STORE_VERSION = 3;
 
 export const MARK_PAGE_KEY = 'p';
 export const MARK_OBJECT_KEY = 'o';
+// w52 (2026-09-28): the mark's place in its page's stacking order. A plain
+// number beside `p`, never inside `o`: it is not a field of the mark (Undo
+// field diffs, exports and live edits never see it), so changing the order
+// writes exactly one small key per moved mark and a concurrent edit of any
+// field of the same mark is untouched. Marks without one sit above every
+// mark that has one, in the map's own order (every mark written before w52,
+// and every new mark until someone reorders its page). The ordering rule
+// lives in annotationStackOrder.js.
+export const MARK_Z_KEY = 'z';
 const GROUP_KEY_PREFIX = '#';
 const PATH_SEPARATOR = '.';
 
@@ -268,7 +277,36 @@ export function decodeAnnotationEntry(entry) {
   const page = entry.get(MARK_PAGE_KEY);
   const objectMap = entry.get(MARK_OBJECT_KEY);
   if (page == null || !isYMap(objectMap)) return null;
-  return { p: page, o: decodeObjectMap(objectMap) };
+  const decoded = { p: page, o: decodeObjectMap(objectMap) };
+  const z = readStoredZ(entry);
+  if (z != null) decoded.z = z;
+  return decoded;
+}
+
+// The stored stacking position, or null when the mark has none (see
+// MARK_Z_KEY). Anything that is not a finite number reads as none.
+function readStoredZ(entry) {
+  const z = entry.get(MARK_Z_KEY);
+  return typeof z === 'number' && Number.isFinite(z) ? z : null;
+}
+
+/** The stored stacking position of mark `key`, or null (none / absent). */
+export function readAnnotationZ(doc, key) {
+  const stored = doc.getMap(MARKS_MAP).get(key);
+  return isYMap(stored) ? readStoredZ(stored) : null;
+}
+
+/**
+ * Set mark `key`'s stacking position. Touches only the `z` key; a no-op when
+ * it already holds `z`. Must run inside the caller's transaction when several
+ * marks move together. Returns the number of keys written (0 or 1).
+ */
+export function writeAnnotationZ(doc, key, z) {
+  const stored = doc.getMap(MARKS_MAP).get(key);
+  if (!isYMap(stored) || typeof z !== 'number' || !Number.isFinite(z)) return 0;
+  if (stored.get(MARK_Z_KEY) === z) return 0;
+  stored.set(MARK_Z_KEY, z);
+  return 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +356,7 @@ function materializeEntry(stored, key) {
   setAnnotationStorageKey(decoded.o, key);
   const object = normalizeAnnotationIdentity(decoded.o).object;
   setAnnotationStorageKey(object, key);
-  return { p: decoded.p, o: object };
+  return decoded.z != null ? { p: decoded.p, o: object, z: decoded.z } : { p: decoded.p, o: object };
 }
 
 /**
@@ -368,7 +406,9 @@ export function adoptCachedAnnotationObject(doc, key, object) {
   if (current.o === object) return true;
   if (!valuesEqual(current.o, object)) return false;
   setAnnotationStorageKey(object, key);
-  cacheFor(doc).entries.set(key, { stored, entry: { p: current.p, o: object } });
+  // w52: keep the stacking position (z) the cached entry carries.
+  const entry = current.z != null ? { p: current.p, o: object, z: current.z } : { p: current.p, o: object };
+  cacheFor(doc).entries.set(key, { stored, entry });
   return true;
 }
 
@@ -560,6 +600,13 @@ function writeAnnotationMarkInTransaction(doc, key, page, plainNext, {
   if (pageChanged && stored.get(MARK_PAGE_KEY) !== pageNumber) {
     stored.set(MARK_PAGE_KEY, pageNumber);
     writes += 1;
+    // w52: its place in the old page's stack means nothing on the new page.
+    // Without a z it reads below the new page's newer marks; the capture that
+    // moved it gives it the moving screen's place (annotationDocStore).
+    if (stored.has(MARK_Z_KEY)) {
+      stored.delete(MARK_Z_KEY);
+      writes += 1;
+    }
   }
 
   if ((group?.key ?? null) !== storedGroup || !hasBase) {

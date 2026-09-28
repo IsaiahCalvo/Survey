@@ -42,8 +42,15 @@ import {
   adoptCachedAnnotationObject,
   decodeAnnotationEntry,
   readAnnotationEntry,
+  readAnnotationZ,
   writeAnnotationMark,
+  writeAnnotationZ,
 } from './annotationMarkStore.js';
+import {
+  planStackOrderWrites,
+  sortStackEntries,
+  viewerChangedStackOrder,
+} from './annotationStackOrder.js';
 
 export {
   ANNOTATION_STORE_VERSION,
@@ -725,6 +732,10 @@ export function docToByPage(doc, { replayStats = null } = {}) {
   const map = getAnnotationsMap(doc);
   const byPage = {};
   const baseLocations = new Map();
+  // w52: each page reads in its stacking order (annotationStackOrder.js) —
+  // stored z first, then marks without one in the map's own order.
+  const stacks = {};
+  let arrival = 0;
   map.forEach((_stored, storageKey) => {
     // Cached per mark (rebuilt only when that mark changed) with its identity
     // already normalized: the map key is authoritative provenance and is
@@ -734,13 +745,18 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     const page = entry.p;
     const obj = entry.o;
     if (page == null || !obj) return;
-    if (!byPage[page]) byPage[page] = { objects: [] };
-    baseLocations.set(String(storageKey), {
-      page: Number(page),
-      index: byPage[page].objects.length,
-    });
-    byPage[page].objects.push(obj);
+    if (!stacks[page]) stacks[page] = [];
+    stacks[page].push({ key: storageKey, z: entry.z ?? null, arrival: arrival++, obj });
   });
+  for (const page of Object.keys(stacks)) {
+    const stack = sortStackEntries(stacks[page]);
+    const objects = [];
+    for (const item of stack) {
+      baseLocations.set(String(item.key), { page: Number(page), index: objects.length });
+      objects.push(item.obj);
+    }
+    byPage[page] = { objects };
+  }
 
   // Each writer owns one replaceable survivor lane per annotation. Sequential
   // gestures update that lane instead of appending replayable operations;
@@ -1141,6 +1157,8 @@ export function createViewerCaptureState() {
     lastDelivered: new Map(), // key -> newest object handed to the viewer
     deliveries: new Map(),    // key -> [object] handed out since the previous capture
     nested: new WeakMap(),    // nested object/array -> { key, object } newest copy holding it
+    pageOrders: new Map(),    // pageKey -> [keys] bottom → top at the previous capture (w52)
+    deliveredPageOrders: new Map(), // pageKey -> [[keys]] handed out since the previous capture (w52)
   };
 }
 
@@ -1179,17 +1197,32 @@ function recordDeliveredObject(viewer, key, pageNumber, object) {
   if (!viewer.base.has(key)) viewer.base.set(key, { page: Number(pageNumber), object });
 }
 
+// w52: the page orders handed to the viewer since its previous capture, so a
+// page array built from one of them is not read as the viewer's own reorder.
+function recordDeliveredPageOrder(viewer, pageKey, order) {
+  if (!viewer.deliveredPageOrders) viewer.deliveredPageOrders = new Map();
+  const ring = viewer.deliveredPageOrders.get(pageKey) || [];
+  const last = ring[ring.length - 1];
+  if (last && last.length === order.length && last.every((key, index) => key === order[index])) return;
+  ring.push(order);
+  while (ring.length > DELIVERY_RING_SIZE) ring.shift();
+  viewer.deliveredPageOrders.set(pageKey, ring);
+}
+
 /** Record every object the store hands to the viewer (reads, remote changes). */
 export function recordViewerDelivery(viewer, byPage) {
   if (!viewer) return;
   const seen = new Set();
   for (const [pageKey, page] of Object.entries(byPage || {})) {
+    const order = [];
     for (const object of page?.objects || []) {
       const key = objectStorageKey(object);
       if (key == null) continue;
       seen.add(key);
+      order.push(key);
       recordDeliveredObject(viewer, key, pageKey, object);
     }
+    recordDeliveredPageOrder(viewer, pageKey, order);
   }
   // Every delivery is the whole document: a mark missing from it is gone.
   for (const key of [...viewer.lastDelivered.keys()]) {
@@ -1250,6 +1283,9 @@ export function syncByPageToDoc(doc, byPage, {
   eraserWriterId = null,
   viewer = null,
   onlyPages = null,
+  // w52: keys whose place in the page array is not the viewer's (a mark a
+  // live overlay hid, put back at the end) — left out of the stacking order.
+  stackOrderIgnoreKeys = null,
 } = {}) {
   const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
   byPage = identityNormalization.byPage;
@@ -1400,6 +1436,24 @@ export function syncByPageToDoc(doc, byPage, {
   // mark import becomes several resilient writes instead of one giant fragile
   // one. A page with no real changes emits no Yjs update at all.
   const written = [];
+  const createdKeys = new Set(); // w52: marks this call created
+  // w52: the highest z on each page this call creates marks on, so a new
+  // mark is stacked on top with its z in the SAME write that creates it (no
+  // extra update per mark; every screen and every reload agree on its place).
+  const topZByPage = new Map();
+  const nextTopZ = (pageKey) => {
+    if (!topZByPage.has(pageKey)) {
+      let top = 0;
+      for (const key of presentPageKeys.get(pageKey) || []) {
+        const z = readAnnotationZ(doc, key); // the z key only, no decode
+        if (typeof z === 'number' && z > top) top = z;
+      }
+      topZByPage.set(pageKey, top);
+    }
+    const next = Math.floor(topZByPage.get(pageKey)) + 1;
+    topZByPage.set(pageKey, next);
+    return next;
+  };
   for (const [page, entries] of writesByPage) {
     doc.transact(() => {
       for (const { key, object, pageKey } of entries) {
@@ -1451,10 +1505,63 @@ export function syncByPageToDoc(doc, byPage, {
           basePage,
           echoVersions,
         });
-        if (!stored) added += 1;
+        if (!stored) {
+          added += 1;
+          createdKeys.add(key);
+          writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
+        } else if (String(stored.p) !== String(page)) {
+          // Moved to this page: the store dropped its old page's z; it goes
+          // on top here, where the moving screen shows it.
+          createdKeys.add(key);
+          writeAnnotationZ(doc, key, nextTopZ(String(pageKey)));
+        }
         else if (result.writes > 0) updated += 1;
         written.push({ key, object, pageKey });
       }
+    }, origin);
+  }
+
+  // w52: the page's stacking order. The array order of each changed page is
+  // the order the viewer shows; write z only where the stored order differs
+  // (annotationStackOrder.js). With a viewer, only an order the viewer itself
+  // changed is written — a page array still in an older order (a capture
+  // taken before a collaborator's reorder was painted) never puts that older
+  // order back.
+  let reordered = 0;
+  let arrivalIndex = null;
+  const arrivalOf = (key) => {
+    if (!arrivalIndex) {
+      arrivalIndex = new Map();
+      let position = 0;
+      map.forEach((_value, storedKey) => { arrivalIndex.set(storedKey, position++); });
+    }
+    return arrivalIndex.get(key) ?? Number.MAX_SAFE_INTEGER;
+  };
+  for (const [pageKey, keySet] of presentPageKeys) {
+    if (keySet.size < 2) continue;
+    const ignored = stackOrderIgnoreKeys && stackOrderIgnoreKeys.length
+      ? new Set(stackOrderIgnoreKeys.map(String))
+      : null;
+    const desiredKeys = ignored ? [...keySet].filter((key) => !ignored.has(key)) : [...keySet];
+    if (desiredKeys.length < 2) continue;
+    if (viewer && !viewerChangedStackOrder(desiredKeys, [
+      viewer.pageOrders?.get(pageKey),
+      ...(viewer.deliveredPageOrders?.get(pageKey) || []),
+    ], createdKeys)) continue;
+    const entries = [];
+    for (const key of desiredKeys) {
+      const entry = readAnnotationEntry(doc, key);
+      if (!entry || String(entry.p) !== String(pageKey)) continue;
+      entries.push({ key, z: entry.z ?? null, arrival: 0 });
+    }
+    if (entries.length < 2) continue;
+    for (const entry of entries) {
+      if (entry.z == null) entry.arrival = arrivalOf(entry.key);
+    }
+    const zWrites = planStackOrderWrites(entries);
+    if (zWrites.size === 0) continue;
+    doc.transact(() => {
+      for (const [key, z] of zWrites) reordered += writeAnnotationZ(doc, key, z);
     }, origin);
   }
 
@@ -1483,6 +1590,7 @@ export function syncByPageToDoc(doc, byPage, {
     updated,
     removed,
     skipped,
+    ...(reordered ? { reordered } : {}),
     ...(reconcile.length ? { reconcile } : {}),
     ...(identityNormalization.changed
       ? { normalizedByPage: byPage, identityChanged: true }
@@ -1502,6 +1610,7 @@ function commitViewerCapture(viewer, {
     const bucket = byPage[pageKey];
     viewer.lastPages.set(pageKey, bucket);
     viewer.pageKeys.set(pageKey, presentPageKeys.get(pageKey) || new Set());
+    viewer.pageOrders?.set(pageKey, [...(presentPageKeys.get(pageKey) || [])]);
     const page = Number(pageKey);
     for (const object of bucket?.objects || []) {
       const key = objectStorageKey(object);
@@ -1515,6 +1624,7 @@ function commitViewerCapture(viewer, {
       if (!Object.prototype.hasOwnProperty.call(byPage || {}, pageKey)) {
         viewer.lastPages.delete(pageKey);
         viewer.pageKeys.delete(pageKey);
+        viewer.pageOrders?.delete(pageKey);
       }
     }
     viewer.had = new Set(present);
@@ -1538,6 +1648,7 @@ function commitViewerCapture(viewer, {
   }
   // Everything handed out so far has now been painted or superseded.
   viewer.deliveries.clear();
+  viewer.deliveredPageOrders?.clear();
 }
 
 /** Tell the capture state the viewer now holds `object` for `key` (a reconcile swap). */

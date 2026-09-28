@@ -83,6 +83,9 @@ class MockElement {
 
   querySelectorAll(selector) {
     const all = this.descendants();
+    if (selector === '[data-callout-part]') {
+      return all.filter((el) => el.attrs['data-callout-part'] != null);
+    }
     if (selector.includes('data-path-hit-target') || selector.includes('data-shape-hit-target')) {
       return all.filter((el) => el.attrs['data-path-hit-target'] === 'true'
         || el.attrs['data-shape-hit-target'] != null
@@ -306,4 +309,45 @@ test('pan fallback: callout resolves with its id via the bbox pass', () => {
   assert.equal(result.kind, 'callout');
   assert.equal(result.calloutId, 'callout-abc');
   assert.equal(result.pageNumber, 1);
+});
+
+test('pan fallback: overlapping bbox carriers resolve to the TOP-most (w52 stacking order)', () => {
+  const bottom = new MockElement(
+    { 'data-callout-id': 'callout-under' },
+    { left: 300, top: 300, right: 500, bottom: 420, width: 200, height: 120 }
+  );
+  const top = new MockElement(
+    { 'data-annotation-index': '2' },
+    { left: 320, top: 310, right: 480, bottom: 400, width: 160, height: 90 }
+  );
+  // Document order = paint order: the text box is drawn above the callout.
+  const env = makeEnv({ wrapperChildren: [bottom, top] });
+  const result = runResolve(env, 400, 350);
+  assert.equal(result.kind, 'annotation');
+  assert.equal(result.annotationIndex, 2);
+});
+
+test('pan fallback: a text box in the empty part of a callout box above it still wins (w52)', () => {
+  const callout = new MockElement(
+    { 'data-callout-id': 'callout-over' },
+    { left: 300, top: 300, right: 600, bottom: 500, width: 300, height: 200 }
+  );
+  // The callout's parts: its text box sits top-left, far from the point.
+  const calloutBox = new MockElement(
+    { 'data-callout-part': 'textBox' },
+    { left: 300, top: 300, right: 380, bottom: 330, width: 80, height: 30 }
+  );
+  calloutBox.parent = callout;
+  callout.children.push(calloutBox);
+  const textBox = new MockElement(
+    { 'data-annotation-index': '4' },
+    { left: 480, top: 440, right: 560, bottom: 480, width: 80, height: 40 }
+  );
+  // Paint order: text box first, callout drawn above it.
+  const env = makeEnv({ wrapperChildren: [textBox, callout] });
+  const onTextBox = runResolve(env, 500, 460);
+  assert.equal(onTextBox.kind, 'annotation');
+  assert.equal(onTextBox.annotationIndex, 4);
+  const onCalloutBox = runResolve(env, 320, 310);
+  assert.equal(onCalloutBox.kind, 'callout');
 });

@@ -360,7 +360,7 @@ export function stripLiveEditObjects(byPage, {
   translate = true,
   noTranslateKeys = null,
 }) {
-  if (!byPage || typeof byPage !== 'object') return { byPage, editedKeys: [] };
+  if (!byPage || typeof byPage !== 'object') return { byPage, editedKeys: [], appendedKeys: [] };
   const hidden = hiddenKeys && hiddenKeys.size > 0 ? hiddenKeys : null;
   let changed = false;
   const next = {};
@@ -471,16 +471,22 @@ export function stripLiveEditObjects(byPage, {
       const delivered = deliveredOf(key);
       const targetPage = docPageOf(key);
       if (!delivered || targetPage == null) continue;
-      moved.push([String(targetPage), delivered]);
+      moved.push([String(targetPage), delivered, key]);
       present.add(key);
     }
   }
-  for (const [pageNumber, object] of moved) {
+  // w52: marks put back at the END of a page here (hidden by an overlay, or
+  // moved across pages by another screen) are not where this screen placed
+  // them, so they never count toward the page's stacking order.
+  const appendedKeys = [];
+  for (const [pageNumber, object, key] of moved) {
     const page = next[pageNumber] || { objects: [] };
     next[pageNumber] = { ...page, objects: [...(page.objects || []), object] };
+    const appendedKey = key ?? markIdOf(object);
+    if (appendedKey != null) appendedKeys.push(String(appendedKey));
     changed = true;
   }
-  return { byPage: changed ? next : byPage, editedKeys };
+  return { byPage: changed ? next : byPage, editedKeys, appendedKeys };
 }
 
 // Anything (an erase intent, a history entry) that carries an overlay copy.

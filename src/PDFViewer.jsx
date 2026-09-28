@@ -28602,8 +28602,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (direction !== 'forward' && direction !== 'backward') return fromIndex;
       const svg = document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`);
       if (!svg) return stepFallback;
+      // w52: callouts render in the same stack but carry data-stack-index
+      // (not data-annotation-index, which routes clicks to the shape path).
       const bboxOf = (i) => {
-        const g = svg.querySelector(`[data-annotation-index="${i}"]`);
+        const g = svg.querySelector(`[data-annotation-index="${i}"]`)
+          || svg.querySelector(`[data-stack-index="${i}"]`);
         if (!g || typeof g.getBBox !== 'function') return null;
         try { return g.getBBox(); } catch (_e) { return null; }
       };
@@ -28636,6 +28639,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       action: 'reorder',
       checkpointPolicy: 'normal',
     });
+    // w52: a callout's selection is keyed by its id and survives the move on
+    // its own; pointing the shape selection at its new slot would select the
+    // callout's group object as if it were a shape.
+    if (moved?.data?.type === 'callout') return;
     setPendingSvgSelection({
       pageNumber,
       annotationIndex: clamped,

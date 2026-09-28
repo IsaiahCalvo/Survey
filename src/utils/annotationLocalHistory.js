@@ -538,6 +538,9 @@ function shapeHistoryAction(pageNumber, created, deleted, updated) {
  */
 export function restrictAnnotationHistoryActionFields(action, record) {
   if (!action || !record || !(record.fields instanceof Map)) return action;
+  // w52: no gesture reorders marks; an order change seen at its release is a
+  // collaborator's reorder that landed meanwhile — never this user's step.
+  if (action.type === 'fabric:reorder') return null;
   if (action.type !== 'fabric:update' && action.type !== 'fabric:batch'
     && action.type !== 'fabric:create' && action.type !== 'fabric:delete') return action;
   const entries = actionEntries(action);
@@ -767,7 +770,50 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
     };
   }
 
-  return null;
+  return buildReorderHistoryAction(pageNumber, previousById, nextById);
+}
+
+// w52 (2026-09-28): an order-only change (Bring to front / forward, Send
+// backward / to back) is its own Undo step. Before, nothing but the order
+// changed, so the save built no step and Cmd+Z undid the PREVIOUS edit
+// instead. The step holds only storage keys: Undo/Redo put exactly those
+// marks back into their old relative order in the slots they occupy now, so
+// a mark a collaborator added or removed meanwhile is never moved or revived.
+function orderedKeys(byId) {
+  return [...byId.values()]
+    .sort((left, right) => left.index - right.index)
+    .map((entry) => entry.storageKey);
+}
+
+function buildReorderHistoryAction(pageNumber, previousById, nextById) {
+  if (previousById.size < 2 || previousById.size !== nextById.size) return null;
+  const beforeOrder = orderedKeys(previousById);
+  const afterOrder = orderedKeys(nextById);
+  if (!afterOrder.every((key) => previousById.has(key))) return null;
+  if (beforeOrder.every((key, index) => key === afterOrder[index])) return null;
+  return { type: 'fabric:reorder', pageNumber, beforeOrder, afterOrder };
+}
+
+// Put the marks named in `order` into that relative order, inside the slots
+// those marks occupy now. Marks not named (or no longer present) stay put.
+function applyStackOrder(objects, order) {
+  const wanted = (Array.isArray(order) ? order : []).map(String);
+  const rank = new Map(wanted.map((key, index) => [key, index]));
+  const slots = [];
+  const moving = [];
+  objects.forEach((object, index) => {
+    const key = getCanonicalStorageKey(object);
+    if (key != null && rank.has(key)) {
+      slots.push(index);
+      moving.push(object);
+    }
+  });
+  if (moving.length < 2) return objects;
+  moving.sort((left, right) => rank.get(getCanonicalStorageKey(left)) - rank.get(getCanonicalStorageKey(right)));
+  if (moving.every((object, index) => object === objects[slots[index]])) return objects;
+  const next = objects.slice();
+  slots.forEach((slot, index) => { next[slot] = moving[index]; });
+  return next;
 }
 
 export function invertAnnotationHistoryAction(action) {
@@ -786,6 +832,14 @@ export function invertAnnotationHistoryAction(action) {
           : {}),
       }
       : null;
+  }
+  if (action.type === 'fabric:reorder') {
+    return {
+      type: 'fabric:reorder',
+      pageNumber: action.pageNumber,
+      beforeOrder: [...(action.afterOrder || [])],
+      afterOrder: [...(action.beforeOrder || [])],
+    };
   }
   if (action.type === 'fabric:create') {
     return {
@@ -995,7 +1049,9 @@ export function applyAnnotationHistoryAction(annotationsByPage, action, options 
   const objects = getObjects(page);
 
   let nextObjects = objects;
-  if (action.type === 'fabric:create') {
+  if (action.type === 'fabric:reorder') {
+    nextObjects = applyStackOrder(objects, action.afterOrder);
+  } else if (action.type === 'fabric:create') {
     const existingIndex = findEntryObjectIndex(objects, action, action.annotation);
     if (existingIndex >= 0) {
       nextObjects = replaceAtStorageIndex(

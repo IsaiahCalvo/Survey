@@ -2987,9 +2987,15 @@ test('history normalization preserves serialized duplicate identity through reor
   );
   syncByPageToDoc(doc, normalized);
   assert.equal(getAnnotationsMap(doc).size, 2);
+  // w52 ruling (2026-09-28): this test is about identity; its old expected
+  // order ([0..10] first) was the store DROPPING the reorder on reload — the
+  // bug the owner reported ("I can't change the Z-order"). The stacking order
+  // now persists (annotationStackOrder.js), so a reload keeps the reordered
+  // order. Identity is still what is checked: both strokes survive, each with
+  // its own geometry, in the order the page was saved.
   assert.deepEqual(
     docToByPage(cloneDoc(doc))[1].objects.map((object) => object.path),
-    [[['M', 0, 50], ['L', 10, 50]], [['M', 20, 50], ['L', 30, 50]]],
+    [[['M', 20, 50], ['L', 30, 50]], [['M', 0, 50], ['L', 10, 50]]],
   );
 });
 

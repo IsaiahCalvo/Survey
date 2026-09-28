@@ -261,24 +261,19 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // UX: 2026-07-17 — callout menu parity with the shape menu, audited
       // item by item. Cut / Copy / Paste / Delete are 1:1 with the shape
       // menu (same clipboard rules, same paste-at-point rule, same gated
-      // delete). The four z-order items (Bring to front / Bring forward /
-      // Send backward / Send to back) are DELIBERATELY EXCLUDED, not
-      // missing:
-      //   - Cross-type z-order is meaningless by design: callouts render in
-      //     their own SVG loop ABOVE all shapes (SVGAnnotationLayer's
-      //     dedicated filteredCallouts renderer — a deliberate, tested
-      //     layering), so no reorder could ever move a callout below a shape.
-      //   - Callout-vs-callout order is fixed too: deriveCalloutsFromByPage
-      //     sorts each page's callouts by id (localeCompare) for
-      //     deterministic derive/fingerprint round-trips, so the shapes'
-      //     handleReorderAnnotation machinery (which permutes
-      //     page.objects indices) has zero rendered effect on callouts —
-      //     any reorder would be visually dead AND silently reverted by the
-      //     next derive. Making it real requires a persisted z-field or the
-      //     callout render-loop unification (the dedicated callout-migration
-      //     project), not a menu item.
-      // Rendering dead/no-op items is worse than omitting them — the menu
-      // shows only what actually works on a callout.
+      // delete).
+      //
+      // UX: w52 (2026-09-28, owner: "annotations are annotations") — the four
+      // z-order items (Bring to front / Bring forward / Send backward / Send
+      // to back) are on the callout menu too, exactly like the shape menu.
+      // A callout is a mark in its page's one stacking order
+      // (annotationsByPage[page].objects, persisted per mark as `z` —
+      // src/services/annotationStackOrder.js), drawn in that order by the SVG
+      // layer, the canvas painter, thumbnails, export and print. So any mark
+      // can go above or below a callout, and a callout above or below any
+      // mark. The items resolve the callout's slot in page.objects and call
+      // the SAME handleReorderAnnotation the shape menu uses (one undo step,
+      // same Figma-style overlap-aware forward/backward).
       //
       // Resolve the right-clicked callout's projected group object
       // (data.type === 'callout', id at data.id) so the Cut item can run the
@@ -293,6 +288,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         return page.objects.find(
           (o) => o?.data?.type === 'callout' && o?.data?.id === ctx.calloutId
         ) || null;
+      };
+      // w52: the callout's slot in its page's stacking order.
+      const reorderCallout = (direction) => {
+        const page = annotationsByPageRef.current?.[ctx.pageNumber];
+        if (!page?.objects || !ctx.calloutId) return;
+        const index = page.objects.findIndex(
+          (o) => o?.data?.type === 'callout' && o?.data?.id === ctx.calloutId
+        );
+        if (index < 0) return;
+        handleReorderAnnotation(ctx.pageNumber, index, direction);
       };
       items = [
         item('Cut', 'cut', () => {
@@ -321,6 +326,12 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             window.__onDeleteSelectedCallouts([ctx.calloutId]);
           }
         }),
+        sep(),
+        // w52: same z-order block as the shape menu, same handler.
+        item('Bring to front', 'bringToFront', () => reorderCallout('front')),
+        item('Bring forward', 'bringForward', () => reorderCallout('forward')),
+        item('Send backward', 'sendBackward', () => reorderCallout('backward')),
+        item('Send to back', 'sendToBack', () => reorderCallout('back')),
       ];
     } else if (ctx.kind === 'counter') {
       items = [

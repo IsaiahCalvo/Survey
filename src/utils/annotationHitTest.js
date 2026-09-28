@@ -209,6 +209,23 @@ export function resolveAnnotationAt(e) {
     return false;
   };
 
+  // w52: a callout carrier's own box spans its text box, knee and arrow tip,
+  // so it is mostly empty page. Walking top-most first, that box would beat a
+  // text box sitting in the empty space under it — test the callout's parts
+  // instead (lines by stroke geometry, text box / tip / knee by their box).
+  const calloutCarrierContainsPoint = (el) => {
+    if (!el?.getAttribute?.('data-callout-id') || typeof el.querySelectorAll !== 'function') {
+      return rectContainsPoint(el);
+    }
+    const parts = Array.from(el.querySelectorAll('[data-callout-part]') || []);
+    if (parts.length === 0) return rectContainsPoint(el);
+    return parts.some((part) => (
+      String(part.tagName || '').toLowerCase() === 'line'
+        ? svgGeometryContainsPoint(part)
+        : rectContainsPoint(part)
+    ));
+  };
+
   const readHitCarrier = (el) => {
     if (!el) return;
     const carrier = el.closest?.('[data-annotation-index], [data-callout-id], [data-counter-overlay]') || el;
@@ -247,7 +264,10 @@ export function resolveAnnotationAt(e) {
       // but off the geometry is NOT a hit — hollow shape interiors stay
       // inert in pan/right-click exactly as they are under the Select tool
       // (uniform Bluebeam-style model: edge-only unless filled/text-bearing).
-      const geometryTargets = wrapper.querySelectorAll('[data-path-hit-target="true"], [data-shape-hit-target]');
+      // w52 (2026-09-28): walk TOP-most first (reverse document order - the
+      // SVG paints later siblings above earlier ones), so where marks overlap
+      // the one drawn on top wins, matching the page's stacking order.
+      const geometryTargets = Array.from(wrapper.querySelectorAll('[data-path-hit-target="true"], [data-shape-hit-target]')).reverse();
       for (const el of geometryTargets) {
         inspected += 1;
         if (!svgGeometryContainsPoint(el)) continue;
@@ -260,14 +280,14 @@ export function resolveAnnotationAt(e) {
       // rects, survey markers, callout hit zones, counter HTML overlays.
       // Carriers that contain real geometry targets were already decided by
       // pass 1 — skip them so hollow interiors can't resurrect via bbox.
-      const candidates = wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay], [data-path-bbox-hit-target="true"]');
+      const candidates = Array.from(wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay], [data-path-bbox-hit-target="true"]')).reverse();
       for (const el of candidates) {
         inspected += 1;
         if (typeof el.querySelector === 'function'
           && el.querySelector('[data-path-hit-target="true"], [data-shape-hit-target]')) {
           continue;
         }
-        if (!rectContainsPoint(el)) continue;
+        if (!calloutCarrierContainsPoint(el)) continue;
         readHitCarrier(el);
         if (annotationIndex != null || calloutId || isCounter) break;
       }

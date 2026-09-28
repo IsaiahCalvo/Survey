@@ -1549,8 +1549,30 @@ export function paintAnnotationCanvas(context, {
     -toNumber(offsetX) * drawScale,
     -toNumber(offsetY) * drawScaleY,
   );
-  objects.forEach((object) => drawAnnotationObject(context, object, displayScale));
-  callouts.forEach((callout) => drawCallout(context, callout, pageWidth, pageHeight, displayScale));
+  // w52 (2026-09-28): one stacking order per page. A callout is painted at
+  // the slot of its projected group in `objects` (same order as the SVG layer,
+  // export and print); a callout with no such slot paints on top, as before.
+  const calloutsById = new Map();
+  callouts.forEach((callout) => {
+    if (callout?.id != null && !calloutsById.has(String(callout.id))) {
+      calloutsById.set(String(callout.id), callout);
+    }
+  });
+  const painted = new Set();
+  objects.forEach((object) => {
+    if (object?.data?.type === 'callout') {
+      const callout = object?.data?.id != null ? calloutsById.get(String(object.data.id)) : null;
+      if (callout && !painted.has(callout)) {
+        painted.add(callout);
+        drawCallout(context, callout, pageWidth, pageHeight, displayScale);
+      }
+      return;
+    }
+    drawAnnotationObject(context, object, displayScale);
+  });
+  callouts.forEach((callout) => {
+    if (!painted.has(callout)) drawCallout(context, callout, pageWidth, pageHeight, displayScale);
+  });
   context.setTransform(1, 0, 0, 1, 0, 0);
   return { objectCount: objects.length, calloutCount: callouts.length };
 }
