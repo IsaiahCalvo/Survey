@@ -172,8 +172,31 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    user took back). Still open: a selection spread over two pages
    duplicates as one step per page.
 5. **One type registry for all renderers** (SVG, painter, export, print) so a
-   new type can never be missing from one output. Medium–large refactor; do
-   after 2.
+   new type can never be missing from one output. w53 looked and kept it a
+   plan: each renderer dispatches on a DIFFERENT key today — the SVG layer
+   on `obj.type` + `data.type` inside `SVGAnnotationLayer` render loops, the
+   canvas painter in `drawAnnotationObject` (`annotationCanvasPainter.js`
+   ~1271, `data.type` first, then lower-cased `type`), the PDF writer in
+   several places of `pdfAnnotationsPdfLib.js` (~2438 appearance streams,
+   ~6356 geometry, ~7645 a `switch`), and print as an image of the screen
+   (inherits the SVG dispatch). A one-step swap would touch every output at
+   once with no shared golden to compare against. Safe order:
+   (a) add `src/utils/markTypeRegistry.js`: `classifyMark(object)` →
+       one of `pen · highlighter · rect · ellipse · cloud · line · arrow ·
+       polyline · polygon · textbox · callout · counter · stamp ·
+       text-markup · imported-ink · imported-shape · survey-marker` (the
+       `data.type` / `type` / provenance rules now spread across the four);
+   (b) a parity test that feeds one fixture per kind through
+       `classifyMark` AND through each renderer's current entry
+       (`drawAnnotationObject`, the export builder, the SVG element
+       builder) and fails when a kind draws nothing in one of them — the
+       guard first, before any code moves;
+   (c) switch each renderer to `switch (classifyMark(object))` one at a
+       time, each behind the parity test and the existing fidelity gates
+       (print-fidelity / import-fidelity specs);
+   (d) Survey Markers become a registry kind too, so the canvas painter /
+       thumbnails (which draw none today) and export read one rule.
+   Medium–large; needs the owner's go-ahead for the fidelity-gate reruns.
 6. **Callout rotation and user lock** — not built for any type (no Lock item);
    owner decision.
 7. **Visibility filter written four times** (shared helper, two inline copies
