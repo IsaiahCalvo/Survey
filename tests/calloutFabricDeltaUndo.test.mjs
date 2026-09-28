@@ -231,7 +231,9 @@ describe('CRITICAL invariant — non-target objects byte-preserved', () => {
 });
 
 describe('filterAnnotationHistoryActionByOwner — projected callout author fields', () => {
-  it('owner keeps their callout delta; a foreign viewer is scoped out', () => {
+  // RULED 2026-09-28 owner: open editing + lock — a step is the recorder's
+  // own action, whoever drew the callout, so it is never scoped out by author.
+  it('the recorder keeps their callout delta, whoever authored the callout', () => {
     const prevPage = buildPage([makeCallout('cal-a')]);
     const nextPage = commitMutation(prevPage, (list) => list.map((c) => (
       c.id === 'cal-a' ? { ...c, text: 'moved' } : c
@@ -249,10 +251,14 @@ describe('filterAnnotationHistoryActionByOwner — projected callout author fiel
     assert.equal(action.after?.data?.legacyCallout?.meta?.authorId, OWNER);
 
     assert.equal(filterAnnotationHistoryActionByOwner(action, OWNER), action);
-    assert.equal(filterAnnotationHistoryActionByOwner(action, FOREIGN), null);
+    // RULED 2026-09-28 owner: open editing + lock — another editor's edit of
+    // this callout is their Undo step too; only an unknown viewer gets none.
+    assert.equal(filterAnnotationHistoryActionByOwner(action, FOREIGN), action);
+    assert.equal(filterAnnotationHistoryActionByOwner(action, null), null);
   });
 
-  it('batch actions drop only the foreign-authored callout entries', () => {
+  // RULED 2026-09-28 owner: open editing + lock — a batch is kept whole.
+  it('batch actions keep every callout entry the recorder changed', () => {
     const foreignCallout = makeCallout('cal-foreign', { meta: { authorId: FOREIGN } });
     const prevPage = buildPage([makeCallout('cal-a'), foreignCallout]);
     const nextPage = commitMutation(prevPage, (list) => list.map((c) => ({
@@ -268,12 +274,14 @@ describe('filterAnnotationHistoryActionByOwner — projected callout author fiel
     assert.equal(action?.type, 'fabric:batch');
 
     const scoped = filterAnnotationHistoryActionByOwner(action, OWNER);
-    assert.ok(scoped, 'owner keeps their half of the batch');
-    assert.deepEqual(scoped.updated.map((e) => e.id), ['cal-a']);
+    assert.ok(scoped, 'the recorder keeps the batch');
+    // RULED 2026-09-28 owner: open editing + lock — both callouts the step changed.
+    assert.deepEqual(scoped.updated.map((e) => e.id).sort(), ['cal-a', 'cal-foreign']);
 
     const scopedForeign = filterAnnotationHistoryActionByOwner(action, FOREIGN);
-    assert.ok(scopedForeign, 'foreign viewer keeps their half of the batch');
-    assert.deepEqual(scopedForeign.updated.map((e) => e.id), ['cal-foreign']);
+    assert.ok(scopedForeign, 'any recorder keeps the batch');
+    // RULED 2026-09-28 owner: open editing + lock — same, for the other editor.
+    assert.deepEqual(scopedForeign.updated.map((e) => e.id).sort(), ['cal-a', 'cal-foreign']);
   });
 });
 

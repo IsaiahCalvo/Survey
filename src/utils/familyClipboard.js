@@ -51,6 +51,21 @@ function stampAuthor(object, authorId) {
 
 const isCalloutObject = (object) => object?.data?.type === 'callout';
 
+// A pasted copy is a NEW mark: it never inherits the source's user lock
+// (owner ruling 2026-09-28 — the lock belongs to that one mark).
+function stripUserLock(object) {
+  if (!object || typeof object !== 'object') return;
+  delete object.lockedBy;
+  if (object.data && typeof object.data === 'object') {
+    object.data = { ...object.data };
+    delete object.data.lockedBy;
+    if (object.data.legacyCallout && typeof object.data.legacyCallout === 'object') {
+      object.data.legacyCallout = { ...object.data.legacyCallout };
+      delete object.data.legacyCallout.lockedBy;
+    }
+  }
+}
+
 /** A callout's page-unit top-left (arrow tip, knee and text box together). */
 function calloutTopLeft(callout, pageWidth, pageHeight) {
   const xs = [callout?.arrowTip?.x, callout?.knee?.x, callout?.textBoxPosition?.x].filter(Number.isFinite);
@@ -69,9 +84,13 @@ function calloutTopLeft(callout, pageWidth, pageHeight) {
  *   markers       [{ id, record, categoryName }] selected Survey Markers
  *   pageMarkers   [{ id, stack }] the page's drawn markers (for the order)
  *   pageWidth / pageHeight
+ *   cut           true for Cut: each Survey Marker item also names the item
+ *                 itself (`cutMarkerId`) so its paste puts the SAME survey
+ *                 item back on the page (owner ruling 2026-09-28)
  * @returns {{ items: Array, origin: {left, top}, sourcePageNumber } | null}
  *   items (bottom → top): { kind: 'mark', object } | { kind: 'callout',
- *   callout } | { kind: 'marker', entry, categoryName, sourceModuleId }
+ *   callout } | { kind: 'marker', entry, categoryName, sourceModuleId,
+ *   cutMarkerId? }
  */
 export function buildFamilyClipboard({
   pageNumber,
@@ -82,6 +101,7 @@ export function buildFamilyClipboard({
   pageMarkers = [],
   pageWidth = 612,
   pageHeight = 792,
+  cut = false,
 }) {
   const list = Array.isArray(objects) ? objects : [];
   const pickedIndices = new Set([...indices].filter((i) => Number.isInteger(i) && list[i] && !isCalloutObject(list[i])));
@@ -131,6 +151,7 @@ export function buildFamilyClipboard({
       entry: surveyMarkerClipboardEntry(marker.record),
       categoryName: marker.categoryName ?? null,
       sourceModuleId: marker.record.moduleId ?? null,
+      ...(cut ? { cutMarkerId: String(marker.id) } : {}),
     });
     const b = marker.record.bounds;
     widen(Number(b.x), Number(b.y), Number(b.x) + Number(b.width || 0), Number(b.y) + Number(b.height || 0));
@@ -162,9 +183,15 @@ export function buildFamilyClipboard({
  *   authorId       the viewer (stamped on a callout that carries no author)
  *   resolveMarker(item) → { moduleId, categoryId, name, regionId } | null
  *                  where a copied Survey Marker lands (null = skip it)
+ *   resolveCutMarker(item) → { regionId } | null
+ *                  whether a CUT Survey Marker (item.cutMarkerId) can go back
+ *                  on the page here (null = skip it)
  *   userId         stamped on new Survey Markers
  *   pageNumber
- * @returns {{ objects, newMarkIds, newCalloutIds, callouts, markers, skippedMarkers }}
+ * @returns {{ objects, newMarkIds, newCalloutIds, callouts, markers,
+ *             placedMarkers, skippedMarkers, skippedCutMarkers }}
+ *   placedMarkers: [{ id, pageNumber, bounds, regionId }] — cut survey items
+ *   going back on the page (the SAME record: same id, same Row ID).
  *   objects: the page's marks WITH the new marks appended in the copied order
  *   (callouts come back separately: the viewer projects them into the page);
  *   callouts: new callout records; markers: new marker records (their
@@ -180,6 +207,7 @@ export function planFamilyPaste(clipboard, {
   newId = () => globalThis.crypto.randomUUID(),
   authorId = null,
   resolveMarker = () => null,
+  resolveCutMarker = () => null,
   userId = null,
   pageNumber,
 } = {}) {
@@ -187,11 +215,14 @@ export function planFamilyPaste(clipboard, {
   const newMarks = [];
   const newCallouts = [];
   const newMarkers = [];
+  const placedMarkers = [];
   let skippedMarkers = 0;
+  let skippedCutMarkers = 0;
   for (const item of clipboard?.items || []) {
     if (item.kind === 'mark') {
       const clone = translateAnnotationForMove(item.object, dx, dy);
       mintPastedCloneIdentity(clone, newId());
+      stripUserLock(clone);
       // A pasted mark is the paster's own new mark (own Undo, own Cut).
       if (authorId) stampAuthor(clone, authorId);
       if (scope) applyPasteScope(clone, scope);
@@ -226,10 +257,28 @@ export function planFamilyPaste(clipboard, {
       // A NEW native callout: no import provenance (two callouts must never
       // claim one PDF annotation), and the paster's own.
       for (const key of CALLOUT_PROVENANCE_KEYS) delete callout[key];
+      stripUserLock(callout);
       if (authorId) callout.meta = { ...(callout.meta || {}), authorId };
       if (scope) applyPasteScope(callout, scope);
       newCallouts.push(callout);
       pasted.push({ kind: 'callout', id: callout.id });
+    } else if (item.kind === 'marker' && item.cutMarkerId) {
+      // A cut survey item goes back on the page as ITSELF: same id (so the
+      // same Row ID and Excel row), same answers — only its box moves.
+      const landing = resolveCutMarker(item);
+      if (!landing) { skippedCutMarkers += 1; continue; }
+      const bounds = {
+        ...item.entry.bounds,
+        x: (Number(item.entry.bounds?.x) || 0) + (Number(dx) || 0),
+        y: (Number(item.entry.bounds?.y) || 0) + (Number(dy) || 0),
+      };
+      placedMarkers.push({
+        id: String(item.cutMarkerId),
+        pageNumber,
+        bounds,
+        regionId: landing.regionId ?? null,
+      });
+      pasted.push({ kind: 'marker', id: String(item.cutMarkerId) });
     } else if (item.kind === 'marker') {
       const landing = resolveMarker(item);
       if (!landing) { skippedMarkers += 1; continue; }
@@ -254,8 +303,10 @@ export function planFamilyPaste(clipboard, {
     newMarkIds: newMarks.map((object) => markIdOf(object)),
     callouts: newCallouts,
     markers: newMarkers,
+    placedMarkers,
     pastedOrder: pasted,
     skippedMarkers,
+    skippedCutMarkers,
   };
 }
 
@@ -266,7 +317,8 @@ export function planFamilyPaste(clipboard, {
  * them in that order (above every mark that was already on the page).
  * @param {Array} pageObjects  the page after projection
  * @param {Array} pastedOrder  planFamilyPaste(...).pastedOrder
- * @param {Array} markers      planFamilyPaste(...).markers (mutated: stack set)
+ * @param {Array} markers      planFamilyPaste(...).markers and .placedMarkers
+ *                             (mutated: stack set)
  * @returns {Array} the page objects, reordered
  */
 export function orderPastedFamily(pageObjects, pastedOrder, markers) {

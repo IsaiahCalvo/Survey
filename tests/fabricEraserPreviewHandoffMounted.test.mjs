@@ -350,8 +350,11 @@ test('missing SVG disables the unsafe flattened-canvas approximation but still c
   await mounted.unmount();
 });
 
-test('safe SVG preview carves only permitted ink and preserves foreign/locked content', async () => {
-  const mounted = await mountEraser();
+// RULED 2026-09-28 owner: open editing + lock — title: foreign ink is now permitted; the preserved case is user-locked (and system-locked) ink.
+test('safe SVG preview carves only permitted ink and preserves user-locked/locked content', async () => {
+  const userLockedInk = pathObject({ id: 'user-locked-ink', authorId: 'other-user' });
+  userLockedInk.data = { ...userLockedInk.data, lockedBy: 'other-user' };
+  const mounted = await mountEraser({ pageObjects: [...objects(), userLockedInk] });
   await drag(mounted);
 
   const clone = document.querySelector('[data-eraser-mask-clone="1"]');
@@ -360,8 +363,14 @@ test('safe SVG preview carves only permitted ink and preserves foreign/locked co
     clone.querySelector('[data-annotation-id="own-ink"]').getAttribute('mask') || '',
     /^url\(#eraser-carve-mask-/,
   );
-  assert.equal(clone.querySelector('[data-annotation-id="foreign-ink"]').getAttribute('mask'), null);
-  assert.equal(clone.querySelector('[data-annotation-id="foreign-ink"]').style.display, '');
+  // RULED 2026-09-28 owner: open editing + lock — another author's ink is carved like the viewer's own.
+  assert.match(
+    clone.querySelector('[data-annotation-id="foreign-ink"]').getAttribute('mask') || '',
+    /^url\(#eraser-carve-mask-/,
+  );
+  // RULED 2026-09-28 owner: open editing + lock — the refusal moves to a user-locked foreign ink.
+  assert.equal(clone.querySelector('[data-annotation-id="user-locked-ink"]').getAttribute('mask'), null);
+  assert.equal(clone.querySelector('[data-annotation-id="user-locked-ink"]').style.display, '');
   assert.equal(clone.querySelector('[data-annotation-id="locked-ink"]').getAttribute('mask'), null);
   assert.equal(clone.querySelector('[data-annotation-id="locked-ink"]').style.display, '');
   assert.equal(clone.querySelector('[data-annotation-id="shape"]').style.display, 'none');

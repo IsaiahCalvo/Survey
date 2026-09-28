@@ -130,7 +130,7 @@ import {
   preserveTextMarkupRangeResizeSiblings,
   resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
-import { findSelectedAnnotationIndex, getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { findSelectedAnnotationIndex, getAnnotationRenderIdentity, getAnnotationStorageKey, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDragHistory.js';
 import {
   buildSelectedTextStylePatch,
@@ -164,6 +164,7 @@ import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
+import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
@@ -172,6 +173,9 @@ import {
   canCommitSurveyMarkerErase,
   canModify,
   canModifySurveyMarker,
+  canToggleLock,
+  isUserLocked,
+  getMarkLockedBy,
   filterEraserCommitIds,
   getAnnotationAuthorId,
   resolveDocumentOwnerId,
@@ -185,6 +189,9 @@ import {
   patchSurveyMarkerRenderPages,
   surveyMarkerRenderEntry,
   translateSurveyMarkerRecord,
+  isSurveyMarkerPlaced,
+  placeSurveyMarkerRecord,
+  unplaceSurveyMarkerRecord,
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
@@ -4680,9 +4687,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const cutGateOwnerIdRef = useRef(null);
   const handleCutCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
-    // w52: Cut deletes with no confirmation, so it stays own-marks-only for
-    // every entry point (menu AND Cmd+X) — same locked rule as shape Cut.
-    // Boot window (ids unknown) stays permissive, as in the menu.
+    // RULED 2026-09-28 owner: open editing + lock — Cut takes anyone's
+    // callout with no confirmation (menu AND Cmd+X); a user-locked one stays
+    // (even in the boot window, when the ids are not known yet).
+    if (callout && isUserLocked(callout)) {
+      showToast('Locked — its author or the document owner can unlock it.', 'info');
+      return;
+    }
     if (callout && user?.id && cutGateOwnerIdRef.current
       && !canModify({ annotation: callout, viewerId: user.id, documentOwnerId: cutGateOwnerIdRef.current })) return;
     if (callout) {
@@ -11382,6 +11393,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { pdfIdRef.current = pdfId; }, [pdfId]);
   const selectedTemplateRef = useRef(selectedTemplate);
   useEffect(() => { selectedTemplateRef.current = selectedTemplate; }, [selectedTemplate]);
+  // Set by a survey-item delete (or its Undo / History restore, owner ruling
+  // 2026-09-28); the effect after handleSurveyMarkerDeleted then writes the
+  // linked Excel. Declared here so the undo paths above can reach it.
+  const pendingExcelSyncAfterDeleteRefBridge = useRef(false);
 
   // MUST stay identity-stable. This callback is a dependency of the "reset
   // everything when the PDF changes" effect. If it were rebuilt on every
@@ -11781,6 +11796,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageSizesRef.current || {}
     );
 
+    // Owner ruling 2026-09-28: an Undo that brings a deleted survey item back
+    // brings its Excel row back too (same Row ID, same answers) — queue the
+    // linked-Excel write the delete queued.
+    {
+      const liveMarkers = surveyMarkersRef.current || {};
+      const returningIds = Object.keys(restoredSurveyMarkers).filter((id) => !liveMarkers[id]);
+      // An item Undo brings back is app-restored (same as a History restore):
+      // no "received by Excel" stamp until it is exported again.
+      returningIds.forEach((id) => {
+        const record = restoredSurveyMarkers[id];
+        if (record && (record.exportedAt || record.exportAckEtag)) {
+          const { exportedAt: _e, exportAckEtag: _a, ...rest } = record;
+          restoredSurveyMarkers[id] = rest;
+        }
+      });
+      if (returningIds.length > 0 && selectedTemplateRef.current?.linkedExcelPath) {
+        pendingExcelSyncAfterDeleteRefBridge.current = true;
+      }
+    }
     annotationsByPageRef.current = restoredAnnotationsByPage;
     surveyMarkersRef.current = restoredSurveyMarkers;
     spacesRef.current = restoredSpaces;
@@ -12176,6 +12210,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return documentOwnerId;
   }, [documentOwnerId, pdfFile?.id, pdfFile?.user_id]);
 
+  // RULED 2026-09-28 owner: open editing + lock. When something tries to
+  // change a locked mark (a drag, a colour, Delete, Cut, the eraser, a paste
+  // over it …) the mark stays as it is and this says why, once per burst.
+  const lockedMarkToastAtRef = useRef(0);
+  const notifyLockedMarkBlocked = useCallback(() => {
+    const now = Date.now();
+    if (now - lockedMarkToastAtRef.current < 1500) return;
+    lockedMarkToastAtRef.current = now;
+    showToast('Locked — its author or the document owner can unlock it.', 'info');
+  }, []);
+
   const canManageSpaces = useMemo(() => canManageCollaborativeSpaces({
     hasAdvancedSurvey: !!features?.advancedSurvey,
     documentId: pdfFile?.id || null,
@@ -12236,11 +12281,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       settleEraseRequest(false);
       return;
     }
-    // KAL-125: ownership gate — mirror the standard annotation delete path
-    // (useSVGInteraction.js:4207-4224). Run canModify against each callout at
-    // delete time; silently drop any callout the viewer is not allowed to modify.
-    // Eraser commits are non-confirming and therefore require resolved identity
-    // plus canModify; keyboard delete keeps the confirmed canDelete route.
+    // RULED 2026-09-28 owner: open editing + lock — any editor deletes any
+    // callout with no confirmation; user-locked callouts are dropped here
+    // (canDelete / filterEraserCommitIds refuse them). Eraser commits also
+    // require resolved identity.
     const viewerId = user?.id ?? null;
     const permittedIds = eraseRequest
       ? filterEraserCommitIds({
@@ -13074,6 +13118,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (_) {}
     }
 
+    // RULED 2026-09-28 owner: open editing + lock — Undo / Redo never change
+    // a locked mark either (only the lock toggle itself, for its author or
+    // the document owner). utils/markLock.js.
+    {
+      const pagesNow = annotationsByPageRef.current || {};
+      for (const pageKey of Object.keys(nextAnnotationsByPage || {})) {
+        const nextPage = nextAnnotationsByPage[pageKey];
+        const prevPage = pagesNow[pageKey];
+        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) continue;
+        const lockGuard = guardLockedMarksOnSave({
+          previousObjects: prevPage?.objects || [],
+          nextObjects: nextPage.objects,
+          viewerId,
+          documentOwnerId,
+        });
+        if (lockGuard.changed) {
+          nextAnnotationsByPage[pageKey] = { ...nextPage, objects: lockGuard.objects };
+          notifyLockedMarkBlocked();
+        }
+      }
+    }
+
     annotationsByPageRef.current = nextAnnotationsByPage;
     try {
       flushSync(() => setAnnotationsByPage(nextAnnotationsByPage));
@@ -13089,7 +13155,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	    });
     revealUndoneHistoryPage(scopedAction);
     return 'applied';
-  }, [documentOwnerId, pushHistoryDebugEvent, revealUndoneHistoryPage, user?.id, yjsUndoCtx?.userId]);
+  }, [documentOwnerId, notifyLockedMarkBlocked, pushHistoryDebugEvent, revealUndoneHistoryPage, user?.id, yjsUndoCtx?.userId]);
 
   const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
     if (!yjsDoc || !target?.id) return false;
@@ -17302,6 +17368,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
+        // Owner ruling 2026-09-28: a user-locked survey item is never deleted —
+        // a missing Excel row only flags it for review.
+        if (typeof ann.lockedBy === 'string' && ann.lockedBy) {
+          importReviewItems.push({ scopeKey: reviewScopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+          return;
+        }
         if (!recencyDeletesDisabled && wasReceivedByExcel(ann)) {
           // One-import delete-grace window (blank-rowid slice 4, Amendment #5): the
           // FIRST import that misses a received marker's row only stamps a pending
@@ -17954,6 +18026,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
+        // Owner ruling 2026-09-28: a user-locked survey item is never deleted.
+        if (typeof ann.lockedBy === 'string' && ann.lockedBy) {
+          importReviewItems.push({ scopeKey: reviewScopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+          return;
+        }
         if (wasReceivedByExcel(ann)) {
           // One-import delete-grace window (blank-rowid slice 4) — same rule as the
           // manual import: first miss marks (no trash), a later import that still
@@ -20428,79 +20505,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       };
 
-      // Wrap runDelete with the toast enqueue. Both the direct-fire path
-      // (owner-own-only) and the modal-confirm path use this wrapped runner
-      // so the undo restoration is identical regardless of which branch
-      // fires.
-      const wrappedRunDelete = () => {
-        // KAL-313 / history F2: mark these ids as bulk-journaled BEFORE the
-        // delete mutation runs, so pushLocalAnnotationHistoryAction (invoked
-        // synchronously or async by the save pipeline) skips its own
-        // single-annotation trash row for the same delete.
-        registerBulkJournaledAnnotationIds(candidateIds);
-        runDelete();
-        emitBulkTrashRows();
-        // Snapshot restoration: re-add the deleted objects to
-        // annotationsByPage. Functional setter ensures we read the latest
-        // state at undo time (closure-captured snapshot is the source of
-        // truth for what was deleted).
-        const onUndo = () => {
-          setAnnotationsByPage((prev) => {
-            const prevPage = prev?.[pageNumber] || { objects: [] };
-            // w55: marks already back (Cmd+Z ran first, or a teammate
-            // restored them) are not added a second time — duplicate ids
-            // also break undo for those marks.
-            const presentIds = new Set((prevPage.objects || []).map(getAnnotationHistoryId).filter(Boolean));
-            const restoredObjects = [
-              ...(prevPage.objects || []),
-              ...snapshotObjects.filter((object) => {
-                const id = getAnnotationHistoryId(object);
-                return !id || !presentIds.has(id);
-              }),
-            ];
-            return {
-              ...prev,
-              [pageNumber]: { ...prevPage, objects: restoredObjects },
-            };
-          });
-        };
-        const message =
-          plan.mode === 'owner-cross-author'
-            ? `Deleted ${plan.count} annotations from ${
-                Object.keys(plan.byAuthor || {}).length
-              } people`
-            : `${plan.count} annotations deleted`;
-        // eslint-disable-next-line max-len
-        enqueueUndoToast({ kind: 'bulk', message, count: plan.count, onUndo });
-      };
-
-      if (plan.mode === 'owner-own-only') {
-        // 2026-05-04 — Owner deleting only their own marks: skip the modal
-        // AND skip the bulk-toast banner. UX: a solo-document owner seeing
-        // a "5 annotations deleted" banner on every delete reads as the
-        // app questioning their action. Cmd+Z still works as the undo
-        // path. The toast is only valuable when the delete is unusual
-        // (cross-author wipe, collaborator deleting all of theirs) — for
-        // the everyday solo-owner delete it's noise.
-        // KAL-313 / history F2: this direct-fire branch bypasses
-        // wrappedRunDelete, so register the ids here too — otherwise the
-        // single-annotation emitter journals the same delete a second time.
-        registerBulkJournaledAnnotationIds(candidateIds);
-        runDelete();
-        emitBulkTrashRows();
-        return;
-      }
-
-      // Modal-required path (collaborator-all-mine OR owner-cross-author).
-      // Stash the runner in a ref so the modal's onConfirm can fire it
-      // without rebuilding the closure (and without holding state that
-      // captures snapshotObjects in a way that survives plan reset).
-      pendingDeleteCancelRef.current?.();
-      pendingDeleteCancelRef.current = null;
-      pendingDeleteRunnerRef.current = wrappedRunDelete;
-      setPendingDeletePlan(plan);
+      // RULED 2026-09-28 owner: open editing + lock. Every delete the
+      // planner allows fires now — own marks, other people's, a mix — with
+      // no confirmation modal and no "Deleted – Undo" toast. Safety is
+      // Cmd+Z (the save pipeline's undo step), History (emitBulkTrashRows
+      // journals a restorable row) and the user lock (locked marks never
+      // reach runDelete: deleteSelected / the planner drop them).
+      // KAL-313 / history F2: register the ids BEFORE runDelete so the
+      // single-annotation emitter doesn't journal the same delete twice.
+      registerBulkJournaledAnnotationIds(candidateIds);
+      runDelete();
+      emitBulkTrashRows();
     },
-    [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
+    [annotationsByPage, user, documentOwnerId, pdfFile?.id, registerBulkJournaledAnnotationIds],
   );
   // R2.2 Slice 4: keep the TDZ ref bridge current so handleDeleteSelectedCallouts
   // (declared ~7k lines above) always routes through this render's bulk-delete
@@ -20547,26 +20564,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (plan.mode === 'no-op') {
       return Promise.resolve({ approved: false, plan, reason: 'permission' });
     }
-    if (plan.mode === 'owner-own-only') {
-      return Promise.resolve({ approved: true, plan });
-    }
-
-    pendingDeleteCancelRef.current?.();
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = (approved) => {
-        if (settled) return;
-        settled = true;
-        resolve({
-          approved,
-          plan,
-          ...(approved ? {} : { reason: 'user-cancelled' }),
-        });
-      };
-      pendingDeleteRunnerRef.current = () => settle(true);
-      pendingDeleteCancelRef.current = () => settle(false);
-      setPendingDeletePlan(plan);
-    });
+    // RULED 2026-09-28 owner: open editing + lock — erasing another
+    // person's callout never asks; only user-locked callouts are refused
+    // (the planner drops them, so an all-locked hit list is 'no-op').
+    return Promise.resolve({ approved: true, plan });
   }, [eraseDocumentOwnerId, pdfFile?.id, user?.id]);
 
   // Core geometry and recoverable external side effects have separate failure
@@ -26337,6 +26338,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           && calloutCoDelete.ids.has(obj.data.id))),
       };
     }
+    // RULED 2026-09-28 owner: open editing + lock. The lock's last wall: every
+    // page save passes here, so a path that forgot to check the lock still
+    // cannot move / resize / restyle / cut / delete / erase a locked mark
+    // (the change is put back inside this save; only the lock toggle itself
+    // passes, for the mark's author or the document owner). utils/markLock.js.
+    if (Array.isArray(json?.objects)) {
+      const lockGuard = guardLockedMarksOnSave({
+        previousObjects: annotationsByPageRef.current?.[pageNumber]?.objects || [],
+        nextObjects: json.objects,
+        viewerId: user?.id ?? null,
+        documentOwnerId,
+      });
+      if (lockGuard.changed) {
+        json = { ...json, objects: lockGuard.objects };
+        notifyLockedMarkBlocked();
+        // An eraser save also carries its own change list (written to the
+        // store and the Undo step from the save context, not from the page):
+        // drop the put-back marks from it too, so nothing half-erases them.
+        const blocked = new Set(lockGuard.blockedIds.map(String));
+        if (blocked.size > 0 && saveContext && typeof saveContext === 'object') {
+          const keep = (id) => id == null || !blocked.has(String(id));
+          const blockedStorageKeys = new Set((json.objects || [])
+            .filter((obj) => blocked.has(String(obj?.data?.id ?? obj?.id ?? '')))
+            .map((obj) => getAnnotationStorageKey(obj))
+            .filter((key) => key != null)
+            .map(String));
+          saveContext = {
+            ...saveContext,
+            ...(Array.isArray(saveContext.objectMutations) ? {
+              objectMutations: saveContext.objectMutations.filter((mutation) => keep(mutation?.annotationId)
+                && !(mutation?.storageKey != null && blockedStorageKeys.has(String(mutation.storageKey)))),
+            } : {}),
+            ...(Array.isArray(saveContext.finalDeletedAnnotationIds)
+              ? { finalDeletedAnnotationIds: saveContext.finalDeletedAnnotationIds.filter(keep) } : {}),
+            ...(Array.isArray(saveContext.finalChangedAnnotationIds)
+              ? { finalChangedAnnotationIds: saveContext.finalChangedAnnotationIds.filter(keep) } : {}),
+            ...(Array.isArray(saveContext.touchedAnnotationIds)
+              ? { touchedAnnotationIds: saveContext.touchedAnnotationIds.filter(keep) } : {}),
+          };
+        }
+      }
+    }
     const source_ = saveContext?.source || 'unknown';
     const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
     const nextCount_ = json?.objects?.length ?? 0;
@@ -26952,6 +26995,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     summarizeAnnotationPageTransitionForDebug,
     enqueueUndoToast,
     user?.id,
+    documentOwnerId,
+    notifyLockedMarkBlocked,
     yjsDoc,
     yjsUndoManager,
     commitEraserMutationToDoc,
@@ -26965,6 +27010,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const commitTextMarkupDocumentTransaction = useCallback((transaction, saveContext = null) => {
     if (!transaction?.action || !transaction?.nextByPage) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    // RULED 2026-09-28 owner: open editing + lock — a text-markup transaction
+    // that would change a locked mark does not happen at all (it is one
+    // atomic group; half of it must not land).
+    {
+      const pagesNow = annotationsByPageRef.current || {};
+      const touchesLocked = Object.keys(transaction.nextByPage).some((pageKey) => {
+        const nextPage = transaction.nextByPage[pageKey];
+        const prevPage = pagesNow[pageKey];
+        if (!Array.isArray(nextPage?.objects) || nextPage === prevPage) return false;
+        return guardLockedMarksOnSave({
+          previousObjects: prevPage?.objects || [],
+          nextObjects: nextPage.objects,
+          viewerId,
+          documentOwnerId,
+        }).changed;
+      });
+      if (touchesLocked) {
+        notifyLockedMarkBlocked();
+        return false;
+      }
+    }
     const scopedAction = filterAnnotationHistoryActionByOwner(
       transaction.action,
       viewerId,
@@ -27007,6 +27073,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return true;
   }, [
     documentOwnerId,
+    notifyLockedMarkBlocked,
     pushHistoryDebugEvent,
     pushLocalAnnotationHistoryAction,
     user?.id,
@@ -27020,6 +27087,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber,
       nextPage: json,
     });
+    // A text-markup group that holds a locked mark is refused whole (the
+    // transaction above says no) — never fall through to a partial save.
+    if (transaction && Object.keys(transaction.nextByPage || {}).some((pageKey) => (
+      guardLockedMarksOnSave({
+        previousObjects: annotationsByPageRef.current?.[pageKey]?.objects || [],
+        nextObjects: transaction.nextByPage[pageKey]?.objects || [],
+        viewerId: user?.id ?? null,
+        documentOwnerId,
+      }).changed
+    ))) {
+      notifyLockedMarkBlocked();
+      return { lockedBlocked: true };
+    }
     if (transaction && commitTextMarkupDocumentTransaction(transaction, saveContext)) {
       setSelectedToolbarAnnotation(null);
       setPendingSvgSelection({
@@ -27032,7 +27112,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { atomicTextMarkupGroup: true };
     }
     return handleSaveAnnotations(pageNumber, json, saveContext);
-  }, [commitTextMarkupDocumentTransaction, handleSaveAnnotations]);
+  }, [commitTextMarkupDocumentTransaction, documentOwnerId, handleSaveAnnotations, notifyLockedMarkBlocked, user?.id]);
 
   // KAL-313: Space restore — re-inserts a deleted space into live spaces state
   // exactly as captured at delete time (full object incl. assignedPages).
@@ -27078,6 +27158,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // still missing — it becomes Excel-deletable again only after a successful
     // export. Its tombstone is dropped and, if it was placed, it is redrawn.
     if (restoreAction?.type === 'surveyMarker') {
+      // Already back (an Undo brought it back, or it was never gone): a
+      // Restore must not roll a live survey item back to its delete-time copy.
+      if (restoreAction.markerId && surveyMarkersRef.current?.[restoreAction.markerId]) {
+        return { ok: false, reason: 'restore-noop' };
+      }
       const result = applySurveyMarkerRestore(
         surveyMarkersRef.current || {},
         restoreAction,
@@ -27087,6 +27172,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (result.alreadyPresent) return { ok: false, reason: 'restore-noop' };
       const { markerId, marker } = result;
       setSurveyMarkers(result.surveyMarkers);
+      // Owner ruling 2026-09-28: restoring a survey item brings its Excel row
+      // back (same Row ID — same id, module and category — and its answers).
+      // Queue the linked-Excel write exactly like a delete does (the effect
+      // after handleSurveyMarkerDeleted), so the sheet and the panel agree.
+      if (selectedTemplateRef.current?.linkedExcelPath) {
+        pendingExcelSyncAfterDeleteRefBridge.current = true;
+      }
       try {
         const trash = loadTrash(pdfId);
         if (trash && trash[markerId]) saveTrash(pdfId, removeTombstone(trash, markerId));
@@ -28735,11 +28827,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (annotationIndex < 0 || annotationIndex >= page.objects.length) return;
     const obj = page.objects[annotationIndex];
     if (!obj) return;
-    // w52 (2026-09-28): Cmd+X runs the SAME gate as the right-click Cut
-    // (locked model 2026-07-17): Cut deletes with no confirmation surface, so
-    // it stays own-marks-only; another user's mark is removed with Copy +
-    // Delete, which confirms. Before, the keyboard path skipped the gate.
-    // Boot window (ids not known yet) stays permissive, as in the menu.
+    // RULED 2026-09-28 owner: open editing + lock — Cmd+X runs the SAME gate
+    // as the right-click Cut: any mark, own or someone else's, no
+    // confirmation; a user-locked mark stays (even in the boot window).
+    if (isUserLocked(obj)) {
+      notifyLockedMarkBlocked();
+      return;
+    }
     const cutViewerId = user?.id ?? null;
     if (cutViewerId && documentOwnerId
       && !canModify({ annotation: obj, viewerId: cutViewerId, documentOwnerId })) return;
@@ -28765,7 +28859,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotationIndex: null,
       tick: Date.now(),
     });
-  }, [handleSaveAnnotations, user?.id, documentOwnerId]);
+  }, [handleSaveAnnotations, user?.id, documentOwnerId, notifyLockedMarkBlocked]);
 
   const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur } = usePdfjsFormFieldPersistence({
     handleSaveAnnotations,
@@ -29558,6 +29652,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // history. surveyMarkersRef (not the surveyMarkers state) keeps this
     // callback's identity stable across marker updates.
     const existingSurveyMarker = surveyMarkersRef.current?.[annotationId];
+    // Owner ruling 2026-09-28: a user-locked marker never moves / resizes,
+    // even before the ids are known.
+    if (existingSurveyMarker && isUserLocked(existingSurveyMarker)) {
+      notifyLockedMarkBlocked();
+      return;
+    }
     if (existingSurveyMarker) {
       const viewerId = user?.id ?? null;
       if (
@@ -29636,7 +29736,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         )),
       };
     });
-  }, [addHistoryCheckpoint, user?.id, documentOwnerId]);
+  }, [addHistoryCheckpoint, user?.id, documentOwnerId, notifyLockedMarkBlocked]);
 
   // UX: w53 (2026-09-28, owner: "annotations are annotations") — Survey
   // Markers take part in the family actions every other mark has: a group
@@ -29667,9 +29767,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // (no export identity) is simply taken off again — no trash entry, no
     // "deleted" History row, no Excel re-export for a step the user took back.
     const quietRemoval = (change) => isUndoingRef.current && !now[change.id]?.excelSync;
-    const removals = changes.filter((change) => change.after == null && now[change.id] && !quietRemoval(change));
-    const rest = changes.filter((change) => change.after != null || (now[change.id] && quietRemoval(change)));
+    // Owner ruling 2026-09-28: Undo / Redo never change a user-locked marker
+    // either — only the lock toggle itself (by its author / the owner).
+    const viewerNow = user?.id ?? null;
+    const onlyLockChanges = (change) => {
+      const keys = new Set([...Object.keys(change.before || {}), ...Object.keys(change.after || {})]);
+      keys.delete('lockedBy');
+      return [...keys].every((key) => JSON.stringify(change.before?.[key] ?? null) === JSON.stringify(change.after?.[key] ?? null));
+    };
+    const allowed = changes.filter((change) => {
+      const live = now[change.id];
+      if (!live || !isUserLocked(live)) return true;
+      return change.before != null && change.after != null && onlyLockChanges(change)
+        && canToggleLock({ surveyMarker: live, viewerId: viewerNow, documentOwnerId });
+    });
+    if (allowed.length < changes.length) notifyLockedMarkBlocked();
+    // A survey item an Undo / Redo brings back is app-restored: its "received
+    // by Excel" stamp goes (as a History restore does), so the next import
+    // can't trash it for a row the sheet has not got back yet.
+    const revived = (change) => {
+      if (change.before != null || change.after == null || now[change.id]) return change;
+      const { exportedAt: _e, exportAckEtag: _a, ...after } = change.after;
+      return { ...change, after };
+    };
+    const removals = allowed.filter((change) => change.after == null && now[change.id] && !quietRemoval(change));
+    const rest = allowed
+      .filter((change) => change.after != null || (now[change.id] && quietRemoval(change)))
+      .map(revived);
     const changedIds = [];
+    // Owner ruling 2026-09-28: an Undo / Redo that brings a deleted survey
+    // item back queues its linked-Excel row the same way a delete does.
+    if (rest.some((change) => change.before == null && change.after != null && !now[change.id])
+      && selectedTemplateRef.current?.linkedExcelPath) {
+      pendingExcelSyncAfterDeleteRefBridge.current = true;
+    }
     if (rest.length > 0) {
       const restAction = { ...action, changes: rest };
       const preview = applySurveyMarkerHistoryAction(now, restAction);
@@ -29697,17 +29828,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
     return changedIds;
-  }, [selectedModuleId]);
+  }, [selectedModuleId, documentOwnerId, notifyLockedMarkBlocked, user?.id]);
   applySurveyMarkerFamilyActionRef.current = applySurveyMarkerFamilyAction;
 
   const commitSurveyMarkerFamilyPatch = useCallback((patch) => {
     if (!patch || typeof patch !== 'object') return null;
     const current = surveyMarkersRef.current || {};
     const viewerId = user?.id ?? null;
-    const mayEdit = (record) => (
+    const mayEdit = (record) => !isUserLocked(record) && (
       !viewerId || !documentOwnerId
       || canModifySurveyMarker({ surveyMarker: record, viewerId, documentOwnerId })
     );
+    // Restacking is not moving (same rule as marks): a locked marker may
+    // change its place in the stack.
+    const mayRestack = (record) => mayEdit(withSurveyMarkerLock(record, null));
     const changes = [];
     const next = { ...current };
     if (patch.move && Array.isArray(patch.move.ids)) {
@@ -29727,7 +29861,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (patch.stacks && typeof patch.stacks === 'object') {
       for (const [id, stack] of Object.entries(patch.stacks)) {
         const record = next[id];
-        if (!record || !mayEdit(record)) continue;
+        if (!record || !mayRestack(record)) continue;
         const restacked = { ...record, stack };
         next[id] = restacked;
         const existing = changes.find((change) => change.id === id);
@@ -29740,6 +29874,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (!record?.id || current[record.id] || !record.bounds || !record.pageNumber) continue;
         next[record.id] = record;
         changes.push({ id: String(record.id), before: null, after: record });
+      }
+    }
+    // Owner ruling 2026-09-28 — Cut picks up a survey item's PLACEMENT only:
+    // the record (answers, Excel identity, Row ID) stays and the survey panel
+    // lists it as "Not on page". A field-level change, so Undo puts the box
+    // back and an Excel edit to the item made meanwhile is kept.
+    if (Array.isArray(patch.unplaces)) {
+      for (const rawId of patch.unplaces) {
+        const id = String(rawId);
+        const record = next[id];
+        if (!isSurveyMarkerPlaced(record) || !mayEdit(record)) continue;
+        if (changes.some((change) => change.id === id)) continue;
+        const unplaced = unplaceSurveyMarkerRecord(record);
+        next[id] = unplaced;
+        changes.push({ id, before: current[id], after: unplaced });
+      }
+    }
+    // Owner ruling 2026-09-28: Lock / Unlock a Survey Marker (its author or
+    // the document owner only). `locks` = { [id]: lockedBy | null }.
+    if (patch.locks && typeof patch.locks === 'object') {
+      for (const [id, lockedBy] of Object.entries(patch.locks)) {
+        const record = next[id];
+        if (!record || changes.some((change) => change.id === id)) continue;
+        if (!canToggleLock({ surveyMarker: record, viewerId, documentOwnerId })) continue;
+        if ((record.lockedBy || null) === (lockedBy || null)) continue;
+        const toggled = withSurveyMarkerLock(record, lockedBy || null);
+        next[id] = toggled;
+        changes.push({ id, before: current[id], after: toggled });
+      }
+    }
+    // Paste of a cut survey item: the SAME record goes back on the page.
+    if (Array.isArray(patch.places)) {
+      for (const place of patch.places) {
+        const id = String(place?.id ?? '');
+        const record = next[id];
+        if (!record || isSurveyMarkerPlaced(record) || !mayEdit(record)) continue;
+        if (!place.pageNumber || !place.bounds) continue;
+        if (changes.some((change) => change.id === id)) continue;
+        const placed = placeSurveyMarkerRecord(record, place);
+        next[id] = placed;
+        changes.push({ id, before: current[id], after: placed });
       }
     }
     if (Array.isArray(patch.deletes)) {
@@ -29763,7 +29938,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // below watches surveyMarkers and re-exports the linked Excel so the
   // deleted marker's row is removed there too (otherwise the next document
   // open re-imports the stale row and resurrects the marker).
-  const pendingExcelSyncAfterDeleteRef = useRef(false);
+  const pendingExcelSyncAfterDeleteRef = pendingExcelSyncAfterDeleteRefBridge;
 
   // Handle surveyMarker deletion from PDF (via eraser tool)
   const handleSurveyMarkerDeleted = useCallback((pageNumber, bounds, annotationId = null) => {
@@ -30308,6 +30483,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         regionId: getPageSurveyRegionIdRef.current?.(pageNumber) ?? null,
       };
     };
+    // Owner ruling 2026-09-28: a CUT survey item goes back as itself (same
+    // id, so the same Row ID and Excel row, same answers). Its module and
+    // category are part of the Row ID, so it goes back only while its own
+    // Survey module is open, and only if it is still off the page (an Undo
+    // of the Cut, or someone else, may have put it back already).
+    let cutMarkerSkip = null; // why a cut item could not go back: 'gone' | 'placed' | 'category' | module id
+    const resolveCutMarker = (item) => {
+      const record = surveyMarkersRef.current?.[String(item.cutMarkerId)];
+      if (!record) { cutMarkerSkip = 'gone'; return null; }
+      if (isSurveyMarkerPlaced(record)) { cutMarkerSkip = 'placed'; return null; }
+      if (!selectedModuleId || record.moduleId !== selectedModuleId) {
+        cutMarkerSkip = { module: record.moduleId || null };
+        return null;
+      }
+      const categories = landingModule?.categories || [];
+      if (!categories.some((category) => category.id === record.categoryId)) {
+        cutMarkerSkip = 'category';
+        return null;
+      }
+      return { regionId: getPageSurveyRegionIdRef.current?.(pageNumber) ?? record.regionId ?? null };
+    };
     const plan = planFamilyPaste({ ...clipboard, items }, {
       objects: baseObjects,
       dx,
@@ -30318,23 +30514,49 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       authorId: user?.id || null,
       userId: user?.id || null,
       resolveMarker,
+      resolveCutMarker,
       pageNumber,
     });
+    const cutMarkerNote = () => {
+      if (!plan.skippedCutMarkers) return;
+      if (cutMarkerSkip === 'gone') {
+        showToast('That survey item was deleted, so there is nothing to paste.', 'info');
+      } else if (cutMarkerSkip === 'placed') {
+        showToast('That survey item is already on the page.', 'info');
+      } else if (cutMarkerSkip === 'category') {
+        showToast('That survey item\'s category is gone, so it can\'t go back on the page.', 'info');
+      } else {
+        const moduleId = cutMarkerSkip?.module || null;
+        const moduleName = moduleId && template ? getModuleName(template, moduleId) : null;
+        showToast(moduleName
+          ? `Open ${moduleName} to paste that survey item back on the page.`
+          : 'Open its Survey module to paste that survey item back on the page.', 'info');
+      }
+    };
     const withMarks = { ...page, objects: plan.objects };
     const pageMap = { [pageNumber]: withMarks };
     const projected = plan.callouts.length > 0
       ? (applyCalloutListToByPage(pageMap, [...deriveCalloutsFromByPage(pageMap), ...plan.callouts], pageSizesRef.current || {})[pageNumber] || withMarks)
       : withMarks;
-    const next = { ...projected, objects: orderPastedFamily(projected.objects, plan.pastedOrder, plan.markers) };
-    if (plan.newMarkIds.length === 0 && plan.callouts.length === 0 && plan.markers.length === 0) {
+    const next = {
+      ...projected,
+      objects: orderPastedFamily(projected.objects, plan.pastedOrder, [...plan.markers, ...plan.placedMarkers]),
+    };
+    if (plan.newMarkIds.length === 0 && plan.callouts.length === 0
+      && plan.markers.length === 0 && plan.placedMarkers.length === 0) {
       if (plan.skippedMarkers > 0) showToast('Survey Markers paste into an open Survey module that has their category.', 'info');
+      cutMarkerNote();
       return false;
     }
+    const familyPatch = {
+      ...(plan.markers.length > 0 ? { creates: plan.markers } : {}),
+      ...(plan.placedMarkers.length > 0 ? { places: plan.placedMarkers } : {}),
+    };
     handleSaveAnnotations(pageNumber, next, {
       source: 'object:modified',
       action: 'paste',
       checkpointPolicy: 'normal',
-      ...(plan.markers.length > 0 ? { surveyMarkerFamily: { creates: plan.markers } } : {}),
+      ...(Object.keys(familyPatch).length > 0 ? { surveyMarkerFamily: familyPatch } : {}),
     });
     // The pasted items become the selection (Cmd+D again duplicates them).
     const newIds = new Set(plan.newMarkIds.filter(Boolean));
@@ -30346,12 +30568,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPendingSvgSelection({
       pageNumber,
       annotationIndices,
-      surveyMarkerIds: plan.markers.map((record) => record.id),
+      surveyMarkerIds: [...plan.markers.map((record) => record.id), ...plan.placedMarkers.map((place) => place.id)],
       tick: Date.now(),
     });
     if (plan.skippedMarkers > 0) {
       showToast('Survey Markers paste into an open Survey module that has their category.', 'info');
     }
+    cutMarkerNote();
     return true;
   }, [handleSaveAnnotations, selectedTemplate, selectedModuleId, showToast, user?.id, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
 
@@ -30362,21 +30585,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (mode === 'cut' && familyEditsBlocked()) return false;
     const collected = collectFamilySelection(pageNumber, selection);
     const viewerId = user?.id ?? null;
-    const own = (annotation) => !viewerId || !documentOwnerId
-      || canModify({ annotation, viewerId, documentOwnerId });
-    // Cut = Copy + delete with no confirmation, so it takes the viewer's OWN
-    // items only (locked 2026-07-17); the clipboard matches what is removed.
+    // RULED 2026-09-28 owner: open editing + lock — Cut takes ANY mark (own
+    // or someone else's, no confirmation); only user-locked items stay (a
+    // lock holds even before the ids are known). The clipboard matches what
+    // is removed.
+    const mayCut = (annotation) => !isUserLocked(annotation) && (
+      !viewerId || !documentOwnerId
+      || canModify({ annotation, viewerId, documentOwnerId }));
     const indices = mode === 'cut'
-      ? collected.indices.filter((index) => own(collected.objects[index]))
+      ? collected.indices.filter((index) => mayCut(collected.objects[index]))
       : collected.indices;
-    const callouts = mode === 'cut' ? collected.callouts.filter(own) : collected.callouts;
-    // A Survey Marker is a survey item with its Excel row and answers: Cut
-    // would delete all of that and a paste makes a NEW blank item, so Cut
-    // leaves markers where they are (Copy, then Delete, removes them).
-    const markers = mode === 'cut' ? [] : collected.markers;
-    if (mode === 'cut' && collected.markers.length > 0) {
-      showToast('Survey Markers stay put on Cut — use Copy, then Delete.', 'info');
-    }
+    const callouts = mode === 'cut' ? collected.callouts.filter(mayCut) : collected.callouts;
+    // Owner ruling 2026-09-28: Cut of a Survey Marker picks up its placement
+    // only — the survey item, its Excel row and its answers stay (the panel
+    // shows it as "Not on page"); Paste puts the SAME item back on a page.
+    const markers = mode === 'cut'
+      ? collected.markers.filter((m) => !isUserLocked(m.record) && (
+        !viewerId || !documentOwnerId
+        || canModifySurveyMarker({ surveyMarker: m.record, viewerId, documentOwnerId })))
+      : collected.markers;
+    const lockedLeft = mode === 'cut'
+      && (indices.length < collected.indices.length
+        || callouts.length < collected.callouts.length
+        || markers.length < collected.markers.length);
     const { width, height } = pageSizeFor(pageNumber);
     const clipboard = buildFamilyClipboard({
       pageNumber,
@@ -30387,13 +30618,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageMarkers: collected.pageMarkers,
       pageWidth: width,
       pageHeight: height,
+      cut: mode === 'cut',
     });
     if (!clipboard) {
-      if (mode === 'cut' && (collected.indices.length || collected.callouts.length)) {
-        showToast('Only your own marks can be cut — use Copy, then Delete.', 'info');
-      }
+      if (lockedLeft) showToast('Locked — unlock it first to cut it.', 'info');
       return false;
     }
+    if (lockedLeft) showToast('Locked items stay put — unlock them first to cut them.', 'info');
     setFamilyClipboard({ ...clipboard, mode });
     setClipboardAnnotation(null);
     setClipboardCallout(null);
@@ -30410,12 +30641,104 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'object:modified',
       action: 'cut',
       checkpointPolicy: 'normal',
-      ...(markers.length > 0 ? { surveyMarkerFamily: { deletes: markers.map((m) => m.id) } } : {}),
+      ...(markers.length > 0 ? { surveyMarkerFamily: { unplaces: markers.map((m) => m.id) } } : {}),
     });
     setSelectedCalloutIds(new Set());
-    setPendingSvgSelection({ pageNumber, annotationIndex: null, tick: Date.now() });
+    setPendingSvgSelection({ pageNumber, annotationIndex: null, surveyMarkerIds: [], tick: Date.now() });
     return true;
   }, [collectFamilySelection, documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
+
+  // ---------------------------------------------------------------------------
+  // Owner ruling 2026-09-28 — Lock / Unlock (right-click, one mark or a whole
+  // selection). Only the mark's author or the document owner may lock or
+  // unlock it (canToggleLock); a locked mark can't be moved, resized,
+  // restyled, cut, deleted or erased by anyone until it is unlocked. The
+  // stamp is the locker's id in the mark itself (data.lockedBy, a callout's
+  // legacyCallout.lockedBy, a Survey Marker's lockedBy), so it syncs and
+  // reloads like any other field. One save per page = one Undo step.
+  // ---------------------------------------------------------------------------
+  const handleToggleMarkLock = useCallback((pageNumber, selection = {}, lock = true) => {
+    const viewerId = user?.id ?? null;
+    if (!viewerId || pageNumber == null || familyEditsBlocked()) return false;
+    const lockedBy = lock ? viewerId : null;
+    const mayToggle = (annotation) => canToggleLock({ annotation, viewerId, documentOwnerId });
+    const wants = (object) => (lock ? !isUserLocked(object) : isUserLocked(object));
+    const byPage = annotationsByPageRef.current || {};
+    const indexSet = new Set((selection.indices || []).filter((i) => Number.isInteger(i)));
+    const calloutIdSet = new Set((selection.calloutIds || []).map(String));
+    // Callouts may sit on another page than the right-click (the callout
+    // selection is shared by every page): one save per page they are on.
+    const pages = new Set([String(pageNumber)]);
+    if (calloutIdSet.size > 0) {
+      for (const callout of calloutsRef.current || []) {
+        if (callout && calloutIdSet.has(String(callout.id)) && callout.pageNumber != null) {
+          pages.add(String(callout.pageNumber));
+        }
+      }
+    }
+    let changedCount = 0;
+    let refusedCount = 0;
+    const saves = [];
+    for (const pageKey of pages) {
+      const page = byPage[pageKey] || byPage[Number(pageKey)];
+      if (!Array.isArray(page?.objects)) continue;
+      let touched = false;
+      const objects = page.objects.map((object, index) => {
+        const isPickedMark = String(pageKey) === String(pageNumber)
+          && indexSet.has(index) && object?.data?.type !== 'callout';
+        const isPickedCallout = object?.data?.type === 'callout'
+          && calloutIdSet.has(String(object?.data?.id));
+        if (!isPickedMark && !isPickedCallout) return object;
+        if (!wants(object)) return object;
+        if (!mayToggle(object) || (object?.data?.id == null && object?.id == null)) {
+          refusedCount += 1;
+          return object;
+        }
+        touched = true;
+        changedCount += 1;
+        return withMarkLock(object, lockedBy);
+      });
+      if (touched) saves.push([pageKey, { ...page, objects }]);
+    }
+    // Survey Markers: their own store, their own permission read.
+    const locks = {};
+    for (const rawId of selection.markerIds || []) {
+      const id = String(rawId);
+      const record = surveyMarkersRef.current?.[id];
+      if (!record || !(lock ? !record.lockedBy : Boolean(record.lockedBy))) continue;
+      if (!canToggleLock({ surveyMarker: record, viewerId, documentOwnerId })) {
+        refusedCount += 1;
+        continue;
+      }
+      locks[id] = lockedBy;
+      changedCount += 1;
+    }
+    const markerPatch = Object.keys(locks).length > 0 ? { surveyMarkerFamily: { locks } } : {};
+    if (saves.length === 0 && Object.keys(locks).length > 0) {
+      const page = byPage[String(pageNumber)] || byPage[Number(pageNumber)] || { objects: [] };
+      handleSaveAnnotations(pageNumber, page, {
+        source: 'object:modified',
+        action: lock ? 'lock' : 'unlock',
+        checkpointPolicy: 'normal',
+        ...markerPatch,
+      });
+    }
+    saves.forEach(([pageKey, json], position) => {
+      const numericKey = Number(pageKey);
+      handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+        source: 'object:modified',
+        action: lock ? 'lock' : 'unlock',
+        checkpointPolicy: 'normal',
+        ...(position === 0 ? markerPatch : {}),
+      });
+    });
+    if (changedCount === 0 && refusedCount > 0) {
+      showToast(lock
+        ? 'Only its author or the document owner can lock this.'
+        : 'Only its author or the document owner can unlock this.', 'info');
+    }
+    return changedCount > 0;
+  }, [documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
 
   const pasteFamilyAt = useCallback((pageNumber, clientX, clientY) => {
     const clipboard = familyClipboardRef.current;
@@ -30643,20 +30966,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return next.size === previous.size ? previous : next;
       });
     }
-    if (approval.plan && approval.plan.mode !== 'owner-own-only') {
-      const peopleCount = Object.keys(approval.plan.byAuthor || {}).length;
-      const message = approval.plan.mode.includes('cross-author')
-        ? `Deleted ${approval.plan.count} annotations from ${peopleCount} people`
-        : `${approval.plan.count} annotations deleted`;
-      enqueueUndoToast({
-        kind: 'bulk',
-        message,
-        count: approval.plan.count,
-        onUndo: () => {
-          applyEraseHistoryTransitionFromToast(result.historyTransition);
-        },
-      });
-    }
+    // RULED 2026-09-28 owner: no "Deleted – Undo" toast after an erase
+    // (Cmd+Z and History are the way back).
 
     return result;
   }, [
@@ -30857,14 +31168,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // If it's a new annotation for an existing item, ensure we have all necessary data
         return {
           ...prev,
-          [annotationId]: {
-            ...pendingLocationItem, // Base on the item data
-            ...existing, // Override with any existing annotation data
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          }
+          [annotationId]: (() => {
+            const placed = {
+              ...pendingLocationItem, // Base on the item data
+              ...existing, // Override with any existing annotation data
+              pageNumber,
+              bounds,
+              // Owner ruling 2026-09-28: an item placed again (e.g. cut and
+              // never pasted) keeps its own module — it is part of its Row ID.
+              moduleId: existing.moduleId || pendingLocationItem.moduleId || effectiveModuleId,
+              regionId: pageRegionId
+            };
+            delete placed.unplacedByCut;
+            return placed;
+          })()
         };
       });
 
@@ -30981,6 +31298,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Entity/Name modal chain below stays desktop-only.
         commitMobileSurveyMarker({
           id: annotationId,
+          // Owner ruling 2026-09-28: the creator stamp (lock rights).
+          ...(user?.id ? { userId: user.id } : {}),
           pageNumber,
           bounds,
           moduleId: effectiveModuleId,
@@ -30995,6 +31314,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPendingSurveyMarkerName({
           surveyMarker: {
             id: annotationId,
+            // Owner ruling 2026-09-28: the creator stamp (lock rights).
+            ...(user?.id ? { userId: user.id } : {}),
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
@@ -31011,6 +31332,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPendingEntitySelection({
           surveyMarker: {
             id: annotationId,
+            // Owner ruling 2026-09-28: the creator stamp (lock rights).
+            ...(user?.id ? { userId: user.id } : {}),
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
@@ -31023,6 +31346,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPendingSurveyMarkerName({
           surveyMarker: {
             id: annotationId,
+            // Owner ruling 2026-09-28: the creator stamp (lock rights).
+            ...(user?.id ? { userId: user.id } : {}),
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
@@ -31048,6 +31373,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (showSurveyPanel) {
         setPendingSurveyMarker({
           id: annotationId,
+          // Owner ruling 2026-09-28: the creator stamp (lock rights).
+          ...(user?.id ? { userId: user.id } : {}),
           pageNumber,
           bounds,
           moduleId: effectiveModuleId,
@@ -31060,7 +31387,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -34189,6 +34516,9 @@ ${pageBlocks}
         // keyboard Delete; ownership inputs drive the menu's own/foreign
         // partition (Cut stays own-only, foreign Delete requires the modal).
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
+        // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
+        toggleLockSelection: handleToggleMarkLock,
+        resolveSurveyMarker: (id) => surveyMarkersRef.current?.[id] || null,
         // w53: Survey Markers in the family menu, one clipboard, Duplicate.
         handleReorderFamily,
         deleteSurveyMarkers: handleDeleteSurveyMarkers,

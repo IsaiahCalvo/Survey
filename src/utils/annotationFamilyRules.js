@@ -20,6 +20,7 @@ import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
 } from './annotationVisibilityRules.js';
+import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getAnnotationBBox } from './svgBoundingBox.js';
 import { commitInkObjectMove, isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { mergeDraggedMarksOntoPage } from './dragCommitMerge.js';
@@ -39,6 +40,9 @@ import { deepClone } from './deepClone.js';
  */
 export function canMoveAnnotation(annotation) {
   if (!annotation) return false;
+  // RULED 2026-09-28 owner: open editing + lock — a user-locked mark never
+  // moves, for anyone (its author or the document owner unlocks it first).
+  if (isUserLocked(annotation)) return false;
   if (annotation?.data?.type === 'text-markup') return false;
   if (isMovementLockedAnnotation(annotation)) return false;
   if (isTransformLockedAnnotation(annotation)) return false;

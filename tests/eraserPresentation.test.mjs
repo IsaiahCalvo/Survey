@@ -626,7 +626,8 @@ test('eraser undo uses its precise local action instead of cloning the full docu
   assert.match(saveSource, /pushLocalAnnotationHistoryAction\(finalLocalHistoryAction\)/);
 });
 
-test('atomic erase restores only captured mutation lane transitions for Cmd+Z, Redo, and toast', () => {
+// RULED 2026-09-28 owner: open editing + lock — title: the erase toast is gone; the toast-apply helper is still pinned below.
+test('atomic erase restores only captured mutation lane transitions for Cmd+Z and Redo (no erase toast)', () => {
   const undoStart = VIEWER_SOURCE.indexOf('const handleUndo = useCallback');
   const undoEnd = VIEWER_SOURCE.indexOf('const handleRedo = useCallback', undoStart);
   const undoSource = VIEWER_SOURCE.slice(undoStart, undoEnd);
@@ -649,10 +650,8 @@ test('atomic erase restores only captured mutation lane transitions for Cmd+Z, R
   const commitEnd = VIEWER_SOURCE.indexOf('\n  const getPageSurveyRegionId', commitStart);
   const commitSource = VIEWER_SOURCE.slice(commitStart, commitEnd);
   assert.match(commitSource, /eraseHistoryTransition:\s*result\.historyTransition/);
-  assert.match(
-    commitSource,
-    /onUndo:\s*\(\) => \{[\s\S]*?applyEraseHistoryTransitionFromToast\(result\.historyTransition\)/,
-  );
+  // RULED 2026-09-28 owner: open editing + lock — no "Deleted – Undo" toast after an erase; Cmd+Z / Redo carry the transition.
+  assert.doesNotMatch(commitSource, /enqueueUndoToast\(/);
   const toastStart = VIEWER_SOURCE.indexOf(
     'const applyEraseHistoryTransitionFromToast = useCallback',
   );

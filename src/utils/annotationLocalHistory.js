@@ -52,20 +52,6 @@ export function getAnnotationHistoryId(annotation) {
     || null;
 }
 
-function getAnnotationHistoryAuthorId(annotation) {
-  return annotation?.meta?.authorId
-    || annotation?.__meta?.authorId
-    || annotation?.authorId
-    || annotation?.data?.authorId
-    || annotation?.data?.userId
-    || null;
-}
-
-function isOwnAnnotation(annotation, userId) {
-  const authorId = getAnnotationHistoryAuthorId(annotation);
-  return Boolean(userId) && authorId === userId;
-}
-
 function cloneJson(value) {
   return deepClone(value);
 }
@@ -912,79 +898,24 @@ export function invertAnnotationHistoryAction(action) {
   return null;
 }
 
+/**
+ * Which recorded steps a user may keep on (and replay from) their own Undo /
+ * Redo stack.
+ *
+ * RULED 2026-09-28 owner: open editing + lock. Anyone who can edit may
+ * change or delete ANY mark, and Undo is part of the safety net for exactly
+ * those changes ("Safety = undo + History + Lock"). So a step is no longer
+ * trimmed to the marks the user drew: moving, restyling or deleting a
+ * colleague's mark is the user's own action and is undoable like any other.
+ * Collaborators' concurrent edits stay safe because Undo writes back only the
+ * fields the step changed onto each mark as it is now (field-level history).
+ * Only an unknown viewer is refused. (`documentOwnerId` stays in the
+ * signature for the existing call sites.)
+ */
+// eslint-disable-next-line no-unused-vars
 export function filterAnnotationHistoryActionByOwner(action, userId, documentOwnerId = null) {
   if (!action || typeof action !== 'object') return null;
   if (typeof userId !== 'string' || userId.length === 0) return null;
-  if (
-    typeof documentOwnerId === 'string'
-    && documentOwnerId.length > 0
-    && userId === documentOwnerId
-  ) {
-    return action;
-  }
-
-  if (action.type === 'fabric:document-batch') {
-    if (action.confirmedCrossAuthorDelete === true) {
-      return cloneJson(action);
-    }
-    const requested = Array.isArray(action.actions) ? action.actions : [];
-    const actions = requested.map((child) => (
-      filterAnnotationHistoryActionByOwner(child, userId, documentOwnerId)
-    ));
-    // Cross-page destructive actions are atomic. If any page contains an
-    // annotation outside the viewer's history scope, fail the whole action
-    // instead of producing a partial undo that cannot restore the series.
-    const mutationCount = (child) => {
-      if (!child) return 0;
-      if (child.type === 'fabric:batch') {
-        return (child.created?.length || 0)
-          + (child.deleted?.length || 0)
-          + (child.updated?.length || 0);
-      }
-      if (child.type === 'fabric:document-batch') {
-        return (child.actions || []).reduce((sum, nested) => sum + mutationCount(nested), 0);
-      }
-      return ['fabric:create', 'fabric:delete', 'fabric:update'].includes(child.type) ? 1 : 0;
-    };
-    if (
-      requested.length === 0
-      || actions.some((child, index) => (
-        !child || mutationCount(child) !== mutationCount(requested[index])
-      ))
-    ) return null;
-    return {
-      ...action,
-      actions: actions.map((child) => cloneJson(child)),
-    };
-  }
-
-  if (action.type === 'fabric:create' || action.type === 'fabric:delete') {
-    return isOwnAnnotation(action.annotation, userId) ? action : null;
-  }
-
-  if (action.type === 'fabric:update') {
-    return isOwnAnnotation(action.before, userId) && isOwnAnnotation(action.after, userId)
-      ? action
-      : null;
-  }
-
-  if (action.type === 'fabric:batch') {
-    const created = (action.created || []).filter((entry) => isOwnAnnotation(entry.annotation, userId));
-    const deleted = (action.deleted || []).filter((entry) => isOwnAnnotation(entry.annotation, userId));
-    const updated = (action.updated || []).filter((entry) => (
-      isOwnAnnotation(entry.before, userId) && isOwnAnnotation(entry.after, userId)
-    ));
-
-    if (created.length === 0 && deleted.length === 0 && updated.length === 0) return null;
-
-    return {
-      ...action,
-      created: cloneEntries(created),
-      deleted: cloneEntries(deleted),
-      updated: cloneEntries(updated),
-    };
-  }
-
   return action;
 }
 

@@ -110,7 +110,8 @@ import {
   recordAnnotationCommit,
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
-import SVGSelectionOverlay from './SVGSelectionOverlay';
+import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
+import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
@@ -3392,6 +3393,9 @@ const SVGAnnotationLayer = memo(({
         angle: entry.bbox.angle || 0,
       },
       stack: entry.surveyMarker.stack || null,
+      // Owner ruling 2026-09-28: a user-locked marker stays put when the
+      // selection it belongs to is dragged or nudged.
+      locked: Boolean(entry.surveyMarker.lockedBy),
     }));
 
   // A selected marker the page stops showing (module switch, space change,
@@ -3644,6 +3648,8 @@ const SVGAnnotationLayer = memo(({
     deselectAll();
     onSelectedCalloutIdsChange?.(new Set());
     setSelectedSurveyMarkerId(annotationId);
+    // A user-locked marker (owner ruling 2026-09-28) is selected, not dragged.
+    if (entry.surveyMarker.lockedBy) return;
     surveyMarkerDragRef.current = {
       mode: 'move',
       annotationId,
@@ -3663,6 +3669,8 @@ const SVGAnnotationLayer = memo(({
 
   const handleSurveyMarkerHandlePointerDown = useCallback((e, entry, handleId) => {
     if (!isSelectTool || !entry?.surveyMarker?.annotationId) return;
+    // A user-locked marker shows no grabbers; never resize / rotate it.
+    if (entry.surveyMarker.lockedBy) return;
     e.stopPropagation();
     e.preventDefault();
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -3774,6 +3782,8 @@ const SVGAnnotationLayer = memo(({
           candidate?.surveyMarker?.annotationId === selectedSurveyMarkerId
         ));
         if (!entry?.bbox) return;
+        // A user-locked marker does not nudge (owner ruling 2026-09-28).
+        if (entry.surveyMarker?.lockedBy) return;
         burst = {
           annotationId: selectedSurveyMarkerId,
           originalBounds: normalizeSurveyMarkerBounds({
@@ -3941,6 +3951,7 @@ const SVGAnnotationLayer = memo(({
             isGroupSelection={false}
             hideBoundingBox={false}
             padding={0}
+            locked={Boolean(entry.surveyMarker.lockedBy)}
           />
         )}
       </g>
@@ -4034,7 +4045,7 @@ const SVGAnnotationLayer = memo(({
     // hidden and a soft blue outline glow replaces them (matching the
     // annotation hover-glow style). `showGlow` also drives the callout's
     // cursor-hover indicator for solo callouts.
-    const { showHandles = true, showGlow = false, dragInvalid = false, inverseScale = 1 } = options;
+    const { showHandles = true, showGlow = false, dragInvalid = false, inverseScale = 1, locked = false } = options;
     if (!callout || !callout.arrowTip || !callout.knee) return null;
     // UX: 2026-05-18 — handle ring colour. Normally the unified blue; while
     // the callout is being dragged to a spot that fails the rule check,
@@ -4305,6 +4316,12 @@ const SVGAnnotationLayer = memo(({
             })()}
           </>
         )}
+        {/* Owner ruling 2026-09-28: a selected user-locked callout shows no
+            grabbers (it cannot be resized or re-routed) and a small lock
+            on its text box's top-right corner. */}
+        {isSelected && locked && (
+          <SelectionLockBadge x={tbX + tbW} y={tbY} radius={calloutHandleR * 1.25} />
+        )}
         {isSelected && showHandles && (
           <>
             {/* UX: knee + arrow handles use the same white circle + gray
@@ -4571,8 +4588,10 @@ const SVGAnnotationLayer = memo(({
       // competing with the growing text box. Handles re-appear after
       // commit because editingCalloutId clears.
       const isEditingThisCallout = editingCalloutId === displayCallout.id;
-      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout;
-      const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered);
+      const calloutLocked = isUserLocked(displayCallout);
+      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout && !calloutLocked;
+      const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered)
+        || (isSelected && calloutLocked);
       // UX: 2026-05-18 — while THIS callout is being dragged, the live
       // preview carries `calloutDragInvalid` set by useSVGInteraction's
       // per-frame rule check. When true, the dragged handle's ring paints
@@ -4585,7 +4604,7 @@ const SVGAnnotationLayer = memo(({
         pageSize,
         isSelected,
         isKneeDragging,
-        { showHandles, showGlow, dragInvalid, inverseScale },
+        { showHandles, showGlow, dragInvalid, inverseScale, locked: calloutLocked && !isMultiSelect },
       );
 
       // UX: 2026-04-20 v2 — group-move callout ride-along. When this
@@ -7547,6 +7566,7 @@ const SVGAnnotationLayer = memo(({
               horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
                 ? getTextMarkupRangeHandlePositions(selectionObj)
                 : null}
+              locked={isUserLocked(selectionObj)}
             />
           </g>
         );
@@ -7770,6 +7790,18 @@ const SVGAnnotationLayer = memo(({
             const groupIndicesCsv = Array.from(selectedIds).join(',');
             // w53: the Survey Markers in the selection, for the group menu.
             const groupMarkerIdsCsv = Array.from(selectedSurveyMarkerIds).join(',');
+            // Owner ruling 2026-09-28: is any selected member user-locked?
+            const groupCalloutIdSet = new Set(
+              selectedCalloutIds instanceof Set
+                ? Array.from(selectedCalloutIds).map(String)
+                : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.map(String) : []),
+            );
+            const groupHasLockedMember = Array.from(selectedIds)
+              .some((idx) => isUserLocked(annotations?.objects?.[idx]))
+              || (Array.isArray(callouts) && callouts
+                .some((c) => c && groupCalloutIdSet.has(String(c.id)) && isUserLocked(c)))
+              || (surveyMarkerMembersRef.current || [])
+                .some((member) => member?.locked && selectedSurveyMarkerIds.has(String(member.id)));
             return (
               <g
                 key="group-selection-wrapper"
@@ -7794,6 +7826,9 @@ const SVGAnnotationLayer = memo(({
                   // overlay's handles). Do NOT re-enable without an explicit
                   // user waiver — see handoff 2026-04-21.
                   moveOnly={true}
+                  // Owner ruling 2026-09-28: a lock on the group frame when
+                  // any selected member is locked (it stays put in a move).
+                  locked={groupHasLockedMember}
                 />
                 {/* Invisible hit-test rect so the resolver's
                     getBoundingClientRect fallback has a concrete

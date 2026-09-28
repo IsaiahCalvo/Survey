@@ -216,7 +216,7 @@ test('restricting drops an update that holds only a collaborator\'s change', () 
   equal(restrictAnnotationHistoryActionFields(noOpForUs, touches), null);
 });
 
-test('owner filtering keeps the field list, and foreign updates stay filtered out', () => {
+test('owner filtering keeps the field list, for the author and for other editors alike', () => {
   const action = {
     type: 'fabric:update',
     pageNumber: 1,
@@ -229,7 +229,8 @@ test('owner filtering keeps the field list, and foreign updates stay filtered ou
   const scoped = filterAnnotationHistoryActionByOwner(action, 'user-a');
   deepStrictEqual(scoped.fields, [['fill']]);
   deepStrictEqual(invertAnnotationHistoryAction(scoped).fields, [['fill']]);
-  equal(filterAnnotationHistoryActionByOwner(action, 'user-b'), null);
+  // RULED 2026-09-28 owner: open editing + lock — another editor's restyle of this mark is their own undo step; field list kept.
+  deepStrictEqual(filterAnnotationHistoryActionByOwner(action, 'user-b').fields, [['fill']]);
 
   const batch = {
     type: 'fabric:batch',
