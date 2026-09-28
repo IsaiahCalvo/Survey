@@ -36913,6 +36913,11 @@ ${pageBlocks}
                             if (selectedSurveyMarkerIds.length > 0) {
                               // We're copying items - get the itemIds from the selected surveyMarkers
                               const itemIdsToCopy = [];
+                              // w53: the source space is the module the copied
+                              // Survey Markers live in (resolved above as
+                              // sourceModuleId). This name was used below but
+                              // never defined, so every item copy crashed.
+                              const sourceSpaceId = sourceModuleId;
 
                               if (!sourceSpaceId) {
                                 console.error('No source space ID found');
@@ -36922,7 +36927,7 @@ ${pageBlocks}
 
                               // Find the source template (the one containing the source space)
                               const sourceTemplate = selectedTemplate || appTemplates.find(t =>
-                                t.spaces?.some(s => s.id === sourceSpaceId)
+                                ((t.modules || t.spaces) || []).some(s => s.id === sourceSpaceId)
                               );
 
                               if (!sourceTemplate) {
@@ -37041,7 +37046,7 @@ ${pageBlocks}
 
 
                                     // Find destination category ID
-                                    const destSpace = template.spaces.find(s => s.id === space.id);
+                                    const destSpace = ((template.modules || template.spaces) || []).find(s => s.id === space.id);
                                     const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
 
                                     // Use destination annotation coordinates, or source annotation coordinates, or source surveyMarker bounds
@@ -37102,10 +37107,12 @@ ${pageBlocks}
                                   setCopyModeActive(false);
                                   setShowSpaceSelection(false);
 
-                                  // Switch to the destination space to show the copied items
-                              setSelectedTemplate(template);
-                              setSelectedSpaceId(space.id);
-                              setShowSurveyPanel(true);
+                                  // Switch to the destination module to show the copied items
+                                  // (w53: was setSelectedSpaceId — that is the REGION
+                                  // selection, not the Survey module).
+                                  setSelectedTemplate(template);
+                                  setSelectedModuleId(space.id);
+                                  setShowSurveyPanel(true);
 
                                   // Explicitly return to prevent any further code execution
                                   return;
@@ -37124,7 +37131,7 @@ ${pageBlocks}
 
 
                                 // Check if all required categories exist in destination space
-                                const destSpace = template.spaces.find(s => s.id === space.id);
+                                const destSpace = ((template.modules || template.spaces) || []).find(s => s.id === space.id);
                                 const missingCategories = [];
                                 legacySurveyMarkers.forEach(h => {
                                   const sourceCategoryName = getCategoryName(sourceTemplate, h.moduleId, h.categoryId);
@@ -37167,9 +37174,9 @@ ${pageBlocks}
                                 setCopyModeActive(false);
                                 setShowSpaceSelection(false);
 
-                                // Switch to destination space
+                                // Switch to destination module (w53: module, not region selection)
                                 setSelectedTemplate(template);
-                                setSelectedSpaceId(space.id);
+                                setSelectedModuleId(space.id);
                                 setShowSurveyPanel(true);
 
                                 return;
