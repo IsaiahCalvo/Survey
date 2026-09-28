@@ -130,7 +130,7 @@ import {
   preserveTextMarkupRangeResizeSiblings,
   resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
-import { findSelectedAnnotationIndex, getAnnotationRenderIdentity, getAnnotationStorageKey, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { findSelectedAnnotationIndex, getAnnotationRenderIdentity, getAnnotationStorageKey, normalizeByPageAnnotationIdentities, stampAnnotationCreationIdentity } from './utils/annotationStorageIdentity.js';
 import { collectChangedObjectKeys, restoreTouchedObjects } from './utils/paintDragHistory.js';
 import {
   buildSelectedTextStylePatch,
@@ -197,6 +197,7 @@ import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
   DUPLICATE_OFFSET_PAGE_UNITS,
   buildFamilyClipboard,
+  makePastedMarkOwn,
   orderPastedFamily,
   planFamilyPaste,
 } from './utils/familyClipboard.js';
@@ -28704,6 +28705,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // untouched) and export/dedupe never see two objects claiming one
         // native PDF annotation id. See utils/pasteCloneIdentity.js.
         mintPastedCloneIdentity(c);
+        // w56: the paste is the paster's own mark (no copied lock / author).
+        makePastedMarkOwn(c, user?.id || null);
         applyPasteScope(c, pasteScope);
         if (typeof c.left === 'number') c.left += dx;
         if (typeof c.top === 'number') c.top += dy;
@@ -28733,6 +28736,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // path: rendering detects imported-path geometry structurally, not via
     // the provenance flags. See utils/pasteCloneIdentity.js.
     mintPastedCloneIdentity(pasted);
+    // w56: the paste is the paster's own mark (no copied lock / author).
+    makePastedMarkOwn(pasted, user?.id || null);
     applyPasteScope(pasted, currentPasteScope(pageNumber));
     const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
@@ -28783,7 +28788,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardAnnotation(null);
     }
     return true;
-  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
@@ -29269,9 +29274,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     const currentPage = annotationsByPageRef.current?.[drag.pageKey] || { version: '5.3.0', objects: [] };
+    // w56 (live two-user test 2026-09-28): a dropped counter carries its
+    // creator in meta.authorId like every drawn shape (the SVG layer stamps
+    // those in dispatchCommit). Without it the pin counted as an
+    // unattributed legacy mark, so only the document owner could Lock /
+    // Unlock it — a collaborator could not lock their own counter.
+    const counter = stampAnnotationCreationIdentity(drag.counter, { authorId: user?.id ?? null });
     const updatedJSON = {
       ...currentPage,
-      objects: [...(currentPage.objects || []), drag.counter],
+      objects: [...(currentPage.objects || []), counter],
     };
     // Commit BEFORE tearing down the drag preview, and force the React pass
     // synchronously, so the committed pin is already painted by the (always
@@ -29299,7 +29310,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     removeCounterDragPreview(drag);
 
     counterDragRef.current = null;
-  }, [handleSaveAnnotations, removeCounterDragPreview]);
+  }, [handleSaveAnnotations, removeCounterDragPreview, user?.id]);
 
   // [COUNTER WIP — DO NOT TOUCH] Window-level Shift/Escape listener for the
   // counter drag-to-place flow. Only acts when activeTool === 'counter' AND a
@@ -34518,6 +34529,8 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
         toggleLockSelection: handleToggleMarkLock,
+        // w56: group-menu Delete of a mixed marks+callouts selection.
+        beginBatchDelete: handleBeginBatchDelete,
         resolveSurveyMarker: (id) => surveyMarkersRef.current?.[id] || null,
         // w53: Survey Markers in the family menu, one clipboard, Duplicate.
         handleReorderFamily,

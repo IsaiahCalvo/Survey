@@ -199,6 +199,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // and a Survey Marker record lookup by id.
     toggleLockSelection = null,
     resolveSurveyMarker = null,
+    // w56: PDFViewer's handleBeginBatchDelete — arms a mixed marks+callouts
+    // delete so the group menu's Delete is one save / one Undo.
+    beginBatchDelete = null,
   } = actions;
 
   // May this mark be cut / deleted? RULED 2026-09-28 owner: open editing +
@@ -556,7 +559,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Send to back', 'sendToBack', () => reorderMarker('back')),
       ];
     } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices)
-      && (ctx.groupIndices.length + (ctx.groupMarkerIds?.length || 0)) >= 2) {
+      // w56: selected callouts count as members too (a mark + a callout,
+      // or two callouts, is a multi-selection with the group menu).
+      && (ctx.groupIndices.length + (ctx.groupMarkerIds?.length || 0)
+        + (selectedCalloutIds && typeof selectedCalloutIds.size === 'number' ? selectedCalloutIds.size : 0)) >= 2) {
       // UX: Phase 19 follow-up — right-click inside the outer dashed
       // box of a multi-selection. Cut/Copy/Paste/Delete and the four
       // z-order items each operate on every selected annotation at
@@ -718,8 +724,25 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const deletable = page?.objects ? sortedDesc
             .map((idx) => ({ idx, obj: page.objects[idx] }))
             .filter(({ obj }) => canModifyObj(obj)) : [];
+          // w56: the selection's callouts go too — the same gated delete as
+          // pressing Delete with the mixed selection (SVGAnnotationLayer's
+          // keyboard path). Cut / Copy / Duplicate / Lock already took them;
+          // Delete used to leave them on the page. Only this page's callouts
+          // (the same scope Cut / Copy / Duplicate use), and only ones that
+          // still exist.
+          const pageCalloutIds = new Set((page?.objects || [])
+            .filter((o) => o?.data?.type === 'callout' && o?.data?.id != null)
+            .map((o) => String(o.data.id)));
+          const selectedCalloutIdList = familySelection.calloutIds
+            .filter((id) => pageCalloutIds.has(String(id)));
+          const deleteSelectedCallouts = () => {
+            if (selectedCalloutIdList.length > 0 && typeof window.__onDeleteSelectedCallouts === 'function') {
+              window.__onDeleteSelectedCallouts(selectedCalloutIdList);
+            }
+          };
           if (deletable.length === 0) {
             if (markerIds.length > 0 && typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers(markerIds);
+            deleteSelectedCallouts();
             return;
           }
           const runDelete = () => {
@@ -743,16 +766,25 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             .map(({ obj }) => obj?.id)
             .filter((id) => id != null);
           if (typeof requestBulkDelete === 'function' && candidateIds.length > 0) {
+            // w56: arm the mixed marks+callouts batch first (as the keyboard
+            // Delete does) so the planner folds this page's callouts into the
+            // marks' save — one Undo brings both back; the callout delete
+            // below then skips the ones already taken.
+            if (selectedCalloutIdList.length > 0 && typeof beginBatchDelete === 'function') {
+              beginBatchDelete(2, selectedCalloutIdList);
+            }
             requestBulkDelete({
               candidateIds,
               snapshotObjects: deletable.map(({ obj }) => deepClone(obj)),
               pageNumber: ctx.pageNumber,
               runDelete,
             });
+            deleteSelectedCallouts();
             return;
           }
           // Direct fallback: no planner (or an all-id-less set).
           runDelete();
+          deleteSelectedCallouts();
         }, groupHasEditable),
         ...lockMenuItems(groupMembers, familySelection),
         sep(),

@@ -47,6 +47,7 @@ import { COLORS } from './theme.js';
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
 import { normalizePageRegions } from './utils/annotationVisibilityRules.js';
 import { coercePageNumber } from './utils/bookmarkPageIds.js';
+import { getMarkLockedBy } from './lib/collab/permissionScope.js';
 export { coercePageNumber, normalizeBookmarkPageIds } from './utils/bookmarkPageIds.js';
 export { escapeCSVValue } from './utils/csvValue.js';
 
@@ -755,7 +756,15 @@ const inferHistoryUpdateType = (before, after) => {
     || before.scaleX !== after.scaleX || before.scaleY !== after.scaleY;
   const rotated = before.angle !== after.angle;
   const textChanged = before.text !== after.text || before.data?.text !== after.data?.text;
-  const annotationType = getHistoryAnnotationType(after || before);
+  // fabric 7 serializes type capitalized ('Textbox') — compare lowercased.
+  const annotationType = String(getHistoryAnnotationType(after || before) || '').toLowerCase();
+  // w56: a change that only sets / clears the user lock reads "locked" /
+  // "unlocked" in History, not "edited".
+  const lockBefore = getMarkLockedBy(before);
+  const lockAfter = getMarkLockedBy(after);
+  if (lockBefore !== lockAfter && !moved && !resized && !rotated && !textChanged) {
+    return lockAfter ? 'lock' : 'unlock';
+  }
   if (annotationType === 'callout') return 'callout edit';
   if (textChanged) return annotationType === 'textbox' || annotationType === 'text' ? 'text edit' : 'callout edit';
   if (rotated && !moved && !resized) return 'rotate';
@@ -764,7 +773,11 @@ const inferHistoryUpdateType = (before, after) => {
   if (resized && !rotated) return 'resize';
   if (moved && !resized && !rotated) return 'move';
   if (moved || resized || rotated) return 'move';
-  return 'text edit';
+  // w56 (live two-user test 2026-09-28): nothing moved and no text changed —
+  // a colour / width / style change. It is "edited text" only on a text box;
+  // a restyled pen stroke or shape reads "edited a pen stroke" etc. in
+  // History (buildSummary's generic line), never "edited text".
+  return annotationType === 'textbox' || annotationType === 'text' ? 'text edit' : 'restyle';
 };
 
 export const summarizeHistoryActionForLog = (action) => {
@@ -790,9 +803,18 @@ export const summarizeHistoryActionForLog = (action) => {
     ...batchDeleted.map((entry) => entry?.id),
     ...batchUpdated.map((entry) => entry?.id),
   ].filter(Boolean);
+  // w56: a batch that only locks / unlocks (right-click Lock on a selection)
+  // reads "locked N annotations", not "edited a …".
+  const batchLockToggle = action.type === 'fabric:batch'
+    && batchCreated.length === 0 && batchDeleted.length === 0 && batchUpdated.length > 0
+    ? (() => {
+      const kinds = new Set(batchUpdated.map((entry) => inferHistoryUpdateType(entry?.before, entry?.after)));
+      return kinds.size === 1 && (kinds.has('lock') || kinds.has('unlock')) ? [...kinds][0] : null;
+    })()
+    : null;
   const inferredActionType = action.type === 'fabric:update'
     ? inferHistoryUpdateType(action.before, action.after)
-    : normalizeHistoryActionType(action.type, firstAnnotation || batchFirst);
+    : (batchLockToggle || normalizeHistoryActionType(action.type, firstAnnotation || batchFirst));
   return {
     actionType: inferredActionType,
     rawActionType: action.type || null,

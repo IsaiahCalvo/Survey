@@ -16,6 +16,37 @@ import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.
 import { resolveAnnotationAt } from './annotationHitTest.js';
 import { selectionUsesPdfTextLayer } from './pdfNativeTextInteraction.js';
 
+/**
+ * w56 (live two-user test 2026-09-28): right-clicking a mark that is PART of
+ * the current multi-selection opens the selection's (group) menu — the rule
+ * Survey Markers already follow below — so Lock / Unlock / Cut / Copy /
+ * Delete act on everything that shows as selected, not only on the one mark
+ * under the cursor (Figma / Bluebeam / Acrobat behaviour). Before this, the
+ * one mark's own menu opened while the whole selection stayed highlighted,
+ * and "Lock" locked just that mark. A mark outside the selection keeps its
+ * own menu. Pure: reads only the selection frame's data attributes.
+ *
+ * @param {{kind: string, annotationIndex: number|null, calloutId: string|null}} hit
+ * @param {Element|null} groupBox  the page's [data-group-selection-bbox] frame
+ * @returns {{groupIndices: number[], groupMarkerIds: string[]}|null}
+ */
+export function groupMenuForSelectedMember(hit, groupBox) {
+  if (!hit || !groupBox || typeof groupBox.getAttribute !== 'function') return null;
+  const { kind, annotationIndex, calloutId } = hit;
+  if (kind !== 'annotation' && kind !== 'counter' && kind !== 'callout') return null;
+  const csv = (name) => String(groupBox.getAttribute(name) || '').split(',').filter((s) => s !== '');
+  const groupIndices = csv('data-group-selection-indices').map(Number).filter(Number.isFinite);
+  const groupMarkerIds = csv('data-group-selection-marker-ids');
+  const groupCalloutIds = csv('data-group-selection-callout-ids');
+  // A group = at least two selected members: marks, Survey Markers and
+  // callouts all count (the group menu counts selected callouts too).
+  if (groupIndices.length + groupMarkerIds.length + groupCalloutIds.length < 2) return null;
+  const isMember = kind === 'callout'
+    ? calloutId != null && groupCalloutIds.includes(String(calloutId))
+    : Number.isInteger(annotationIndex) && groupIndices.includes(annotationIndex);
+  return isMember ? { groupIndices, groupMarkerIds } : null;
+}
+
 // 2026-04-25 — Build stamp so save-logs reveal which version of this
 // dispatcher is actually live. If HMR mis-replaces the listener, the
 // stamp in the install log will still match the stale build's value.
@@ -197,12 +228,27 @@ function diag(line) {
       return;
     }
 
-    const { pageNumber, annotationIndex, calloutId, kind, groupIndices } = resolveAnnotationAt(e);
+    const hit = resolveAnnotationAt(e);
+    const { pageNumber } = hit;
+    let { annotationIndex, calloutId, kind, groupIndices } = hit;
+    const groupBox = pageNumber != null
+      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"] [data-group-selection-bbox="true"]`)
+      : null;
+    // w56: a right-click on a selected member of a multi-selection opens the
+    // selection's menu (see groupMenuForSelectedMember).
+    const promoted = groupMenuForSelectedMember({ kind, annotationIndex, calloutId }, groupBox);
+    if (promoted) {
+      kind = 'group';
+      groupIndices = promoted.groupIndices;
+      annotationIndex = null;
+      calloutId = null;
+    }
     // w53: Survey Markers in a right-clicked selection frame.
-    const groupMarkerIds = kind === 'group' && pageNumber != null
-      ? (document.querySelector(`[data-svg-annotation-layer="${pageNumber}"] [data-group-selection-bbox="true"]`)
-        ?.getAttribute('data-group-selection-marker-ids') || '').split(',').filter(Boolean)
-      : [];
+    const groupMarkerIds = promoted
+      ? promoted.groupMarkerIds
+      : (kind === 'group' && groupBox
+        ? (groupBox.getAttribute('data-group-selection-marker-ids') || '').split(',').filter(Boolean)
+        : []);
     const globalHandler = typeof window.__onAnnotationContextMenu === 'function'
       ? window.__onAnnotationContextMenu
       : null;

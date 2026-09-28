@@ -7809,6 +7809,9 @@ const SVGAnnotationLayer = memo(({
                 data-group-selection-bbox="true"
                 data-group-selection-indices={groupIndicesCsv}
                 data-group-selection-marker-ids={groupMarkerIdsCsv || undefined}
+                // w56: the selected callouts, so a right-click ON one of them
+                // opens this selection's menu (contextMenuDiagnostics).
+                data-group-selection-callout-ids={Array.from(groupCalloutIdSet).join(',') || undefined}
               >
                 <SVGSelectionOverlay
                   key="group-selection"

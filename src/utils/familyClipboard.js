@@ -53,6 +53,21 @@ const isCalloutObject = (object) => object?.data?.type === 'callout';
 
 // A pasted copy is a NEW mark: it never inherits the source's user lock
 // (owner ruling 2026-09-28 — the lock belongs to that one mark).
+/**
+ * w56 (live two-user test 2026-09-28): a pasted mark is the paster's own new
+ * mark — the copied user lock is dropped and the paster becomes its author —
+ * on EVERY paste path. The single-mark paste in PDFViewer (pasteAnnotationAt)
+ * kept the source's author, so an editor's paste of the owner's rectangle
+ * stayed the owner's mark and the editor could not lock their own copy.
+ * Mutates and returns `object` (callers pass a fresh clone).
+ */
+export function makePastedMarkOwn(object, authorId) {
+  if (!object || typeof object !== 'object') return object;
+  stripUserLock(object);
+  if (authorId) stampAuthor(object, authorId);
+  return object;
+}
+
 function stripUserLock(object) {
   if (!object || typeof object !== 'object') return;
   delete object.lockedBy;

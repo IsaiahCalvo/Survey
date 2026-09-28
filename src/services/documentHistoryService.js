@@ -47,7 +47,8 @@ function normalizeActionType(value) {
 function labelAnnotationType(value) {
   const text = String(value || '').toLowerCase();
   if (text === 'path' || text === 'ink') return 'pen stroke';
-  if (text === 'textbox' || text === 'text' || text === 'freetext') return 'text';
+  // w56: "created a text box", never "created a text".
+  if (text === 'textbox' || text === 'text' || text === 'freetext') return 'text box';
   if (text === 'rect' || text === 'square') return 'rectangle';
   if (text === 'circle') return 'circle';
   if (text === 'ellipse') return 'ellipse';
@@ -105,6 +106,9 @@ function buildSummary({ actorName, event }) {
   if (action === 'resize') return `${actorName} resized ${withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'rotate') return `${actorName} rotated ${withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'text edit') return `${actorName} edited text${pageSuffix}`;
+  // w56: the user lock (right-click Lock / Unlock).
+  if (action === 'lock') return `${actorName} locked ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'unlock') return `${actorName} unlocked ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'callout edit') return `${actorName} edited a callout${pageSuffix}`;
 
   return `${actorName} edited ${withArticle(annotationLabel)}${pageSuffix}`;
