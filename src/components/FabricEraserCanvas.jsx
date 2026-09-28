@@ -1199,6 +1199,52 @@ const FabricEraserCanvas = memo(({
   // at pointer-up. Net effect: a sweep whole-deleted the callout at release
   // with zero pending-erase warning. These helpers close that gap using the
   // SAME hit test the commit uses, so preview and commit cannot disagree.
+  const getSpaceIdForRegion = useCallback((regionId) => {
+    if (!regionId) return null;
+    for (const space of Array.isArray(spacesRef.current) ? spacesRef.current : []) {
+      for (const page of Array.isArray(space?.assignedPages) ? space.assignedPages : []) {
+        const match = (Array.isArray(page?.regions) ? page.regions : [])
+          .find((region) => region?.regionId === regionId);
+        if (match) return space.id;
+      }
+    }
+    return null;
+  }, []);
+
+  // w52 (2026-09-28): the space-scope erase rule as ONE predicate, shared by
+  // the page-objects lane (getEraseBlockReason) and the callout lane. The
+  // callout lane used to skip it, so a callout outside the active space was
+  // erasable while every other mark there was protected.
+  const isOutsideEraseSpaceScope = useCallback((object) => {
+    const objectSpaceId = object?.spaceId ?? null;
+    const objectRegionId = object?.regionId ?? null;
+    if (activeSpaceIdRef.current !== null && activeSpaceIdRef.current !== undefined) {
+      if (objectRegionId !== null) {
+        const derivedSpaceId = getSpaceIdForRegion(objectRegionId);
+        if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) return true;
+      } else if (objectSpaceId !== null) {
+        if (objectSpaceId !== activeSpaceIdRef.current) return true;
+      } else {
+        // Unscoped (background) annotations under an ACTIVE space are
+        // deliberately protected: SVGAnnotationLayer's interaction rules make
+        // background content visible-but-not-editable inside a space, and the
+        // eraser follows the same contract (skip, never silent cross-scope
+        // data loss). Confirmed 2026-07-20 against the rig's K8 case; if the
+        // product rule ever flips to "background erases too", this single
+        // return is the switch.
+        return true;
+      }
+    } else if (
+      selectedSpaceIdRef.current !== null
+      && selectedSpaceIdRef.current !== undefined
+      && objectSpaceId !== null
+      && objectSpaceId !== selectedSpaceIdRef.current
+    ) {
+      return true;
+    }
+    return false;
+  }, [getSpaceIdForRegion]);
+
   const collectPageCallouts = useCallback(() => {
     const legacyCallouts = (annotationsRef.current?.objects || [])
       .map((object) => getLegacyCalloutPayload(object, pageNumber))
@@ -1258,11 +1304,13 @@ const FabricEraserCanvas = memo(({
         showSurveyPanel: showSurveyPanelRef.current,
         selectedModuleId: selectedModuleIdRef.current,
       })) return false;
+      // w52: the same space-scope rule every other mark follows.
+      if (isOutsideEraseSpaceScope(callout)) return false;
       if (!viewerId || !ownerId) return isLocalOnlyDocumentRef.current;
       if (callout?.locked === true) return false;
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
     });
-  }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
+  }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, isOutsideEraseSpaceScope, pageHeight, pageNumber, pageWidth]);
 
   // Survey markers live outside annotations.objects. Their live SVG DOM IDs are
   // the visibility authority for the gesture, while PDFViewer owns the source
@@ -1284,7 +1332,15 @@ const FabricEraserCanvas = memo(({
       excludeIds,
       eraserPoints,
       eraserRadius: radius,
-      canErase: (annotationId) => {
+      canErase: (annotationId, marker) => {
+        // w52: a marker tied to a region follows the same space-scope rule
+        // as every other mark. An untagged marker (older markers, whole-page
+        // space pages) stays erasable: the marker layer treats it as part of
+        // the active space, and select + Delete allow it (review 2026-09-28).
+        if (marker?.regionId != null && isOutsideEraseSpaceScope({
+          regionId: marker.regionId,
+          spaceId: marker?.spaceId ?? null,
+        })) return false;
         try {
           return typeof canEraseSurveyMarkerRef.current === 'function'
             ? canEraseSurveyMarkerRef.current(annotationId) === true
@@ -1295,7 +1351,7 @@ const FabricEraserCanvas = memo(({
       },
       boundsAllow: (annotationId) => surveyMarkerBoundsAllow(annotationId, queryBounds),
     });
-  }, [getPageRadius, surveyMarkerBoundsAllow]);
+  }, [getPageRadius, isOutsideEraseSpaceScope, surveyMarkerBoundsAllow]);
 
   // Whole-delete pending-erase visual for callouts — the exact treatment
   // non-path shapes get in eraseAtomicObjectsFromPreview, ported to the
@@ -1722,18 +1778,6 @@ const FabricEraserCanvas = memo(({
     state.checkReady?.();
   });
 
-  const getSpaceIdForRegion = useCallback((regionId) => {
-    if (!regionId) return null;
-    for (const space of Array.isArray(spacesRef.current) ? spacesRef.current : []) {
-      for (const page of Array.isArray(space?.assignedPages) ? space.assignedPages : []) {
-        const match = (Array.isArray(page?.regions) ? page.regions : [])
-          .find((region) => region?.regionId === regionId);
-        if (match) return space.id;
-      }
-    }
-    return null;
-  }, []);
-
   const getEraseBlockReason = useCallback((object) => {
     // SVGAnnotationLayer deliberately hides legacy survey-marker proxy rects
     // (identified by top-level annotationId). The marker source has its own
@@ -1791,34 +1835,9 @@ const FabricEraserCanvas = memo(({
       selectedModuleId: selectedModuleIdRef.current,
     })) return 'survey-scope';
 
-    const objectSpaceId = object?.spaceId ?? null;
-    const objectRegionId = object?.regionId ?? null;
-    if (activeSpaceIdRef.current !== null && activeSpaceIdRef.current !== undefined) {
-      if (objectRegionId !== null) {
-        const derivedSpaceId = getSpaceIdForRegion(objectRegionId);
-        if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) return 'space-scope';
-      } else if (objectSpaceId !== null) {
-        if (objectSpaceId !== activeSpaceIdRef.current) return 'space-scope';
-      } else {
-        // Unscoped (background) annotations under an ACTIVE space are
-        // deliberately protected: SVGAnnotationLayer's interaction rules make
-        // background content visible-but-not-editable inside a space, and the
-        // eraser follows the same contract (skip, never silent cross-scope
-        // data loss). Confirmed 2026-07-20 against the rig's K8 case; if the
-        // product rule ever flips to "background erases too", this single
-        // return is the switch.
-        return 'space-scope';
-      }
-    } else if (
-      selectedSpaceIdRef.current !== null
-      && selectedSpaceIdRef.current !== undefined
-      && objectSpaceId !== null
-      && objectSpaceId !== selectedSpaceIdRef.current
-    ) {
-      return 'space-scope';
-    }
+    if (isOutsideEraseSpaceScope(object)) return 'space-scope';
     return null;
-  }, [getSpaceIdForRegion]);
+  }, [isOutsideEraseSpaceScope]);
 
   // Cheap per-segment ghost check for EVERY whole-delete object crossed by the
   // segment — shapes, text, stamps, AND atomic path-typed objects (clouds,

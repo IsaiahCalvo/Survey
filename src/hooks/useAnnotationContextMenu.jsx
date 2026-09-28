@@ -34,6 +34,7 @@ import {
 // and the Cut items are restricted to marks the viewer authored (or owner
 // mode). Same single source of truth as click hit-test / marquee / planner.
 import { canDelete, canModify } from '../lib/collab/permissionScope.js';
+import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 
 export function useAnnotationContextMenu() {
   // UX: annotation right-click menu — anchored to the pointer.
@@ -178,6 +179,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // either is missing (boot window) the legacy permissive behavior applies.
     viewerId = null,
     documentOwnerId = null,
+    // w52: callouts selected together with shapes move with the group's
+    // z-order items.
+    selectedCalloutIds = null,
   } = actions;
 
   // Own-mark check (author or document owner; boot window is permissive to
@@ -334,8 +338,13 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Send to back', 'sendToBack', () => reorderCallout('back')),
       ];
     } else if (ctx.kind === 'counter') {
+      // w52 (2026-09-28): right-clicking the page while the Counter tool is
+      // armed. The old lone "Continue pin" item did nothing (no handler ever
+      // existed). A pin (or any mark) under the pointer now resolves to the
+      // normal annotation menu in annotationHitTest; bare page = the page
+      // menu, same as every other tool.
       items = [
-        item('Continue pin', 'continuePin'),
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
       ];
     } else if (ctx.kind === 'annotation') {
       items = [
@@ -521,27 +530,19 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       const reorderAll = (direction) => {
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects?.length) return;
-        const selected = new Set(sortedAsc);
-        let entries = page.objects.map((object, index) => ({ object, selected: selected.has(index) }));
-        if (direction === 'front' || direction === 'back') {
-          const picked = entries.filter((entry) => entry.selected);
-          const rest = entries.filter((entry) => !entry.selected);
-          entries = direction === 'front' ? [...rest, ...picked] : [...picked, ...rest];
-        } else if (direction === 'forward') {
-          for (let index = entries.length - 2; index >= 0; index -= 1) {
-            if (entries[index].selected && !entries[index + 1].selected) {
-              [entries[index], entries[index + 1]] = [entries[index + 1], entries[index]];
-            }
-          }
-        } else if (direction === 'backward') {
-          for (let index = 1; index < entries.length; index += 1) {
-            if (entries[index].selected && !entries[index - 1].selected) {
-              [entries[index], entries[index - 1]] = [entries[index - 1], entries[index]];
-            }
-          }
+        // w52: the selection moves as ONE block through the shared stack
+        // helper (same permutation as the keyboard Cmd+]/[ path), and any
+        // callouts selected with the shapes move with them.
+        const calloutSlots = [];
+        if (selectedCalloutIds && typeof selectedCalloutIds.has === 'function' && selectedCalloutIds.size > 0) {
+          page.objects.forEach((object, index) => {
+            if (object?.data?.type === 'callout' && selectedCalloutIds.has(object?.data?.id)) calloutSlots.push(index);
+          });
         }
+        const result = reorderSelectionInStack(page.objects, [...sortedAsc, ...calloutSlots], direction);
+        if (!result.changed) return;
         const next = deepClone(page);
-        next.objects = entries.map((entry) => deepClone(entry.object));
+        next.objects = result.objects.map((object) => deepClone(object));
         handleSaveAnnotations(ctx.pageNumber, next, {
           source: 'object:modified',
           action: 'reorder-group',
@@ -549,9 +550,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         });
         setPendingSvgSelection({
           pageNumber: ctx.pageNumber,
-          annotationIndices: entries.reduce((indices, entry, index) => (
-            entry.selected ? [...indices, index] : indices
-          ), []),
+          // Shapes only: callout selection is keyed by id and survives the move.
+          annotationIndices: result.selectedIndices.filter(
+            (index) => result.objects[index]?.data?.type !== 'callout'
+          ),
           tick: Date.now(),
         });
       };
@@ -675,7 +677,6 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const mobileWidth = (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout') ? 176 : 154;
     const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
       : ctx.kind === 'callout' ? 'Callout'
-      : ctx.kind === 'counter' ? 'Counter'
       : 'Page';
 
     const panel = (

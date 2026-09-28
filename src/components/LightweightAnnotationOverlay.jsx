@@ -10,6 +10,7 @@ import {
   paintAnnotationCanvas,
 } from '../utils/annotationCanvasPainter.js';
 import { calculateAnnotationDetailTile } from '../utils/annotationDetailTile.js';
+import { annotationImagesReady, preloadAnnotationImages } from '../utils/annotationImageCache.js';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 
@@ -464,6 +465,19 @@ const LightweightAnnotationOverlay = memo(({
     visibleObjects,
     workerDataRevision,
   ]);
+
+  // w52 (2026-09-28): image marks (imported stamps) need a decoded image
+  // before Canvas2D can draw them; the first paint skips any still decoding.
+  // Repaint once they land so the canvas shows the stamp like the SVG layer.
+  // (The worker path decodes in its own realm and repaints itself.)
+  useEffect(() => {
+    if (!hasRenderablePreview || annotationImagesReady(visibleObjects)) return undefined;
+    let cancelled = false;
+    preloadAnnotationImages(visibleObjects).then((loaded) => {
+      if (!cancelled && loaded) renderViewportRef.current?.(true);
+    });
+    return () => { cancelled = true; };
+  }, [hasRenderablePreview, visibleObjects]);
 
   useEffect(() => {
     if (!hasRenderablePreview) return undefined;

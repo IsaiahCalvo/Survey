@@ -26,6 +26,7 @@ import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 import { computeThumbnailSignature, isThumbnailCurrent } from '../services/thumbnailSignature';
 import { publishThumbnailUpdate } from '../services/thumbnailEvents';
 import { isUserBusy } from '../services/userActivity';
+import { preloadAnnotationImages } from '../utils/annotationImageCache.js';
 import {
   composeThumbnail,
   encodeThumbnail,
@@ -151,6 +152,10 @@ export function useDocumentThumbnailCapture({
     const painted = signatureFor(current, base.geometry);
     if (painted.signature === lastSignatureRef.current) return;
     if (isUserBusy({ quietMs: 1200 })) { dirtyRef.current = true; return; }
+    // w52: image marks (imported stamps) must be decoded before the
+    // synchronous canvas paint can draw them into the thumbnail.
+    await preloadAnnotationImages(painted.markup.objects);
+    if (latest.current.key !== current.key || latest.current.pdfDoc !== current.pdfDoc) return;
     await write(current, base, painted.markup, painted.signature);
   }, [ensureBase, signatureFor, write]);
 

@@ -35,6 +35,16 @@ import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 // scale baked in, translate + rotate frame, crown outline, scalloped fill) so
 // the bitmap twin is the SVG layer's output, not a re-derivation of it.
 import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
+// w52 (2026-09-28): image marks (imported stamps) and text markup paint here
+// too, from the same geometry the SVG layer uses, so thumbnails, the zoom
+// proxy and the eraser base show every mark type the screen shows.
+import { getPdfStampProxySvgProps, isPdfStampProxy } from './pdfStampProxy.js';
+import { getAnnotationImage } from './annotationImageCache.js';
+import {
+  buildTextMarkupRenderSpec,
+  groupUniformTextMarkupHighlights,
+  isUniformTextMarkupHighlight,
+} from './textMarkupRenderSpec.js';
 import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
@@ -1187,6 +1197,77 @@ function drawGroup(context, object) {
   context.restore();
 }
 
+// Twin of SVGAnnotationLayer's stamp-proxy branch (<image
+// {...getPdfStampProxySvgProps(obj)}>): same box, opacity and rotation about
+// the box centre. The image comes from annotationImageCache; one that is still
+// decoding is counted as pending so the caller can repaint once it lands.
+let pendingImageCount = 0;
+function drawImageMark(context, object) {
+  const props = getPdfStampProxySvgProps(object);
+  if (!(props.width > 0 && props.height > 0)) return;
+  const image = getAnnotationImage(props.href);
+  if (!image) {
+    pendingImageCount += 1;
+    return;
+  }
+  context.save();
+  context.globalAlpha = clampOpacity(props.opacity);
+  context.globalCompositeOperation = 'source-over';
+  const angle = object?.data?.pdfStampAppearanceRotationBaked === true ? 0 : toNumber(object.angle);
+  applyRotation(context, angle, props.x + props.width / 2, props.y + props.height / 2);
+  context.drawImage(image, props.x, props.y, props.width, props.height);
+  context.restore();
+}
+
+function traceTextMarkupRuns(context, runs, closed) {
+  context.beginPath();
+  for (const points of runs) {
+    points.forEach(([x, y], index) => {
+      if (index === 0) context.moveTo(toNumber(x), toNumber(y));
+      else context.lineTo(toNumber(x), toNumber(y));
+    });
+    if (closed) context.closePath();
+  }
+}
+
+// Twin of renderTextMarkup (svgAnnotationRenderers.jsx) via
+// buildTextMarkupRenderSpec. A uniform-overlap highlight paints nothing here:
+// its colour comes from the merged mask paintUniformTextMarkupMasks lays
+// beneath every mark (the SVG layer renders it at opacity 0 the same way).
+function drawTextMarkup(context, object) {
+  if (isUniformTextMarkupHighlight(object)) return;
+  const spec = buildTextMarkupRenderSpec(object);
+  if (!spec) return;
+  context.save();
+  context.globalAlpha = clampOpacity(spec.opacity);
+  context.globalCompositeOperation = spec.multiply ? 'multiply' : 'source-over';
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  traceTextMarkupRuns(context, spec.runs, spec.closed);
+  if (spec.mode === 'stroke') {
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+  }
+  paintCurrentPath(context, {
+    fill: spec.fill,
+    stroke: spec.stroke,
+    strokeWidth: spec.strokeWidth || 0,
+  });
+  context.restore();
+}
+
+// Twin of SVGAnnotationLayer's uniformTextMarkupElements: one merged fill per
+// colour + opacity, painted first so it sits beneath every other mark.
+function paintUniformTextMarkupMasks(context, objects) {
+  for (const group of groupUniformTextMarkupHighlights(objects)) {
+    context.save();
+    context.globalAlpha = group.opacity;
+    context.globalCompositeOperation = 'source-over';
+    traceTextMarkupRuns(context, group.runs, true);
+    paintCurrentPath(context, { fill: group.color });
+    context.restore();
+  }
+}
+
 export function drawAnnotationObject(context, object, displayScale = 1) {
   if (!context || !object) return;
   // Dual-rep callout projections live in the callouts[] pipeline — the SVG
@@ -1195,6 +1276,14 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   if (object?.data?.type === 'callout') return;
   if (object?.data?.type === 'counter') {
     drawCounter(context, object);
+    return;
+  }
+  if (object?.data?.type === 'text-markup') {
+    drawTextMarkup(context, object);
+    return;
+  }
+  if (isPdfStampProxy(object)) {
+    drawImageMark(context, object);
     return;
   }
   const type = String(object.type || '').toLowerCase();
@@ -1559,6 +1648,8 @@ export function paintAnnotationCanvas(context, {
     }
   });
   const painted = new Set();
+  pendingImageCount = 0;
+  paintUniformTextMarkupMasks(context, objects);
   objects.forEach((object) => {
     if (object?.data?.type === 'callout') {
       const callout = object?.data?.id != null ? calloutsById.get(String(object.data.id)) : null;
@@ -1574,5 +1665,7 @@ export function paintAnnotationCanvas(context, {
     if (!painted.has(callout)) drawCallout(context, callout, pageWidth, pageHeight, displayScale);
   });
   context.setTransform(1, 0, 0, 1, 0, 0);
-  return { objectCount: objects.length, calloutCount: callouts.length };
+  // pendingImageCount: image marks skipped because their image is still
+  // decoding - repaint once preloadAnnotationImages(objects) resolves.
+  return { objectCount: objects.length, calloutCount: callouts.length, pendingImageCount };
 }

@@ -134,6 +134,19 @@ import {
 // Diagnostic: record every SVG callout's source data + DOM rects so Save Log
 // can dump a full geometry comparison against the Fabric edit-mode capture.
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
+// w52 (2026-09-28) — shared "one annotation family" rules (space
+// interactivity, whole-selection z-order, nudge helpers).
+import {
+  isInteractiveForActiveSpace,
+  isAnnotationInteractiveInActiveSpace,
+  reorderSelectionInStack,
+  zOrderDirectionForKey,
+  nudgeDeltaForKey,
+  isArrowKey,
+  isTypingTarget,
+  clampNudgeDelta,
+  NUDGE_IDLE_COMMIT_MS,
+} from '../utils/annotationFamilyRules.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
@@ -468,6 +481,10 @@ const SVGAnnotationLayer = memo(({
   // path owned by the parallel callout session — this handler only runs for
   // `annotations.objects[i]` selections (selectedIds), never for callouts.
   onCopyAnnotation,
+  // w52: Cmd+C / Cmd+X for a selected callout (PDFViewer handleCopyCallout /
+  // handleCutCallout — the same handlers as the callout right-click menu).
+  onCopyCallout,
+  onCutCallout,
   onCutAnnotation,
   // UX: z-order reorder handler. Signature: (pageNumber, fromIndex, toIndex).
   // Fired from the keydown useEffect below on Cmd+]/Cmd+[ (with Shift for
@@ -544,6 +561,15 @@ const SVGAnnotationLayer = memo(({
   const counterHandlePreviewRef = useRef(null);
   const annotationsRef = useRef(annotations);
   const renderedAnnotationEntriesRef = useRef([]);
+  // w52: ids of the callouts this page shows AND lets the user pick (visible
+  // in context + interactive for the active space). Null until the first
+  // callout pass lands, which reads as "all pass" (boot parity).
+  const selectableCalloutIdsRef = useRef(null);
+  const isCalloutSelectable = useCallback((calloutId) => {
+    const ids = selectableCalloutIdsRef.current;
+    if (!ids) return true;
+    return ids.has(String(calloutId));
+  }, []);
   const surveyMarkerDragRef = useRef(null);
   // UX 2026-09-15 — a press that landed on blank SVG space with a LIVE PDF form
   // widget underneath. The widget layer paints under this overlay (markup is
@@ -672,6 +698,11 @@ const SVGAnnotationLayer = memo(({
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
     onRequestBulkDelete,
+    // w52: callouts obey the same visibility + space-interactivity rules as
+    // every other mark for click / marquee / lasso.
+    isCalloutSelectable,
+    // w52: arrow-key nudge stays off while an inline editor owns the keys.
+    keyboardNudgeEnabled: editingAnnotationIndex == null && !editingCalloutId,
   });
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
@@ -1217,6 +1248,23 @@ const SVGAnnotationLayer = memo(({
     onBeginBatchDelete,
   ]);
 
+  // w52: how many of the selected callouts sit on THIS page (the callout
+  // selection set is shared by every page's layer).
+  const countPageSelectedCallouts = useCallback(() => {
+    const ids = effectiveSelectedCalloutIds instanceof Set
+      ? effectiveSelectedCalloutIds
+      : new Set(Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : []);
+    if (ids.size === 0) return 0;
+    const wanted = new Set(Array.from(ids).map(String));
+    const objects = annotationsRef.current?.objects;
+    if (!Array.isArray(objects)) return 0;
+    let count = 0;
+    for (const object of objects) {
+      if (object?.data?.type === 'callout' && wanted.has(String(object?.data?.id))) count += 1;
+    }
+    return count;
+  }, [effectiveSelectedCalloutIds]);
+
   // UX: KBD-02 — single-shape annotation hotkeys: Cmd+C (copy), Cmd+X (cut),
   // and the Illustrator/Figma/Photoshop z-order block:
   //   Cmd+]          → Bring Forward
@@ -1270,6 +1318,10 @@ const SVGAnnotationLayer = memo(({
       const annotationIndex = Array.from(selectedIds)[0];
       if (typeof annotationIndex !== 'number') return;
 
+      // w52: one shape + a callout on this page is a MULTI-selection — the
+      // whole-selection z-order handler below moves both together.
+      if ((isBracketRight || isBracketLeft) && countPageSelectedCallouts() > 0) return;
+
       // KAL-75 (G4): locked/read-only documents — Copy stays live (read
       // affordance), but Cut and z-order are mutations and must be inert.
       if (!isCopy && document.body.getAttribute('data-readonly') === 'true') return;
@@ -1295,7 +1347,7 @@ const SVGAnnotationLayer = memo(({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation]);
+  }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation, countPageSelectedCallouts]);
 
   // UX: w52 (2026-09-28) — the same four z-order hotkeys for ONE selected
   // callout (Cmd+] / Cmd+Shift+] / Cmd+[ / Cmd+Shift+[), routed through the
@@ -1316,19 +1368,32 @@ const SVGAnnotationLayer = memo(({
       if (!isMeta || e.altKey) return;
       const isBracketRight = e.code === 'BracketRight';
       const isBracketLeft = e.code === 'BracketLeft';
-      if (!isBracketRight && !isBracketLeft) return;
+      // w52: Cmd+C / Cmd+X for ONE selected callout — the same handlers the
+      // callout right-click Copy / Cut use (before, callouts had no copy/cut
+      // shortcut at all). Cut stays own-marks-only inside onCutCallout.
+      const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      const isCopy = !e.shiftKey && key === 'c';
+      const isCut = !e.shiftKey && key === 'x';
+      if (!isBracketRight && !isBracketLeft && !isCopy && !isCut) return;
       const el = document.activeElement;
       if (el) {
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
         if (el.isContentEditable === true || el.contentEditable === 'true') return;
       }
-      if (document.body.getAttribute('data-readonly') === 'true') return;
+      if (!isCopy && document.body.getAttribute('data-readonly') === 'true') return;
       const objects = annotationsRef.current?.objects;
       if (!Array.isArray(objects)) return;
       const index = objects.findIndex(
         (o) => o?.data?.type === 'callout' && String(o?.data?.id) === String(calloutId)
       );
       if (index < 0) return;
+      if (isCopy || isCut) {
+        const handler = isCopy ? onCopyCallout : onCutCallout;
+        if (typeof handler !== 'function') return;
+        e.preventDefault();
+        handler(calloutId);
+        return;
+      }
       e.preventDefault();
       const direction = isBracketRight
         ? (e.shiftKey ? 'front' : 'forward')
@@ -1337,7 +1402,62 @@ const SVGAnnotationLayer = memo(({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, pageNumber, onReorderAnnotation]);
+  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, pageNumber, onReorderAnnotation, onCopyCallout, onCutCallout]);
+
+  // UX: w52 (2026-09-28) — z-order hotkeys for a MULTI-selection (two or
+  // more marks on this page: shapes, callouts, or a mix). Cmd+] / Cmd+[ step
+  // the whole selection up / down one slot past its unselected neighbours;
+  // Cmd+Shift+] / Cmd+Shift+[ send it all the way to the front / back. The
+  // selected marks keep their order among themselves (Figma / Illustrator
+  // behaviour, and the same permutation as the right-click group menu —
+  // reorderSelectionInStack). One save, one undo step. Shapes stay selected
+  // at their new slots; callouts are selected by id and follow on their own.
+  // Single-mark selections keep the handlers above (overlap-aware stepping).
+  useEffect(() => {
+    if ((selectedIds?.size || 0) + calloutSelectionSize < 2) return undefined;
+    if (typeof onSaveAnnotations !== 'function') return undefined;
+    if (editingCalloutId) return undefined;
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
+    const handleKeyDown = (e) => {
+      const direction = zOrderDirectionForKey(e);
+      if (!direction) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const page = annotationsRef.current;
+      const objects = page?.objects;
+      if (!Array.isArray(objects)) return;
+      const calloutIds = new Set(
+        (effectiveSelectedCalloutIds instanceof Set
+          ? Array.from(effectiveSelectedCalloutIds)
+          : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : [])
+        ).map(String),
+      );
+      const picked = [];
+      objects.forEach((object, index) => {
+        if (object?.data?.type === 'callout') {
+          if (calloutIds.has(String(object?.data?.id))) picked.push(index);
+        } else if (selectedIds.has(index)) {
+          picked.push(index);
+        }
+      });
+      // One mark on this page (the rest of the selection lives elsewhere):
+      // the single-mark handlers above own it.
+      if (picked.length < 2) return;
+      e.preventDefault();
+      const result = reorderSelectionInStack(objects, picked, direction);
+      if (!result.changed) return;
+      onSaveAnnotations(deepClone({ ...page, objects: result.objects }), {
+        source: 'object:modified',
+        action: 'reorder-group',
+        checkpointPolicy: 'normal',
+      });
+      selectAnnotations(
+        result.selectedIndices.filter((index) => result.objects[index]?.data?.type !== 'callout'),
+      );
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, calloutSelectionSize, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onSaveAnnotations, selectAnnotations]);
 
   // UX: 2026-04-21 — Group / Ungroup feature is HIDDEN app-wide. The
   // Cmd+G and Cmd+Shift+G shortcuts are short-circuited below. Wiring
@@ -2754,12 +2874,12 @@ const SVGAnnotationLayer = memo(({
       // - Background annotations stay visible in a space when the lightbulb is on,
       //   but they are not selectable/editable.
       // - Region-scoped annotations remain interactive only inside the active space.
-      const isObjectInteractive = (() => {
-        if (activeSpaceId !== null) {
-          return isScopedRegionAnnotation && derivedSpaceId === activeSpaceId;
-        }
-        return true;
-      })();
+      // w52: one shared rule (annotationFamilyRules) — callouts use it too.
+      const isObjectInteractive = isInteractiveForActiveSpace({
+        activeSpaceId,
+        isScopedRegionAnnotation,
+        derivedSpaceId,
+      });
 
       // --- Type dispatch ---
       const objectType = String(obj.type || '').toLowerCase();
@@ -3383,6 +3503,99 @@ const SVGAnnotationLayer = memo(({
     return true;
   }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated]);
 
+  // UX: w52 (2026-09-28) — arrow-key nudge for a selected Survey Marker, the
+  // same contract shapes and callouts get from useSVGInteraction: 1 page unit
+  // per press, Shift = 10, previewed live, committed as ONE update (one undo
+  // step) when the last arrow key is released or after a short idle. Never
+  // hijacks the keys while typing, on a read-only document, mid-drag, or when
+  // no Survey Marker is selected on this page.
+  const surveyMarkerNudgeRef = useRef(null);
+  const commitSurveyMarkerNudge = useCallback(() => {
+    const burst = surveyMarkerNudgeRef.current;
+    if (!burst) return;
+    surveyMarkerNudgeRef.current = null;
+    if (burst.timer) clearTimeout(burst.timer);
+    setSurveyMarkerPreviewBounds(null);
+    if (burst.dx === 0 && burst.dy === 0) return;
+    onUpdateSurveyMarkerBounds?.(pageNumber, burst.annotationId, {
+      ...burst.originalBounds,
+      x: burst.originalBounds.x + burst.dx,
+      y: burst.originalBounds.y + burst.dy,
+    }, { action: 'move' });
+  }, [onUpdateSurveyMarkerBounds, pageNumber]);
+
+  useEffect(() => {
+    if (!isSelectTool || !selectedSurveyMarkerId) return undefined;
+    if (selectedIds?.size > 0) return undefined;
+    const onKeyDown = (e) => {
+      const delta = nudgeDeltaForKey(e);
+      if (!delta || e.defaultPrevented) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      if (surveyMarkerDragRef.current) return;
+      let burst = surveyMarkerNudgeRef.current;
+      if (!burst || burst.annotationId !== selectedSurveyMarkerId) {
+        const entry = surveyMarkerElements.find((candidate) => (
+          candidate?.surveyMarker?.annotationId === selectedSurveyMarkerId
+        ));
+        if (!entry?.bbox) return;
+        burst = {
+          annotationId: selectedSurveyMarkerId,
+          originalBounds: normalizeSurveyMarkerBounds({
+            x: entry.bbox.left,
+            y: entry.bbox.top,
+            width: entry.bbox.width,
+            height: entry.bbox.height,
+            angle: entry.bbox.angle,
+          }),
+          dx: 0,
+          dy: 0,
+          timer: null,
+          keysDown: new Set(),
+        };
+        surveyMarkerNudgeRef.current = burst;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      burst.keysDown.add(e.key);
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(() => {
+        if (surveyMarkerNudgeRef.current === burst) commitSurveyMarkerNudge();
+      }, NUDGE_IDLE_COMMIT_MS);
+      const b = burst.originalBounds;
+      const next = clampNudgeDelta(
+        [{ left: b.x, top: b.y, width: b.width, height: b.height }],
+        burst.dx + delta.dx,
+        burst.dy + delta.dy,
+        width,
+        height,
+      );
+      if (next.dx === burst.dx && next.dy === burst.dy) return;
+      burst.dx = next.dx;
+      burst.dy = next.dy;
+      setSurveyMarkerPreviewBounds({
+        annotationId: burst.annotationId,
+        bounds: { ...b, x: b.x + burst.dx, y: b.y + burst.dy },
+      });
+    };
+    // Taps in quick succession are one move (one bounds update, one Undo
+    // step); the burst commits after NUDGE_IDLE_COMMIT_MS, not per release.
+    const onKeyUp = (e) => {
+      const burst = surveyMarkerNudgeRef.current;
+      if (!burst || !isArrowKey(e.key)) return;
+      burst.keysDown.delete(e.key);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', commitSurveyMarkerNudge);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', commitSurveyMarkerNudge);
+      commitSurveyMarkerNudge();
+    };
+  }, [isSelectTool, selectedSurveyMarkerId, selectedIds, surveyMarkerElements, normalizeSurveyMarkerBounds, commitSurveyMarkerNudge, width, height]);
+
   const renderSurveyMarkerEntry = useCallback((entry) => {
     if (!entry?.surveyMarker?.annotationId) return null;
     const annotationId = entry.surveyMarker.annotationId;
@@ -3958,6 +4171,8 @@ const SVGAnnotationLayer = memo(({
     const pageSize = { width, height };
     const elements = [];
     const overlays = [];
+    // w52: callouts the user may pick on this page (visible + interactive).
+    const selectableIds = new Set();
     let count = 0;
     // w52 (2026-09-28): each callout's slot in the page's ONE stacking order
     // (annotations.objects, where its projected group lives). The render
@@ -4001,6 +4216,16 @@ const SVGAnnotationLayer = memo(({
       })) {
         continue;
       }
+
+      // w52: the space interactivity rule every other mark obeys — inside an
+      // active space only that space's region-scoped marks can be picked; the
+      // rest stay visible as background but inert (no hit zone, no hover).
+      const calloutInteractive = isAnnotationInteractiveInActiveSpace({
+        annotation: callout,
+        activeSpaceId,
+        getSpaceIdForRegion,
+      });
+      if (calloutInteractive) selectableIds.add(String(callout.id));
 
       const previewPatch = visualTransform?.calloutPreviews?.[callout.id] || null;
       const displayCallout = previewPatch ? { ...callout, ...previewPatch } : callout;
@@ -4124,7 +4349,27 @@ const SVGAnnotationLayer = memo(({
       // mark (like shape handles), not in its stack slot, so a mark stacked
       // over the callout never hides or steals its handles. The callout body
       // stays in its slot.
-      const liftHandles = isSelected;
+      const liftHandles = isSelected && calloutInteractive;
+      if (!calloutInteractive) {
+        // w52: inert background callout — chrome only, and pointer-events off
+        // on the wrap (the chrome sets none of its own) so clicks fall through
+        // to the page exactly as they do for an inert shape.
+        elements.push(
+          // eslint-disable-next-line react/jsx-key
+          <g
+            key={`callout-wrap-${displayCallout.id || i}`}
+            data-stack-index={stackIndexById.get(String(displayCallout.id))}
+            data-callout-inert="true"
+            pointerEvents="none"
+            style={{ pointerEvents: 'none' }}
+            transform={groupMoveTransform}
+          >
+            {element}
+          </g>
+        );
+        count++;
+        continue;
+      }
       if (liftHandles) {
         overlays.push(
           <g
@@ -4170,6 +4415,7 @@ const SVGAnnotationLayer = memo(({
     }
 
     elements.selectedOverlays = overlays;
+    elements.selectableCalloutIds = selectableIds;
     return elements;
     // NOTE: activeTool removed from deps (it doesn't affect rendering, only
     // interaction). renderCallout and calculateCalloutConnection are
@@ -4188,7 +4434,13 @@ const SVGAnnotationLayer = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted]);
+  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion]);
+
+  // w52: publish which callouts this page lets the user pick, for the
+  // interaction hook's click / marquee / lasso gates (isCalloutSelectable).
+  useLayoutEffect(() => {
+    selectableCalloutIdsRef.current = filteredCallouts?.selectableCalloutIds || new Set();
+  }, [filteredCallouts]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.

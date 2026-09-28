@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
   commitInkObjectMove,
@@ -101,6 +101,22 @@ import {
   isMovementLockedAnnotation,
   isTransformLockedAnnotation,
 } from '../utils/annotationSelectionEligibility.js';
+// w52 (2026-09-28) — "one annotation family": the move / orbit / pick rules
+// every mark type shares live in one module so the paths can't drift again.
+import {
+  canMoveAnnotation,
+  canOrbitCounter,
+  filterSelectableCallouts,
+  nudgeDeltaForKey,
+  isArrowKey,
+  isTypingTarget,
+  clampNudgeDelta,
+  getCalloutPageBox,
+  nudgeCalloutPatch,
+  buildNudgedPage,
+  getNudgeBoxes,
+  NUDGE_IDLE_COMMIT_MS,
+} from '../utils/annotationFamilyRules.js';
 import {
   finalizeTextMarkupHorizontalEdge,
   getTextMarkupRangeFixedOffset,
@@ -219,6 +235,16 @@ export function useSVGInteraction({
   // App.jsx's mount), deleteSelected falls through to runDelete unconditionally
   // — preserves legacy behavior byte-identical.
   onRequestBulkDelete,
+  // w52 (2026-09-28) — (calloutId) => boolean: is this callout both visible
+  // in the current context (isAnnotationVisibleInContext) and interactive for
+  // the active space (isInteractiveForActiveSpace)? The layer owns both rules
+  // for shapes; callouts now pass through the same predicate for click,
+  // double-click, group expand, marquee and lasso. Absent → every callout
+  // passes (legacy mounts unchanged).
+  isCalloutSelectable,
+  // w52 — arrow-key nudge is live only while the layer says so (no inline
+  // text editor open on this page). Default on.
+  keyboardNudgeEnabled = true,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -593,6 +619,214 @@ export function useSVGInteraction({
   }, [annotations, viewerId, documentOwnerId]);
 
   // ---------------------------------------------------------------------------
+  // w52 (2026-09-28) — arrow-key nudge for the current selection
+  // ---------------------------------------------------------------------------
+  // UX: with any marks selected on this page (shapes, ink, counters, lines,
+  // callouts — the whole family), each arrow press moves the selection one
+  // page unit; Shift moves ten (Figma / Illustrator / Drawboard convention).
+  // A burst of presses — holding a key or tapping it repeatedly — is ONE undo
+  // step: every press saves a 'skip' preview frame (no history), and the
+  // burst commits once with checkpointPolicy 'normal' NUDGE_IDLE_COMMIT_MS
+  // after the last press (or on blur / selection change) — the same
+  // preview-then-commit contract a drag uses. Locked marks (text markup,
+  // imported highlights, movement-locked marks) stay put, exactly like a drag.
+  // Never hijacks keys when: nothing movable is selected on this page (arrow
+  // keys keep scrolling / turning pages), focus is in an input / text area /
+  // contentEditable editor, a Cmd/Ctrl/Alt chord is held, the document is
+  // read-only, or a pointer gesture is in progress.
+  const nudgeLatestRef = useRef({});
+  nudgeLatestRef.current = {
+    annotations,
+    callouts,
+    selectedIds,
+    selectedCalloutIds,
+    pageWidth,
+    pageHeight,
+    pageNumber,
+    onSaveAnnotations,
+    onUpdateCalloutLive,
+    onUpdateCallout,
+    isCalloutSelectable,
+  };
+  const nudgeBurstRef = useRef(null);
+
+  const commitNudgeBurst = useCallback(() => {
+    const burst = nudgeBurstRef.current;
+    if (!burst) return;
+    nudgeBurstRef.current = null;
+    if (burst.timer) clearTimeout(burst.timer);
+    if (!burst.framed) return;
+    const latest = nudgeLatestRef.current;
+    const hasShapes = Object.keys(burst.startObjects).length > 0;
+    if (hasShapes && typeof latest.onSaveAnnotations === 'function') {
+      const merged = buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy);
+      // Commit the final pose; with nothing left to write (every nudged mark
+      // deleted meanwhile) still close the preview gesture with the page as
+      // it is, so its 'skip' baseline never leaks into the next edit.
+      latest.onSaveAnnotations(merged ? merged.annotations : latest.annotations, {
+        source: 'object:modified',
+        action: 'nudge',
+        checkpointPolicy: 'normal',
+      });
+    }
+    // Callouts: the commit-only signal records the step against the burst's
+    // preview baseline (a no-op when the shape commit above already did).
+    if (typeof latest.onUpdateCallout === 'function') {
+      for (const calloutId of Object.keys(burst.calloutOriginals)) {
+        latest.onUpdateCallout(calloutId, {});
+      }
+    }
+    // A tilted group frame (persisted group rotation) rides along, as it
+    // does for a group drag.
+    const sig = computeSelectionSig(latest.selectedIds, latest.selectedCalloutIds);
+    const persisted = persistedGroupTransformRef.current;
+    if (persisted && persisted.selectionSig === sig) {
+      setPersistedGroupTransform({
+        ...persisted,
+        dx: (persisted.dx || 0) + burst.dx,
+        dy: (persisted.dy || 0) + burst.dy,
+      });
+    }
+  }, [computeSelectionSig]);
+
+  // A selection change ends the burst (commits what already moved).
+  useEffect(() => {
+    commitNudgeBurst();
+  }, [selectedIds, selectedCalloutIds, commitNudgeBurst]);
+
+  useEffect(() => {
+    if (!keyboardNudgeEnabled) return undefined;
+
+    const scheduleIdleCommit = (burst) => {
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(() => {
+        if (nudgeBurstRef.current === burst) commitNudgeBurst();
+      }, NUDGE_IDLE_COMMIT_MS);
+    };
+
+    const startBurst = () => {
+      const latest = nudgeLatestRef.current;
+      const startObjects = {};
+      for (const index of latest.selectedIds || []) {
+        const object = latest.annotations?.objects?.[index];
+        if (canMoveAnnotation(object)) startObjects[index] = deepClone(object);
+      }
+      const calloutOriginals = {};
+      const selectedCallouts = latest.selectedCalloutIds instanceof Set
+        ? Array.from(latest.selectedCalloutIds)
+        : (Array.isArray(latest.selectedCalloutIds) ? latest.selectedCalloutIds : []);
+      for (const calloutId of selectedCallouts) {
+        const callout = (latest.callouts || []).find((c) => c && String(c.id) === String(calloutId));
+        if (!callout) continue;
+        // Only the page that holds the callout acts (the callout selection
+        // set is shared by every page's layer).
+        if (latest.pageNumber != null && callout.pageNumber != null
+          && Number(callout.pageNumber) !== Number(latest.pageNumber)) continue;
+        if (typeof latest.isCalloutSelectable === 'function' && !latest.isCalloutSelectable(callout.id)) continue;
+        if (!canMoveAnnotation(callout)) continue;
+        calloutOriginals[callout.id] = {
+          arrowTip: { ...(callout.arrowTip || {}) },
+          knee: { ...(callout.knee || {}) },
+          textBoxPosition: { ...(callout.textBoxPosition || {}) },
+          textBoxWidth: callout.textBoxWidth,
+          textBoxHeight: callout.textBoxHeight,
+        };
+      }
+      if (Object.keys(startObjects).length === 0 && Object.keys(calloutOriginals).length === 0) {
+        return null;
+      }
+      return {
+        startObjects,
+        calloutOriginals,
+        dx: 0,
+        dy: 0,
+        timer: null,
+        framed: false,
+        keysDown: new Set(),
+      };
+    };
+
+    const onKeyDown = (e) => {
+      const delta = nudgeDeltaForKey(e);
+      if (!delta) {
+        // Any other key (Cmd+Z, Delete, a tool key) ends the burst first, so
+        // Undo mid-burst undoes the nudge and is never overwritten by the
+        // next auto-repeat frame (review 2026-09-28).
+        if (nudgeBurstRef.current && !isArrowKey(e.key) && e.key !== 'Shift') commitNudgeBurst();
+        return;
+      }
+      if (e.defaultPrevented) return;
+      if (typeof document !== 'undefined') {
+        if (isTypingTarget(document.activeElement)) return;
+        if (document.body?.getAttribute('data-readonly') === 'true') return;
+      }
+      if (dragStateRef.current?.active || marqueeStateRef.current || lassoStateRef.current) return;
+      let burst = nudgeBurstRef.current;
+      if (!burst) {
+        burst = startBurst();
+        if (!burst) return; // nothing movable here — leave the key alone
+        nudgeBurstRef.current = burst;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      burst.keysDown.add(e.key);
+      scheduleIdleCommit(burst);
+
+      const latest = nudgeLatestRef.current;
+      const W = latest.pageWidth || 0;
+      const H = latest.pageHeight || 0;
+      const boxes = [
+        ...getNudgeBoxes(burst.startObjects),
+        ...Object.values(burst.calloutOriginals).map((c) => getCalloutPageBox(c, W, H)),
+      ];
+      const next = clampNudgeDelta(boxes, burst.dx + delta.dx, burst.dy + delta.dy, W, H);
+      if (next.dx === burst.dx && next.dy === burst.dy) return; // pinned at the page edge
+      burst.dx = next.dx;
+      burst.dy = next.dy;
+
+      if (Object.keys(burst.startObjects).length > 0 && typeof latest.onSaveAnnotations === 'function') {
+        const merged = buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy);
+        if (merged) {
+          latest.onSaveAnnotations(merged.annotations, {
+            source: 'object:modified',
+            action: 'nudge-preview',
+            checkpointPolicy: 'skip',
+          });
+          burst.framed = true;
+        }
+      }
+      if (typeof latest.onUpdateCalloutLive === 'function') {
+        for (const [calloutId, original] of Object.entries(burst.calloutOriginals)) {
+          latest.onUpdateCalloutLive(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, W, H));
+          burst.framed = true;
+        }
+      }
+    };
+
+    // Releasing a key does NOT end the burst: tapping an arrow key several
+    // times in a row is one move and one Undo step (verified live 2026-09-28 —
+    // committing on every release made each tap its own step). The burst ends
+    // NUDGE_IDLE_COMMIT_MS after the last press, on blur, on a selection
+    // change, or when the layer unmounts.
+    const onKeyUp = (e) => {
+      const burst = nudgeBurstRef.current;
+      if (!burst || !isArrowKey(e.key)) return;
+      burst.keysDown.delete(e.key);
+    };
+    const onBlur = () => commitNudgeBurst();
+
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
+      commitNudgeBurst();
+    };
+  }, [keyboardNudgeEnabled, commitNudgeBurst]);
+
+  // ---------------------------------------------------------------------------
   // Pointer event handlers
   // ---------------------------------------------------------------------------
 
@@ -643,9 +877,12 @@ export function useSVGInteraction({
     // pointerup branch still lets a pure Shift-click act as a multi-select
     // toggle; anything past ~3 px commits as an orbit rotation.
     const _obj_precheck = annotations?.objects?.[index];
+    // w52: orbit moves AND turns the counter, so it obeys the same locks as
+    // the move + rotate handles. A locked counter falls through to the plain
+    // Shift-click (add to selection) below.
     if (
       e.shiftKey
-      && _obj_precheck?.data?.type === 'counter'
+      && canOrbitCounter(_obj_precheck)
       && !(selectedIds.size > 1 && selectedIds.has(index))
     ) {
       const ctm = svgRef.current?.getScreenCTM();
@@ -750,7 +987,8 @@ export function useSVGInteraction({
     const _clickedObj = annotations?.objects?.[index];
     const _clickedGid = getAnnotationGroupId(_clickedObj);
     if (!wasAlreadySelected && _clickedGid) {
-      const pageCallouts = (callouts || []); // already page-scoped per layer mount
+      // w52: only callouts the page shows and lets the user pick join.
+      const pageCallouts = filterSelectableCallouts(callouts, isCalloutSelectable);
       const members = findGroupMembers(annotations, pageCallouts, [_clickedGid]);
       if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
         // Per-user delete authority filter on group expand (2026-07-17
@@ -828,11 +1066,10 @@ export function useSVGInteraction({
         const originals = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (
-            selObj
-            && selObj?.data?.type !== 'text-markup'
-            && !isTransformLockedAnnotation(selObj)
-          ) {
+          // w52: same movable test the single-mark drag uses — a mark
+          // locked against movement (e.g. an imported highlight) stays put
+          // in a group drag too.
+          if (canMoveAnnotation(selObj)) {
             // Imported paths: use bbox position (from path data), not obj.left/top
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
@@ -910,7 +1147,7 @@ export function useSVGInteraction({
         };
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -972,6 +1209,10 @@ export function useSVGInteraction({
     const calloutEl = e.target?.closest?.('[data-callout-id]');
     if (calloutEl) {
       const calloutId = calloutEl.getAttribute('data-callout-id');
+      if (typeof isCalloutSelectable === 'function' && calloutId && !isCalloutSelectable(calloutId)) {
+        e.stopPropagation();
+        return;
+      }
       if (calloutId && onRequestEditMode) {
         e.stopPropagation();
         // UX: fire the dispatch with 'callout' type — App.jsx disambiguates
@@ -993,7 +1234,7 @@ export function useSVGInteraction({
     if (onRequestEditMode && annotation) {
       onRequestEditMode(index, annotation.type, { caretAnchor: readCaretAnchor(e) });
     }
-  }, [onRequestEditMode, annotations]);
+  }, [onRequestEditMode, annotations, isCalloutSelectable]);
 
   /**
    * Click on empty SVG background: deselect all.
@@ -1022,6 +1263,11 @@ export function useSVGInteraction({
     const calloutEl = e.target?.closest?.('[data-callout-id]');
     if (calloutEl) {
       const calloutId = calloutEl.getAttribute('data-callout-id');
+      // w52: a hidden or space-inert callout is never picked (the layer also
+      // stops painting its hit zone; this is the defence in depth).
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(calloutId)) {
+        return;
+      }
       const partEl = e.target?.closest?.('[data-callout-part]');
       // UX: default to 'whole' if the click lands on the outer <g> without
       // an explicit part marker. Defensive — every visible callout child
@@ -1090,11 +1336,8 @@ export function useSVGInteraction({
         const annotationOriginalsCO = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (
-            !selObj
-            || selObj?.data?.type === 'text-markup'
-            || isTransformLockedAnnotation(selObj)
-          ) continue;
+          // w52: same movable test as the single-mark drag.
+          if (!canMoveAnnotation(selObj)) continue;
           if (isImportedPath(selObj)) {
             const selBBox = getAnnotationBBox(selObj);
             annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top };
@@ -1173,7 +1416,11 @@ export function useSVGInteraction({
           ? selectedCalloutIds.has(calloutId)
           : Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0;
         if (_calGid && !_alreadySel) {
-          const members = findGroupMembers(annotations, callouts || [], [_calGid]);
+          const members = findGroupMembers(
+            annotations,
+            filterSelectableCallouts(callouts, isCalloutSelectable),
+            [_calGid],
+          );
           if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
             setSelectedIds(new Set(members.annotationIndices));
             if (onSelectedCalloutIdsChange) {
@@ -1283,7 +1530,9 @@ export function useSVGInteraction({
           const originals = {};
           for (const selIdx of selectedIds) {
             const selObj = annotations.objects[selIdx];
-            if (!selObj) continue;
+            // w52: same movable test as the single-mark drag (this path had
+            // no lock check at all).
+            if (!canMoveAnnotation(selObj)) continue;
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
               originals[selIdx] = { left: selBBox.left, top: selBBox.top };
@@ -1379,7 +1628,7 @@ export function useSVGInteraction({
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -1474,7 +1723,7 @@ export function useSVGInteraction({
       // snaps to the dragged-to spot (no visible jump) and compute the tip
       // from the new body center as the orbit anchor.
       const mvObj = annotations?.objects?.[ds.annotationIndex];
-      if (e.shiftKey && mvObj?.data?.type === 'counter') {
+      if (e.shiftKey && canOrbitCounter(mvObj)) {
         const radius = (mvObj.radius || 14) * Math.abs(mvObj.scaleX || 1);
         const newLeft = (ds.originalProps?.left ?? mvObj.left ?? 0) + dx;
         const newTop = (ds.originalProps?.top ?? mvObj.top ?? 0) + dy;
@@ -3049,7 +3298,8 @@ export function useSVGInteraction({
         lassoPolygon: polygon,
         mode,
         annotations,
-        callouts,
+        // w52: hidden / space-inert callouts are never caught.
+        callouts: filterSelectableCallouts(callouts, isCalloutSelectable),
         pageWidth,
         pageHeight,
         pageNumber,
@@ -3120,7 +3370,8 @@ export function useSVGInteraction({
         marqueeRect,
         direction,
         annotations,
-        callouts,
+        // w52: hidden / space-inert callouts are never caught.
+        callouts: filterSelectableCallouts(callouts, isCalloutSelectable),
         pageWidth,
         pageHeight,
         pageNumber,
@@ -3479,7 +3730,7 @@ export function useSVGInteraction({
           finalScale: ds.currentResize,
           memberFinal: Object.keys(ds.groupMemberOriginals).reduce((acc, idxStr) => {
             const idx = Number(idxStr);
-            const t = finalAnnotations.objects?.[idx];
+            const t = (ds.currentAnnotations || annotations)?.objects?.[idx];
             if (!t) return acc;
             acc[idx] = {
               type: t.type, dataType: t.data?.type,
@@ -4137,7 +4388,7 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable]);
 
   const handlePointerCancel = useCallback((e) => {
     const ds = dragStateRef.current;
@@ -4298,6 +4549,13 @@ export function useSVGInteraction({
         try { aabb = getAnnotationWorldAABB(obj); } catch { aabb = null; }
         if (!aabb) {
           try { aabb = getAnnotationBBox(obj); } catch { aabb = null; }
+        }
+        // w52: a mark locked against movement (imported highlight, text
+        // markup) keeps its place in a group rotate / resize exactly as in a
+        // group move — it still counts toward the frame, it just never moves.
+        if (!canMoveAnnotation(obj)) {
+          if (aabb) memberWorldAABBs.push(aabb);
+          continue;
         }
         // Local bbox center = renderer's rotation pivot for this shape.
         let localBBox = null;

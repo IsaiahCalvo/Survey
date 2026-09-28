@@ -248,6 +248,13 @@ export function resolveAnnotationAt(e) {
     }
   }
 
+  // w52: the Counter tool's placement overlay covers the whole page, so a
+  // right-click on a placed pin (or any mark) used to resolve to the overlay
+  // and open a dead "counter" menu. Look for a real mark under the overlay
+  // first (same geometry walk as Pan); only a bare page stays a counter hit.
+  const counterOverlayHit = isCounter && annotationIndex == null && !calloutId;
+  if (counterOverlayHit) isCounter = false;
+
   // Pan-mode fallback: SVG layer is pointer-events:none, so walk the DOM
   // children of every visible page SVG wrapper. Path hit targets are tested
   // by SVG stroke geometry first, which matches the same widened invisible
@@ -301,6 +308,8 @@ export function resolveAnnotationAt(e) {
       }
     }
   }
+
+  if (counterOverlayHit && annotationIndex == null && !calloutId) isCounter = true;
 
   // Group-selection fallback: when no annotation / callout / counter
   // matched, check whether the click point is inside any page's outer

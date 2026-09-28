@@ -125,6 +125,21 @@ export const applyScope = (json, { selectedModuleId, stampRegionId, activeRegion
   return json;
 };
 
+// w52 (2026-09-28): a pasted mark lands where it is pasted, like a new mark —
+// it takes the active Survey module / region scope (or none on the plain
+// canvas), not the scope of the place it was copied from. Before, a mark
+// copied on the canvas and pasted inside a Survey module kept no module and
+// was hidden the moment it landed (clean-slate rule).
+// The Survey module always follows the landing place. The region changes
+// only when the landing place stamps one (active region on a page that has
+// it); otherwise the mark keeps its own region — a region mark pasted onto
+// another page of the same space stays editable there (review 2026-09-28).
+export const applyPasteScope = (json, scope) => {
+  if (!json || typeof json !== 'object') return json;
+  delete json.moduleId;
+  return applyScope(json, scope);
+};
+
 /**
  * Rect / ellipse drag-out commit JSON. Geometry comes from the SAME
  * computeDrawnBoundaryShapePreviewGeometry the preview renders, tagged with

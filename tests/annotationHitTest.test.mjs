@@ -351,3 +351,28 @@ test('pan fallback: a text box in the empty part of a callout box above it still
   const onCalloutBox = runResolve(env, 320, 310);
   assert.equal(onCalloutBox.kind, 'callout');
 });
+
+test('counter tool overlay: right-click on a placed mark resolves the mark, bare page stays counter (w52)', () => {
+  const pin = new MockElement(
+    { 'data-annotation-index': '7' },
+    { left: 300, top: 300, right: 340, bottom: 340, width: 40, height: 40 }
+  );
+  const env = makeEnv({ wrapperChildren: [pin] });
+  const overlay = new MockElement({ 'data-counter-overlay': '1' }, PAGE_RECT);
+  const resolveThroughOverlay = (x, y) => {
+    const originalDocument = globalThis.document;
+    const originalWindow = globalThis.window;
+    env.install();
+    try {
+      return resolveAnnotationAt({ clientX: x, clientY: y, composedPath: () => [overlay, env.pageDiv] });
+    } finally {
+      globalThis.document = originalDocument;
+      globalThis.window = originalWindow;
+    }
+  };
+  const onPin = resolveThroughOverlay(320, 320);
+  assert.equal(onPin.kind, 'annotation');
+  assert.equal(onPin.annotationIndex, 7);
+  const onPage = resolveThroughOverlay(600, 800);
+  assert.equal(onPage.kind, 'counter');
+});

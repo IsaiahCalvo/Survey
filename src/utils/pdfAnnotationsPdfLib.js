@@ -664,7 +664,10 @@ export function buildPdfExportAnnotationPlan({
     }
 
     const isTextMarkupGroup = item.fabricType === 'group' && obj?.data?.type === 'text-markup';
-    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && !isTextMarkupGroup && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
+    // w52: an edited imported stamp proxy is written as a /Stamp drawn by the
+    // print flattener (createStampAnnotation) - print already drew it.
+    const isStampProxy = isPdfStampProxy(obj);
+    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && !isTextMarkupGroup && !isStampProxy && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
       recordSkip(diagnostics, item, 'unsupported-type');
       return;
     }
@@ -2691,6 +2694,90 @@ const applyPlainShapeAppearanceToDict = (pdfDoc, annotationDict, fabricObj, page
     ];
   }
   return true;
+};
+
+/**
+ * w52 (2026-09-28): an EDITED imported stamp (the image proxy the app paints
+ * in place of a native /Stamp) is written back as a /Stamp whose /AP is the
+ * print flattener's own drawing of that image - the same routine
+ * savePDFWithFlattenedRegularAnnotationsForPrint runs, so export and print
+ * paint the stamp identically. Before this the export plan skipped image
+ * proxies as 'unsupported-type', so a moved / resized stamp never reached the
+ * exported file (and its stale native original stayed at the old spot).
+ *
+ * The rotation is drawn INTO the form (drawFlattenedObject rotates the image
+ * about its centre), the /BBox is the rotated box's page bounds and the
+ * /Matrix is identity - a re-import renders this /AP like any third-party
+ * stamp. No app metadata is written: a stamp proxy is rebuilt from its /AP on
+ * import, never from fabric geometry.
+ */
+const createStampAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  try {
+    const stampImages = options.stampImages;
+    const source = fabricObj?.src || fabricObj?.dataUrl;
+    if (!stampImages?.get?.(source)) return null;
+    const left = getObjNumber(fabricObj, 'left');
+    const top = getObjNumber(fabricObj, 'top');
+    const width = Math.max(0, getObjNumber(fabricObj, 'width') * Math.abs(Number(fabricObj?.scaleX ?? 1) || 1));
+    const height = Math.max(0, getObjNumber(fabricObj, 'height') * Math.abs(Number(fabricObj?.scaleY ?? 1) || 1));
+    if (!(width > 0 && height > 0)) return null;
+    const angle = fabricObj?.data?.pdfStampAppearanceRotationBaked === true
+      ? 0
+      : Number(fabricObj?.angle) || 0;
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    const radians = (angle * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({
+      x: centerX + (sx * width / 2) * cos - (sy * height / 2) * sin,
+      y: centerY + (sx * width / 2) * sin + (sy * height / 2) * cos,
+    }));
+    const bounds = boundsOfPoints(corners, PLAIN_APPEARANCE_EXTRA_PAD);
+    const appearance = buildFlattenedAppearanceForm(pdfDoc, pageHeight, bounds, (scratch) => (
+      drawFlattenedObject(scratch, fabricObj, pageHeight, {}, { x: 0, y: 0 }, stampImages)
+    ));
+    if (!appearance) return null;
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: 'Stamp',
+      Rect: appearance.rect,
+      F: 4,
+      Contents: pdfTextString(''),
+      AP: pdfDoc.context.obj({ N: appearance.ref }),
+      P: page.ref,
+    };
+    // Same app metadata (NM name + SurveyApp data) every other writer adds,
+    // so a re-import recognises the stamp as this app's mark (review
+    // 2026-09-28: without it a round trip could bring it back twice).
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error('Error creating stamp annotation:', e);
+    return null;
+  }
+};
+
+/**
+ * Embed each imported-stamp PNG once per document (keyed by its data URL) -
+ * the lookup drawFlattenedObject draws stamp proxies from. Shared by print
+ * and export so both embed the same bytes the same way.
+ */
+const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
+  const stampImages = new Map();
+  for (const obj of objects) {
+    if (!isPdfStampProxy(obj)) continue;
+    const source = obj.src || obj.dataUrl;
+    if (stampImages.has(source)) continue;
+    const pngBytes = pngDataUrlToBytes(source);
+    if (!pngBytes) continue;
+    try {
+      stampImages.set(source, await pdfDoc.embedPng(pngBytes));
+    } catch (error) {
+      console.warn(`Failed to embed imported stamp PNG for ${purpose}:`, error);
+    }
+  }
+  return stampImages;
 };
 
 /**
@@ -7060,21 +7147,12 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
       return 0;
     }
   };
-  const stampImages = new Map();
-  for (const pageData of Object.values(printablePayload.annotationsByPage || {})) {
-    for (const obj of (Array.isArray(pageData?.objects) ? pageData.objects : [])) {
-      if (!isPdfStampProxy(obj)) continue;
-      const source = obj.src || obj.dataUrl;
-      if (stampImages.has(source)) continue;
-      const pngBytes = pngDataUrlToBytes(source);
-      if (!pngBytes) continue;
-      try {
-        stampImages.set(source, await pdfDoc.embedPng(pngBytes));
-      } catch (error) {
-        console.warn('Failed to embed imported stamp PNG for print:', error);
-      }
-    }
-  }
+  const stampImages = await embedStampProxyImages(
+    pdfDoc,
+    Object.values(printablePayload.annotationsByPage || {})
+      .flatMap((pageData) => (Array.isArray(pageData?.objects) ? pageData.objects : [])),
+    'print',
+  );
 
   // KAL-91 — mirror of the export path's edited-replacement native
   // suppression: an imported object only reaches the printable payload when
@@ -7399,6 +7477,12 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     const flattenFonts = exportHasTextAnnotation
       ? await embedFlattenFonts(pdfDoc, collectDrawnTextSamples(exportPlan.items || []))
       : null;
+    // w52: the PNGs edited imported stamps are drawn from (same embed as print).
+    const stampImages = await embedStampProxyImages(
+      pdfDoc,
+      (exportPlan.items || []).map((item) => item?.object),
+      'export',
+    );
 
     const deletedPdfAnnotations = [
       ...new Map(
@@ -7602,6 +7686,11 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         case 'text':
         case 'i-text':
           annotRef = createFreeTextAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
+          break;
+        case 'image':
+          if (isPdfStampProxy(obj)) {
+            annotRef = createStampAnnotation(pdfDoc, page, obj, pageHeight, { ...appAnnotationOptions, stampImages });
+          }
           break;
         case 'callout':
           annotRefs = createCalloutAnnotations(pdfDoc, page, obj, pageHeight, {

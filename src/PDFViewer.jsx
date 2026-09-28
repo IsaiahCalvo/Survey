@@ -195,7 +195,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope } from './utils/annotationCreationCommit';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
@@ -4650,8 +4650,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [restyleGroupLoadKey]);
 
   // Clipboard handlers for callouts
+  // w52: (pageNumber) => paste scope; assigned next to pasteAnnotationAt.
+  const pasteScopeRef = useRef(null);
+  // w52: documentOwnerId is declared further down (TDZ); read via a ref.
+  const cutGateOwnerIdRef = useRef(null);
   const handleCutCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
+    // w52: Cut deletes with no confirmation, so it stays own-marks-only for
+    // every entry point (menu AND Cmd+X) — same locked rule as shape Cut.
+    // Boot window (ids unknown) stays permissive, as in the menu.
+    if (callout && user?.id && cutGateOwnerIdRef.current
+      && !canModify({ annotation: callout, viewerId: user.id, documentOwnerId: cutGateOwnerIdRef.current })) return;
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('cut');
@@ -4672,7 +4681,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setSelectedCalloutId(null);
       }
     }
-  }, [callouts, selectedCalloutId, commitCalloutMutation, resolveCalloutPageNumber]);
+  }, [callouts, selectedCalloutId, commitCalloutMutation, resolveCalloutPageNumber, user?.id]);
 
   const handleCopyCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
@@ -4764,6 +4773,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { meta: { ...(clipboardCallout.meta || {}), authorId: user.id } }
         : {}),
     };
+
+    // w52: a pasted callout takes the scope of where it lands (active Survey
+    // module / region), like every pasted mark — see applyPasteScope. Read
+    // through a ref: the scope inputs are declared further down (TDZ).
+    const calloutPasteScope = pasteScopeRef.current?.(pageNumber);
+    if (calloutPasteScope) applyPasteScope(newCallout, calloutPasteScope);
 
     // R2.2 Slice 4: paste commits through the shared save pipeline (paste does
     // NOT route through handleCreateCallout — confirmed in Slice 3), gaining a
@@ -28348,6 +28363,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // coord transform so shapes land under the cursor at any zoom. Declared
   // AFTER handleSaveAnnotations so the dep array doesn't TDZ-crash at
   // first render (same pattern as handleDeleteSelectedCallouts).
+  // w52: the scope a mark pasted on `pageNumber` takes — the same shared
+  // helpers every creation surface uses (applyScope + shouldStampActiveRegionId).
+  const currentPasteScope = (pageNumber) => ({
+    selectedModuleId,
+    stampRegionId: shouldStampActiveRegionId({
+      regionId: activeRegionId,
+      spaceId: annotationSpaceId,
+      pageNumber,
+      spaces,
+      isRegionOverlayEnabled,
+    }),
+    activeRegionId,
+  });
+  pasteScopeRef.current = currentPasteScope;
+  cutGateOwnerIdRef.current = documentOwnerId;
   const pasteAnnotationAt = useCallback((pageNumber, clientX, clientY) => {
     if (!clipboardAnnotation || pageNumber == null) return false;
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
@@ -28417,6 +28447,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       dx += repeatOffset;
       dy += repeatOffset;
 
+      const pasteScope = currentPasteScope(pageNumber);
       for (const c of clones) {
         // UX: every clone is a brand-new NATIVE object — fresh data.id (same
         // uuid contract as creation), no import provenance — so the save diff
@@ -28424,6 +28455,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // untouched) and export/dedupe never see two objects claiming one
         // native PDF annotation id. See utils/pasteCloneIdentity.js.
         mintPastedCloneIdentity(c);
+        applyPasteScope(c, pasteScope);
         if (typeof c.left === 'number') c.left += dx;
         if (typeof c.top === 'number') c.top += dy;
         next.objects.push(c);
@@ -28452,6 +28484,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // path: rendering detects imported-path geometry structurally, not via
     // the provenance flags. See utils/pasteCloneIdentity.js.
     mintPastedCloneIdentity(pasted);
+    applyPasteScope(pasted, currentPasteScope(pageNumber));
     const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
 
@@ -28501,7 +28534,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardAnnotation(null);
     }
     return true;
-  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast]);
+  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
@@ -28544,6 +28577,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (annotationIndex < 0 || annotationIndex >= page.objects.length) return;
     const obj = page.objects[annotationIndex];
     if (!obj) return;
+    // w52 (2026-09-28): Cmd+X runs the SAME gate as the right-click Cut
+    // (locked model 2026-07-17): Cut deletes with no confirmation surface, so
+    // it stays own-marks-only; another user's mark is removed with Copy +
+    // Delete, which confirms. Before, the keyboard path skipped the gate.
+    // Boot window (ids not known yet) stays permissive, as in the menu.
+    const cutViewerId = user?.id ?? null;
+    if (cutViewerId && documentOwnerId
+      && !canModify({ annotation: obj, viewerId: cutViewerId, documentOwnerId })) return;
     setClipboardAnnotation({
       object: deepClone(obj),
       sourcePageNumber: pageNumber,
@@ -28565,7 +28606,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotationIndex: null,
       tick: Date.now(),
     });
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, user?.id, documentOwnerId]);
 
   const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur } = usePdfjsFormFieldPersistence({
     handleSaveAnnotations,
@@ -29362,12 +29403,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Handle surveyMarker deletion from PDF (via eraser tool)
   const handleSurveyMarkerDeleted = useCallback((pageNumber, bounds, annotationId = null) => {
-    // Checkpoint history before deletion
-    addHistoryCheckpoint('highlight:delete', {
-      pageNumber,
-      annotationId: annotationId || null
-    });
-
 
     // When an explicit annotationId is supplied we can always identify the
     // Survey Marker to remove, so deletion proceeds regardless of which
@@ -29430,6 +29465,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       const permittedSurveyMarkerIds = surveyMarkersToDelete.map(({ id }) => id);
+
+      // Checkpoint history before deletion — w52: only once the delete is
+      // allowed and will happen. It used to run first, so a delete the
+      // ownership gate refused (or that matched nothing) still pushed an Undo
+      // step that did nothing.
+      addHistoryCheckpoint('highlight:delete', {
+        pageNumber,
+        annotationId: annotationId || null
+      });
 
       // Stage 2 recovery net: tombstone each marker BEFORE removing it, so the
       // delete is recoverable from the 30-day trash. No marker is destroyed;
@@ -30910,7 +30954,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         || resolveTextMarkupEditPaint(selectedMarkup, strokeColorStateRef.current);
       const annotations = (sourceMarks.length ? sourceMarks : [selectedMarkup])
         .flatMap((source) => (markupType === 'link' ? source.data.quads.map((quad) => [source, [quad]]) : [[source, source.data.quads]]))
-        .map(([source, quads]) => createTextMarkupAnnotation({
+        .map(([source, quads]) => ({ source, mark: createTextMarkupAnnotation({
           id: generateUUID(),
           pageNumber: source.data.pageNumber,
           selectionGroupId,
@@ -30925,8 +30969,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           linkUrl,
           linkPageNumber,
           authorId: user?.id || null,
-        }))
-        .filter(Boolean);
+        }) }))
+        .filter(({ mark }) => Boolean(mark))
+        // w52: a markup stacked onto an existing text mark lives where that
+        // mark does (same Survey module / region), like any mark drawn there.
+        .map(({ source, mark }) => {
+          if (source?.moduleId != null && mark.moduleId == null) mark.moduleId = source.moduleId;
+          if (source?.regionId != null && mark.regionId == null) mark.regionId = source.regionId;
+          return mark;
+        });
       const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
       let transaction = buildTextMarkupGroupCreateTransaction(
         transactionBase,
@@ -30983,7 +31034,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         linkPageNumber,
         authorId: user?.id || null,
       });
-    }).filter(Boolean);
+    }).filter(Boolean)
+      // w52 (2026-09-28): text markup is stamped with the active Survey module /
+      // region scope through the SAME shared helpers every other creation
+      // surface uses (applyScope + shouldStampActiveRegionId). Before, a text
+      // highlight made inside a Survey module or region carried no scope and
+      // was hidden the moment it was made (clean-slate rule) — or read-only
+      // inside a space.
+      .map((mark) => applyAnnotationCreationScope(mark, {
+        selectedModuleId,
+        stampRegionId: shouldStampActiveRegionId({
+          regionId: activeRegionId,
+          spaceId: annotationSpaceId,
+          pageNumber: mark?.data?.pageNumber,
+          spaces,
+          isRegionOverlayEnabled,
+        }),
+        activeRegionId,
+      }));
     const toggleOff = buildTextMarkupRangeToggleOffTransaction(
       annotationsByPageRef.current || {},
       annotations,
@@ -31026,7 +31094,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         capturePdfjsTextSelection();
       });
     }
-  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
+  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -33448,6 +33516,7 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         viewerId: user?.id ?? null,
         documentOwnerId,
+        selectedCalloutIds,
       })}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
@@ -34711,6 +34780,8 @@ ${pageBlocks}
                                   // commit path, so keyboard and menu flows stay consistent.
                                   onCopyAnnotation={handleCopyAnnotation}
                                   onCutAnnotation={handleCutAnnotation}
+                                  onCopyCallout={handleCopyCallout}
+                                  onCutCallout={handleCutCallout}
                                   // UX: z-order hotkeys (Cmd+]/[ + Shift variants). Fires
                                   // from SVGAnnotationLayer's keydown useEffect when that
                                   // page has exactly one shape selected. Matches the
