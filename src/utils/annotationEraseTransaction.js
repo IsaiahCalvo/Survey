@@ -859,6 +859,20 @@ export function applyEraseHistoryTransitionOnDoc({
   if (lanePlans.some((entry) => !valuesMatch(entry.current, entry.expected))) {
     return { status: 'conflict', reason: 'lane-conflict' };
   }
+  // Owner ruling 2026-09-28 (open editing + lock): an Undo / Redo of an erase
+  // never changes a mark someone has user-locked since (a lane key is
+  // `<writer>\0<storageKey>`; the counter plans read the stored mark).
+  const isLockedEntry = (stored) => {
+    const object = stored?.o;
+    const lockedBy = object?.data?.lockedBy ?? object?.lockedBy ?? object?.data?.legacyCallout?.lockedBy;
+    return typeof lockedBy === 'string' && lockedBy.length > 0;
+  };
+  if (lanePlans.some((entry) => {
+    const storageKey = String(entry.laneKey || '').split('\u0000').slice(1).join('\u0000');
+    return storageKey && isLockedEntry(readRawAnnotationEntry(doc, storageKey));
+  }) || counterPlans.some((entry) => isLockedEntry(entry.stored))) {
+    return { status: 'conflict', reason: 'locked' };
+  }
   if (counterPlans.some((entry) => (
     !entry.current
     || !valuesMatch(counterNumbering(entry.current), entry.expected)

@@ -2187,6 +2187,9 @@ const SurveySpacesRail = ({
                               </div>
                             )}
                           </div>
+                          {!(mobileDetailMarker.bounds && mobileDetailMarker.pageNumber) && (
+                            <span className="survey-marker-unplaced-tag" data-testid="survey-marker-unplaced-tag">Not on page</span>
+                          )}
                           <button
                             type="button"
                             className="mobile-survey-detail-icon-btn"
@@ -2333,6 +2336,17 @@ const SurveySpacesRail = ({
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
                                 showToast('Please select at least one category to delete.', 'warn');
+                                return;
+                              }
+                              // Owner ruling 2026-09-28: a locked survey item is never
+                              // deleted — not by a category delete either.
+                              const lockedInSelection = Object.values(surveyMarkers).some((h) => (
+                                h?.moduleId === selectedModuleId
+                                && selectedCatIds.includes(h?.categoryId)
+                                && typeof h?.lockedBy === 'string' && h.lockedBy
+                              ));
+                              if (lockedInSelection) {
+                                showToast('Some items in these categories are locked — unlock them first.', 'info');
                                 return;
                               }
                               const confirmed = await askConfirm({
@@ -3431,6 +3445,16 @@ const SurveySpacesRail = ({
                                                           }}
                                                         />
                                                       </span>
+                                                      {/* UX (owner ruling 2026-09-28, Cut = pick up the
+                                                          placement): an item with no box on the PDF (cut
+                                                          and not pasted yet, or imported from Excel) says
+                                                          so in words next to its name. The orange Locate
+                                                          button at the end of the row places it again. */}
+                                                      {!(surveyMarker.bounds && surveyMarker.pageNumber) && (
+                                                        <span className="survey-marker-unplaced-tag" data-testid="survey-marker-unplaced-tag">
+                                                          Not on page
+                                                        </span>
+                                                      )}
                                                       <div
                                                         className="survey-marker-expand-spacer"
                                                         {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
@@ -3512,8 +3536,8 @@ const SurveySpacesRail = ({
                                                       // on every placed line, a gold glyph per row).
                                                       color: (surveyMarker.bounds && surveyMarker.pageNumber) ? 'var(--text-3)' : 'var(--warning)',
                                                     }}
-                                                    {...tip(surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF", 'below')}
-                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
+                                                    {...tip(surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Place on page", 'below')}
+                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Place on page"}
                                                   >
                                                     <Icon name="search" size={14} />
                                                   </button>

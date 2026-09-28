@@ -807,6 +807,19 @@
   letter-spacing: 0;
 }
 
+/* A survey item with no box on the PDF (cut and not pasted yet, or imported
+   from Excel): a quiet tag in the orange the Locate button already uses for
+   "needs a location" (owner ruling 2026-09-28). No box, no fill. */
+.survey-marker-unplaced-tag {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--warning);
+  white-space: nowrap;
+}
+
 .survey-marker-name-inline {
   grid-area: 1 / 1;
   width: 100%;

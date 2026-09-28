@@ -72,18 +72,14 @@ import {
   shouldSampleLassoPoint,
   simplifyLassoPoints,
 } from '../utils/lassoSelection.js';
-// Phase 35 Plan 03 — click hit-test gate, updated 2026-07-17 for the LOCKED
-// permissions model (contributors AND owners have full add/edit/delete on
-// everything; viewers look-only). Selection now gates on canDelete (any
-// authenticated write-capable session may select ANY annotation — the viewer
-// role wall is ReadOnlyGate: body[data-readonly] CSS kills pointer events on
-// this layer's SVG root and a capture-phase keydown listener swallows
-// Delete/Backspace, so viewers never reach these handlers). canModify is
-// retained for the DELETE-time partition: own deletes may direct-fire, but
-// cross-author deletes must ALWAYS route through the bulk-delete planner so
-// the collaborator-cross-author confirm modal fires (matches the callout
-// precedent landed in 9d8df592).
-import { canDelete, canModify } from '../lib/collab/permissionScope.js';
+// Selection / delete gates. RULED 2026-09-28 owner: open editing + lock —
+// any authenticated edit session may select ANY annotation (canSelect; the
+// viewer role wall is ReadOnlyGate: body[data-readonly] CSS kills pointer
+// events on this layer's SVG root and a capture-phase keydown listener
+// swallows Delete/Backspace) and delete / move / restyle any of them with no
+// confirmation (canModify), except user-locked marks, which stay selectable
+// but refuse every change until their author or the document owner unlocks.
+import { canModify, canSelect, isUserLocked } from '../lib/collab/permissionScope.js';
 // Phase 15 UAT-3 Issue 3 (2026-04-17) — distance rules for callout-part drag.
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
@@ -624,11 +620,14 @@ export function useSVGInteraction({
     return clampNudgeDelta(boxes, dx, dy, pageWidth, pageHeight);
   }, [getSurveyMarkerMembers, pageWidth, pageHeight]);
   // Ids of the selected markers this page shows (only those move).
-  const getGroupMarkerIds = useCallback(() => {
+  // `movableOnly`: leave out user-locked markers (owner ruling 2026-09-28 —
+  // a locked mark stays put while the rest of the selection moves).
+  const getGroupMarkerIds = useCallback((options = null) => {
     if (!(selectedSurveyMarkerIds instanceof Set) || selectedSurveyMarkerIds.size === 0) return [];
     const members = getSurveyMarkerMembers?.() || [];
     return members
       .filter((member) => member && selectedSurveyMarkerIds.has(String(member.id)))
+      .filter((member) => !(options?.movableOnly && member.locked))
       .map((member) => String(member.id));
   }, [selectedSurveyMarkerIds, getSurveyMarkerMembers]);
 
@@ -648,31 +647,20 @@ export function useSVGInteraction({
     return selectedIds.has(index);
   }, [selectedIds]);
 
-  // Per-user delete authority click hit-test gate — LOCKED permissions model
-  // (2026-07-17): contributors and owners can select/move/edit/delete ANY
-  // annotation, so this gate now runs canDelete (authenticated write-capable
-  // pair passes for every annotation) instead of canModify (author-or-owner
-  // only). Cross-author capability is safe to open at selection time because:
-  //   - viewers never reach this handler (ReadOnlyGate CSS blocks pointer
-  //     events on the SVG root + capture-phase keydown swallows Delete), and
-  //   - cross-author DELETES are re-partitioned in deleteSelected below and
-  //     always routed through the parent's bulk-delete planner, which shows
-  //     the collaborator-cross-author confirm modal (never direct-fires).
-  // Cross-author MOVES/EDITS commit through the normal save paths with no
-  // modal — matches the callout precedent (9d8df592) and the modal's
-  // delete-only copy. Original authorship survives foreign edits: the
-  // serializer treats meta.authorId as write-once-on-create
+  // Click hit-test gate. RULED 2026-09-28 owner: open editing + lock —
+  // canSelect passes every annotation (user-locked ones included) for an
+  // authenticated edit session. Original authorship survives other people's
+  // edits: the serializer treats meta.authorId as write-once-on-create
   // (annotationTypeSerializers.js).
   //
-  // Boot guard: when either viewerId or documentOwnerId is missing (App.jsx
-  // not yet threaded the new props, or the user signed out mid-session) the
-  // gate returns true so legacy behavior is byte-identical. The gate engages
-  // once both props resolve.
+  // Boot guard: when either viewerId or documentOwnerId is missing (not yet
+  // threaded, or the user signed out mid-session) the gate returns true so
+  // legacy behavior is byte-identical. The gate engages once both resolve.
   const canSelectAnnotationByIndex = useCallback((index) => {
     const a = annotations?.objects?.[index];
     if (!a) return false;
     if (!viewerId || !documentOwnerId) return true;
-    return canDelete({ annotation: a, viewerId, documentOwnerId });
+    return canSelect({ annotation: a, viewerId, documentOwnerId });
   }, [annotations, viewerId, documentOwnerId]);
 
   // ---------------------------------------------------------------------------
@@ -809,7 +797,7 @@ export function useSVGInteraction({
       const familySize = (latest.selectedIds?.size || 0) + selectedCallouts.length + (selectedMarkers?.size || 0);
       if (selectedMarkers && selectedMarkers.size > 0 && familySize > 1) {
         for (const member of latest.getSurveyMarkerMembers?.() || []) {
-          if (member && selectedMarkers.has(String(member.id))) markerBoxes[String(member.id)] = member.box;
+          if (member && !member.locked && selectedMarkers.has(String(member.id))) markerBoxes[String(member.id)] = member.box;
         }
       }
       if (Object.keys(startObjects).length === 0 && Object.keys(calloutOriginals).length === 0
@@ -1121,7 +1109,18 @@ export function useSVGInteraction({
     if (obj) {
       // Text markup is a range anchored to PDF text. It can change via its
       // two endpoint handles, but a body drag must never move the quads.
-      if (obj?.data?.type === 'text-markup' || isMovementLockedAnnotation(obj)) {
+      // A user-locked mark (owner ruling 2026-09-28) is selected but never
+      // moves — the same early stop as a movement-locked import. Grabbing it
+      // inside a bigger selection still drags the REST of the selection (the
+      // group move below skips locked members), like any group drag.
+      const lockedMemberStartsGroupMove = isUserLocked(obj)
+        && selectedIds.has(index)
+        && (selectedIds.size
+          + ((selectedCalloutIds instanceof Set) ? selectedCalloutIds.size
+            : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0))
+          + selectedMarkerCount) > 1;
+      if (obj?.data?.type === 'text-markup' || isMovementLockedAnnotation(obj)
+        || (isUserLocked(obj) && !lockedMemberStartsGroupMove)) {
         dragStateRef.current = { ...dragStateRef.current, active: false };
         setVisualTransform(null);
         e.preventDefault();
@@ -1183,7 +1182,7 @@ export function useSVGInteraction({
           : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
         for (const cid of calIdsArr) {
           const c = (callouts || []).find((cc) => cc && cc.id === cid);
-          if (!c) continue;
+          if (!c || isUserLocked(c)) continue;
           calloutOriginals[cid] = {
             arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
             knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
@@ -1208,7 +1207,7 @@ export function useSVGInteraction({
           // UX: 2026-04-20 — callout originals for group-move ride-along.
           groupCalloutOriginals: calloutOriginals,
           // w53: Survey Markers ride along too.
-          groupMarkerIds: getGroupMarkerIds(),
+          groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
         };
       } else {
         // Single annotation drag
@@ -1307,6 +1306,11 @@ export function useSVGInteraction({
         e.stopPropagation();
         return;
       }
+      // A user-locked callout's text is not edited (owner ruling 2026-09-28).
+      if (calloutId && isUserLocked((callouts || []).find((c) => c && String(c.id) === String(calloutId)))) {
+        e.stopPropagation();
+        return;
+      }
       if (calloutId && onRequestEditMode) {
         e.stopPropagation();
         // UX: fire the dispatch with 'callout' type — App.jsx disambiguates
@@ -1321,14 +1325,16 @@ export function useSVGInteraction({
     }
     e.stopPropagation();
     const annotation = annotations?.objects?.[index];
-    if (isTransformLockedAnnotation(annotation)) {
+    // A user-locked mark's text is not edited either (owner ruling
+    // 2026-09-28: unlock first).
+    if (isTransformLockedAnnotation(annotation) || isUserLocked(annotation)) {
       e.preventDefault();
       return;
     }
     if (onRequestEditMode && annotation) {
       onRequestEditMode(index, annotation.type, { caretAnchor: readCaretAnchor(e) });
     }
-  }, [onRequestEditMode, annotations, isCalloutSelectable]);
+  }, [onRequestEditMode, annotations, callouts, isCalloutSelectable]);
 
   /**
    * Click on empty SVG background: deselect all.
@@ -1445,7 +1451,7 @@ export function useSVGInteraction({
           : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
         for (const cid of calIdsArrCO) {
           const c = (callouts || []).find((cc) => cc && cc.id === cid);
-          if (!c) continue;
+          if (!c || isUserLocked(c)) continue;
           calloutOriginalsCO[cid] = {
             arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
             knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
@@ -1465,7 +1471,7 @@ export function useSVGInteraction({
           currentResize: null, currentAngle: undefined,
           groupOriginals: annotationOriginalsCO,
           groupCalloutOriginals: calloutOriginalsCO,
-          groupMarkerIds: getGroupMarkerIds(),
+          groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
         };
         try {
           diagLog('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
@@ -1539,6 +1545,14 @@ export function useSVGInteraction({
           deselectAll();
           clearSelectedMarkers();
         }
+      }
+
+      // A user-locked callout (owner ruling 2026-09-28) is selected but no
+      // part of it drags (body, knee, tip or text-box corners).
+      if (isUserLocked(callout)) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
       }
 
       // UX: cache ctm inverse + start pointer for the pointermove branch.
@@ -1660,7 +1674,7 @@ export function useSVGInteraction({
             currentResize: null,
             currentAngle: undefined,
             groupOriginals: originals,
-            groupMarkerIds: groupMarkerIdsNow,
+            groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
           };
           try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
           setInteractionState('dragging');
@@ -4873,7 +4887,7 @@ export function useSVGInteraction({
     const obj = annotations?.objects?.[selectedIndex];
     if (!obj) return;
 
-    if (isAnnotationTransformHandleLocked(obj, handleId)) return;
+    if (isUserLocked(obj) || isAnnotationTransformHandleLocked(obj, handleId)) return;
 
     const ctm = svgRef.current?.getScreenCTM();
     const ctmInverse = ctm ? ctm.inverse() : null;
@@ -5324,41 +5338,28 @@ export function useSVGInteraction({
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
 
-    // Phase 35 hardening 2026-05-01, re-partitioned 2026-07-17 for the LOCKED
-    // permissions model — defense-in-depth delete-time gate. Selection now
-    // admits foreign-author shapes (canSelectAnnotationByIndex runs canDelete),
-    // so this filter is the wall that decides HOW each id may be deleted:
-    //   - own marks (canModify: author or document owner) — eligible on every
-    //     path, including the legacy direct-fire fallbacks below.
-    //   - foreign marks (canDelete but not canModify) — eligible ONLY when
-    //     they can route through the parent's bulk-delete planner
-    //     (onRequestBulkDelete present AND the object carries a stable id the
-    //     planner is keyed by). The planner's collaborator-cross-author mode
-    //     then ALWAYS shows the confirm modal — a foreign mark must never be
-    //     deleted by a direct-fire fallback, so id-less foreign marks and the
-    //     planner-absent mount (boot / test harness) drop foreign ids here.
-    const plannerAvailable = typeof onRequestBulkDelete === 'function';
+    // RULED 2026-09-28 owner: open editing + lock. Delete-time gate: every
+    // selected mark is deleted — own or someone else's, no confirmation —
+    // except user-locked ones (canModify refuses them; they stay selected
+    // and on the page). Selection admits locked marks (canSelect), so this
+    // filter is the wall for Delete.
     const indicesToDelete = Array.from(selectedIds)
       .filter((idx) => {
         const obj = annotations?.objects?.[idx];
         if (!obj) return false;
+        // A user lock holds even in the boot window below.
+        if (isUserLocked(obj)) return false;
         // Boot guard: mirror canSelectAnnotationByIndex's permissive
         // behavior during the brief window where viewerId / documentOwnerId
-        // aren't resolved yet. Once both populate, the strict partition
-        // below engages and is the single source of truth.
+        // aren't resolved yet.
         if (!viewerId || !documentOwnerId) return true;
-        if (canModify({ annotation: obj, viewerId, documentOwnerId })) return true;
-        // Foreign-author: only deletable behind the planner's confirm modal.
-        return plannerAvailable
-          && obj.id != null
-          && canDelete({ annotation: obj, viewerId, documentOwnerId });
+        return canModify({ annotation: obj, viewerId, documentOwnerId });
       })
       .sort((a, b) => b - a);
 
     if (indicesToDelete.length === 0) return;
     // w53: selected Survey Markers go with the marks, in the same save (one
-    // undo step), and only if the delete goes ahead (a cancelled
-    // cross-author confirm deletes nothing).
+    // undo step).
     const markerIdsToDelete = getGroupMarkerIds();
 
     // Capture snapshot at request time — closure over CURRENT state. The
@@ -5413,15 +5414,9 @@ export function useSVGInteraction({
     // documentOwnerId — it builds the BulkDeletePlan and decides modal vs
     // direct-fire.
     const candidateIds = snapshotObjects.map((o) => o?.id).filter(Boolean);
-    // Phase 35 regression fix 2026-05-01: the bulk-delete planner is keyed
-    // by stable annotation id, but legacy / freshly-loaded / not-yet-synced
-    // annotations have no id locally (data.id is stamped only on the first
-    // cloud upload via serializeFabricObjectToRow). When EVERY snapshot
-    // lacks an id the planner returns mode='no-op' and Delete becomes a
-    // silent dead key. Safe to fall through here because the delete-time
-    // partition above only admits id-less objects when they pass canModify
-    // (own/boot) — a foreign-author mark requires obj.id, so an all-id-less
-    // set is structurally own-only and may direct-fire without the modal.
+    // The bulk-delete planner is keyed by stable annotation id; legacy /
+    // not-yet-synced marks may have none. When EVERY snapshot lacks an id the
+    // delete fires directly (the lock filter above already ran).
     if (candidateIds.length === 0) {
       runDelete();
       return;
@@ -5532,7 +5527,7 @@ export function useSVGInteraction({
       : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
     for (const cid of calIds) {
       const c = (callouts || []).find((cc) => cc && cc.id === cid);
-      if (!c) continue;
+      if (!c || isUserLocked(c)) continue;
       if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(c.id)) continue;
       calloutOriginals[cid] = {
         arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
@@ -5553,7 +5548,7 @@ export function useSVGInteraction({
       currentResize: null, currentAngle: undefined,
       groupOriginals: originals,
       groupCalloutOriginals: calloutOriginals,
-      groupMarkerIds: getGroupMarkerIds(),
+      groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
     };
     try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
     setInteractionState('dragging');

@@ -73,6 +73,11 @@ const SVGSelectionOverlay = memo(({
   // thin to hold a dot between its corner dots they are pushed straight out
   // along the frame normal so no two grabbers can ever overlap.
   alwaysShowResizeHandles = false,
+  // RULED 2026-09-28 owner: open editing + lock. A user-locked mark is still
+  // selectable: its frame shows with NO resize / rotate grabbers (it cannot
+  // be resized or rotated) and a small lock badge on the frame's top-right
+  // corner, in the handles' own white-and-blue, so the reason is visible.
+  locked = false,
 }) => {
   // UX 2026-09-16: hit pads grow on a finger (44 pt) and stay tight on a mouse
   // (32 px; Drawboard PDF measures 34 x 34). Read before the bbox early-return
@@ -308,8 +313,13 @@ const SVGSelectionOverlay = memo(({
         />
       )}
 
+      {/* --- Lock badge (user-locked mark) --- */}
+      {locked && (
+        <SelectionLockBadge x={boxX + boxW} y={boxY} radius={handleMetrics.rotationR} />
+      )}
+
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
-      {!isGroupSelection && !moveOnly && (
+      {!isGroupSelection && !moveOnly && !locked && (
         <>
           {/* Invisible hit pads, drawn first so every visible grabber sits on
               top of its own pad and still wins a direct hit. */}
@@ -488,5 +498,34 @@ const SVGSelectionOverlay = memo(({
 });
 
 SVGSelectionOverlay.displayName = 'SVGSelectionOverlay';
+
+/**
+ * The small lock shown on a selected user-locked mark (owner ruling
+ * 2026-09-28). Drawn in page units at the radius of the rotation grabber, so
+ * it keeps the handles' screen size at every zoom. The glyph is the app's own
+ * `lock` icon (Icons.jsx) — one icon set everywhere. Look-only: it takes no
+ * pointer events.
+ */
+export function SelectionLockBadge({ x, y, radius }) {
+  const r = Number(radius) > 0 ? Number(radius) : 6;
+  const glyph = r * 1.25;
+  return (
+    <g data-selection-lock-badge="true" style={{ pointerEvents: 'none' }}>
+      <circle cx={x} cy={y} r={r} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={r / 7} />
+      <svg
+        x={x - glyph / 2}
+        y={y - glyph / 2}
+        width={glyph}
+        height={glyph}
+        viewBox="0 0 24 24"
+        fill="none"
+        overflow="visible"
+      >
+        <rect x="4" y="11" width="16" height="10" rx="1.11" stroke={HANDLE_RING} strokeWidth="2.2" />
+        <path d="M8 11V7A4 4 0 0 1 16 7V11" stroke={HANDLE_RING} strokeWidth="2.2" />
+      </svg>
+    </g>
+  );
+}
 
 export default SVGSelectionOverlay;

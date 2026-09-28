@@ -62,7 +62,7 @@ test('one document batch deletes, restores, and re-deletes a series across pages
   assert.deepEqual(deletedAgain, deleted, 'one redo removes the entire series again');
 });
 
-test('document batch owner filtering is all-or-nothing for collaborators', () => {
+test('document batch owner filtering keeps the complete atomic action for collaborators (never a partial subset)', () => {
   const own = {
     type: 'fabric:delete',
     pageNumber: 1,
@@ -75,7 +75,14 @@ test('document batch owner filtering is all-or-nothing for collaborators', () =>
   };
   const action = { type: 'fabric:document-batch', actions: [own, foreign] };
 
-  assert.equal(filterAnnotationHistoryActionByOwner(action, 'viewer', 'owner'), null);
+  // RULED 2026-09-28 owner: open editing + lock — a collaborator's edits on anyone's marks are their own Undo step, so the whole batch is kept.
+  assert.equal(
+    filterAnnotationHistoryActionByOwner(action, 'viewer', 'owner'),
+    action,
+    'collaborator retains the complete atomic action',
+  );
+  // RULED 2026-09-28 owner: open editing + lock — only an unknown viewer is refused.
+  assert.equal(filterAnnotationHistoryActionByOwner(action, null, 'owner'), null);
   assert.equal(
     filterAnnotationHistoryActionByOwner(action, 'owner', 'owner'),
     action,
@@ -83,7 +90,7 @@ test('document batch owner filtering is all-or-nothing for collaborators', () =>
   );
 });
 
-test('document batch rejects a partially filtered mixed-author page batch', () => {
+test('document batch never partially filters a mixed-author page batch', () => {
   const mixedPage = {
     type: 'fabric:batch',
     pageNumber: 1,
@@ -94,13 +101,11 @@ test('document batch rejects a partially filtered mixed-author page batch', () =
       { id: 'foreign', annotation: { data: { id: 'foreign' }, meta: { authorId: 'other' } } },
     ],
   };
+  const mixedBatch = { type: 'fabric:document-batch', actions: [mixedPage] };
+  // RULED 2026-09-28 owner: open editing + lock — the mixed batch is kept whole (was refused whole) — still never the viewer-owned subset.
   assert.equal(
-    filterAnnotationHistoryActionByOwner(
-      { type: 'fabric:document-batch', actions: [mixedPage] },
-      'viewer',
-      'owner',
-    ),
-    null,
+    filterAnnotationHistoryActionByOwner(mixedBatch, 'viewer', 'owner'),
+    mixedBatch,
     'a series delete must never retain only the viewer-owned subset on one page',
   );
   const confirmed = {

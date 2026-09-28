@@ -9,7 +9,9 @@ to source) plus live checks in the app (throwaway doc, own dev server). It
 records the state **after** branch `claude/w52-annotation-family`
 (commits `b97b20de7` z-order + the Part 2 commit that follows it).
 
-Updated for `claude/w53-family-wave2` (cells marked ☆).
+Updated for `claude/w53-family-wave2` (cells marked ☆) and
+`claude/w54-edit-rights-lock` (§7 below — open editing, Survey Marker Cut,
+user lock).
 
 Key: ✓ works · ✗ missing · **D** different by design (reason given) ·
 **B** broken (still open, see plan) · ★ fixed in w52 · ☆ fixed in w53.
@@ -56,12 +58,11 @@ Delete of the whole selection is ONE Undo step.
 | Imported PDF marks | as base type | ✓ (copy becomes a native mark) | ✓ | ✓ | full menu |
 | Survey Marker | ✗ | ☆ Copy / Paste / Duplicate, alone or with marks (a copy is a NEW survey item: next default name of its category, empty checklist, no Excel identity; pastes only into an open Survey module that has the category); D: no Cut — Copy, then Delete (Cut + Paste would turn a survey item with its Excel row and answers into a blank new one) | own path; ★ a refused delete no longer leaves an empty Undo step; ☆ several at once (or with marks) = one step, nothing deleted if the marks' cross-author confirm is cancelled; others' markers still blocked instead of confirmed (plan 6.2a) | ☆ family actions ride the shared step | ☆ the normal menu (Copy, Paste, Duplicate, Delete, Bring / Send); inside a selection, the group menu |
 
-Permissions: one rule — contributors and owners edit/delete everything,
-viewers look only, cross-author delete always confirms. ★ Cmd+X now runs the
-same own-mark gate as the menu Cut for shapes AND callouts (it skipped it).
-**D:** Cut stays own-marks-only because Cut deletes with no confirmation
-(locked 2026-07-17; `tests/phase35/contributorCrossAuthorShapes.test.mjs`);
-another user's mark is removed with Copy + Delete, which confirms.
+Permissions — **superseded by w54 (owner ruling 2026-09-28, §7):** anyone
+who can edit cuts, moves, restyles or deletes ANY mark (other people's and
+Survey Markers included) with no pop-up and no block; viewers look only; a
+user-locked mark refuses every change until its author or the document owner
+unlocks it.
 
 ## 3. Erase, visibility and outputs
 
@@ -213,3 +214,34 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
 10. **Latent error in Survey item copy between spaces:** `sourceSpaceId` is
     used but never defined in PDFViewer's copy-items flow (ReferenceError).
     Not an annotation path; flagged for its own fix.
+
+---
+
+## 7. w54 — open editing + lock (owner ruling 2026-09-28)
+
+- **Open editing:** one rule in `src/lib/collab/permissionScope.js`
+  (`canModify` / `canDelete` / `canModifySurveyMarker`): any edit session,
+  any author, no confirmation. The cross-author confirm modal, the Survey
+  Marker other-user block, the own-marks-only Cut and the "Deleted – Undo"
+  toast are gone (the counter-series "Delete count" confirm stays — it
+  removes a whole series). Undo keeps the user's own edits on anyone's marks
+  (`filterAnnotationHistoryActionByOwner` no longer trims by author).
+- **Survey Marker Cut = pick up the placement:** the item, its Excel row and
+  answers stay; the survey panel says "Not on page"; Paste puts the SAME item
+  (same id → same Row ID) back while its module is open; Copy still makes a
+  new item; each of Cut / Paste is one Undo step (`surveyMarkerFamily.js`
+  unplace / place, `familyClipboard.js` `cutMarkerId`).
+- **Lock:** right-click Lock / Unlock on every object menu and the group
+  menu, for the mark's author or the document owner. Stored in the mark
+  (`data.lockedBy`, callout `lockedBy` + `legacyCallout.lockedBy`, Survey
+  Marker `lockedBy`) so it syncs and reloads. A locked mark stays selectable
+  and shows a lock badge with no grabbers; move / resize / restyle / cut /
+  delete / erase / nudge / text edit are refused on every path, and a save
+  guard (`src/utils/markLock.js`, run on every page save, Undo / Redo and
+  text-markup transaction) puts back anything a path missed. Erase Undo /
+  Redo stop at a mark locked since. Excel imports never delete a locked item.
+- **Server:** `supabase/proposed/20260928_w54_mark_lock_open_editing.sql`
+  (NOT applied) opens the Survey Marker mirror rows to every editor and keeps
+  a locked row's placement / look / lock for its author or the owner. The Yjs
+  mark store cannot be inspected by Postgres; enforcing the lock there needs a
+  validating append service (owner decision).

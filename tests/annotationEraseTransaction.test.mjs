@@ -2547,3 +2547,46 @@ test('outbox crash window retries the same idempotency key after a fresh Y.Doc',
     'acknowledged',
   );
 });
+
+// Owner ruling 2026-09-28 (open editing + lock): an Undo / Redo of an erase
+// never changes a mark someone has user-locked since the erase.
+test('erase Undo / Redo stops at a mark that was user-locked after the erase', async () => {
+  const ink = nativeInk('locked-after-erase');
+  const gesture = { mode: 'partial', radius: 7, points: [{ x: 50, y: 50 }] };
+  const survivor = erasePageAnnotations({
+    pageAnnotations: { objects: [ink] },
+    eraserPoints: gesture.points,
+    eraserRadius: gesture.radius,
+    mode: gesture.mode,
+  }).objectMutations[0]?.survivor;
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 1: { objects: [ink] } });
+  const result = await localCommit(doc, buildIntent({
+    mutationId: 'lock-after-erase',
+    gesture,
+    targets: [{
+      domain: 'page-object',
+      storageKey: 'locked-after-erase',
+      kind: 'pen',
+      operation: 'replace',
+      pageNumber: 1,
+      index: 0,
+      before: ink,
+      after: survivor,
+    }],
+  }), {
+    eraserWriterId: 'writer-a',
+    materializePageTarget: () => docToByPage(doc)[1].objects[0],
+  });
+  assert.equal(result.status, 'committed');
+  const stored = readRawAnnotationEntry(doc, 'locked-after-erase');
+  writeAnnotationMark(doc, 'locked-after-erase', stored.p, {
+    ...stored.o,
+    data: { ...(stored.o.data || {}), lockedBy: 'user-author' },
+  });
+  const undo = applyEraseHistoryTransitionOnDoc({ doc, transition: result.historyTransition, direction: 'undo' });
+  assert.equal(undo.status, 'conflict');
+  assert.equal(undo.reason, 'locked');
+  const visible = docToByPage(doc)[1].objects[0];
+  assert.equal(pointInPolygonSet(gesture.points[0], visible.polygons), false, 'the erased bite stays');
+});

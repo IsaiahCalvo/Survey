@@ -334,6 +334,9 @@ export function calloutToAnnotationObject(callout, pageSize) {
       id,
       // Author chain for the shared canModify delete gate (matches backfill).
       ...(authorId ? { authorId } : {}),
+      // Owner ruling 2026-09-28: the user lock rides the projected group too
+      // (the authoritative copy is legacyCallout.lockedBy below).
+      ...(callout.lockedBy ? { lockedBy: callout.lockedBy } : {}),
       // Verbatim original normalized callout — the reload payload the
       // deserializeRowToCallout shim recovers. Deep-cloned above.
       legacyCallout,

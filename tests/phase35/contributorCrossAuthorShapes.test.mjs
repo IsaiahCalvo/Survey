@@ -1,4 +1,8 @@
 // tests/phase35/contributorCrossAuthorShapes.test.mjs
+// RULED 2026-09-28 owner: open editing + lock — this file now pins the open
+// model: cross-author shape deletes are DIRECT (no confirm modal), Cut and
+// the eraser take any unlocked mark, and the user lock is the only refusal.
+// The history below describes the superseded 2026-07-17 model.
 // Locked permissions model (2026-07-17) — SHAPE parity with the callout
 // cross-author capability landed in 9d8df592:
 //   - contributors (editors) can SELECT any user's shapes (click + marquee),
@@ -62,7 +66,7 @@ test('marquee still drops missing/stale indices', () => {
 
 // --- Delete: planner mode -------------------------------------------------
 
-test('locked model: contributor deleting a foreign shape plans collaborator-cross-author (the modal mode)', () => {
+test('open model: contributor deleting a foreign shape plans a direct delete (no modal)', () => {
   const annotations = [anno('mine', COLLAB_ID), anno('theirs', OTHER_ID)];
   const plan = buildBulkDeletePlan({
     candidateIds: ['mine', 'theirs'],
@@ -70,13 +74,14 @@ test('locked model: contributor deleting a foreign shape plans collaborator-cros
     viewerId: COLLAB_ID,
     documentOwnerId: OWNER_ID,
   });
-  strictEqual(plan.mode, 'collaborator-cross-author', 'cross-author delete must land in the confirm-modal mode');
+  // RULED 2026-09-28 owner: open editing + lock — cross-author deletes go straight through; byAuthor is informational.
+  strictEqual(plan.mode, 'direct', 'cross-author delete is direct');
   deepStrictEqual(plan.ownIds, ['mine']);
   deepStrictEqual(plan.foreignIds, ['theirs']);
   ok(plan.byAuthor && plan.byAuthor[OTHER_ID]?.count === 1, 'byAuthor breakdown names the foreign author');
 });
 
-test('locked model: owner delete modes are unchanged', () => {
+test('open model: owner deletes (own-only and cross-author) are direct', () => {
   const annotations = [anno('own', OWNER_ID), anno('foreign', OTHER_ID)];
   const ownOnly = buildBulkDeletePlan({
     candidateIds: ['own'],
@@ -84,14 +89,16 @@ test('locked model: owner delete modes are unchanged', () => {
     viewerId: OWNER_ID,
     documentOwnerId: OWNER_ID,
   });
-  strictEqual(ownOnly.mode, 'owner-own-only', 'owner deleting own marks stays modal-free');
+  // RULED 2026-09-28 owner: open editing + lock — 'owner-own-only' collapsed into 'direct'.
+  strictEqual(ownOnly.mode, 'direct', 'owner deleting own marks stays modal-free');
   const cross = buildBulkDeletePlan({
     candidateIds: ['own', 'foreign'],
     annotations,
     viewerId: OWNER_ID,
     documentOwnerId: OWNER_ID,
   });
-  strictEqual(cross.mode, 'owner-cross-author', 'owner cross-author breakdown modal unchanged');
+  // RULED 2026-09-28 owner: open editing + lock — the owner cross-author breakdown modal is gone.
+  strictEqual(cross.mode, 'direct', 'owner cross-author delete is direct');
 });
 
 // --- Viewer wall ----------------------------------------------------------
@@ -111,22 +118,21 @@ test('viewer role still resolves to the read-only wall (ReadOnlyGate blocks inte
 
 const SVG_INTERACTION_SOURCE = readFileSync(SRC('hooks/useSVGInteraction.js'), 'utf8');
 
-test('useSVGInteraction: click hit-test gate runs canDelete (contributors select foreign shapes)', () => {
+test('useSVGInteraction: click hit-test gate runs canSelect (contributors select foreign and locked shapes)', () => {
   const gate = SVG_INTERACTION_SOURCE.slice(
     SVG_INTERACTION_SOURCE.indexOf('const canSelectAnnotationByIndex'),
   );
-  match(gate.slice(0, 400), /return canDelete\(\{ annotation: a, viewerId, documentOwnerId \}\)/);
+  // RULED 2026-09-28 owner: open editing + lock — selection moved to canSelect, which also admits user-locked marks.
+  match(gate.slice(0, 400), /return canSelect\(\{ annotation: a, viewerId, documentOwnerId \}\)/);
 });
 
-test('useSVGInteraction: deleteSelected admits foreign ids ONLY through the planner (modal path), never the direct-fire fallbacks', () => {
+test('useSVGInteraction: deleteSelected admits every unlocked mark (own or foreign) and skips user-locked ones', () => {
   const start = SVG_INTERACTION_SOURCE.indexOf('const deleteSelected = useCallback');
   ok(start > -1, 'deleteSelected present');
   const body = SVG_INTERACTION_SOURCE.slice(start, start + 8000);
-  // Own marks stay eligible everywhere.
-  match(body, /if \(canModify\(\{ annotation: obj, viewerId, documentOwnerId \}\)\) return true;/);
-  // Foreign marks require the planner AND a stable id, then pass canDelete —
-  // guaranteeing the collaborator-cross-author confirm modal is unavoidable.
-  match(body, /return plannerAvailable\s*&& obj\.id != null\s*&& canDelete\(\{ annotation: obj, viewerId, documentOwnerId \}\);/);
+  // RULED 2026-09-28 owner: open editing + lock — the planner-only foreign lane is gone; the gate is the user lock + canModify.
+  match(body, /if \(isUserLocked\(obj\)\) return false;/);
+  match(body, /return canModify\(\{ annotation: obj, viewerId, documentOwnerId \}\);/);
   // The planner routing itself must still exist.
   match(body, /onRequestBulkDelete\(\{\s*candidateIds,\s*snapshotObjects,\s*pageNumber,\s*runDelete,\s*\}\)/);
 });
@@ -141,18 +147,21 @@ test('context menu: shape Delete items route through the bulk-delete planner bri
   const calls = MENU_SOURCE.match(/requestBulkDelete\(\{/g) || [];
   ok(calls.length >= 2, `expected both shape Delete items to route through requestBulkDelete (found ${calls.length})`);
   match(MENU_SOURCE, /candidateIds: \[obj\.id\]/);
-  // Foreign marks can never fall through to the ungated splice.
-  match(MENU_SOURCE, /if \(!own && !canPlanForeignDelete\(obj\)\) return;/);
+  // RULED 2026-09-28 owner: open editing + lock — the own/foreign split is gone; user-locked marks never reach the splice.
+  match(MENU_SOURCE, /const canModifyObj = \(obj\) => \{\s*if \(!obj\) return false;\s*if \(isUserLocked\(obj\)\) return false;/);
+  match(MENU_SOURCE, /\/\/ Open editing: any mark that is not user-locked\.\s*if \(!canModifyObj\(obj\)\) return;/);
 });
 
-test('context menu: Cut stays own-marks-only (no unconfirmed cross-author destruction)', () => {
+// RULED 2026-09-28 owner: open editing + lock — title only: Cut takes anyone's unlocked marks (canModifyObj now admits them).
+test('context menu: Cut goes through canModifyObj (any unlocked mark, user-locked marks stay)', () => {
   match(MENU_SOURCE, /if \(!canModifyObj\(obj\)\) return;/);
   match(MENU_SOURCE, /const ownAsc = sortedAsc\.filter\(\(idx\) => canModifyObj\(page\.objects\[idx\]\)\);/);
 });
 
 // --- Source assertion: eraser stays own-only (deliberate) ------------------
 
-test('eraser: getEraseBlockReason deliberately stays on canModify (no unconfirmed cross-author erase)', () => {
+// RULED 2026-09-28 owner: open editing + lock — title only: canModify now admits foreign marks, so the eraser takes them and skips user-locked ones.
+test('eraser: getEraseBlockReason gates on canModify (open editing; user-locked marks are skipped)', () => {
   const eraser = readFileSync(SRC('components/FabricEraserCanvas.jsx'), 'utf8');
   const start = eraser.indexOf('const getEraseBlockReason');
   ok(start > -1);

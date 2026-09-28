@@ -500,6 +500,46 @@ export function surveyMarkerClipboardEntry(record) {
   return entry;
 }
 
+// ---------------------------------------------------------------------------
+// Cut = pick up the placement (owner ruling 2026-09-28)
+// ---------------------------------------------------------------------------
+//
+// A Survey Marker is a survey item: its record carries the answers and the
+// Excel identity (Row ID = HMAC of document + module:category + marker id).
+// Cutting it takes ONLY its box off the PDF — the record, its Excel row and its
+// answers stay, and the survey panel lists it as "Not on page". Pasting a cut
+// item puts the SAME record (same id, so the same Row ID) at the new spot, on
+// this page or another page of the document. Copy still makes a NEW item.
+
+/** True when the record has a box on a page. */
+export function isSurveyMarkerPlaced(record) {
+  return Boolean(record && record.pageNumber && record.bounds
+    && Number.isFinite(Number(record.bounds.x)) && Number.isFinite(Number(record.bounds.y)));
+}
+
+/** The record with its placement taken off (id, answers, Excel identity kept). */
+export function unplaceSurveyMarkerRecord(record) {
+  if (!record) return record;
+  const next = { ...record, pageNumber: null, bounds: null, unplacedByCut: true };
+  // `stack` only means something on a page.
+  delete next.stack;
+  return next;
+}
+
+/**
+ * The record placed again at { pageNumber, bounds, regionId, stack }. Module and
+ * category are NOT changed (they are part of the Row ID).
+ */
+export function placeSurveyMarkerRecord(record, { pageNumber, bounds, regionId, stack } = {}) {
+  if (!record) return record;
+  const next = { ...record, pageNumber, bounds: { ...bounds } };
+  delete next.unplacedByCut;
+  if (regionId !== undefined) next.regionId = regionId ?? null;
+  if (stack) next.stack = stack;
+  else delete next.stack;
+  return next;
+}
+
 /**
  * The new marker record a pasted clipboard entry becomes.
  * @param {object} entry  surveyMarkerClipboardEntry(...)
@@ -559,6 +599,9 @@ export function surveyMarkerRenderEntry(annotationId, record, normalizeColor = n
     ...(needsEntity ? { needsEntity: true } : {}),
     ...(color ? { color } : {}),
     ...(record.stack ? { stack: record.stack } : {}),
+    // Owner ruling 2026-09-28: the canvas shows a lock on a selected locked
+    // marker and does not start a drag / resize on it.
+    ...(record.lockedBy ? { lockedBy: record.lockedBy } : {}),
   };
 }
 

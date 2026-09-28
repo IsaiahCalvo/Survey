@@ -48,6 +48,11 @@ export function diffDeletedSurveyMarkerIds(priorAnnotations, currentAnnotations)
  */
 export function isPlacedSurveyMarker(ann) {
   if (!ann || typeof ann !== 'object') return false;
+  // Owner ruling 2026-09-28: a survey item picked up by Cut (its box is on
+  // the clipboard, waiting for Paste) keeps the placed-marker protection, and
+  // a user-locked item is never deleted by anyone — an import included.
+  if (ann.unplacedByCut === true) return true;
+  if (typeof ann.lockedBy === 'string' && ann.lockedBy) return true;
   if (ann.pageNumber == null) return false;
   const b = ann.bounds;
   return b != null && typeof b === 'object' && Object.keys(b).length > 0;

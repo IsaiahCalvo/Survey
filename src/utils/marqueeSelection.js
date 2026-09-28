@@ -35,7 +35,7 @@ import { toFabricShape } from './svgToFabricShape.js';
 // canDelete chain as the click hit-test gate and the bulk-delete planner
 // (locked model 2026-07-17: contributors select everyone's marks; the
 // eraser deliberately stays on canModify — see FabricEraserCanvas).
-import { canDelete, getAnnotationAuthorId, isOwner } from '../lib/collab/permissionScope.js';
+import { canSelect, getAnnotationAuthorId, isOwner } from '../lib/collab/permissionScope.js';
 // Phase 35 — UAT diagnostic logger. Dev-only, production-stripped.
 import { phase35Diag } from '../lib/collab/phase35Diag.js';
 
@@ -345,9 +345,10 @@ export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwn
       allOwn = false;
       return false;
     }
-    // Locked model 2026-07-17: canDelete (authenticated pair ⇒ allow, any
-    // author) replaces canModify so contributors marquee foreign shapes too.
-    const ok = canDelete({ annotation: a, viewerId, documentOwnerId });
+    // RULED 2026-09-28 owner: open editing + lock — canSelect (authenticated
+    // pair ⇒ allow, any author, user-locked marks included), so a locked
+    // mark is still picked; what the selection may DO is gated later.
+    const ok = canSelect({ annotation: a, viewerId, documentOwnerId });
     if (!ok) allOwn = false;
     perAnnotation.push({
       index: i,

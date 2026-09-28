@@ -27,7 +27,8 @@ test('group move and nudge carry the selected markers in the same save', () => {
   // a Delete of marks carries the selected markers in the same save
   assert.match(hook, /surveyMarkerFamily: \{ deletes: markerIdsToDelete \}/);
   assert.match(hook, /surveyMarkerFamily: \{ move: \{ ids: markerIds, dx: burst\.dx, dy: burst\.dy \} \}/);
-  assert.match(hook, /groupMarkerIds: getGroupMarkerIds\(\)/);
+  // RULED 2026-09-28 owner: open editing + lock — group moves carry only movable (not user-locked) markers.
+  assert.match(hook, /groupMarkerIds: getGroupMarkerIds\(\{ movableOnly: true \}\)/);
   // a drag that starts on a selected marker moves the whole family
   assert.match(layer, /startFamilyGroupMove\(e\);/);
 });
@@ -61,8 +62,12 @@ test('one clipboard: Cmd+C / X / D for any selection, Cmd+V pastes it, menus hav
   assert.match(layer, /onCopyFamily\(pageNumber, selection, key === 'x' \? 'cut' : 'copy'\)/);
   assert.match(layer, /onDuplicateFamily\(pageNumber, selection\)/);
   assert.match(viewer, /if \(familyClipboardRef\.current && pasteFamilyAtRef\.current\) \{/);
-  assert.match(viewer, /surveyMarkerFamily: \{ creates: plan\.markers \}/);
-  assert.match(viewer, /surveyMarkerFamily: \{ deletes: markers\.map\(\(m\) => m\.id\) \}/);
+  // RULED 2026-09-28 owner: open editing + lock — paste of a cut marker places the same record back (places) beside copies (creates).
+  assert.match(viewer, /\.\.\.\(plan\.markers\.length > 0 \? \{ creates: plan\.markers \} : \{\}\)/);
+  assert.match(viewer, /\.\.\.\(plan\.placedMarkers\.length > 0 \? \{ places: plan\.placedMarkers \} : \{\}\)/);
+  assert.match(viewer, /surveyMarkerFamily: familyPatch/);
+  // RULED 2026-09-28 owner: open editing + lock — Survey Marker Cut unplaces (record/answers/Excel stay) instead of deleting.
+  assert.match(viewer, /surveyMarkerFamily: \{ unplaces: markers\.map\(\(m\) => m\.id\) \}/);
   assert.match(menu, /duplicateItem\(\{ markerIds: \[ctx\.surveyMarkerId\] \}\)/);
   assert.match(menu, /duplicateItem\(\{ calloutIds: \[ctx\.calloutId\] \}\)/);
   assert.match(menu, /duplicateItem\(\{ indices: \[ctx\.annotationIndex\] \}\)/);

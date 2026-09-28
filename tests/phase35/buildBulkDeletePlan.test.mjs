@@ -14,7 +14,7 @@
 //     viewerId: string,
 //     documentOwnerId: string,
 //   }): {
-//     mode: 'collaborator-all-mine' | 'owner-cross-author' | 'owner-own-only',
+//     mode: 'direct' | 'no-op',       // RULED 2026-09-28 owner: open editing + lock (was the three confirm modes)
 //     count: number,                   // total annotations to delete
 //     ownIds: string[],                // viewer-authored ids in candidates
 //     foreignIds: string[],            // non-viewer-authored ids in candidates (owner only)
@@ -60,7 +60,7 @@ function makeAnno(id, authorId, authorName) {
 // --- Tests --------------------------------------------------------------
 
 test(
-  "buildBulkDeletePlan #1: returns { mode: 'collaborator-all-mine', count, ownIds, foreignIds: [] } when collaborator's selection contains only their own marks",
+  "buildBulkDeletePlan #1: returns { mode: 'direct', count, ownIds, foreignIds: [] } when collaborator's selection contains only their own marks",
   { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
   async () => {
     const { buildBulkDeletePlan } = await import(TARGET_URL);
@@ -75,7 +75,8 @@ test(
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
     });
-    strictEqual(result.mode, 'collaborator-all-mine');
+    // RULED 2026-09-28 owner: open editing + lock — no confirm modes; own-only deletes go straight through.
+    strictEqual(result.mode, 'direct');
     strictEqual(result.count, 3);
     deepStrictEqual([...result.ownIds].sort(), ['a1', 'a2', 'a3']);
     deepStrictEqual(result.foreignIds, []);
@@ -83,7 +84,7 @@ test(
 );
 
 test(
-  "buildBulkDeletePlan #2: returns { mode: 'owner-cross-author', count, ownIds, foreignIds, byAuthor: { [authorId]: { name, count } } } when owner's selection has at least one foreign-author mark",
+  "buildBulkDeletePlan #2: returns { mode: 'direct', count, ownIds, foreignIds, byAuthor: { [authorId]: { name, count } } } when owner's selection has at least one foreign-author mark (breakdown is informational)",
   { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
   async () => {
     const { buildBulkDeletePlan } = await import(TARGET_URL);
@@ -100,7 +101,8 @@ test(
       viewerId: OWNER_ID,
       documentOwnerId: OWNER_ID,
     });
-    strictEqual(result.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — cross-author deletes are direct (no modal); byAuthor stays as info.
+    strictEqual(result.mode, 'direct');
     strictEqual(result.count, 5);
     deepStrictEqual([...result.ownIds].sort(), ['a1', 'a2']);
     deepStrictEqual([...result.foreignIds].sort(), ['a3', 'a4', 'a5']);
@@ -113,7 +115,7 @@ test(
 );
 
 test(
-  "buildBulkDeletePlan #3: returns { mode: 'collaborator-all-mine', count, ownIds, foreignIds: [] } even if annotations array contains foreign marks the viewer cannot select (defensive: foreign IDs filtered out before plan-building)",
+  "buildBulkDeletePlan #3: returns { mode: 'direct', count, ownIds, foreignIds: [] } when the page also holds foreign marks that were not in the candidate set (only candidates are planned)",
   { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
   async () => {
     const { buildBulkDeletePlan } = await import(TARGET_URL);
@@ -136,7 +138,8 @@ test(
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
     });
-    strictEqual(result.mode, 'collaborator-all-mine');
+    // RULED 2026-09-28 owner: open editing + lock — the old 'collaborator-all-mine' mode is now 'direct'.
+    strictEqual(result.mode, 'direct');
     strictEqual(result.count, 2);
     deepStrictEqual([...result.ownIds].sort(), ['a1', 'a2']);
     deepStrictEqual(result.foreignIds, []);
@@ -144,7 +147,7 @@ test(
 );
 
 test(
-  "buildBulkDeletePlan #3b: collaborator deleting another author's selected callout gets a cross-author confirmation plan",
+  "buildBulkDeletePlan #3b: collaborator deleting another author's selected callout deletes it directly; a user-locked one is a no-op",
   { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
   async () => {
     const { buildBulkDeletePlan } = await import(TARGET_URL);
@@ -155,14 +158,27 @@ test(
       viewerId: COLLAB_ID,
       documentOwnerId: OWNER_ID,
     });
-    strictEqual(result.mode, 'collaborator-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — no cross-author confirmation; the foreign callout deletes directly.
+    strictEqual(result.mode, 'direct');
     deepStrictEqual(result.ownIds, []);
     deepStrictEqual(result.foreignIds, ['foreign-callout']);
+    // RULED 2026-09-28 owner: open editing + lock — a user-locked foreign callout is refused (no-op) instead.
+    const locked = makeAnno('locked-callout', OWNER_ID, 'OwnerName');
+    locked.data.lockedBy = OWNER_ID;
+    const lockedResult = buildBulkDeletePlan({
+      candidateIds: ['locked-callout'],
+      annotations: [locked],
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    });
+    strictEqual(lockedResult.mode, 'no-op');
+    strictEqual(lockedResult.count, 0);
+    deepStrictEqual(lockedResult.lockedIds, ['locked-callout']);
   },
 );
 
 test(
-  "buildBulkDeletePlan #4: returns { mode: 'owner-own-only' } when owner's selection contains only owner's own marks (NO modal — fall through to single-delete path)",
+  "buildBulkDeletePlan #4: returns { mode: 'direct' } when owner's selection contains only owner's own marks (NO modal)",
   { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
   async () => {
     const { buildBulkDeletePlan } = await import(TARGET_URL);
@@ -176,7 +192,8 @@ test(
       viewerId: OWNER_ID,
       documentOwnerId: OWNER_ID,
     });
-    strictEqual(result.mode, 'owner-own-only');
+    // RULED 2026-09-28 owner: open editing + lock — the old 'owner-own-only' mode is now 'direct'.
+    strictEqual(result.mode, 'direct');
     strictEqual(result.count, 2);
     deepStrictEqual([...result.ownIds].sort(), ['a1', 'a2']);
     deepStrictEqual(result.foreignIds, []);
@@ -211,7 +228,8 @@ test(
       viewerId: OWNER_ID,
       documentOwnerId: OWNER_ID,
     });
-    strictEqual(result.mode, 'owner-cross-author');
+    // RULED 2026-09-28 owner: open editing + lock — the old 'owner-cross-author' mode is now 'direct'; the breakdown is still built.
+    strictEqual(result.mode, 'direct');
     strictEqual(result.byAuthor[ALICE_ID].name, 'Alice');
     strictEqual(result.byAuthor[ALICE_ID].count, 1);
     strictEqual(result.byAuthor[BOB_ID].name, 'Bob', 'lastEditorName fallback applied when authorName missing');

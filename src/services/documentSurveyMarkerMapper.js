@@ -55,6 +55,15 @@ export function buildSurveyMarkerRow({
       ...(annotation.annotationData || {}),
       regionId,
       scope,
+      // Owner ruling 2026-09-28 (open editing + lock): the mirror row carries
+      // the marker's author, its user lock and whether it has a box on the
+      // PDF, so the proposed server lock trigger (supabase/proposed/
+      // 20260928_w54_mark_lock_open_editing.sql, NOT applied) can read them. A cut
+      // survey item has no page / box: page_number / bounds above are only
+      // placeholders for the NOT NULL columns, `unplaced` says so.
+      authorId: annotation.userId ?? annotation.annotationData?.userId ?? null,
+      lockedBy: typeof annotation.lockedBy === 'string' && annotation.lockedBy ? annotation.lockedBy : null,
+      unplaced: !(annotation.pageNumber && annotation.bounds),
     },
   };
 }
@@ -66,10 +75,16 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
     : {};
   const regionId = annotationData.regionId ?? null;
 
+  // A cut survey item (owner ruling 2026-09-28) keeps its row with
+  // placeholder page / bounds; `unplaced` means "not on the page".
+  const unplaced = annotationData.unplaced === true;
   return {
     annotationId: row.annotation_id,
-    pageNumber: row.page_number,
-    bounds: row.bounds,
+    pageNumber: unplaced ? null : row.page_number,
+    bounds: unplaced ? null : row.bounds,
+    ...(typeof annotationData.lockedBy === 'string' && annotationData.lockedBy
+      ? { lockedBy: annotationData.lockedBy }
+      : {}),
     categoryId: row.category_id,
     moduleId: row.module_id,
     regionId,
@@ -89,7 +104,9 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
     version: row.version,
     supabaseId: row.id,
     lastSyncedAt: row.updated_at,
-    userId: row.user_id,
+    // The author is the creator stamp the row carries (user_id is whoever
+    // synced the row last, which under open editing can be anyone).
+    userId: annotationData.authorId ?? row.user_id,
     lastModifiedBy: row.last_modified_by,
     annotationData,
     visibilityScope: annotationData.scope || (

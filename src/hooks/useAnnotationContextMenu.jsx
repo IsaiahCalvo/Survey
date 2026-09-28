@@ -29,11 +29,11 @@ import {
   DESKTOP_RIGHT_RAIL_WIDTH,
   getPageViewportBounds,
 } from '../utils/floatingUiGeometry.js';
-// Locked permissions model 2026-07-17 — the shape Delete items route through
-// PDFViewer's bulk-delete planner (confirm modal for cross-author deletes)
-// and the Cut items are restricted to marks the viewer authored (or owner
-// mode). Same single source of truth as click hit-test / marquee / planner.
-import { canDelete, canModify } from '../lib/collab/permissionScope.js';
+// RULED 2026-09-28 owner: open editing + lock. Cut / Delete take ANY mark
+// (own or someone else's) with no confirmation; a user-locked mark greys them
+// out and the menu offers Lock / Unlock (its author or the document owner).
+// Same single source of truth as click hit-test / marquee / planner.
+import { canModify, canToggleLock, isUserLocked } from '../lib/collab/permissionScope.js';
 import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 
 export function useAnnotationContextMenu() {
@@ -172,12 +172,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // (mobileMode falsy) keeps its exact prior styling — demo ref
     // mobile-expo-go/src/styles.ts:856-902.
     mobileMode = false,
-    // Locked permissions model 2026-07-17 — bulk-delete planner bridge
-    // (PDFViewer's requestBulkDeleteRef). When provided, the shape Delete
-    // items route through it so cross-author deletes ALWAYS get the
-    // collaborator-cross-author confirm modal (parity with keyboard Delete /
-    // useSVGInteraction.deleteSelected). Optional: legacy mounts without it
-    // fall back to the direct splice for the viewer's OWN marks only.
+    // RULED 2026-09-28 owner: open editing + lock: bulk-delete planner bridge (PDFViewer's
+    // requestBulkDeleteRef). Deletes go straight through (no confirmation) and
+    // get one History row; user-locked marks are left out. Optional: mounts
+    // without it fall back to the direct splice.
     requestBulkDelete = null,
     // Ownership inputs for the delete/cut partition below. Optional — when
     // either is missing (boot window) the legacy permissive behavior applies.
@@ -196,22 +194,38 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     duplicateFamilySelection = null,
     familyClipboard = null,
     pasteFamilyAt = null,
+    // Owner ruling 2026-09-28 — Lock / Unlock on every object menu:
+    // toggleLockSelection(pageNumber, { indices, calloutIds, markerIds }, lock)
+    // and a Survey Marker record lookup by id.
+    toggleLockSelection = null,
+    resolveSurveyMarker = null,
   } = actions;
 
-  // Own-mark check (author or document owner; boot window is permissive to
-  // match canSelectAnnotationByIndex / deleteSelected in useSVGInteraction).
+  // May this mark be cut / deleted? RULED 2026-09-28 owner: open editing +
+  // lock — any mark that is not user-locked (the boot window stays
+  // permissive for unlocked marks, matching canSelectAnnotationByIndex /
+  // deleteSelected in useSVGInteraction).
   const canModifyObj = (obj) => {
     if (!obj) return false;
+    if (isUserLocked(obj)) return false;
     if (!viewerId || !documentOwnerId) return true;
     return canModify({ annotation: obj, viewerId, documentOwnerId });
   };
-  // Foreign-mark deletability: only through the planner's confirm modal, and
-  // only when the object carries the stable id the planner is keyed by.
-  const canPlanForeignDelete = (obj) => {
-    if (!obj || typeof requestBulkDelete !== 'function') return false;
-    if (!viewerId || !documentOwnerId) return false;
-    if (obj.id == null) return false;
-    return canDelete({ annotation: obj, viewerId, documentOwnerId });
+  // Lock / Unlock item for a set of members [{ obj, marker? }]. Every
+  // member locked -> "Unlock"; otherwise "Lock" (locks the rest). Greyed out
+  // when the viewer may toggle none of them (author / document owner only).
+  const lockItemFor = (members, selection) => {
+    const list = (members || []).filter((m) => m && m.obj);
+    if (list.length === 0 || typeof toggleLockSelection !== 'function') return null;
+    const allLocked = list.every((m) => isUserLocked(m.obj));
+    const mayToggle = (m) => canToggleLock(m.marker
+      ? { surveyMarker: m.obj, viewerId, documentOwnerId }
+      : { annotation: m.obj, viewerId, documentOwnerId });
+    const target = allLocked ? list : list.filter((m) => !isUserLocked(m.obj));
+    const enabled = Boolean(viewerId) && target.some(mayToggle);
+    return allLocked
+      ? { label: 'Unlock', key: 'unlock', lock: false, enabled, selection }
+      : { label: 'Lock', key: 'lock', lock: true, enabled, selection };
   };
 
   return createPortal((() => {
@@ -263,6 +277,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const duplicateItem = (selection) => item('Duplicate', 'duplicate', () => {
       if (typeof duplicateFamilySelection === 'function') duplicateFamilySelection(ctx.pageNumber, selection);
     }, typeof duplicateFamilySelection === 'function');
+    // Owner ruling 2026-09-28: Lock / Unlock, right under Delete.
+    const lockMenuItems = (members, selection) => {
+      const spec = lockItemFor(members, selection);
+      if (!spec) return [];
+      return [item(spec.label, spec.key, () => {
+        toggleLockSelection(ctx.pageNumber, spec.selection, spec.lock);
+      }, spec.enabled)];
+    };
 
     let items;
     if (ctx.kind === 'textMarkup') {
@@ -300,13 +322,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // the SAME handleReorderAnnotation the shape menu uses (one undo step,
       // same Figma-style overlap-aware forward/backward).
       //
-      // Resolve the right-clicked callout's projected group object
-      // (data.type === 'callout', id at data.id) so the Cut item can run the
-      // SAME own-marks-only gate as the shape menu's Cut (locked model
-      // 2026-07-17: Cut = Copy + immediate delete with no confirmation
-      // surface, so it must never touch a foreign-author mark; to remove
-      // another user's callout: Copy + Delete — Delete confirms via the
-      // cross-author modal).
+      // Resolve the right-clicked callout's projected group object (data.type
+      // === 'callout', id at data.id) so Cut / Delete / Lock read its user lock
+      // (RULED 2026-09-28 owner: open editing + lock: any editor cuts or deletes it unless it is locked).
       const findCalloutObj = () => {
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects || !ctx.calloutId) return null;
@@ -324,16 +342,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         if (index < 0) return;
         handleReorderAnnotation(ctx.pageNumber, index, direction);
       };
+      const calloutObj = findCalloutObj();
+      const calloutEditable = !calloutObj || canModifyObj(calloutObj);
       items = [
         item('Cut', 'cut', () => {
           if (!ctx.calloutId) return;
           const obj = findCalloutObj();
-          // Own-mark gate (boot window permissive inside canModifyObj —
-          // matches the shape Cut item). A callout that can't be resolved
-          // from the page projection is a no-op rather than an ungated cut.
+          // Lock gate (boot window permissive inside canModifyObj - matches
+          // the shape Cut item). A callout that can't be resolved from the
+          // page projection is a no-op rather than an ungated cut.
           if (!obj || !canModifyObj(obj)) return;
           handleCutCallout(ctx.calloutId);
-        }),
+        }, calloutEditable),
         item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
         // UX: paste lands at the right-click point (same cursor-anchored rule
         // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
@@ -351,7 +371,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.calloutId && typeof window.__onDeleteSelectedCallouts === 'function') {
             window.__onDeleteSelectedCallouts([ctx.calloutId]);
           }
-        }),
+        }, calloutEditable),
+        ...lockMenuItems(calloutObj ? [{ obj: calloutObj }] : [], { calloutIds: [ctx.calloutId] }),
         sep(),
         // w52: same z-order block as the shape menu, same handler.
         item('Bring to front', 'bringToFront', () => reorderCallout('front')),
@@ -369,6 +390,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
       ];
     } else if (ctx.kind === 'annotation') {
+      const menuObj = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.[ctx.annotationIndex] || null;
+      const menuObjEditable = !menuObj || canModifyObj(menuObj);
       items = [
         // UX: Cut = Copy + Delete. Stashes a deep clone of the shape on
         // the clipboard with mode='cut' (so doPasteAnnotation clears the
@@ -384,10 +407,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
           const obj = page.objects[ctx.annotationIndex];
           if (!obj) return;
-          // Locked model 2026-07-17: Cut = Copy + immediate delete with no
-          // confirmation surface, so it stays OWN-marks-only (cross-author
-          // deletes must always confirm via the modal). To remove another
-          // user's shape: Copy + Delete (Delete routes through the modal).
+          // RULED 2026-09-28 owner: open editing + lock: Cut takes anyone's mark with no confirmation;
+          // a user-locked mark stays (canModifyObj).
           if (!canModifyObj(obj)) return;
           setClipboardAnnotation({
             object: deepClone(obj),
@@ -407,7 +428,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             annotationIndex: null,
             tick: Date.now(),
           });
-        }),
+        }, menuObjEditable),
         // UX: Copy stashes the targeted shape's Fabric JSON + source page
         // on the clipboardAnnotation state (see ~line 11058). No visual
         // change — Paste is where the user sees the result. Matches the
@@ -430,14 +451,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ indices: [ctx.annotationIndex] }),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
-        // Locked model 2026-07-17: when PDFViewer provides the bulk-delete
-        // planner bridge, the delete routes through it — cross-author deletes
-        // ALWAYS confirm via the collaborator-cross-author modal, own deletes
-        // follow the planner's existing modes (owner-own-only direct-fires) —
-        // exactly like pressing Delete with the shape selected. The splice
-        // itself is unchanged and runs as the planner's runDelete. Legacy
-        // fallback (no planner, or id-less object): direct splice for OWN
-        // marks only; foreign marks are never direct-fired.
+        // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
+        // (via the planner when present, for the History row); a user-locked mark
+        // stays.
         // After the save, broadcast a "clear selection on this page" command
         // via pendingSvgSelection (annotationIndex: null) so the selection
         // doesn't stick to the shape that slides into the deleted index
@@ -448,8 +464,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
           const obj = page.objects[ctx.annotationIndex];
           if (!obj) return;
-          const own = canModifyObj(obj);
-          if (!own && !canPlanForeignDelete(obj)) return;
+          // Open editing: any mark that is not user-locked.
+          if (!canModifyObj(obj)) return;
           const runDelete = () => {
             const next = deepClone(page);
             next.objects.splice(ctx.annotationIndex, 1);
@@ -473,10 +489,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             });
             return;
           }
-          // Own-only fallback (planner absent or id-less own mark) — the
-          // guard above already rejected foreign marks on this path.
+          // Direct fallback (planner absent or id-less mark).
           runDelete();
-        }),
+        }, menuObjEditable),
+        ...lockMenuItems(menuObj ? [{ obj: menuObj }] : [], { indices: [ctx.annotationIndex] }),
         sep(),
         // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
         // (flat block after Delete, above Group). Handler resolves each
@@ -518,16 +534,21 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         if (typeof handleReorderFamily !== 'function') return;
         handleReorderFamily(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId], direction });
       };
+      const markerRecord = typeof resolveSurveyMarker === 'function' ? resolveSurveyMarker(ctx.surveyMarkerId) : null;
+      const markerEditable = !markerRecord || !isUserLocked(markerRecord);
       items = [
-        // D (w53): no Cut for a Survey Marker — it is a survey item with its
-        // Excel row and answers; Cut + Paste would make a blank new item.
-        // Copy, then Delete (which keeps the trash / History / Excel rules).
+        // Owner ruling 2026-09-28: Cut picks up the survey item's PLACEMENT
+        // only - the item, its Excel row and its answers stay (the survey
+        // panel shows it "Not on page"); Paste puts the SAME item back.
+        item('Cut', 'cut', () => copyFamilySelection?.(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId] }, 'cut'),
+          markerEditable && typeof copyFamilySelection === 'function'),
         item('Copy', 'copy', () => copyFamilySelection?.(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId] }, 'copy')),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ markerIds: [ctx.surveyMarkerId] }),
         item('Delete', 'delete', () => {
           if (typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers([ctx.surveyMarkerId]);
-        }),
+        }, markerEditable),
+        ...lockMenuItems(markerRecord ? [{ obj: markerRecord, marker: true }] : [], { markerIds: [ctx.surveyMarkerId] }),
         sep(),
         item('Bring to front', 'bringToFront', () => reorderMarker('front')),
         item('Bring forward', 'bringForward', () => reorderMarker('forward')),
@@ -624,6 +645,21 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         calloutIds: Array.from(selectedCalloutIds || []),
         markerIds: ctx.groupMarkerIds || [],
       };
+      // Owner ruling 2026-09-28: the group's members for Lock / Unlock, and
+      // whether any of them can still be cut / deleted (locked ones stay).
+      const groupPage = annotationsByPageRef.current?.[ctx.pageNumber];
+      const groupCalloutIdSet = new Set(familySelection.calloutIds.map(String));
+      const groupMembers = [
+        ...sortedAsc.map((idx) => ({ obj: groupPage?.objects?.[idx] })),
+        ...(groupPage?.objects || [])
+          .filter((o) => o?.data?.type === 'callout' && groupCalloutIdSet.has(String(o?.data?.id)))
+          .map((obj) => ({ obj })),
+        ...familySelection.markerIds.map((id) => ({
+          obj: typeof resolveSurveyMarker === 'function' ? resolveSurveyMarker(id) : null,
+          marker: true,
+        })),
+      ].filter((m) => m.obj);
+      const groupHasEditable = groupMembers.length === 0 || groupMembers.some((m) => !isUserLocked(m.obj));
       items = [
         item('Cut', 'cut', () => {
           if (typeof copyFamilySelection === 'function') {
@@ -632,12 +668,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           }
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
-          // Locked model 2026-07-17: Cut deletes with no confirmation
-          // surface, so it operates on the viewer's OWN members only —
-          // foreign-author members stay on the page untouched (cross-author
-          // deletes must always confirm via the Delete item's modal path).
-          // Clipboard matches the splice exactly (own members only) so
-          // Paste never duplicates a shape that was left on the page.
+          // RULED 2026-09-28 owner: open editing + lock: Cut takes every member that is not user-locked;
+          // the clipboard matches the splice exactly, so Paste never duplicates a
+          // member that stayed on the page.
           const ownAsc = sortedAsc.filter((idx) => canModifyObj(page.objects[idx]));
           if (ownAsc.length === 0) return;
           const copy = copyAll(ownAsc);
@@ -658,7 +691,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             annotationIndex: null,
             tick: Date.now(),
           });
-        }),
+        }, groupHasEditable),
         item('Copy', 'copy', () => {
           if (typeof copyFamilySelection === 'function') {
             copyFamilySelection(ctx.pageNumber, familySelection, 'copy');
@@ -671,10 +704,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem(familySelection),
-        // Locked model 2026-07-17: multi-select Delete routes through the
-        // bulk-delete planner (parity with keyboard Delete on the same
-        // selection) — cross-author members ALWAYS confirm via the modal.
-        // Deletable set = own members + foreign members that can be planned
+        // RULED 2026-09-28 owner: open editing + lock: multi-select Delete removes every member
+        // that is not user-locked, with no confirmation (via the planner for the
+        // History row).
         // (planner present + stable id); anything else stays on the page.
         item('Delete', 'delete', () => {
           // w53: the selection's Survey Markers are deleted with the marks
@@ -685,7 +717,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           const deletable = page?.objects ? sortedDesc
             .map((idx) => ({ idx, obj: page.objects[idx] }))
-            .filter(({ obj }) => canModifyObj(obj) || canPlanForeignDelete(obj)) : [];
+            .filter(({ obj }) => canModifyObj(obj)) : [];
           if (deletable.length === 0) {
             if (markerIds.length > 0 && typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers(markerIds);
             return;
@@ -719,11 +751,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             });
             return;
           }
-          // Own-only fallback: with no planner (or an all-id-less set) the
-          // deletable filter above admitted own/boot marks only, so a direct
-          // fire can never touch a foreign-author mark.
+          // Direct fallback: no planner (or an all-id-less set).
           runDelete();
-        }),
+        }, groupHasEditable),
+        ...lockMenuItems(groupMembers, familySelection),
         sep(),
         item('Bring to front', 'bringToFront', () => {
           reorderAll('front');

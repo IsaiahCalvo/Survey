@@ -101,10 +101,18 @@ test('editor-created highlighter stamps its creator for partial-erase admission'
   assert.equal(object.paperInkGeometry, 'v1');
   assert.equal(getAnnotationAuthorId(object), creatorId);
   assert.equal(canModify({ annotation: object, viewerId: creatorId, documentOwnerId: ownerId }), true);
+  // RULED 2026-09-28 owner: open editing + lock — any editor may erase it once the owner is known.
   assert.equal(canModify({
     annotation: object,
     viewerId: '00000000-0000-0000-0000-000000000002',
     documentOwnerId: ownerId,
+  }), true);
+  // RULED 2026-09-28 owner: open editing + lock — the creator stamp still decides admission while the owner is unknown.
+  assert.equal(canModify({ annotation: object, viewerId: creatorId, documentOwnerId: null }), true);
+  assert.equal(canModify({
+    annotation: object,
+    viewerId: '00000000-0000-0000-0000-000000000002',
+    documentOwnerId: null,
   }), false);
 });
 
