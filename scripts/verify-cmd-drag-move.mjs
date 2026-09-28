@@ -432,6 +432,35 @@ const run = async () => {
     assert.ok(Math.abs(c2.cx - c0.cx) < 1 && Math.abs(c2.cy - c0.cy) < 1, 'one Undo returns the callout');
     ok('callout: grabbers hide, Cmd-drag moves it whole, one Undo step');
 
+    // w57 merge: arrow-key nudge, then Cmd-drag straight away (inside the
+    // nudge's idle window), on the counter (the rectangle is locked by now). The drag must start from the nudged spot, and
+    // the nudge and the drag stay two separate Undo steps.
+    await page.keyboard.press('Escape'); await settle(page);
+    const n0 = await mark(counter.index);
+    await marquee(n0.box.x - 12, n0.box.y - 12, n0.box.x + n0.box.w + 12, n0.box.y + n0.box.h + 12);
+    for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight'); // 3 x 10 page units
+    await settle(page, 60);
+    const n1 = await mark(counter.index);
+    const nudgePx = n1.box.cx - n0.box.cx;
+    assert.ok(nudgePx > 3, `nudge preview moved it (${nudgePx.toFixed(1)} px)`);
+    await page.keyboard.down(MOD); await settle(page, 60);
+    const zn = (await layerState(page)).zone;
+    assert.ok(zn && Math.abs(zn.cx - n1.box.cx) < 1.5, 'move zone sits on the nudged spot');
+    await page.mouse.move(n1.box.cx, n1.box.cy); await page.mouse.down();
+    await page.mouse.move(n1.box.cx, n1.box.cy + 30, { steps: 8 });
+    await page.mouse.up(); await settle(page, 500);
+    await page.keyboard.up(MOD); await settle(page, 150);
+    const n2 = await mark(counter.index);
+    assert.ok(Math.abs(n2.box.cx - n1.box.cx) < 1 && Math.abs(n2.box.cy - n1.box.cy - 30) < 3,
+      `Cmd-drag after a nudge keeps the nudge and adds the drag: (${(n2.box.cx - n0.box.cx).toFixed(1)}, ${(n2.box.cy - n0.box.cy).toFixed(1)})`);
+    await page.keyboard.press(`${MOD}+z`); await settle(page, 500);
+    const n3 = await mark(counter.index);
+    assert.ok(Math.abs(n3.box.cx - n1.box.cx) < 1 && Math.abs(n3.box.cy - n1.box.cy) < 1, 'first Undo takes back only the drag');
+    await page.keyboard.press(`${MOD}+z`); await settle(page, 500);
+    const n4 = await mark(counter.index);
+    assert.ok(Math.abs(n4.box.cx - n0.box.cx) < 1 && Math.abs(n4.box.cy - n0.box.cy) < 1, 'second Undo takes back the nudge');
+    ok('nudge then Cmd-drag: the drag starts from the nudged spot; two Undo steps');
+
     // Cmd shortcuts still work while the key is held (it is only watched).
     await page.keyboard.press('Escape'); await settle(page);
     const cc = await mark(counter.index);
