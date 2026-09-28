@@ -222,6 +222,11 @@ export default function RevisionsPanel({
   // check it and stop, so they can never replace the newer click's highlight.
   const activityClickSeqRef = useRef(0);
   const spotlightTimeoutRef = useRef(null);
+  // w55: the document the panel is showing NOW. Every async read checks it
+  // before writing state, so a slow read for the previous document can never
+  // land in (or restore into) the next one.
+  const currentDocumentIdRef = useRef(documentId);
+  currentDocumentIdRef.current = documentId;
   const refreshTimeoutRef = useRef(null);
   const spotlightFrameRef = useRef(null);
   const activeSpotlightRef = useRef(null);
@@ -271,16 +276,26 @@ export default function RevisionsPanel({
     if (!silent) setLoading(true);
     setErr(null);
     try {
-      const newestShown = full ? null : historyEventsRef.current.find((row) => !row?.__local) || historyEventsRef.current[0];
-      const since = newestShown
-        ? new Date(Math.max(0, historyRowTimeMs(newestShown) - HISTORY_REFRESH_OVERLAP_MS)).toISOString()
+      // Incremental: rows that ARRIVED on the server since the newest arrival
+      // shown (created_at is set by the server), minus a small overlap.
+      const serverRows = historyEventsRef.current.filter((row) => !row?.__local && row?.created_at);
+      const newestArrival = full ? 0 : serverRows.reduce((max, row) => Math.max(max, Date.parse(row.created_at) || 0), 0);
+      const arrivedSince = newestArrival
+        ? new Date(Math.max(0, newestArrival - HISTORY_REFRESH_OVERLAP_MS)).toISOString()
         : null;
       const [rows, events] = await Promise.all([
         NAMED_VERSIONS_ENABLED ? listRevisions(documentId) : Promise.resolve([]),
-        listDocumentHistoryEvents(documentId, since ? { limit: 200, since } : { limit: HISTORY_PAGE_SIZE }),
+        listDocumentHistoryEvents(documentId, arrivedSince ? { limit: 200, arrivedSince } : { limit: HISTORY_PAGE_SIZE }),
       ]);
+      if (currentDocumentIdRef.current !== documentId) return; // switched documents meanwhile
       setRevisions(rows);
-      if (since) {
+      if (arrivedSince && Array.isArray(events) && events.length >= 200) {
+        // Too much arrived to merge safely (a gap could open): start over.
+        hasLoadedRef.current = false;
+        await refresh({ full: true, silent: true });
+        return;
+      }
+      if (arrivedSince) {
         setHistoryEvents((prev) => mergeHistoryRowLists(prev, events));
       } else {
         setHistoryEvents(events);
@@ -288,7 +303,7 @@ export default function RevisionsPanel({
       }
       hasLoadedRef.current = true;
     } catch (e) {
-      setErr(e.message);
+      if (currentDocumentIdRef.current === documentId) setErr(e.message);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -298,14 +313,18 @@ export default function RevisionsPanel({
   // items older than the first page stay reachable (and restorable).
   const loadOlder = useCallback(async () => {
     if (!documentId || loadingOlder) return;
-    const oldest = historyEventsRef.current[historyEventsRef.current.length - 1];
+    // The cursor is the oldest SERVER row (device-only rows have no server id).
+    const serverRows = historyEventsRef.current.filter((row) => !row?.__local);
+    const oldest = serverRows[serverRows.length - 1] || historyEventsRef.current[historyEventsRef.current.length - 1];
     if (!oldest) return;
     setLoadingOlder(true);
     try {
       const older = await listDocumentHistoryEvents(documentId, {
         limit: HISTORY_PAGE_SIZE,
         before: oldest.occurred_at || oldest.created_at,
+        beforeId: oldest.__local ? null : oldest.id,
       });
+      if (currentDocumentIdRef.current !== documentId) return;
       setHistoryEvents((prev) => mergeHistoryRowLists(prev, older));
       setHasOlder(Array.isArray(older) && older.length >= HISTORY_PAGE_SIZE);
     } catch (e) {
@@ -322,7 +341,13 @@ export default function RevisionsPanel({
     setHasOlder(false);
     setSelectedEventId(null);
     setSelectedEventDetail(null);
+    setCascadePending(null);
+    setStatusMsg(null);
   }, [documentId]);
+
+  // Row focus styles live in the injected sheet; inject it up front so the
+  // keyboard focus is visible from the first Tab, not only after a highlight.
+  useEffect(() => { ensureSpotlightStyle(); }, []);
 
   useEffect(() => {
     // Opening (or reopening) the panel reads the newest page from scratch.
@@ -338,7 +363,9 @@ export default function RevisionsPanel({
         setHistoryEvents((prev) => {
           const list = Array.isArray(prev) ? prev : [];
           return [
-            row,
+            // Not yet a server copy: flagged so it never becomes a paging or
+            // refresh cursor (its times come from this device's clock).
+            { ...row, __local: true },
             ...list.filter((entry) => entry?.client_event_id !== row.client_event_id),
           ].sort((a, b) => new Date(b.occurred_at || b.created_at || 0) - new Date(a.occurred_at || a.created_at || 0));
         });
@@ -822,7 +849,9 @@ export default function RevisionsPanel({
     let contextRestored = false;
     if (typeof onRestoreHistoryContext === 'function') {
       try {
-        contextRestored = Boolean(onRestoreHistoryContext(event));
+        // w55: only an explicit `true` means a survey context was applied;
+        // ordinary marks return null (nothing to restore, nothing to announce).
+        contextRestored = onRestoreHistoryContext(event) === true;
       } catch (_err) {
         // Context restore is best-effort; the page jump below must still run.
       }
@@ -889,6 +918,7 @@ export default function RevisionsPanel({
         // — ask the server before saying there is no restore record.
         if (!spaceEvent) {
           spaceEvent = await findDeletedSpaceHistoryEvent(documentId, spaceId);
+          if (currentDocumentIdRef.current !== documentId) return;
           if (spaceEvent) cascade = 'cascade';
         }
         if (cascade === 'cascade' && spaceEvent) {
@@ -963,6 +993,7 @@ export default function RevisionsPanel({
 
   // w55: Up/Down step through the rows (and show each one on the page).
   const handleRowKeyDown = (e, activate) => {
+    if (e.target !== e.currentTarget) return; // keys on the Restore button are its own
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       activate();
@@ -1047,7 +1078,7 @@ export default function RevisionsPanel({
             // payload.restoreAction — the viewer's restore dispatch already
             // handles them (isBulkAnnotationDeleteEvent branch). Offer Restore
             // for both shapes.
-            const canRestoreDeleted = canRestore && Boolean(onRestoreHistoryActivity) && Boolean(
+            const canRestoreDeleted = isDeleted && canRestore && Boolean(onRestoreHistoryActivity) && Boolean(
               event.payload?.restoreAction
               || (event.event_type === 'annotations_bulk_deleted'
                 && Array.isArray(event.payload?.objects)
@@ -1069,7 +1100,7 @@ export default function RevisionsPanel({
                   // SELECTED row"), no border, no gold.
                   padding: '9px 10px',
                   borderTop: '1px solid var(--border)',
-                  background: isSelected ? 'var(--surface-3)' : 'transparent',
+                  background: isSelected ? 'var(--surface-3)' : undefined,
                   cursor: 'pointer',
                   outline: 'none',
                   contentVisibility: 'auto',

@@ -12198,7 +12198,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (yjsAccessRevoked || documentLocked) return false;
     if (!pdfFile?.id) return true; // a local-only file belongs to this person
     if (documentOwnerId && user?.id && documentOwnerId === user.id) return true;
-    return yjsDocRole === 'owner' || yjsDocRole === 'editor';
+    // Same fail-open rule as the rest of the app (documentRole.js): only a
+    // resolved 'viewer' role is read-only; an unresolved role keeps Restore.
+    return yjsDocRole !== 'viewer';
   }, [documentLocked, documentOwnerId, pdfFile?.id, user?.id, yjsAccessRevoked, yjsDocRole]);
   const canRestoreFromHistoryRef = useRef(canRestoreFromHistory);
   canRestoreFromHistoryRef.current = canRestoreFromHistory;
@@ -27400,7 +27402,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // moves the reader into its context, and only ever INTO it: clicking a
     // History row never closes the reader's survey panel or leaves their
     // space. An ordinary mark leaves the reader's setup alone.
-    if (!isSurveyScopedHistoryEvent(event)) return true;
+    if (!isSurveyScopedHistoryEvent(event)) return null;
     const resolved = resolveHistoryEntryContext(event, { spaces: spacesRef.current || [] });
     if (!resolved) return false;
 

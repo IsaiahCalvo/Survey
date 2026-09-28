@@ -7,17 +7,26 @@
 -- marker from History - but the KAL-313 guards list only five delete types:
 --   * the nightly w36 prune (prod runs prune_document_history_events(200, 14,
 --     50000, 60)) deletes them after 60 days, so their Restore disappears;
---   * the no-delete trigger lets a document owner delete them directly.
+--   * the no-delete trigger lets a document owner delete them directly (and,
+--     being SECURITY DEFINER, it never actually blocked ANY trash type).
 -- This adds the sixth type to both, to the (unscheduled) trash sweep and to
 -- the trash-view index, so every delete row is treated the same.
 -- Idempotent. Rows already pruned are gone (not recoverable here).
 
 BEGIN;
 
+-- SECURITY INVOKER (was DEFINER): inside a SECURITY DEFINER function
+-- current_user is the function OWNER (postgres), so the service-role check
+-- below was always true and the guard never fired - an owner could delete any
+-- trash row through the owner DELETE policy. As INVOKER, current_user is the
+-- caller: 'authenticated' is refused; service_role/postgres still pass, and a
+-- document's ON DELETE CASCADE runs as the table owner, so deleting a whole
+-- document still works (verify once on a scratch database before prod).
 CREATE OR REPLACE FUNCTION public.prevent_delete_annotation_trash_events()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF current_setting('role', TRUE) = 'service_role'
@@ -47,6 +56,7 @@ CREATE OR REPLACE FUNCTION public.sweep_annotation_trash_events(p_days INT DEFAU
 RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp  -- keep 20260702010000's advisor hardening
 AS $$
 DECLARE
     v_cutoff TIMESTAMPTZ;

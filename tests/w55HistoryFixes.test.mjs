@@ -125,6 +125,22 @@ test('History panel source guards (defects 3, 10, 14, 15, 16, 18)', () => {
   assert.doesNotMatch(panel, /infinite/, 'highlight never pulses forever');
   assert.doesNotMatch(panel, /'stroke', 'var\(--accent\)'/, 'no gold highlight');
   assert.doesNotMatch(panel, /solid var\(--accent\)'/, 'no gold selected box');
-  assert.match(panel, /canRestore && Boolean\(onRestoreHistoryActivity\)/, 'Restore only for people who can edit');
+  assert.match(panel, /isDeleted && canRestore && Boolean\(onRestoreHistoryActivity\)/, 'Restore only on deleted items, only for people who can edit');
   assert.match(panel, /clickSeq !== activityClickSeqRef\.current/, 'stale retries stop');
+});
+
+test('review fixes: trash rows survive the device-cache cap; stale reads are dropped', () => {
+  const now = Date.parse('2026-09-28T12:00:00Z');
+  const rows = Array.from({ length: 150 }, (_, i) => ({
+    document_id: 'a', client_event_id: `e${i}`, event_type: 'local_annotation_history_added',
+    occurred_at: new Date(now - i * 1000).toISOString(),
+  }));
+  rows.push({ document_id: 'a', client_event_id: 'old-delete', event_type: 'annotation_deleted', occurred_at: new Date(now - 500000).toISOString() });
+  const capped = capLocalHistoryStore({ a: rows }, { now });
+  assert.ok(capped.a.some((row) => row.client_event_id === 'old-delete'), 'a delete row is never pushed out by activity');
+  const panel = readFileSync(new URL('../src/components/revisions/RevisionsPanel.jsx', import.meta.url), 'utf8');
+  assert.ok((panel.match(/currentDocumentIdRef\.current !== documentId/g) || []).length >= 3, 'refresh, Load older and the cascade lookup drop results for a document no longer shown');
+  const svc = readFileSync(new URL('../src/services/documentHistoryService.js', import.meta.url), 'utf8');
+  assert.match(svc, /created_at: _clientCreatedAt/, 'created_at is left to the server');
+  assert.match(svc, /gte\('created_at'/, 'refresh asks by arrival time');
 });

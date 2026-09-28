@@ -218,16 +218,19 @@ function rowTimeMs(row) {
   return Date.parse(row?.occurred_at || row?.created_at || 0) || 0;
 }
 
+// Trash rows (a deleted item's restore data) are capped separately from
+// activity, so a burst of ordinary edits never pushes out the only copy of a
+// delete row whose upload has not gone through yet.
 export function capLocalHistoryStore(store, { now = Date.now() } = {}) {
   const cutoff = now - LOCAL_HISTORY_MAX_AGE_MS;
+  const newestFirst = (a, b) => rowTimeMs(b) - rowTimeMs(a);
   const entries = Object.entries(store || {})
-    .map(([documentId, rows]) => [
-      documentId,
-      (Array.isArray(rows) ? rows : [])
-        .filter((row) => row && rowTimeMs(row) >= cutoff)
-        .sort((a, b) => rowTimeMs(b) - rowTimeMs(a))
-        .slice(0, LOCAL_HISTORY_MAX_ROWS),
-    ])
+    .map(([documentId, rows]) => {
+      const fresh = (Array.isArray(rows) ? rows : []).filter((row) => row && rowTimeMs(row) >= cutoff);
+      const trash = fresh.filter((row) => isTrashHistoryEvent(row)).sort(newestFirst).slice(0, LOCAL_HISTORY_MAX_ROWS);
+      const activity = fresh.filter((row) => !isTrashHistoryEvent(row)).sort(newestFirst).slice(0, LOCAL_HISTORY_MAX_ROWS);
+      return [documentId, [...trash, ...activity].sort(newestFirst)];
+    })
     .filter(([, rows]) => rows.length > 0)
     .sort((a, b) => rowTimeMs(b[1][0]) - rowTimeMs(a[1][0]))
     .slice(0, LOCAL_HISTORY_MAX_DOCUMENTS);
@@ -357,7 +360,11 @@ export async function recordDocumentHistoryEvent(row) {
   if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
   cacheLocalHistoryRow(row);
   if (!supabase) return { data: null, error: null };
-  const { id: _localId, __local: _localOnly, ...dbRow } = row;
+  // w55: created_at is left to the server (column default NOW()) so it is the
+  // time the row ARRIVED; the panel's refresh asks for rows by arrival time,
+  // which catches late uploads (offline work, retries, a slow clock) that an
+  // occurred_at filter would miss. occurred_at stays the time of the action.
+  const { id: _localId, __local: _localOnly, created_at: _clientCreatedAt, ...dbRow } = row;
   const { error } = await supabase
     .from('document_history_events')
     .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true });
@@ -433,18 +440,24 @@ const HISTORY_EVENT_COLUMNS = 'id, document_id, user_id, client_event_id, event_
 /**
  * List a document's History rows, newest first.
  *   limit   page size (1..500)
- *   before  ISO time: only rows older than this ("Load older" paging)
- *   since   ISO time: only rows at or after this (incremental refresh; the
- *           caller merges them into what it already shows)
+ *   before/beforeId  keyset cursor = the oldest SERVER row shown: only rows
+ *           older than it ("Load older" paging; ties on time are ordered by id)
+ *   arrivedSince  ISO time: only rows that reached the server at or after
+ *           this (created_at, set by the server) — the incremental refresh
  */
-export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT, before = null, since = null } = {}) {
+export async function listDocumentHistoryEvents(documentId, {
+  limit = HISTORY_EVENT_LIMIT,
+  before = null,
+  beforeId = null,
+  arrivedSince = null,
+} = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
   const beforeMs = before ? Date.parse(before) : NaN;
-  const sinceMs = since ? Date.parse(since) : NaN;
+  const arrivedMs = arrivedSince ? Date.parse(arrivedSince) : NaN;
   const localRows = listLocalHistoryRows(documentId).filter((row) => {
     const at = rowTimeMs(row);
-    if (Number.isFinite(beforeMs) && !(at < beforeMs)) return false;
-    if (Number.isFinite(sinceMs) && !(at >= sinceMs)) return false;
+    if (Number.isFinite(beforeMs) && !(at <= beforeMs)) return false;
+    if (Number.isFinite(arrivedMs) && !(at >= arrivedMs)) return false;
     return true;
   });
   if (!supabase || !documentId) return mergeHistoryRows([], localRows, safeLimit);
@@ -452,10 +465,18 @@ export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EV
     .from('document_history_events')
     .select(HISTORY_EVENT_COLUMNS)
     .eq('document_id', documentId);
-  if (Number.isFinite(beforeMs)) query = query.lt('occurred_at', new Date(beforeMs).toISOString());
-  if (Number.isFinite(sinceMs)) query = query.gte('occurred_at', new Date(sinceMs).toISOString());
+  if (Number.isFinite(beforeMs)) {
+    const at = new Date(beforeMs).toISOString();
+    // Keyset paging on (occurred_at, id): rows that share the cut-off time
+    // (a bulk delete writes several rows with one timestamp) are never skipped.
+    query = beforeId
+      ? query.or(`occurred_at.lt."${at}",and(occurred_at.eq."${at}",id.lt.${beforeId})`)
+      : query.lte('occurred_at', at);
+  }
+  if (Number.isFinite(arrivedMs)) query = query.gte('created_at', new Date(arrivedMs).toISOString());
   const { data, error } = await query
     .order('occurred_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(safeLimit);
   if (error) {
     if (isMissingHistoryTableError(error)) return mergeHistoryRows([], localRows, safeLimit);
