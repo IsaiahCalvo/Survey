@@ -414,6 +414,14 @@ test('only brand-new marks are previewed; edits, deletions and forged or floodin
   await settle(20);
   assert.deepEqual(previewIds(b), [], 'malformed and delete-only messages show nothing');
   // A flood from one writer is capped per second.
+  // RULED 2026-09-28 (flake fix, assertion unchanged): the receive cap is a
+  // per-second window on Date.now(); under full-suite load the 120 forged
+  // messages could straddle a second boundary and get 2 windows' worth
+  // through. Pin the clock so the flood lands inside one window.
+  const realNow = Date.now;
+  const frozenNow = realNow();
+  Date.now = () => frozenNow;
+  try {
   for (let index = 0; index < 120; index += 1) {
     const flood = new Y.Doc();
     writeAnnotationMark(flood, `flood-${index}`, 1, rect(`flood-${index}`));
@@ -421,6 +429,9 @@ test('only brand-new marks are previewed; edits, deletions and forged or floodin
     forge({ v: 1, w: 'flooder', s: index + 1, u: Buffer.from(update).toString('base64') });
   }
   await settle(40);
+  } finally {
+    Date.now = realNow;
+  }
   const shown = previewIds(b).length;
   assert.ok(shown > 0 && shown <= 50, `a flood is capped per writer (${shown} shown)`);
   await a.destroy();
