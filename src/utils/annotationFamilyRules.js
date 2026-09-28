@@ -188,8 +188,10 @@ export function zOrderDirectionForKey(event) {
 export const NUDGE_STEP = 1;
 export const NUDGE_STEP_LARGE = 10;
 // A nudge burst commits this long after its last press (taps and auto-repeat
-// in quick succession are one move, one Undo step).
-export const NUDGE_IDLE_COMMIT_MS = 600;
+// in quick succession are one move, one Undo step, one saved row). w57: 400 ms
+// — longer than the OS auto-repeat gap and a quick re-tap, short enough that
+// other screens get the move right after you pause.
+export const NUDGE_IDLE_COMMIT_MS = 400;
 
 const ARROW_DELTAS = {
   ArrowLeft: [-1, 0],
@@ -235,6 +237,46 @@ export function isTypingTarget(element) {
     if (element.closest(ARROW_OWNING_WIDGETS)) return true;
   }
   return false;
+}
+
+/**
+ * True while a popover that sits over the page is open — the right-click
+ * menu. Arrow keys then belong to it: the mark behind it must not move where
+ * you can't see it (Acrobat / Drawboard never move a mark with a menu open).
+ */
+export function isArrowOwningPopoverOpen(doc) {
+  if (!doc || typeof doc.querySelector !== 'function') return false;
+  return doc.querySelector('[data-annotation-context-menu]') != null;
+}
+
+/**
+ * The render-time preview a nudge burst paints (no store write per press —
+ * the same translate a drag paints). One selected shape previews like a
+ * single drag (numeric id: its handles follow); anything else previews like a
+ * group drag (the frame, callouts and Survey Markers follow). `nudge: true`
+ * lets the commit clear only its own preview.
+ * @param {{ startObjects: object, calloutOriginals: object, markerBoxes?: object,
+ *           singleShape?: boolean, dx: number, dy: number }} burst
+ */
+export function nudgePreviewTransform(burst) {
+  const indexes = Object.keys(burst?.startObjects || {}).map(Number);
+  const calloutIds = Object.keys(burst?.calloutOriginals || {});
+  const markerIds = Object.keys(burst?.markerBoxes || {});
+  const dx = Number(burst?.dx) || 0;
+  const dy = Number(burst?.dy) || 0;
+  if (burst?.singleShape && indexes.length === 1 && calloutIds.length === 0 && markerIds.length === 0) {
+    return { id: indexes[0], dx, dy, nudge: true };
+  }
+  return {
+    id: 'group',
+    dx,
+    dy,
+    affectedIds: new Set(indexes),
+    affectedCalloutIds: calloutIds.length > 0 ? new Set(calloutIds) : null,
+    affectedMarkerIds: markerIds.length > 0 ? new Set(markerIds) : null,
+    markerDelta: markerIds.length > 0 ? { dx, dy } : null,
+    nudge: true,
+  };
 }
 
 const ARROW_OWNING_WIDGETS = [
