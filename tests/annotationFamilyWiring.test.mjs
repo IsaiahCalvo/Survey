@@ -54,8 +54,15 @@ test('bug 5: multi-selection z-order hotkeys restack the whole selection', () =>
   assert.match(layer, /\(isBracketRight \|\| isBracketLeft\) && countPageSelectedCallouts\(\) > 0\) return;/);
 });
 
-test('bug 6: arrow-key nudge previews with skip and commits once with normal', () => {
-  assert.match(hook, /action: 'nudge-preview',\s*checkpointPolicy: 'skip'/);
+test('bug 6: arrow-key nudge previews live and commits once with normal', () => {
+  // RULED w57 (2026-09-28, owner task "a burst of auto-repeat must not write
+  // one DB row per keypress"): the w52 assertion here pinned a 'nudge-preview'
+  // save with checkpointPolicy 'skip' on EVERY press — that save is exactly
+  // the per-press Supabase row w57 removes (~30 rows per second of a held
+  // key, measured live). The preview is now the drag's render-time translate
+  // (no save), so the assertion is inverted deliberately, not to pass.
+  assert.doesNotMatch(hook, /action: 'nudge-preview'/);
+  assert.match(hook, /setVisualTransform\(nudgePreviewTransform\(burst\)\);/);
   assert.match(hook, /action: 'nudge',\s*checkpointPolicy: 'normal'/);
   assert.match(hook, /latest\.onUpdateCalloutLive\(calloutId, nudgeCalloutPatch\(/);
   assert.match(hook, /latest\.onUpdateCallout\(calloutId, \{\}\)/);
@@ -75,4 +82,24 @@ test('bug 6: arrow-key nudge previews with skip and commits once with normal', (
   assert.match(layer, /keyboardNudgeEnabled: editingAnnotationIndex == null && !editingCalloutId/);
   // Survey Markers get the same nudge through their own bounds update
   assert.match(layer, /onUpdateSurveyMarkerBounds\?\.\(pageNumber, burst\.annotationId, \{/);
+});
+
+test('w57: any other input saves a running nudge burst first, synchronously', () => {
+  // family nudge (hook) and lone Survey Marker nudge (layer)
+  assert.match(hook, /const onPointerDown = \(\) => \{\s*if \(nudgeBurstRef\.current\) commitNudgeBurst\(\{ sync: true \}\);/);
+  assert.match(hook, /if \(nudgeBurstRef\.current && !isArrowKey\(e\.key\) && e\.key !== 'Shift'\) commitNudgeBurst\(\{ sync: true \}\);/);
+  // callouts' frames rendered first, then ONE normal save (one undo step)
+  assert.match(hook, /if \(calloutEntries\.length > 0\) flushSync\(writeCalloutPoses\);\s*flushSync\(\(\) => \{\s*clearPreview\(\);\s*saveShapesAndMarkers\(\);\s*closeCalloutSteps\(\);/);
+  assert.match(layer, /if \(sync\) flushSync\(run\);/);
+  assert.match(layer, /if \(surveyMarkerNudgeRef\.current\) commitSurveyMarkerNudge\(\{ sync: true \}\);/);
+  assert.match(layer, /commitSurveyMarkerNudge\(\{ sync: true \}\);\s*\}\s*return;/);
+  // Undo / Redo (the viewer's key handler runs before the layers') and the
+  // lone-marker Delete save a running burst first
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /flushPendingNudges\(\);\s*if \(isRedoCombo\) \{\s*handleRedoRef\.current\?\.\(\);/);
+  assert.match(layer, /flushPendingNudges\(\);\s*deleteSelectedSurveyMarker\(\);/);
+  assert.ok(count(hook, 'registerPendingNudgeFlush(') >= 1 && count(layer, 'registerPendingNudgeFlush(') >= 1);
+  // the open right-click menu owns the arrows in both paths
+  assert.match(hook, /if \(isArrowOwningPopoverOpen\(document\)\) return;/);
+  assert.match(layer, /if \(isArrowOwningPopoverOpen\(document\)\) return;/);
 });

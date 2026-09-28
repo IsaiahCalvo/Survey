@@ -9,6 +9,7 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
@@ -111,6 +112,10 @@ import {
   nudgeCalloutPatch,
   buildNudgedPage,
   getNudgeBoxes,
+  nudgePreviewTransform,
+  isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  registerPendingNudgeFlush,
   NUDGE_IDLE_COMMIT_MS,
 } from '../utils/annotationFamilyRules.js';
 // w53 (2026-09-28) — Survey Markers join the family on the canvas: picked by
@@ -254,15 +259,14 @@ export function useSVGInteraction({
   // the saved markers this page shows and lets the user pick (the layer
   // applies the same visibility / space rules it draws with).
   // selectedSurveyMarkerIds: Set<string> (the layer owns it);
-  // onSelectedSurveyMarkerIdsChange(Set). onSurveyMarkerLiveMove({ ids, dx,
-  // dy } | null) paints a nudge preview. Moves commit through
+  // onSelectedSurveyMarkerIdsChange(Set). A group drag or nudge previews
+  // them through visualTransform.affectedMarkerIds. Moves commit through
   // onSaveAnnotations(…, { surveyMarkerFamily: { move } }) so marks and
   // markers are one save and ONE undo step. Absent → markers never join
   // (legacy mounts unchanged).
   getSurveyMarkerMembers = null,
   selectedSurveyMarkerIds = null,
   onSelectedSurveyMarkerIdsChange = null,
-  onSurveyMarkerLiveMove = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -667,18 +671,33 @@ export function useSVGInteraction({
   // w52 (2026-09-28) — arrow-key nudge for the current selection
   // ---------------------------------------------------------------------------
   // UX: with any marks selected on this page (shapes, ink, counters, lines,
-  // callouts — the whole family), each arrow press moves the selection one
-  // page unit; Shift moves ten (Figma / Illustrator / Drawboard convention).
-  // A burst of presses — holding a key or tapping it repeatedly — is ONE undo
-  // step: every press saves a 'skip' preview frame (no history), and the
-  // burst commits once with checkpointPolicy 'normal' NUDGE_IDLE_COMMIT_MS
-  // after the last press (or on blur / selection change) — the same
-  // preview-then-commit contract a drag uses. Locked marks (text markup,
-  // imported highlights, movement-locked marks) stay put, exactly like a drag.
-  // Never hijacks keys when: nothing movable is selected on this page (arrow
-  // keys keep scrolling / turning pages), focus is in an input / text area /
-  // contentEditable editor, a Cmd/Ctrl/Alt chord is held, the document is
-  // read-only, or a pointer gesture is in progress.
+  // callouts, Survey Markers — the whole family), each arrow press moves the
+  // selection one page unit; Shift moves ten (Acrobat / Drawboard / Figma
+  // convention; page units, so the step is the same at every zoom).
+  //
+  // w57 (2026-09-28): a burst of presses — holding a key (auto-repeat) or
+  // tapping it — is shown exactly like a drag: a render-time translate
+  // (setVisualTransform, flagged `nudge`) with NO store write per press, and
+  // ONE save + one undo step NUDGE_IDLE_COMMIT_MS after the last press (or on
+  // blur / selection change / teardown). Before w57 every press saved a 'skip'
+  // preview frame, i.e. one Supabase row per auto-repeat tick (~30 rows per
+  // second of a held key). Other screens get the move from that one save via
+  // the live overlay, the same moment they get a drag.
+  //
+  // Because the store holds the burst-start pose until the commit, any other
+  // input first ends the burst: a pointerdown anywhere or any non-arrow key
+  // commits it synchronously (flushSync) before this layer's own handlers and
+  // every listener registered after it see that input, so a click, drag,
+  // Delete or Copy acts on the nudged positions. The viewer's Undo / Redo key
+  // handler runs earlier, so it calls flushPendingNudges() itself.
+  //
+  // Locked marks (text markup, imported highlights, movement-locked and
+  // user-locked marks) stay put, exactly like a drag. Never hijacks keys when:
+  // nothing movable is selected on this page (arrow keys keep scrolling /
+  // turning pages), focus is in an input / text area / contentEditable editor
+  // or a widget that owns arrow keys, the right-click menu is open, a
+  // Cmd/Ctrl/Alt chord is held, the document is read-only, or a pointer
+  // gesture is in progress.
   const nudgeLatestRef = useRef({});
   nudgeLatestRef.current = {
     annotations,
@@ -694,56 +713,101 @@ export function useSVGInteraction({
     isCalloutSelectable,
     getSurveyMarkerMembers,
     selectedSurveyMarkerIds,
-    onSurveyMarkerLiveMove,
   };
   const nudgeBurstRef = useRef(null);
 
-  const commitNudgeBurst = useCallback(() => {
+  const commitNudgeBurst = useCallback(({ sync = false } = {}) => {
     const burst = nudgeBurstRef.current;
     if (!burst) return;
     nudgeBurstRef.current = null;
     if (burst.timer) clearTimeout(burst.timer);
-    if (!burst.framed) return;
-    const latest = nudgeLatestRef.current;
-    const hasShapes = Object.keys(burst.startObjects).length > 0;
-    // w53: selected Survey Markers ride the same step.
-    const markerIds = Object.keys(burst.markerBoxes || {});
-    const markerFamily = markerIds.length > 0 && (burst.dx !== 0 || burst.dy !== 0)
-      ? { surveyMarkerFamily: { move: { ids: markerIds, dx: burst.dx, dy: burst.dy } } }
-      : null;
-    if ((hasShapes || markerFamily) && typeof latest.onSaveAnnotations === 'function') {
+    // The preview ends in the same render as the save (no flash back).
+    const clearPreview = () => setVisualTransform((prev) => (prev?.nudge ? null : prev));
+    if (burst.dx === 0 && burst.dy === 0) {
+      clearPreview();
+      return;
+    }
+    const calloutEntries = Object.entries(burst.calloutOriginals);
+    // Callout poses go through the callout live path ('skip' frames: the
+    // first one opens the page's gesture baseline).
+    const writeCalloutPoses = () => {
+      const latest = nudgeLatestRef.current;
+      if (typeof latest.onUpdateCalloutLive !== 'function') return;
+      for (const [calloutId, original] of calloutEntries) {
+        latest.onUpdateCalloutLive(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, latest.pageWidth || 0, latest.pageHeight || 0));
+      }
+    };
+    // Shapes (and w53 Survey Markers, same save) with checkpointPolicy
+    // 'normal': one undo step — covering the callout frames above when they
+    // were written first.
+    const saveShapesAndMarkers = () => {
+      const latest = nudgeLatestRef.current;
+      if (typeof latest.onSaveAnnotations !== 'function') return;
+      const hasShapes = Object.keys(burst.startObjects).length > 0;
+      const markerIds = Object.keys(burst.markerBoxes || {});
+      const markerFamily = markerIds.length > 0
+        ? { surveyMarkerFamily: { move: { ids: markerIds, dx: burst.dx, dy: burst.dy } } }
+        : null;
+      if (!hasShapes && !markerFamily) return;
       const merged = hasShapes
         ? buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy)
         : null;
-      // Commit the final pose; with nothing left to write (every nudged mark
-      // deleted meanwhile) still close the preview gesture with the page as
-      // it is, so its 'skip' baseline never leaks into the next edit.
+      // Every nudged mark deleted meanwhile and no markers: nothing to save.
+      if (!merged && !markerFamily) return;
       latest.onSaveAnnotations(merged ? merged.annotations : latest.annotations, {
         source: 'object:modified',
         action: 'nudge',
         checkpointPolicy: 'normal',
         ...(markerFamily || {}),
       });
-    }
-    if (markerIds.length > 0) latest.onSurveyMarkerLiveMove?.(null);
-    // Callouts: the commit-only signal records the step against the burst's
-    // preview baseline (a no-op when the shape commit above already did).
-    if (typeof latest.onUpdateCallout === 'function') {
-      for (const calloutId of Object.keys(burst.calloutOriginals)) {
-        latest.onUpdateCallout(calloutId, {});
-      }
-    }
+    };
+    // The commit-only callout signal: records the step when no save above
+    // closed it already (a no-op otherwise).
+    const closeCalloutSteps = () => {
+      const latest = nudgeLatestRef.current;
+      if (typeof latest.onUpdateCallout !== 'function') return;
+      for (const [calloutId] of calloutEntries) latest.onUpdateCallout(calloutId, {});
+    };
     // A tilted group frame (persisted group rotation) rides along, as it
     // does for a group drag.
-    const sig = computeSelectionSig(latest.selectedIds, latest.selectedCalloutIds);
-    const persisted = persistedGroupTransformRef.current;
-    if (persisted && persisted.selectionSig === sig) {
-      setPersistedGroupTransform({
-        ...persisted,
-        dx: (persisted.dx || 0) + burst.dx,
-        dy: (persisted.dy || 0) + burst.dy,
+    const moveTiltedFrame = () => {
+      const latest = nudgeLatestRef.current;
+      const sig = computeSelectionSig(latest.selectedIds, latest.selectedCalloutIds);
+      const persisted = persistedGroupTransformRef.current;
+      if (persisted && persisted.selectionSig === sig) {
+        setPersistedGroupTransform({
+          ...persisted,
+          dx: (persisted.dx || 0) + burst.dx,
+          dy: (persisted.dy || 0) + burst.dy,
+        });
+      }
+    };
+    if (sync) {
+      // From a native listener or the idle timer: callouts first, RENDERED
+      // (flushSync) so the shape save is built on a page that already holds
+      // them — shapes + callouts + markers are then ONE undo step. The final
+      // render also lands before the input that ended the burst reaches the
+      // rest of the app, so its handlers read the moved marks.
+      if (calloutEntries.length > 0) flushSync(writeCalloutPoses);
+      flushSync(() => {
+        clearPreview();
+        saveShapesAndMarkers();
+        closeCalloutSteps();
+        moveTiltedFrame();
       });
+      return;
     }
+    // From an effect (selection change, teardown) no synchronous render is
+    // possible: the group-drag release order — correct positions, though a
+    // selection mixing shapes and callouts may take one undo step per part.
+    clearPreview();
+    saveShapesAndMarkers();
+    for (const [calloutId, original] of calloutEntries) {
+      const latest = nudgeLatestRef.current;
+      latest.onUpdateCalloutLive?.(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, latest.pageWidth || 0, latest.pageHeight || 0));
+      latest.onUpdateCallout?.(calloutId, {});
+    }
+    moveTiltedFrame();
   }, [computeSelectionSig]);
 
   // A selection change ends the burst (commits what already moved).
@@ -754,10 +818,20 @@ export function useSVGInteraction({
   useEffect(() => {
     if (!keyboardNudgeEnabled) return undefined;
 
+    // w57: the burst saves NUDGE_IDLE_COMMIT_MS after the last press — but
+    // never while an arrow key is still held (a slow "delay until repeat"
+    // setting leaves up to ~2 s before the first auto-repeat; one hold is one
+    // undo step). isNudgeKeyStillHeld stops trusting a key whose release
+    // never arrived.
     const scheduleIdleCommit = (burst) => {
       if (burst.timer) clearTimeout(burst.timer);
       burst.timer = setTimeout(() => {
-        if (nudgeBurstRef.current === burst) commitNudgeBurst();
+        if (nudgeBurstRef.current !== burst) return;
+        if (isNudgeKeyStillHeld(burst, Date.now())) {
+          scheduleIdleCommit(burst);
+          return;
+        }
+        commitNudgeBurst({ sync: true });
       }, NUDGE_IDLE_COMMIT_MS);
     };
 
@@ -808,10 +882,13 @@ export function useSVGInteraction({
         startObjects,
         calloutOriginals,
         markerBoxes,
+        // One selected shape and nothing else: preview it like a single drag
+        // (its handles follow); anything more previews like a group drag.
+        singleShape: (latest.selectedIds?.size || 0) === 1 && selectedCallouts.length === 0
+          && !(selectedMarkers?.size > 0),
         dx: 0,
         dy: 0,
         timer: null,
-        framed: false,
         keysDown: new Set(),
       };
     };
@@ -819,15 +896,16 @@ export function useSVGInteraction({
     const onKeyDown = (e) => {
       const delta = nudgeDeltaForKey(e);
       if (!delta) {
-        // Any other key (Cmd+Z, Delete, a tool key) ends the burst first, so
-        // Undo mid-burst undoes the nudge and is never overwritten by the
-        // next auto-repeat frame (review 2026-09-28).
-        if (nudgeBurstRef.current && !isArrowKey(e.key) && e.key !== 'Shift') commitNudgeBurst();
+        // Any other key (Cmd+Z, Delete, Cmd+C, a tool key) ends the burst
+        // first and renders it, so that key acts on the moved marks and Undo
+        // mid-burst undoes the nudge (review 2026-09-28).
+        if (nudgeBurstRef.current && !isArrowKey(e.key) && e.key !== 'Shift') commitNudgeBurst({ sync: true });
         return;
       }
       if (e.defaultPrevented) return;
       if (typeof document !== 'undefined') {
         if (isTypingTarget(document.activeElement)) return;
+        if (isArrowOwningPopoverOpen(document)) return;
         if (document.body?.getAttribute('data-readonly') === 'true') return;
       }
       if (dragStateRef.current?.active || marqueeStateRef.current || lassoStateRef.current) return;
@@ -840,6 +918,7 @@ export function useSVGInteraction({
       e.preventDefault();
       e.stopPropagation();
       burst.keysDown.add(e.key);
+      burst.lastKeyDownAt = Date.now();
       scheduleIdleCommit(burst);
 
       const latest = nudgeLatestRef.current;
@@ -854,50 +933,43 @@ export function useSVGInteraction({
       if (next.dx === burst.dx && next.dy === burst.dy) return; // pinned at the page edge
       burst.dx = next.dx;
       burst.dy = next.dy;
-
-      if (Object.keys(burst.startObjects).length > 0 && typeof latest.onSaveAnnotations === 'function') {
-        const merged = buildNudgedPage(latest.annotations, burst.startObjects, burst.dx, burst.dy);
-        if (merged) {
-          latest.onSaveAnnotations(merged.annotations, {
-            source: 'object:modified',
-            action: 'nudge-preview',
-            checkpointPolicy: 'skip',
-          });
-          burst.framed = true;
-        }
-      }
-      if (typeof latest.onUpdateCalloutLive === 'function') {
-        for (const [calloutId, original] of Object.entries(burst.calloutOriginals)) {
-          latest.onUpdateCalloutLive(calloutId, nudgeCalloutPatch(original, burst.dx, burst.dy, W, H));
-          burst.framed = true;
-        }
-      }
-      const markerIds = Object.keys(burst.markerBoxes || {});
-      if (markerIds.length > 0 && typeof latest.onSurveyMarkerLiveMove === 'function') {
-        latest.onSurveyMarkerLiveMove({ ids: markerIds, dx: burst.dx, dy: burst.dy });
-        burst.framed = true;
-      }
+      setVisualTransform(nudgePreviewTransform(burst));
     };
 
     // Releasing a key does NOT end the burst: tapping an arrow key several
     // times in a row is one move and one Undo step (verified live 2026-09-28 —
     // committing on every release made each tap its own step). The burst ends
-    // NUDGE_IDLE_COMMIT_MS after the last press, on blur, on a selection
-    // change, or when the layer unmounts.
+    // NUDGE_IDLE_COMMIT_MS after the last press, on any other key or a
+    // pointerdown, on blur, on a selection change, or when the layer unmounts.
     const onKeyUp = (e) => {
       const burst = nudgeBurstRef.current;
       if (!burst || !isArrowKey(e.key)) return;
       burst.keysDown.delete(e.key);
+      // the idle gap counts from the release
+      if (burst.keysDown.size === 0) scheduleIdleCommit(burst);
     };
-    const onBlur = () => commitNudgeBurst();
+    const onPointerDown = () => {
+      if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
+    };
+    // Deferred a microtask: a window blur can fire synchronously inside a
+    // React commit (focus moved by an effect), where flushSync must not run.
+    const onBlur = () => queueMicrotask(() => commitNudgeBurst({ sync: true }));
+    // Undo / Redo (PDFViewer's key handler runs before this layer's
+    // listeners) saves a running burst first.
+    const unregisterFlush = registerPendingNudgeFlush(() => {
+      if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
+    });
 
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('blur', onBlur);
+      unregisterFlush();
       commitNudgeBurst();
     };
   }, [keyboardNudgeEnabled, commitNudgeBurst]);

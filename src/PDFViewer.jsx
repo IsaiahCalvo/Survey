@@ -201,7 +201,7 @@ import {
   orderPastedFamily,
   planFamilyPaste,
 } from './utils/familyClipboard.js';
-import { clampNudgeDelta } from './utils/annotationFamilyRules.js';
+import { clampNudgeDelta, flushPendingNudges } from './utils/annotationFamilyRules.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -2978,6 +2978,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } else {
         e.stopPropagation();
       }
+      // w57: an arrow-key nudge still waiting to save lands first, so Undo
+      // takes back the nudge (this handler runs before the page layers').
+      flushPendingNudges();
       if (isRedoCombo) {
         handleRedoRef.current?.();
       } else {

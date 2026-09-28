@@ -22,6 +22,7 @@
  */
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
@@ -146,6 +147,10 @@ import {
   nudgeDeltaForKey,
   isArrowKey,
   isTypingTarget,
+  isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  registerPendingNudgeFlush,
+  flushPendingNudges,
   clampNudgeDelta,
   NUDGE_IDLE_COMMIT_MS,
   canMoveAnnotation,
@@ -648,7 +653,6 @@ const SVGAnnotationLayer = memo(({
       return new Set([annotationId]);
     });
   }, []);
-  const [surveyMarkerLiveMove, setSurveyMarkerLiveMove] = useState(null);
   const surveyMarkerMembersRef = useRef([]);
   const selectedSurveyMarkerIdsRef = useRef(selectedSurveyMarkerIds);
   selectedSurveyMarkerIdsRef.current = selectedSurveyMarkerIds;
@@ -750,7 +754,6 @@ const SVGAnnotationLayer = memo(({
     getSurveyMarkerMembers,
     selectedSurveyMarkerIds,
     onSelectedSurveyMarkerIdsChange: setSelectedSurveyMarkerIds,
-    onSurveyMarkerLiveMove: setSurveyMarkerLiveMove,
   });
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
@@ -3524,6 +3527,8 @@ const SVGAnnotationLayer = memo(({
 
       e.preventDefault();
       e.stopPropagation();
+      // w57: a nudge still waiting to save lands first (its own undo step).
+      flushPendingNudges();
       deleteSelectedSurveyMarker();
     };
 
@@ -3802,32 +3807,57 @@ const SVGAnnotationLayer = memo(({
 
   // UX: w52 (2026-09-28) — arrow-key nudge for a selected Survey Marker, the
   // same contract shapes and callouts get from useSVGInteraction: 1 page unit
-  // per press, Shift = 10, previewed live, committed as ONE update (one undo
-  // step) when the last arrow key is released or after a short idle. Never
-  // hijacks the keys while typing, on a read-only document, mid-drag, or when
+  // per press, Shift = 10, previewed live (local preview, no save per press),
+  // committed as ONE update (one undo step) after a short idle. w57: any other
+  // key or a pointerdown commits it first (rendered at once), so Undo, Delete
+  // or a click acts on the moved marker. Never hijacks the keys while typing,
+  // with the right-click menu open, on a read-only document, mid-drag, or when
   // no Survey Marker is selected on this page.
   const surveyMarkerNudgeRef = useRef(null);
-  const commitSurveyMarkerNudge = useCallback(() => {
+  const commitSurveyMarkerNudge = useCallback(({ sync = false } = {}) => {
     const burst = surveyMarkerNudgeRef.current;
     if (!burst) return;
     surveyMarkerNudgeRef.current = null;
     if (burst.timer) clearTimeout(burst.timer);
-    setSurveyMarkerPreviewBounds(null);
-    if (burst.dx === 0 && burst.dy === 0) return;
-    onUpdateSurveyMarkerBounds?.(pageNumber, burst.annotationId, {
-      ...burst.originalBounds,
-      x: burst.originalBounds.x + burst.dx,
-      y: burst.originalBounds.y + burst.dy,
-    }, { action: 'move' });
+    const run = () => {
+      setSurveyMarkerPreviewBounds(null);
+      if (burst.dx === 0 && burst.dy === 0) return;
+      onUpdateSurveyMarkerBounds?.(pageNumber, burst.annotationId, {
+        ...burst.originalBounds,
+        x: burst.originalBounds.x + burst.dx,
+        y: burst.originalBounds.y + burst.dy,
+      }, { action: 'move' });
+    };
+    if (sync) flushSync(run);
+    else run();
   }, [onUpdateSurveyMarkerBounds, pageNumber]);
 
   useEffect(() => {
     if (!isSelectTool || !selectedSurveyMarkerId) return undefined;
     if (selectedIds?.size > 0) return undefined;
+    // Same idle rule as the family nudge: never while an arrow is held.
+    const scheduleIdleCommit = (burst) => {
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = setTimeout(() => {
+        if (surveyMarkerNudgeRef.current !== burst) return;
+        if (isNudgeKeyStillHeld(burst, Date.now())) {
+          scheduleIdleCommit(burst);
+          return;
+        }
+        commitSurveyMarkerNudge({ sync: true });
+      }, NUDGE_IDLE_COMMIT_MS);
+    };
     const onKeyDown = (e) => {
       const delta = nudgeDeltaForKey(e);
-      if (!delta || e.defaultPrevented) return;
+      if (!delta) {
+        if (surveyMarkerNudgeRef.current && !isArrowKey(e.key) && e.key !== 'Shift') {
+          commitSurveyMarkerNudge({ sync: true });
+        }
+        return;
+      }
+      if (e.defaultPrevented) return;
       if (isTypingTarget(document.activeElement)) return;
+      if (isArrowOwningPopoverOpen(document)) return;
       if (document.body.getAttribute('data-readonly') === 'true') return;
       if (surveyMarkerDragRef.current) return;
       let burst = surveyMarkerNudgeRef.current;
@@ -3857,10 +3887,8 @@ const SVGAnnotationLayer = memo(({
       e.preventDefault();
       e.stopPropagation();
       burst.keysDown.add(e.key);
-      if (burst.timer) clearTimeout(burst.timer);
-      burst.timer = setTimeout(() => {
-        if (surveyMarkerNudgeRef.current === burst) commitSurveyMarkerNudge();
-      }, NUDGE_IDLE_COMMIT_MS);
+      burst.lastKeyDownAt = Date.now();
+      scheduleIdleCommit(burst);
       const b = burst.originalBounds;
       const next = clampNudgeDelta(
         [{ left: b.x, top: b.y, width: b.width, height: b.height }],
@@ -3883,14 +3911,28 @@ const SVGAnnotationLayer = memo(({
       const burst = surveyMarkerNudgeRef.current;
       if (!burst || !isArrowKey(e.key)) return;
       burst.keysDown.delete(e.key);
+      if (burst.keysDown.size === 0) scheduleIdleCommit(burst);
     };
+    const onPointerDown = () => {
+      if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
+    };
+    // A microtask later: a window blur can fire inside a React commit.
+    const onBlur = () => queueMicrotask(() => commitSurveyMarkerNudge({ sync: true }));
+    // Undo / Redo and the marker Delete key (their listeners run before this
+    // one) save a running burst first.
+    const unregisterFlush = registerPendingNudgeFlush(() => {
+      if (surveyMarkerNudgeRef.current) commitSurveyMarkerNudge({ sync: true });
+    });
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
-    window.addEventListener('blur', commitSurveyMarkerNudge);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
-      window.removeEventListener('blur', commitSurveyMarkerNudge);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('blur', onBlur);
+      unregisterFlush();
       commitSurveyMarkerNudge();
     };
   }, [isSelectTool, selectedSurveyMarkerId, selectedIds, surveyMarkerElements, normalizeSurveyMarkerBounds, commitSurveyMarkerNudge, width, height]);
@@ -3906,9 +3948,6 @@ const SVGAnnotationLayer = memo(({
     if (visualTransform?.id === 'group' && visualTransform.affectedMarkerIds?.has?.(String(annotationId))) {
       liveDx = visualTransform.markerDelta?.dx ?? visualTransform.dx ?? 0;
       liveDy = visualTransform.markerDelta?.dy ?? visualTransform.dy ?? 0;
-    } else if (surveyMarkerLiveMove?.ids?.includes?.(String(annotationId))) {
-      liveDx = surveyMarkerLiveMove.dx || 0;
-      liveDy = surveyMarkerLiveMove.dy || 0;
     }
     const isFamilySelected = selectedSurveyMarkerIds.has(annotationId);
     const preview = surveyMarkerPreviewBounds?.annotationId === annotationId
@@ -4022,7 +4061,6 @@ const SVGAnnotationLayer = memo(({
     selectedSurveyMarkerId,
     surveyMarkerPreviewBounds,
     visualTransform,
-    surveyMarkerLiveMove,
     selectedSurveyMarkerIds,
     modifierMoveActive,
   ]);
@@ -7866,14 +7904,13 @@ const SVGAnnotationLayer = memo(({
               }
             }
             // w53: selected Survey Markers widen the frame like any member
-            // (a nudge preview moves their box with them).
+            // (a drag or nudge preview moves the whole frame by translate).
             for (const entry of surveyMarkerElements) {
               const markerId = entry?.surveyMarker?.annotationId;
               if (!markerId || !selectedSurveyMarkerIds.has(markerId)) continue;
-              const nudge = surveyMarkerLiveMove?.ids?.includes?.(String(markerId)) ? surveyMarkerLiveMove : null;
               const bounds = boxWorldBounds({
-                left: entry.bbox.left + (nudge?.dx || 0),
-                top: entry.bbox.top + (nudge?.dy || 0),
+                left: entry.bbox.left,
+                top: entry.bbox.top,
                 width: entry.bbox.width,
                 height: entry.bbox.height,
                 angle: entry.bbox.angle || 0,

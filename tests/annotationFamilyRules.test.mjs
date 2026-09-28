@@ -20,6 +20,13 @@ import {
   translateAnnotationForMove,
   NUDGE_STEP,
   NUDGE_STEP_LARGE,
+  NUDGE_IDLE_COMMIT_MS,
+  nudgePreviewTransform,
+  isArrowOwningPopoverOpen,
+  isNudgeKeyStillHeld,
+  NUDGE_HELD_KEY_GRACE_MS,
+  registerPendingNudgeFlush,
+  flushPendingNudges,
 } from '../src/utils/annotationFamilyRules.js';
 
 const movementLocked = { type: 'rect', lockMovementX: true, lockMovementY: true };
@@ -254,4 +261,62 @@ test('buildNudgedPage finds a mark by id after it moved in the stack, skips dele
   assert.deepEqual(moved.indexes, [1]);
   assert.equal(moved.annotations.objects[1].left, 1);
   assert.equal(buildNudgedPage({ objects: [{ id: 'z', type: 'rect' }] }, { 0: start }, 1, 1), null);
+});
+
+// ---------------------------------------------------------------- w57
+test('w57: a burst commits ~400 ms after the last press (longer than the auto-repeat gap)', () => {
+  // OS auto-repeat fires every ~30-80 ms and a quick re-tap lands in
+  // ~150-250 ms; the commit waits past both, then saves once.
+  assert.ok(NUDGE_IDLE_COMMIT_MS >= 300 && NUDGE_IDLE_COMMIT_MS <= 500, String(NUDGE_IDLE_COMMIT_MS));
+});
+
+test('w57: nudge preview is a render-time translate (single shape like a drag, else like a group drag)', () => {
+  const single = nudgePreviewTransform({
+    startObjects: { 3: { id: 'a' } }, calloutOriginals: {}, markerBoxes: {}, singleShape: true, dx: 2, dy: -10,
+  });
+  assert.deepEqual(single, { id: 3, dx: 2, dy: -10, nudge: true });
+
+  const group = nudgePreviewTransform({
+    startObjects: { 0: {}, 2: {} }, calloutOriginals: { c1: {} }, markerBoxes: { m1: {} }, singleShape: false, dx: 1, dy: 0,
+  });
+  assert.equal(group.id, 'group');
+  assert.equal(group.nudge, true);
+  assert.deepEqual([...group.affectedIds], [0, 2]);
+  assert.deepEqual([...group.affectedCalloutIds], ['c1']);
+  assert.deepEqual([...group.affectedMarkerIds], ['m1']);
+  assert.deepEqual(group.markerDelta, { dx: 1, dy: 0 });
+
+  // one shape moving out of a bigger selection (the rest locked) still
+  // previews as a group, so the group frame follows
+  const partial = nudgePreviewTransform({ startObjects: { 1: {} }, calloutOriginals: {}, singleShape: false, dx: 0, dy: 1 });
+  assert.equal(partial.id, 'group');
+  assert.equal(partial.affectedCalloutIds, null);
+  assert.equal(partial.affectedMarkerIds, null);
+});
+
+test('w57: an open right-click menu owns the arrow keys', () => {
+  const docWith = (found) => ({ querySelector: (sel) => (sel === '[data-annotation-context-menu]' && found ? {} : null) });
+  assert.equal(isArrowOwningPopoverOpen(docWith(true)), true);
+  assert.equal(isArrowOwningPopoverOpen(docWith(false)), false);
+  assert.equal(isArrowOwningPopoverOpen(null), false);
+});
+
+test('w57: a held arrow key keeps the burst open; a lost release stops counting after the grace', () => {
+  const burst = { keysDown: new Set(['ArrowRight']), lastKeyDownAt: 1000 };
+  assert.equal(isNudgeKeyStillHeld(burst, 1000 + 1900), true, 'a slow OS repeat delay (~2 s) is still one hold');
+  assert.equal(isNudgeKeyStillHeld(burst, 1000 + NUDGE_HELD_KEY_GRACE_MS), false, 'a release the page never saw');
+  assert.equal(isNudgeKeyStillHeld({ keysDown: new Set(), lastKeyDownAt: 1000 }, 1001), false, 'released');
+  assert.equal(isNudgeKeyStillHeld(null, 0), false);
+});
+
+test('w57: flushPendingNudges runs every registered flush; unregister removes it; one failure never blocks', () => {
+  const ran = [];
+  const offA = registerPendingNudgeFlush(() => ran.push('a'));
+  const offB = registerPendingNudgeFlush(() => { throw new Error('boom'); });
+  const offC = registerPendingNudgeFlush(() => ran.push('c'));
+  flushPendingNudges();
+  assert.deepEqual(ran, ['a', 'c']);
+  offA(); offB(); offC();
+  flushPendingNudges();
+  assert.deepEqual(ran, ['a', 'c']);
 });
