@@ -187,6 +187,13 @@ import {
   translateSurveyMarkerRecord,
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
+import {
+  DUPLICATE_OFFSET_PAGE_UNITS,
+  buildFamilyClipboard,
+  orderPastedFamily,
+  planFamilyPaste,
+} from './utils/familyClipboard.js';
+import { clampNudgeDelta } from './utils/annotationFamilyRules.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -3911,6 +3918,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // 'cut' differs from 'copy' only in that the original is removed at Copy time,
   // matching the callout clipboard contract at ~line 11085.
   const [clipboardAnnotation, setClipboardAnnotation] = useState(null);
+  // w53: ONE clipboard for any family selection (marks + callouts + Survey
+  // Markers, see utils/familyClipboard.js). Like the two above, only one of
+  // the three is ever filled: the most recent Copy / Cut wins.
+  const [familyClipboard, setFamilyClipboard] = useState(null);
+  const familyClipboardRef = useRef(null);
+  familyClipboardRef.current = familyClipboard;
+  const pasteFamilyAtRef = useRef(null);
   // UX: shared paste-anchor memory for the "repeat paste at the same spot"
   // rule (Bluebeam/tldraw convention): the FIRST paste lands exactly at the
   // cursor / right-click point; pasting again WITHOUT moving the cursor
@@ -4674,6 +4688,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('cut');
+      setFamilyClipboard(null);
       // UX: one logical clipboard — most recent Copy/Cut wins (see
       // handleCopyCallout).
       setClipboardAnnotation(null);
@@ -4701,6 +4716,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // UX: one logical clipboard — the most recent Copy/Cut wins. Clear the
       // shape clipboard so Cmd+V pastes THIS callout, not a stale shape.
       setClipboardAnnotation(null);
+      setFamilyClipboard(null);
     }
   }, [callouts]);
 
@@ -25924,7 +25940,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // (form fields, system paste, etc). Resolves the target page from
           // the cursor via elementFromPoint → closest('.survey-pdfjs-page-div') →
           // data attribute lookup, matching the resolveAnnotationAt pattern.
-          if (key === 'v' && !e.shiftKey && (clipboardAnnotation || clipboardCallout)) {
+          if (key === 'v' && !e.shiftKey && (clipboardAnnotation || clipboardCallout || familyClipboardRef.current)) {
             // KAL-75 (G1): paste is a mutation — inert on locked/read-only docs.
             if (document.body.getAttribute('data-readonly') === 'true') return;
             const { x, y } = lastPointerPosRef.current;
@@ -25955,6 +25971,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Cmd+V and right-click Paste place callouts identically.
               // Only one clipboard is populated at a time (Copy/Cut clears
               // the other — see handleCopyAnnotation / handleCopyCallout).
+              // w53: a family clipboard (a whole mixed selection).
+              if (familyClipboardRef.current && pasteFamilyAtRef.current) {
+                e.preventDefault();
+                pasteFamilyAtRef.current(pageNumber, x, y);
+                return;
+              }
               if (clipboardAnnotation && pasteAnnotationAtRef.current) {
                 e.preventDefault();
                 pasteAnnotationAtRef.current(pageNumber, x, y);
@@ -28624,6 +28646,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callout clipboard so Cmd+V pastes THIS shape, not a stale callout.
     setClipboardCallout(null);
     setClipboardCalloutType(null);
+    setFamilyClipboard(null);
   }, []);
 
   // UX: Shared annotation Cut handler — called by the Cmd+X hotkey. Same
@@ -28658,6 +28681,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // handleCopyAnnotation).
     setClipboardCallout(null);
     setClipboardCalloutType(null);
+    setFamilyClipboard(null);
     const next = deepClone(page);
     next.objects.splice(annotationIndex, 1);
     handleSaveAnnotations(pageNumber, next, {
@@ -29568,8 +29592,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const changes = Array.isArray(action?.changes) ? action.changes : [];
     if (changes.length === 0) return [];
     const now = surveyMarkersRef.current || {};
-    const removals = changes.filter((change) => change.after == null && now[change.id]);
-    const rest = changes.filter((change) => change.after != null);
+    // Undo of a paste / Redo of a delete: a marker that never reached Excel
+    // (no export identity) is simply taken off again — no trash entry, no
+    // "deleted" History row, no Excel re-export for a step the user took back.
+    const quietRemoval = (change) => isUndoingRef.current && !now[change.id]?.excelSync;
+    const removals = changes.filter((change) => change.after == null && now[change.id] && !quietRemoval(change));
+    const rest = changes.filter((change) => change.after != null || (now[change.id] && quietRemoval(change)));
     const changedIds = [];
     if (rest.length > 0) {
       const restAction = { ...action, changes: rest };
@@ -29791,6 +29819,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Remove survey marker by annotationId or by bounds match
             const filtered = pageSurveyMarkers.filter(h => {
               if (h.annotationId === id) return false;
+              // w53: an entry that names its own marker is only ever removed
+              // by its id — a pasted copy lying within 5 units of another
+              // marker must never take that marker's box with it.
+              if (h.annotationId != null) return true;
               if (surveyMarker.bounds && h.x !== undefined && h.y !== undefined) {
                 return !boundsMatch(
                   { x: h.x, y: h.y, width: h.width, height: h.height },
@@ -30126,6 +30158,247 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handleDeleteSurveyMarker, handleSaveAnnotations]);
 
+  // ---------------------------------------------------------------------------
+  // w53 (2026-09-28) — one clipboard + Duplicate for any family selection
+  // ---------------------------------------------------------------------------
+  // UX (owner: "annotations are annotations"; Figma / Bluebeam): Copy, Cut,
+  // Paste and Duplicate work on the WHOLE selection — marks, callouts and
+  // Survey Markers together. A paste / duplicate is one save and one Undo
+  // step; every item is new (fresh id; a Survey Marker is a new survey item
+  // with the next default name of its category, an empty checklist and no
+  // Excel identity), takes the scope of where it lands (the open Survey
+  // module / region), keeps the stacking order it had among the copied items
+  // and lands on top. Survey Markers paste only into an open Survey module
+  // whose categories include theirs (by name); others are skipped with a note.
+  // Cut is own-marks-only (the locked Cut rule: it deletes with no confirm).
+  const getPageSurveyRegionIdRef = useRef(null);
+  const pageSizeFor = (pageNumber) => {
+    const size = pageSizesRef.current?.[pageNumber] || pageSizesRef.current?.[String(pageNumber)] || null;
+    return { width: Number(size?.width) || 612, height: Number(size?.height) || 792 };
+  };
+
+  const collectFamilySelection = useCallback((pageNumber, { indices = [], calloutIds = [], markerIds = [] } = {}) => {
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const objects = Array.isArray(page.objects) ? page.objects : [];
+    const calloutIdSet = new Set([...(calloutIds || [])].map(String));
+    const callouts = deriveCalloutsFromByPage({ [pageNumber]: page })
+      .filter((callout) => callout && calloutIdSet.has(String(callout.id)));
+    const markers = [...new Set((markerIds || []).map(String))]
+      .map((id) => ({ id, record: surveyMarkersRef.current?.[id] }))
+      .filter((m) => m.record?.bounds)
+      .map((m) => ({
+        ...m,
+        categoryName: selectedTemplate
+          ? getCategoryName(selectedTemplate, m.record.moduleId, m.record.categoryId)
+          : null,
+      }));
+    const pageMarkers = (newSurveyMarkersByPageRef.current?.[pageNumber] || [])
+      .filter((entry) => entry?.annotationId)
+      .map((entry) => ({ id: String(entry.annotationId), stack: entry.stack || null }));
+    return { page, objects, indices: [...(indices || [])], callouts, markers, pageMarkers };
+  }, [selectedTemplate]);
+
+  const commitFamilyPaste = useCallback((pageNumber, clipboard, dx, dy) => {
+    if (!clipboard?.items?.length || pageNumber == null) return false;
+    if (typeof document !== 'undefined'
+      && (document.body?.getAttribute('data-readonly') === 'true'
+        || document.body?.getAttribute('data-kal49-locked') === 'true')) return false;
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const baseObjects = Array.isArray(page.objects) ? page.objects : [];
+    const { width, height } = pageSizeFor(pageNumber);
+    // Text ranges cannot move apart: an exact duplicate of a text mark that
+    // is still on the page is dropped (same rule as the single paste).
+    const textKey = (obj) => (obj?.data?.type === 'text-markup'
+      ? JSON.stringify([obj.data.markupType, obj.fill, obj.opacity, obj.data.quads]) : null);
+    const existingText = new Set(baseObjects.map(textKey).filter(Boolean));
+    const items = clipboard.items.filter((item) => item.kind !== 'mark' || !existingText.has(textKey(item.object)));
+    if (items.length === 0) { showToast('That mark is already here', 'info'); return false; }
+    const template = selectedTemplate;
+    const landingModule = selectedModuleId && template
+      ? ((template.modules || template.spaces) || []).find((m) => m.id === selectedModuleId)
+      : null;
+    const pastedNames = [];
+    const resolveMarker = (item) => {
+      if (!landingModule) return null;
+      const categories = landingModule.categories || [];
+      const category = (item.sourceModuleId === landingModule.id
+        && categories.find((c) => c.id === item.entry?.categoryId))
+        || categories.find((c) => item.categoryName && c.name === item.categoryName);
+      if (!category) return null;
+      const siblings = Object.values(surveyMarkersRef.current || {})
+        .filter((m) => m?.categoryId === category.id)
+        .concat(pastedNames.filter((m) => m.categoryId === category.id));
+      const name = generateDefaultSurveyMarkerName(category.name, siblings);
+      pastedNames.push({ categoryId: category.id, name });
+      return {
+        moduleId: landingModule.id,
+        categoryId: category.id,
+        name,
+        regionId: getPageSurveyRegionIdRef.current?.(pageNumber) ?? null,
+      };
+    };
+    const plan = planFamilyPaste({ ...clipboard, items }, {
+      objects: baseObjects,
+      dx,
+      dy,
+      pageWidth: width,
+      pageHeight: height,
+      scope: currentPasteScope(pageNumber),
+      authorId: user?.id || null,
+      userId: user?.id || null,
+      resolveMarker,
+      pageNumber,
+    });
+    const withMarks = { ...page, objects: plan.objects };
+    const pageMap = { [pageNumber]: withMarks };
+    const projected = plan.callouts.length > 0
+      ? (applyCalloutListToByPage(pageMap, [...deriveCalloutsFromByPage(pageMap), ...plan.callouts], pageSizesRef.current || {})[pageNumber] || withMarks)
+      : withMarks;
+    const next = { ...projected, objects: orderPastedFamily(projected.objects, plan.pastedOrder, plan.markers) };
+    if (plan.newMarkIds.length === 0 && plan.callouts.length === 0 && plan.markers.length === 0) {
+      if (plan.skippedMarkers > 0) showToast('Survey Markers paste into an open Survey module that has their category.', 'info');
+      return false;
+    }
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'paste',
+      checkpointPolicy: 'normal',
+      ...(plan.markers.length > 0 ? { surveyMarkerFamily: { creates: plan.markers } } : {}),
+    });
+    // The pasted items become the selection (Cmd+D again duplicates them).
+    const newIds = new Set(plan.newMarkIds.filter(Boolean));
+    const annotationIndices = [];
+    next.objects.forEach((object, index) => {
+      if (newIds.has(String(object?.data?.id ?? ''))) annotationIndices.push(index);
+    });
+    setSelectedCalloutIds(new Set(plan.callouts.map((callout) => callout.id)));
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndices,
+      surveyMarkerIds: plan.markers.map((record) => record.id),
+      tick: Date.now(),
+    });
+    if (plan.skippedMarkers > 0) {
+      showToast('Survey Markers paste into an open Survey module that has their category.', 'info');
+    }
+    return true;
+  }, [handleSaveAnnotations, selectedTemplate, selectedModuleId, showToast, user?.id, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled]);
+
+  const familyEditsBlocked = () => (typeof document !== 'undefined'
+    && (document.body?.getAttribute('data-readonly') === 'true'
+      || document.body?.getAttribute('data-kal49-locked') === 'true'));
+  const copyFamilySelection = useCallback((pageNumber, selection, mode = 'copy') => {
+    if (mode === 'cut' && familyEditsBlocked()) return false;
+    const collected = collectFamilySelection(pageNumber, selection);
+    const viewerId = user?.id ?? null;
+    const own = (annotation) => !viewerId || !documentOwnerId
+      || canModify({ annotation, viewerId, documentOwnerId });
+    // Cut = Copy + delete with no confirmation, so it takes the viewer's OWN
+    // items only (locked 2026-07-17); the clipboard matches what is removed.
+    const indices = mode === 'cut'
+      ? collected.indices.filter((index) => own(collected.objects[index]))
+      : collected.indices;
+    const callouts = mode === 'cut' ? collected.callouts.filter(own) : collected.callouts;
+    // A Survey Marker is a survey item with its Excel row and answers: Cut
+    // would delete all of that and a paste makes a NEW blank item, so Cut
+    // leaves markers where they are (Copy, then Delete, removes them).
+    const markers = mode === 'cut' ? [] : collected.markers;
+    if (mode === 'cut' && collected.markers.length > 0) {
+      showToast('Survey Markers stay put on Cut — use Copy, then Delete.', 'info');
+    }
+    const { width, height } = pageSizeFor(pageNumber);
+    const clipboard = buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices,
+      callouts,
+      markers,
+      pageMarkers: collected.pageMarkers,
+      pageWidth: width,
+      pageHeight: height,
+    });
+    if (!clipboard) {
+      if (mode === 'cut' && (collected.indices.length || collected.callouts.length)) {
+        showToast('Only your own marks can be cut — use Copy, then Delete.', 'info');
+      }
+      return false;
+    }
+    setFamilyClipboard({ ...clipboard, mode });
+    setClipboardAnnotation(null);
+    setClipboardCallout(null);
+    setClipboardCalloutType(null);
+    if (mode !== 'cut') return true;
+    const removeIndexes = new Set(indices);
+    const removeCallouts = new Set(callouts.map((callout) => String(callout.id)));
+    const next = {
+      ...collected.page,
+      objects: collected.objects.filter((object, index) => !removeIndexes.has(index)
+        && !(object?.data?.type === 'callout' && removeCallouts.has(String(object?.data?.id)))),
+    };
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'cut',
+      checkpointPolicy: 'normal',
+      ...(markers.length > 0 ? { surveyMarkerFamily: { deletes: markers.map((m) => m.id) } } : {}),
+    });
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({ pageNumber, annotationIndex: null, tick: Date.now() });
+    return true;
+  }, [collectFamilySelection, documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
+
+  const pasteFamilyAt = useCallback((pageNumber, clientX, clientY) => {
+    const clipboard = familyClipboardRef.current;
+    if (!clipboard || pageNumber == null) return false;
+    const repeatOffset = resolvePasteRepeatCount(clientX, clientY) * PASTE_REPEAT_OFFSET_PAGE_UNITS;
+    // The group's top-left lands at the pointer (same page-unit transform as
+    // the shape paste); without a page under it, +20 like the shape paste.
+    let dx = 20;
+    let dy = 20;
+    try {
+      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const pageDiv = svgWrap?.closest?.('.survey-pdfjs-page-div') || null;
+      const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
+      const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
+      const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
+      const viewBoxH = vb && vb.length === 4 ? parseFloat(vb[3]) : NaN;
+      const rect = (pageDiv || svgEl)?.getBoundingClientRect?.() || null;
+      const w = pageDiv?.offsetWidth || rect?.width;
+      const h = pageDiv?.offsetHeight || rect?.height;
+      if (rect && w && h && viewBoxW && viewBoxH) {
+        dx = (clientX - rect.left) / (w / viewBoxW) - clipboard.origin.left;
+        dy = (clientY - rect.top) / (h / viewBoxH) - clipboard.origin.top;
+      }
+    } catch (_) { /* +20 fallback */ }
+    // The whole group stays on the page (it slides in from an edge).
+    const { width: pageW, height: pageH } = pageSizeFor(pageNumber);
+    const held = clipboard.extent
+      ? clampNudgeDelta([clipboard.extent], dx + repeatOffset, dy + repeatOffset, pageW, pageH)
+      : { dx: dx + repeatOffset, dy: dy + repeatOffset };
+    const done = commitFamilyPaste(pageNumber, clipboard, held.dx, held.dy);
+    if (done && clipboard.mode === 'cut') setFamilyClipboard(null);
+    return done;
+  }, [commitFamilyPaste, resolvePasteRepeatCount]);
+  pasteFamilyAtRef.current = pasteFamilyAt;
+
+  // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16
+  // page units down-right of it; the clipboard is left alone.
+  const duplicateFamilySelection = useCallback((pageNumber, selection) => {
+    const collected = collectFamilySelection(pageNumber, selection);
+    const { width, height } = pageSizeFor(pageNumber);
+    const clipboard = buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices: collected.indices,
+      callouts: collected.callouts,
+      markers: collected.markers,
+      pageMarkers: collected.pageMarkers,
+      pageWidth: width,
+      pageHeight: height,
+    });
+    if (!clipboard) return false;
+    return commitFamilyPaste(pageNumber, clipboard, DUPLICATE_OFFSET_PAGE_UNITS, DUPLICATE_OFFSET_PAGE_UNITS);
+  }, [collectFamilySelection, commitFamilyPaste]);
+
   // w53: a saved marker is a family member; one still being placed is not.
   const isSurveyMarkerFamilyMember = useCallback((annotationId) => (
     Boolean(annotationId && surveyMarkersRef.current?.[annotationId])
@@ -30336,6 +30609,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isRegionOverlayEnabled
     });
   }, [activeSpaceId, spaces, isRegionOverlayEnabled]);
+  getPageSurveyRegionIdRef.current = getPageSurveyRegionId;
 
   // Persist explicit regionId/null on survey marker previews so older
   // survey-scoped surveyMarkers do not get silently reclassified when a page
@@ -33827,6 +34101,8 @@ ${pageBlocks}
         clearCalloutClipboard: () => {
           setClipboardCallout(null);
           setClipboardCalloutType(null);
+          // w53: …and the family clipboard (one logical clipboard).
+          setFamilyClipboard(null);
         },
         // UX: lets every menu's Paste item paste a copied CALLOUT at the
         // right-click point too (doPasteAny in the menu builder).
@@ -33840,9 +34116,13 @@ ${pageBlocks}
         // keyboard Delete; ownership inputs drive the menu's own/foreign
         // partition (Cut stays own-only, foreign Delete requires the modal).
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
-        // w53: Survey Markers in the family menu.
+        // w53: Survey Markers in the family menu, one clipboard, Duplicate.
         handleReorderFamily,
         deleteSurveyMarkers: handleDeleteSurveyMarkers,
+        copyFamilySelection,
+        duplicateFamilySelection,
+        familyClipboard,
+        pasteFamilyAt,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
@@ -35051,6 +35331,8 @@ ${pageBlocks}
                                   isSurveyMarkerFamilyMember={isSurveyMarkerFamilyMember}
                                   onDeleteSurveyMarkers={handleDeleteSurveyMarkers}
                                   onReorderFamily={handleReorderFamily}
+                                  onCopyFamily={copyFamilySelection}
+                                  onDuplicateFamily={duplicateFamilySelection}
                                   onSurveyMarkerDoubleClick={handleSurveyMarkerClicked}
                                   pendingSurveyMarkerSelection={pendingSurveyMarkerSelection}
                                   onPendingSurveyMarkerSelectionConsumed={handlePendingSurveyMarkerSelectionConsumed}

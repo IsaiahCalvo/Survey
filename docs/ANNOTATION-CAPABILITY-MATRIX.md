@@ -48,13 +48,13 @@ Delete of the whole selection is ONE Undo step.
 
 | Type | Toolbar restyle | Copy / Cut / Paste | Delete (keyboard + menu, cross-author confirm) | Undo / redo | Right-click menu |
 |---|---|---|---|---|---|
-| Pen / shapes / lines / text box | ✓ | ✓ menu + Cmd+C/X/V; ★ paste takes the scope of where it lands | ✓ | ✓ one step per action; ★ reorder is now a step | full menu (Cut, Copy, Paste, Delete, 4 z-order) |
-| Callout | ✓ (own style patch + font) | ★ Cmd+C / Cmd+X added; paste ★ takes landing scope | ✓ | ✓ | ★ full menu incl. z-order |
+| Pen / shapes / lines / text box | ✓ | ✓ menu + Cmd+C/X/V; ★ paste takes the scope of where it lands; ☆ any selection (several marks, with callouts / Survey Markers) copies, cuts and pastes as one; ☆ Duplicate (Cmd+D + menu) | ✓ | ✓ one step per action; ★ reorder is now a step; ☆ a mixed paste / duplicate / cut is one step | full menu (Cut, Copy, Paste, ☆ Duplicate, Delete, 4 z-order) |
+| Callout | ✓ (own style patch + font) | ★ Cmd+C / Cmd+X added; paste ★ takes landing scope; ☆ in mixed selections, ☆ Duplicate | ✓ | ✓ | ★ full menu incl. z-order; ☆ Duplicate |
 | Counter | D: restyle applies to the whole numbered series | ✓ | ✓ (series renumbers) | ✓ | full menu; ★ the dead "Continue pin" item is gone |
 | Stamp | none (image) | ★ a pasted stamp no longer vanishes | ✓ | ✓ | full menu |
 | Text markup (app) | ✓ own paint transaction | ✓ (exact duplicates refused) | ✓ | ✓ | full menu |
 | Imported PDF marks | as base type | ✓ (copy becomes a native mark) | ✓ | ✓ | full menu |
-| Survey Marker | ✗ | see Copy / Paste row below (w53 part 4) | own path; ★ a refused delete no longer leaves an empty Undo step; ☆ several at once (or with marks) = one step, nothing deleted if the marks' cross-author confirm is cancelled; others' markers still blocked instead of confirmed (plan 6.2a) | ☆ family actions ride the shared step | ☆ the normal menu (Paste, Delete, Bring / Send); inside a selection, the group menu |
+| Survey Marker | ✗ | ☆ Copy / Paste / Duplicate, alone or with marks (a copy is a NEW survey item: next default name of its category, empty checklist, no Excel identity; pastes only into an open Survey module that has the category); D: no Cut — Copy, then Delete (Cut + Paste would turn a survey item with its Excel row and answers into a blank new one) | own path; ★ a refused delete no longer leaves an empty Undo step; ☆ several at once (or with marks) = one step, nothing deleted if the marks' cross-author confirm is cancelled; others' markers still blocked instead of confirmed (plan 6.2a) | ☆ family actions ride the shared step | ☆ the normal menu (Copy, Paste, Duplicate, Delete, Bring / Send); inside a selection, the group menu |
 
 Permissions: one rule — contributors and owners edit/delete everything,
 viewers look only, cross-author delete always confirms. ★ Cmd+X now runs the
@@ -161,10 +161,16 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    the saved spaces (so nothing is ever saved from another screen's
    in-flight copy). A marker another screen is changing is look-only until
    its row lands (~½ s).
-4. **Mixed clipboard and Duplicate.** One clipboard for shapes + callouts
-   (today: one or the other), keyboard copy of a multi-selection, Cmd+D
-   duplicate. Plan: a single clipboard shape `{objects, callouts}` used by
-   menu and keys; Duplicate = copy + paste at +offset. Medium.
+4. ☆ **Mixed clipboard and Duplicate** — done in w53
+   (`src/utils/familyClipboard.js`): one clipboard for any selection (marks,
+   callouts, Survey Markers), Cmd+C / X / V and the menus, Duplicate
+   (Cmd+D + every menu, 16 page units down-right, clipboard untouched). New
+   ids (no import provenance; the paster is the author), the copied stacking
+   order kept, landing scope, the group kept on the page, one save / one
+   Undo step, the pasted items selected. Undo of a paste takes new Survey
+   Markers off quietly (no trash / History / Excel re-export for a step the
+   user took back). Still open: a selection spread over two pages
+   duplicates as one step per page.
 5. **One type registry for all renderers** (SVG, painter, export, print) so a
    new type can never be missing from one output. Medium–large refactor; do
    after 2.

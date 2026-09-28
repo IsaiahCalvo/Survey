@@ -559,6 +559,10 @@ const SVGAnnotationLayer = memo(({
   isSurveyMarkerFamilyMember = null,
   onDeleteSurveyMarkers = null,
   onReorderFamily = null,
+  // w53: one clipboard for any selection + Duplicate
+  // (pageNumber, { indices, calloutIds, markerIds }, 'copy' | 'cut').
+  onCopyFamily = null,
+  onDuplicateFamily = null,
 }) => {
 
   // ---------------------------------------------------------------------------
@@ -775,7 +779,14 @@ const SVGAnnotationLayer = memo(({
     if (Array.isArray(pendingSelection.annotationIndices)) {
       // w53: a family restack re-broadcasts the shapes' new slots; the
       // Survey Markers in the selection stay selected (they are keyed by id).
-      if (pendingSelection.keepSurveyMarkers !== true) setSelectedSurveyMarkerId(null);
+      if (Array.isArray(pendingSelection.surveyMarkerIds)) {
+        // w53: a paste / duplicate selects what it created, markers included.
+        setSelectedSurveyMarkerIds(pendingSelection.surveyMarkerIds.length
+          ? new Set(pendingSelection.surveyMarkerIds)
+          : EMPTY_SURVEY_MARKER_IDS);
+      } else if (pendingSelection.keepSurveyMarkers !== true) {
+        setSelectedSurveyMarkerId(null);
+      }
       setSurveyMarkerPreviewBounds(null);
       surveyMarkerDragRef.current = null;
       selectAnnotations(pendingSelection.annotationIndices);
@@ -1365,6 +1376,11 @@ const SVGAnnotationLayer = memo(({
       const annotationIndex = Array.from(selectedIds)[0];
       if (typeof annotationIndex !== 'number') return;
 
+      // w53: with a callout or a Survey Marker selected too, Copy / Cut take
+      // the whole selection (the family clipboard handler below).
+      if ((isCopy || isCut) && typeof onCopyFamily === 'function'
+        && (countPageSelectedCallouts() > 0 || selectedSurveyMarkerIdsRef.current.size > 0)) return;
+
       // w52: one shape + a callout on this page is a MULTI-selection — the
       // whole-selection z-order handler below moves both together.
       if ((isBracketRight || isBracketLeft) && countPageSelectedCallouts() > 0) return;
@@ -1419,8 +1435,9 @@ const SVGAnnotationLayer = memo(({
       const isBracketRight = e.code === 'BracketRight';
       const isBracketLeft = e.code === 'BracketLeft';
       // w53: a Survey Marker added to the selection since this listener was
-      // armed makes it a family selection (the family handler restacks).
-      if ((isBracketRight || isBracketLeft) && selectedSurveyMarkerIdsRef.current.size > 0) return;
+      // armed makes it a family selection (the family handlers restack and
+      // copy the whole selection).
+      if (selectedSurveyMarkerIdsRef.current.size > 0) return;
       // w52: Cmd+C / Cmd+X for ONE selected callout — the same handlers the
       // callout right-click Copy / Cut use (before, callouts had no copy/cut
       // shortcut at all). Cut stays own-marks-only inside onCutCallout.
@@ -1554,6 +1571,54 @@ const SVGAnnotationLayer = memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedSurveyMarkerIds, selectedIds, effectiveSelectedCalloutIds, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, onReorderFamily, pageNumber]);
+
+  // UX: w53 (2026-09-28) — one clipboard for any selection. Cmd+C / Cmd+X
+  // copy / cut the WHOLE selection when it is more than one mark or holds a
+  // Survey Marker (one shape or one callout alone keep their own handlers
+  // above — same result); Cmd+D duplicates any selection (a copy 16 page
+  // units down-right, selected, one Undo step; the clipboard untouched).
+  // Cut stays own-marks-only (the locked Cut rule). Cmd+V pastes whatever
+  // the clipboard holds (PDFViewer's global handler).
+  useEffect(() => {
+    if (familySelectionSize === 0) return undefined;
+    if (typeof onCopyFamily !== 'function' && typeof onDuplicateFamily !== 'function') return undefined;
+    if (editingCalloutId) return undefined;
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return undefined;
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (!isMeta || e.altKey || e.shiftKey) return;
+      const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      if (key !== 'c' && key !== 'x' && key !== 'd') return;
+      if (isTypingTarget(document.activeElement)) return;
+      const calloutIds = (effectiveSelectedCalloutIds instanceof Set
+        ? Array.from(effectiveSelectedCalloutIds)
+        : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : []));
+      const pageCalloutIds = calloutIds.filter((id) => (annotationsRef.current?.objects || [])
+        .some((o) => o?.data?.type === 'callout' && String(o?.data?.id) === String(id)));
+      const selection = {
+        indices: Array.from(selectedIds || []),
+        calloutIds: pageCalloutIds,
+        markerIds: Array.from(selectedSurveyMarkerIds),
+      };
+      const onThisPage = selection.indices.length + selection.calloutIds.length + selection.markerIds.length;
+      if (onThisPage === 0) return;
+      if (key === 'd') {
+        if (typeof onDuplicateFamily !== 'function') return;
+        e.preventDefault(); // (the browser's own Cmd+D is "bookmark")
+        if (document.body.getAttribute('data-readonly') === 'true') return;
+        onDuplicateFamily(pageNumber, selection);
+        return;
+      }
+      // One shape or one callout alone: their own Copy / Cut handlers.
+      if (selection.markerIds.length === 0 && onThisPage < 2) return;
+      if (typeof onCopyFamily !== 'function') return;
+      if (key === 'x' && document.body.getAttribute('data-readonly') === 'true') return;
+      e.preventDefault();
+      onCopyFamily(pageNumber, selection, key === 'x' ? 'cut' : 'copy');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [familySelectionSize, onCopyFamily, onDuplicateFamily, editingCalloutId, editingAnnotationIndex, editingAnnotationEditType, effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerIds, pageNumber]);
 
   // UX: 2026-04-21 — Group / Ungroup feature is HIDDEN app-wide. The
   // Cmd+G and Cmd+Shift+G shortcuts are short-circuited below. Wiring

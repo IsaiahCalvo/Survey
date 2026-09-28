@@ -56,3 +56,18 @@ test('mark restacks on a page with markers go through the family planner', () =>
   const reorder = viewer.slice(viewer.indexOf('const handleReorderAnnotation = useCallback'), viewer.indexOf('const handleReorderAnnotation = useCallback') + 3600);
   assert.match(reorder, /handleReorderFamily\(pageNumber, isCallout/);
 });
+
+test('one clipboard: Cmd+C / X / D for any selection, Cmd+V pastes it, menus have Duplicate', () => {
+  assert.match(layer, /onCopyFamily\(pageNumber, selection, key === 'x' \? 'cut' : 'copy'\)/);
+  assert.match(layer, /onDuplicateFamily\(pageNumber, selection\)/);
+  assert.match(viewer, /if \(familyClipboardRef\.current && pasteFamilyAtRef\.current\) \{/);
+  assert.match(viewer, /surveyMarkerFamily: \{ creates: plan\.markers \}/);
+  assert.match(viewer, /surveyMarkerFamily: \{ deletes: markers\.map\(\(m\) => m\.id\) \}/);
+  assert.match(menu, /duplicateItem\(\{ markerIds: \[ctx\.surveyMarkerId\] \}\)/);
+  assert.match(menu, /duplicateItem\(\{ calloutIds: \[ctx\.calloutId\] \}\)/);
+  assert.match(menu, /duplicateItem\(\{ indices: \[ctx\.annotationIndex\] \}\)/);
+  assert.match(menu, /duplicateItem\(familySelection\)/);
+  // a single copy clears the family clipboard (one logical clipboard)
+  const single = viewer.slice(viewer.indexOf('const handleCopyAnnotation = useCallback'), viewer.indexOf('const handleCopyAnnotation = useCallback') + 900);
+  assert.match(single, /setFamilyClipboard\(null\);/);
+});

@@ -190,6 +190,12 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // page's one stack (one save, one undo step) and delete markers.
     handleReorderFamily = null,
     deleteSurveyMarkers = null,
+    // w53: one clipboard for any selection (marks + callouts + Survey
+    // Markers) and Duplicate — utils/familyClipboard.js via PDFViewer.
+    copyFamilySelection = null,
+    duplicateFamilySelection = null,
+    familyClipboard = null,
+    pasteFamilyAt = null,
   } = actions;
 
   // Own-mark check (author or document owner; boot window is permissive to
@@ -243,13 +249,20 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // callouts center their text box there via handlePasteCallout's
     // cursor-anchored mode.
     const doPasteAny = () => {
-      if (clipboardAnnotation) {
+      if (familyClipboard && typeof pasteFamilyAt === 'function') {
+        pasteFamilyAt(ctx.pageNumber, ctx.x, ctx.y);
+      } else if (clipboardAnnotation) {
         doPasteAnnotation();
       } else if (clipboardCallout) {
         handlePasteCallout(ctx.pageNumber, { clientX: ctx.x, clientY: ctx.y });
       }
     };
-    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout);
+    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
+    // w53: Duplicate — a copy 16 page units down-right, one Undo step, the
+    // clipboard untouched (same item on every menu).
+    const duplicateItem = (selection) => item('Duplicate', 'duplicate', () => {
+      if (typeof duplicateFamilySelection === 'function') duplicateFamilySelection(ctx.pageNumber, selection);
+    }, typeof duplicateFamilySelection === 'function');
 
     let items;
     if (ctx.kind === 'textMarkup') {
@@ -326,6 +339,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
         // right-click's client coords. doPasteAny covers both clipboards.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem({ calloutIds: [ctx.calloutId] }),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
         // Backspace with the callout selected — PDFViewer's
         // handleDeleteSelectedCallouts (canModify ownership check, undo
@@ -414,6 +428,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // behavior + live diagnostic dump. Grayed out when the clipboard
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem({ indices: [ctx.annotationIndex] }),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
         // Locked model 2026-07-17: when PDFViewer provides the bulk-delete
         // planner bridge, the delete routes through it — cross-author deletes
@@ -504,7 +519,12 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         handleReorderFamily(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId], direction });
       };
       items = [
+        // D (w53): no Cut for a Survey Marker — it is a survey item with its
+        // Excel row and answers; Cut + Paste would make a blank new item.
+        // Copy, then Delete (which keeps the trash / History / Excel rules).
+        item('Copy', 'copy', () => copyFamilySelection?.(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId] }, 'copy')),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem({ markerIds: [ctx.surveyMarkerId] }),
         item('Delete', 'delete', () => {
           if (typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers([ctx.surveyMarkerId]);
         }),
@@ -598,8 +618,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         });
       };
 
+      // w53: the whole selection — marks, callouts, Survey Markers.
+      const familySelection = {
+        indices: sortedAsc,
+        calloutIds: Array.from(selectedCalloutIds || []),
+        markerIds: ctx.groupMarkerIds || [],
+      };
       items = [
         item('Cut', 'cut', () => {
+          if (typeof copyFamilySelection === 'function') {
+            copyFamilySelection(ctx.pageNumber, familySelection, 'cut');
+            return;
+          }
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
           // Locked model 2026-07-17: Cut deletes with no confirmation
@@ -630,12 +660,17 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           });
         }),
         item('Copy', 'copy', () => {
+          if (typeof copyFamilySelection === 'function') {
+            copyFamilySelection(ctx.pageNumber, familySelection, 'copy');
+            return;
+          }
           const copy = copyAll();
           if (!copy) return;
           setClipboardAnnotation({ ...copy, mode: 'copy' });
           clearCalloutClipboard();
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        duplicateItem(familySelection),
         // Locked model 2026-07-17: multi-select Delete routes through the
         // bulk-delete planner (parity with keyboard Delete on the same
         // selection) — cross-author members ALWAYS confirm via the modal.
