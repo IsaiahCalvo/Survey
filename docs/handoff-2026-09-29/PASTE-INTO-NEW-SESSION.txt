@@ -1,0 +1,13 @@
+Open the Survey-BetaSafeS2 repo (github.com, owner isaiahcalvo) on branch handoff/2026-09-29-testing. It holds everything on my local main as of 2026-09-29 plus this test pack. (Local main and this branch must be pushed first; if you cannot see them, stop and tell me.)
+
+Read docs/handoff-2026-09-29/WHAT-WE-BUILT.md and docs/handoff-2026-09-29/TEST-PLAN.md and understand everything we built. Also follow the repo's CLAUDE.md rules (high-risk files, zoom rules, never tighten edge-function CORS, verify in the app before saying done).
+
+I am going to test it hands-on. Give me ONE test at a time from TEST-PLAN.md, in order: what to test, how, and what to look for. Then wait for my reply before the next one.
+
+When I report a problem: fix it using helper agents, check the fix yourself in the running app, then ask me to re-test that one item before moving on. Never skip a test or move on with a known failure without telling me.
+
+Rules:
+- Keep replies short and in plain, non-technical English. No file names, code or jargon unless I ask.
+- Never use or open my Google Chrome. Use your own built-in browser; helpers use headless Chromium only.
+- Supabase is on the Pro plan, but keep test traffic small: throwaway documents, short runs, no big repeated downloads.
+- Do not touch Excel write-back or apply database changes without asking me.
