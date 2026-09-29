@@ -283,10 +283,17 @@ test('real SVG commit seams use object transforms for move and resize', () => {
     'a path-containing group keeps signed sub-0.05 scale and guards only singular zero',
   );
   assert.match(source, /pathResizePageMatrix[\s\S]*?applyPageAffineToInkObject/);
+  // RULED 2026-09-28 (w63, owner-directed): a single path resize still keeps
+  // its SIGN (it flips through) and never snaps to 10 %, but it now stops at
+  // 4 page units per axis — or the path's own starting size, if it was already
+  // thinner, so microscopic geometry is never blown up. The zero-matrix guard
+  // moved into clampResizeScale (tests/resizeMinimum.test.mjs). The old
+  // "only guards the singular zero" regex was replaced for that reason, not to
+  // make a failing test pass.
   assert.match(
     source,
-    /isExactPathResize\s*=\s*typeForFlip\s*===\s*'path'[\s\S]*?newScaleX\s*===\s*0[\s\S]*?Number\.MIN_VALUE/,
-    'single path resize keeps signed sub-0.1 scales and only guards the singular zero matrix',
+    /isExactPathResize\s*=\s*typeForFlip\s*===\s*'path'[\s\S]*?supportsFlip[\s\S]*?\|\|\s*isExactPathResize[\s\S]*?clampResizeScale\(newScaleX,[\s\S]*?allowFlip:\s*supportsFlip/,
+    'single path resize keeps signed scales (flip) with the shared 4-unit floor',
   );
   assert.match(
     source,

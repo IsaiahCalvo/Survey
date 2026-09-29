@@ -141,6 +141,11 @@ import {
   getTextMarkupStackAtPoint,
   resizeTextMarkupHorizontalEdge,
 } from '../utils/pdfTextMarkup.js';
+import {
+  MIN_RESIZE_PAGE_UNITS,
+  buildPointsShapeResize,
+  clampResizeScale,
+} from '../utils/resizeMinimum.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -2442,6 +2447,11 @@ export function useSVGInteraction({
         if (sx === 0) sx = Number.MIN_VALUE;
         if (sy === 0) sy = Number.MIN_VALUE;
       }
+      // w63: a group flips through the fixed corner like one mark does, and
+      // its frame never gets thinner than 4 page units (or its own starting
+      // size) — so it can't collapse to a dot on the way through.
+      if (affectsX) sx = clampResizeScale(sx, { rawSize: origDx, allowFlip: true });
+      if (affectsY) sy = clampResizeScale(sy, { rawSize: origDy, allowFlip: true });
 
       // Helper: take a WORLD point (wx, wy), rotate into local frame, scale
       // around the LOCAL anchor by (sx, sy), then rotate back to world.
@@ -2777,8 +2787,30 @@ export function useSVGInteraction({
       // user last saw them.
       const dxW_ep = svgPoint.x - ds.startSVGPoint.x;
       const dyW_ep = svgPoint.y - ds.startSVGPoint.y;
-      const W1target = movingP1 ? { x: W1old.x + dxW_ep, y: W1old.y + dyW_ep } : W1old;
-      const W2target = movingP1 ? W2old : { x: W2old.x + dxW_ep, y: W2old.y + dyW_ep };
+      let W1target = movingP1 ? { x: W1old.x + dxW_ep, y: W1old.y + dyW_ep } : W1old;
+      let W2target = movingP1 ? W2old : { x: W2old.x + dxW_ep, y: W2old.y + dyW_ep };
+      // w63: an end dragged onto (or through) the other end passes freely,
+      // but a line is never shorter than 4 page units (or its own starting
+      // length) — dropping one end on the other no longer leaves a zero-length
+      // line you cannot see or grab. The moving end is pushed out along the
+      // line's direction, so the preview is exactly what is saved.
+      {
+        const fixedW = movingP1 ? W2target : W1target;
+        const movingW = movingP1 ? W1target : W2target;
+        const startLen = Math.hypot(W2old.x - W1old.x, W2old.y - W1old.y);
+        const minLen = Math.min(MIN_RESIZE_PAGE_UNITS, startLen);
+        const vx = movingW.x - fixedW.x;
+        const vy = movingW.y - fixedW.y;
+        const len = Math.hypot(vx, vy);
+        if (minLen > 0 && len < minLen) {
+          const origMoving = movingP1 ? W1old : W2old;
+          const origFixed = movingP1 ? W2old : W1old;
+          const ux = len > 1e-9 ? vx / len : (origMoving.x - origFixed.x) / startLen;
+          const uy = len > 1e-9 ? vy / len : (origMoving.y - origFixed.y) / startLen;
+          const pushed = { x: fixedW.x + ux * minLen, y: fixedW.y + uy * minLen };
+          if (movingP1) W1target = pushed; else W2target = pushed;
+        }
+      }
       // Step 1: un-rotate targets around pivotOld to get NAIVE local
       // coords (before the pivot has re-landed on the new bbox center).
       const naiveP1 = rotAround(W1target.x, W1target.y, pivotOld.x, pivotOld.y, epCosA, -epSinA);
@@ -3058,7 +3090,11 @@ export function useSVGInteraction({
           : affectsX
             ? Math.abs(newScaleX)
             : Math.abs(newScaleY);
-        const safeUniformScale = Math.max(0.1, uniformScale || 1);
+        // w63: the preview stops where the save stops — a 4-unit radius (the
+        // commit's own floor) — instead of shrinking to 10 % and then
+        // jumping back up on release.
+        const counterBaseR = ds.originalProps?.counterBaseRadius || objForFlip?.radius || 14;
+        const safeUniformScale = Math.max(4 / counterBaseR, uniformScale || 1);
         newScaleX = safeUniformScale;
         newScaleY = safeUniformScale;
       }
@@ -3069,32 +3105,44 @@ export function useSVGInteraction({
       // types retain the historical positive-scale behavior.
       const typeForFlip = String(objForFlip?.type || '').toLowerCase();
       const isExactPathResize = typeForFlip === 'path';
+      // w63 (Acrobat / Figma / Drawboard): dragging a grabber past the
+      // opposite side FLIPS the mark — it mirrors and keeps growing on the
+      // other side of the fixed corner. Rect, ellipse, cloud, polygon /
+      // polyline and pen / highlighter ink mirror. A text box, a counter and
+      // anything else stop at the minimum on the fixed side (text never
+      // mirrors). Every mark keeps at least MIN_RESIZE_PAGE_UNITS (4) on each
+      // axis — or its own starting size, if it was already thinner — so a
+      // drag that ends on the opposite corner never leaves an unfindable dot.
+      const isPointsResize = !!ds.originalProps.isPointsShape;
+      const isTextResize = typeForFlip === 'textbox' || typeForFlip === 'i-text' || typeForFlip === 'text';
       const supportsFlip = !isCounterResize && (
         typeForFlip === 'rect'
         || typeForFlip === 'circle'
         || typeForFlip === 'ellipse'
         || isExactPathResize
+        || isPointsResize
       );
-      if (isExactPathResize) {
-        // Zero is the only singular affine. Do not impose a visible-size
-        // floor: imported microscopic geometry and legitimate 0.001-scale
-        // resizes must not snap to 10% of their previous size.
-        if (newScaleX === 0) {
-          newScaleX = ds.originalProps.scaleX < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+      if (!isCounterResize) {
+        // A text box keeps room for at least one character at its font size.
+        const textFloor = isTextResize
+          ? Math.max(MIN_RESIZE_PAGE_UNITS, Number(objForFlip?.fontSize) || 0)
+          : MIN_RESIZE_PAGE_UNITS;
+        if (affectsX) {
+          newScaleX = clampResizeScale(newScaleX, {
+            rawSize: ds.originalProps.width,
+            startScale: ds.originalProps.scaleX,
+            allowFlip: supportsFlip,
+            minSize: textFloor,
+          });
         }
-        if (newScaleY === 0) {
-          newScaleY = ds.originalProps.scaleY < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+        if (affectsY) {
+          newScaleY = clampResizeScale(newScaleY, {
+            rawSize: ds.originalProps.height,
+            startScale: ds.originalProps.scaleY,
+            allowFlip: supportsFlip,
+            minSize: textFloor,
+          });
         }
-      } else if (!supportsFlip) {
-        newScaleX = Math.max(0.1, newScaleX);
-        newScaleY = Math.max(0.1, newScaleY);
-      } else {
-        // Minimum MAGNITUDE (signed) to prevent zero-size while preserving
-        // flip direction. 0.01 mirrors the old 0.1 floor scaled down so a
-        // mid-flip zero-crossing doesn't snap-jump — visually the shape
-        // passes through a 1px sliver at the anchor.
-        if (Math.abs(newScaleX) < 0.01) newScaleX = (newScaleX < 0 ? -1 : 1) * 0.01;
-        if (Math.abs(newScaleY) < 0.01) newScaleY = (newScaleY < 0 ? -1 : 1) * 0.01;
       }
 
       // UX 2026-04-20: unified newLeft/newTop formula that pins the WORLD
@@ -3209,6 +3257,25 @@ export function useSVGInteraction({
         visualTop = resizeCommitTop;
       }
       if (ds.originalProps.isPointsShape) {
+        // w63: a points shape shows (and saves) its flip by mirroring its
+        // points, through the SAME builder the pointer-up commit uses, so the
+        // preview is exactly what gets saved.
+        const pointsSource = annotations?.objects?.[ds.annotationIndex];
+        if (pointsSource && (newScaleX < 0 || newScaleY < 0)) {
+          setVisualTransform({
+            id: ds.annotationIndex,
+            dx: 0,
+            dy: 0,
+            previewObjects: {
+              [ds.annotationIndex]: buildPointsShapeResize(
+                pointsSource,
+                { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop },
+                ds.originalProps,
+              ),
+            },
+          });
+          return;
+        }
         const sxAbs = Math.abs(newScaleX);
         const syAbs = Math.abs(newScaleY);
         visualLeft = newLeft - sxAbs * (ds.originalProps.pointsLocalMinX - ds.originalProps.pointsPathOffsetX);
@@ -3406,12 +3473,13 @@ export function useSVGInteraction({
           else                      { mvX = origRight + dxNorm; mvY = origBottom + dyNorm; }
           const minW = 20 / W;
           const minH = 20 / H;
-          const newLeft = Math.min(anchorX, mvX);
-          const newTop = Math.min(anchorY, mvY);
-          const newRight = Math.max(anchorX, mvX);
-          const newBottom = Math.max(anchorY, mvY);
-          const newWidth = Math.max(minW, newRight - newLeft);
-          const newHeight = Math.max(minH, newBottom - newTop);
+          // w63: the box flips through the fixed corner (text never mirrors)
+          // and, at its 20-unit minimum, stays attached to that corner on
+          // whichever side the pointer is — it no longer slides off it.
+          const newWidth = Math.max(minW, Math.abs(mvX - anchorX));
+          const newHeight = Math.max(minH, Math.abs(mvY - anchorY));
+          const newLeft = mvX >= anchorX ? anchorX : anchorX - newWidth;
+          const newTop = mvY >= anchorY ? anchorY : anchorY - newHeight;
           const resizePatch = {
             textBoxPosition: { x: newLeft, y: newTop },
             textBoxWidth: newWidth,
@@ -4401,14 +4469,13 @@ export function useSVGInteraction({
           // — lands the visible bbox at the target position. Derivation:
           //   visibleLeft = obj.left + sx*(localMinX - pathOffsetX)
           //   ⇒ obj.left = visibleLeft - sx*(localMinX - pathOffsetX)
-          // Scale is already clamped positive upstream (polygon does not
-          // support flip), so |newScaleX| === newScaleX here.
-          const sx = Math.abs(newScaleX);
-          const sy = Math.abs(newScaleY);
-          obj.scaleX = sx;
-          obj.scaleY = sy;
-          obj.left = newLeft - sx * (ds.originalProps.pointsLocalMinX - ds.originalProps.pointsPathOffsetX);
-          obj.top = newTop - sy * (ds.originalProps.pointsLocalMinY - ds.originalProps.pointsPathOffsetY);
+          // w63: a flip (negative scale) is saved as mirrored points with a
+          // positive scale — the same builder the live preview used.
+          Object.assign(obj, buildPointsShapeResize(
+            obj,
+            { scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop },
+            ds.originalProps,
+          ));
         } else {
           // Bug #8: normalize flip to positive scale on commit. For rect/
           // circle/ellipse a mirrored shape is visually identical to a non-

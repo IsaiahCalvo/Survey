@@ -80,7 +80,7 @@ const SVGSelectionOverlay = memo(({
   locked = false,
 }) => {
   // UX 2026-09-16: hit pads grow on a finger (44 pt) and stay tight on a mouse
-  // (32 px; Drawboard PDF measures 34 x 34). Read before the bbox early-return
+  // (the grabber + 4 px, min 20 px - w63). Read before the bbox early-return
   // because hooks cannot run conditionally.
   const isCoarsePointer = useCoarsePointer();
   if (!bbox) return null;
@@ -214,7 +214,10 @@ const SVGSelectionOverlay = memo(({
   // this, a corner was grabbable only to +-5.5 px and an edge pill was 8 px
   // thick, so a mouse that missed by 6 px hit the page and started a new mark.
   // Drawboard puts a 34 x 34 px pad on every one of its eight handles (measured
-  // 2026-09-16); we use 32 on a mouse and 44 on a finger.
+  // 2026-09-16); we shipped 32 on a mouse and 44 on a finger. w63 (2026-09-28)
+  // took the mouse pad down to the grabber + 4 px (min 20): 32 reached 16 px
+  // off a corner, so a box-select started just outside a selected mark
+  // resized it. Sizes live in utils/handleHitPad.js.
   //
   // Screen-constant: sized in page units from the CLAMPED inverse scale, so it
   // covers the same screen area at 50 % and at 400 % zoom, and stops growing on
@@ -449,7 +452,7 @@ const SVGSelectionOverlay = memo(({
           {/* Rotation handle (mtr) */}
           {!horizontalResizeOnly && !hideRotationHandle && (
           <g className="rotation-handle" data-rotation-handle="mtr">
-            {/* Invisible hit pad — same Drawboard-size grab area as the resize
+            {/* Invisible hit pad — same grab area rule as the resize
                 grabbers, drawn under the visible circle. */}
             {renderHitPad('mtr', handles.mtr, rotationHitPad, 'crosshair')}
             {/* Connector line from top-center of bbox to rotation handle */}

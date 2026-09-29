@@ -4832,6 +4832,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:paste',
       action: 'paste',
     });
+    // w63 (Figma / Acrobat): the pasted callout becomes the whole selection so
+    // it can be nudged or dragged straight away.
+    setSelectedCalloutIds(new Set([newId]));
+    setPendingSvgSelection({ pageNumber, annotationIndices: [], surveyMarkerIds: [], tick: Date.now() });
 
     // Clear clipboard if it was a cut operation
     if (clipboardCalloutType === 'cut') {
@@ -28639,6 +28643,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
   pasteScopeRef.current = currentPasteScope;
   cutGateOwnerIdRef.current = documentOwnerId;
+  // w63 (Figma / Acrobat / Drawboard): whatever a paste creates becomes the
+  // selection — and ONLY that — so the next arrow-key nudge or drag moves the
+  // copy you just made, never the original. The family paste and Duplicate
+  // already do this through the same pendingSvgSelection broadcast.
+  const selectPastedMarks = useCallback((pageNumber, annotationIndices) => {
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndices,
+      surveyMarkerIds: [],
+      tick: Date.now(),
+    });
+  }, []);
+
   const pasteAnnotationAt = useCallback((pageNumber, clientX, clientY) => {
     if (!clipboardAnnotation || pageNumber == null) return false;
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
@@ -28709,6 +28727,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       dy += repeatOffset;
 
       const pasteScope = currentPasteScope(pageNumber);
+      const firstPastedIndex = next.objects.length;
       for (const c of clones) {
         // UX: every clone is a brand-new NATIVE object — fresh data.id (same
         // uuid contract as creation), no import provenance — so the save diff
@@ -28728,6 +28747,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: 'paste',
         checkpointPolicy: 'normal',
       });
+      // w63 (Figma / Acrobat): the pasted marks become the selection, so the
+      // next arrow key or drag moves the copies, not the originals.
+      selectPastedMarks(pageNumber, clones.map((_, offset) => firstPastedIndex + offset));
       if (clipboardAnnotation.mode === 'cut') {
         setClipboardAnnotation(null);
       }
@@ -28786,6 +28808,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     pasted.left = pastedLeft + repeatOffset;
     pasted.top = pastedTop + repeatOffset;
+    const pastedIndex = next.objects.length;
     next.objects.push(pasted);
 
     console.log(`[PasteDiag] resolvedVia=${resolvedVia} click=(${clientX},${clientY}) pasted=(${pastedLeft.toFixed(2)},${pastedTop.toFixed(2)}) original=(${originalLeft},${originalTop}) type=${pasted.type} page=${pageNumber}`);
@@ -28795,11 +28818,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       action: 'paste',
       checkpointPolicy: 'normal',
     });
+    // w63: the pasted mark becomes the selection (see the group branch above).
+    selectPastedMarks(pageNumber, [pastedIndex]);
     if (clipboardAnnotation.mode === 'cut') {
       setClipboardAnnotation(null);
     }
     return true;
-  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
+  }, [clipboardAnnotation, handleSaveAnnotations, selectPastedMarks, resolvePasteRepeatCount, showToast, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;

@@ -66,6 +66,7 @@ import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // (stackedMarks), interleaved with every other mark.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { getMarkHitStrokePx, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
+import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
@@ -327,7 +328,7 @@ const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
 const POLY_CREATION_TOOLS = POLY_DRAFT_TOOLS;
 // UX 2026-09-16: every selection grabber carries an invisible hit pad — the
 // drawn dot keeps its size, a transparent disc behind it catches the press.
-// 32 px on a mouse (Drawboard PDF measures 34 x 34), 44 pt on a finger. The
+// On a mouse: the grabber + 4 px, min 20 (w63); 44 pt on a finger. The
 // polygon vertex grabber pioneered this in 2026-09-09 with a touch-only 44 pt
 // disc; the mouse now gets one too. Sizes live in utils/handleHitPad.js.
 const hasCoarsePointer = () => (
@@ -3620,11 +3621,14 @@ const SVGAnnotationLayer = memo(({
       const signedLocalDy = isTopHandle ? -ptrDyLocal : ptrDyLocal;
       scaleY = signedLocalDy / bounds.height;
     }
-    if (Math.abs(scaleX) < 0.01) scaleX = (scaleX < 0 ? -1 : 1) * 0.01;
-    if (Math.abs(scaleY) < 0.01) scaleY = (scaleY < 0 ? -1 : 1) * 0.01;
+    // w63: a Survey Marker flips through its fixed corner and never gets
+    // thinner than 4 page units (or its own starting size) — the same rule as
+    // every other mark (utils/resizeMinimum.js).
+    if (affectsX) scaleX = clampResizeScale(scaleX, { rawSize: bounds.width, allowFlip: true });
+    if (affectsY) scaleY = clampResizeScale(scaleY, { rawSize: bounds.height, allowFlip: true });
 
-    const nextWidth = affectsX ? Math.max(1, bounds.width * Math.abs(scaleX)) : bounds.width;
-    const nextHeight = affectsY ? Math.max(1, bounds.height * Math.abs(scaleY)) : bounds.height;
+    const nextWidth = affectsX ? bounds.width * Math.abs(scaleX) : bounds.width;
+    const nextHeight = affectsY ? bounds.height * Math.abs(scaleY) : bounds.height;
 
     let offsetFromAnchorX = 0;
     let offsetFromAnchorY = 0;
@@ -4163,7 +4167,7 @@ const SVGAnnotationLayer = memo(({
     // arrow keep a grab zone exactly the size of the dot, so passing near a
     // callout never snatches the arrow away from the click you meant. Once the
     // callout is selected the user is plainly aiming at its chrome, so the
-    // Drawboard-size pad is the right target.
+    // full pad is the right target.
     const calloutHitPad = (isSelected && showHandles)
       ? resolveHandleHitPadPageSize({
         isCoarsePointer: isCoarsePointer,
@@ -4502,7 +4506,7 @@ const SVGAnnotationLayer = memo(({
         )}
       </g>
     );
-    // isCoarsePointer sizes the invisible grabber pads (32 px mouse / 44 pt
+    // isCoarsePointer sizes the invisible grabber pads (grabber + 4 px mouse / 44 pt
     // finger), so a pointer-kind change has to rebuild the hit targets.
   }, [isCoarsePointer]);
 
@@ -7109,8 +7113,7 @@ const SVGAnnotationLayer = memo(({
           const is = Math.sqrt(clampInverseScale(inverseScale));
           const handleR = HANDLE_RADIUS * is;
           // UX 2026-09-16: invisible hit pad behind the counter's rotate
-          // grabber — 32 px on a mouse (Drawboard PDF measures 34 x 34 on its
-          // handles), 44 pt on a finger. It is the only grabber on a selected
+          // grabber — the grabber + 4 px on a mouse (w63), 44 pt on a finger. It is the only grabber on a selected
           // counter, so nothing crowds it. The drag handlers live on both the
           // pad and the visible dot because this grabber captures the pointer
           // on whichever element was pressed.
@@ -7412,7 +7415,7 @@ const SVGAnnotationLayer = memo(({
           };
           // UX 2026-09-16: an invisible pad behind each endpoint / bend grabber
           // so a line can be re-aimed without pixel-hunting the 11 px dot —
-          // 32 px on a mouse (Drawboard PDF measures 34 x 34), 44 pt on a
+          // The grabber + 4 px on a mouse (w63), 44 pt on a
           // finger. It shrinks on a short line so the two ends and the bend
           // grabber never fight over the same press.
           const lineHandleSpan = Math.hypot(ep.x2 - ep.x1, ep.y2 - ep.y1);
