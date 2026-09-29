@@ -34,8 +34,8 @@ const HistoryButton = ({ isActive, onClick, round = false }) => {
   return (
   <button
     type="button"
-    {...tip('Version history', 'right')}
-    aria-label="Version history"
+    {...tip('History', 'right')}
+    aria-label="History"
     onClick={onClick}
     // UX 2026-09-16 (desktop sweep): the shared rail control box and glyph. It
     // was a 17px glyph in a 28px box, so the one button in the left rail's
@@ -174,6 +174,11 @@ const PDFSidebar = React.forwardRef(({
   onRestoreHistoryContext = null,
   // w55: false for viewers / a locked document — History hides Restore.
   canRestoreHistory = false,
+  // RULED 2026-09-28 owner: History option A — viewer hooks for the feed
+  // (which marks exist now, where one is now, zoom to it).
+  getHistoryMarkIndex = null,
+  locateHistoryMark = null,
+  focusHistoryMark = null,
   mobileMode = false,
   onPanelStateChange = null,
 }, ref) => {
@@ -285,18 +290,20 @@ const PDFSidebar = React.forwardRef(({
   const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
     ? { label: 'Spaces', icon: 'layers' }
     : mobileMode && activeTab === 'history'
-      ? { label: 'Version history', icon: 'history' }
+      ? { label: 'History', icon: 'history' }
       : null;
   // PASS 7 (2026-09-21, DESIGN-SYSTEM.md "Phone bottom panels"): the browse
   // panels are the ones with content that can run long, so they are the ones
   // that can be pulled taller: Pages, Search and Bookmarks (the hub tray) and
   // Spaces. Each opens at Standard, climbs to Expanded (70%) on a pull up, and
   // to full screen on a second pull; pulling down steps back one height at a
-  // time. Version history is not a browse list and stays at Standard.
+  // time. History (a long feed since option A, 2026-09-28) opts in too.
   // 2026-09-17: the hook also owns the slide-UP entrance (the CSS keyframe that
   // used to do it fought this transform), so it needs the sheet's open state —
   // this element stays mounted and only toggles .is-collapsed.
-  const browsePanel = mobileMode && activeTab !== 'history';
+  // RULED 2026-09-28 owner: History option A — History is a long feed now,
+  // so it can be pulled taller like the other browse panels.
+  const browsePanel = mobileMode;
   const {
     motionStyle: sheetMotionStyle,
     dragHandlers: sheetDragHandlers,
@@ -705,6 +712,9 @@ const PDFSidebar = React.forwardRef(({
                 onCascadeRestoreRegion={onCascadeRestoreRegion}
                 onRestoreHistoryContext={onRestoreHistoryContext}
                 canRestore={canRestoreHistory}
+                getHistoryMarkIndex={getHistoryMarkIndex}
+                locateHistoryMark={locateHistoryMark}
+                focusHistoryMark={focusHistoryMark}
               />
             </div>
           </div>

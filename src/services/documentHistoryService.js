@@ -9,6 +9,7 @@
  * callout/space/survey-marker actions for the activity feed.
  */
 import { supabase } from '../supabaseClient.js';
+import { slimHistoryPreviewBefore } from '../utils/historyPreviewAnnotation.js';
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
@@ -106,6 +107,9 @@ function buildSummary({ actorName, event }) {
   if (action === 'resize') return `${actorName} resized ${withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'rotate') return `${actorName} rotated ${withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'text edit') return `${actorName} edited text${pageSuffix}`;
+  // RULED 2026-09-28 owner: History option A wording.
+  if (action === 'recolor') return `${actorName} changed the color of ${withArticle(annotationLabel)}${pageSuffix}`;
+  if (action === 'erase') return `${actorName} erased part of ${withArticle(annotationLabel)}${pageSuffix}`;
   // w56: the user lock (right-click Lock / Unlock).
   if (action === 'lock') return `${actorName} locked ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
   if (action === 'unlock') return `${actorName} unlocked ${count > 1 ? `${count} annotations` : withArticle(annotationLabel)}${pageSuffix}`;
@@ -184,6 +188,8 @@ function trimPayload(payload) {
     // History-audit P3: preserve the spotlight preview (bounded) so the
     // History highlight still works for large (path-heavy) events.
     previewAnnotation: clampPreviewAnnotation(payload?.previewAnnotation),
+    // History option A (2026-09-28): the "Before" ghost of an edit, bounded.
+    previewBefore: clampPreviewAnnotation(payload?.previewBefore),
     // Decision 10 (KAL-90): the context stamp is tiny and drives click-to-restore.
     uiContext: payload?.uiContext || null,
   };
@@ -355,6 +361,65 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
     payload: compactPayload,
     is_undoable: event.type !== 'yjs_history_popped',
     is_checkpoint: event.type === 'checkpoint_added' || event.type === 'checkpoint_added_annotation_fast',
+    occurred_at: occurredAt,
+    created_at: occurredAt,
+  };
+}
+
+/**
+ * RULED 2026-09-28 owner: History option A — a partial erase (the eraser trims
+ * part of a mark and the mark stays) is one History line: "erased part of a
+ * pen stroke", with the mark before and after so History can peek at it.
+ * The cloud erase lane commits outside the save pipeline, so it had no line.
+ * `targets` = the committed erase intent's 'replace' targets ({ before, after,
+ * storageKey }); `project` shrinks a mark to its History preview.
+ */
+export function buildPartialEraseHistoryRow({
+  targets,
+  documentId,
+  user,
+  mutationId,
+  pageNumber,
+  committedAt,
+  project = (annotation) => annotation,
+} = {}) {
+  const trimmed = (Array.isArray(targets) ? targets : [])
+    .filter((target) => target?.operation === 'replace' && target.cause !== 'counter-renumber'
+      && target.before && target.after);
+  if (!documentId || !mutationId || trimmed.length === 0) return null;
+  const first = trimmed[0];
+  const idOf = (target) => target.after?.data?.id ?? target.after?.id ?? target.after?.annotationId ?? target.storageKey ?? null;
+  const ids = [...new Set(trimmed.map(idOf).filter(Boolean).map(String))];
+  const annotationType = first.after?.data?.type || first.after?.type || null;
+  const page = Number(pageNumber);
+  const occurredAt = committedAt || new Date().toISOString();
+  const event = {
+    type: 'local_annotation_history_added',
+    actionType: 'erase',
+    rawActionType: 'eraser:partial',
+    annotationType,
+    annotationId: ids[0] || null,
+    annotationIds: ids.length > 1 ? ids : undefined,
+    itemCount: ids.length,
+    pageNumber: Number.isFinite(page) ? page : null,
+    historySource: 'eraser',
+    previewAnnotation: project(first.after),
+    previewBefore: slimHistoryPreviewBefore(project(first.before)),
+  };
+  const clientEventId = `annotation-erase:${mutationId}`;
+  return {
+    id: clientEventId,
+    document_id: documentId,
+    user_id: user?.id || null,
+    client_event_id: clientEventId,
+    event_type: 'local_annotation_history_added',
+    source: 'eraser',
+    page_number: Number.isFinite(page) ? page : null,
+    annotation_id: ids[0] || null,
+    summary: buildSummary({ actorName: getActorName(user), event }),
+    payload: trimPayload(event),
+    is_undoable: true,
+    is_checkpoint: false,
     occurred_at: occurredAt,
     created_at: occurredAt,
   };

@@ -2840,6 +2840,70 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getPageHorizontalScrollMax]);
 
+  // RULED 2026-09-28 owner: History option A — clicking a History row takes
+  // you to the mark: its page, zoomed so the mark fills about 40% of the part
+  // of the viewer you can see, centred there (prototype history-A.html
+  // targetFor(); Miro "zoom to object"). Never zooms out past fitting the
+  // whole page, and never in past 4x that fit, so a tiny counter does not
+  // blow up to full magnification. `rect` is in page units (the annotation
+  // layer's viewBox). Goes through applyAnchoredScale, so it signals
+  // gesture-start (zoomGeneration) like every other imperative zoom.
+  const focusPageRect = useCallback((pageNumber, rect, options = {}) => {
+    const el = scrollerRef.current;
+    const dims = dimsPtRef.current;
+    if (!el || !dims.length || !rect) return false;
+    const i = Math.max(0, Math.min(dims.length - 1, (Number(pageNumber) || 1) - 1));
+    const d = dims[i];
+    const x = Number(rect.x);
+    const y = Number(rect.y);
+    const w = Math.max(8, Number(rect.width) || 0);
+    const h = Math.max(8, Number(rect.height) || 0);
+    if (![x, y, w, h].every(Number.isFinite)) return false;
+    cancelPanInertia(false);
+    const side = sideInsetRef.current;
+    const inset = Math.min(topInsetRef.current, el.clientHeight);
+    const bandW = Math.max(1, el.clientWidth - side.left - side.right);
+    // A sheet covering the bottom of the viewer (the phone History sheet)
+    // shrinks the part you can see; the mark lands in what is left.
+    const bottomInset = Math.max(0, Math.min(el.clientHeight - inset - 80, Number(options.bottomInset) || 0));
+    const bandH = Math.max(1, el.clientHeight - inset - bottomInset);
+    const metrics = layoutMetricsRef.current;
+    const fitScale = computeFitScale({
+      mode: 'fitPage',
+      pageW: d.w,
+      pageH: d.h,
+      viewportW: bandW,
+      viewportH: bandH,
+      padX: metrics.padX,
+      gap: metrics.gap,
+      padTop: metrics.padTop,
+      padBottom: metrics.padBottom,
+      maxPageWidth: metrics.maxPageWidth,
+    });
+    const fill = Number(options.fill) > 0 ? Number(options.fill) : 0.4;
+    const wanted = Math.min((bandW * fill) / w, (bandH * fill) / h);
+    const ceiling = Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, fitScale * 4);
+    const target = options.keepZoom
+      ? scaleRef.current
+      : Math.max(fitScale, Math.min(wanted, ceiling));
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const viewCx = side.left + bandW / 2;
+    const viewCy = inset + bandH / 2;
+    const before = scaleRef.current;
+    if (Math.abs(target - before) > 1e-4) applyAnchoredScale(target, viewCx, viewCy);
+    const s = scaleRef.current;
+    const left = getPageLeftAtScale(i, s) + cx * s - viewCx;
+    const top = topAt(i, s) + cy * s - viewCy;
+    if (Math.abs(s - before) > 1e-4 && pendingAnchorRef.current) {
+      pendingAnchorRef.current = { left, top, pageIndex: i };
+    } else {
+      el.scrollLeft = Math.min(Math.max(0, left), getPageHorizontalScrollMax(i, s));
+      el.scrollTop = Math.min(Math.max(0, top), Math.max(0, el.scrollHeight - el.clientHeight));
+    }
+    return true;
+  }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getPageHorizontalScrollMax, isMobileSurface]);
+
   const goToPage = useCallback((n) => {
     const el = scrollerRef.current;
     const tops = topsRef.current;
@@ -2957,6 +3021,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return {
       // navigation
       goToPage,
+      focusPageRect,
       goToBookmarkSource: () => false, // Stage 4 — caller falls back to goToPage
       resolveBookmarkPageFromSource: () => null,
       navigationModule: { goToPage },
@@ -3042,7 +3107,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       selectFormField: () => false,
       getFormFieldCollection: () => [],
     };
-  }, [goToPage, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
+  }, [goToPage, focusPageRect, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
 
   const loading = pageSizes.length === 0;
   const nativePinchE2E = import.meta.env.DEV

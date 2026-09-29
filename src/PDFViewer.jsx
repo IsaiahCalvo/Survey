@@ -166,7 +166,7 @@ import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
-import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   canDelete,
@@ -223,6 +223,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVi
 import { applyScope as applyAnnotationCreationScope, applyPasteScope } from './utils/annotationCreationCommit';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
+import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
@@ -26264,9 +26265,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const deletedIdsForJournal = collectDeletedIdsForJournal(scopedAction);
     const journaledByBulkPath = deletedIdsForJournal.length > 0
       && deletedIdsForJournal.every((id) => isBulkJournaledAnnotationId(id));
-    const suppressActivityHistoryRow = deletedIdsForJournal.length > 0
-      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath);
+    // History option A: a Survey Marker step that only removes markers is
+    // already in History as their restorable survey_marker_deleted rows.
+    const surveyMarkerRemovalOnly = scopedAction.type === 'survey-marker:batch'
+      && Array.isArray(scopedAction.changes) && scopedAction.changes.length > 0
+      && scopedAction.changes.every((change) => change?.after == null);
+    const suppressActivityHistoryRow = surveyMarkerRemovalOnly || (deletedIdsForJournal.length > 0
+      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath));
 
+	    const historyPushSummary = summarizeHistoryActionForLog(actionWithMeta);
 	    pushHistoryDebugEvent('local_annotation_history_added', {
 	      checkpointId,
 	      order: checkpointId,
@@ -26275,9 +26282,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	      receivedStack: 'localAnnotationUndo',
 	      clearedRedoStack: clearedRedoEntries > 0 ? 'localAnnotationRedo' : null,
 	      clearedRedoEntries,
-	      ...summarizeHistoryActionForLog(actionWithMeta),
-	      pageNumber: actionWithMeta.pageNumber,
-	      annotationId: actionWithMeta.annotationId,
+	      ...historyPushSummary,
+	      // History option A: a Survey Marker step names its page / marker in
+	      // its summary (the step itself has no top-level page or id).
+	      pageNumber: actionWithMeta.pageNumber ?? historyPushSummary?.pageNumber ?? null,
+	      annotationId: actionWithMeta.annotationId ?? historyPushSummary?.annotationId ?? null,
 	      undoDepth: nextUndo.length,
       redoDepth: 0,
       suppressHistoryRow: suppressActivityHistoryRow,
@@ -27187,14 +27196,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!result) return { ok: false, reason: 'restore-unavailable' };
       if (result.alreadyPresent) return { ok: false, reason: 'restore-noop' };
       const { markerId, marker } = result;
-      setSurveyMarkers(result.surveyMarkers);
-      // Owner ruling 2026-09-28: restoring a survey item brings its Excel row
-      // back (same Row ID — same id, module and category — and its answers).
-      // Queue the linked-Excel write exactly like a delete does (the effect
-      // after handleSurveyMarkerDeleted), so the sheet and the panel agree.
+      // RULED 2026-09-28 owner: History option A — a Restore is ONE undo step
+      // and writes a "restored" History row, for Survey Markers too. The
+      // marker comes back through the w53 family path (the same one Undo of
+      // a delete uses), which also: brings the linked Excel row back (same
+      // Row ID, answers) by queueing the Excel write; keeps the "received by
+      // Excel" stamp cleared so the next import can't re-trash it; and
+      // redraws it on its page in its module.
+      const restoreStep = buildSurveyMarkerHistoryAction([{ id: markerId, before: null, after: marker }]);
+      const apply = applySurveyMarkerFamilyActionRef.current;
+      if (!restoreStep || typeof apply !== 'function') return { ok: false, reason: 'restore-unavailable' };
+      const changed = apply(restoreStep) || [];
+      if (!changed.includes(markerId)) return { ok: false, reason: 'restore-noop' };
       if (selectedTemplateRef.current?.linkedExcelPath) {
         pendingExcelSyncAfterDeleteRefBridge.current = true;
       }
+      markNextHistoryPushAsRestore();
+      pushLocalAnnotationHistoryAction(restoreStep);
       try {
         const trash = loadTrash(pdfId);
         if (trash && trash[markerId]) saveTrash(pdfId, removeTombstone(trash, markerId));
@@ -27202,21 +27220,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // tombstone cleanup is best-effort
       }
       const pageNumber = Number(marker.pageNumber);
-      if (Number.isFinite(pageNumber) && marker.bounds) {
-        const b = marker.bounds;
-        setNewSurveyMarkersByPage(prev => {
-          const list = Array.isArray(prev?.[pageNumber]) ? prev[pageNumber] : [];
-          if (list.some(h => h.annotationId === markerId)) return prev;
-          return {
-            ...prev,
-            [pageNumber]: [...list, {
-              annotationId: markerId,
-              x: b.x, y: b.y, width: b.width, height: b.height,
-              angle: Number(b.angle) || 0,
-            }],
-          };
-        });
-      }
       return { ok: true, pageNumber: Number.isFinite(pageNumber) ? pageNumber : null };
     }
 
@@ -27414,6 +27417,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleRestoreSpace,
     markNextHistoryPushAsRestore,
     pdfId,
+    pushLocalAnnotationHistoryAction,
     restoreDurableEraseDeletion,
     user?.id,
   ]);
@@ -27545,6 +27549,107 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     return spaceContextRestored;
   }, [activeSpaceId, handleSetActiveSpace, handleSelectSurveyTemplate, selectedTemplate, templates]);
+
+  // RULED 2026-09-28 owner: History option A. The History panel asks the
+  // viewer three things (all read through refs, so their identity never
+  // changes and the left-rail API is never republished for them):
+  //   getHistoryMarkIndex()  which marks / Survey Markers / spaces / regions
+  //                          exist right now, and on which page — drives
+  //                          Restore vs "Back on the page now" vs "deleted later";
+  //   locateHistoryMark(id)  where one mark is NOW (page + its geometry), so
+  //                          a row highlights the mark where it is, not where
+  //                          it was when the row was written;
+  //   focusHistoryMark(page, box)  page + zoom so the mark fills ~40% of the
+  //                          view (PdfjsViewerContainer.focusPageRect).
+  const historyMarkIndexCacheRef = useRef({ sources: null, index: null });
+  const getHistoryMarkIndex = useCallback(() => {
+    const pages = annotationsByPageRef.current || {};
+    const markers = surveyMarkersRef.current || {};
+    const spacesNow = spacesRef.current || [];
+    const calloutsNow = calloutsRef.current || [];
+    const cache = historyMarkIndexCacheRef.current;
+    const sources = cache.sources;
+    if (sources && sources[0] === pages && sources[1] === markers && sources[2] === spacesNow && sources[3] === calloutsNow) {
+      return cache.index;
+    }
+    const index = new Map();
+    for (const [pageKey, page] of Object.entries(pages)) {
+      const pageNumber = Number(pageKey);
+      for (const object of page?.objects || []) {
+        const id = getHistoryAnnotationId(object);
+        if (id && !index.has(String(id))) index.set(String(id), { pageNumber, kind: 'mark' });
+      }
+    }
+    for (const [id, record] of Object.entries(markers)) {
+      if (!record || typeof record !== 'object' || record.deletedAt || record.deleted) continue;
+      const pageNumber = Number(record.pageNumber);
+      index.set(String(id), {
+        pageNumber: Number.isFinite(pageNumber) && pageNumber > 0 && record.bounds ? pageNumber : null,
+        kind: 'surveyMarker',
+      });
+    }
+    for (const callout of Array.isArray(calloutsNow) ? calloutsNow : []) {
+      if (callout?.id && !index.has(String(callout.id))) {
+        index.set(String(callout.id), { pageNumber: Number(callout.pageNumber) || null, kind: 'callout' });
+      }
+    }
+    for (const space of Array.isArray(spacesNow) ? spacesNow : []) {
+      if (!space?.id) continue;
+      index.set(String(space.id), { pageNumber: null, kind: 'space' });
+      for (const pageEntry of space.assignedPages || []) {
+        for (const region of pageEntry?.regions || []) {
+          if (region?.regionId) {
+            index.set(String(region.regionId), { pageNumber: Number(pageEntry.pageId) || null, kind: 'region', spaceId: space.id });
+          }
+        }
+      }
+    }
+    historyMarkIndexCacheRef.current = { sources: [pages, markers, spacesNow, calloutsNow], index };
+    return index;
+  }, []);
+
+  const locateHistoryMark = useCallback((markId) => {
+    if (markId == null) return null;
+    const id = String(markId);
+    const entry = getHistoryMarkIndex().get(id);
+    if (!entry) return null;
+    if (entry.kind === 'mark') {
+      const page = (annotationsByPageRef.current || {})[entry.pageNumber]
+        || (annotationsByPageRef.current || {})[String(entry.pageNumber)];
+      const object = (page?.objects || []).find((candidate) => String(getHistoryAnnotationId(candidate)) === id);
+      return { pageNumber: entry.pageNumber, kind: entry.kind, annotation: object ? projectAnnotationForHistoryPreview(object) : null };
+    }
+    if (entry.kind === 'surveyMarker') {
+      const record = (surveyMarkersRef.current || {})[id];
+      const b = record?.bounds;
+      return {
+        pageNumber: entry.pageNumber,
+        kind: entry.kind,
+        annotation: b && entry.pageNumber
+          ? { type: 'surveyMarker', left: Number(b.x) || 0, top: Number(b.y) || 0, width: Number(b.width) || 0, height: Number(b.height) || 0, angle: Number(b.angle) || 0 }
+          : null,
+      };
+    }
+    return { pageNumber: entry.pageNumber, kind: entry.kind, annotation: null };
+  }, [getHistoryMarkIndex]);
+
+  const focusHistoryMark = useCallback((pageNumber, box, options = {}) => {
+    const page = Number(pageNumber);
+    if (!Number.isFinite(page) || page < 1) return false;
+    const nav = goToPageRef.current;
+    const viewer = pdfjsViewerRef.current;
+    if (box && typeof viewer?.focusPageRect === 'function') {
+      // Keep the viewer's page state in step (page field, rail), then zoom.
+      if (typeof nav === 'function') {
+        try { nav(page, { fallback: 'nearest', bypassActiveSpace: true }); } catch { /* best-effort */ }
+      }
+      return viewer.focusPageRect(page, box, options) === true;
+    }
+    if (typeof nav === 'function') {
+      try { nav(page, { fallback: 'nearest', bypassActiveSpace: true }); return true; } catch { return false; }
+    }
+    return false;
+  }, []);
 
   // Read through a ref: the tombstone list is a new array after every capture,
   // and the import effect must not be cancelled mid-import by that churn.
@@ -30845,6 +30950,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     Boolean(annotationId && surveyMarkersRef.current?.[annotationId])
   ), []);
 
+  // Read through a ref so a token refresh (a new user object) does not
+  // rebuild the erase handler.
+  const historyUserRef = useRef(user);
+  historyUserRef.current = user;
   const handleEraseIntent = useCallback(async (intent) => {
     if (!pdfFile?.id) {
       return {
@@ -30976,6 +31085,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ?? target.storageKey
       ))
       .filter(Boolean);
+    // RULED 2026-09-28 owner: History option A — a partial erase is one
+    // History line on the screen that erased ("erased part of a pen
+    // stroke"). Whole marks the eraser removed keep their restorable trash
+    // row from the erase outbox; this line is only for marks that stay.
+    // (A counter the erase renumbered is not a trimmed mark.)
+    if (pageTargets.some((target) => target.operation === 'replace' && target.cause !== 'counter-renumber')) {
+      const eraseRow = buildPartialEraseHistoryRow({
+        targets: pageTargets,
+        documentId: pdfFile.id,
+        user: historyUserRef.current,
+        mutationId: durableIntent.mutationId,
+        pageNumber: durableIntent.pageNumber,
+        committedAt: new Date().toISOString(),
+        project: projectAnnotationForHistoryPreview,
+      });
+      if (eraseRow) void recordAndNotifyDocumentHistoryEvent(eraseRow);
+    }
     recordAnnotationCommit({
       surface: 'App.handleEraseIntent',
       source: 'eraser:commit',
@@ -33971,6 +34097,10 @@ ${pageBlocks}
       onCascadeRestoreRegion: handleCascadeRestoreRegion,
       onRestoreHistoryContext: handleRestoreHistoryContext,
       canRestoreHistory: canRestoreFromHistory,
+      // RULED 2026-09-28 owner: History option A (stable, ref-reading).
+      getHistoryMarkIndex,
+      locateHistoryMark,
+      focusHistoryMark,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -34069,6 +34199,9 @@ ${pageBlocks}
     handleCascadeRestoreRegion,
     handleRestoreHistoryContext,
     canRestoreFromHistory,
+    getHistoryMarkIndex,
+    locateHistoryMark,
+    focusHistoryMark,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App

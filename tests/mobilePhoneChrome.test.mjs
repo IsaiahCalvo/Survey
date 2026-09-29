@@ -59,8 +59,9 @@ test('the hub sheet steps through its three named heights', () => {
   assert.match(css, /--mobile-panel-expanded: 70dvh/);
   // Full screen stops clear of the app's top bar.
   assert.match(css, /\.mobile-pdf-sheet\.is-fullscreen \{[^}]*100dvh/);
-  // The browse panels opt in; Version history does not.
-  assert.match(sidebar, /const browsePanel = mobileMode && activeTab !== 'history'/);
+  // The browse panels opt in. RULED 2026-09-28 owner: History option A —
+  // History is a long feed now, so it opts in too.
+  assert.match(sidebar, /const browsePanel = mobileMode;/);
   assert.match(sidebar, /expandable: browsePanel/);
   assert.match(sidebar, /fullscreenable: browsePanel/);
   assert.match(sidebar, /sheetExpanded \? 'is-expanded ' : ''/);
