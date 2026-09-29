@@ -3962,7 +3962,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // renderAnnotationContextMenu, called in the JSX return below with the
   // viewer's action handlers. Opened via window.__onAnnotationContextMenu
   // (src/utils/contextMenuDiagnostics.js).
-  const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu();
+  // w61: the menu notes its target marks by id (annotationsByPageRef is
+  // declared further down; read only when a menu opens).
+  const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu({
+    getPageObjects: (pageNumber) => annotationsByPageRef.current?.[pageNumber]?.objects || null,
+  });
   const selectedNativeTextMarkupRef = useRef(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
   // mousedown/mouseup listeners below when a short click lands on an
@@ -34642,6 +34646,8 @@ ${pageBlocks}
         handleCopyCallout,
         handlePasteCallout,
         annotationsByPageRef,
+        // w61: this render's page lists (the ref above catches up in an effect).
+        annotationsByPageNow: annotationsByPage,
         setClipboardAnnotation,
         handleSaveAnnotations,
         setPendingSvgSelection,
