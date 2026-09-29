@@ -22,9 +22,14 @@ async function loadPanel() {
     .replace("import { supabase } from '../../supabaseClient';", 'const supabase = null;')
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')
-    .replace("import { listDocumentHistoryEvents, findDeletedSpaceHistoryEvent, isTrashHistoryEvent } from '../../services/documentHistoryService';", 'const { listDocumentHistoryEvents } = globalThis.__historyPollingService; const findDeletedSpaceHistoryEvent = async () => null; const isTrashHistoryEvent = () => false;')
+    .replace("import { listDocumentHistoryEvents, findDeletedSpaceHistoryEvent, isTrashHistoryEvent } from '../../services/documentHistoryService';", 'const { listDocumentHistoryEvents } = globalThis.__historyPollingService; const findDeletedSpaceHistoryEvent = async () => null; const isTrashHistoryEvent = (e) => [\'annotation_deleted\', \'survey_marker_deleted\'].includes(e?.event_type);')
     .replace("import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';", 'const resolveRegionRestoreCascade = () => null; const describeHistoryEventSubject = () => null;')
-    .replace("from '../../utils/readOnlyBodyReasons.js'", `from ${JSON.stringify(readOnlyUrl)}`);
+    .replace("from '../../utils/readOnlyBodyReasons.js'", `from ${JSON.stringify(readOnlyUrl)}`)
+    // RULED 2026-09-28 owner: History option A — the feed / geometry / page
+    // overlay helpers are plain modules; load them from disk.
+    .replace("from '../../utils/historyFeed.js'", `from ${JSON.stringify(new URL('../src/utils/historyFeed.js', import.meta.url).href)}`)
+    .replace("from '../../utils/historyGeometry.js'", `from ${JSON.stringify(new URL('../src/utils/historyGeometry.js', import.meta.url).href)}`)
+    .replace("from './historyPageOverlay.js'", `from ${JSON.stringify(new URL('../src/components/revisions/historyPageOverlay.js', import.meta.url).href)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(sourceUrl), { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxUrl));
   return (await import(`data:text/javascript;base64,${Buffer.from(executable).toString('base64')}#${++moduleId}`)).default;
@@ -40,7 +45,7 @@ async function mountPanel(t, initialProps) {
   const calls = { revisions: [], history: [] };
   globalThis.__historyPollingService = {
     async listRevisions(id) { calls.revisions.push(id); return []; },
-    async listDocumentHistoryEvents(id, options) { calls.history.push({ id, options }); return []; },
+    async listDocumentHistoryEvents(id, options) { calls.history.push({ id, options }); return globalThis.__historyRows || []; },
   };
   const timeouts = new Map();
   const intervals = new Map();
@@ -138,4 +143,35 @@ test('floating history requires both an open drawer and an active document', asy
   assert.equal(intervals.size, 0);
   await click('[data-testid="kal48-revisions-launcher"]');
   assert.equal(calls.history.length, 3);
+});
+
+// RULED 2026-09-28 owner: History option A — Restore sits only on a deleted
+// mark that is still gone, only for people who can edit; a mark that is back
+// says so instead.
+test('option A: Restore only for editors, only while the mark is gone', async (t) => {
+  const now = new Date().toISOString();
+  globalThis.__historyRows = [{
+    id: 'd1', client_event_id: 'd1', document_id: 'doc-a', user_id: 'u1', event_type: 'annotation_deleted',
+    page_number: 2, annotation_id: 'mark-1', summary: 'Maya Chen deleted a rectangle on page 2',
+    payload: { restoreAction: { type: 'fabric:create', pageNumber: 2 }, previewAnnotation: { type: 'rect', left: 1, top: 1, width: 5, height: 5 } },
+    occurred_at: now, created_at: now,
+  }];
+  t.after(() => { delete globalThis.__historyRows; });
+  let present = new Map();
+  const { render } = await mountPanel(t, {
+    isActive: true,
+    canRestore: false,
+    onRestoreHistoryActivity: () => ({ ok: true }),
+    getHistoryMarkIndex: () => present,
+  });
+  await render({});
+  const text = () => document.querySelector('[data-testid="document-history-list"]').textContent;
+  assert.match(text(), /Maya deleted a rectangle/);
+  assert.equal(document.querySelectorAll('[data-restore]').length, 0, 'a viewer never sees Restore');
+  await render({ canRestore: true });
+  assert.equal(document.querySelectorAll('[data-restore]').length, 1, 'an editor sees Restore on the gone mark');
+  present = new Map([['mark-1', { pageNumber: 2 }]]);
+  await render({ canRestore: true, getHistoryMarkIndex: () => present });
+  assert.equal(document.querySelectorAll('[data-restore]').length, 0);
+  assert.match(text(), /Back on the page now/);
 });

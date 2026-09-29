@@ -749,6 +749,19 @@ const normalizeHistoryActionType = (actionType, annotation = null, fallback = nu
   return actionType || fallback || null;
 };
 
+// History option A: the fields that make up the color a person sees. A width,
+// opacity or line-style change is not a color change.
+const HISTORY_COLOR_FIELDS = [
+  (a) => a?.stroke,
+  (a) => a?.fill,
+  (a) => a?.data?.color,
+  (a) => a?.data?.strokeColor,
+  (a) => a?.data?.fillColor,
+  (a) => a?.data?.style?.fontColor,
+];
+const historyColorFieldsDiffer = (before, after) => HISTORY_COLOR_FIELDS
+  .some((read) => JSON.stringify(read(before) ?? null) !== JSON.stringify(read(after) ?? null));
+
 const inferHistoryUpdateType = (before, after) => {
   if (!before || !after) return null;
   const moved = before.left !== after.left || before.top !== after.top;
@@ -773,6 +786,10 @@ const inferHistoryUpdateType = (before, after) => {
   if (resized && !rotated) return 'resize';
   if (moved && !resized && !rotated) return 'move';
   if (moved || resized || rotated) return 'move';
+  // RULED 2026-09-28 owner: History option A — a change of the mark's color
+  // (and nothing else about its shape) reads "changed the color of a …" and
+  // gets a Before / After peek.
+  if (historyColorFieldsDiffer(before, after)) return 'recolor';
   // w56 (live two-user test 2026-09-28): nothing moved and no text changed —
   // a colour / width / style change. It is "edited text" only on a text box;
   // a restyled pen stroke or shape reads "edited a pen stroke" etc. in
@@ -780,8 +797,63 @@ const inferHistoryUpdateType = (before, after) => {
   return annotationType === 'textbox' || annotationType === 'text' ? 'text edit' : 'restyle';
 };
 
+// RULED 2026-09-28 owner: History option A — a Survey Marker step (w53 family
+// action, a History restore of a marker) reads as a Survey Marker row and
+// carries the marker's box so History can show and highlight it.
+const summarizeSurveyMarkerHistoryAction = (action) => {
+  const changes = Array.isArray(action.changes) ? action.changes : [];
+  const first = changes[0] || {};
+  const record = first.after || first.before || null;
+  const kinds = new Set(changes.map((change) => {
+    if (change.before == null && change.after != null) return 'create';
+    if (change.after == null) return 'delete';
+    const b = change.before || {};
+    const a = change.after || {};
+    if ((b.lockedBy || null) !== (a.lockedBy || null)) return a.lockedBy ? 'lock' : 'unlock';
+    if (JSON.stringify(b.bounds ?? null) !== JSON.stringify(a.bounds ?? null)
+      || (b.pageNumber ?? null) !== (a.pageNumber ?? null)) return 'move';
+    return 'survey marker edit';
+  }));
+  const bounds = record?.bounds || null;
+  const preview = bounds
+    ? {
+      type: 'surveyMarker',
+      left: Number(bounds.x) || 0,
+      top: Number(bounds.y) || 0,
+      width: Number(bounds.width) || 0,
+      height: Number(bounds.height) || 0,
+      angle: Number(bounds.angle) || 0,
+      surveyMarker: { name: typeof record?.name === 'string' ? record.name : '' },
+    }
+    : null;
+  const beforeBounds = first.before?.bounds || null;
+  return {
+    actionType: kinds.size === 1 ? [...kinds][0] : 'survey marker edit',
+    rawActionType: action.type,
+    annotationType: 'surveyMarker',
+    annotationId: first.id || null,
+    annotationIds: changes.length > 1 ? changes.map((change) => change.id) : undefined,
+    pageNumber: record?.pageNumber ?? null,
+    itemCount: changes.length,
+    historySource: 'local annotation history',
+    previewAnnotation: preview,
+    previewBefore: beforeBounds && first.after
+      ? {
+        type: 'surveyMarker',
+        left: Number(beforeBounds.x) || 0,
+        top: Number(beforeBounds.y) || 0,
+        width: Number(beforeBounds.width) || 0,
+        height: Number(beforeBounds.height) || 0,
+        angle: Number(beforeBounds.angle) || 0,
+      }
+      : undefined,
+    restoreAction: null,
+  };
+};
+
 export const summarizeHistoryActionForLog = (action) => {
   if (!action || typeof action !== 'object') return null;
+  if (action.type === 'survey-marker:batch') return summarizeSurveyMarkerHistoryAction(action);
   const firstAnnotation = action.annotation || action.after || action.before;
   const batchCreated = Array.isArray(action.created) ? action.created : [];
   const batchDeleted = Array.isArray(action.deleted) ? action.deleted : [];
@@ -812,9 +884,25 @@ export const summarizeHistoryActionForLog = (action) => {
       return kinds.size === 1 && (kinds.has('lock') || kinds.has('unlock')) ? [...kinds][0] : null;
     })()
     : null;
+  // History option A: one mark's update inside a batch (an erase that trims a
+  // stroke, a single-mark group edit) reads like a plain update of that mark.
+  const singleUpdate = action.type === 'fabric:update'
+    ? { before: action.before, after: action.after }
+    : (action.type === 'fabric:batch' && batchUpdated.length === 1
+      && batchCreated.length === 0 && batchDeleted.length === 0
+      ? batchUpdated[0]
+      : null);
   const inferredActionType = action.type === 'fabric:update'
     ? inferHistoryUpdateType(action.before, action.after)
-    : (batchLockToggle || normalizeHistoryActionType(action.type, firstAnnotation || batchFirst));
+    : (batchLockToggle
+      || (singleUpdate ? inferHistoryUpdateType(singleUpdate.before, singleUpdate.after) : null)
+      || normalizeHistoryActionType(action.type, firstAnnotation || batchFirst));
+  // History option A: the mark as it was before an edit, so History can show
+  // a "Before" ghost (old place, size or color). Only for a one-mark edit, and
+  // projected + bounded like previewAnnotation.
+  const previewBefore = singleUpdate?.before && singleUpdate?.after
+    ? projectAnnotationForHistoryPreview(singleUpdate.before)
+    : null;
   return {
     actionType: inferredActionType,
     rawActionType: action.type || null,
@@ -826,6 +914,7 @@ export const summarizeHistoryActionForLog = (action) => {
     historySource: 'local annotation history',
     visualBounds: getHistoryAnnotationVisualBounds(previewAnnotation),
     previewAnnotation: cloneHistoryPayloadValue(previewAnnotation),
+    previewBefore: previewBefore ? cloneHistoryPayloadValue(previewBefore) : undefined,
     restoreAction: buildHistoryRestoreAction(action),
   };
 };

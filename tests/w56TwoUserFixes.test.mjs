@@ -97,13 +97,15 @@ test('defect 3: a restyle is not "edited text"; a text box edit still is', () =>
   const restyle = summarizeHistoryActionForLog({
     type: 'fabric:update', pageNumber: 1, annotationId: 'p1', before: pen, after: { ...pen, fill: '#0000ff' },
   });
-  assert.equal(restyle.actionType, 'restyle');
+  // RULED 2026-09-28 owner: History option A — a color change reads
+  // "changed the color of …" (was the generic "edited a …" restyle line).
+  assert.equal(restyle.actionType, 'recolor');
   const row = buildHistoryEventRowFromDebugEvent(
     { type: 'local_annotation_history_added', pageNumber: 1, annotationId: 'p1', ...restyle },
     { documentId: 'd1', user: { id: 'u1', email: 'bot@example.test' } },
   );
   assert.doesNotMatch(row.summary, /edited text/);
-  assert.match(row.summary, /edited a pen stroke on page 1/);
+  assert.match(row.summary, /changed the color of a pen stroke on page 1/);
 
   // fabric 7 serializes the text box type capitalized.
   const box1 = { type: 'Textbox', text: 'Hello', left: 0, top: 0, data: { id: 't1' } };
@@ -114,7 +116,13 @@ test('defect 3: a restyle is not "edited text"; a text box edit still is', () =>
   const textRestyle = summarizeHistoryActionForLog({
     type: 'fabric:update', pageNumber: 1, annotationId: 't1', before: box1, after: { ...box1, fill: '#0000ff' },
   });
-  assert.equal(textRestyle.actionType, 'text edit');
+  // RULED 2026-09-28 owner: History option A — recoloring a text box is a
+  // color change too; a width / style-only change of a text box stays "text edit".
+  assert.equal(textRestyle.actionType, 'recolor');
+  const textWidth = summarizeHistoryActionForLog({
+    type: 'fabric:update', pageNumber: 1, annotationId: 't1', before: box1, after: { ...box1, strokeWidth: 3 },
+  });
+  assert.equal(textWidth.actionType, 'text edit');
 });
 
 test('defect 3b: Lock / Unlock read "locked" / "unlocked" in History; text boxes say "text box"', () => {

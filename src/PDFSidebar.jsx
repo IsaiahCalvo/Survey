@@ -174,6 +174,11 @@ const PDFSidebar = React.forwardRef(({
   onRestoreHistoryContext = null,
   // w55: false for viewers / a locked document — History hides Restore.
   canRestoreHistory = false,
+  // RULED 2026-09-28 owner: History option A — viewer hooks for the feed
+  // (which marks exist now, where one is now, zoom to it).
+  getHistoryMarkIndex = null,
+  locateHistoryMark = null,
+  focusHistoryMark = null,
   mobileMode = false,
   onPanelStateChange = null,
 }, ref) => {
@@ -705,6 +710,9 @@ const PDFSidebar = React.forwardRef(({
                 onCascadeRestoreRegion={onCascadeRestoreRegion}
                 onRestoreHistoryContext={onRestoreHistoryContext}
                 canRestore={canRestoreHistory}
+                getHistoryMarkIndex={getHistoryMarkIndex}
+                locateHistoryMark={locateHistoryMark}
+                focusHistoryMark={focusHistoryMark}
               />
             </div>
           </div>
