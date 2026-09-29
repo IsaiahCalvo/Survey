@@ -10,7 +10,7 @@ How to read the status line:
 
 - **Seen working by a helper** — a helper ran the real app in a test browser and saw it work.
 - **Built, not yet seen in the app** — it passed the automatic checks and reviews, but nobody has watched it work in the app yet. These need your eyes most.
-- **Landing separately** — still being finished on its own branch.
+- **Landing separately** — (none now; the History clean-up has landed).
 
 Test steps for every item are in TEST-PLAN.md (same folder). The item codes (H1, C2, ...) match.
 
@@ -184,7 +184,7 @@ Test steps for every item are in TEST-PLAN.md (same folder). The item codes (H1,
 
 **HI3. Pick a mark to see its history.** With History open, picking a mark on the page narrows the list to that mark ("Showing history for this ... · Clear"). Clear, Escape or picking nothing ends it. Where: History open, click a mark. Status: built, not yet seen in the app.
 
-**HI4. History clean-up.** A tidy-up pass on the History panel. Status: landing separately (branch claude/w65-history-clean had no finished work on main when this was written); test it after it merges.
+**HI4. History clean-up.** History rows have status dots (new blue, edited green, deleted red, restored teal) with a small key; the page highlight is a soft wash plus one thin outline that fully covers the mark (no pulsing); deleted marks show a faint ghost with one small Restore; rows are one sentence with details only on the selected row. Status: built, and a helper saw it work in the app on desktop and phone.
 
 ---
 

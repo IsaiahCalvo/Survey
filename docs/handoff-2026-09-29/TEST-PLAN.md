@@ -133,7 +133,7 @@ Open the same throwaway document in two windows side by side.
 77. **[HI1] Load older.** Do: scroll to the bottom of History and press Load older. See: older days appear with no repeats. Wrong: repeats or gaps.
 78. **[HI3] Pick a mark.** Do: with History open, click a mark on the page. See: "Showing history for this ... · Clear" and only that mark's lines. Press Escape. See: full list again. Wrong: the list does not narrow.
 79. **[HI2] Phone History.** Do: open History on the phone and tap a mark on the page. See: same feed; the tap picks the mark (the sheet does not dim the page). Wrong: the tap closes the sheet.
-80. **[HI4] History clean-up.** Landing separately — skip until it merges.
+80. **[HI4] History clean-up.** Open History with a few changes made (add a shape, move it, recolor it, delete another). Look for: new = blue dot, edited = green dot, deleted = red dot, restored = teal dot, with a small key under the filters. Click a row: the mark gets a soft blue wash and one thin outline fully around it (no pulsing, no drawing-on). A deleted mark shows a faint dashed ghost with one small Restore in its corner (no black pill). Wrong if: the outline stops short of the mark, or anything pulses or floats. Known choices to judge: cutting a Survey Marker shows green (edit); undo/redo rows have a grey dot.
 
 ---
 
@@ -153,4 +153,3 @@ Open the same throwaway document in two windows side by side.
 - A long straight diagonal erase can leave small islands of ink.
 - Shared thumbnails across devices need a database change that is not applied.
 - The 30-day trash sweep stays off.
-- History clean-up (HI4) is still landing on its own branch.
