@@ -501,10 +501,18 @@ export function buildHistoryFeed(rows, {
   filter = 'all',
   query = '',
   now = Date.now(),
+  // w64: the marks picked on the page. When set, the feed shows every line
+  // about those marks (by anyone, deleted or not) and ignores the filter
+  // chips and the search — the "Showing history for this …" bar says so.
+  markIds = null,
 } = {}) {
+  const markSet = markIds && (markIds.size ?? markIds.length) > 0
+    ? new Set([...markIds].map(String))
+    : null;
   const groups = buildHistoryGroups(rows, { currentUserId })
-    .filter((group) => historyGroupPassesFilter(group, filter, { currentUserId }))
-    .filter((group) => historyGroupMatchesQuery(group, query));
+    .filter((group) => (markSet
+      ? group.entries.some((entry) => entry.markIds.some((id) => markSet.has(id)))
+      : historyGroupPassesFilter(group, filter, { currentUserId }) && historyGroupMatchesQuery(group, query)));
   const items = [];
   let lastDay = null;
   for (const group of groups) {

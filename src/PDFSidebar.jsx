@@ -335,7 +335,11 @@ const PDFSidebar = React.forwardRef(({
 
   return (
     <>
-    {mobileMode && !isCollapsed && (
+    {/* w64 (owner 2026-09-29): with History open, tapping a mark on the page
+        shows that mark's history, so the History sheet leaves the page
+        above it live (no dim, no tap-to-close cover — like a Maps sheet).
+        It still closes with its close button or a pull down. */}
+    {mobileMode && !isCollapsed && activeTab !== 'history' && (
       <button
         type="button"
         className="mobile-pdf-sheet-backdrop"

@@ -29,7 +29,9 @@ async function loadPanel() {
     // overlay helpers are plain modules; load them from disk.
     .replace("from '../../utils/historyFeed.js'", `from ${JSON.stringify(new URL('../src/utils/historyFeed.js', import.meta.url).href)}`)
     .replace("from '../../utils/historyGeometry.js'", `from ${JSON.stringify(new URL('../src/utils/historyGeometry.js', import.meta.url).href)}`)
-    .replace("from './historyPageOverlay.js'", `from ${JSON.stringify(new URL('../src/components/revisions/historyPageOverlay.js', import.meta.url).href)}`);
+    .replace("from './historyPageOverlay.js'", `from ${JSON.stringify(new URL('../src/components/revisions/historyPageOverlay.js', import.meta.url).href)}`)
+    // w64: the pick-on-the-page filter helpers are a plain module too.
+    .replace("from '../../utils/historyMarkFilter.js'", `from ${JSON.stringify(new URL('../src/utils/historyMarkFilter.js', import.meta.url).href)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(sourceUrl), { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxUrl));
   return (await import(`data:text/javascript;base64,${Buffer.from(executable).toString('base64')}#${++moduleId}`)).default;
@@ -174,4 +176,104 @@ test('option A: Restore only for editors, only while the mark is gone', async (t
   await render({ canRestore: true, getHistoryMarkIndex: () => present });
   assert.equal(document.querySelectorAll('[data-restore]').length, 0);
   assert.match(text(), /Back on the page now/);
+});
+
+// w64 (owner 2026-09-29): with History open, picking a mark on the page shows
+// only that mark's lines, selects its newest one and says so in a small bar;
+// Clear, Esc or deselecting ends it; a mark with no lines says so plainly.
+test('w64: a pick on the page filters History to that mark until cleared', async (t) => {
+  const iso = (m) => new Date(Date.now() - m * 60000).toISOString();
+  const line = (id, mark, action, type, m) => ({
+    id, client_event_id: id, document_id: 'doc-a', user_id: 'u1', event_type: 'local_annotation_history_added',
+    page_number: 1, annotation_id: mark, summary: `Maya Chen ${action === 'create' ? 'created' : 'moved'} a ${type} on page 1`,
+    payload: { actionType: action, annotationType: type }, occurred_at: iso(m), created_at: iso(m),
+  });
+  globalThis.__historyRows = [
+    line('a3', 'ell-1', 'create', 'ellipse', 1),
+    line('a2', 'rect-1', 'move', 'rect', 5),
+    line('a1', 'rect-1', 'create', 'rect', 40),
+  ];
+  t.after(() => { delete globalThis.__historyRows; });
+  const { calls, render } = await mountPanel(t, { isActive: true });
+  await render({});
+  const rows = () => [...document.querySelectorAll('[data-testid="document-history-list"] .dh-row')];
+  const bar = () => document.querySelector('[data-testid="document-history-mark-filter"]')?.textContent || null;
+  const pick = (items, pageNumber = 1) => act(async () => {
+    window.dispatchEvent(new window.CustomEvent('annotations:page-selection', { detail: { pageNumber, items } }));
+  });
+  assert.equal(rows().length, 3);
+  await pick([{ id: 'rect-1', typeKey: 'rect' }]);
+  assert.match(bar(), /Showing history for this rectangle/);
+  assert.deepEqual(rows().map((r) => r.getAttribute('data-mark')), ['rect-1', 'rect-1']);
+  assert.ok(rows()[0].classList.contains('sel'), 'the newest line for the mark is selected');
+  assert.notEqual(document.activeElement, document.querySelector('[data-testid="document-history-list"]'), 'focus stays on the page');
+  // Esc ends it.
+  await act(async () => { window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' })); });
+  assert.equal(bar(), null);
+  assert.equal(rows().length, 3);
+  // Multi-pick across pages, then deselect on one page keeps the other.
+  await pick([{ id: 'rect-1', typeKey: 'rect' }], 1);
+  await pick([{ id: 'ell-1', typeKey: 'ellipse' }], 2);
+  assert.match(bar(), /these 2 marks/);
+  assert.equal(rows().length, 3);
+  await pick([], 1);
+  assert.match(bar(), /this ellipse/);
+  // Deselecting everything ends it.
+  await pick([], 2);
+  assert.equal(bar(), null);
+  // Clear.
+  await pick([{ id: 'rect-1', typeKey: 'rect' }]);
+  await act(async () => {
+    document.querySelector('[data-testid="document-history-mark-filter-clear"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  assert.equal(bar(), null);
+  assert.equal(rows().length, 3);
+  // A mark with no lines (and nothing older to read) says so, without extra reads.
+  const reads = calls.history.length;
+  await pick([{ id: 'never', typeKey: 'counter' }]);
+  assert.equal(document.querySelector('[data-testid="document-history-empty"]').textContent, 'This counter has no history yet.');
+  assert.equal(calls.history.length, reads);
+  // Hidden panel: picks are remembered but never filter.
+  await pick([], 1);
+  await render({ isActive: false });
+  await pick([{ id: 'rect-1', typeKey: 'rect' }]);
+  await render({ isActive: true });
+  assert.equal(bar(), null);
+});
+
+// w64 review round: picking one mark and then another selects the second
+// mark's newest line (it used to end with no line selected); a multi-pick
+// that only shrinks keeps the line you clicked.
+test('w64: picking A then B selects B\'s newest line; a shrinking pick keeps your line', async (t) => {
+  const iso = (m) => new Date(Date.now() - m * 60000).toISOString();
+  const line = (id, mark, type, m) => ({
+    id, client_event_id: id, document_id: 'doc-a', user_id: 'u1', event_type: 'local_annotation_history_added',
+    page_number: 1, annotation_id: mark, summary: `Maya Chen created a ${type} on page 1`,
+    payload: { actionType: 'create', annotationType: type }, occurred_at: iso(m), created_at: iso(m),
+  });
+  globalThis.__historyRows = [line('b1', 'ell-1', 'ellipse', 1), line('a2', 'rect-1', 'rect', 5), line('a1', 'rect-2', 'rect', 9)];
+  t.after(() => { delete globalThis.__historyRows; });
+  const { render, flush, timeouts } = await mountPanel(t, { isActive: true });
+  await render({});
+  const rows = () => [...document.querySelectorAll('[data-testid="document-history-list"] .dh-row')].map((r) => [r.getAttribute('data-mark'), r.classList.contains('sel')]);
+  const pick = (items, pageNumber = 1) => act(async () => {
+    window.dispatchEvent(new window.CustomEvent('annotations:page-selection', { detail: { pageNumber, items } }));
+  });
+  await pick([{ id: 'rect-1', typeKey: 'rect' }]);
+  assert.deepEqual(rows(), [['rect-1', true]]);
+  await pick([{ id: 'ell-1', typeKey: 'ellipse' }]);
+  assert.deepEqual(rows(), [['ell-1', true]]);
+  // Multi-pick over two pages; click the older line; page 2's pick goes away.
+  await pick([{ id: 'rect-1', typeKey: 'rect' }], 1);
+  await pick([{ id: 'rect-2', typeKey: 'rect' }], 2);
+  assert.deepEqual(rows(), [['rect-1', true], ['rect-2', false]]);
+  await act(async () => {
+    document.querySelectorAll('[data-testid="document-history-list"] .dh-row')[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  assert.deepEqual(rows(), [['rect-1', false], ['rect-2', true]]);
+  await pick([], 1);
+  assert.deepEqual(rows(), [['rect-2', true]], 'the line you clicked stays selected');
+  // The clicked line's on-page highlight retries while the page mounts (no
+  // page in this DOM): let those retries run out.
+  for (let i = 0; i < 12 && timeouts.size > 0; i += 1) await flush(timeouts);
 });

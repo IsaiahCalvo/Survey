@@ -56,6 +56,8 @@ import {
 // (2026-09-10) not even that when it is a numeric chrome field that opted out.
 import { draftOwnsKeyboard, releaseFocusForDraftTool } from '../utils/draftKeyboardTarget.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { historyTypeKey } from '../utils/historyFeed.js';
+import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
 // callout-unification keystone flag. The flag governs only persistence/sync:
@@ -2524,6 +2526,45 @@ const SVGAnnotationLayer = memo(({
       annotationIds: idsFor([selectedAnnotationIndex]),
     });
   }, [selectedAnnotationIndex, selectedIndicesKey, annotations, pageNumber, onSelectionChange]);
+  // w64 (owner 2026-09-29): tell the History panel what is picked on THIS
+  // page (marks, callouts, counters, Survey Markers) so, while it is open, it
+  // can jump to those marks' lines. One window event per change of the pick
+  // (never per drag frame: the key only holds ids and types); an empty pick
+  // is sent on deselect and when the page layer goes away.
+  const historyPickItems = useMemo(() => {
+    const items = [];
+    for (const index of selectedIds || []) {
+      const object = annotations?.objects?.[index];
+      const id = getAnnotationRenderIdentity(object).annotationId;
+      if (id) items.push({ id: String(id), typeKey: historyTypeKey(object?.data?.type || object?.type, object) });
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      // The callout selection set is shared by every page: keep this page's
+      // (read from the callouts list, so a callout not yet in the page's
+      // stacking order still counts).
+      const wanted = new Set(Array.from(effectiveSelectedCalloutIds instanceof Set
+        ? effectiveSelectedCalloutIds
+        : (Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : [])).map(String));
+      for (const callout of callouts) {
+        if (callout?.id != null && callout.pageNumber === pageNumber && wanted.has(String(callout.id))) {
+          items.push({ id: String(callout.id), typeKey: 'callout' });
+        }
+      }
+    }
+    for (const markerId of selectedSurveyMarkerIds) {
+      if (markerId) items.push({ id: String(markerId), typeKey: 'surveyMarker' });
+    }
+    return items;
+  }, [selectedIds, annotations, calloutSelectionSize, callouts, effectiveSelectedCalloutIds, pageNumber, selectedSurveyMarkerIds]);
+  const historyPickKey = historyPickItems.map((item) => `${item.id}:${item.typeKey}`).join('|');
+  const historyPickItemsRef = useRef(historyPickItems);
+  historyPickItemsRef.current = historyPickItems;
+  useEffect(() => {
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current);
+  }, [historyPickKey, pageNumber]);
+  useEffect(() => () => {
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, []);
+  }, [pageNumber]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.

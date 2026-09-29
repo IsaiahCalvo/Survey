@@ -48,10 +48,20 @@ import {
   historyMarkColor,
   historyRangeLabel,
   historyRowKey,
+  historyRowMarkIds,
   historyRowTimeMs,
   historyShortVerb,
   latestDeleteRowByMark,
 } from '../../utils/historyFeed.js';
+import {
+  HISTORY_MARK_LOOKUP_MAX_PAGES,
+  HISTORY_PAGE_SELECTION_EVENT,
+  historyMarkFilterEmptyText,
+  historyMarkFilterLabel,
+  historyRowsTouchMarks,
+  mergePageSelections,
+  selectionKey,
+} from '../../utils/historyMarkFilter.js';
 import { historyAnnotationBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
 import { createHistoryPageOverlay, findMarkElements, measureMarkBox } from './historyPageOverlay.js';
 
@@ -156,6 +166,11 @@ function ensureHistoryPanelStyle() {
     .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     .dh-link:hover { color: var(--text-1); }
     .dh-status { width: 100%; color: var(--text-3); }
+    .dh-markbar { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--text-2); font-size: 12px; }
+    .dh-markbar > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dh-markbar .dh-link { font-size: 12px; flex: none; }
+    .dh-panel--phone .dh-markbar, .dh-panel--phone .dh-markbar .dh-link { font-size: 13px; }
+    .dh-panel--phone .dh-markbar .dh-link { padding: 12px 0; margin: -12px 0; }
     .dh-panel--phone .dh-row { min-height: 44px; }
     .dh-panel--phone .dh-chip { padding: 8px 6px; font-size: 13px; }
     .dh-panel--phone .dh-ib { width: 44px; height: 44px; margin-right: -8px; }
@@ -253,6 +268,23 @@ export default function RevisionsPanel({
   const [peekMode, setPeekMode] = useState('after');
   const [openFolds, setOpenFolds] = useState(() => new Set());
   const [linkedMarkId, setLinkedMarkId] = useState(null);
+  // w64: the marks picked on the page ({ key, items }) — the list shows only
+  // their lines until cleared — and the look-further-back state for them:
+  // 'idle' | 'looking' | 'none' (nothing, looked back to the start) |
+  // 'partial' (nothing in the pages looked through; Load older goes further).
+  const [markFilter, setMarkFilter] = useState(null);
+  const [markLookup, setMarkLookup] = useState('idle');
+  const markFilterKeyRef = useRef('');
+  // Each page layer's pick (pageNumber -> items), and the pick last applied.
+  const pageSelectionRef = useRef(new Map());
+  const appliedPickKeyRef = useRef('');
+  // The pick whose newest line still has to be selected and scrolled to.
+  const pendingMarkJumpRef = useRef('');
+  // The selected line came from a pick on the page: never redraw its
+  // Before / After ghosts while you work on that mark.
+  const selectedFromPageRef = useRef(false);
+  const selectedKeyRef = useRef(null);
+  selectedKeyRef.current = selectedKey;
   const [listFocused, setListFocused] = useState(false);
   // The focus outline is for keyboard use only (never on a mouse click).
   const [keyboardNav, setKeyboardNav] = useState(false);
@@ -398,6 +430,10 @@ export default function RevisionsPanel({
     setLinkedMarkId(null);
     setCascadePending(null);
     setStatusMsg(null);
+    setMarkFilter(null);
+    setMarkLookup('idle');
+    markFilterKeyRef.current = '';
+    pendingMarkJumpRef.current = '';
   }, [documentId]);
 
   // Row styles are injected up front so the keyboard focus is visible from
@@ -528,6 +564,13 @@ export default function RevisionsPanel({
       setViewingRevision(null);
       setSelectedKey(null);
       setLinkedMarkId(null);
+      setMarkFilter(null);
+      setMarkLookup('idle');
+      markFilterKeyRef.current = '';
+      pendingMarkJumpRef.current = '';
+      // Reopening with the same mark still picked does not re-filter; a new
+      // pick does.
+      appliedPickKeyRef.current = selectionKey(mergePageSelections(pageSelectionRef.current));
     }
   }, [panelVisible, clearPageMarks]);
 
@@ -559,8 +602,14 @@ export default function RevisionsPanel({
   // ---- the feed -----------------------------------------------------------
   const currentUserId = user?.id || null;
   const feed = useMemo(
-    () => buildHistoryFeed(historyEvents, { currentUserId, filter, query, now: nowMs }),
-    [historyEvents, currentUserId, filter, query, nowMs],
+    () => buildHistoryFeed(historyEvents, {
+      currentUserId,
+      filter,
+      query,
+      now: nowMs,
+      markIds: markFilter ? markFilter.items.map((item) => item.id) : null,
+    }),
+    [historyEvents, currentUserId, filter, query, nowMs, markFilter],
   );
   const latestDeleteByMark = useMemo(() => latestDeleteRowByMark(historyEvents), [historyEvents]);
   const groupsByKey = useMemo(() => {
@@ -632,7 +681,9 @@ export default function RevisionsPanel({
     // Decision 10 / w55: a survey-scoped line moves you into its context
     // (never out of your survey panel or space) — on a click or Enter only,
     // never while stepping with the arrow keys.
-    if (restoreContext && typeof onRestoreHistoryContext === 'function') {
+    // w64: not while showing a picked mark's history — you are already there,
+    // and switching survey context would drop the pick (and the filter).
+    if (restoreContext && !markFilterKeyRef.current && typeof onRestoreHistoryContext === 'function') {
       try { onRestoreHistoryContext(last.row); } catch (_err) { /* best-effort */ }
     }
     const markId = last.markId || last.markIds[0] || null;
@@ -742,6 +793,7 @@ export default function RevisionsPanel({
   }, [groupsByKey, overlay, onRestoreHistoryContext, focusHistoryMark, onNavigateToPage, canRestore, onRestoreHistoryActivity, markIndex, latestDeleteByMark, locateHistoryMark, mobileMode]);
 
   const selectLine = useCallback((key, options = {}) => {
+    selectedFromPageRef.current = false;
     setSelectedKey(key);
     setPeekMode('after');
     setStatusMsg(null);
@@ -757,18 +809,162 @@ export default function RevisionsPanel({
     clearPageMarks();
   }, [clearPageMarks]);
 
+  // ---- w64: a mark picked on the page shows its history ------------------
+  const clearMarkFilter = useCallback(() => {
+    markFilterKeyRef.current = '';
+    pendingMarkJumpRef.current = '';
+    setMarkFilter(null);
+    setMarkLookup('idle');
+    if (selectedFromPageRef.current) {
+      selectedFromPageRef.current = false;
+      setSelectedKey(null);
+    }
+  }, []);
+
+  // Look further back, a page at a time (bounded), for the picked marks'
+  // lines. Stops when they turn up, when there is nothing older, when the
+  // pick changes or when you switch documents.
+  const lookBackForMarks = useCallback(async (key, ids) => {
+    if (!documentId || !key) return;
+    const idSet = new Set(ids.map(String));
+    setMarkLookup('looking');
+    let found = false;
+    let more = true;
+    try {
+      for (let page = 0; page < HISTORY_MARK_LOOKUP_MAX_PAGES && more && !found; page += 1) {
+        const serverRows = historyEventsRef.current.filter((row) => !row?.__local);
+        const oldest = serverRows[serverRows.length - 1];
+        if (!oldest) { more = false; break; }
+        // eslint-disable-next-line no-await-in-loop
+        const older = await listDocumentHistoryEvents(documentId, {
+          limit: HISTORY_PAGE_SIZE,
+          before: oldest.occurred_at || oldest.created_at,
+          beforeId: oldest.id,
+        });
+        if (currentDocumentIdRef.current !== documentId || markFilterKeyRef.current !== key) return;
+        const list = Array.isArray(older) ? older : [];
+        more = list.length >= HISTORY_PAGE_SIZE;
+        // Keep the ref in step now, so the next page's cursor is right.
+        historyEventsRef.current = mergeHistoryRowLists(historyEventsRef.current, list);
+        setHistoryEvents((prev) => mergeHistoryRowLists(prev, list));
+        setHasOlder(more);
+        found = historyRowsTouchMarks(list, idSet, historyRowMarkIds);
+      }
+    } catch (_err) {
+      if (markFilterKeyRef.current === key) setMarkLookup('partial');
+      return;
+    }
+    if (markFilterKeyRef.current !== key) return;
+    setMarkLookup(found ? 'idle' : (more ? 'partial' : 'none'));
+  }, [documentId]);
+
+  const applyPagePick = useCallback((items) => {
+    const key = selectionKey(items);
+    if (key === appliedPickKeyRef.current) return;
+    appliedPickKeyRef.current = key;
+    if (!key) {
+      // Deselecting on the page ends the filter.
+      if (markFilterKeyRef.current) clearMarkFilter();
+      return;
+    }
+    // Part of a multi-pick went away (its page scrolled out of view, a paste
+    // moved it) while you were reading a line you clicked: keep your line,
+    // only narrow the list.
+    const previousIds = markFilterKeyRef.current ? markFilterKeyRef.current.split('|') : [];
+    const shrinking = previousIds.length > 0 && items.every((item) => previousIds.includes(item.id));
+    markFilterKeyRef.current = key;
+    setMarkFilter({ key, items });
+    if (shrinking && !selectedFromPageRef.current && selectedKeyRef.current) return;
+    pendingMarkJumpRef.current = key;
+    setQuery('');
+    setMarkLookup('idle');
+    // A new pick starts with no line selected, so its newest line is the one
+    // selected next (never left blank by the old line being filtered out).
+    setSelectedKey(null);
+    activityClickSeqRef.current += 1;
+    overlayRef.current?.clear();
+  }, [clearMarkFilter]);
+
+  // Every page layer reports its pick; this keeps the latest per page (even
+  // while the panel is hidden) and, while it is showing, follows the pick.
+  const panelVisibleRef = useRef(panelVisible);
+  panelVisibleRef.current = panelVisible;
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onPick = (event) => {
+      const pageNumber = Number(event?.detail?.pageNumber);
+      if (!Number.isFinite(pageNumber)) return;
+      const items = Array.isArray(event.detail.items) ? event.detail.items : [];
+      if (items.length) pageSelectionRef.current.set(pageNumber, items);
+      else pageSelectionRef.current.delete(pageNumber);
+      if (!panelVisibleRef.current) return;
+      applyPagePick(mergePageSelections(pageSelectionRef.current));
+    };
+    window.addEventListener(HISTORY_PAGE_SELECTION_EVENT, onPick);
+    return () => window.removeEventListener(HISTORY_PAGE_SELECTION_EVENT, onPick);
+  }, [applyPagePick]);
+
+  // Select the newest line for the pick and bring it into view — without
+  // moving the page or taking focus from it (arrow keys keep nudging the
+  // mark). Not loaded yet: look further back.
+  useEffect(() => {
+    const firstGroup = markFilter ? feed.items.find((item) => item.type === 'group')?.group || null : null;
+    // While you keep working on the picked mark (a nudge, a color change),
+    // its newest line stays the selected one.
+    if (!pendingMarkJumpRef.current && markFilter && selectedFromPageRef.current
+      && selectedKey && firstGroup && firstGroup.key !== selectedKey) {
+      setSelectedKey(firstGroup.key);
+      if (listRef.current) listRef.current.scrollTop = 0;
+      return;
+    }
+    const key = pendingMarkJumpRef.current;
+    if (!key || !markFilter || markFilter.key !== key || !hasLoadedRef.current) return;
+    if (firstGroup) {
+      pendingMarkJumpRef.current = '';
+      selectedFromPageRef.current = true;
+      activityClickSeqRef.current += 1;
+      overlayRef.current?.clear();
+      setSelectedKey(firstGroup.key);
+      if (markLookup !== 'idle') setMarkLookup('idle');
+      const list = listRef.current;
+      if (list && typeof window !== 'undefined') {
+        const nextFrame = typeof window.requestAnimationFrame === 'function'
+          ? (fn) => window.requestAnimationFrame(fn)
+          : (fn) => fn();
+        nextFrame(() => {
+          const sel = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(firstGroup.key) : firstGroup.key;
+          const el = list.querySelector?.(`[data-key="${sel}"]`);
+          if (!el) { list.scrollTop = 0; return; }
+          const listBox = list.getBoundingClientRect();
+          const box = el.getBoundingClientRect();
+          const DAY_HEADER = 34; // the sticky day heading sits over the top
+          if (box.top < listBox.top + DAY_HEADER || box.bottom > listBox.bottom) {
+            list.scrollTop = Math.max(0, list.scrollTop + (box.top - listBox.top) - DAY_HEADER);
+          }
+        });
+      }
+      return;
+    }
+    if (markLookup === 'partial' && !hasOlder) { setMarkLookup('none'); return; }
+    if (markLookup !== 'idle') return; // looking now, or already looked
+    if (hasOlder) lookBackForMarks(key, markFilter.items.map((item) => item.id));
+    else setMarkLookup('none');
+  }, [feed, markFilter, markLookup, hasOlder, lookBackForMarks, selectedKey]);
+
   // w55: Esc clears the highlight (and the open line's ghosts).
   useEffect(() => {
     if (typeof window === 'undefined' || !panelVisible) return undefined;
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return;
       if (e.target?.closest?.('input, textarea, [contenteditable]')) return;
+      // w64: Esc also ends "Showing history for this …".
+      if (markFilterKeyRef.current) clearMarkFilter();
       if (!selectedKey && !overlayRef.current?.hasHighlight?.()) return;
       clearSelection();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [panelVisible, selectedKey, clearSelection]);
+  }, [panelVisible, selectedKey, clearSelection, clearMarkFilter]);
 
   const handleRestoreActivity = useCallback(async (event) => {
     if (!event || typeof onRestoreHistoryActivity !== 'function' || busy) return;
@@ -890,6 +1086,7 @@ export default function RevisionsPanel({
   useEffect(() => {
     if (!selectedKey || !panelVisible) return;
     if (!groupsByKey.has(selectedKey)) return;
+    if (selectedFromPageRef.current) return; // w64: you are working on this mark
     showSelection(selectedKey, { zoom: false, peek: peekMode, highlight: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markIndexForEffect]);
@@ -940,6 +1137,7 @@ export default function RevisionsPanel({
     if (e.key === 'Escape' && selectedKey) {
       e.preventDefault();
       e.stopPropagation();
+      if (markFilterKeyRef.current) clearMarkFilter();
       clearSelection();
     }
   };
@@ -1197,7 +1395,10 @@ export default function RevisionsPanel({
               type="search"
               placeholder="Search history"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                if (markFilterKeyRef.current) clearMarkFilter();
+                setQuery(e.target.value);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
                   e.stopPropagation();
@@ -1250,10 +1451,11 @@ export default function RevisionsPanel({
             <button
               key={option.id}
               type="button"
-              aria-pressed={filter === option.id}
-              className={`dh-chip${filter === option.id ? ' on' : ''}`}
+              aria-pressed={!markFilter && filter === option.id}
+              className={`dh-chip${!markFilter && filter === option.id ? ' on' : ''}`}
               data-testid={`document-history-filter-${option.id}`}
               onClick={() => {
+                if (markFilter) clearMarkFilter();
                 setFilter(option.id);
                 clearSelection();
               }}
@@ -1262,6 +1464,20 @@ export default function RevisionsPanel({
             </button>
           ))}
         </div>
+        {markFilter && (
+          <div className="dh-markbar" data-testid="document-history-mark-filter" role="status">
+            <span>{historyMarkFilterLabel(markFilter.items)}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              className="dh-link"
+              data-testid="document-history-mark-filter-clear"
+              onClick={clearMarkFilter}
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div
@@ -1281,7 +1497,15 @@ export default function RevisionsPanel({
           <div className="dh-empty">Couldn’t reach the server. History will try again in a few seconds.</div>
         )}
         {!loading && !err && hasLoadedRef.current && feed.items.length === 0 && (
-          <div className="dh-empty" data-testid="document-history-empty">{emptyText}</div>
+          <div className="dh-empty" data-testid="document-history-empty">
+            {!markFilter
+              ? emptyText
+              : markLookup === 'none'
+                ? historyMarkFilterEmptyText(markFilter.items, { searchedAll: true })
+                : markLookup === 'partial'
+                  ? historyMarkFilterEmptyText(markFilter.items, { searchedAll: false })
+                  : 'Looking…'}
+          </div>
         )}
         {feed.items.map((item) => (item.type === 'day'
           ? <div key={item.key} className="dh-day">{item.label}</div>
