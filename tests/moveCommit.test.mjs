@@ -73,14 +73,16 @@ test('the dragged mark is found by id at release, even if the page list changed 
   assert.equal(resolveMarkIndex([{ type: 'rect' }], 1, null), -1);
 });
 
-test('the drag-or-click threshold is 2 screen px at high zoom, never more than 2 page units', () => {
+test('the drag-or-click threshold is a small screen slop at high zoom, never more than 2 page units', () => {
   // inverseScale = page units per screen pixel
-  assert.equal(moveCommitThreshold(1), 2);
-  assert.equal(moveCommitThreshold(4), 2); // 25 % zoom: 2 units = 0.5 px
-  assert.equal(moveCommitThreshold(0.125), 0.25); // 800 %: 2 px, not 16 px
+  assert.equal(moveCommitThreshold(1), 2); // 100 %: unchanged
+  assert.equal(moveCommitThreshold(4), 2); // 25 %: unchanged
+  assert.equal(moveCommitThreshold(0.125), 0.5); // 800 %: 4 px, not 16 px
+  assert.equal(moveCommitThreshold(0.125, 'touch'), 1); // a finger gets 8 px
   assert.equal(moveCommitThreshold(undefined), 2);
   assert.equal(isBeyondMoveThreshold(1, 0, 0.125), true); // an 8 px drag at 800 % saves
-  assert.equal(isBeyondMoveThreshold(1, 0, 1), false); // a 1 px wobble is a click
+  assert.equal(isBeyondMoveThreshold(0.25, 0, 0.125), false); // a 2 px wobble is still a click
+  assert.equal(isBeyondMoveThreshold(1, 0, 1), false); // a 1 px wobble at 100 % is a click
 });
 
 test('a drag that ends without saving logs one line with the reason, the PDF and the delta', () => {
@@ -151,6 +153,12 @@ test('(a) Cmd down -> press -> move -> release -> Cmd up: the mark stays where i
   assert.deepEqual(saves[0].saved, saves[0].shown);
   assert.deepEqual(saves[0].saved, { dx: 20, dy: 30 });
   assert.equal(end.left + end.width, W, 'held at the right edge, not snapped back');
+  // The old code: the preview followed the raw pointer (60, 30) and the save
+  // clamped the box into the page — the mark visibly jumped by 40 px.
+  const oldShown = { dx: 60, dy: 30 };
+  const oldSaved = { dx: Math.max(0, Math.min(box.left + 60, W - box.width)) - box.left, dy: 30 };
+  assert.notDeepEqual(oldSaved, oldShown, 'the old rules disagreed: that disagreement was the snap back');
+  assert.deepEqual(oldSaved, saves[0].saved, 'the save lands where the old save did; only the preview changed');
 });
 
 test('(b) Cmd let go mid-drag: the move carries on and saves what was shown', () => {
@@ -184,12 +192,17 @@ test('(c) Cmd held for several drags in a row: every drag saves what it showed',
 const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
 
 test('single move: the preview and the save use the same clamp and the save finds the mark by id', () => {
-  assert.match(hook, /const shown = clampMoveDelta\(ds\.moveBoxes, dx, dy, pageWidth, pageHeight\);\s*setVisualTransform\(\{ id: ds\.annotationIndex, dx: shown\.dx, dy: shown\.dy \}\);/);
+  assert.match(hook, /const shown = clampMoveDelta\(ds\.moveBoxes, dx, dy, pageWidth, pageHeight\);/);
+  assert.match(hook, /setVisualTransform\(\{ id: ds\.annotationIndex, dx: shown\.dx, dy: shown\.dy \}\);/);
   assert.match(hook, /const moveIndex = resolveMarkIndex\(annotations\?\.objects, ds\.annotationIndex, ds\.markId\);/);
   assert.match(hook, /const \{ dx: actualDx, dy: actualDy \} = clampMoveDelta\(ds\.moveBoxes, dx, dy, pageWidth, pageHeight\);/);
   assert.match(hook, /const targetObj = updatedAnnotations\.objects\[moveIndex\];/);
   // no second, disagreeing page clamp on release any more
   assert.doesNotMatch(hook, /constrainToPage\(/);
+  // after a counter's Shift-orbit the preview draws the orbited pose moved by
+  // the same delta, and the release keeps the orbit's pointer angle
+  assert.match(hook, /left: \(ds\.orbitBase\.left \?\? 0\) \+ shown\.dx,/);
+  assert.match(hook, /pointerAngle: ds\.orbitBase\.data\.pointerAngle/);
 });
 
 test('group move: one rigid clamp for preview and save, callouts and markers included, members found by id', () => {
@@ -205,7 +218,9 @@ test('a drag that saves nothing says why (one [MoveDiag] line)', () => {
   assert.match(hook, /reportDroppedMove\(\{ reason: 'mark-gone', mode: 'move'/);
   assert.match(hook, /reason: 'held-at-page-edge', mode: 'move'/);
   assert.match(hook, /reportDroppedMove\(\{ reason: 'held-at-page-edge', mode: 'group-move'/);
-  assert.match(hook, /if \(moveSaveResult\?\.lockedBlocked\)/);
   // the drag-start facts reset with the rest of the drag state
-  assert.match(hook, /markId: undefined, moveBoxes: null, groupIds: null, groupBoxes: null,/);
+  assert.match(hook, /markId: undefined, moveBoxes: null, groupIds: null, groupBoxes: null, orbitBase: null,/);
+  // a mark the lock guard puts back logs the reason too
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /\[MoveDiag\] save put locked marks back reason=locked pdf=/);
 });

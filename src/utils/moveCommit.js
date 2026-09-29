@@ -59,17 +59,25 @@ export function clampMoveDelta(boxes, dx, dy, pageWidth, pageHeight) {
 
 /**
  * Did the pointer travel far enough to count as a drag (not a click)? The old
- * rule was 2 page units, which is 16 px at 800 % zoom; this is 2 screen
- * pixels at high zoom and never more than 2 page units zoomed out.
+ * rule was 2 page units, which is 16 px at 800 % zoom — a real, visible drag
+ * that then saved nothing. Now it is a small screen slop (4 px for a mouse or
+ * pen, 8 px for a finger, so a shaky click or tap on a selected mark is still
+ * a click and a double-click still opens the editor), never more than the old
+ * 2 page units, so nothing changes at 100 % zoom or below.
  * `inverseScale` = page units per screen pixel.
  */
-export function moveCommitThreshold(inverseScale) {
+export const MOVE_SLOP_PX = 4;
+export const MOVE_SLOP_TOUCH_PX = 8;
+
+export function moveCommitThreshold(inverseScale, pointerType = 'mouse') {
   const inv = Number(inverseScale);
-  return Number.isFinite(inv) && inv > 0 ? Math.min(2, 2 * inv) : 2;
+  if (!(Number.isFinite(inv) && inv > 0)) return 2;
+  const slop = pointerType === 'touch' ? MOVE_SLOP_TOUCH_PX : MOVE_SLOP_PX;
+  return Math.min(2, slop * inv);
 }
 
-export function isBeyondMoveThreshold(dx, dy, inverseScale) {
-  const threshold = moveCommitThreshold(inverseScale);
+export function isBeyondMoveThreshold(dx, dy, inverseScale, pointerType = 'mouse') {
+  const threshold = moveCommitThreshold(inverseScale, pointerType);
   return Math.abs(Number(dx) || 0) > threshold || Math.abs(Number(dy) || 0) > threshold;
 }
 

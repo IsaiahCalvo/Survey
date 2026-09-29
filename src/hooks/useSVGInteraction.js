@@ -1365,6 +1365,8 @@ export function useSVGInteraction({
           currentAngle: undefined,
           groupOriginals: null,
         };
+        // w59: the mark's id and box as of the press (preview === save).
+        ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
   }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount]);
@@ -1599,6 +1601,9 @@ export function useSVGInteraction({
           groupOriginals: annotationOriginalsCO,
           groupCalloutOriginals: calloutOriginalsCO,
           groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
+          // w59: never reuse a previous drag's facts (this start spreads the old state).
+          groupIds: null,
+          groupBoxes: null,
         };
         try {
           diagLog('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
@@ -2011,7 +2016,24 @@ export function useSVGInteraction({
       // (utils/moveCommit.js), so the mark never jumps when it is let go.
       ensureMoveStart(ds, annotations?.objects);
       const shown = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
-      setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy });
+      if (ds.orbitBase) {
+        // After a Shift-orbit the stored counter is still the pre-orbit one:
+        // draw the orbited pose moved by the same delta the release saves.
+        setVisualTransform({
+          id: ds.annotationIndex,
+          dx: 0,
+          dy: 0,
+          previewObjects: {
+            [ds.annotationIndex]: {
+              ...ds.orbitBase,
+              left: (ds.orbitBase.left ?? 0) + shown.dx,
+              top: (ds.orbitBase.top ?? 0) + shown.dy,
+            },
+          },
+        });
+      } else {
+        setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy });
+      }
       setInteractionState('dragging');
     } else if (ds.mode === 'counter-orbit') {
       // UX 2026-04-20: releasing Shift mid-orbit swaps back to move mode.
@@ -2022,8 +2044,11 @@ export function useSVGInteraction({
           || annotations?.objects?.[ds.annotationIndex];
         if (orbObj?.data?.type === 'counter') {
           ds.mode = 'move';
-          // w59: the move restarts from the orbited pose (re-read its box).
+          // w59: the move restarts from the orbited pose — its box for the
+          // page clamp, and the pose itself so the preview draws what the
+          // release saves (the orbit is not in the store yet).
           ds.moveBoxes = [getAnnotationBBox(orbObj)];
+          ds.orbitBase = deepClone(orbObj);
           ds.startSVGPoint = { x: svgPoint.x, y: svgPoint.y };
           ds.originalProps = {
             left: orbObj.left ?? 0,
@@ -3788,7 +3813,9 @@ export function useSVGInteraction({
 
       // Only commit a real drag, not a click (w59: 2 screen px at high zoom,
       // never more than 2 page units — utils/moveCommit.js).
-      if (isBeyondMoveThreshold(dx, dy, inverseScale)) {
+      // A Shift-orbit that turned back into a move always saves (its pose is
+      // on screen even if the move part was tiny).
+      if (isBeyondMoveThreshold(dx, dy, inverseScale, e.pointerType) || ds.orbitBase) {
         // w59: the drag-start facts the preview used (a drag released with
         // no pointermove in between fills them here).
         ensureMoveStart(ds, annotations?.objects);
@@ -3804,12 +3831,12 @@ export function useSVGInteraction({
         const { dx: actualDx, dy: actualDy } = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
         if (!obj) {
           reportDroppedMove({ reason: 'mark-gone', mode: 'move', id: ds.markId, dx, dy, pageNumber });
-        } else if (actualDx === 0 && actualDy === 0) {
+        } else if (actualDx === 0 && actualDy === 0 && !ds.orbitBase) {
           reportDroppedMove({
             reason: 'held-at-page-edge', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx, dy, pageNumber,
           });
         }
-        if (obj && (actualDx !== 0 || actualDy !== 0)) {
+        if (obj && (actualDx !== 0 || actualDy !== 0 || ds.orbitBase)) {
           // Deep clone annotations and apply position update
           const updatedAnnotations = deepClone(annotations);
           const targetObj = updatedAnnotations.objects[moveIndex];
@@ -3843,6 +3870,11 @@ export function useSVGInteraction({
             // bbox.left === obj.left for rect/circle/ellipse/line/text.
             targetObj.left = ds.originalProps.left + actualDx;
             targetObj.top = ds.originalProps.top + actualDy;
+            // w59: a Shift-orbit before this move turned the counter's
+            // pointer too — keep it (the preview showed it).
+            if (ds.orbitBase?.data && targetObj.data) {
+              targetObj.data = { ...targetObj.data, pointerAngle: ds.orbitBase.data.pointerAngle };
+            }
             // UX 2026-04-20: the line's curve midpoint (obj.data.midpoint)
             // is stored in ABSOLUTE page coords, not as an offset from
             // obj.left/top like the endpoints are. A plain-move drag
@@ -3867,18 +3899,13 @@ export function useSVGInteraction({
           // Save through existing pipeline (2 decimals, exactly like a
           // creation commit — see annotationCommitRounding).
           roundCommittedAnnotationsGeometry(updatedAnnotations, [moveIndex]);
-          const moveSaveResult = onSaveAnnotations(updatedAnnotations, {
+          // A save the lock guard puts back shows the lock notice and logs
+          // its own [MoveDiag] line (PDFViewer handleSaveAnnotations).
+          onSaveAnnotations(updatedAnnotations, {
             source: 'object:modified',
             action: 'move',
             checkpointPolicy: 'normal',
           });
-          // w59: a refused save (a lock) already shows the lock notice; log
-          // the reason too so a "snapped back" report is one line to read.
-          if (moveSaveResult?.lockedBlocked) {
-            reportDroppedMove({
-              reason: 'locked', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx: actualDx, dy: actualDy, pageNumber,
-            });
-          }
 
           // UX: the browser will emit a native `dblclick` if this pointerup
           // closes a click sequence that matches the double-click timing
@@ -4072,7 +4099,7 @@ export function useSVGInteraction({
         pageHeight,
         markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
       });
-      const groupBeyond = isBeyondMoveThreshold(rawGroupDx, rawGroupDy, inverseScale);
+      const groupBeyond = isBeyondMoveThreshold(rawGroupDx, rawGroupDy, inverseScale, e.pointerType);
       const { dx, dy } = groupBeyond
         ? clampMoveDelta(ds.groupBoxes, rawGroupDx, rawGroupDy, pageWidth, pageHeight)
         : { dx: 0, dy: 0 };
@@ -4142,7 +4169,7 @@ export function useSVGInteraction({
         // clamp is a no-op kept as a second guard (it can only narrow).
         const groupMarkerIds = Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [];
         const markerDelta = clampMarkerGroupDelta(groupMarkerIds, dx, dy);
-        const groupSaveResult = onSaveAnnotations(updatedAnnotations, {
+        onSaveAnnotations(updatedAnnotations, {
           source: 'object:modified',
           action: 'group-move',
           checkpointPolicy: 'normal',
@@ -4150,9 +4177,6 @@ export function useSVGInteraction({
             ? { surveyMarkerFamily: { move: { ids: groupMarkerIds, dx: markerDelta.dx, dy: markerDelta.dy } } }
             : {}),
         });
-        if (groupSaveResult?.lockedBlocked) {
-          reportDroppedMove({ reason: 'locked', mode: 'group-move', dx, dy, pageNumber });
-        }
 
         // UX: see move-branch comment — same spurious-dblclick guard.
         justDraggedAtRef.current = Date.now();
@@ -4715,7 +4739,7 @@ export function useSVGInteraction({
       currentAnnotations: null,
       diagGestureId: null,
       // w59: move / group-move drag-start facts (preview === save).
-      markId: undefined, moveBoxes: null, groupIds: null, groupBoxes: null,
+      markId: undefined, moveBoxes: null, groupIds: null, groupBoxes: null, orbitBase: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
@@ -5806,6 +5830,8 @@ export function useSVGInteraction({
         currentAngle: undefined,
         groupOriginals: null,
       };
+      // w59: the mark's id and box as of the press (preview === save).
+      ensureMoveStart(dragStateRef.current, annotations?.objects);
       try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       return true;
     }

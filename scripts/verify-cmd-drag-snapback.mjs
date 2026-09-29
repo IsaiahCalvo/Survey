@@ -19,7 +19,8 @@
 // and checks, from the DOM, that where the mark sits after release is exactly
 // where the preview showed it (no snap), for a rect, a pen dot, a counter, a
 // line, a callout and a two-mark selection. It also checks a drag that the
-// page edge fully blocks logs one [MoveDiag] line naming the PDF.
+// page edge fully blocks logs one [MoveDiag] line naming the PDF, and that a
+// counter dragged, swung with Shift, then dragged again lands where drawn.
 //
 //   node scripts/verify-cmd-drag-snapback.mjs
 import assert from 'node:assert/strict';
@@ -261,6 +262,28 @@ const run = async () => {
     assert.ok(Math.abs(blocked.after[keys.rect].cx - blocked.start[keys.rect].cx) < 0.75, 'rect already at the right edge does not move further right');
     assert.ok(diag.some((l) => /reason=held-at-page-edge/.test(l) && /pdf=text-search-glyph-lab\.pdf/.test(l)), `[MoveDiag] names the reason and the PDF (${diag.join(' | ') || 'no line'})`);
     console.log(`ok   diagnostic line: ${diag[diag.length - 1]}`);
+
+    // Counter: drag, Shift to swing it round its tip, let Shift go, keep
+    // dragging, release. The counter lands where it was last drawn (the
+    // swing included) — before, the preview drew the pre-swing counter.
+    {
+      await selectOne(keys.counter);
+      const c0 = (await marks())[keys.counter];
+      const sx = c0.cx;
+      const sy = c0.cy;
+      await page.mouse.move(sx, sy); await page.mouse.down();
+      await glide(sx, sy, -40, 120, 12);
+      await page.keyboard.down('Shift');
+      await glide(sx - 40, sy + 120, 60, 30, 12);
+      await page.keyboard.up('Shift');
+      await glide(sx + 20, sy + 150, -30, 40, 12);
+      const shown = (await marks())[keys.counter];
+      await page.mouse.up(); await settle(900);
+      const kept = (await marks())[keys.counter];
+      const off = Math.hypot(kept.cx - shown.cx, kept.cy - shown.cy) + Math.abs(kept.w - shown.w) + Math.abs(kept.h - shown.h);
+      console.log(`${off <= 1 ? 'ok  ' : 'SNAP'} counter move -> Shift swing -> move: shown (${shown.cx.toFixed(1)}, ${shown.cy.toFixed(1)}) kept (${kept.cx.toFixed(1)}, ${kept.cy.toFixed(1)})`);
+      if (off > 1) failures.push('counter swing-then-move did not land where it was drawn');
+    }
 
     assert.deepEqual(errors, [], `no page errors: ${errors.join(' | ')}`);
     assert.deepEqual(failures, [], failures.join('\n'));
