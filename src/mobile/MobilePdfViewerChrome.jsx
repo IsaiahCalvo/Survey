@@ -2811,7 +2811,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             </button>
             <RailButton
               icon="history"
-              label="Version history"
+              label="History"
               disabled={!leftRailApi?.documentId}
               onClick={() => {
                 setPresenceOpen(false);

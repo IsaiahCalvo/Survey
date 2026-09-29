@@ -52,7 +52,7 @@ import {
   historyShortVerb,
   latestDeleteRowByMark,
 } from '../../utils/historyFeed.js';
-import { historyAnnotationBox, historyRowGhostAnnotation } from '../../utils/historyGeometry.js';
+import { historyAnnotationBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
 import { createHistoryPageOverlay, findMarkElements, measureMarkBox } from './historyPageOverlay.js';
 
 const DRAWER_WIDTH = 360;
@@ -94,14 +94,15 @@ function ensureHistoryPanelStyle() {
     .dh-panel--phone { --dh-edge: 16px; --dh-row-pad: 11px; --dh-type: 14px; --dh-meta: 12.5px; --dh-glyph: 20px; background: var(--surface-2); }
     .dh-head { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px var(--dh-edge) 10px; border-bottom: 1px solid var(--border); }
     .dh-headrow { display: flex; align-items: center; gap: 8px; min-height: 28px; }
-    .dh-count { flex: 1; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dh-count { flex: 1; display: flex; align-items: baseline; gap: 8px; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dh-title { color: var(--text-1); font-size: 13px; font-weight: 650; }
     .dh-ib { width: 28px; height: 28px; display: grid; place-items: center; flex: none; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
     .dh-ib:hover { color: var(--text-1); }
-    .dh-ib.on { color: var(--accent); }
     .dh-ib > * { transition: transform .08s; }
     .dh-ib:active > * { transform: scale(.86); }
     .dh-search { flex: 1; min-width: 0; height: 28px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--text-1);
-      font: inherit; font-size: 13px; padding: 0 2px; outline: none; }
+      font: inherit; font-size: 13px; padding: 0 2px; outline: none; -webkit-appearance: none; appearance: none; }
+    .dh-search::-webkit-search-cancel-button { display: none; }
     .dh-search:focus { border-bottom-color: var(--text-3); }
     .dh-chips { display: flex; gap: 2px; background: var(--surface-0); padding: 2px; border-radius: 8px; }
     .dh-chip { flex: 1; border: 0; background: none; color: var(--text-3); padding: 5px 6px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
@@ -158,7 +159,9 @@ function ensureHistoryPanelStyle() {
     .dh-panel--phone .dh-row { min-height: 44px; }
     .dh-panel--phone .dh-chip { padding: 8px 6px; font-size: 13px; }
     .dh-panel--phone .dh-ib { width: 44px; height: 44px; margin-right: -8px; }
-    .dh-panel--phone .dh-restore { font-size: 14px; min-height: 32px; }
+    .dh-panel--phone .dh-restore { font-size: 14px; min-height: 44px; }
+    .dh-panel--phone .dh-peek button { padding: 10px 14px; font-size: 13px; }
+    .dh-panel--phone .dh-fold { font-size: 13px; padding: 8px 0; margin: -8px 0 -8px 4px; }
     .dh-panel--phone .dh-foot { padding-bottom: calc(var(--mobile-bottom-inset, 10px) + 8px); }
     @media (prefers-reduced-motion: reduce) { .dh-fold > span:last-child { transition: none; } }
   `;
@@ -251,6 +254,12 @@ export default function RevisionsPanel({
   const [openFolds, setOpenFolds] = useState(() => new Set());
   const [linkedMarkId, setLinkedMarkId] = useState(null);
   const [listFocused, setListFocused] = useState(false);
+  // The focus outline is for keyboard use only (never on a mouse click).
+  const [keyboardNav, setKeyboardNav] = useState(false);
+  const keyboardNavRef = useRef(false);
+  // Bumped when marks change on the page, so Restore / "Back on the page
+  // now" follow what is on the page now.
+  const [, setMarksTick] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const hasLoadedRef = useRef(false);
   const historyEventsRef = useRef([]);
@@ -373,7 +382,7 @@ export default function RevisionsPanel({
       setHistoryEvents((prev) => mergeHistoryRowLists(prev, older));
       setHasOlder(Array.isArray(older) && older.length >= HISTORY_PAGE_SIZE);
     } catch (e) {
-      setStatusMsg(`Could not load older history: ${e.message}`);
+      setStatusMsg('Couldn’t load older changes. Try again.');
     } finally {
       setLoadingOlder(false);
     }
@@ -500,7 +509,7 @@ export default function RevisionsPanel({
       setViewingRevision(null);
       await refresh();
     } catch (e) {
-      setStatusMsg(`Restore failed: ${e.message}`);
+      setStatusMsg('Couldn’t restore it. Try again.');
     } finally {
       setBusy(false);
     }
@@ -611,7 +620,7 @@ export default function RevisionsPanel({
   const handleRestoreActivityRef = useRef(null);
 
   // Build and draw what a selected line shows on the page.
-  const showSelection = useCallback((key, { zoom = true, peek = 'after', highlight = true } = {}) => {
+  const showSelection = useCallback((key, { zoom = true, peek = 'after', highlight = true, restoreContext = false } = {}) => {
     const found = groupsByKey.get(key);
     if (!found) return;
     const entries = found.entries;
@@ -621,22 +630,37 @@ export default function RevisionsPanel({
     const ov = overlay();
     ov.setHover(null);
     // Decision 10 / w55: a survey-scoped line moves you into its context
-    // (never out of your survey panel or space) before the jump.
-    if (zoom && typeof onRestoreHistoryContext === 'function') {
+    // (never out of your survey panel or space) — on a click or Enter only,
+    // never while stepping with the arrow keys.
+    if (restoreContext && typeof onRestoreHistoryContext === 'function') {
       try { onRestoreHistoryContext(last.row); } catch (_err) { /* best-effort */ }
     }
     const markId = last.markId || last.markIds[0] || null;
     const live = markLiveNow(markId);
     const trashRow = last.isTrash ? last.row : restoreRowForMark(markId);
-    const ghostAnnotation = live ? null : historyRowGhostAnnotation(trashRow || last.row);
-    const pageNumber = live?.pageNumber || last.page || first.page;
+    // A bulk delete shows every mark it removed that is still gone.
+    const bulk = last.isTrash && last.row?.event_type === 'annotations_bulk_deleted';
+    let bulkGhosts = [];
+    if (bulk) {
+      const all = historyBulkGhosts(last.row);
+      const gone = all.filter((g) => markPresent(g.markId) !== true);
+      bulkGhosts = gone.length ? gone : all;
+    }
+    const ghostAnnotation = live || bulk ? null : historyRowGhostAnnotation(trashRow || last.row);
+    const pageNumber = bulk
+      ? bulkGhosts[0]?.pageNumber
+      : (live?.pageNumber || last.page || first.page);
     if (!Number.isFinite(pageNumber)) {
       ov.setScene(null);
       ov.clearHighlight();
-      setStatusMsg('This change is not tied to one page.');
       return;
     }
-    const ghostBox = ghostAnnotation ? historyAnnotationBox(ghostAnnotation) : null;
+    const pageGhosts = bulk
+      ? bulkGhosts.filter((g) => g.pageNumber === pageNumber).map((g) => ({ annotation: g.annotation, box: historyAnnotationBox(g.annotation) }))
+      : [];
+    const ghostBox = bulk
+      ? historyUnionBox(pageGhosts.map((g) => g.box))
+      : (ghostAnnotation ? historyAnnotationBox(ghostAnnotation) : null);
     const targetBox = live?.box || ghostBox;
     if (zoom) {
       // The phone sheet covers the bottom of the page: land the mark above it.
@@ -665,9 +689,19 @@ export default function RevisionsPanel({
         }
       }
       if (highlight && box) ov.setHighlight({ pageNumber, box });
+      const restorable = canRestore && trashRow && hasRestoreData(trashRow) && Boolean(onRestoreHistoryActivity)
+        // "Deleted later" never restores a whole bulk delete for one mark.
+        && (last.isTrash || trashRow.event_type !== 'annotations_bulk_deleted');
       // Scene: ghost of a deleted mark, or Before / After of an edit.
-      if (!live && ghostAnnotation) {
-        const restorable = canRestore && trashRow && hasRestoreData(trashRow) && Boolean(onRestoreHistoryActivity);
+      if (bulk && pageGhosts.length) {
+        ov.setScene({
+          pageNumber,
+          ghosts: pageGhosts.map((g, i) => ({ ...g, tag: i === 0 ? (bulkGhosts.length > 1 ? `Deleted (${bulkGhosts.length})` : 'Deleted') : null })),
+          pin: restorable && ghostBox
+            ? { box: ghostBox, label: 'Restore', onClick: () => handleRestoreActivityRef.current?.(trashRow) }
+            : null,
+        });
+      } else if (!live && ghostAnnotation) {
         ov.setScene({
           pageNumber,
           ghosts: [{ annotation: ghostAnnotation, box: ghostBox, tag: 'Deleted' }],
@@ -686,7 +720,7 @@ export default function RevisionsPanel({
             pageNumber,
             ghosts: [
               { annotation: beforeAnnotation, box: beforeBox, solid: true, color: beforeColor || '#e6e8eb', tag: 'Before' },
-              ...(recolor ? [] : [{ box: nowBox, tag: 'After' }]),
+              ...(recolor ? [] : [{ annotation: live?.annotation || null, box: nowBox, tag: 'After' }]),
             ],
             dimElements: findMarkElements(document, markId),
           });
@@ -702,13 +736,13 @@ export default function RevisionsPanel({
       }
     };
     draw(1);
-    setStatusMsg(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupsByKey, overlay, onRestoreHistoryContext, focusHistoryMark, onNavigateToPage, canRestore, onRestoreHistoryActivity, markIndex, latestDeleteByMark, locateHistoryMark, mobileMode]);
 
   const selectLine = useCallback((key, options = {}) => {
     setSelectedKey(key);
     setPeekMode('after');
+    setStatusMsg(null);
     showSelection(key, { zoom: true, peek: 'after', ...options });
     if (typeof document !== 'undefined') {
       const el = listRef.current?.querySelector?.(`[data-key="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key}"]`);
@@ -744,9 +778,14 @@ export default function RevisionsPanel({
         const spaceName = event.event_type === 'space_deleted'
           ? (event.payload?.spaceName ?? event.payload?.restoreAction?.spaceName)
           : null;
+        // Marks and Survey Markers come back as one undo step; spaces and
+        // regions have no undo step, so no Undo hint for them.
+        const undoable = !['space_deleted', 'region_deleted'].includes(event.event_type)
+          && Number.isFinite(Number(result.pageNumber)) && Number(result.pageNumber) > 0;
         setStatusMsg(event.event_type === 'space_deleted'
-          ? `Restored the space${spaceName ? ` “${spaceName}”` : ''}. Undo (Cmd+Z) takes it back.`
-          : `Restored${result.pageNumber ? ` on page ${result.pageNumber}` : ''}. Undo (Cmd+Z) takes it back.`);
+          ? `Restored the space${spaceName ? ` “${spaceName}”` : ''}.`
+          : `Restored${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.${undoable ? ' Undo takes it back.' : ''}`);
+        if (listRef.current) listRef.current.scrollTop = 0;
         // Back to the whole feed, the restored mark highlighted where it is.
         setFilter((prev) => (prev === 'deleted' ? 'all' : prev));
         setSelectedKey(null);
@@ -797,7 +836,7 @@ export default function RevisionsPanel({
         setStatusMsg("This can't be restored.");
       }
     } catch (e) {
-      setStatusMsg(`Restore failed: ${e.message}`);
+      setStatusMsg('Couldn’t restore it. Try again.');
     } finally {
       setBusy(false);
     }
@@ -820,11 +859,28 @@ export default function RevisionsPanel({
         setStatusMsg("Couldn't restore both. Try again.");
       }
     } catch (e) {
-      setStatusMsg(`Restore failed: ${e.message}`);
+      setStatusMsg('Couldn’t restore it. Try again.');
     } finally {
       setBusy(false);
     }
   }, [cascadePending, onCascadeRestoreRegion, refresh]);
+
+  // Marks changed on the page (a save, an erase, a restore): re-read which
+  // marks exist so Restore / "Back on the page now" are right at once.
+  useEffect(() => {
+    if (!panelVisible || typeof window === 'undefined') return undefined;
+    const bump = () => setMarksTick((n) => n + 1);
+    window.addEventListener('annotations:fabric-save-action', bump);
+    return () => window.removeEventListener('annotations:fabric-save-action', bump);
+  }, [panelVisible]);
+
+  // A search or filter that hides the open line closes it (and its ghosts).
+  useEffect(() => {
+    if (selectedKey && !visibleKeys.includes(selectedKey)) {
+      setSelectedKey(null);
+      clearPageMarks();
+    }
+  }, [visibleKeys, selectedKey, clearPageMarks]);
 
   // Re-draw the open line's ghosts when the marks change (a restore, an undo,
   // a teammate's edit arriving) without moving the view.
@@ -861,6 +917,7 @@ export default function RevisionsPanel({
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       e.stopPropagation();
+      if (!keyboardNavRef.current) { keyboardNavRef.current = true; setKeyboardNav(true); }
       if (visibleKeys.length === 0) return;
       const at = visibleKeys.indexOf(selectedKey);
       const next = e.key === 'ArrowDown'
@@ -874,7 +931,8 @@ export default function RevisionsPanel({
       e.stopPropagation();
       const el = listRef.current?.querySelector?.(`[data-key="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(selectedKey) : selectedKey}"]`);
       const action = el?.querySelector?.('[data-restore]') || el?.querySelector?.('[data-fold]');
-      action?.click();
+      if (action) action.click();
+      else showSelection(selectedKey, { zoom: true, peek: peekMode, restoreContext: true });
       return;
     }
     if (e.key === 'Escape' && selectedKey) {
@@ -949,7 +1007,7 @@ export default function RevisionsPanel({
       data-restore="1"
       data-testid={`document-history-restore-${row.id}`}
       disabled={busy}
-      title="Put it back where it was"
+      aria-label="Restore: put it back where it was"
       onClick={(e) => {
         e.stopPropagation();
         handleRestoreActivity(row);
@@ -1015,17 +1073,16 @@ export default function RevisionsPanel({
       <div
         key={key}
         id={`dh-line-${key}`}
-        className={`dh-row${selected ? ' sel' : ''}${isDeleted ? ' del' : ''}${linked ? ' linked' : ''}${selected && listFocused ? ' focus' : ''}`}
+        className={`dh-row${selected ? ' sel' : ''}${isDeleted ? ' del' : ''}${linked ? ' linked' : ''}${selected && listFocused && keyboardNav ? ' focus' : ''}`}
         data-key={key}
         data-mark={markId || ''}
         data-kind={e.kind}
         data-testid={`document-history-event-${e.row.id}`}
         role="option"
         aria-selected={selected}
-        onClick={() => selectLine(key)}
+        onClick={() => { keyboardNavRef.current = false; setKeyboardNav(false); selectLine(key, { restoreContext: true }); }}
         onMouseEnter={() => hoverLine(e)}
         onMouseLeave={() => hoverLine(null)}
-        title={e.page ? `Show on page ${e.page}` : undefined}
       >
         <span className="dh-g" aria-hidden="true"><Icon name={e.glyph} size={mobileMode ? 20 : 18} /></span>
         <div>
@@ -1041,7 +1098,7 @@ export default function RevisionsPanel({
                 onClick={(ev) => {
                   ev.stopPropagation();
                   toggleFold(key);
-                  selectLine(key);
+                  selectLine(key, { restoreContext: true });
                 }}
               >
                 <span>· {group.count} edits</span>
@@ -1069,13 +1126,13 @@ export default function RevisionsPanel({
           <div
             key={childKey}
             id={`dh-line-${childKey}`}
-            className={`dh-row child${childSelected ? ' sel' : ''}${linked ? ' linked' : ''}${childSelected && listFocused ? ' focus' : ''}`}
+            className={`dh-row child${childSelected ? ' sel' : ''}${linked ? ' linked' : ''}${childSelected && listFocused && keyboardNav ? ' focus' : ''}`}
             data-key={childKey}
             data-mark={markId || ''}
             data-kind={child.kind}
             role="option"
             aria-selected={childSelected}
-            onClick={() => selectLine(childKey)}
+            onClick={() => { keyboardNavRef.current = false; setKeyboardNav(false); selectLine(childKey, { restoreContext: true }); }}
             onMouseEnter={() => hoverLine(child)}
             onMouseLeave={() => hoverLine(null)}
           >
@@ -1101,7 +1158,9 @@ export default function RevisionsPanel({
     : filter === 'me'
       ? 'You haven’t changed anything in this document yet.'
       : filter === 'deleted'
-        ? 'Nothing has been deleted. Deleted marks show up here so you can bring them back.'
+        ? (canRestore
+          ? 'Nothing has been deleted. Deleted marks show up here so you can bring them back.'
+          : 'Nothing has been deleted.')
         : 'No changes yet. What people add, move, change or delete shows up here.';
 
   const oldestRow = historyEvents[historyEvents.length - 1];
@@ -1150,16 +1209,16 @@ export default function RevisionsPanel({
               }}
             />
           ) : (
-            <span className="dh-count" data-testid="document-history-count">
-              {feed.groupCount === 1 ? '1 entry' : `${feed.groupCount} entries`}
+            <span className="dh-count">
+              <span className="dh-title">History</span>
+              <span data-testid="document-history-count">{feed.groupCount === 1 ? '1 entry' : `${feed.groupCount} entries`}</span>
             </span>
           )}
           <button
             type="button"
-            className={`dh-ib${searchOpen ? ' on' : ''}`}
+            className="dh-ib"
             data-glyph-only=""
             aria-label={searchOpen ? 'Close search' : 'Search history'}
-            title={searchOpen ? 'Close search' : 'Search history'}
             onClick={() => {
               if (searchOpen) { setQuery(''); setSearchOpen(false); } else {
                 setSearchOpen(true);
@@ -1184,13 +1243,12 @@ export default function RevisionsPanel({
             </button>
           )}
         </div>
-        <div className="dh-chips" role="tablist" aria-label="Show">
+        <div className="dh-chips" role="group" aria-label="Show">
           {HISTORY_FILTERS.map((option) => (
             <button
               key={option.id}
               type="button"
-              role="tab"
-              aria-selected={filter === option.id}
+              aria-pressed={filter === option.id}
               className={`dh-chip${filter === option.id ? ' on' : ''}`}
               data-testid={`document-history-filter-${option.id}`}
               onClick={() => {
@@ -1216,9 +1274,11 @@ export default function RevisionsPanel({
         onFocus={() => setListFocused(true)}
         onBlur={() => setListFocused(false)}
       >
-        {loading && historyEvents.length === 0 && <div className="dh-empty">Loading…</div>}
-        {err && <div className="dh-empty" style={{ color: 'var(--danger-text)' }}>Couldn’t load History: {err}</div>}
-        {!loading && !err && feed.items.length === 0 && (
+        {(loading || (!hasLoadedRef.current && !err)) && historyEvents.length === 0 && <div className="dh-empty">Loading…</div>}
+        {err && historyEvents.length === 0 && (
+          <div className="dh-empty">Couldn’t reach the server. History will try again in a few seconds.</div>
+        )}
+        {!loading && !err && hasLoadedRef.current && feed.items.length === 0 && (
           <div className="dh-empty" data-testid="document-history-empty">{emptyText}</div>
         )}
         {feed.items.map((item) => (item.type === 'day'

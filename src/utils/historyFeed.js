@@ -70,6 +70,14 @@ export function historyRowPage(row) {
     const page = Number(value);
     if (Number.isFinite(page) && page > 0) return page;
   }
+  // A bulk delete whose marks were all on one page names that page.
+  if (Array.isArray(payload.objects) && payload.objects.length > 0) {
+    const pages = new Set(payload.objects.map((o) => Number(o?.pageNumber ?? o?.restoreAction?.pageNumber)));
+    if (pages.size === 1) {
+      const [only] = [...pages];
+      if (Number.isFinite(only) && only > 0) return only;
+    }
+  }
   return null;
 }
 
@@ -235,6 +243,8 @@ const VERBS = {
   textEdited: 'edited the text of',
   locked: 'locked',
   unlocked: 'unlocked',
+  tookOff: 'cut',
+  placed: 'placed',
   edited: 'edited',
 };
 
@@ -324,6 +334,8 @@ export function classifyHistoryRow(row) {
   if (action === 'text edit') return finish('textEdited', baseType === 'mark' ? 'text' : baseType, row, multi);
   if (action === 'lock') return finish('locked', baseType, row, multi);
   if (action === 'unlock') return finish('unlocked', baseType, row, multi);
+  if (action === 'unplace') return finish('tookOff', baseType, row, multi);
+  if (action === 'place') return finish('placed', baseType, row, multi);
   if (action === 'callout edit') return finish('edited', 'callout', row, multi);
   return finish('edited', baseType, row, multi);
 }
@@ -411,9 +423,11 @@ function actorKey(row) {
  */
 export function describeHistoryRow(row, { currentUserId = null } = {}) {
   const parts = classifyHistoryRow(row);
-  const fullName = historyActorName(row) || 'Someone';
+  const rawName = historyActorName(row) || 'Someone';
+  // An email address as a name reads as its first part ("sam", not "sam@x.com").
+  const fullName = rawName.includes('@') ? rawName.split('@')[0] : rawName;
   const isYou = Boolean(currentUserId && row?.user_id && row.user_id === currentUserId);
-  const firstName = fullName.includes('@') ? fullName.split('@')[0] : fullName.split(/\s+/)[0];
+  const firstName = fullName.split(/\s+/)[0];
   return {
     ...parts,
     key: historyRowKey(row),

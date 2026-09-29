@@ -181,7 +181,7 @@ test('a partial erase writes one "erased part of" line with before and after', (
 test('History panel source (option A): gold only on the selected glyph, Restore gated, keys stay in the list', () => {
   const panel = readFileSync(new URL('../src/components/revisions/RevisionsPanel.jsx', import.meta.url), 'utf8');
   const goldRules = panel.match(/var\(--accent\)[^;]*;/g) || [];
-  assert.equal(goldRules.length, 2, 'gold: the selected line glyph and the open search glyph only');
+  assert.equal(goldRules.length, 1, 'gold: the selected line glyph only');
   assert.match(panel, /\.dh-row\.sel \.dh-g \{ color: var\(--accent\); \}/);
   assert.doesNotMatch(panel, /border[^;\n]*var\(--accent/, 'no gold boxes or rings');
   assert.match(panel, /isDeleted && canRestore && Boolean\(onRestoreHistoryActivity\)/);
@@ -189,4 +189,21 @@ test('History panel source (option A): gold only on the selected glyph, Restore 
   const overlay = readFileSync(new URL('../src/components/revisions/historyPageOverlay.js', import.meta.url), 'utf8');
   assert.match(overlay, /#4a90e2/, 'the page highlight is the selection blue');
   assert.doesNotMatch(overlay, /infinite/, 'the highlight never pulses forever');
+});
+
+test('review round: renumbered counters are not "erased part of"; cut / place wording; small Before copies', () => {
+  const counter = { type: 'counter', data: { id: 'c3', type: 'counter', displayNumber: 3 } };
+  assert.equal(buildPartialEraseHistoryRow({
+    targets: [{ operation: 'replace', cause: 'counter-renumber', before: counter, after: { ...counter, data: { ...counter.data, displayNumber: 2 } } }],
+    documentId: 'doc', mutationId: 'm', pageNumber: 1,
+  }), null);
+  const placed = { pageNumber: 2, name: 'Door', bounds: { x: 1, y: 1, width: 4, height: 4 } };
+  const cut = summarizeHistoryActionForLog({ type: 'survey-marker:batch', changes: [{ id: 'm1', before: placed, after: { name: 'Door', pageNumber: null, bounds: null } }] });
+  assert.equal(cut.actionType, 'unplace');
+  assert.equal(cut.pageNumber, 2, 'a cut names the page it came off');
+  assert.equal(classifyHistoryRow(row('cut', { payload: { actionType: 'unplace', annotationType: 'surveyMarker' } })).verb, 'cut');
+  const big = { type: 'rect', left: 0, top: 0, width: 5, height: 5, stroke: '#ff0000', data: { id: 'r', type: 'rect', notes: 'x'.repeat(5000) } };
+  const moved = summarizeHistoryActionForLog({ type: 'fabric:update', pageNumber: 1, annotationId: 'r', before: big, after: { ...big, left: 9 } });
+  assert.ok(JSON.stringify(moved.previewBefore).length < 400, 'the Before copy keeps only what the ghost needs');
+  assert.equal(moved.previewBefore.stroke, '#ff0000');
 });

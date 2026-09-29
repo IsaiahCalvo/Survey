@@ -184,6 +184,36 @@ export function buildHistoryShapeNode(doc, annotation) {
   return node;
 }
 
+/**
+ * A bulk delete (select + Delete, or the eraser removing several marks): one
+ * ghost per mark, each with its page and id.
+ * [{ markId, pageNumber, annotation }]
+ */
+export function historyBulkGhosts(row) {
+  const objects = Array.isArray(row?.payload?.objects) ? row.payload.objects : [];
+  const out = [];
+  for (const object of objects) {
+    const ra = object?.restoreAction || {};
+    const annotation = historyRowGhostAnnotation({ payload: { restoreAction: ra } });
+    const pageNumber = Number(object?.pageNumber ?? ra.pageNumber ?? ra.region?.pageId);
+    const markId = object?.annotationId || ra.annotationId || ra.annotation?.data?.id || ra.annotation?.id
+      || ra.created?.[0]?.id || ra.markerId || ra.callout?.id || null;
+    if (annotation && Number.isFinite(pageNumber) && pageNumber > 0) out.push({ markId, pageNumber, annotation });
+  }
+  return out;
+}
+
+/** The box around several boxes (or null). */
+export function historyUnionBox(boxes) {
+  const list = (boxes || []).filter(Boolean);
+  if (!list.length) return null;
+  const x = Math.min(...list.map((b) => b.x));
+  const y = Math.min(...list.map((b) => b.y));
+  const r = Math.max(...list.map((b) => b.x + b.width));
+  const btm = Math.max(...list.map((b) => b.y + b.height));
+  return { x, y, width: r - x, height: btm - y };
+}
+
 /** The stored copy of the mark a row is about (for a ghost), or null. */
 export function historyRowGhostAnnotation(row) {
   const payload = row?.payload || {};

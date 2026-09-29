@@ -9,6 +9,7 @@
  * callout/space/survey-marker actions for the activity feed.
  */
 import { supabase } from '../supabaseClient.js';
+import { slimHistoryPreviewBefore } from '../utils/historyPreviewAnnotation.js';
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
@@ -383,7 +384,8 @@ export function buildPartialEraseHistoryRow({
   project = (annotation) => annotation,
 } = {}) {
   const trimmed = (Array.isArray(targets) ? targets : [])
-    .filter((target) => target?.operation === 'replace' && target.before && target.after);
+    .filter((target) => target?.operation === 'replace' && target.cause !== 'counter-renumber'
+      && target.before && target.after);
   if (!documentId || !mutationId || trimmed.length === 0) return null;
   const first = trimmed[0];
   const idOf = (target) => target.after?.data?.id ?? target.after?.id ?? target.after?.annotationId ?? target.storageKey ?? null;
@@ -402,7 +404,7 @@ export function buildPartialEraseHistoryRow({
     pageNumber: Number.isFinite(page) ? page : null,
     historySource: 'eraser',
     previewAnnotation: project(first.after),
-    previewBefore: project(first.before),
+    previewBefore: slimHistoryPreviewBefore(project(first.before)),
   };
   const clientEventId = `annotation-erase:${mutationId}`;
   return {

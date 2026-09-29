@@ -23,7 +23,7 @@
 // first-paint entry chunk. Worker config now happens lazily via
 // utils/pdfWorkerConfig.loadPdfjs(), called right before each getDocument.
 import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag.js';
-import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation.js';
+import { projectAnnotationForHistoryPreview, slimHistoryPreviewBefore } from './utils/historyPreviewAnnotation.js';
 import { deepClone } from './utils/deepClone.js';
 import { boundsOfPoints, maxOf, minOf } from './utils/arrayExtrema.js';
 import { normalizeCalloutsForSync } from './utils/calloutSyncPayload.js';
@@ -803,13 +803,18 @@ const inferHistoryUpdateType = (before, after) => {
 const summarizeSurveyMarkerHistoryAction = (action) => {
   const changes = Array.isArray(action.changes) ? action.changes : [];
   const first = changes[0] || {};
-  const record = first.after || first.before || null;
+  const record = (first.after?.bounds && first.after?.pageNumber ? first.after : null) || first.before || first.after || null;
   const kinds = new Set(changes.map((change) => {
     if (change.before == null && change.after != null) return 'create';
     if (change.after == null) return 'delete';
     const b = change.before || {};
     const a = change.after || {};
     if ((b.lockedBy || null) !== (a.lockedBy || null)) return a.lockedBy ? 'lock' : 'unlock';
+    // w54 Cut picks up the placement; Paste puts it back (same record).
+    const placedBefore = Boolean(b.bounds && b.pageNumber);
+    const placedAfter = Boolean(a.bounds && a.pageNumber);
+    if (placedBefore && !placedAfter) return 'unplace';
+    if (!placedBefore && placedAfter) return 'place';
     if (JSON.stringify(b.bounds ?? null) !== JSON.stringify(a.bounds ?? null)
       || (b.pageNumber ?? null) !== (a.pageNumber ?? null)) return 'move';
     return 'survey marker edit';
@@ -901,7 +906,7 @@ export const summarizeHistoryActionForLog = (action) => {
   // a "Before" ghost (old place, size or color). Only for a one-mark edit, and
   // projected + bounded like previewAnnotation.
   const previewBefore = singleUpdate?.before && singleUpdate?.after
-    ? projectAnnotationForHistoryPreview(singleUpdate.before)
+    ? slimHistoryPreviewBefore(projectAnnotationForHistoryPreview(singleUpdate.before))
     : null;
   return {
     actionType: inferredActionType,

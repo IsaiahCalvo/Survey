@@ -26257,8 +26257,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const deletedIdsForJournal = collectDeletedIdsForJournal(scopedAction);
     const journaledByBulkPath = deletedIdsForJournal.length > 0
       && deletedIdsForJournal.every((id) => isBulkJournaledAnnotationId(id));
-    const suppressActivityHistoryRow = deletedIdsForJournal.length > 0
-      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath);
+    // History option A: a Survey Marker step that only removes markers is
+    // already in History as their restorable survey_marker_deleted rows.
+    const surveyMarkerRemovalOnly = scopedAction.type === 'survey-marker:batch'
+      && Array.isArray(scopedAction.changes) && scopedAction.changes.length > 0
+      && scopedAction.changes.every((change) => change?.after == null);
+    const suppressActivityHistoryRow = surveyMarkerRemovalOnly || (deletedIdsForJournal.length > 0
+      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath));
 
 	    const historyPushSummary = summarizeHistoryActionForLog(actionWithMeta);
 	    pushHistoryDebugEvent('local_annotation_history_added', {
@@ -30916,6 +30921,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     Boolean(annotationId && surveyMarkersRef.current?.[annotationId])
   ), []);
 
+  // Read through a ref so a token refresh (a new user object) does not
+  // rebuild the erase handler.
+  const historyUserRef = useRef(user);
+  historyUserRef.current = user;
   const handleEraseIntent = useCallback(async (intent) => {
     if (!pdfFile?.id) {
       return {
@@ -31051,11 +31060,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // History line on the screen that erased ("erased part of a pen
     // stroke"). Whole marks the eraser removed keep their restorable trash
     // row from the erase outbox; this line is only for marks that stay.
-    if (changedIds.length > 0) {
+    // (A counter the erase renumbered is not a trimmed mark.)
+    if (pageTargets.some((target) => target.operation === 'replace' && target.cause !== 'counter-renumber')) {
       const eraseRow = buildPartialEraseHistoryRow({
         targets: pageTargets,
         documentId: pdfFile.id,
-        user,
+        user: historyUserRef.current,
         mutationId: durableIntent.mutationId,
         pageNumber: durableIntent.pageNumber,
         committedAt: new Date().toISOString(),
@@ -31114,7 +31124,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfFile?.id,
     requestAtomicEraseApproval,
     restoreHistoryState,
-    user,
+    user?.id,
   ]);
 
   const getPageSurveyRegionId = useCallback((pageId) => {
