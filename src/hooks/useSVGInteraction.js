@@ -26,6 +26,7 @@ import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
+import { remapSelectedIndices } from '../utils/selectionRemap.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
   markIdOf,
@@ -610,16 +611,33 @@ export function useSVGInteraction({
   // still points to a valid annotation, keep the selection. Drop it only when
   // the array shrinks past a selected index (deletion) or the page swaps.
   // ---------------------------------------------------------------------------
+  //
+  // w61 (2026-09-28): the selection follows the marks by id when the list
+  // changes (utils/selectionRemap.js). Before, positions still in range were
+  // kept, so another screen's delete / add / restack earlier in the list
+  // slid the selection onto a neighbouring mark and the next Delete removed
+  // a mark the user never picked. `selectionAnchorRef` remembers the list
+  // the current selection was made on: a selection set in the same render as
+  // a list change (paste, restack) was made for the new list and is trusted.
+  const selectionAnchorRef = useRef({ selected: null, objects: null });
+  useEffect(() => {
+    const objects = annotations?.objects ?? null;
+    const anchor = selectionAnchorRef.current;
+    if (anchor.selected !== selectedIds) {
+      selectionAnchorRef.current = { selected: selectedIds, objects };
+      return;
+    }
+    if (anchor.objects === objects) return;
+    if (dragStateRef.current?.active) return;
+    const next = remapSelectedIndices(selectedIds, anchor.objects, objects);
+    if (next === selectedIds) {
+      selectionAnchorRef.current = { selected: selectedIds, objects };
+      return;
+    }
+    setSelectedIds(next);
+  }, [annotations, selectedIds]);
   useEffect(() => {
     if (dragStateRef.current?.active) return;
-    const maxIdx = (annotations?.objects?.length ?? 0) - 1;
-    setSelectedIds((prev) => {
-      if (prev.size === 0) return prev;
-      for (const i of prev) {
-        if (i > maxIdx || i < 0) return new Set();
-      }
-      return prev;
-    });
     setHoveredId(null);
   }, [annotations]);
 

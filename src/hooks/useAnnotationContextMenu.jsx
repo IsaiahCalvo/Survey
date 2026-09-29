@@ -19,7 +19,7 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
@@ -35,8 +35,14 @@ import {
 // Same single source of truth as click hit-test / marquee / planner.
 import { canModify, canToggleLock, isUserLocked } from '../lib/collab/permissionScope.js';
 import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
+import { resolveMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 
-export function useAnnotationContextMenu() {
+// w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
+// so the menu can note which marks it was opened on (by id) and still act on
+// exactly those if another screen changes the list while it is open.
+export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
+  const getPageObjectsRef = useRef(getPageObjects);
+  getPageObjectsRef.current = getPageObjects;
   // UX: annotation right-click menu — anchored to the pointer.
   // { x, y, pageNumber, annotationIndex, calloutId, kind, groupIndices }.
   const [annotationContextMenu, setAnnotationContextMenu] = useState(null);
@@ -80,7 +86,10 @@ export function useAnnotationContextMenu() {
           window.__ctxDiagMenuOpenWatcher(snapshot);
         }
       } catch { /* ignore */ }
-      setAnnotationContextMenu({
+      const pageObjects = (() => {
+        try { return getPageObjectsRef.current?.(pageNumber) || null; } catch { return null; }
+      })();
+      setAnnotationContextMenu(stampMenuTargetIds({
         x: event.clientX,
         y: event.clientY,
         pageNumber,
@@ -95,7 +104,7 @@ export function useAnnotationContextMenu() {
         // or those in the right-clicked selection ('group' kind).
         surveyMarkerId: surveyMarkerId || null,
         groupMarkerIds: Array.isArray(groupMarkerIds) ? groupMarkerIds.slice() : [],
-      });
+      }, pageObjects));
     };
     return () => {
       if (window.__onAnnotationContextMenu) delete window.__onAnnotationContextMenu;
@@ -153,6 +162,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     handleCopyCallout,
     handlePasteCallout,
     annotationsByPageRef,
+    // w61: the page lists of the render drawing the menu (optional).
+    annotationsByPageNow = null,
     setClipboardAnnotation,
     handleSaveAnnotations,
     setPendingSvgSelection,
@@ -232,7 +243,12 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
   };
 
   return createPortal((() => {
-    const ctx = annotationContextMenu;
+    // w61: the targets noted (by id) when the menu opened, found again in
+    // the page list as it is now — never a neighbour that slid into place.
+    const ctx = resolveMenuTargets(
+      annotationContextMenu,
+      (annotationsByPageNow || annotationsByPageRef?.current)?.[annotationContextMenu.pageNumber]?.objects || null,
+    );
     const logStub = (key) => console.log(`[AnnotCtxMenu] ${key} kind=${ctx.kind} page=${ctx.pageNumber} annoIdx=${ctx.annotationIndex} calloutId=${ctx.calloutId}`);
     // Menu item builder. action = wired callback; omit to log a stub.
     // UX: `enabled` (default true) controls the grayed-out / click-blocked

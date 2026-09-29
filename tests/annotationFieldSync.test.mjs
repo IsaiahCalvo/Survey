@@ -446,6 +446,161 @@ test('delete vs concurrent update: the delete wins everywhere', () => {
   assert.ok(A.find('r2') && B.find('r2'), 'other marks untouched');
 });
 
+// w61 (2026-09-28): "two tabs of the same account, each holding a rectangle;
+// deleting one made BOTH disappear." The store never did that (the w59 run's
+// log shows each delete row removing exactly one mark; the other rectangle had
+// been shrunk to a dot by a drag that started on its resize handle). These pin
+// the property the report was about: a delete only removes the marks the user
+// deleted, whatever the other screen is doing or has not painted yet. (The
+// real way a delete could hit an unpicked mark was the selection sliding by
+// list position: tests/selectionRemap.test.mjs.)
+// The browser replay is scripts/verify-two-tab-delete.mjs.
+function draw(peer, object, pageKey = '1') {
+  const before = peer.screen[pageKey] || { objects: [] };
+  peer.screen = { ...peer.screen, [pageKey]: { ...before, objects: [...before.objects, object] } };
+  peer.capture();
+}
+const sameAccount = (id) => rect(id, { meta: { authorId: 'owner' }, data: { id, type: 'shape', authorId: 'owner' } });
+
+test('two tabs, same account: each draws a rectangle, one tab deletes its own, the other survives everywhere', () => {
+  for (const deleter of ['A', 'B']) {
+    const [A, B] = setup([]);
+    draw(A, sameAccount('rA'));
+    draw(B, sameAccount('rB'));
+    flush([A, B]);
+    assert.ok(A.find('rA') && A.find('rB') && B.find('rA') && B.find('rB'), 'both screens show both');
+    const peer = deleter === 'A' ? A : B;
+    peer.remove(deleter === 'A' ? 'rA' : 'rB');
+    flush([A, B]);
+    const gone = deleter === 'A' ? 'rA' : 'rB';
+    const kept = deleter === 'A' ? 'rB' : 'rA';
+    for (const p of [A, B]) {
+      assert.equal(p.stored(gone), null, `${deleter} deleted ${gone}: gone from ${p.name}'s document`);
+      assert.ok(p.stored(kept), `${kept} kept in ${p.name}'s document`);
+      assert.equal(p.find(gone), null);
+      assert.ok(p.find(kept), `${kept} still on ${p.name}'s screen`);
+    }
+  }
+});
+
+test('two tabs: a delete made before the other tab\'s new mark arrived never removes that mark', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  flush([A, B]);
+  draw(B, sameAccount('rB'));
+  // A deletes rA without having received rB at all.
+  A.remove('rA');
+  flush([A, B]);
+  for (const p of [A, B]) {
+    assert.equal(p.stored('rA'), null);
+    assert.ok(p.stored('rB'), `rB kept in ${p.name}'s document`);
+    assert.ok(p.find('rB'), `rB on ${p.name}'s screen`);
+  }
+});
+
+test('two tabs: a delete from a screen that has rB in its document but not painted yet keeps rB', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  flush([A, B]);
+  draw(B, sameAccount('rB'));
+  flush([A, B], { repaint: false });
+  // A's document holds rB; A's screen (still the old page list) does not.
+  assert.ok(A.stored('rB'));
+  assert.equal(A.find('rB'), null);
+  A.remove('rA');
+  assert.ok(A.stored('rB'), 'the capture of a page list without rB leaves rB alone');
+  flush([A, B]);
+  for (const p of [A, B]) {
+    assert.equal(p.stored('rA'), null);
+    assert.ok(p.stored('rB'), `rB kept in ${p.name}'s document`);
+    assert.ok(p.find('rB'), `rB on ${p.name}'s screen`);
+  }
+});
+
+test('two tabs: rB handed to A\'s screen (read) but not painted yet; A deletes rA; rB survives', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  flush([A, B]);
+  draw(B, sameAccount('rB'));
+  flush([A, B], { repaint: false });
+  A.read(); // delivery recorded (base / lastDelivered), screen unchanged
+  A.remove('rA');
+  assert.ok(A.stored('rB'), 'a delivered-but-unpainted mark is not a delete');
+  flush([A, B]);
+  for (const p of [A, B]) assert.ok(p.stored('rB') && p.find('rB'), `rB kept on ${p.name}`);
+});
+
+test('two tabs: both delete their own mark at the same moment; a third mark stays', () => {
+  const [A, B] = setup([sameAccount('keep')]);
+  draw(A, sameAccount('rA'));
+  draw(B, sameAccount('rB'));
+  flush([A, B]);
+  A.remove('rA');
+  B.remove('rB');
+  flush([A, B]);
+  for (const p of [A, B]) {
+    assert.equal(p.stored('rA'), null);
+    assert.equal(p.stored('rB'), null);
+    assert.ok(p.stored('keep') && p.find('keep'), `keep stays on ${p.name}`);
+  }
+});
+
+test('two tabs: A deletes rA, B moves rB, A undoes: rA is back and rB keeps B\'s move', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  draw(B, sameAccount('rB'));
+  flush([A, B]);
+  A.remove('rA');
+  flush([A, B]);
+  B.edit('rB', (o) => ({ ...o, left: 77 }));
+  flush([A, B]);
+  A.undo();
+  flush([A, B]);
+  for (const p of [A, B]) {
+    assert.ok(p.stored('rA') && p.find('rA'), `rA back on ${p.name}`);
+    assert.equal(p.stored('rB').left, 77, `rB keeps the move on ${p.name}`);
+  }
+});
+
+test('two tabs: a delete while the other tab is moving its mark keeps the move and the mark', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  draw(B, sameAccount('rB'));
+  flush([A, B]);
+  // B drags rB (a write per frame), A deletes rA mid-drag, both unsent.
+  B.edit('rB', (o) => ({ ...o, left: 60, top: 70 }), { record: false });
+  A.remove('rA');
+  B.edit('rB', (o) => ({ ...o, left: 80, top: 90 }), { record: false });
+  flush([A, B]);
+  for (const p of [A, B]) {
+    assert.equal(p.stored('rA'), null);
+    const kept = p.stored('rB');
+    assert.ok(kept, `rB kept in ${p.name}'s document`);
+    assert.equal(kept.left, 80);
+    assert.equal(kept.top, 90);
+    assert.equal(kept.width, 100, 'the move never resizes the mark');
+  }
+});
+
+test('two tabs: deletes survive a reopen from snapshot + tail with the other mark intact', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  draw(B, sameAccount('rB'));
+  const snapshot = encodeSnapshot(A.doc);
+  const tail = [...A.outbox, ...B.outbox];
+  flush([A, B]);
+  A.remove('rA');
+  tail.push(...A.outbox, ...B.outbox);
+  flush([A, B]);
+  const reopened = hydrateDoc(snapshot, tail, new Y.Doc());
+  assert.ok(!readAnnotationObject(reopened, 'rA'), 'rA stays deleted');
+  assert.ok(readAnnotationObject(reopened, 'rB'));
+  assert.deepEqual(
+    (docToByPage(reopened)[1]?.objects || []).map((o) => o.data.id),
+    ['rB'],
+  );
+});
+
 test('an edit made on a screen that has not painted a remote delete does not bring the mark back', () => {
   const [A, B] = setup([rect('r1')]);
   A.remove('r1');
