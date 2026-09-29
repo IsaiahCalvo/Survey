@@ -1,6 +1,6 @@
 Open the Survey-BetaSafeS2 repo (github.com, owner isaiahcalvo) on branch handoff/2026-09-29-testing. It holds everything on my local main as of 2026-09-29 plus this test pack. (Local main and this branch must be pushed first; if you cannot see them, stop and tell me.)
 
-Read docs/handoff-2026-09-29/WHAT-WE-BUILT.md and docs/handoff-2026-09-29/TEST-PLAN.md and understand everything we built. Also follow the repo's CLAUDE.md rules (high-risk files, zoom rules, never tighten edge-function CORS, verify in the app before saying done).
+Read docs/handoff-2026-09-29/CLOUD-TESTING-SETUP.md first and give me a link I can open on my laptop and phone (try Tailscale, fall back to here.now). Then read docs/handoff-2026-09-29/WHAT-WE-BUILT.md and docs/handoff-2026-09-29/TEST-PLAN.md and understand everything we built. Also follow the repo's CLAUDE.md rules (high-risk files, zoom rules, never tighten edge-function CORS, verify in the app before saying done).
 
 I am going to test it hands-on. Give me ONE test at a time from TEST-PLAN.md, in order: what to test, how, and what to look for. Then wait for my reply before the next one.
 
