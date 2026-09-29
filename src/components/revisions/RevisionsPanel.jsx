@@ -640,15 +640,16 @@ export default function RevisionsPanel({
     const trashRow = last.isTrash ? last.row : restoreRowForMark(markId);
     // A bulk delete shows every mark it removed that is still gone.
     const bulk = last.isTrash && last.row?.event_type === 'annotations_bulk_deleted';
+    // Marks already back are highlighted, never ghosted or offered again.
+    let bulkAll = [];
     let bulkGhosts = [];
     if (bulk) {
-      const all = historyBulkGhosts(last.row);
-      const gone = all.filter((g) => markPresent(g.markId) !== true);
-      bulkGhosts = gone.length ? gone : all;
+      bulkAll = historyBulkGhosts(last.row);
+      bulkGhosts = bulkAll.filter((g) => markPresent(g.markId) !== true);
     }
     const ghostAnnotation = live || bulk ? null : historyRowGhostAnnotation(trashRow || last.row);
     const pageNumber = bulk
-      ? bulkGhosts[0]?.pageNumber
+      ? (bulkGhosts[0] || bulkAll[0])?.pageNumber
       : (live?.pageNumber || last.page || first.page);
     if (!Number.isFinite(pageNumber)) {
       ov.setScene(null);
@@ -659,7 +660,8 @@ export default function RevisionsPanel({
       ? bulkGhosts.filter((g) => g.pageNumber === pageNumber).map((g) => ({ annotation: g.annotation, box: historyAnnotationBox(g.annotation) }))
       : [];
     const ghostBox = bulk
-      ? historyUnionBox(pageGhosts.map((g) => g.box))
+      ? historyUnionBox((pageGhosts.length ? pageGhosts : bulkAll.filter((g) => g.pageNumber === pageNumber)
+        .map((g) => ({ box: historyAnnotationBox(g.annotation) }))).map((g) => g.box))
       : (ghostAnnotation ? historyAnnotationBox(ghostAnnotation) : null);
     const targetBox = live?.box || ghostBox;
     if (zoom) {
@@ -696,7 +698,7 @@ export default function RevisionsPanel({
       if (bulk && pageGhosts.length) {
         ov.setScene({
           pageNumber,
-          ghosts: pageGhosts.map((g, i) => ({ ...g, tag: i === 0 ? (bulkGhosts.length > 1 ? `Deleted (${bulkGhosts.length})` : 'Deleted') : null })),
+          ghosts: pageGhosts.map((g, i) => ({ ...g, tag: i === pageGhosts.findIndex((x) => x.box) ? (bulkGhosts.length > 1 ? `Deleted (${bulkGhosts.length})` : 'Deleted') : null })),
           pin: restorable && ghostBox
             ? { box: ghostBox, label: 'Restore', onClick: () => handleRestoreActivityRef.current?.(trashRow) }
             : null,
