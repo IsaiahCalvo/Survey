@@ -160,7 +160,7 @@ test('option A: Restore only for editors, only while the mark is gone', async (t
   }];
   t.after(() => { delete globalThis.__historyRows; });
   let present = new Map();
-  const { render } = await mountPanel(t, {
+  const { render, flush, timeouts } = await mountPanel(t, {
     isActive: true,
     canRestore: false,
     onRestoreHistoryActivity: () => ({ ok: true }),
@@ -169,6 +169,16 @@ test('option A: Restore only for editors, only while the mark is gone', async (t
   await render({});
   const text = () => document.querySelector('[data-testid="document-history-list"]').textContent;
   assert.match(text(), /Maya deleted a rectangle/);
+  // RULED 2026-09-29 owner: cleaner History — a line's buttons show only
+  // while it is the selected line (the red dot marks it as deleted at a
+  // glance). Restore is still gated exactly as before; the line is selected
+  // first so its buttons are on screen.
+  assert.equal(document.querySelectorAll('[data-restore]').length, 0, 'no buttons on a line that is not selected');
+  assert.equal(document.querySelector('[data-testid="document-history-list"] .dh-row').getAttribute('data-status'), 'deleted');
+  await act(async () => {
+    document.querySelector('[data-testid="document-history-list"] .dh-row').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  for (let i = 0; i < 12 && timeouts.size > 0; i += 1) await flush(timeouts);
   assert.equal(document.querySelectorAll('[data-restore]').length, 0, 'a viewer never sees Restore');
   await render({ canRestore: true });
   assert.equal(document.querySelectorAll('[data-restore]').length, 1, 'an editor sees Restore on the gone mark');
@@ -176,6 +186,8 @@ test('option A: Restore only for editors, only while the mark is gone', async (t
   await render({ canRestore: true, getHistoryMarkIndex: () => present });
   assert.equal(document.querySelectorAll('[data-restore]').length, 0);
   assert.match(text(), /Back on the page now/);
+  // The selected line's on-page retries (no page in this DOM) run out.
+  for (let i = 0; i < 12 && timeouts.size > 0; i += 1) await flush(timeouts);
 });
 
 // w64 (owner 2026-09-29): with History open, picking a mark on the page shows

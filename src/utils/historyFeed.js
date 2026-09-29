@@ -41,6 +41,46 @@ const FOLD_KINDS = new Set(['moved', 'resized', 'rotated', 'recolored', 'erased'
 // position / size / color while the row is open).
 export const HISTORY_PEEK_KINDS = new Set(['moved', 'resized', 'rotated', 'recolored', 'erased']);
 
+// RULED 2026-09-29 owner: cleaner History — "I want it clearer whether an
+// entry was deleted, just modified, or created, something quick to see":
+// each line carries a small colored dot (the verb is tinted to match; the
+// words stay, so color is never the only signal).
+//   created  = blue   (added, placed)
+//   edited   = green  (moved, resized, rotated, recolored, erased part of,
+//                      edited text, locked / unlocked, cut a Survey Marker)
+//   deleted  = red
+//   restored = teal   (kept apart from "added" blue)
+//   other    = grey   (undo / redo / Excel sync)
+const HISTORY_STATUS_BY_KIND = Object.freeze({
+  created: 'created',
+  placed: 'created',
+  deleted: 'deleted',
+  restored: 'restored',
+  moved: 'edited',
+  resized: 'edited',
+  rotated: 'edited',
+  recolored: 'edited',
+  erased: 'edited',
+  textEdited: 'edited',
+  locked: 'edited',
+  unlocked: 'edited',
+  tookOff: 'edited',
+  edited: 'edited',
+});
+
+/** 'created' | 'edited' | 'deleted' | 'restored' | 'other' for a line's kind. */
+export function historyStatusOf(kind) {
+  return HISTORY_STATUS_BY_KIND[kind] || 'other';
+}
+
+// The legend under the filters (the four colors a line can have).
+export const HISTORY_STATUS_LEGEND = Object.freeze([
+  Object.freeze({ id: 'created', label: 'Added' }),
+  Object.freeze({ id: 'edited', label: 'Edited' }),
+  Object.freeze({ id: 'deleted', label: 'Deleted' }),
+  Object.freeze({ id: 'restored', label: 'Restored' }),
+]);
+
 export const HISTORY_FILTERS = Object.freeze([
   Object.freeze({ id: 'all', label: 'Everyone' }),
   Object.freeze({ id: 'me', label: 'Only me' }),
@@ -436,6 +476,7 @@ export function describeHistoryRow(row, { currentUserId = null } = {}) {
     page: historyRowPage(row),
     markId: historyRowMarkId(row),
     markIds: historyRowMarkIds(row),
+    status: historyStatusOf(parts.kind),
     isDelete: isTrashHistoryEvent(row) || parts.kind === 'deleted',
     isTrash: isTrashHistoryEvent(row),
     actorId: row?.user_id || null,

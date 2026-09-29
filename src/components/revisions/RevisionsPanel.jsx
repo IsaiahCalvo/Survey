@@ -21,12 +21,22 @@
 // House rules: dark theme, gold only for the selected line's glyph, glyph-only
 // buttons with no plates, hairline rows (no card per row), plain words.
 //
+// RULED 2026-09-29 owner: cleaner History. Each line is a status dot (added
+// blue, edited green, deleted red, restored teal — legend under the filters,
+// the verb tinted to match, the words kept), the mark's glyph and one sentence,
+// with a small "time · page" line under it. Details (colors, quoted text,
+// "deleted later") and the line's buttons (Restore, Before / After) show only
+// on the selected line. A mark picked on the page shows as one small chip;
+// "Load older" is one quiet link at the end of the list. On the page the
+// selected mark gets a plain highlight that covers all of it (no pulse), and
+// a deleted mark a faint ghost with one small Restore on the highlight.
+//
 // Data (w55, unchanged): the first 50 rows, "Load older" pages further back, the
 // open panel reads only rows that arrived since the newest shown (10 s, never
 // while the tab is hidden), and every read is dropped if you switched
 // documents meanwhile. Named versions stay hidden until rebuilt (w55 defect 3).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import Icon from '../../Icons';
 import {
@@ -41,10 +51,10 @@ import { claimBodyReadOnly } from '../../utils/readOnlyBodyReasons.js';
 import {
   HISTORY_FILTERS,
   HISTORY_PEEK_KINDS,
+  HISTORY_STATUS_LEGEND,
   buildHistoryFeed,
   historyClockLabel,
   historyColorName,
-  historyDayLabel,
   historyMarkColor,
   historyRangeLabel,
   historyRowKey,
@@ -62,8 +72,8 @@ import {
   mergePageSelections,
   selectionKey,
 } from '../../utils/historyMarkFilter.js';
-import { historyAnnotationBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
-import { createHistoryPageOverlay, findMarkElements, measureMarkBox } from './historyPageOverlay.js';
+import { historyAnnotationBox, historyAnnotationInkBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
+import { createHistoryPageOverlay, findMarkElements, measureMarkBox, measureMarksBox } from './historyPageOverlay.js';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_PANEL_STYLE_ID = 'document-history-panel-style';
@@ -78,16 +88,8 @@ const NAMED_VERSIONS_ENABLED = false;
 const HISTORY_PAGE_SIZE = 50;
 const HISTORY_REFRESH_OVERLAP_MS = 2 * 60 * 1000;
 
-// A person's dot color, stable per user id (the same palette the active-users
-// faces use). You are always blue.
-const PERSON_COLORS = ['#2bbd7e', '#f5a524', '#ef6a5a', '#b86cff', '#ff6cb3', '#36b3c9', '#c9a227'];
-function personColor(userId, currentUserId) {
-  if (!userId) return '#8a93a3';
-  if (userId === currentUserId) return '#4f8cff';
-  let hash = 0;
-  for (let i = 0; i < userId.length; i += 1) hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-  return PERSON_COLORS[hash % PERSON_COLORS.length];
-}
+// How long the highlight on a mark you just restored stays before it fades.
+const RESTORED_HIGHLIGHT_MS = 2600;
 
 // UX (option A): the panel's own sheet — hairline rows edge to edge, no card
 // per row, glyph-only controls with no plates (states.css), gold only on the
@@ -99,7 +101,12 @@ function ensureHistoryPanelStyle() {
   const style = document.createElement('style');
   style.id = HISTORY_PANEL_STYLE_ID;
   style.textContent = `
-    .dh-panel { --dh-edge: 12px; --dh-row-pad: 10px; --dh-type: 13px; --dh-meta: 11.5px; --dh-glyph: 18px;
+    .dh-panel { --dh-edge: 12px; --dh-row-pad: 9px; --dh-type: 13px; --dh-meta: 11.5px; --dh-glyph: 18px;
+      /* Status colors (RULED 2026-09-29 owner): added blue, edited green,
+         deleted red, restored a light teal (lighter than the blue, so the two
+         read apart). Dots only; the verb gets a light tint. */
+      --dh-c-created: #4a90e2; --dh-c-edited: var(--success, #548c71); --dh-c-deleted: var(--danger, #d95a56);
+      --dh-c-restored: #6fd3d8; --dh-c-other: var(--text-3);
       display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--surface-1); color: var(--text-2); }
     .dh-panel--phone { --dh-edge: 16px; --dh-row-pad: 11px; --dh-type: 14px; --dh-meta: 12.5px; --dh-glyph: 20px; background: var(--surface-2); }
     .dh-head { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px var(--dh-edge) 10px; border-bottom: 1px solid var(--border); }
@@ -118,37 +125,50 @@ function ensureHistoryPanelStyle() {
     .dh-chip { flex: 1; border: 0; background: none; color: var(--text-3); padding: 5px 6px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
     .dh-chip:hover { color: var(--text-1); }
     .dh-chip.on { background: var(--surface-3); color: var(--text-1); }
+    .dh-legend { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 2px; color: var(--text-3); font-size: 11px; line-height: 16px; }
+    .dh-legend > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .dh-legend i, .dh-st { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; background: var(--dh-c, var(--dh-c-other)); }
+    .dh-legend i { width: 6px; height: 6px; }
+    .dh-panel [data-status="created"] { --dh-c: var(--dh-c-created); }
+    .dh-panel [data-status="edited"] { --dh-c: var(--dh-c-edited); }
+    .dh-panel [data-status="deleted"] { --dh-c: var(--dh-c-deleted); }
+    .dh-panel [data-status="restored"] { --dh-c: var(--dh-c-restored); }
+    .dh-panel [data-status="other"] { --dh-c: var(--dh-c-other); }
+    .dh-markchip { display: inline-flex; align-items: center; align-self: flex-start; gap: 2px; max-width: 100%; min-width: 0;
+      padding: 0 2px 0 10px; border-radius: 999px; background: var(--surface-3); color: var(--text-1); font-size: 12px; line-height: 24px; }
+    .dh-markchip > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dh-markchip button { width: 22px; height: 22px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
+    .dh-markchip button:hover { color: var(--text-1); }
     .dh-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; outline: none; }
     .dh-day { position: sticky; top: 0; z-index: 2; padding: 12px var(--dh-edge) 6px; font-size: 11px; font-weight: 650; letter-spacing: .05em;
       text-transform: uppercase; color: var(--text-3); background: inherit; border-bottom: 1px solid var(--border); }
     .dh-panel .dh-day { background: var(--surface-1); }
     .dh-panel--phone .dh-day { background: var(--surface-2); }
-    .dh-row { position: relative; display: grid; grid-template-columns: var(--dh-glyph) minmax(0, 1fr) auto; column-gap: 10px;
+    .dh-row { position: relative; display: grid; grid-template-columns: 7px var(--dh-glyph) minmax(0, 1fr); column-gap: 9px; align-items: start;
       padding: var(--dh-row-pad) var(--dh-edge); border-bottom: 1px solid var(--border); cursor: pointer; }
-    .dh-row .dh-g { color: var(--text-3); padding-top: 1px; position: relative; line-height: 0; }
+    .dh-row .dh-st { margin-top: calc((var(--dh-type) * 1.35 - 7px) / 2); }
+    .dh-row .dh-g { color: var(--text-3); line-height: 0; }
     .dh-row.sel .dh-g { color: var(--accent); }
-    .dh-row .dh-s { color: var(--text-2); font-size: var(--dh-type); line-height: 1.35; }
+    .dh-row .dh-s { color: var(--text-2); font-size: var(--dh-type); line-height: 1.35; overflow-wrap: anywhere; }
     .dh-row .dh-s b { color: var(--text-1); font-weight: 600; }
+    .dh-row .dh-v { color: color-mix(in srgb, var(--dh-c, var(--text-2)) 45%, var(--text-1)); }
+    .dh-row[data-status="other"] .dh-v { color: inherit; }
     .dh-row:hover .dh-s, .dh-row.sel .dh-s { color: var(--text-1); }
-    .dh-row .dh-m { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 3px; color: var(--text-3); font-size: var(--dh-meta); }
-    .dh-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
-    .dh-row .dh-pg { color: var(--text-3); font-size: var(--dh-meta); padding-top: 1px; white-space: nowrap; }
+    .dh-row .dh-m { margin-top: 2px; color: var(--text-3); font-size: var(--dh-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dh-row.linked::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 3px; border-radius: 0 2px 2px 0; background: #4a90e2; }
     .dh-row.focus::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 1px rgba(74,144,226,.7); pointer-events: none; }
-    .dh-row.del .dh-g { opacity: .75; }
-    .dh-row.del .dh-g::after { content: ""; position: absolute; left: -1px; right: -1px; top: 9px; height: 1.5px; background: currentColor; transform: rotate(-40deg); }
-    .dh-row.del .dh-s { color: var(--text-3); }
-    .dh-row.del.sel .dh-s, .dh-row.del:hover .dh-s { color: var(--text-2); }
-    .dh-row.child { padding-left: calc(var(--dh-edge) + 30px); background: rgba(255,255,255,.015); }
+    .dh-row.del .dh-g { opacity: .7; }
+    .dh-row.child { padding-left: calc(var(--dh-edge) + 16px); background: rgba(255,255,255,.015); }
     .dh-fold { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; padding: 0; border: 0; background: none; color: var(--text-3);
       font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; vertical-align: baseline; }
     .dh-fold:hover { color: var(--text-1); }
     .dh-fold > span:last-child { display: inline-grid; transition: transform .15s; }
     .dh-fold.open > span:last-child { transform: rotate(180deg); }
-    .dh-sw { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--text-3); font-size: 12px; }
+    .dh-sw { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; color: var(--text-3); font-size: 12px; }
     .dh-sw i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-    .dh-quote { margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--border); color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
+    .dh-quote { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--border); color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
     .dh-note { color: var(--text-3); font-size: var(--dh-meta); }
+    .dh-detail { margin-top: 6px; }
     .dh-act { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
     .dh-restore { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text-1);
       font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -161,22 +181,24 @@ function ensureHistoryPanelStyle() {
     .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 11.5px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
     .dh-peek button.on { background: var(--surface-3); color: var(--text-1); }
     .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
-    .dh-foot { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 9px var(--dh-edge);
-      border-top: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; }
+    .dh-more { display: block; margin: 6px auto 10px; padding: 6px 10px; border: 0; background: none; color: var(--text-3);
+      font: inherit; font-size: 12px; cursor: pointer; }
+    .dh-more:hover { color: var(--text-1); }
+    .dh-more:disabled { cursor: wait; }
+    .dh-foot { flex: none; padding: 9px var(--dh-edge); border-top: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; }
     .dh-link { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     .dh-link:hover { color: var(--text-1); }
-    .dh-status { width: 100%; color: var(--text-3); }
-    .dh-markbar { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--text-2); font-size: 12px; }
-    .dh-markbar > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dh-markbar .dh-link { font-size: 12px; flex: none; }
-    .dh-panel--phone .dh-markbar, .dh-panel--phone .dh-markbar .dh-link { font-size: 13px; }
-    .dh-panel--phone .dh-markbar .dh-link { padding: 12px 0; margin: -12px 0; }
     .dh-panel--phone .dh-row { min-height: 44px; }
     .dh-panel--phone .dh-chip { padding: 8px 6px; font-size: 13px; }
+    .dh-panel--phone .dh-legend { font-size: 12px; }
+    .dh-panel--phone .dh-markchip { font-size: 13px; line-height: 32px; }
+    .dh-panel--phone .dh-markchip button { width: 32px; height: 32px; }
     .dh-panel--phone .dh-ib { width: 44px; height: 44px; margin-right: -8px; }
     .dh-panel--phone .dh-restore { font-size: 14px; min-height: 44px; }
     .dh-panel--phone .dh-peek button { padding: 10px 14px; font-size: 13px; }
     .dh-panel--phone .dh-fold { font-size: 13px; padding: 8px 0; margin: -8px 0 -8px 4px; }
+    .dh-panel--phone .dh-more { min-height: 44px; font-size: 13px; }
+    .dh-panel--phone .dh-body { padding-bottom: var(--mobile-bottom-inset, 10px); }
     .dh-panel--phone .dh-foot { padding-bottom: calc(var(--mobile-bottom-inset, 10px) + 8px); }
     @media (prefers-reduced-motion: reduce) { .dh-fold > span:last-child { transition: none; } }
   `;
@@ -285,6 +307,9 @@ export default function RevisionsPanel({
   const selectedFromPageRef = useRef(false);
   const selectedKeyRef = useRef(null);
   selectedKeyRef.current = selectedKey;
+  // The line the pointer last MOVED onto (lines shifting under a still
+  // pointer, e.g. when the selected line opens, never count as pointing).
+  const hoveredKeyRef = useRef(null);
   const [listFocused, setListFocused] = useState(false);
   // The focus outline is for keyboard use only (never on a mouse click).
   const [keyboardNav, setKeyboardNav] = useState(false);
@@ -678,6 +703,7 @@ export default function RevisionsPanel({
     const clickSeq = ++activityClickSeqRef.current;
     const ov = overlay();
     ov.setHover(null);
+    hoveredKeyRef.current = null;
     // Decision 10 / w55: a survey-scoped line moves you into its context
     // (never out of your survey panel or space) — on a click or Enter only,
     // never while stepping with the arrow keys.
@@ -714,7 +740,26 @@ export default function RevisionsPanel({
       ? historyUnionBox((pageGhosts.length ? pageGhosts : bulkAll.filter((g) => g.pageNumber === pageNumber)
         .map((g) => ({ box: historyAnnotationBox(g.annotation) }))).map((g) => g.box))
       : (ghostAnnotation ? historyAnnotationBox(ghostAnnotation) : null);
-    const targetBox = live?.box || ghostBox;
+    // Every mark the line is about (a group move highlights them all).
+    const lineMarkIds = (last.markIds?.length ? last.markIds : (markId ? [markId] : [])).map(String);
+    // Where the line's live marks are when they are not drawn as SVG right
+    // now: their stored boxes grown by half their stroke (the page measures
+    // what is drawn otherwise).
+    const liveInkBox = live
+      ? (historyUnionBox(lineMarkIds.map((id) => {
+        const located = String(id) === String(markId)
+          ? live
+          : (typeof locateHistoryMark === 'function' ? locateHistoryMark(id) : null);
+        return located?.pageNumber === live.pageNumber ? historyAnnotationInkBox(located.annotation) : null;
+      })) || live.box)
+      : null;
+    // Zoom to what is drawn when the page is on screen (a stored box can be
+    // off for some marks, e.g. a counter), else to the stored boxes — all of
+    // the line's marks, so a group move lands with every mark in view.
+    const drawnNow = live?.pageNumber && lineMarkIds.length && typeof document !== 'undefined'
+      ? measureMarksBox(document, lineMarkIds, live.pageNumber)
+      : null;
+    const targetBox = drawnNow || liveInkBox || ghostBox;
     if (zoom) {
       // The phone sheet covers the bottom of the page: land the mark above it.
       const sheetTop = mobileMode ? panelRef.current?.getBoundingClientRect?.().top : null;
@@ -732,7 +777,6 @@ export default function RevisionsPanel({
     const draw = (attempt) => {
       if (clickSeq !== activityClickSeqRef.current) return; // a newer selection owns the page marks
       const measured = live && markId ? measureMarkBox(document, markId, pageNumber) : null;
-      const box = measured || targetBox;
       const pageReady = typeof document !== 'undefined'
         && document.querySelector(`svg[data-svg-annotation-layer="${pageNumber}"]`);
       if (!pageReady || (live && !measured && attempt < 4)) {
@@ -741,51 +785,63 @@ export default function RevisionsPanel({
           return;
         }
       }
-      if (highlight && box) ov.setHighlight({ pageNumber, box });
       const restorable = canRestore && trashRow && hasRestoreData(trashRow) && Boolean(onRestoreHistoryActivity)
         // "Deleted later" never restores a whole bulk delete for one mark.
         && (last.isTrash || trashRow.event_type !== 'annotations_bulk_deleted');
-      // Scene: ghost of a deleted mark, or Before / After of an edit.
+      const restorePin = restorable
+        ? { label: 'Restore', onClick: () => handleRestoreActivityRef.current?.(trashRow) }
+        : null;
+      // RULED 2026-09-29 owner: one highlight, one outline. The highlight
+      // always sits on the thing you are looking at: the mark as it is now,
+      // or its ghost (deleted, or peeking at Before). Ghosts carry no tags.
+      let scene = null;
+      let target = null;
       if (bulk && pageGhosts.length) {
-        ov.setScene({
-          pageNumber,
-          ghosts: pageGhosts.map((g, i) => ({ ...g, tag: i === pageGhosts.findIndex((x) => x.box) ? (bulkGhosts.length > 1 ? `Deleted (${bulkGhosts.length})` : 'Deleted') : null })),
-          pin: restorable && ghostBox
-            ? { box: ghostBox, label: 'Restore', onClick: () => handleRestoreActivityRef.current?.(trashRow) }
-            : null,
-        });
+        scene = { pageNumber, ghosts: pageGhosts };
+        target = { pageNumber, ghosts: true, box: ghostBox, pin: restorePin };
+      } else if (bulk) {
+        // Every mark it removed is back: highlight them where they are.
+        const ids = bulkAll.filter((g) => g.pageNumber === pageNumber && g.markId).map((g) => String(g.markId));
+        target = { pageNumber, markIds: ids, box: ghostBox };
       } else if (!live && ghostAnnotation) {
-        ov.setScene({
-          pageNumber,
-          ghosts: [{ annotation: ghostAnnotation, box: ghostBox, tag: 'Deleted' }],
-          pin: restorable && ghostBox
-            ? { box: ghostBox, label: 'Restore', onClick: () => handleRestoreActivityRef.current?.(trashRow) }
-            : null,
-        });
+        scene = { pageNumber, ghosts: [{ annotation: ghostAnnotation, box: ghostBox }] };
+        target = { pageNumber, ghosts: true, box: historyAnnotationInkBox(ghostAnnotation) || ghostBox, pin: restorePin };
       } else if (live && HISTORY_PEEK_KINDS.has(last.kind) && first.row?.payload?.previewBefore) {
         const beforeAnnotation = first.row.payload.previewBefore;
         const beforeBox = historyAnnotationBox(beforeAnnotation);
-        const nowBox = box;
+        const nowBox = measured || live.box;
         const recolor = last.kind === 'recolored';
         const beforeColor = historyMarkColor(beforeAnnotation);
         if (peek === 'before') {
-          ov.setScene({
+          // The old shape, solid in its old color; the mark as it is now fades.
+          scene = {
             pageNumber,
-            ghosts: [
-              { annotation: beforeAnnotation, box: beforeBox, solid: true, color: beforeColor || '#e6e8eb', tag: 'Before' },
-              ...(recolor ? [] : [{ annotation: live?.annotation || null, box: nowBox, tag: 'After' }]),
-            ],
+            ghosts: [{ annotation: beforeAnnotation, box: beforeBox, solid: true, color: beforeColor || '#e6e8eb' }],
             dimElements: findMarkElements(document, markId),
-          });
+          };
+          target = { pageNumber, ghosts: true, box: historyAnnotationInkBox(beforeAnnotation) || beforeBox };
         } else {
-          ov.setScene({
+          // A faint ghost of where / how it was (a color change has none: the
+          // mark is in the same place, the line shows both colors).
+          scene = recolor ? null : {
             pageNumber,
-            ghosts: [{ annotation: beforeAnnotation, box: beforeBox, color: recolor ? beforeColor : null, tag: 'Before' }],
+            ghosts: [{ annotation: beforeAnnotation, box: beforeBox }],
             trail: last.kind === 'moved' && beforeBox && nowBox ? { from: boxCenter(beforeBox), to: boxCenter(nowBox) } : null,
-          });
+          };
+          target = { pageNumber, markIds: lineMarkIds, box: liveInkBox };
         }
+      } else if (live) {
+        target = { pageNumber, markIds: lineMarkIds, box: liveInkBox };
+      } else if (targetBox) {
+        target = { pageNumber, box: targetBox };
+      }
+      ov.setScene(scene);
+      if (!target) {
+        if (highlight) ov.clearHighlight();
+      } else if (highlight) {
+        ov.setHighlight(target);
       } else {
-        ov.setScene(null);
+        ov.updateHighlight(target);
       }
     };
     draw(1);
@@ -798,11 +854,20 @@ export default function RevisionsPanel({
     setPeekMode('after');
     setStatusMsg(null);
     showSelection(key, { zoom: true, peek: 'after', ...options });
-    if (typeof document !== 'undefined') {
-      const el = listRef.current?.querySelector?.(`[data-key="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key}"]`);
-      el?.scrollIntoView?.({ block: 'nearest' });
-    }
+    scrollToSelectedRef.current = key;
   }, [showSelection]);
+
+  // The selected line opens (its details and buttons show) and the previous
+  // one closes, so bring it into view only once that layout is on screen —
+  // stepping with Up / Down never leaves its buttons below the edge.
+  const scrollToSelectedRef = useRef(null);
+  useLayoutEffect(() => {
+    const key = scrollToSelectedRef.current;
+    if (!key || key !== selectedKey) return;
+    scrollToSelectedRef.current = null;
+    const el = listRef.current?.querySelector?.(`[data-key="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key}"]`);
+    el?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedKey]);
 
   const clearSelection = useCallback(() => {
     setSelectedKey(null);
@@ -959,7 +1024,10 @@ export default function RevisionsPanel({
       if (e.target?.closest?.('input, textarea, [contenteditable]')) return;
       // w64: Esc also ends "Showing history for this …".
       if (markFilterKeyRef.current) clearMarkFilter();
-      if (!selectedKey && !overlayRef.current?.hasHighlight?.()) return;
+      if (!selectedKey && !overlayRef.current?.hasHighlight?.()) {
+        overlayRef.current?.setHover(null);
+        return;
+      }
       clearSelection();
     };
     window.addEventListener('keydown', onKeyDown);
@@ -995,8 +1063,14 @@ export default function RevisionsPanel({
           window.setTimeout(() => {
             if (seq !== activityClickSeqRef.current) return;
             const located = typeof locateHistoryMark === 'function' ? locateHistoryMark(markId) : null;
-            const box = measureMarkBox(document, markId, page) || historyAnnotationBox(located?.annotation);
-            if (box) overlay().setHighlight({ pageNumber: page, box });
+            // The restored mark, highlighted where it is (it fades on its own:
+            // no line is selected now).
+            overlay().setHighlight({
+              pageNumber: page,
+              markIds: [String(markId)],
+              box: historyAnnotationInkBox(located?.annotation),
+              lifetimeMs: RESTORED_HIGHLIGHT_MS,
+            });
           }, 160);
         }
         await refresh({ silent: true });
@@ -1142,27 +1216,43 @@ export default function RevisionsPanel({
     }
   };
 
-  const hoverLine = (entry) => {
+  // Pointing at a line shows the same highlight, quieter — never a second
+  // outline on the line that is already open.
+  const hoverLine = (entry, key = null) => {
     if (mobileMode) return;
     const ov = overlay();
-    if (!entry) { ov.setHover(null); return; }
+    if (!entry || (key && key === selectedKey)) { ov.setHover(null); return; }
     const markId = entry.markId || entry.markIds[0] || null;
+    const open = selectedKey ? groupsByKey.get(selectedKey) : null;
+    if (open) {
+      const openIds = new Set(open.entries.flatMap((item) => item.markIds.map(String)));
+      if ((entry.markIds || []).some((id) => openIds.has(String(id)))) { ov.setHover(null); return; }
+    }
     const live = markLiveNow(markId);
     if (live?.pageNumber) {
-      const box = measureMarkBox(document, markId, live.pageNumber) || live.box;
-      ov.setHover(box ? { pageNumber: live.pageNumber, box } : null);
+      const markIds = (entry.markIds?.length ? entry.markIds : [markId]).map(String);
+      ov.setHover({ pageNumber: live.pageNumber, markIds, box: historyAnnotationInkBox(live.annotation) || live.box });
       return;
     }
     const ghost = historyRowGhostAnnotation(entry.isTrash ? entry.row : (restoreRowForMark(markId) || entry.row));
-    const box = ghost ? historyAnnotationBox(ghost) : null;
+    const box = ghost ? historyAnnotationInkBox(ghost) : null;
     ov.setHover(box && entry.page ? { pageNumber: entry.page, box } : null);
+  };
+
+  // Only a real pointer move counts (the browser also sends moves with no
+  // movement when lines shift under a still pointer).
+  const pointAtLine = (event, entry, key) => {
+    if (!event.movementX && !event.movementY) return;
+    if (hoveredKeyRef.current === key) return;
+    hoveredKeyRef.current = key;
+    hoverLine(entry, key);
   };
 
   const renderSentence = (entry) => (
     <>
       <b>{entry.actorShort}</b>
       {' '}
-      {entry.verb}
+      <span className="dh-v">{entry.verb}</span>
       {entry.noun ? ` ${entry.noun}` : ''}
       {entry.suffix ? ` ${entry.suffix}` : ''}
     </>
@@ -1191,11 +1281,11 @@ export default function RevisionsPanel({
       return null;
     }
     if (entry.kind === 'locked') {
-      return <div className="dh-note" style={{ marginTop: 3 }}>No one can change or delete it until it’s unlocked.</div>;
+      return <div className="dh-note dh-detail">No one can change or delete it until it’s unlocked.</div>;
     }
     if (entry.row?.event_type === 'space_deleted' || entry.row?.event_type === 'region_deleted') {
       const subject = describeHistoryEventSubject(entry.row);
-      return subject && !entry.noun.includes('“') ? <div className="dh-note" style={{ marginTop: 3 }}>{subject}</div> : null;
+      return subject && !entry.noun.includes('“') ? <div className="dh-note dh-detail">{subject}</div> : null;
     }
     return null;
   };
@@ -1240,6 +1330,9 @@ export default function RevisionsPanel({
     </span>
   );
 
+  // RULED 2026-09-29 owner: cleaner History. A line is: status dot, the
+  // mark's glyph, one sentence, "time · page". Its details and buttons show
+  // only while it is the selected line.
   const renderGroup = (group) => {
     const e = group.last;
     const first = group.first;
@@ -1253,7 +1346,7 @@ export default function RevisionsPanel({
     // Restore only on deleted items, only for people who can edit (w55).
     const isDeleted = isTrashHistoryEvent(e.row);
     const canRestoreDeleted = isDeleted && canRestore && Boolean(onRestoreHistoryActivity) && hasRestoreData(e.row);
-    if (isDeleted) {
+    if (selected && isDeleted) {
       const state = deleteLineState(e);
       if (state === 'back') actions.push(<span key="back" className="dh-note">Back on the page now</span>);
       else if (state === 'restore' && canRestoreDeleted) actions.push(<span key="restore">{restoreButton(e.row)}</span>);
@@ -1277,13 +1370,15 @@ export default function RevisionsPanel({
         data-key={key}
         data-mark={markId || ''}
         data-kind={e.kind}
+        data-status={e.status}
         data-testid={`document-history-event-${e.row.id}`}
         role="option"
         aria-selected={selected}
         onClick={() => { keyboardNavRef.current = false; setKeyboardNav(false); selectLine(key, { restoreContext: true }); }}
-        onMouseEnter={() => hoverLine(e)}
-        onMouseLeave={() => hoverLine(null)}
+        onMouseMove={(ev) => pointAtLine(ev, e, key)}
+        onMouseLeave={() => { hoveredKeyRef.current = null; hoverLine(null); }}
       >
+        <i className="dh-st" aria-hidden="true" />
         <span className="dh-g" aria-hidden="true"><Icon name={e.glyph} size={mobileMode ? 20 : 18} /></span>
         <div>
           <div className="dh-s">
@@ -1306,16 +1401,10 @@ export default function RevisionsPanel({
               </button>
             )}
           </div>
-          {renderDetail(e, first)}
-          <div className="dh-m">
-            <i className="dh-dot" style={{ background: personColor(e.actorId, currentUserId) }} />
-            <span>{e.isYou ? 'You' : e.actorName}</span>
-            <span>·</span>
-            <span>{time}</span>
-          </div>
+          <div className="dh-m">{time}{e.page ? ` · p. ${e.page}` : ''}</div>
+          {selected && renderDetail(e, first)}
           {actions.length > 0 && <div className="dh-act">{actions}</div>}
         </div>
-        <div className="dh-pg">{e.page ? `p. ${e.page}` : ''}</div>
       </div>
     )];
     if (isOpen) {
@@ -1330,22 +1419,23 @@ export default function RevisionsPanel({
             data-key={childKey}
             data-mark={markId || ''}
             data-kind={child.kind}
+            data-status={child.status}
             role="option"
             aria-selected={childSelected}
             onClick={() => { keyboardNavRef.current = false; setKeyboardNav(false); selectLine(childKey, { restoreContext: true }); }}
-            onMouseEnter={() => hoverLine(child)}
-            onMouseLeave={() => hoverLine(null)}
+            onMouseMove={(ev) => pointAtLine(ev, child, childKey)}
+            onMouseLeave={() => { hoveredKeyRef.current = null; hoverLine(null); }}
           >
+            <span aria-hidden="true" />
             <span className="dh-g" aria-hidden="true"><Icon name={child.glyph} size={15} /></span>
             <div>
               <div className="dh-s">{historyShortVerb(child.kind)}</div>
-              {renderDetail(child)}
-              <div className="dh-m"><span>{historyClockLabel(child.ms, nowMs)}</span></div>
+              <div className="dh-m">{historyClockLabel(child.ms, nowMs)}</div>
+              {childSelected && renderDetail(child)}
               {childSelected && present !== false && HISTORY_PEEK_KINDS.has(child.kind) && child.row?.payload?.previewBefore && (
                 <div className="dh-act">{peekToggle()}</div>
               )}
             </div>
-            <div className="dh-pg" />
           </div>,
         );
       }
@@ -1363,8 +1453,6 @@ export default function RevisionsPanel({
           : 'Nothing has been deleted.')
         : 'No changes yet. What people add, move, change or delete shows up here.';
 
-  const oldestRow = historyEvents[historyEvents.length - 1];
-  const oldestLabel = oldestRow ? historyDayLabel(historyRowTimeMs(oldestRow), nowMs) : null;
 
   const panel = (
     <div
@@ -1464,18 +1552,27 @@ export default function RevisionsPanel({
             </button>
           ))}
         </div>
-        {markFilter && (
-          <div className="dh-markbar" data-testid="document-history-mark-filter" role="status">
+        {markFilter ? (
+          // A mark picked on the page: one small chip (its × clears it).
+          <div className="dh-markchip" data-testid="document-history-mark-filter" role="status">
             <span>{historyMarkFilterLabel(markFilter.items)}</span>
-            <span aria-hidden="true">·</span>
             <button
               type="button"
-              className="dh-link"
+              data-glyph-only=""
               data-testid="document-history-mark-filter-clear"
+              aria-label="Clear: show all history"
+              title="Show all history"
               onClick={clearMarkFilter}
             >
-              Clear
+              <Icon name="close" size={mobileMode ? 15 : 13} />
             </button>
+          </div>
+        ) : (
+          // What the dots mean (the words on each line say it too).
+          <div className="dh-legend" data-testid="document-history-legend">
+            {HISTORY_STATUS_LEGEND.map((item) => (
+              <span key={item.id} data-status={item.id}><i aria-hidden="true" />{item.label}</span>
+            ))}
           </div>
         )}
       </div>
@@ -1512,6 +1609,7 @@ export default function RevisionsPanel({
           : renderGroup(item.group)))}
         {timelineRevisions.map((rev) => (
           <div key={`revision:${rev.id}`} className="dh-row" data-testid={`kal48-revision-row-${rev.revisionNumber}`}>
+            <span aria-hidden="true" />
             <span className="dh-g" aria-hidden="true"><Icon name="history" size={18} /></span>
             <div>
               <div className="dh-s"><b>v{rev.revisionNumber}</b>{rev.label ? ` ${rev.label}` : ''}</div>
@@ -1523,29 +1621,25 @@ export default function RevisionsPanel({
                 )}
               </div>
             </div>
-            <div className="dh-pg" />
           </div>
         ))}
+        {hasOlder && (
+          // One quiet link at the end of the list.
+          <button
+            type="button"
+            className="dh-more"
+            data-testid="document-history-load-older"
+            onClick={loadOlder}
+            disabled={loadingOlder}
+          >
+            {loadingOlder ? 'Loading…' : 'Load older'}
+          </button>
+        )}
       </div>
 
-      {(hasOlder || statusMsg || oldestLabel || (NAMED_VERSIONS_ENABLED && isOwner)) && (
+      {(statusMsg || (NAMED_VERSIONS_ENABLED && isOwner)) && (
         <div className="dh-foot">
           {statusMsg && <div className="dh-status" data-testid="kal48-status" role="status">{statusMsg}</div>}
-          {oldestLabel && <span>Showing back to {oldestLabel === 'Today' || oldestLabel === 'Yesterday' ? oldestLabel.toLowerCase() : oldestLabel}</span>}
-          {hasOlder && (
-            <>
-              <span>·</span>
-              <button
-                type="button"
-                className="dh-link"
-                data-testid="document-history-load-older"
-                onClick={loadOlder}
-                disabled={loadingOlder}
-              >
-                {loadingOlder ? 'Loading…' : 'Load older'}
-              </button>
-            </>
-          )}
           {NAMED_VERSIONS_ENABLED && isOwner && (
             <button type="button" className="dh-link" data-testid="kal48-save-revision" onClick={handleSave} disabled={busy}>Save version</button>
           )}

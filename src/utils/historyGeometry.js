@@ -121,6 +121,19 @@ export function historyAnnotationBox(annotation) {
 }
 
 /**
+ * The box a mark's INK covers (its box grown by half its stroke), in page
+ * units, or null. Used only when the mark is not drawn as SVG on the page
+ * right now (the page then measures what is drawn instead).
+ */
+export function historyAnnotationInkBox(annotation) {
+  const box = historyAnnotationBox(annotation);
+  if (!box) return null;
+  const sw = Math.max(0, num(annotation.strokeWidth ?? annotation.data?.strokeWidth, 0));
+  const half = sw / 2;
+  return { x: box.x - half, y: box.y - half, width: box.width + sw, height: box.height + sw };
+}
+
+/**
  * An SVG element drawing the mark's outline in page units (for a ghost), or
  * null. The caller styles it (dashed, color, opacity).
  */
