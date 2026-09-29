@@ -280,7 +280,8 @@ test('real SVG commit seams use object transforms for move and resize', () => {
   assert.match(
     source,
     /groupContainsPath[\s\S]*?!groupContainsPath[\s\S]*?Math\.abs\(sx\)\s*<\s*0\.05[\s\S]*?sx\s*===\s*0[\s\S]*?Number\.MIN_VALUE/,
-    'a path-containing group keeps signed sub-0.05 scale and guards only singular zero',
+    // w63: the group then also takes the shared 4-unit floor (clampResizeScale).
+    'a path-containing group keeps signed sub-0.05 scale (no 5 % snap) and guards singular zero',
   );
   assert.match(source, /pathResizePageMatrix[\s\S]*?applyPageAffineToInkObject/);
   // RULED 2026-09-28 (w63, owner-directed): a single path resize still keeps

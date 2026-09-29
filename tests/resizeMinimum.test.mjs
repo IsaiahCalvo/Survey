@@ -97,3 +97,30 @@ test('a flipped polygon saves mirrored points with a positive scale (preview == 
   assert.equal(plain.points, obj.points);
   assert.ok(plain.data.pdfCloudVertexState);
 });
+
+test('an open cloud mirrored on one axis also reverses its order (crowns follow the mirror)', () => {
+  const cloud = {
+    type: 'polyline',
+    points: [{ x: 0, y: 0 }, { x: 10, y: 5 }, { x: 30, y: 0 }],
+    pathOffset: { x: 15, y: 2.5 },
+    scaleX: 1,
+    scaleY: 1,
+    left: 0,
+    top: 0,
+    data: { pdfCloudIntensity: 1 },
+  };
+  const props = { pointsLocalMinX: 0, pointsLocalMinY: 0, pointsPathOffsetX: 15, pointsPathOffsetY: 2.5 };
+  // Mirrored top-to-bottom: (0,5) (10,0) (30,5), then reversed.
+  const oneAxis = buildPointsShapeResize(cloud, { scaleX: 1, scaleY: -1, left: 0, top: 0 }, props);
+  assert.deepEqual(oneAxis.points, [{ x: 30, y: 5 }, { x: 10, y: 0 }, { x: 0, y: 5 }]);
+  // Both axes = a half turn: mirrored both ways, order kept.
+  const both = buildPointsShapeResize(cloud, { scaleX: -1, scaleY: -1, left: 0, top: 0 }, props);
+  assert.deepEqual(both.points, [{ x: 30, y: 5 }, { x: 20, y: 0 }, { x: 0, y: 5 }]);
+  // A plain (non-cloud) polyline keeps its order, so its line ends stay put.
+  const plain = buildPointsShapeResize({ ...cloud, data: {} }, { scaleX: 1, scaleY: -1, left: 0, top: 0 }, props);
+  assert.deepEqual(plain.points, [{ x: 0, y: 5 }, { x: 10, y: 0 }, { x: 30, y: 5 }]);
+});
+
+test('a pointer exactly on the fixed corner counts as the unflipped side', () => {
+  assert.equal(clampResizeScale(0, { rawSize: 100, startScale: -1 }), 0.04);
+});

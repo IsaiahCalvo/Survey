@@ -780,7 +780,18 @@ const SVGAnnotationLayer = memo(({
       surveyMarkerDragRef.current = null;
       return;
     }
-    if (pendingSelection.pageNumber !== pageNumber) return;
+    if (pendingSelection.pageNumber !== pageNumber) {
+      // w63: a paste's selection is the WHOLE selection — marks still picked
+      // on another page (the page you copied from) drop out, so the next
+      // arrow key moves only the copies.
+      if (pendingSelection.exclusive === true) {
+        deselectAll();
+        setSelectedSurveyMarkerId(null);
+        setSurveyMarkerPreviewBounds(null);
+        surveyMarkerDragRef.current = null;
+      }
+      return;
+    }
     // UX: 2026-04-20 — multi-index restore (Ungroup). When App broadcasts
     // an `annotationIndices` array (instead of the singular index), replace
     // the entire selection with that set so the freed group members stay

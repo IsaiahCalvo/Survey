@@ -4836,7 +4836,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // w63 (Figma / Acrobat): the pasted callout becomes the whole selection so
     // it can be nudged or dragged straight away.
     setSelectedCalloutIds(new Set([newId]));
-    setPendingSvgSelection({ pageNumber, annotationIndices: [], surveyMarkerIds: [], tick: Date.now() });
+    setPendingSvgSelection({ pageNumber, annotationIndices: [], surveyMarkerIds: [], exclusive: true, tick: Date.now() });
 
     // Clear clipboard if it was a cut operation
     if (clipboardCalloutType === 'cut') {
@@ -28758,6 +28758,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber,
       annotationIndices,
       surveyMarkerIds: [],
+      exclusive: true,
       tick: Date.now(),
     });
   }, []);
@@ -30721,6 +30722,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber,
       annotationIndices,
       surveyMarkerIds: [...plan.markers.map((record) => record.id), ...plan.placedMarkers.map((place) => place.id)],
+      // w63: marks still picked on another page drop out of the selection.
+      exclusive: true,
       tick: Date.now(),
     });
     if (plan.skippedMarkers > 0) {

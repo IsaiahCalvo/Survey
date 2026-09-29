@@ -62,9 +62,9 @@ export function clampResizeScale(scale, {
     // No measurable size on this axis: only keep the transform invertible.
     return s === 0 ? Number.MIN_VALUE : s;
   }
-  // Exactly zero means "on the fixed corner": stay on the side we came from.
-  const startSign = Number(startScale) < 0 ? -1 : 1;
-  const sign = s < 0 ? -1 : (s > 0 ? 1 : startSign);
+  // The pointer's scale is measured from the grabber, so exactly zero ("on
+  // the fixed corner") counts as the unflipped side.
+  const sign = s < 0 ? -1 : 1;
   return sign * Math.max(Math.abs(s), floor);
 }
 
@@ -126,6 +126,13 @@ export function buildPointsShapeResize(obj, resize, props) {
   };
   if (flipX || flipY) {
     next.points = mirrorPointsInBox(obj.points, { x: flipX, y: flipY });
+    // An OPEN revision cloud draws its crowns on the left of its direction of
+    // travel. A mirror on ONE axis swaps left and right, so the order is
+    // reversed too and the crowns land where a mirror puts them. (Both axes
+    // = a half turn, which keeps the side. A closed cloud orients itself.)
+    const isOpenCloud = String(obj.type || '').toLowerCase() === 'polyline'
+      && obj.data && obj.data.pdfCloudIntensity != null;
+    if (isOpenCloud && flipX !== flipY) next.points = next.points.slice().reverse();
     // A revision cloud's remembered per-vertex fit belongs to the unmirrored
     // outline; after a flip the cloud re-fits fresh, as after any resize.
     if (next.data && next.data.pdfCloudVertexState) {

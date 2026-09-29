@@ -45,6 +45,19 @@ test('the callout paste selects the new callout and nothing else', () => {
   assert.match(paste, /setPendingSvgSelection\(\{ pageNumber, annotationIndices: \[\], surveyMarkerIds: \[\]/);
 });
 
+test('a paste clears marks still picked on other pages (the copies are the whole selection)', () => {
+  const helper = bodyOf('const selectPastedMarks = useCallback(', '}, []);');
+  assert.match(helper, /exclusive:\s*true/);
+  const callout = bodyOf('const handlePasteCallout = useCallback(', '}, [clipboardCallout');
+  assert.match(callout, /exclusive:\s*true/);
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(
+    layer,
+    /if \(pendingSelection\.pageNumber !== pageNumber\) \{[\s\S]{0,400}?pendingSelection\.exclusive === true[\s\S]{0,80}?deselectAll\(\)/,
+    'other pages drop their selection on an exclusive broadcast',
+  );
+});
+
 test('the family paste and Duplicate keep selecting what they created', () => {
   const family = bodyOf('const commitFamilyPaste = useCallback(', 'return true;\n  }, [');
   assert.match(family, /setPendingSvgSelection\(\{[\s\S]*annotationIndices,[\s\S]*surveyMarkerIds:/);
