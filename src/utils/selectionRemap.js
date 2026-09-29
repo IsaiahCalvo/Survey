@@ -105,17 +105,53 @@ export function resolveMenuTargets(ctx, objects) {
   const hasSingle = ctx.annotationTargetId != null;
   const hasGroup = Array.isArray(ctx.groupTargetIds) && ctx.groupTargetIds.some((id) => id != null);
   if (!hasSingle && !hasGroup) return ctx;
-  const find = (index, id) => {
+  // Positions of each id now, handed out in order (stacked duplicates share
+  // an id: two targets never resolve to the same position).
+  let positionsById = null;
+  const take = (index, id) => {
     if (id == null) return index; // an id-less legacy mark: its position, as before
-    if (markIdOf(objects[index]) === id) return index;
-    return objects.findIndex((object) => markIdOf(object) === id);
+    if (!positionsById) {
+      positionsById = new Map();
+      objects.forEach((object, at) => {
+        const key = markIdOf(object);
+        if (key == null) return;
+        if (!positionsById.has(key)) positionsById.set(key, []);
+        positionsById.get(key).push(at);
+      });
+    }
+    const list = positionsById.get(id) || [];
+    // Prefer the old position when it still holds this id.
+    const same = list.indexOf(index);
+    if (same >= 0) return list.splice(same, 1)[0];
+    return list.length ? list.shift() : -1;
   };
   const next = { ...ctx };
-  if (hasSingle) next.annotationIndex = find(ctx.annotationIndex, ctx.annotationTargetId);
+  if (hasSingle) next.annotationIndex = take(ctx.annotationIndex, ctx.annotationTargetId);
   if (hasGroup && Array.isArray(ctx.groupIndices)) {
+    const seen = new Set();
     next.groupIndices = ctx.groupIndices
-      .map((index, at) => find(index, ctx.groupTargetIds[at]))
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < objects.length);
+      .map((index, at) => take(index, ctx.groupTargetIds[at]))
+      .filter((index) => {
+        if (!Number.isInteger(index) || index < 0 || index >= objects.length || seen.has(index)) return false;
+        seen.add(index);
+        return true;
+      });
   }
+  // Every noted target is gone (deleted on another screen while the menu
+  // was open): the menu's mark items must not act.
+  // (A group that also holds Survey Markers or callouts still has those.)
+  next.targetsGone = (hasSingle ? next.annotationIndex < 0 : true)
+    && (hasGroup ? next.groupIndices?.length === 0 : true)
+    && !(Array.isArray(ctx.groupMarkerIds) && ctx.groupMarkerIds.length > 0)
+    && ctx.calloutId == null;
   return next;
+}
+
+/** Same targets, same positions (the menu as drawn still matches the list). */
+export function sameMenuTargets(a, b) {
+  if (!a || !b) return a === b;
+  if (a.annotationIndex !== b.annotationIndex) return false;
+  const ga = Array.isArray(a.groupIndices) ? a.groupIndices : [];
+  const gb = Array.isArray(b.groupIndices) ? b.groupIndices : [];
+  return ga.length === gb.length && ga.every((index, at) => index === gb[at]);
 }

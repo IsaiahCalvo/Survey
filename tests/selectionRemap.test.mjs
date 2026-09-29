@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { remapSelectedIndices, resolveMenuTargets, stampMenuTargetIds } from '../src/utils/selectionRemap.js';
+import { remapSelectedIndices, resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../src/utils/selectionRemap.js';
 
 const mark = (id) => ({ type: 'rect', left: 0, top: 0, width: 10, height: 10, data: { id, type: 'shape' } });
 const legacy = (n) => ({ type: 'rect', left: n, top: 0, width: 10, height: 10 });
@@ -18,13 +18,6 @@ test('another screen deletes an earlier mark: the selection stays on the picked 
   const after = [before[1], before[2]];
   const next = remapSelectedIndices(new Set([1]), before, after);
   assert.deepEqual(ids(after, next), ['m1'], 'still m1, never m2');
-});
-
-test('the pre-w61 rule would have moved the selection onto the neighbour (the bug)', () => {
-  const before = [mark('m0'), mark('m1'), mark('m2')];
-  const after = [before[1], before[2]];
-  // Old behaviour: positions kept while in range.
-  assert.deepEqual(ids(after, new Set([1])), ['m2']);
 });
 
 test('another screen adds or restacks marks: every selected mark stays selected, nothing else joins', () => {
@@ -97,6 +90,8 @@ test('right-click menu: a mark that slid in the list is still the one acted on; 
   assert.equal(after[ctx.annotationIndex].data.id, 'm1', 'Delete from the menu removes m1, never m2');
   const gone = resolveMenuTargets(menu, [before[0], before[2]]);
   assert.equal(gone.annotationIndex, -1, 'm1 deleted meanwhile: nothing is acted on');
+  assert.equal(gone.targetsGone, true, 'its mark items grey out');
+  assert.equal(ctx.targetsGone, false);
   assert.equal(resolveMenuTargets(menu, before).annotationIndex, 1, 'unchanged list: same position');
 });
 
@@ -124,4 +119,39 @@ test('the context menu notes its targets when it opens and resolves them when it
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /useAnnotationContextMenu\(\{\s*getPageObjects:/);
   assert.match(viewer, /annotationsByPageNow: annotationsByPage,/);
+});
+
+test('right-click menu: stacked duplicates in a group never resolve to one position twice', () => {
+  const before = [mark('d'), mark('d'), mark('z')];
+  const menu = stampMenuTargetIds({ kind: 'group', pageNumber: 1, annotationIndex: null, groupIndices: [0, 1] }, before);
+  const after = [mark('z'), before[0], before[1]];
+  const ctx = resolveMenuTargets(menu, after);
+  assert.deepEqual([...ctx.groupIndices].sort(), [1, 2]);
+  const oneLeft = resolveMenuTargets(menu, [mark('z'), before[1]]);
+  assert.deepEqual(oneLeft.groupIndices, [1], 'one copy gone: the other is acted on once');
+});
+
+test('right-click menu: a group whose marks are gone but which still holds Survey Markers keeps its items', () => {
+  const before = [mark('a')];
+  const menu = stampMenuTargetIds({ kind: 'group', pageNumber: 1, groupIndices: [0], groupMarkerIds: ['sm1'] }, before);
+  assert.equal(resolveMenuTargets(menu, []).targetsGone, false);
+});
+
+test('sameMenuTargets tells a menu drawn for one list from a click against another', () => {
+  const before = [mark('m0'), mark('m1'), mark('m2')];
+  const menu = stampMenuTargetIds({ kind: 'annotation', pageNumber: 1, annotationIndex: 1 }, before);
+  const drawn = resolveMenuTargets(menu, before);
+  assert.equal(sameMenuTargets(drawn, resolveMenuTargets(menu, before)), true);
+  assert.equal(sameMenuTargets(drawn, resolveMenuTargets(menu, [before[1], before[2]])), false);
+});
+
+test('menu items re-check their targets at click time and the selection remap is a layout effect', () => {
+  const menuSource = readFileSync(new URL('../src/hooks/useAnnotationContextMenu.jsx', import.meta.url), 'utf8');
+  assert.match(menuSource, /if \(!sameMenuTargets\(atClick, ctx\)\)/);
+  assert.match(menuSource, /ctx\.targetsGone && !targetFree\(key\)/);
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  const at = hook.indexOf('const selectionAnchorRef');
+  assert.ok(at > 0);
+  assert.match(hook.slice(at, at + 200), /useLayoutEffect\(\(\) => \{/);
+  assert.match(hook, /setSelectedIds\(\(prev\) => \(prev === remappedFrom \? next : prev\)\)/);
 });

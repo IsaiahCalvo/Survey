@@ -8,7 +8,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { screenToSVG, normalizeAngle, getInverseScale, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
@@ -619,8 +619,13 @@ export function useSVGInteraction({
   // a mark the user never picked. `selectionAnchorRef` remembers the list
   // the current selection was made on: a selection set in the same render as
   // a list change (paste, restack) was made for the new list and is trusted.
+  // A layout effect, so the remapped selection is what paints (no frame
+  // with handles on the neighbour, no key press acting on it) — including
+  // during a drag (ids are stable across drag frames, so that is a no-op).
+  // The functional update keeps a selection another layout effect set in the
+  // same pass (SVGAnnotationLayer's pendingSelection: paste, Delete clears).
   const selectionAnchorRef = useRef({ selected: null, objects: null });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const objects = annotations?.objects ?? null;
     const anchor = selectionAnchorRef.current;
     if (anchor.selected !== selectedIds) {
@@ -628,13 +633,11 @@ export function useSVGInteraction({
       return;
     }
     if (anchor.objects === objects) return;
-    if (dragStateRef.current?.active) return;
     const next = remapSelectedIndices(selectedIds, anchor.objects, objects);
-    if (next === selectedIds) {
-      selectionAnchorRef.current = { selected: selectedIds, objects };
-      return;
-    }
-    setSelectedIds(next);
+    selectionAnchorRef.current = { selected: next, objects };
+    if (next === selectedIds) return;
+    const remappedFrom = selectedIds;
+    setSelectedIds((prev) => (prev === remappedFrom ? next : prev));
   }, [annotations, selectedIds]);
   useEffect(() => {
     if (dragStateRef.current?.active) return;

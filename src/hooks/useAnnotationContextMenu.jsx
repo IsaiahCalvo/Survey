@@ -35,7 +35,7 @@ import {
 // Same single source of truth as click hit-test / marquee / planner.
 import { canModify, canToggleLock, isUserLocked } from '../lib/collab/permissionScope.js';
 import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
-import { resolveMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
+import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -255,16 +255,36 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // state for items like Paste-when-clipboard-empty. Disabled items still
     // render (so users can see the option exists) but clicks are ignored
     // and styling is muted to match Acrobat / Bluebeam / Figma behavior.
-    const item = (label, key, action, enabled = true) => ({
-      label, key,
-      disabled: !enabled,
-      onClick: enabled
-        ? () => {
-            if (action) action(); else logStub(key);
-            closeAnnotationContextMenu();
-          }
-        : undefined,
-    });
+    // w61: an item acts only on the marks the menu was opened on. Paste works
+    // at the right-click point with or without them; every other item is
+    // greyed out once they are gone, and a click that lands while the list
+    // changed under the drawn menu (the page ref runs one step ahead or
+    // behind this render) closes the menu without acting.
+    const targetFree = (key) => key === 'paste';
+    const item = (label, key, action, enabled = true) => {
+      const usable = enabled && !(ctx.targetsGone && !targetFree(key));
+      return {
+        label, key,
+        disabled: !usable,
+        onClick: usable
+          ? () => {
+              if (!targetFree(key)) {
+                const atClick = resolveMenuTargets(
+                  annotationContextMenu,
+                  annotationsByPageRef?.current?.[annotationContextMenu.pageNumber]?.objects || null,
+                );
+                if (!sameMenuTargets(atClick, ctx)) {
+                  console.warn(`[AnnotCtxMenu] ${key} skipped: the page changed under the menu (pdf=${(typeof window !== 'undefined' && window.__currentPdfName) || 'unknown.pdf'} page=${ctx.pageNumber})`);
+                  closeAnnotationContextMenu();
+                  return;
+                }
+              }
+              if (action) action(); else logStub(key);
+              closeAnnotationContextMenu();
+            }
+          : undefined,
+      };
+    };
     // UX: each separator must have a unique key. Previous `const SEP =
     // {..., key: sep-<rand>}` reused the same object across multiple slots
     // in the items array, which made React warn about duplicate children
