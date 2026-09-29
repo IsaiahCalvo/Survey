@@ -26357,6 +26357,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (lockGuard.changed) {
         json = { ...json, objects: lockGuard.objects };
         notifyLockedMarkBlocked();
+        // w59: one line so a "it snapped back" report names the cause.
+        try {
+          console.warn(`[MoveDiag] save put locked marks back reason=locked pdf=${window.__currentPdfName || 'unknown.pdf'} page=${pageNumber} action=${saveContext?.action || '?'} ids=${lockGuard.blockedIds.join(',')}`);
+        } catch (_) { /* diagnostics only */ }
         // An eraser save also carries its own change list (written to the
         // store and the Undo step from the save context, not from the page):
         // drop the put-back marks from it too, so nothing half-erases them.

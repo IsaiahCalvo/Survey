@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, getInverseScale, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
@@ -26,6 +26,14 @@ import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
+// w59: one rule for where a moved mark lands (preview === save).
+import {
+  markIdOf,
+  resolveMarkIndex,
+  clampMoveDelta,
+  isBeyondMoveThreshold,
+  reportDroppedMove,
+} from '../utils/moveCommit.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -170,6 +178,43 @@ function readCaretAnchor(event) {
     y: event?.clientY,
     host: event?.target?.closest?.('[data-callout-id], [data-annotation-index]') || null,
   });
+}
+
+// w59 — drag-start facts a single-mark 'move' needs for BOTH its preview and
+// its save (utils/moveCommit.js): the mark's id (to find it again at release
+// even if the page list changed) and its drag-start box (for the one shared
+// page clamp). Filled on the first pointermove; reset with the drag state.
+function ensureMoveStart(ds, objects) {
+  const startObject = objects?.[ds.annotationIndex];
+  if (ds.markId === undefined) ds.markId = markIdOf(startObject);
+  if (!ds.moveBoxes) ds.moveBoxes = startObject ? [getAnnotationBBox(startObject)] : [];
+}
+
+// w59 — the same for a group move: every movable member's id and the boxes
+// of everything that moves (marks, callouts, Survey Markers), clamped as ONE
+// rigid piece so the members never slide apart at a page edge.
+function ensureGroupMoveStart(ds, { objects, callouts, pageWidth, pageHeight, markerBoxes }) {
+  if (!ds.groupIds) {
+    const ids = {};
+    for (const idxStr of Object.keys(ds.groupOriginals || {})) {
+      ids[idxStr] = markIdOf(objects?.[Number(idxStr)]);
+    }
+    ds.groupIds = ids;
+  }
+  if (!ds.groupBoxes) {
+    const boxes = [];
+    for (const idxStr of Object.keys(ds.groupOriginals || {})) {
+      const obj = objects?.[Number(idxStr)];
+      if (obj) boxes.push(getAnnotationBBox(obj));
+    }
+    for (const cid of Object.keys(ds.groupCalloutOriginals || {})) {
+      const callout = (callouts || []).find((c) => c && String(c.id) === String(cid));
+      const box = callout ? getCalloutPageBox(callout, pageWidth || 1, pageHeight || 1) : null;
+      if (box) boxes.push(box);
+    }
+    for (const box of markerBoxes || []) if (box) boxes.push(box);
+    ds.groupBoxes = boxes;
+  }
 }
 
 /**
@@ -623,6 +668,16 @@ export function useSVGInteraction({
       .filter(Boolean);
     return clampNudgeDelta(boxes, dx, dy, pageWidth, pageHeight);
   }, [getSurveyMarkerMembers, pageWidth, pageHeight]);
+  // w59: the page boxes of the given Survey Markers (for a group move's one
+  // shared clamp).
+  const getGroupMarkerBoxes = useCallback((markerIds) => {
+    if (!Array.isArray(markerIds) || markerIds.length === 0) return [];
+    const ids = new Set(markerIds.map(String));
+    return (getSurveyMarkerMembers?.() || [])
+      .filter((member) => member && ids.has(String(member.id)))
+      .map((member) => boxWorldBounds(member.box))
+      .filter(Boolean);
+  }, [getSurveyMarkerMembers]);
   // Ids of the selected markers this page shows (only those move).
   // `movableOnly`: leave out user-locked markers (owner ruling 2026-09-28 —
   // a locked mark stays put while the rest of the selection moves).
@@ -1951,8 +2006,12 @@ export function useSVGInteraction({
         setInteractionState('rotating');
         return;
       }
-      // Visual-only update via state (no annotation data mutation during drag)
-      setVisualTransform({ id: ds.annotationIndex, dx, dy });
+      // Visual-only update via state (no annotation data mutation during drag).
+      // w59: the preview shows the SAME page-clamped delta the release saves
+      // (utils/moveCommit.js), so the mark never jumps when it is let go.
+      ensureMoveStart(ds, annotations?.objects);
+      const shown = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
+      setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy });
       setInteractionState('dragging');
     } else if (ds.mode === 'counter-orbit') {
       // UX 2026-04-20: releasing Shift mid-orbit swaps back to move mode.
@@ -1963,6 +2022,8 @@ export function useSVGInteraction({
           || annotations?.objects?.[ds.annotationIndex];
         if (orbObj?.data?.type === 'counter') {
           ds.mode = 'move';
+          // w59: the move restarts from the orbited pose (re-read its box).
+          ds.moveBoxes = [getAnnotationBBox(orbObj)];
           ds.startSVGPoint = { x: svgPoint.x, y: svgPoint.y };
           ds.originalProps = {
             left: orbObj.left ?? 0,
@@ -2007,9 +2068,23 @@ export function useSVGInteraction({
       }
       setInteractionState('rotating');
     } else if (ds.mode === 'group-move') {
-      // Group drag: compute totalDelta from start (not frameDelta) to prevent drift
-      const dx = svgPoint.x - ds.startSVGPoint.x;
-      const dy = svgPoint.y - ds.startSVGPoint.y;
+      // Group drag: compute totalDelta from start (not frameDelta) to prevent drift.
+      // w59: clamped as one rigid piece — the preview shows exactly the delta
+      // the release saves (utils/moveCommit.js).
+      ensureGroupMoveStart(ds, {
+        objects: annotations?.objects,
+        callouts,
+        pageWidth,
+        pageHeight,
+        markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
+      });
+      const { dx, dy } = clampMoveDelta(
+        ds.groupBoxes,
+        svgPoint.x - ds.startSVGPoint.x,
+        svgPoint.y - ds.startSVGPoint.y,
+        pageWidth,
+        pageHeight,
+      );
       // UX: 2026-04-20 v2 — callouts now ride the same render-time
       // translate as annotations via affectedCalloutIds. This kills the
       // visible lag where callouts trailed behind shapes because their
@@ -2030,8 +2105,9 @@ export function useSVGInteraction({
         affectedMarkerIds: Array.isArray(ds.groupMarkerIds) && ds.groupMarkerIds.length
           ? new Set(ds.groupMarkerIds)
           : null,
+        // w59: the markers ride the same (already clamped) delta.
         markerDelta: Array.isArray(ds.groupMarkerIds) && ds.groupMarkerIds.length
-          ? clampMarkerGroupDelta(ds.groupMarkerIds, dx, dy)
+          ? { dx, dy }
           : null,
       });
       // Throttled diag — same 120ms cadence as group rotate/resize.
@@ -3236,20 +3312,29 @@ export function useSVGInteraction({
             y: original.textBoxPosition.y + dyNorm,
           };
           break;
-        case 'whole':
+        case 'whole': {
+          // w59: a whole-callout move keeps the callout on the page with the
+          // same rigid rule as marks, the arrow-key nudge and group moves
+          // (utils/moveCommit.js). It used to follow the pointer off the
+          // page, where it could no longer be picked.
+          const wholeBox = getCalloutPageBox(original, W, H);
+          const kept = clampMoveDelta(wholeBox ? [wholeBox] : [], dxPage, dyPage, W, H);
+          const keptX = kept.dx / W;
+          const keptY = kept.dy / H;
           proposed.arrowTip = {
-            x: original.arrowTip.x + dxNorm,
-            y: original.arrowTip.y + dyNorm,
+            x: original.arrowTip.x + keptX,
+            y: original.arrowTip.y + keptY,
           };
           proposed.knee = {
-            x: original.knee.x + dxNorm,
-            y: original.knee.y + dyNorm,
+            x: original.knee.x + keptX,
+            y: original.knee.y + keptY,
           };
           proposed.textBoxPosition = {
-            x: original.textBoxPosition.x + dxNorm,
-            y: original.textBoxPosition.y + dyNorm,
+            x: original.textBoxPosition.x + keptX,
+            y: original.textBoxPosition.y + keptY,
           };
           break;
+        }
         case 'textBoxResize': {
           // UX: Phase 15 UAT-3 (2026-04-17) — corner-drag resize of the
           // callout textbox. Fixed-anchor math: the corner OPPOSITE the
@@ -3460,7 +3545,7 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -3701,26 +3786,33 @@ export function useSVGInteraction({
       const dx = svgPoint.x - ds.startSVGPoint.x;
       const dy = svgPoint.y - ds.startSVGPoint.y;
 
-      // Only commit if there was actual movement (> 2px threshold to avoid accidental micro-drags)
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        const obj = annotations?.objects?.[ds.annotationIndex];
-        if (obj) {
-          const bbox = getAnnotationBBox(obj);
-          // Constrain against the ABSOLUTE bbox. getAnnotationBBox returns world
-          // coords for every type — including user-drawn pen paths where obj.left
-          // is a move offset on top of absolute-coord path data. Feeding the raw
-          // offset (originalProps.left + dx) into constrainToPage produced
-          // spurious clamps to (0,0) for pen strokes drawn in the middle of the
-          // page, causing drag-left/up to snap back to origin.
-          const newAbsLeft = bbox.left + dx;
-          const newAbsTop = bbox.top + dy;
-          const constrained = constrainToPage(newAbsLeft, newAbsTop, bbox.width, bbox.height, pageWidth, pageHeight);
-          const actualDx = constrained.left - bbox.left;
-          const actualDy = constrained.top - bbox.top;
-
+      // Only commit a real drag, not a click (w59: 2 screen px at high zoom,
+      // never more than 2 page units — utils/moveCommit.js).
+      if (isBeyondMoveThreshold(dx, dy, inverseScale)) {
+        // w59: the drag-start facts the preview used (a drag released with
+        // no pointermove in between fills them here).
+        ensureMoveStart(ds, annotations?.objects);
+        // w59: find the mark by id — a collaborator's add / delete during
+        // the drag must not make the save miss it (or move another mark).
+        const moveIndex = resolveMarkIndex(annotations?.objects, ds.annotationIndex, ds.markId);
+        const obj = moveIndex >= 0 ? annotations?.objects?.[moveIndex] : null;
+        // w59: the SAME page clamp the preview showed (one rigid rule shared
+        // with the arrow-key nudge: never further off the page, a mark that
+        // already hangs over an edge is never yanked back in). The old
+        // per-release constrainToPage disagreed with the unclamped preview,
+        // so a mark let go past the edge visibly snapped back.
+        const { dx: actualDx, dy: actualDy } = clampMoveDelta(ds.moveBoxes, dx, dy, pageWidth, pageHeight);
+        if (!obj) {
+          reportDroppedMove({ reason: 'mark-gone', mode: 'move', id: ds.markId, dx, dy, pageNumber });
+        } else if (actualDx === 0 && actualDy === 0) {
+          reportDroppedMove({
+            reason: 'held-at-page-edge', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx, dy, pageNumber,
+          });
+        }
+        if (obj && (actualDx !== 0 || actualDy !== 0)) {
           // Deep clone annotations and apply position update
           const updatedAnnotations = deepClone(annotations);
-          const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+          const targetObj = updatedAnnotations.objects[moveIndex];
 
           // Absolute-coord path (user-drawn from FabricDrawingCanvas which
           // leaves left/top at zero + omits pathOffset): translate the path
@@ -3774,12 +3866,19 @@ export function useSVGInteraction({
 
           // Save through existing pipeline (2 decimals, exactly like a
           // creation commit — see annotationCommitRounding).
-          roundCommittedAnnotationsGeometry(updatedAnnotations, [ds.annotationIndex]);
-          onSaveAnnotations(updatedAnnotations, {
+          roundCommittedAnnotationsGeometry(updatedAnnotations, [moveIndex]);
+          const moveSaveResult = onSaveAnnotations(updatedAnnotations, {
             source: 'object:modified',
             action: 'move',
             checkpointPolicy: 'normal',
           });
+          // w59: a refused save (a lock) already shows the lock notice; log
+          // the reason too so a "snapped back" report is one line to read.
+          if (moveSaveResult?.lockedBlocked) {
+            reportDroppedMove({
+              reason: 'locked', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx: actualDx, dy: actualDy, pageNumber,
+            });
+          }
 
           // UX: the browser will emit a native `dblclick` if this pointerup
           // closes a click sequence that matches the double-click timing
@@ -3962,30 +4061,40 @@ export function useSVGInteraction({
         ? pt.matrixTransform(ds.ctmInverse)
         : screenToSVG(svgRef.current, e.clientX, e.clientY);
 
-      const dx = svgPoint.x - ds.startSVGPoint.x;
-      const dy = svgPoint.y - ds.startSVGPoint.y;
+      const rawGroupDx = svgPoint.x - ds.startSVGPoint.x;
+      const rawGroupDy = svgPoint.y - ds.startSVGPoint.y;
+      // w59: the same rigid page clamp the preview showed, for every member
+      // (marks, callouts, Survey Markers) — utils/moveCommit.js.
+      ensureGroupMoveStart(ds, {
+        objects: annotations?.objects,
+        callouts,
+        pageWidth,
+        pageHeight,
+        markerBoxes: getGroupMarkerBoxes(ds.groupMarkerIds),
+      });
+      const groupBeyond = isBeyondMoveThreshold(rawGroupDx, rawGroupDy, inverseScale);
+      const { dx, dy } = groupBeyond
+        ? clampMoveDelta(ds.groupBoxes, rawGroupDx, rawGroupDy, pageWidth, pageHeight)
+        : { dx: 0, dy: 0 };
+      if (groupBeyond && dx === 0 && dy === 0) {
+        reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
+      }
 
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      if (dx !== 0 || dy !== 0) {
         const updatedAnnotations = deepClone(annotations);
+        const movedIndexes = [];
+        let missing = 0;
 
         for (const [idxStr, orig] of Object.entries(ds.groupOriginals)) {
-          const idx = Number(idxStr);
-          const obj = updatedAnnotations.objects[idx];
-          if (!obj) continue;
-          const bbox = getAnnotationBBox(obj);
-          // Constrain against the ABSOLUTE bbox per-annotation (same reasoning
-          // as the single-move branch above — user-drawn pen paths carry an
-          // offset in obj.left that is not a world coord, so feeding the raw
-          // offset into constrainToPage would snap them to (0,0) on left/up
-          // drags).
-          const newAbsLeft = bbox.left + dx;
-          const newAbsTop = bbox.top + dy;
-          const constrained = constrainToPage(
-            newAbsLeft, newAbsTop,
-            bbox.width, bbox.height, pageWidth, pageHeight
-          );
-          const actualDx = constrained.left - bbox.left;
-          const actualDy = constrained.top - bbox.top;
+          // w59: find each member by id (the page list may have changed).
+          const idx = resolveMarkIndex(updatedAnnotations.objects, Number(idxStr), ds.groupIds?.[idxStr] ?? null);
+          const obj = idx >= 0 ? updatedAnnotations.objects[idx] : null;
+          if (!obj) { missing += 1; continue; }
+          movedIndexes.push(idx);
+          // w59: one rigid delta for the whole selection (was a separate
+          // constrainToPage per member, so members slid apart at an edge).
+          const actualDx = dx;
+          const actualDy = dy;
 
           // Same dual-convention handling as the single-move branch above —
           // require left/top be null-or-zero so normalized imported paths
@@ -4021,15 +4130,19 @@ export function useSVGInteraction({
           }
         }
 
-        roundCommittedAnnotationsGeometry(
-          updatedAnnotations,
-          Object.keys(ds.groupOriginals).map(Number),
-        );
+        roundCommittedAnnotationsGeometry(updatedAnnotations, movedIndexes);
+        if (missing > 0) {
+          reportDroppedMove({
+            reason: `${missing}-member(s)-gone`, mode: 'group-move', dx, dy, pageNumber,
+          });
+        }
         // w53: the selected Survey Markers move by the same delta in the SAME
-        // save (one undo step for the whole selection).
+        // save (one undo step for the whole selection). w59: the one rigid
+        // delta above already keeps the markers on the page, so this marker
+        // clamp is a no-op kept as a second guard (it can only narrow).
         const groupMarkerIds = Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [];
         const markerDelta = clampMarkerGroupDelta(groupMarkerIds, dx, dy);
-        onSaveAnnotations(updatedAnnotations, {
+        const groupSaveResult = onSaveAnnotations(updatedAnnotations, {
           source: 'object:modified',
           action: 'group-move',
           checkpointPolicy: 'normal',
@@ -4037,6 +4150,9 @@ export function useSVGInteraction({
             ? { surveyMarkerFamily: { move: { ids: groupMarkerIds, dx: markerDelta.dx, dy: markerDelta.dy } } }
             : {}),
         });
+        if (groupSaveResult?.lockedBlocked) {
+          reportDroppedMove({ reason: 'locked', mode: 'group-move', dx, dy, pageNumber });
+        }
 
         // UX: see move-branch comment — same spurious-dblclick guard.
         justDraggedAtRef.current = Date.now();
@@ -4059,17 +4175,14 @@ export function useSVGInteraction({
       // round-trip per frame). On pointerup we compute the final delta
       // and call onUpdateCalloutLive to write each callout's actual new
       // position, then onUpdateCallout for the undo checkpoint.
-      if (ds.groupCalloutOriginals) {
-        const ptUp = new DOMPoint(e.clientX, e.clientY);
-        const svgPtUp = ds.ctmInverse
-          ? ptUp.matrixTransform(ds.ctmInverse)
-          : screenToSVG(svgRef.current, e.clientX, e.clientY);
-        const dxUp = svgPtUp.x - ds.startSVGPoint.x;
-        const dyUp = svgPtUp.y - ds.startSVGPoint.y;
+      // w59: the callouts take the SAME clamped delta as the rest of the
+      // selection (it used to be the raw pointer delta — callouts could leave
+      // the page and part from the shapes they moved with).
+      if (ds.groupCalloutOriginals && (dx !== 0 || dy !== 0)) {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
-        const dxNorm = dxUp / W;
-        const dyNorm = dyUp / H;
+        const dxNorm = dx / W;
+        const dyNorm = dy / H;
         for (const [cid, orig] of Object.entries(ds.groupCalloutOriginals)) {
           if (typeof onUpdateCalloutLive === 'function') {
             onUpdateCalloutLive(cid, {
@@ -4601,10 +4714,12 @@ export function useSVGInteraction({
       originalTextMarkup: null, currentTextMarkup: null, fixedTextOffset: null,
       currentAnnotations: null,
       diagGestureId: null,
+      // w59: move / group-move drag-start facts (preview === save).
+      markId: undefined, moveBoxes: null, groupIds: null, groupBoxes: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta, getGroupMarkerBoxes]);
 
   const handlePointerCancel = useCallback((e) => {
     const ds = dragStateRef.current;
@@ -5621,6 +5736,9 @@ export function useSVGInteraction({
       groupOriginals: originals,
       groupCalloutOriginals: calloutOriginals,
       groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
+      // w59: never reuse a previous drag's facts (this start spreads the old state).
+      groupIds: null,
+      groupBoxes: null,
     };
     try { svgEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
     setInteractionState('dragging');
