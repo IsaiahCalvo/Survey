@@ -1,17 +1,25 @@
 /*
- * bookmarkMobileDragSensors.test.mjs — source-assertion guard for the phone
- * bookmarks drag-and-drop parity work (owner ruling 2026-09-17: "The bookmarks
- * section on the phone is not like it is in the web version, where you can drag
- * and drop").
+ * bookmarkMobileDragSensors.test.mjs — source-assertion guard for the bookmarks
+ * drag-and-drop sensors (phone sheet + desktop tree).
  *
- * There is no React render harness for BookmarksPanel in this repo, so these
- * read the panel source as TEXT and pin the sensor contract:
- *   - the phone sheet's DndContext uses a TouchSensor with a long-press
- *     activation constraint (otherwise a plain vertical swipe would be eaten by
- *     the drag and the list could not be scrolled);
- *   - the desktop DndContext still uses the bare, immediate PointerSensor;
+ * UX 2026-09-30 — owner: on the phone a bookmark "won't even pick up" when he
+ * drags it; drag must work everywhere like Projects / Templates (grab the grip
+ * and drag right away). That explicitly replaces the 2026-09-17 long-press rule
+ * this file used to pin (TouchSensor, 250ms still hold): a grab-then-move
+ * within the hold scrolled the sheet instead of dragging. The new contract is
+ * the reference lists' (SortableRearrangeList + DragRearrangeHandle):
+ *   - one PointerSensor for mouse AND touch with a small distance constraint
+ *     (no delay) — the drag starts on the first few px of movement, and a plain
+ *     click on a desktop folder's grip no longer starts a drag (fold flicker);
+ *   - the phone grip is `touch-action: none`, so the browser never claims a
+ *     touch that starts on it for scrolling; only the grip is locked, so a
+ *     swipe anywhere else on the sheet still scrolls;
+ *   - phone and desktop share the same sensor set;
  *   - the phone rows are real @dnd-kit sortables sharing the desktop
  *     projection, not the old up/down-button-only list.
+ *
+ * There is no React render harness for BookmarksPanel in this repo, so these
+ * read the panel source as TEXT.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,11 +31,11 @@ import { fileURLToPath } from 'node:url';
 const PANEL_PATH = fileURLToPath(new URL('../src/sidebar/BookmarksPanel.jsx', import.meta.url));
 const source = readFileSync(PANEL_PATH, 'utf8');
 
-test('phone bookmark drag activates on a long press, not on touch-down', () => {
+test('bookmark drag activates on a small movement, with no hold delay', () => {
   const declaration = source.match(
-    /export const MOBILE_BOOKMARK_DRAG_ACTIVATION = \{([^}]*)\};/,
+    /export const BOOKMARK_DRAG_ACTIVATION = \{([^}]*)\};/,
   );
-  assert.ok(declaration, 'MOBILE_BOOKMARK_DRAG_ACTIVATION must be exported from BookmarksPanel');
+  assert.ok(declaration, 'BOOKMARK_DRAG_ACTIVATION must be exported from BookmarksPanel');
   const activation = Object.fromEntries(
     declaration[1]
       .split(',')
@@ -35,38 +43,25 @@ test('phone bookmark drag activates on a long press, not on touch-down', () => {
       .filter(([key, value]) => key && value)
       .map(([key, value]) => [key, Number(value)]),
   );
+  assert.equal(activation.delay, undefined, 'no long-press delay: the grip drags right away');
   assert.ok(
-    activation.delay >= 200 && activation.delay <= 400,
-    `long-press delay should read as a deliberate hold, got ${activation.delay}`,
+    activation.distance > 0 && activation.distance <= 10,
+    `a few px of movement separates a click/tap from a drag, got ${activation.distance}`,
   );
-  assert.ok(
-    activation.tolerance > 0 && activation.tolerance <= 10,
-    `a few px of tolerance lets a scroll swipe cancel the hold, got ${activation.tolerance}`,
-  );
+  // The long-press constant and touch-only sensors are gone.
+  assert.doesNotMatch(source, /MOBILE_BOOKMARK_DRAG_ACTIVATION/);
+  assert.doesNotMatch(source, /useSensor\(TouchSensor/);
+  assert.doesNotMatch(source, /useSensor\(MouseSensor/);
 });
 
-test('mobile sensor set wires the long-press constraint onto the TouchSensor', () => {
+test('one PointerSensor with the distance constraint drives phone and desktop', () => {
   assert.match(
     source,
-    /useSensor\(\s*TouchSensor,\s*\{\s*activationConstraint:\s*MOBILE_BOOKMARK_DRAG_ACTIVATION\s*\}\s*\)/,
-    'mobile sensors must pass MOBILE_BOOKMARK_DRAG_ACTIVATION to the TouchSensor',
+    /const sensors = useSensors\(\s*useSensor\(PointerSensor, \{ activationConstraint: BOOKMARK_DRAG_ACTIVATION \}\),\s*useSensor\(KeyboardSensor, \{\}\),\s*\);/,
   );
-  // Mouse stays immediate so a desktop browser sitting in the phone layout
-  // still drags on mousedown.
-  assert.match(source, /useSensor\(MouseSensor,\s*\{\}\)/);
-  assert.match(source, /const mobileSensors = useSensors\(/);
-});
-
-test('desktop sensors are untouched — immediate PointerSensor, no constraint', () => {
-  assert.match(
-    source,
-    /const sensors = useSensors\(useSensor\(PointerSensor, \{\}\), useSensor\(KeyboardSensor, \{\}\)\);/,
-    'the desktop sensor line must stay an immediate PointerSensor with no activation constraint',
-  );
-  // The desktop tree must not gain a TouchSensor / delay of its own.
+  assert.doesNotMatch(source, /mobileSensors/);
   const desktopDndBlock = source.slice(source.lastIndexOf('<DndContext'));
   assert.match(desktopDndBlock, /sensors=\{sensors\}/);
-  assert.doesNotMatch(desktopDndBlock, /mobileSensors/);
 });
 
 test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
@@ -75,7 +70,7 @@ test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
     source.lastIndexOf('<DndContext'),
   );
   assert.ok(mobileBranch.length > 0, 'mobileMode branch should precede the desktop DndContext');
-  assert.match(mobileBranch, /sensors=\{mobileSensors\}/);
+  assert.match(mobileBranch, /sensors=\{sensors\}/);
   // Same collision detection, same drag-clamp modifier, same measuring, and the
   // same drag handlers as desktop, so the reorder / reparent result is identical.
   assert.match(mobileBranch, /collisionDetection=\{closestCenter\}/);
@@ -89,7 +84,7 @@ test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
   assert.match(mobileBranch, /projectedDepth=\{item\.id === activeId && projected \? projected\.depth : null\}/);
 });
 
-test('the phone row exposes a drag grip whose touch-action locks during a drag', () => {
+test('the phone row exposes a drag grip that is always touch-action: none', () => {
   const rowComponent = source.slice(
     source.indexOf('const MobileBookmarkRow = ('),
     source.indexOf('const BookmarksPanel = ('),
@@ -97,14 +92,16 @@ test('the phone row exposes a drag grip whose touch-action locks during a drag',
   assert.ok(rowComponent.length > 0, 'MobileBookmarkRow should be defined before BookmarksPanel');
   assert.match(rowComponent, /useSortable\(\{/);
   assert.match(rowComponent, /className="mobile-bookmark-grip"/);
-  assert.match(rowComponent, /touchAction: isDraggingAny \? 'none' : 'manipulation'/);
+  // Like DragRearrangeHandle: the grip never lets the browser pan, so a touch
+  // on it goes to the PointerSensor and the drag starts at once.
+  assert.match(rowComponent, /style=\{\{ touchAction: 'none' \}\}/);
   // droppable node carries the row id the projection + drag clamp query by.
   assert.match(rowComponent, /data-bookmark-row-id=\{item\.id\}/);
 });
 
 /*
  * Owner ruling 2026-09-22 — phone bookmark rows carry NO up/down reorder
- * buttons. Long-press drag is the only reorder path; the grip keeps @dnd-kit's
+ * buttons. Dragging the grip is the only reorder path; the grip keeps @dnd-kit's
  * `attributes` so the KeyboardSensor still reorders for accessibility.
  */
 test('the phone row has no up/down reorder buttons', () => {

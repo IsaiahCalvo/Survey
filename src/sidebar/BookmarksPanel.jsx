@@ -11,9 +11,7 @@ import {
   DndContext,
   KeyboardSensor,
   MeasuringStrategy,
-  MouseSensor,
   PointerSensor,
-  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -28,6 +26,7 @@ import {
   BOOKMARK_INDENTATION_WIDTH,
   GROUP_AUTO_EXPAND_OFFSET_PX,
   applyBookmarkTreeProjection,
+  buildBookmarkTree,
   flattenBookmarkTreeForSort,
   getAutoExpandTargetFolder,
   getBookmarkProjection,
@@ -55,16 +54,17 @@ const bookmarkTreeMeasuring = {
 const MOBILE_BOOKMARK_INDENT_PX = 14;
 
 /*
- * UX 2026-09-17 — owner ruling: "The bookmarks section on the phone is not like
- * it is in the web version, where you can drag and drop." Touch drag must start
- * on a long press, never immediately: the phone rows live inside a scrolling
- * bottom sheet, so an immediate touch activation would swallow the plain
- * vertical swipe that scrolls the list and the plain tap that jumps to the page.
- * 250ms / 5px is the iOS "lift to reorder" feel. Reference behaviour matched:
- * the desktop tree's drag result (reorder + reparent-into-folder projection),
- * only the activation gesture differs. Desktop keeps its immediate PointerSensor.
+ * UX 2026-09-30 — owner: on the phone a bookmark "won't even pick up" when
+ * dragged; drag must work like Projects / Templates everywhere. This replaces
+ * the 2026-09-17 long-press rule (a 250ms still hold; a grab-then-move scrolled
+ * the sheet instead). Now both layouts use the reference lists' sensor
+ * (SortableRearrangeList): one PointerSensor that activates after 6px of
+ * movement. The grip is `touch-action: none`, so a drag from the grip starts at
+ * once on touch, while a swipe anywhere else on the row still scrolls the
+ * sheet. The 6px also keeps a plain click on a desktop folder's grip from
+ * starting a drag (which folded and re-opened the folder: a flicker).
  */
-export const MOBILE_BOOKMARK_DRAG_ACTIVATION = { delay: 250, tolerance: 5 };
+export const BOOKMARK_DRAG_ACTIVATION = { distance: 6 };
 
 /*
  * UX 2026-09-23 (owner: bookmarks look like the home lists, header reads
@@ -499,12 +499,12 @@ const BookmarkTreeRow = ({
  * way the web one does): this is the SAME @dnd-kit sortable row as the desktop
  * tree — same item ids, same SortableContext, same projection, so a drag ends
  * with the same reorder / reparent-into-folder result — wearing the demo's
- * touch-sized mobile skin. Only two things differ from desktop:
- *   1. activation is a long press on the grip (MOBILE_BOOKMARK_DRAG_ACTIVATION),
- *      so a plain vertical swipe still scrolls the sheet list and a plain tap
- *      still jumps to the page;
- *   2. the row indents by MOBILE_BOOKMARK_INDENT_PX per depth instead of the
- *      desktop width, because the phone row is only ~315px wide.
+ * touch-sized mobile skin. Activation is the desktop's too (UX 2026-09-30,
+ * BOOKMARK_DRAG_ACTIVATION): a drag from the grip starts at once; a swipe
+ * anywhere else on the row still scrolls the sheet and a tap still jumps to
+ * the page. The one thing that differs from desktop: the row indents by
+ * MOBILE_BOOKMARK_INDENT_PX per depth instead of the desktop width, because
+ * the phone row is only ~315px wide.
  * The grip is the app's shared six-dot "grip" icon (UX 2026-09-23, owner:
  * phone bookmarks match desktop — it replaced a hamburger text glyph), and its hit
  * area is padded out to 44px via an invisible ::before so the row height never
@@ -523,18 +523,17 @@ const BookmarkTreeRow = ({
  * starts on a bookmark row never reaches them. No opt-out hook is needed.
  *
  * UX 2026-09-22 (owner ruling) — the row carries NO up/down reorder buttons.
- * Long-press drag is the only reorder path on the phone; two chevrons beside a
+ * Dragging the grip is the only reorder path on the phone; two chevrons beside a
  * working drag handle were redundant chrome on a 315px row, and they could only
  * ever swap same-parent siblings, never reparent. Accessibility is preserved
  * because the grip spreads @dnd-kit's `attributes` (role="button", tabIndex 0),
- * so the KeyboardSensor in `mobileSensors` still reorders with Space + arrows.
+ * so the KeyboardSensor in `sensors` still reorders with Space + arrows.
  * The desktop tree never had these arrows, so nothing changes there.
  */
 const MobileBookmarkRow = ({
   item,
   depth,
   projectedDepth,
-  isDraggingAny,
   isEditMode = false,
   onToggle,
   onNavigate,
@@ -587,10 +586,10 @@ const MobileBookmarkRow = ({
           aria-label={`Drag to reorder ${item.name}`}
           {...attributes}
           {...listeners}
-          // touch-action stays `manipulation` while idle so a swipe that happens
-          // to start on the grip still scrolls the list; it flips to `none` for
-          // the duration of a drag so the browser cannot pan underneath it.
-          style={{ touchAction: isDraggingAny ? 'none' : 'manipulation' }}
+          // touch-action `none` (UX 2026-09-30, like DragRearrangeHandle): the
+          // browser never claims a touch that starts on the grip for a scroll,
+          // so the PointerSensor gets the move and the drag starts at once.
+          style={{ touchAction: 'none' }}
           onClick={(event) => event.stopPropagation()}
         >
           <Icon name="grip" size={14} color="currentColor" />
@@ -714,62 +713,16 @@ const BookmarksPanel = ({
   const pointerMoveListenerRef = useRef(null);
   const collapsedDragFolderIdRef = useRef(null);
 
-  // Desktop: pointer drag engages immediately (unchanged).
-  const sensors = useSensors(useSensor(PointerSensor, {}), useSensor(KeyboardSensor, {}));
-  // Phone: a single PointerSensor cannot hold a touch-only activation
-  // constraint (a delay there would also lag the mouse), so the mobile sheet
-  // uses the Mouse + Touch pair instead — mouse stays immediate (a desktop
-  // browser sitting in the phone layout), touch waits for the long press.
-  const mobileSensors = useSensors(
-    useSensor(MouseSensor, {}),
-    useSensor(TouchSensor, { activationConstraint: MOBILE_BOOKMARK_DRAG_ACTIVATION }),
+  // Desktop and phone share the reference lists' sensor: a pointer drag (mouse
+  // or touch) engages after BOOKMARK_DRAG_ACTIVATION's 6px of movement.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: BOOKMARK_DRAG_ACTIVATION }),
     useSensor(KeyboardSensor, {}),
   );
 
-  // Build hierarchical tree from flat bookmarks array
-  const buildTree = useCallback((items) => {
-    if (!items || !Array.isArray(items)) {
-      return [];
-    }
-
-    const itemMap = new Map();
-    const rootItems = [];
-
-    items.forEach(item => {
-      if (item && item.id && item.name && item.name.trim()) {
-        itemMap.set(item.id, { ...item, children: [] });
-      }
-    });
-
-    items.forEach(item => {
-      if (!item || !item.id) return;
-
-      const node = itemMap.get(item.id);
-      if (!node) return;
-
-      if (item.parentId) {
-        const parent = itemMap.get(item.parentId);
-        if (parent) {
-          parent.children.push(node);
-        } else {
-          rootItems.push(node);
-        }
-      } else {
-        rootItems.push(node);
-      }
-    });
-
-    // Sort by order
-    const sortByOrder = (a, b) => (a.order || 0) - (b.order || 0);
-    rootItems.sort(sortByOrder);
-    rootItems.forEach(item => {
-      if (item.children && item.children.length > 0) {
-        item.children.sort(sortByOrder);
-      }
-    });
-
-    return rootItems;
-  }, []);
+  // Build hierarchical tree from flat bookmarks array (sorted by `order` at
+  // every depth — see buildBookmarkTree).
+  const buildTree = useCallback((items) => buildBookmarkTree(items), []);
 
   const bookmarkTree = useMemo(() => {
     const applyCollapseState = (items) => items.map((item) => {
@@ -1016,9 +969,9 @@ const BookmarksPanel = ({
     setOverId(active.id);
     setDragMotionTick(0);
     autoExpandedFoldersRef.current.clear();
-    // The TouchSensor's activator is a TouchEvent, which carries no clientX/Y of
-    // its own — read the first touch so hover-to-auto-expand works on the phone
-    // exactly as it does under the mouse.
+    // The PointerSensor's activator is a PointerEvent (clientX/Y, touch included);
+    // the touch fallback stays for a TouchEvent activator so hover-to-auto-expand
+    // works on the phone exactly as it does under the mouse.
     const activatorTouch = activatorEvent?.touches?.[0] ?? activatorEvent?.changedTouches?.[0] ?? null;
     if (typeof activatorEvent?.clientX === 'number' && typeof activatorEvent?.clientY === 'number') {
       pointerPositionRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
@@ -1316,15 +1269,25 @@ const BookmarksPanel = ({
 
     expandFolderOnly(folderId);
 
+    // A second "New bookmark" was refused as a duplicate name (bookmark names
+    // are unique per type), so pick the next free "New bookmark N".
+    const takenNames = new Set((bookmarks || [])
+      .filter((b) => b?.type !== 'folder' && typeof b?.name === 'string')
+      .map((b) => b.name.trim().toLowerCase()));
+    let defaultName = 'New bookmark';
+    for (let n = 2; takenNames.has(defaultName.toLowerCase()); n += 1) {
+      defaultName = `New bookmark ${n}`;
+    }
+
     onBookmarkCreate({
       id: generateId(),
-      name: 'New bookmark',
+      name: defaultName,
       type: 'bookmark',
       pageIds: initialPage ? [initialPage] : [],
       parentId: folderId,
       order: nextOrder,
     });
-  }, [bookmarkTree, expandFolderOnly, findItem, numPages, onBookmarkCreate, pageNum]);
+  }, [bookmarks, bookmarkTree, expandFolderOnly, findItem, numPages, onBookmarkCreate, pageNum]);
 
   const handleDelete = useCallback((id) => {
     if (onBookmarkDelete) {
@@ -1338,7 +1301,7 @@ const BookmarksPanel = ({
    * Desktop's only folder route is the "New bookmark group" MODAL, which refuses
    * to save until the group already contains at least one bookmark. That flow
    * needs a two-column picker and cannot fit a phone sheet, and the owner asked
-   * for the drag-first shape instead: make an EMPTY, named folder, then long-press
+   * for the drag-first shape instead: make an EMPTY, named folder, then drag
    * an existing bookmark onto it to nest. So the phone gets an inline name field
    * (the same one-line editor the phone already uses for "Add bookmark") and
    * writes exactly the record the desktop modal writes for its folder —
@@ -1694,7 +1657,7 @@ const BookmarksPanel = ({
     // demo (BookmarkRow.tsx / HubTray bookmarks branch). flattenedItems already
     // honours folder collapse state and carries per-row depth. Tapping a folder
     // toggles it; tapping a bookmark navigates via the same handleNavigate path as
-    // desktop. UX 2026-09-22 (owner ruling): reordering is long-press drag only —
+    // desktop. UX 2026-09-22 (owner ruling): reordering is grip drag only —
     // the old up/down chevrons are gone, and "New folder" in the action row makes
     // an empty folder to drag bookmarks into.
     // Note: the demo's markerId→survey jump does not apply here — the new app's
@@ -1703,7 +1666,7 @@ const BookmarksPanel = ({
     // correct real behavior.
     return (
       <DndContext
-        sensors={mobileSensors}
+        sensors={sensors}
         collisionDetection={closestCenter}
         modifiers={[restrictBookmarkTreeDrag]}
         measuring={bookmarkTreeMeasuring}
@@ -1864,7 +1827,6 @@ const BookmarksPanel = ({
                   item={item}
                   depth={depth}
                   projectedDepth={item.id === activeId && projected ? projected.depth : null}
-                  isDraggingAny={Boolean(activeId)}
                   isEditMode={isEditMode}
                   onToggle={toggleExpand}
                   onNavigate={handleNavigate}

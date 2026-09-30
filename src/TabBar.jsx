@@ -179,8 +179,12 @@ function TabItem({
       /* A tab is a draggable div, not a <button>, so the app-wide :active rule
          in src/styles/states.css cannot reach it — it needs the press painted
          by hand. Pressing the ACTIVE tab still darkens, because pressing the
-         tab you are already on should still feel like a press. */
+         tab you are already on should still feel like a press.
+         It must also forward to the sortable's own onMouseDown (spread above):
+         this prop replaced it, so the MouseSensor never saw a press and
+         document tabs could not be dragged with a mouse (fix 2026-09-30). */
       onMouseDown={(e) => {
+        sortableListeners.onMouseDown?.(e);
         if (!isSorting) {
           e.currentTarget.style.background = TAB_PRESSED_BG;
         }

@@ -36,6 +36,54 @@ export const flattenBookmarkTreeForSort = (items, parentId = null, depth = 0) =>
   ], [])
 );
 
+// Flat bookmarks array (each item carries parentId + order) -> nested tree.
+// Siblings are sorted by `order` at EVERY depth: sorting only the root and its
+// direct children left deeper levels in store-array order, so a drop two or
+// more levels deep snapped back once the optimistic tree was cleared.
+export const buildBookmarkTree = (items) => {
+  if (!items || !Array.isArray(items)) {
+    return [];
+  }
+
+  const itemMap = new Map();
+  const rootItems = [];
+
+  items.forEach(item => {
+    if (item && item.id && item.name && item.name.trim()) {
+      itemMap.set(item.id, { ...item, children: [] });
+    }
+  });
+
+  items.forEach(item => {
+    if (!item || !item.id) return;
+
+    const node = itemMap.get(item.id);
+    if (!node) return;
+
+    if (item.parentId) {
+      const parent = itemMap.get(item.parentId);
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        rootItems.push(node);
+      }
+    } else {
+      rootItems.push(node);
+    }
+  });
+
+  const sortByOrder = (a, b) => (a.order || 0) - (b.order || 0);
+  const sortLevel = (nodes) => {
+    nodes.sort(sortByOrder);
+    nodes.forEach(node => {
+      if (node.children.length > 0) sortLevel(node.children);
+    });
+  };
+  sortLevel(rootItems);
+
+  return rootItems;
+};
+
 export const removeChildrenOf = (items, ids) => {
   const excludedParentIds = [...ids];
   return items.filter((item) => {
