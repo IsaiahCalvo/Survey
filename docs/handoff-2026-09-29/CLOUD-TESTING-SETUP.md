@@ -2,6 +2,25 @@ Written: 2026-09-29 (evening)
 
 # How the owner opens the cloud session's app on his laptop and phone
 
+## DECIDED 2026-09-29 (owner): Here.now, no account, no password — PROVEN WORKING
+Build a production copy and post it to Here.now anonymously; the app's own sign-in
+protects it (owner signs in with his normal email + password). Verified from the Mac:
+https://keen-quartz-mr5e.here.now loaded the app and its sign-in screen with no errors.
+Steps each time there's something to test:
+  VITE_TURNSTILE_SITE_KEY= VITE_DEV_AUTO_LOGIN_EMAIL= VITE_DEV_AUTO_LOGIN_PASSWORD= \
+    npx vite build --outDir /tmp/herenow-dist --emptyOutDir
+  node scripts/herenow-publish.mjs /tmp/herenow-dist   # prints siteUrl
+Rules: ALWAYS blank the VITE_DEV_AUTO_LOGIN_* vars (a local build otherwise bakes the
+owner's password into the public files); anonymous links expire after 24 h, so post a
+fresh one each testing day and give the owner the new link; SPA mode needs an API key
+(not needed — the app lives at /). The Supabase robot check (captcha) was turned OFF on
+2026-09-29 for testing at the owner's request — turn it back on before launch
+(PATCH config/auth security_captcha_enabled=true, or the toggle-captcha workflow).
+The app only needs VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (public values) to build.
+Claude "Artifact" pages were tested and CANNOT reach Supabase (blocked), so don't use them.
+Everything below is the older research, kept for reference.
+
+
 Cloud sessions give no preview link, and the owner does NOT want Vercel previews.
 Plan: try Tailscale first (private, live reload, dev auto-login keeps working). If it
 can't connect through Anthropic's network proxy within ~5 minutes, fall back to
