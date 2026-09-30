@@ -138,7 +138,10 @@ test('the flicker fix leaves the enforced zoom contracts alone', () => {
   // path that is tightest on iPhone memory — it just no longer destroys the one
   // already on screen, which costs nothing and keeps the pinch-out sharp.
   assert.match(PDFJS_VIEWER_SOURCE, /if \(isMobileSurface && liveZoom < 1\) return;/);
-  const zoomOutBranch = /if \(isMobileSurface && liveZoom < 1\) \{([\s\S]*?)\n      return;/.exec(PDFJS_VIEWER_SOURCE);
+  // 2026-09-30 (owner: phone pinch as smooth as desktop): the scheduling
+  // branch now covers the whole live touch pinch (liveZoom !== 1), not only
+  // pinch-out — no tile raster competes with touchmove while fingers are down.
+  const zoomOutBranch = /if \(isMobileSurface && liveZoom (?:< 1|!== 1)\) \{([\s\S]*?)\n      return;/.exec(PDFJS_VIEWER_SOURCE);
   assert.ok(zoomOutBranch, 'the mobile zoom-out branch must still exist');
   assert.match(zoomOutBranch[1], /taskRef\.current\.cancel\(\)/);
   assert.doesNotMatch(zoomOutBranch[1], /setTile\(null\)/);

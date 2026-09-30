@@ -11,7 +11,7 @@
 // never intercepts pointer events meant for the drawing canvas, form widgets,
 // links, or pan — it is pointer-events:none unless explicitly interactive.
 // ----------------------------------------------------------------------------
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   captureNativeSelectionSnapshot,
@@ -108,7 +108,7 @@ export function ensureTextLayerStyles() {
 
 // TextLayer sets data-main-rotation from this viewport. The CSS above applies
 // pdf.js's matching root transform so intrinsic /Rotate pages align with the canvas.
-export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, onTextAvailability }) {
+function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, onTextAvailability }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);
 
@@ -240,3 +240,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
 
   return <div ref={ref} className={`pdfjsTextLayer${interactive ? ' is-interactive' : ''}`} />;
 }
+
+// memo: the viewer re-renders every live-zoom frame; the text layer only
+// depends on its own props (owner 2026-09-30: smooth pinch).
+export default memo(PdfjsTextLayer);

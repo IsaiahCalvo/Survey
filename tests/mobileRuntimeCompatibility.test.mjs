@@ -325,12 +325,27 @@ test('mobile PDF pinch previews translation, progressively sharpens, and commits
   assert.match(PDFJS_VIEWER_SOURCE, /translate\(\$\{liveTranslateX\}px, \$\{liveTranslateY\}px\) scale/);
   assert.match(PDFJS_VIEWER_SOURCE, /lastSharpAtRef/);
   assert.match(PDFJS_VIEWER_SOURCE, /240/);
+  // 2026-09-30: the transform pivots on the SAME clamped anchor the commit
+  // holds still (a pinch in the gutter beside a narrow page used to slide the
+  // page, then snap on release), and the tile's progressive re-sharpening is
+  // desktop-only: on the phone the tile signal is just pinch-live / idle.
+  assert.match(PDFJS_VIEWER_SOURCE, /\$\{preview\.anchorX\}px \$\{preview\.anchorY - layout\.padTop\}px/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const tileLiveZoomSignal = isMobileSurface \? \(liveZoom === 1 \? 1 : 0\) : liveZoom;/);
 });
 
 test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_REBASE_MIN = 0\.67/);
   assert.match(PDFJS_VIEWER_SOURCE, /checkpointPinchGesture/);
-  assert.match(PDFJS_VIEWER_SOURCE, /nextLiveZoom < MOBILE_LIVE_ZOOM_REBASE_MIN/);
+  // 2026-09-30 (owner: phone pinch as smooth as desktop): each rebase is a
+  // mid-gesture layout + raster commit — a visible hitch — so the 0.67
+  // checkpoint only applies where the WKWebView crash lived (committed zoom
+  // deeper than 250%). Shallower pinch-outs are one transform, bounded by a
+  // 4x hard floor. Measured on a mixed-size PDF: pinch 245% -> 74% went from
+  // two rebases to none. Still needs the device run (test:mobile-zoomout-native).
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_REBASE_SCALE = 2\.5/);
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_HARD_FLOOR = 0\.25/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const rebaseFloor = committedScale > MOBILE_LIVE_ZOOM_REBASE_SCALE\s*\? MOBILE_LIVE_ZOOM_REBASE_MIN\s*: MOBILE_LIVE_ZOOM_HARD_FLOOR;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /nextLiveZoom < rebaseFloor/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF live zoom floor/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(isMobileSurface && liveZoom < 1\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /willChange: isMobileSurface[\s\S]{0,80}\? 'auto'/);

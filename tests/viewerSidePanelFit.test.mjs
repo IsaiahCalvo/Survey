@@ -117,9 +117,11 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   assert.match(zoomTo, /resolveBandCentreScrollLeft\(/);
   assert.match(container, /refitAfterLayoutChange: \(target\) => \{[\s\S]{0,160}zoomToScale\(target, \{ auto: true \}\)/);
   // The room is part of every page's left edge, the scroll range and the content width.
-  assert.match(container, /return sideRoomRef\.current\.left \+ \(pageWidth <= viewportWidth/);
-  assert.match(container, /return sideRoomRef\.current\.left \+ sideRoomRef\.current\.right \+ \(pageWidth <= containerWRef\.current/);
-  assert.match(container, /: maxW \+ 2 \* metrics\.padX\) \+ sideRoom\.left \+ sideRoom\.right;/);
+  // 2026-09-30: pages share one centre line and one scroll range
+  // (src/utils/pdfPageColumn.js, tests/pdfPageColumn.test.mjs).
+  assert.match(container, /resolveCentredPageLeft\(\{[\s\S]{0,120}sideLeft: sideRoomRef\.current\.left,/);
+  assert.match(container, /resolveDocumentScrollLeftMax\(\{[\s\S]{0,160}sideLeft: sideRoomRef\.current\.left,\s*sideRight: sideRoomRef\.current\.right,/);
+  assert.match(container, /const contentW = columnW \+ sideRoom\.left \+ sideRoom\.right;/);
   assert.match(container, /compensateScrollLeftForSideRoom\(base, previous\.left, sideRoom\.left\)/);
 
   const viewer = read('../src/PDFViewer.jsx');
