@@ -300,12 +300,15 @@ test('SVG path transform matches Fabric numeric origins', () => {
 test('visible path, hover halo, and hit target all consume the same transform helper', () => {
   assert.match(
     SOURCE,
-    /cloneElement\(renderElement,\s*\{\s*transform:\s*buildFabricPathSvgTransform\(renderObj\)/s,
+    /cloneElement\(renderElement,\s*\{\s*transform:\s*cachedMarkGeometry\('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform\)/s,
   );
   assert.match(
     SOURCE,
-    /const pathTransform = buildFabricPathSvgTransform\(renderObj\);/,
+    /const pathTransform = cachedMarkGeometry\('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform\);/,
   );
+  // (perf 2026-09-30: the helper result is cached per committed object; live
+  // previews — renderObj !== obj — are always computed fresh)
+  assert.match(SOURCE, /if \(!committed \|\| !target \|\| typeof target !== 'object'\) return compute\(target\);/);
 });
 
 test('path resize preview applies its page affine exactly once and shares it with the overlay', () => {

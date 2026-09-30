@@ -5010,6 +5010,24 @@ const SVGAnnotationLayer = memo(({
     );
   }
 
+  // Perf (2026-09-30): the per-mark bbox and path matrix below were re-derived
+  // for every mark on every render (each zoom commit, zoomGeneration bump and
+  // scroll re-render) — most of the layer's cost on a heavily marked page.
+  // Cached only for the committed objects this layer was handed (immutable
+  // state); live previews build new objects and are always computed fresh.
+  const markGeometryCacheRef = useRef(null);
+  if (!markGeometryCacheRef.current) {
+    markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap() };
+  }
+  const cachedMarkGeometry = (kind, target, committed, compute) => {
+    if (!committed || !target || typeof target !== 'object') return compute(target);
+    const cache = markGeometryCacheRef.current[kind];
+    if (cache.has(target)) return cache.get(target);
+    const value = compute(target);
+    cache.set(target, value);
+    return value;
+  };
+
   // ---------------------------------------------------------------------------
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
@@ -5210,11 +5228,11 @@ const SVGAnnotationLayer = memo(({
       && renderElement
     ) {
       renderElement = cloneElement(renderElement, {
-        transform: buildFabricPathSvgTransform(renderObj),
+        transform: cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform),
       });
     }
 
-    const bbox = getAnnotationBBox(renderObj);
+    const bbox = cachedMarkGeometry('bbox', renderObj, renderObj === obj, getAnnotationBBox);
     const annotationIsSelected = selectedIds.has(i);
     // UX: Phase 19 follow-up — members of a multi-selection share the
     // same visual treatment as cursor-hover (blue glow) instead of each
@@ -6054,7 +6072,7 @@ const SVGAnnotationLayer = memo(({
             // outline polygon, so the whole stroke body must hover/click —
             // not just its edges. Predicate lives in svgPathAttrs.js.
             const isFilledPdfInkOutline = isFilledInkOutlineAttrs(pathAttrs);
-            const pathTransform = buildFabricPathSvgTransform(renderObj);
+            const pathTransform = cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform);
             const sw = renderObj.strokeWidth || 1;
             // Zoom-out balloon fix: clamp inverseScale for the VISIBLE filled-ink
             // hover stroke so it stops growing on extreme zoom-out. The hit
