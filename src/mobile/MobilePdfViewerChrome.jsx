@@ -1319,15 +1319,18 @@ export function MobileToolProperties({ api }) {
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
-        {/* Owner 2026-09-30: [ Module v ] | Keep active | Exit.
-            The pill is as wide as its longest module name (fitOptions), not a
-            138px floor. Exit leaves survey mode from here (the same handler as
-            the Survey panel's "Exit Survey").
-            PLACEHOLDER LOOK: the final design of "Keep active" and of Exit
-            (label / icon / placement) is being decided separately. Both are
-            plain buttons with their own classes so the look drops in via
-            .mobile-pdf-properties__keep(-track) and .mobile-pdf-properties__exit
-            without touching the wiring. */}
+        {/* Owner 2026-09-30 (survey bar design, decided after a design review):
+              [ Module v ] (switch) Repeat  ...  | Exit
+            - The pill is exactly as wide as its LONGEST module name
+              (fitOptions: every name sits invisibly in one grid cell), so
+              switching module never moves the switch; it shrinks and
+              ellipsises only when the row runs out of room.
+            - "Keep active" is the desktop survey row's plateless switch,
+              relabelled "Repeat": it keeps the CATEGORY armed after a Survey
+              Marker is placed (PDFViewer clears selectedCategoryId otherwise).
+            - Exit is a red word on the trailing edge after a rule; it calls
+              the same handler as the Survey panel's "Exit Survey", with no
+              confirm step. */}
         <MobileStyledSelect
           ariaLabel="Survey module"
           fitOptions
@@ -1337,24 +1340,24 @@ export function MobileToolProperties({ api }) {
           options={(survey.modules || []).map((module) => ({ value: module.id, label: module.name || 'Untitled Module' }))}
           onChange={(value) => survey.onSelectModule?.(value)}
         />
-        <MobileStripDivider />
         <button
           type="button"
           className="mobile-pdf-properties__keep"
           role="switch"
           aria-checked={Boolean(survey.keepCategoryActive)}
+          aria-label="Repeat category"
           onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
         >
           <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
-          <span>Keep active</span>
+          <span>Repeat</span>
         </button>
         {survey.onExit ? (
           <>
-            <MobileStripDivider />
+            <span aria-hidden="true" className="mobile-pdf-properties__divider mobile-pdf-properties__divider--push" />
             <button
               type="button"
               className="mobile-pdf-properties__exit"
-              aria-label="Exit survey mode"
+              aria-label="Exit Survey mode"
               onClick={() => survey.onExit()}
             >
               Exit

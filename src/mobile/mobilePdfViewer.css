@@ -1650,17 +1650,38 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 /* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a
    checkbox with text"; the module pill is far wider than it needs; add a short
-   Exit). [ Module v ] | Keep active | Exit, one centred row.
+   Exit). Decided design:
+      [ Module v ] (switch) Repeat  ...  | Exit
+   The bar keeps its ruled `safe center` (see the survey rule above: the
+   owner's "never move an existing control"). Two auto margins share the spare
+   width - one before the pill, one before the rule - so the pill + switch pair
+   sits centred in the room left of the rule and Exit is pinned to the
+   trailing edge.
 
-   PLACEHOLDER LOOK (2026-09-30): the final design of "Keep active" and of
-   Exit is being decided separately; the two rule groups below are the drop-in
-   points. The wiring (role=switch + aria-checked, and the Exit handler) is
-   final.
+   The pill is as wide as its LONGEST option (MobileStyledSelect fitOptions) and
+   may shrink to 72px, ellipsising, when the row runs out of room. */
+.mobile-pdf-properties--survey > .mobile-styled-select {
+  flex: 0 1 auto;
+  min-width: 72px;
+  margin-inline-start: auto;
+}
 
-   "Keep active" is, for now, the desktop survey row's switch (.survey-subrow__keep in
-   src/styles.css, itself the Spaces switch) at the strip's scale: a 24x14
-   track with a 10px thumb, then the word in the strip's 11px/600. No plate, no
-   border; on = gold track, thumb slides right. The whole thing is one button. */
+.mobile-pdf-properties--survey > .mobile-styled-select .mobile-styled-select__trigger {
+  width: 100%;
+  max-width: 100%;
+}
+
+.mobile-pdf-properties--survey > .mobile-pdf-properties__divider--push {
+  margin-inline-start: auto;
+}
+
+/* "Repeat" (was "Keep active"; it keeps the CATEGORY armed after a marker is
+   placed): the desktop survey row's switch (.survey-subrow__keep in
+   src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
+   the word in the strip's 11px/600, 6px apart. No plate, no border. Off: a
+   --surface-3 track with an inset --border-strong ring, word --text-2. On: an
+   --accent track, knob +10px, word --text-1. One button; its 44px pad is the
+   shared -5/-19/-2 above. */
 .mobile-pdf-properties__keep {
   height: var(--mobile-strip-control-h);
   padding: 0 2px;
@@ -1713,29 +1734,36 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   transform: translateX(10px);
 }
 
-/* Exit (PLACEHOLDER look, see above): for now the Survey panel's quiet red "Exit Survey" word, shortened, at the
-   strip's type size. A word, not a button plate. */
+/* Exit: a red WORD (owner: red, not gold - on this strip gold text means "on").
+   --danger-text is the token tokens.css gives red words, and the one the
+   Survey panel's own "Exit Survey" wears, so red already means "leave Survey"
+   there. 700 12px, at least 44px wide, 20px painted; with the shared pad the
+   hit area is about 49 x 44. */
 .mobile-pdf-properties__exit {
+  min-width: 44px;
   height: var(--mobile-strip-control-h);
-  padding: 0 4px;
+  padding: 0 6px;
+  box-sizing: border-box;
   color: var(--danger-text);
   background: transparent;
   border: 0;
-  font: 600 var(--mobile-strip-type)/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-  letter-spacing: -0.01em;
+  font: 700 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
   white-space: nowrap;
   transition: opacity 90ms ease-out;
 }
 
 .mobile-pdf-properties__exit:active { opacity: 0.6; }
 
-/* The module pill fits its longest option (MobileStyledSelect fitOptions),
-   capped so a very long module name ellipsises instead of pushing the row past
-   the band. */
-.mobile-pdf-properties--survey .mobile-styled-select__trigger {
-  max-width: 180px;
+@media (prefers-reduced-motion: reduce) {
+  .mobile-pdf-properties__keep-track,
+  .mobile-pdf-properties__keep-track::after,
+  .mobile-pdf-properties__exit {
+    transition: none;
+  }
 }
 
+/* MobileStyledSelect fitOptions: every option label stacked in one grid cell,
+   only the current one visible, so the pill is its longest option's width. */
 .mobile-styled-select__fit {
   display: grid;
   grid-template-columns: minmax(0, max-content);
