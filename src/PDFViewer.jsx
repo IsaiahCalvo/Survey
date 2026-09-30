@@ -35832,7 +35832,7 @@ ${pageBlocks}
                                   // Perf: only paint the hidden bitmap while it can be shown
                                   // (an erase can only start on a page in the render window).
                                   paintEnabled={suspendFullSvgForProxy || (isEraserTool
-                                    && (visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
+                                    && (pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -35958,7 +35958,10 @@ ${pageBlocks}
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
-                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
+                                  // visiblePagesSet is never updated past page 1, so a pinch-out
+                                  // left newly visible pages with no marks until the current page
+                                  // changed; the engine's mounted window is the real one.
+                                  isPageInRenderWindow={pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
