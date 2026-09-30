@@ -26,6 +26,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { CALM_LIST_AUTO_SCROLL } from './dragAutoScroll.js';
 
 export const DENSE_ROW_DRAG_OPACITY = 0.62;
 
@@ -37,6 +38,39 @@ const restrictToVerticalAxis = ({ transform }) => ({
 const pointerThenClosestCenter = (args) => {
   const pointerCollisions = pointerWithin(args);
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
+};
+
+/*
+ * UX 2026-09-30 (owner: every drag must feel controlled) — slot hysteresis.
+ * The raw detectors swap two rows the instant the finger crosses their shared
+ * boundary, so a finger resting ON that line (or a trembling thumb) see-sawed
+ * the rows back and forth. The target only moves once the finger is a few px
+ * past the boundary; coming back needs the same few px the other way.
+ */
+const SLOT_HYSTERESIS_PX = 8;
+export const holdSlotAtBoundary = (args, collisions, lastOverId) => {
+  const candidateId = collisions?.[0]?.id ?? null;
+  if (candidateId == null || lastOverId == null || candidateId === lastOverId) return collisions;
+  const candidateRect = args.droppableRects?.get(candidateId);
+  const lastRect = args.droppableRects?.get(lastOverId);
+  const lastContainer = args.droppableContainers?.find((container) => container.id === lastOverId);
+  if (!candidateRect || !lastRect || !lastContainer) return collisions;
+
+  const pointer = args.pointerCoordinates;
+  const pointerInCandidate = pointer
+    && pointer.y >= candidateRect.top && pointer.y <= candidateRect.top + candidateRect.height
+    && pointer.x >= candidateRect.left && pointer.x <= candidateRect.left + candidateRect.width;
+  const movingDown = candidateRect.top >= lastRect.top;
+  const point = pointerInCandidate
+    ? pointer.y
+    : args.collisionRect.top + args.collisionRect.height / 2;
+  const boundary = pointerInCandidate
+    ? (movingDown ? candidateRect.top : candidateRect.top + candidateRect.height)
+    : ((lastRect.top + lastRect.height / 2) + (candidateRect.top + candidateRect.height / 2)) / 2;
+  const margin = Math.min(SLOT_HYSTERESIS_PX, Math.min(candidateRect.height, lastRect.height) * 0.2);
+  const pastBoundary = movingDown ? point - boundary : boundary - point;
+  if (pastBoundary >= margin) return collisions;
+  return [{ id: lastOverId, data: { droppableContainer: lastContainer, value: 0 } }];
 };
 
 const DropTransformSuppressionContext = createContext({
@@ -125,6 +159,7 @@ export function SortableRearrangeList({
   const [dropTransformSuppressedActiveId, setDropTransformSuppressedActiveId] = useState(null);
   const dragDiagRef = useRef(null);
   const dragClampBoundsRef = useRef(null);
+  const lastOverIdRef = useRef(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -156,7 +191,7 @@ export function SortableRearrangeList({
       ? { droppable: { strategy: MeasuringStrategy.Always } }
       : undefined
   ), [variableHeight]);
-  const collisionDetection = useCallback((args) => {
+  const detectCollisions = useCallback((args) => {
     if (!variableHeight) return pointerThenClosestCenter(args);
 
     const activeTop = dragDiagRef.current?.layoutStart?.activeTop;
@@ -200,6 +235,11 @@ export function SortableRearrangeList({
 
     return closestCenter(args);
   }, [variableHeight]);
+  const collisionDetection = useCallback((args) => {
+    const collisions = holdSlotAtBoundary(args, detectCollisions(args), lastOverIdRef.current ?? args.active?.id);
+    lastOverIdRef.current = collisions?.[0]?.id ?? lastOverIdRef.current;
+    return collisions;
+  }, [detectCollisions]);
 
   const finishDragDiag = useCallback((eventName, extra = {}) => {
     const diag = dragDiagRef.current;
@@ -271,7 +311,9 @@ export function SortableRearrangeList({
       collisionDetection={collisionDetection}
       modifiers={modifiers}
       measuring={measuring}
+      autoScroll={CALM_LIST_AUTO_SCROLL}
       onDragStart={({ active }) => {
+        lastOverIdRef.current = active.id;
         const layoutStart = getDragLayoutSnapshot(active.id);
         const clampBounds = getDragClampBounds(layoutStart);
         dragClampBoundsRef.current = clampBounds;

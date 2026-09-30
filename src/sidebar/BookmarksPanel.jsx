@@ -24,15 +24,15 @@ import DismissBarrier from '../components/DismissBarrier';
 import { prepareAtomicBookmarkEdit } from './bookmarkEditUtils.js';
 import {
   BOOKMARK_INDENTATION_WIDTH,
-  GROUP_AUTO_EXPAND_OFFSET_PX,
   applyBookmarkTreeProjection,
   buildBookmarkTree,
+  createBookmarkDragIntent,
   flattenBookmarkTreeForSort,
-  getAutoExpandTargetFolder,
-  getBookmarkProjection,
   mergeDragHandleProps,
   removeChildrenOf,
+  resolveBookmarkDragIntent,
 } from './bookmarkReorderUtils.js';
+import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -109,6 +109,8 @@ const BookmarkTreeRow = ({
   isGroupAnimationActive = false,
   childCount = 0,
   isSelected = false,
+  dropTargetState = null,
+  landingSlot = null,
   numPages,
   onToggle,
   onNavigate,
@@ -244,9 +246,18 @@ const BookmarkTreeRow = ({
           onSelect?.(item.id);
           if (!isFolder) onNavigate?.(item);
         }}
+        data-bookmark-drop-target={dropTargetState === 'into' ? 'true' : dropTargetState === 'pending' ? 'pending' : undefined}
         style={{
           transform: isClone ? undefined : sortableTransform,
-          transition: groupAnimationState || isGroupAnimationActive ? undefined : transition,
+          // The lifted row eases its projected indent; while a drag is live the
+          // drop-target tint fades in and out instead of blinking.
+          transition: groupAnimationState || isGroupAnimationActive
+            ? undefined
+            : isActiveRow
+              ? 'padding-left 120ms ease-out'
+              : isDraggingAny
+                ? [transition, 'background-color 120ms ease, box-shadow 120ms ease'].filter(Boolean).join(', ')
+                : transition,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
@@ -258,11 +269,22 @@ const BookmarkTreeRow = ({
           borderRadius: 0,
           // Quiet states only: the hover step or the SELECTED surface, never
           // a gold box. The lifted (dragging) row keeps a raised surface.
-          background: isClone || isActiveRow ? 'var(--surface-2)' : isSelected ? 'var(--surface-3)' : 'transparent',
+          // UX 2026-09-30 — the folder the dragged row will land IN wears the
+          // soft accent tint with an accent edge; a folder it is about to
+          // enter (the dwell is still running) wears the lighter tint only.
+          background: isClone || isActiveRow
+            ? 'var(--surface-2)'
+            : dropTargetState === 'into'
+              ? 'var(--accent-soft-strong)'
+              : dropTargetState === 'pending'
+                ? 'var(--accent-soft)'
+                : isSelected ? 'var(--surface-3)' : 'transparent',
           border: 'none',
           borderBottom: '1px solid var(--border)',
           color: 'var(--text-2)',
-          boxShadow: isClone || isActiveRow ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
+          boxShadow: isClone || isActiveRow
+            ? '0 12px 24px rgba(0,0,0,0.32)'
+            : dropTargetState === 'into' ? 'inset 2px 0 0 var(--accent)' : 'none',
           cursor: isEditMode ? 'default' : 'pointer',
           pointerEvents: isSorting ? 'none' : undefined,
           marginLeft: isClone ? `${cloneRelativeInset}px` : undefined,
@@ -272,14 +294,15 @@ const BookmarkTreeRow = ({
           boxSizing: 'border-box',
         }}
         onMouseEnter={(event) => {
-          if (!isSelected && !isClone && !isActiveRow) event.currentTarget.style.background = 'var(--hover)';
+          if (!isSelected && !isClone && !isActiveRow && !isDraggingAny) event.currentTarget.style.background = 'var(--hover)';
         }}
         onMouseLeave={(event) => {
-          if (!isSelected && !isClone && !isActiveRow) event.currentTarget.style.background = 'transparent';
+          if (!isSelected && !isClone && !isActiveRow && !isDraggingAny) event.currentTarget.style.background = 'transparent';
         }}
       >
         <div
           {...mergeDragHandleProps(tip('Drag to reorder', 'below'), handleProps)}
+          data-drag-handle=""
           style={{
             width: 18,
             height: BOOKMARK_ROW_HEIGHT_PX,
@@ -488,6 +511,28 @@ const BookmarkTreeRow = ({
           </span>
         )}
       </div>
+      {isActiveRow && landingSlot ? (
+        // Where the drop will land: a soft slot in the gap the rows opened,
+        // stepped in to the projected depth. It sits under the lifted row and
+        // shows whenever the row is not right on top of it (e.g. while a
+        // folder dwell holds the slot).
+        <div
+          aria-hidden="true"
+          data-bookmark-drop-slot
+          style={{
+            position: 'absolute',
+            zIndex: -1,
+            pointerEvents: 'none',
+            top: landingSlot.offsetY,
+            left: landingSlot.depth * BOOKMARK_INDENTATION_WIDTH,
+            right: 0,
+            height: BOOKMARK_ROW_HEIGHT_PX,
+            background: 'var(--accent-soft)',
+            boxShadow: 'inset 2px 0 0 var(--accent)',
+            transition: 'top 160ms ease, left 120ms ease-out',
+          }}
+        />
+      ) : null}
     </div>
   );
 };
@@ -534,6 +579,8 @@ const MobileBookmarkRow = ({
   item,
   depth,
   projectedDepth,
+  dropTargetState = null,
+  landingSlot = null,
   isEditMode = false,
   onToggle,
   onNavigate,
@@ -568,10 +615,11 @@ const MobileBookmarkRow = ({
     <div
       ref={setDroppableNodeRef}
       data-bookmark-row-id={item.id}
-      className="mobile-bookmark-slot"
+      className={`mobile-bookmark-slot${isDragging ? ' is-dragging' : ''}`}
     >
       <div
         ref={setDraggableNodeRef}
+        data-bookmark-drop-target={dropTargetState === 'into' ? 'true' : dropTargetState === 'pending' ? 'pending' : undefined}
         className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
         style={{
           // The depth indent lives INSIDE the row (padding), so every row's
@@ -584,6 +632,9 @@ const MobileBookmarkRow = ({
         <div
           className="mobile-bookmark-grip"
           aria-label={`Drag to reorder ${item.name}`}
+          // The shared grip marker: a sheet's swipe-down gesture ignores any
+          // touch that starts inside [data-drag-handle].
+          data-drag-handle=""
           {...attributes}
           {...listeners}
           // touch-action `none` (UX 2026-09-30, like DragRearrangeHandle): the
@@ -649,6 +700,17 @@ const MobileBookmarkRow = ({
         </div>
         )}
       </div>
+      {isDragging && landingSlot ? (
+        // The desktop's landing slot (see BookmarkTreeRow), phone indent.
+        <div
+          aria-hidden="true"
+          className="mobile-bookmark-drop-slot"
+          style={{
+            top: landingSlot.offsetY,
+            left: landingSlot.depth * MOBILE_BOOKMARK_INDENT_PX,
+          }}
+        />
+      ) : null}
     </div>
   );
 };
@@ -695,9 +757,9 @@ const BookmarksPanel = ({
 
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
-  const [overId, setOverId] = useState(null);
-  const [offsetLeft, setOffsetLeft] = useState(0);
-  const [dragMotionTick, setDragMotionTick] = useState(0);
+  // Bumped whenever the drag intent (committed landing spot) changes, so the
+  // rows re-render with the new projected depth / drop target.
+  const [, setDragIntentVersion] = useState(0);
   const [collapsingFolderIds, setCollapsingFolderIds] = useState([]);
   const [expandingFolderIds, setExpandingFolderIds] = useState([]);
   const [collapseLayoutLock, setCollapseLayoutLock] = useState(false);
@@ -709,9 +771,10 @@ const BookmarksPanel = ({
   const autoExpandedFoldersRef = useRef(new Set());
   const autoExpandTimerRef = useRef(null);
   const autoExpandFolderRef = useRef(null);
-  const pointerPositionRef = useRef(null);
-  const pointerMoveListenerRef = useRef(null);
   const collapsedDragFolderIdRef = useRef(null);
+  // The committed landing spot of the live drag (resolveBookmarkDragIntent).
+  const dragIntentRef = useRef(null);
+  const dragIntentWakeRef = useRef({ timer: null, at: null });
 
   // Desktop and phone share the reference lists' sensor: a pointer drag (mouse
   // or touch) engages after BOOKMARK_DRAG_ACTIVATION's 6px of movement.
@@ -744,9 +807,62 @@ const BookmarksPanel = ({
     return removeChildrenOf(flattenedTree, activeId ? [activeId, ...collapsedItems] : collapsedItems);
   }, [activeId, bookmarkTree]);
 
-  const projected = activeId && overId
-    ? getBookmarkProjection(flattenedItems, activeId, overId, offsetLeft, BOOKMARK_INDENTATION_WIDTH)
+  const flattenedItemsRef = useRef(flattenedItems);
+  flattenedItemsRef.current = flattenedItems;
+  const dragIntent = activeId ? dragIntentRef.current : null;
+  const projected = dragIntent
+    ? { depth: dragIntent.depth, parentId: dragIntent.parentId, slotOffsetY: dragIntent.slotOffsetY }
     : null;
+  // Drop-target feedback: the folder the row will land in is highlighted; a
+  // folder it is about to enter (dwell still running) gets a lighter tint.
+  const dropTargetFolderId = projected?.parentId ?? null;
+  const pendingDropFolderId = dragIntent?.pending?.intoId ?? null;
+  const getDropTargetState = (itemId) => (
+    itemId === dropTargetFolderId ? 'into' : itemId === pendingDropFolderId ? 'pending' : null
+  );
+
+  /*
+   * UX 2026-09-30 — collision detection IS the drag intent. dnd-kit calls this
+   * on every render of the DndContext (each pointer move, and each wake-up
+   * below); the resolver hit-tests the rows as they are drawn and only moves
+   * the committed slot for a clear intent (see resolveBookmarkDragIntent).
+   * Returning the committed slot as the single collision makes the sortable
+   * rows part exactly where the drop will land, and nowhere else.
+   */
+  const bookmarkCollisionDetection = useCallback((args) => {
+    const intent = dragIntentRef.current;
+    const activeKey = args.active?.id;
+    if (!intent || activeKey == null) return closestCenter(args);
+    const activeRect = args.droppableRects.get(activeKey);
+    const { intent: nextIntent, wakeAt } = resolveBookmarkDragIntent(intent, {
+      items: flattenedItemsRef.current,
+      activeId: activeKey,
+      rects: args.droppableRects,
+      centerY: args.collisionRect.top + args.collisionRect.height / 2,
+      dx: activeRect ? args.collisionRect.left - activeRect.left : 0,
+      now: performance.now(),
+      indentationWidth: BOOKMARK_INDENTATION_WIDTH,
+    });
+    if (nextIntent !== intent) {
+      dragIntentRef.current = nextIntent;
+      queueMicrotask(() => setDragIntentVersion((version) => version + 1));
+    }
+    const wake = dragIntentWakeRef.current;
+    if (wakeAt && wake.at !== wakeAt) {
+      // A dwell is running: re-run collision when it elapses even if the
+      // pointer is perfectly still (a resting finger sends no moves).
+      wake.at = wakeAt;
+      queueMicrotask(() => {
+        if (wake.timer) clearTimeout(wake.timer);
+        wake.timer = setTimeout(() => {
+          wake.timer = null;
+          if (dragIntentRef.current) setDragIntentVersion((version) => version + 1);
+        }, Math.max(0, wakeAt - performance.now()) + 8);
+      });
+    }
+    const container = args.droppableContainers.find((candidate) => candidate.id === nextIntent.overId);
+    return container ? [{ id: nextIntent.overId, data: { droppableContainer: container, value: 0 } }] : [];
+  }, []);
   const sortedIds = useMemo(() => flattenedItems.map(({ id }) => id), [flattenedItems]);
   const activeSortableItem = activeId ? flattenedItems.find(({ id }) => id === activeId) : null;
   const restrictBookmarkTreeDrag = useMemo(() => ({ active, transform }) => {
@@ -912,32 +1028,6 @@ const BookmarksPanel = ({
     expandTimeoutsRef.current.set(folderId, timeout);
   }, [animateCollapseFolders, expandedFolders, expandFolderOnly]);
 
-  const getAutoExpandTargetFromPointer = useCallback(() => {
-    if (offsetLeft < GROUP_AUTO_EXPAND_OFFSET_PX || !pointerPositionRef.current) return null;
-
-    const { y } = pointerPositionRef.current;
-    const candidates = flattenedItems
-      .filter((item) => (
-        item.id !== activeId &&
-        item.type === 'folder' &&
-        item.collapsed &&
-        item.children?.length > 0
-      ))
-      .map((item) => {
-        const element = document.querySelector(`[data-bookmark-row-id="${item.id}"]`);
-        const rect = element?.getBoundingClientRect();
-        if (!rect) return null;
-        const topZone = rect.top - 14;
-        const bottomZone = rect.bottom + 30;
-        if (y < topZone || y > bottomZone) return null;
-        return { item, distance: Math.abs(y - (rect.top + rect.height / 2)) };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.distance - b.distance);
-
-    return candidates[0]?.item ?? null;
-  }, [activeId, flattenedItems, offsetLeft]);
-
   const persistBookmarkTree = useCallback((nextTree) => {
     if (!onBookmarkUpdate) return;
     flattenBookmarkTreeForSort(nextTree).forEach((item) => {
@@ -948,7 +1038,7 @@ const BookmarksPanel = ({
     });
   }, [onBookmarkUpdate]);
 
-  const handleDragStart = useCallback(({ active, activatorEvent }) => {
+  const handleDragStart = useCallback(({ active }) => {
     const activeItem = flattenedItems.find((item) => item.id === active.id);
     if (
       activeItem?.type === 'folder' &&
@@ -965,69 +1055,41 @@ const BookmarksPanel = ({
       setCollapsingFolderIds((ids) => ids.filter((id) => id !== active.id));
       setExpandingFolderIds((ids) => ids.filter((id) => id !== active.id));
     }
+    dragIntentRef.current = createBookmarkDragIntent(flattenedItems, active.id);
     setActiveId(active.id);
-    setOverId(active.id);
-    setDragMotionTick(0);
     autoExpandedFoldersRef.current.clear();
-    // The PointerSensor's activator is a PointerEvent (clientX/Y, touch included);
-    // the touch fallback stays for a TouchEvent activator so hover-to-auto-expand
-    // works on the phone exactly as it does under the mouse.
-    const activatorTouch = activatorEvent?.touches?.[0] ?? activatorEvent?.changedTouches?.[0] ?? null;
-    if (typeof activatorEvent?.clientX === 'number' && typeof activatorEvent?.clientY === 'number') {
-      pointerPositionRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
-    } else if (activatorTouch) {
-      pointerPositionRef.current = { x: activatorTouch.clientX, y: activatorTouch.clientY };
-    }
-    pointerMoveListenerRef.current = (event) => {
-      const touch = event.touches?.[0];
-      if (touch) {
-        pointerPositionRef.current = { x: touch.clientX, y: touch.clientY };
-        return;
-      }
-      pointerPositionRef.current = { x: event.clientX, y: event.clientY };
-    };
-    window.addEventListener('pointermove', pointerMoveListenerRef.current, { passive: true });
-    window.addEventListener('mousemove', pointerMoveListenerRef.current, { passive: true });
-    window.addEventListener('touchmove', pointerMoveListenerRef.current, { passive: true });
     document.body.style.setProperty('cursor', 'grabbing');
+    // The shared "a reorder is live" flag (SortableRearrangeList sets the same
+    // class) — sheet gestures and other listeners can stand down while it is on.
+    document.body.classList.add('drag-rearrange-dragging');
   }, [expandedFolders, flattenedItems]);
-
-  const handleDragMove = useCallback(({ delta }) => {
-    setOffsetLeft(delta.x);
-    setDragMotionTick((value) => value + 1);
-  }, []);
-
-  const handleDragOver = useCallback(({ over }) => {
-    setOverId(over?.id ?? null);
-  }, []);
 
   const resetDragState = useCallback(() => {
     clearAutoExpandTimer();
-    if (pointerMoveListenerRef.current) {
-      window.removeEventListener('pointermove', pointerMoveListenerRef.current);
-      window.removeEventListener('mousemove', pointerMoveListenerRef.current);
-      window.removeEventListener('touchmove', pointerMoveListenerRef.current);
-      pointerMoveListenerRef.current = null;
-    }
-    pointerPositionRef.current = null;
+    dragIntentRef.current = null;
+    const wake = dragIntentWakeRef.current;
+    if (wake.timer) clearTimeout(wake.timer);
+    wake.timer = null;
+    wake.at = null;
     autoExpandedFoldersRef.current.clear();
     setActiveId(null);
-    setOverId(null);
-    setOffsetLeft(0);
-    setDragMotionTick(0);
     document.body.style.setProperty('cursor', '');
+    document.body.classList.remove('drag-rearrange-dragging');
   }, [clearAutoExpandTimer]);
 
   const handleDragEnd = useCallback(({ active, over }) => {
     const autoExpandedFolderIds = Array.from(autoExpandedFoldersRef.current);
     const draggedCollapsedFolderId = collapsedDragFolderIdRef.current;
     collapsedDragFolderIdRef.current = null;
-    const finalParentId = projected?.parentId ?? null;
+    // The drop lands on the COMMITTED spot — exactly what the rows showed. A
+    // dwell still running at release (e.g. about to enter a folder) is dropped.
+    const intent = dragIntentRef.current;
+    const finalParentId = intent?.parentId ?? null;
     const foldersToRecollapse = autoExpandedFolderIds.filter((folderId) => folderId !== finalParentId);
 
-    if (projected && over) {
-      const { parentId } = projected;
-      const nextTree = applyBookmarkTreeProjection(bookmarkTree, active.id, over.id, projected);
+    if (intent && over) {
+      const { parentId } = intent;
+      const nextTree = applyBookmarkTreeProjection(bookmarkTree, active.id, intent.overId, intent);
       if (nextTree !== bookmarkTree) {
         setOptimisticBookmarkTree(nextTree);
         persistBookmarkTree(nextTree);
@@ -1048,7 +1110,7 @@ const BookmarksPanel = ({
         animateCollapseFolders(foldersToRecollapse);
       }, GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS);
     }
-  }, [animateCollapseFolders, bookmarkTree, expandFolderOnly, persistBookmarkTree, projected, resetDragState]);
+  }, [animateCollapseFolders, bookmarkTree, expandFolderOnly, persistBookmarkTree, resetDragState]);
 
   const handleDragCancel = useCallback(() => {
     const foldersToRecollapse = Array.from(autoExpandedFoldersRef.current);
@@ -1066,6 +1128,8 @@ const BookmarksPanel = ({
     collapseTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
     expandTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
     if (collapseLayoutLockTimeoutRef.current) clearTimeout(collapseLayoutLockTimeoutRef.current);
+    if (dragIntentWakeRef.current.timer) clearTimeout(dragIntentWakeRef.current.timer);
+    if (dragIntentRef.current) document.body.classList.remove('drag-rearrange-dragging');
   }, [clearAutoExpandTimer]);
 
   useEffect(() => {
@@ -1078,39 +1142,36 @@ const BookmarksPanel = ({
     return () => clearTimeout(timeout);
   }, [activeId, bookmarks, optimisticBookmarkTree]);
 
+  // Resting on a CLOSED folder's middle (the drag is committed "into" it) for
+  // GROUP_AUTO_EXPAND_DELAY_MS opens it, so the row can be placed among its
+  // children; a folder opened this way closes again if the drop goes elsewhere.
+  const autoExpandTargetId = (() => {
+    const intoId = dragIntent?.intoId;
+    if (!intoId || intoId === activeId) return null;
+    const folder = flattenedItems.find((item) => item.id === intoId);
+    return folder?.type === 'folder' && folder.collapsed && folder.children?.length > 0 ? intoId : null;
+  })();
+
   useEffect(() => {
-    if (!activeId) {
+    if (!autoExpandTargetId) {
       clearAutoExpandTimer();
       return;
     }
-
-    const autoExpandTarget = (
-      (overId && activeId !== overId
-        ? getAutoExpandTargetFolder(flattenedItems, activeId, overId, offsetLeft)
-        : null) ??
-      getAutoExpandTargetFromPointer()
-    );
-
-    if (!autoExpandTarget || autoExpandTarget.id === activeId) {
-      clearAutoExpandTimer();
-      return;
-    }
-
-    if (autoExpandFolderRef.current === autoExpandTarget.id) return;
+    if (autoExpandFolderRef.current === autoExpandTargetId) return;
 
     clearAutoExpandTimer();
-    autoExpandFolderRef.current = autoExpandTarget.id;
+    autoExpandFolderRef.current = autoExpandTargetId;
     autoExpandTimerRef.current = setTimeout(() => {
-      autoExpandedFoldersRef.current.add(autoExpandTarget.id);
-      expandFolderOnly(autoExpandTarget.id);
-      setExpandingFolderIds((ids) => [...new Set([...ids, autoExpandTarget.id])]);
+      autoExpandedFoldersRef.current.add(autoExpandTargetId);
+      expandFolderOnly(autoExpandTargetId);
+      setExpandingFolderIds((ids) => [...new Set([...ids, autoExpandTargetId])]);
       setTimeout(() => {
-        setExpandingFolderIds((ids) => ids.filter((id) => id !== autoExpandTarget.id));
+        setExpandingFolderIds((ids) => ids.filter((id) => id !== autoExpandTargetId));
       }, GROUP_COLLAPSE_ANIMATION_MS);
       autoExpandTimerRef.current = null;
       autoExpandFolderRef.current = null;
     }, GROUP_AUTO_EXPAND_DELAY_MS);
-  }, [activeId, clearAutoExpandTimer, dragMotionTick, expandFolderOnly, flattenedItems, getAutoExpandTargetFromPointer, offsetLeft, overId]);
+  }, [autoExpandTargetId, clearAutoExpandTimer, expandFolderOnly]);
 
   const handleNavigate = useCallback((pageRef) => {
     const parseOneBasedPage = (value) => {
@@ -1667,12 +1728,11 @@ const BookmarksPanel = ({
     return (
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={bookmarkCollisionDetection}
         modifiers={[restrictBookmarkTreeDrag]}
         measuring={bookmarkTreeMeasuring}
+        autoScroll={CALM_LIST_AUTO_SCROLL}
         onDragStart={handleDragStart}
-        onDragMove={handleDragMove}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
@@ -1827,6 +1887,8 @@ const BookmarksPanel = ({
                   item={item}
                   depth={depth}
                   projectedDepth={item.id === activeId && projected ? projected.depth : null}
+                  dropTargetState={activeId ? getDropTargetState(item.id) : null}
+                  landingSlot={item.id === activeId && projected ? { offsetY: projected.slotOffsetY, depth: projected.depth } : null}
                   isEditMode={isEditMode}
                   onToggle={toggleExpand}
                   onNavigate={handleNavigate}
@@ -2095,12 +2157,11 @@ const BookmarksPanel = ({
         `}</style>
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={bookmarkCollisionDetection}
           modifiers={[restrictBookmarkTreeDrag]}
           measuring={bookmarkTreeMeasuring}
+          autoScroll={CALM_LIST_AUTO_SCROLL}
           onDragStart={handleDragStart}
-          onDragMove={handleDragMove}
-          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
@@ -2122,6 +2183,8 @@ const BookmarksPanel = ({
                     item={item}
                     depth={item.depth}
                     projectedDepth={item.id === activeId && projected ? projected.depth : null}
+                    dropTargetState={activeId ? getDropTargetState(item.id) : null}
+                    landingSlot={item.id === activeId && projected ? { offsetY: projected.slotOffsetY, depth: projected.depth } : null}
                     activeDepth={activeSortableItem?.depth}
                     isEditMode={isEditMode}
                     isDraggingAny={Boolean(activeId)}

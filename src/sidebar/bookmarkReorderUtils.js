@@ -119,6 +119,33 @@ export const buildSortableBookmarkTree = (flattenedItems) => {
   return root.children;
 };
 
+// The depth range a slot allows once the dragged row is moved to `overIndex`:
+// never deeper than "inside the folder above" and never shallower than the row
+// below (which would orphan it).
+const getSlotBounds = (items, activeIndex, overIndex) => {
+  const newItems = arrayMoveBookmarkItems(items, activeIndex, overIndex);
+  const previousItem = newItems[overIndex - 1];
+  const nextItem = newItems[overIndex + 1];
+  const canNestUnderPrevious = previousItem?.type === 'folder';
+  const maxDepth = previousItem ? previousItem.depth + (canNestUnderPrevious ? 1 : 0) : 0;
+  const minDepth = nextItem ? nextItem.depth : 0;
+  return { newItems, previousItem, maxDepth, minDepth };
+};
+
+const getSlotParentId = (newItems, overIndex, depth) => {
+  const previousItem = newItems[overIndex - 1];
+  if (depth === 0 || !previousItem) return null;
+  if (depth === previousItem.depth) return previousItem.parentId;
+  if (depth > previousItem.depth) {
+    return previousItem.type === 'folder' ? previousItem.id : previousItem.parentId;
+  }
+
+  return newItems
+    .slice(0, overIndex)
+    .reverse()
+    .find((item) => item.depth === depth)?.parentId ?? null;
+};
+
 export const getBookmarkProjection = (
   items,
   activeId,
@@ -131,30 +158,210 @@ export const getBookmarkProjection = (
   if (overItemIndex === -1 || activeItemIndex === -1) return null;
 
   const activeItem = items[activeItemIndex];
-  const newItems = arrayMoveBookmarkItems(items, activeItemIndex, overItemIndex);
-  const previousItem = newItems[overItemIndex - 1];
-  const nextItem = newItems[overItemIndex + 1];
-  const canNestUnderPrevious = previousItem?.type === 'folder';
-  const maxDepth = previousItem ? previousItem.depth + (canNestUnderPrevious ? 1 : 0) : 0;
-  const minDepth = nextItem ? nextItem.depth : 0;
+  const { newItems, maxDepth, minDepth } = getSlotBounds(items, activeItemIndex, overItemIndex);
   const dragDepth = getDragDepth(dragOffset, indentationWidth);
   const projectedDepth = activeItem.depth + dragDepth;
   const depth = Math.max(minDepth, Math.min(projectedDepth, maxDepth));
 
-  const getParentId = () => {
-    if (depth === 0 || !previousItem) return null;
-    if (depth === previousItem.depth) return previousItem.parentId;
-    if (depth > previousItem.depth) {
-      return previousItem.type === 'folder' ? previousItem.id : previousItem.parentId;
-    }
+  return { depth, maxDepth, minDepth, parentId: getSlotParentId(newItems, overItemIndex, depth) };
+};
 
-    return newItems
-      .slice(0, overItemIndex)
-      .reverse()
-      .find((item) => item.depth === depth)?.parentId ?? null;
+/*
+ * DRAG INTENT (UX 2026-09-30, owner: moving a bookmark into or out of a folder
+ * was "jumpy", too eager to nest or un-nest — "it has to get paused a little
+ * bit when moving into folders and out of folders. The user should feel super
+ * controlled").
+ *
+ * The plain projection above re-derives the landing spot from scratch on every
+ * frame: the row under the dragged centre picks the slot, and round(dx / 24)
+ * picks the depth. A 12px sideways wobble of a thumb flipped the depth, and a
+ * finger resting on the line under a folder flipped the row in and out of it
+ * on every tremor. This resolver keeps a COMMITTED landing spot and only moves
+ * it for a clear intent:
+ *
+ *   - Same-level reorders commit at once (with a few px of slot hysteresis so
+ *     a finger resting on a row boundary does not see-saw the rows).
+ *   - Depth is sticky: it stays what it was until the drag moves a clear
+ *     BOOKMARK_DEPTH_STEP_RATIO of an indent sideways (18px) from where the
+ *     depth last changed — and that sideways step commits at once.
+ *   - A folder row has three zones: its top quarter drops before it, its
+ *     bottom quarter after it, and its middle half INTO it (Finder-style).
+ *   - Any change of parent caused by moving up or down (into a folder's middle,
+ *     into an open folder's children, or out of a folder's range) waits
+ *     BOOKMARK_NEST_DWELL_MS. Going in needs the drag to REST there — same
+ *     slot, within BOOKMARK_DWELL_STILL_RATIO of a row — for that long, so a
+ *     drag that keeps moving, however slowly, passes a folder by; coming out
+ *     needs it to stay outside the folder for that long.
+ *
+ * Geometry is dnd-kit's own: `rects` are the rows' layout rects (transform
+ * free) and `centerY` / `dx` come from the dragged row's collision rect, all in
+ * one coordinate space. Rows between the lifted row and its slot are drawn one
+ * row-height displaced (verticalListSortingStrategy); the resolver hit-tests
+ * against those drawn positions, so what is under the finger is what the user
+ * sees under it.
+ */
+export const BOOKMARK_NEST_DWELL_MS = 300;
+export const BOOKMARK_DEPTH_STEP_RATIO = 0.75;
+export const BOOKMARK_SLOT_HYSTERESIS_RATIO = 0.2;
+export const BOOKMARK_FOLDER_EDGE_RATIO = 0.25;
+export const BOOKMARK_DWELL_STILL_RATIO = 0.15;
+
+export const createBookmarkDragIntent = (items, activeId) => {
+  const activeItem = items.find(({ id }) => id === activeId);
+  return {
+    overId: activeId,
+    depth: activeItem?.depth ?? 0,
+    parentId: activeItem?.parentId ?? null,
+    intoId: null,
+    anchorX: 0,
+    slotOffsetY: 0,
+    pending: null,
+  };
+};
+
+const sameIntent = (a, b) => (
+  a.overId === b.overId &&
+  a.depth === b.depth &&
+  a.parentId === b.parentId &&
+  a.intoId === b.intoId &&
+  a.anchorX === b.anchorX &&
+  a.slotOffsetY === b.slotOffsetY &&
+  (a.pending?.key ?? null) === (b.pending?.key ?? null) &&
+  (a.pending?.since ?? null) === (b.pending?.since ?? null) &&
+  (a.pending?.intoId ?? null) === (b.pending?.intoId ?? null)
+);
+
+export const resolveBookmarkDragIntent = (intent, {
+  items,
+  activeId,
+  rects,
+  centerY,
+  dx = 0,
+  now = 0,
+  indentationWidth = BOOKMARK_INDENTATION_WIDTH,
+  dwellMs = BOOKMARK_NEST_DWELL_MS,
+}) => {
+  const activeIndex = items.findIndex(({ id }) => id === activeId);
+  if (!intent || activeIndex === -1) return { intent, wakeAt: null };
+
+  const getRect = (id) => (typeof rects?.get === 'function' ? rects.get(id) : rects?.[id]);
+  let committedIndex = items.findIndex(({ id }) => id === intent.overId);
+  if (committedIndex === -1) committedIndex = activeIndex;
+  const activeRect = getRect(activeId);
+  const shift = activeRect?.height ?? 0;
+  const displacement = (index) => {
+    if (activeIndex < index && index <= committedIndex) return -shift;
+    if (committedIndex <= index && index < activeIndex) return shift;
+    return 0;
+  };
+  const drawnPosition = (index) => {
+    if (activeIndex < index && index <= committedIndex) return index - 1;
+    if (committedIndex <= index && index < activeIndex) return index + 1;
+    return index;
+  };
+  const beforeIndex = (index) => (index > activeIndex ? index - 1 : index);
+  const afterIndex = (index) => (index > activeIndex ? index : index + 1);
+
+  // The row drawn under the dragged row's centre, if any (none = the gap).
+  let hovered = null;
+  for (let index = 0; index < items.length && !hovered; index += 1) {
+    if (index === activeIndex) continue;
+    const rect = getRect(items[index].id);
+    if (!rect || !(rect.height > 0)) continue;
+    const top = rect.top + displacement(index);
+    if (centerY >= top && centerY < top + rect.height) {
+      hovered = {
+        item: items[index],
+        index,
+        rel: (centerY - top) / rect.height,
+        below: drawnPosition(index) > committedIndex,
+      };
+    }
+  }
+
+  let targetIndex = committedIndex;
+  let intoItem = null;
+  if (hovered) {
+    const { item, index, rel, below } = hovered;
+    if (item.type === 'folder') {
+      if (rel < BOOKMARK_FOLDER_EDGE_RATIO) targetIndex = beforeIndex(index);
+      else if (rel > 1 - BOOKMARK_FOLDER_EDGE_RATIO) targetIndex = afterIndex(index);
+      else {
+        intoItem = item;
+        targetIndex = afterIndex(index);
+      }
+    } else if (below) {
+      targetIndex = rel >= BOOKMARK_SLOT_HYSTERESIS_RATIO ? afterIndex(index) : beforeIndex(index);
+    } else {
+      targetIndex = rel <= 1 - BOOKMARK_SLOT_HYSTERESIS_RATIO ? beforeIndex(index) : afterIndex(index);
+    }
+  }
+  // Resting in the gap keeps whatever "into" the committed spot already had.
+  const keepsInto = !hovered && targetIndex === committedIndex && intent.intoId;
+
+  const { newItems, maxDepth, minDepth } = getSlotBounds(items, activeIndex, targetIndex);
+  const clampDepth = (value) => Math.max(minDepth, Math.min(value, maxDepth));
+  const stepRatio = (dx - intent.anchorX) / indentationWidth;
+  const step = stepRatio >= BOOKMARK_DEPTH_STEP_RATIO ? 1 : stepRatio <= -BOOKMARK_DEPTH_STEP_RATIO ? -1 : 0;
+  let depth;
+  let stepped = false;
+  if (intoItem) {
+    depth = clampDepth(intoItem.depth + 1);
+  } else {
+    const resting = clampDepth(intent.depth);
+    depth = clampDepth(intent.depth + step);
+    stepped = step !== 0 && depth !== resting;
+  }
+  const parentId = getSlotParentId(newItems, targetIndex, depth);
+  const candidateIntoId = intoItem?.id ?? (keepsInto && !stepped ? intent.intoId : null);
+
+  const targetRect = getRect(items[targetIndex].id);
+  const landingTop = !activeRect || !targetRect || targetIndex === activeIndex
+    ? activeRect?.top ?? 0
+    : targetIndex > activeIndex
+      ? targetRect.top + targetRect.height - shift
+      : targetRect.top;
+  const candidate = {
+    overId: items[targetIndex].id,
+    depth,
+    parentId,
+    intoId: candidateIntoId,
+    slotOffsetY: Math.round((landingTop - (activeRect?.top ?? 0)) * 10) / 10,
   };
 
-  return { depth, maxDepth, minDepth, parentId: getParentId() };
+  let next;
+  let wakeAt = null;
+  if (parentId === intent.parentId || (stepped && targetIndex === committedIndex)) {
+    next = {
+      ...intent,
+      ...candidate,
+      anchorX: stepped ? intent.anchorX + step * indentationWidth : intent.anchorX,
+      pending: null,
+    };
+  } else {
+    // Going deeper (or into a folder) must rest on one slot; coming out only
+    // has to stay out of the folder.
+    const entering = parentId !== null && depth >= intent.depth;
+    const key = entering ? `in:${parentId}:${candidate.overId}` : `out:${parentId}`;
+    const stillLimit = shift * BOOKMARK_DWELL_STILL_RATIO;
+    const restarted = !intent.pending
+      || intent.pending.key !== key
+      || (entering && Math.abs(centerY - intent.pending.y) > stillLimit);
+    const pending = restarted
+      ? { key, since: now, y: centerY, parentId }
+      : intent.pending;
+    if (now - pending.since >= dwellMs) {
+      next = { ...intent, ...candidate, anchorX: dx, pending: null };
+    } else {
+      next = {
+        ...intent,
+        pending: { ...pending, intoId: entering ? parentId : null },
+      };
+      wakeAt = pending.since + dwellMs;
+    }
+  }
+
+  return { intent: sameIntent(next, intent) ? intent : next, wakeAt };
 };
 
 export const getAutoExpandTargetFolder = (items, activeId, overId, dragOffset) => {

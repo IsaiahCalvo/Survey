@@ -97,6 +97,10 @@ export default function DragRearrangeHandle({
     <span
       draggable={nativeDraggable}
       data-drag-rearrange-handle
+      // Shared "this is a drag grip" marker (see reorder/dragAutoScroll.js):
+      // ancestor gesture recognisers (phone sheet swipe-down) ignore touches
+      // that start inside [data-drag-handle].
+      data-drag-handle=""
       title={morphs && collapseOpen ? 'Collapse' : title}
       aria-expanded={morphs ? collapseOpen : undefined}
       onClick={(event) => {

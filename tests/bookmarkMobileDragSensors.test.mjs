@@ -71,17 +71,50 @@ test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
   );
   assert.ok(mobileBranch.length > 0, 'mobileMode branch should precede the desktop DndContext');
   assert.match(mobileBranch, /sensors=\{sensors\}/);
-  // Same collision detection, same drag-clamp modifier, same measuring, and the
-  // same drag handlers as desktop, so the reorder / reparent result is identical.
-  assert.match(mobileBranch, /collisionDetection=\{closestCenter\}/);
+  // Same collision detection (the drag-intent resolver, UX 2026-09-30), same
+  // drag-clamp modifier, same measuring, same calm auto-scroll and the same
+  // drag handlers as desktop, so the reorder / reparent result is identical.
+  assert.match(mobileBranch, /collisionDetection=\{bookmarkCollisionDetection\}/);
   assert.match(mobileBranch, /modifiers=\{\[restrictBookmarkTreeDrag\]\}/);
   assert.match(mobileBranch, /measuring=\{bookmarkTreeMeasuring\}/);
-  for (const handler of ['handleDragStart', 'handleDragMove', 'handleDragOver', 'handleDragEnd', 'handleDragCancel']) {
+  assert.match(mobileBranch, /autoScroll=\{CALM_LIST_AUTO_SCROLL\}/);
+  for (const handler of ['handleDragStart', 'handleDragEnd', 'handleDragCancel']) {
     assert.match(mobileBranch, new RegExp(`\\{${handler}\\}`), `mobile DndContext should reuse ${handler}`);
   }
   assert.match(mobileBranch, /<SortableContext items=\{sortedIds\}/);
-  // The projected depth drives the live reparent feedback on the phone too.
+  // The projected depth drives the live reparent feedback on the phone too,
+  // with the same drop-target highlight and landing slot as desktop.
   assert.match(mobileBranch, /projectedDepth=\{item\.id === activeId && projected \? projected\.depth : null\}/);
+  assert.match(mobileBranch, /dropTargetState=\{activeId \? getDropTargetState\(item\.id\) : null\}/);
+  assert.match(mobileBranch, /landingSlot=\{item\.id === activeId && projected \?/);
+});
+
+/*
+ * UX 2026-09-30 — owner: moving a bookmark into / out of a folder was jumpy
+ * ("it has to get paused a little bit"). Both layouts resolve the landing spot
+ * through resolveBookmarkDragIntent (hysteresis + dwell, unit-tested in
+ * bookmarkReorderUtils.test.mjs), never the raw per-frame projection, and the
+ * drop commits exactly the resolved spot.
+ */
+test('both trees use the drag-intent resolver and drop on the committed spot', () => {
+  const dndBlocks = source.split('<DndContext').slice(1);
+  assert.equal(dndBlocks.length, 2, 'phone + desktop DndContext');
+  for (const block of dndBlocks) {
+    assert.match(block.slice(0, 600), /collisionDetection=\{bookmarkCollisionDetection\}/);
+    assert.match(block.slice(0, 600), /autoScroll=\{CALM_LIST_AUTO_SCROLL\}/);
+  }
+  assert.match(source, /resolveBookmarkDragIntent\(intent, \{/);
+  assert.match(source, /dragIntentRef\.current = createBookmarkDragIntent\(flattenedItems, active\.id\)/);
+  const dragEnd = source.slice(source.indexOf('const handleDragEnd = useCallback('), source.indexOf('const handleDragCancel = useCallback('));
+  assert.match(dragEnd, /applyBookmarkTreeProjection\(bookmarkTree, active\.id, intent\.overId, intent\)/);
+  assert.doesNotMatch(source, /getBookmarkProjection\(/, 'the raw per-frame projection no longer drives the panel');
+});
+
+test('every bookmark grip carries the shared data-drag-handle marker', () => {
+  const desktopRow = source.slice(source.indexOf('const BookmarkTreeRow = ('), source.indexOf('const MobileBookmarkRow = ('));
+  const phoneRow = source.slice(source.indexOf('const MobileBookmarkRow = ('), source.indexOf('const BookmarksPanel = ('));
+  assert.match(desktopRow, /\{\.\.\.mergeDragHandleProps\([\s\S]{0,80}?\)\}\s*data-drag-handle=""/);
+  assert.match(phoneRow, /className="mobile-bookmark-grip"[\s\S]{0,300}data-drag-handle=""/);
 });
 
 test('the phone row exposes a drag grip that is always touch-action: none', () => {
