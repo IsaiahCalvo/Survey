@@ -451,6 +451,16 @@ const SurveySpacesRail = ({
   // `if (!confirmed) return;` shape and nothing deletes before the user answers.
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
+  // Desktop panel motion (owner 2026-09-30: "the expand animation isn't
+  // smooth"). Once the panel has been expanded or collapsed at least once, it
+  // plays surveyRailExpand / surveyRailCollapse (styles.css) instead of the
+  // mount-time slideInRight, so the very first render never plays a collapse.
+  const railPrevCollapsedRef = useRef(isSurveyPanelCollapsed);
+  const railToggledRef = useRef(false);
+  if (railPrevCollapsedRef.current !== isSurveyPanelCollapsed) {
+    railPrevCollapsedRef.current = isSurveyPanelCollapsed;
+    railToggledRef.current = true;
+  }
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
   // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
@@ -1213,8 +1223,23 @@ const SurveySpacesRail = ({
                 // 2026-09-17: the desktop rail keeps its horizontal slide-in; on
                 // phone the sheet rises from the bottom, so a right-edge
                 // keyframe here would fight useMobileSheetMotion's transform.
-                animation: mobileMode ? 'none' : 'slideInRight 0.3s ease-out',
-                transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease',
+                // 2026-09-30 (owner: expand/collapse not smooth, the footer
+                // stretched ahead of the panel): the width is no longer
+                // transitioned, which re-laid-out every row of the panel on
+                // every frame. Expanding lays the panel out ONCE at 320px and
+                // slides it in with a transform (surveyRailExpand); collapsing
+                // shrinks only the light collapsed strip (surveyRailCollapse).
+                // Both are 0.2s ease like the old transition, end in an
+                // animationend the viewer's side-room measure listens for, and
+                // are off under prefers-reduced-motion (styles.css). The rail
+                // footer's expanded row lives INSIDE this panel (AppShell
+                // portals it here), so it moves with it frame for frame.
+                animation: mobileMode
+                  ? 'none'
+                  : (railToggledRef.current
+                    ? (isSurveyPanelCollapsed ? 'surveyRailCollapse 0.2s ease' : 'surveyRailExpand 0.2s ease')
+                    : 'slideInRight 0.3s ease-out'),
+                transition: 'right 0.2s ease, top 0.2s ease, height 0.2s ease',
                 // Phase F: finger-follow / spring-back / slide-down exit, plus
                 // (2026-09-17) the slide-up entrance — one transform timeline.
                 ...(mobileMode ? surveySheetMotionStyle : null)
@@ -1875,6 +1900,12 @@ const SurveySpacesRail = ({
                                     )}
                                 </div>
                       )}
+                      {/* Owner 2026-09-30: Export sat flush against the X that
+                          exits Survey mode, so one was easily hit for the other.
+                          A rule with 8px of air each side now separates the two
+                          hit areas (desktop only; the phone sheet has its own
+                          spacing). */}
+                      {!mobileMode && <span className="survey-rail__head-rule" aria-hidden="true" />}
                       <button
                         onClick={() => {
                           if (mobileMode) {

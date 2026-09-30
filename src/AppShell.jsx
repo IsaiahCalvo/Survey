@@ -4151,7 +4151,14 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
 
-              if (rightRailCollapsed) {
+              // The expanded row lives inside the open panel (see below). The
+              // panel reports its collapse to this component one frame after
+              // it changes, so until an OPEN panel element exists the rail
+              // keeps drawing the vertical stack - never a row over nothing.
+              const railPanelEl = rightRailCollapsed
+                ? null
+                : document.querySelector('#chrome-right-host .survey-rail:not(.is-collapsed)');
+              if (!railPanelEl) {
                 // Collapsed 48px rail — vertical stack. position:relative +
                 // zIndex 2 keeps it above (and clickable over) the collapsed
                 // survey overlay, which is absolute at the rail's full
@@ -4271,11 +4278,19 @@ export default function App({ devPreviewReturnTab = null }) {
               }
 
               // Expanded 320px survey panel — horizontal row pinned to the
-              // panel bottom: [ − % + ] | [ ‹ n · N › ] | [ Fit ▴ ]. The
-              // host column stays 48px wide; this overlay reaches leftward
-              // exactly like the panel itself does.
-              return (
-                <div style={{ position: 'absolute', right: 0, bottom: 0, width: '320px', boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+              // panel bottom: [ − % + ] | [ ‹ n · N › ] | [ Fit ▴ ].
+              // 2026-09-30 (owner: "it stretches, and it's missing its left
+              // border when stretched"): the row is portalled INTO the panel
+              // element and spans its content box, so the panel's own left
+              // border runs down beside it and the row rides the panel's
+              // expand / collapse motion frame for frame (it used to be a
+              // separate 320px box that jumped to full width at once while the
+              // panel was still growing).
+              const footerRow = (
+                <div
+                  data-rail-footer-row="true"
+                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, boxSizing: 'border-box', zIndex: 2, background: 'var(--surface-1)', borderTop: '1px solid var(--border)', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                >
                   <button
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
@@ -4360,6 +4375,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   </div>
                 </div>
               );
+              return createPortal(footerRow, railPanelEl);
             })()}
           </div>
         </div>

@@ -116,6 +116,18 @@
   justify-content: center;
 }
 
+/* Between Export and the exit X (owner 2026-09-30: too easy to hit the wrong
+   one). A 1px x 16px hairline with 8px of air each side, so the two buttons'
+   full-height pads are 17px apart instead of touching. */
+.survey-rail .survey-rail__head-rule {
+  width: 1px;
+  height: 16px;
+  margin: 0 8px;
+  align-self: center;
+  flex: 0 0 auto;
+  background: var(--border);
+}
+
 /* The caret beside Export hugs the word: a narrow pad of its own. */
 .survey-rail .survey-rail__head-btn--caret {
   width: 18px;

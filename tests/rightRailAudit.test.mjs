@@ -100,7 +100,7 @@ const viewer = await readFile(new URL('../src/PDFViewer.jsx', import.meta.url), 
 const states = await readFile(new URL('../src/styles/states.css', import.meta.url), 'utf8');
 
 test('rail "1 · 36": drawn dot between two equal-height number boxes', () => {
-  const collapsed = appShell.slice(appShell.indexOf('if (rightRailCollapsed)'), appShell.indexOf('// Expanded 320px survey panel'));
+  const collapsed = appShell.slice(appShell.indexOf('if (!railPanelEl)'), appShell.indexOf('// Expanded 320px survey panel'));
   const dotAt = collapsed.indexOf('data-rail-page-dot');
   assert.ok(collapsed.indexOf('{pageValue}') < dotAt && dotAt < collapsed.indexOf('{api.numPages}'));
   assert.doesNotMatch(collapsed, />·</, 'no font middle-dot glyph in the vertical stack');
