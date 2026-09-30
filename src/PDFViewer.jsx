@@ -6884,7 +6884,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         scrollTop: viewerContainer.scrollTop,
         tMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()
       };
-      recordTrackpadInteractionEvent('pointer-down', {
+      // Perf: readTrackpadDebugState forces style + layout (getComputedStyle,
+      // elementFromPoint); only pay for it while the recorder is on.
+      if (trackpadInteractionDebugRef.current?.enabled) recordTrackpadInteractionEvent('pointer-down', {
         family: 'pan',
         direction: 'start',
         button: event.button,
@@ -6907,7 +6909,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastDragEventAt = now;
       const start = trackpadInteractionDebugRef.current.pointerPanStart || null;
       trackpadInteractionDebugRef.current.totals.pointerPanMoves += 1;
-      recordTrackpadInteractionEvent('pointer-pan-move', {
+      if (trackpadInteractionDebugRef.current.enabled) recordTrackpadInteractionEvent('pointer-pan-move', {
         family: 'pan',
         direction: 'drag',
         processed: true,
@@ -6957,7 +6959,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       } catch (_e) { /* swallow */ }
       pointerDown = false;
-      recordTrackpadInteractionEvent('pointer-up', {
+      if (trackpadInteractionDebugRef.current?.enabled) recordTrackpadInteractionEvent('pointer-up', {
         family: 'pan',
         direction: 'end',
         after: readTrackpadDebugState(viewerContainer)
@@ -31569,6 +31571,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
 
+  // Perf (2026-09-30): SVGAnnotationLayer is memo()'d, but it was handed
+  // per-render inline lambdas and survey-marker delete callbacks whose deps
+  // churn, so every PDFViewer render (page change, scroll, zoom commit)
+  // re-rendered every page's whole SVG layer. One identity per page, always
+  // calling the latest handler.
+  const svgLayerHandlerSourceRef = useRef(null);
+  svgLayerHandlerSourceRef.current = {
+    handleSaveAnnotationsWithTextMarkupAtomicity,
+    requestAnnotationEditEntry,
+    handleDeleteSurveyMarker,
+    handleDeleteSurveyMarkers,
+    handleSurveyMarkerCreated,
+  };
+  const svgLayerPageHandlersRef = useRef(new Map());
+  const getSvgLayerPageHandlers = (pageNumber) => {
+    let handlers = svgLayerPageHandlersRef.current.get(pageNumber);
+    if (handlers) return handlers;
+    const latest = () => svgLayerHandlerSourceRef.current;
+    handlers = {
+      onSaveAnnotations: (updatedJSON, saveContext) => (
+        latest().handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)
+      ),
+      // UX: one dispatcher for every edit entry — this native double-click
+      // (Select family, mouse) and the window-capture double-tap recogniser
+      // that covers Pan, Text Select and touch. Routing (which type opens
+      // which editor) lives in utils/annotationEditRoute so the two entries
+      // cannot drift.
+      onRequestEditMode: (annotationIndex, annotationType, editOptions) => latest().requestAnnotationEditEntry({
+        pageNumber,
+        annotationIndex,
+        annotationType,
+        caretAnchor: editOptions?.caretAnchor || null,
+      }),
+      onRequestExitEdit: () => setEditingAnnotation(null),
+      onSurveyMarkerCreated: (bounds) => latest().handleSurveyMarkerCreated(pageNumber, bounds),
+      onDeleteSurveyMarker: (annotationId) => latest().handleDeleteSurveyMarker(annotationId),
+      onDeleteSurveyMarkers: (annotationIds) => latest().handleDeleteSurveyMarkers(annotationIds),
+    };
+    svgLayerPageHandlersRef.current.set(pageNumber, handlers);
+    return handlers;
+  };
+
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
     // Only auto-switch once when first entering survey mode, then allow user to switch tools freely
@@ -35789,6 +35833,10 @@ ${pageBlocks}
                                   // hole showed intact ink through it ("partial erase does
                                   // nothing" regression, 2026-07-14).
                                   visible={suspendFullSvgForProxy}
+                                  // Perf: only paint the hidden bitmap while it can be shown
+                                  // (an erase can only start on a page in the render window).
+                                  paintEnabled={suspendFullSvgForProxy || (isEraserTool
+                                    && (pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -35914,16 +35962,19 @@ ${pageBlocks}
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
-                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
+                                  // visiblePagesSet is never updated past page 1, so a pinch-out
+                                  // left newly visible pages with no marks until the current page
+                                  // changed; the engine's mounted window is the real one.
+                                  isPageInRenderWindow={pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
                                   surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
                                   onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
-                                  onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                  onDeleteSurveyMarker={getSvgLayerPageHandlers(pageNumber).onDeleteSurveyMarker}
                                   isSurveyMarkerFamilyMember={isSurveyMarkerFamilyMember}
-                                  onDeleteSurveyMarkers={handleDeleteSurveyMarkers}
+                                  onDeleteSurveyMarkers={getSvgLayerPageHandlers(pageNumber).onDeleteSurveyMarkers}
                                   onReorderFamily={handleReorderFamily}
                                   onCopyFamily={copyFamilySelection}
                                   onDuplicateFamily={duplicateFamilySelection}
@@ -35941,22 +35992,8 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
-                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)}
-                                  onRequestEditMode={(annotationIndex, annotationType, editOptions) => {
-                                    // UX: one dispatcher for every edit entry —
-                                    // this native double-click (Select family,
-                                    // mouse) and the window-capture double-tap
-                                    // recogniser that covers Pan, Text Select
-                                    // and touch. Routing (which type opens which
-                                    // editor) lives in utils/annotationEditRoute
-                                    // so the two entries cannot drift.
-                                    requestAnnotationEditEntry({
-                                      pageNumber,
-                                      annotationIndex,
-                                      annotationType,
-                                      caretAnchor: editOptions?.caretAnchor || null,
-                                    });
-                                  }}
+                                  onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
+                                  onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
                                   // mode): mount the edit-entry HIT LAYER under Pan.
@@ -35971,7 +36008,7 @@ ${pageBlocks}
                                   lassoTouchMode={lassoTouchMode}
                                   editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
-                                  onRequestExitEdit={() => setEditingAnnotation(null)}
+                                  onRequestExitEdit={getSvgLayerPageHandlers(pageNumber).onRequestExitEdit}
                                   // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 — new props
                                   // for the unified callout render + selection + delete +
                                   // create pipeline. Wave 2 Plan 14-03 wires these so the
@@ -36062,7 +36099,7 @@ ${pageBlocks}
                                   lineBorderStyle={lineBorderStyle}
                                   cloudIntensity={cloudIntensity}
                                   zoomGeneration={zoomGeneration}
-                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
+                                  onSurveyMarkerCreated={getSvgLayerPageHandlers(pageNumber).onSurveyMarkerCreated}
                                 />
                               </div>
                               )}

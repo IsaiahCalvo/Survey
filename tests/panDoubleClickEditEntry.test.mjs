@@ -19,8 +19,11 @@ test('every edit entry goes through the one dispatcher', () => {
   // the SVG layer's native double-click delegates instead of routing itself
   assert.match(
     viewerSource,
-    /onRequestEditMode=\{\(annotationIndex, annotationType, editOptions\) => \{[\s\S]{0,600}requestAnnotationEditEntry\(\{/,
+    /onRequestEditMode: \(annotationIndex, annotationType, editOptions\) => latest\(\)\.requestAnnotationEditEntry\(\{/,
   );
+  // (the per-page handler is identity-stable so the memo'd SVG layer does not
+  // re-render on every viewer render — perf 2026-09-30)
+  assert.match(viewerSource, /onRequestEditMode=\{getSvgLayerPageHandlers\(pageNumber\)\.onRequestEditMode\}/);
   // callouts still route to the adapter-backed path, now carrying the caret point
   assert.match(
     viewerSource,
