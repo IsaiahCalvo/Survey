@@ -286,7 +286,7 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
  * (opens up). Keyboard: Enter/Space or ArrowDown opens; arrows move; Enter
  * selects; Escape closes. Tap: outside pointerdown closes.
  */
-function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder }) {
+function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, width, placeholder, fitOptions = false }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -428,7 +428,20 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
             dashed rule, an arrowhead - so it belongs to the option, not to this
             component. */}
         {selected?.preview ? <span className="mobile-styled-select__preview" aria-hidden="true">{selected.preview}</span> : null}
-        <span>{currentLabel}</span>
+        {fitOptions ? (
+          /* `fitOptions` (owner 2026-09-30, the survey module pill): the pill is
+             exactly as wide as its LONGEST option - every label sits invisibly
+             in one grid cell under the live one - so it neither hugs whichever
+             name is picked (and jumps when you switch) nor pads a short name
+             out to a fixed width. A cap on the trigger still ellipsises a
+             very long name. */
+          <span className="mobile-styled-select__fit">
+            <span>{currentLabel}</span>
+            {options.map((option) => (
+              <span key={option.value} className="mobile-styled-select__fit-ghost" aria-hidden="true">{option.label}</span>
+            ))}
+          </span>
+        ) : <span>{currentLabel}</span>}
         <Icon name="chevronDown" size={9} color="currentColor" />
       </button>
       {open && typeof document !== 'undefined' && pos && createPortal(
@@ -1306,25 +1319,48 @@ export function MobileToolProperties({ api }) {
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
+        {/* Owner 2026-09-30: [ Module v ] | Keep active | Exit.
+            The pill is as wide as its longest module name (fitOptions), not a
+            138px floor. Exit leaves survey mode from here (the same handler as
+            the Survey panel's "Exit Survey").
+            PLACEHOLDER LOOK: the final design of "Keep active" and of Exit
+            (label / icon / placement) is being decided separately. Both are
+            plain buttons with their own classes so the look drops in via
+            .mobile-pdf-properties__keep(-track) and .mobile-pdf-properties__exit
+            without touching the wiring. */}
         <MobileStyledSelect
           ariaLabel="Survey module"
-          minWidth={138}
+          fitOptions
           disabled={!survey.modules?.length}
           placeholder="No modules"
           value={survey.selectedModuleId || ''}
           options={(survey.modules || []).map((module) => ({ value: module.id, label: module.name || 'Untitled Module' }))}
           onChange={(value) => survey.onSelectModule?.(value)}
         />
+        <MobileStripDivider />
         <button
           type="button"
-          className={`mobile-pdf-properties__keep${survey.keepCategoryActive ? ' is-active' : ''}`}
-          role="checkbox"
+          className="mobile-pdf-properties__keep"
+          role="switch"
           aria-checked={Boolean(survey.keepCategoryActive)}
           onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
         >
-          <span aria-hidden="true">{survey.keepCategoryActive ? <Icon name="check" size={14} /> : null}</span>
-          Keep active
+          <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
+          <span>Keep active</span>
         </button>
+        {survey.onExit ? (
+          <>
+            <MobileStripDivider />
+            <button
+              type="button"
+              className="mobile-pdf-properties__exit"
+              aria-label="Exit survey mode"
+              onClick={() => survey.onExit()}
+            >
+              Exit
+            </button>
+          </>
+        ) : null}
       </div>
     );
   }

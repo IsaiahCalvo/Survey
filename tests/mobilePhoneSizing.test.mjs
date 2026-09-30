@@ -92,7 +92,10 @@ test('the rail cannot scroll sideways: no chip is wider than the rail', () => {
   // same 34px: the footer paints at exactly the same four y positions (checked
   // chip by chip on the simulator) and the column gets its 34px back. What this
   // test is about - no side scroll - is untouched.
-  assert.match(block(css, '.mobile-pdf-tools'), /padding: 7px 0 calc\(var\(--mobile-viewer-dock-height\) - 6px\)/);
+  // RULED CHANGE 2026-09-30 (owner): the tool strip spans the full width over
+  // the rail's top, so the rail's top inset also reserves the strip's band
+  // (--mobile-strip-band-h); the side padding is still 0.
+  assert.match(block(css, '.mobile-pdf-tools'), /padding: calc\(7px \+ var\(--mobile-strip-band-h\)\) 0 calc\(var\(--mobile-viewer-dock-height\) - 6px\)/);
   // The hit area is the slot, not the chip, so a smaller square is not a
   // smaller target.
   assert.match(css, /\.mobile-pdf-tools__main > \.mobile-pdf-tools__button::after[\s\S]{0,400}inset-inline: -4px/);

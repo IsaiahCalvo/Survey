@@ -25448,6 +25448,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onSelectEntity: handleMobileSurveyEntitySelect,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
+        // Owner 2026-09-30: the phone survey strip's Exit (same handler as the
+        // Survey panel's "Exit Survey").
+        onExit: handleCloseSurveyMode,
       } : null,
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
@@ -25613,6 +25616,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyCategorySelect,
     handleMobileSurveyEntitySelect,
     surveyKeepCategoryActive,
+    handleCloseSurveyMode,
     showRegionSelection,
     mobileRegionToolbarApi,
     showAnnotationColorPicker,

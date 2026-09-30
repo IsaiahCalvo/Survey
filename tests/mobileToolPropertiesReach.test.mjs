@@ -50,7 +50,6 @@ function ruleBody(selector) {
   return css.slice(open + 1, close);
 }
 
-const rail = tokenPx('--mobile-rail-w');
 const gap = tokenPx('--mobile-strip-gap');
 const dividerInset = tokenPx('--mobile-strip-divider-inset');
 const disc = tokenPx('--mobile-strip-disc-button');
@@ -128,7 +127,10 @@ test('every phone tool strip fits its band at 375 and 390, with nothing to scrol
   const offenders = [];
   for (const viewport of PHONE_WIDTHS) {
     const pad = viewport <= 380 ? padNarrow : padWide;
-    const band = (viewport - rail) - (2 * pad);
+    // RULED CHANGE 2026-09-30 (owner): the strip spans the phone edge to edge
+    // over the rail's top (it started at the rail's right edge before), so its
+    // band is the whole width less its side padding.
+    const band = viewport - (2 * pad);
     for (const [tool, parts] of Object.entries(STRIPS)) {
       const needed = stripWidth(parts);
       if (needed > band) {
